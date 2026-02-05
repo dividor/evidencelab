@@ -2,7 +2,7 @@
 beautifulsoup4==4.14.2
 requests==2.32.5
 openpyxl==3.1.5
-selenium==4.29.0
+selenium==4.40.0
 webdriver-manager==4.0.2
 
 # PDF processing
