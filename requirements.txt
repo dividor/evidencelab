@@ -75,7 +75,7 @@ celery[redis]==5.4.0
 redis==5.2.1
 
 # Utilities
-python-dotenv==1.0.0
+python-dotenv==1.2.1
 setproctitle==1.3.3
 azure-storage-file-share==12.22.0
 
