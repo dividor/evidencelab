@@ -1,0 +1,75 @@
+# Data directories - NEVER copy into Docker images
+data/
+data/**
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+*.log
+*.out
+nohup.out
+
+# Node modules - NEVER copy into Docker images
+node_modules/
+**/node_modules/
+ui/frontend/node_modules/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Documentation
+*.md
+!README.md
+
+# Test artifacts
+.coverage
+htmlcov/
+*.cover
+
+# Debug artifacts
+*_search_results.json
+HIGHLIGHT_SCROLL_TESTING.md
+
+# Environment files
+.env
+.envrc
+
+# Models (if any large model files)
+models/
+
+# Large directories to exclude
+public/
+logs/
+db/
+.cache/

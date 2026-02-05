@@ -1,0 +1,222 @@
+import React from 'react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import axios from 'axios';
+
+jest.mock('react-markdown', () => {
+  const React = jest.requireActual('react');
+  return {
+    __esModule: true,
+    default: ({ children }: { children: React.ReactNode }) =>
+      React.createElement('div', null, children),
+  };
+});
+
+import App from '../App';
+
+jest.mock('axios');
+jest.mock('../components/Documents', () => ({
+  Documents: () => <div>Documents View</div>,
+}));
+jest.mock('../components/Pipeline', () => ({
+  Pipeline: () => <div>Pipeline View</div>,
+  Processing: () => <div>Processing View</div>,
+}));
+jest.mock('../components/PDFViewer', () => ({
+  PDFViewer: () => <div>PDF Viewer</div>,
+}));
+jest.mock('../components/TocModal', () => ({
+  __esModule: true,
+  default: () => <div>TOC Modal</div>,
+}));
+jest.mock('../components/SearchResultCard', () => ({
+  __esModule: true,
+  default: () => <div>Result Card</div>,
+}));
+
+const mockedAxios = axios as jest.Mocked<typeof axios>;
+
+describe('App', () => {
+  test('loads config and navigates tabs', async () => {
+    mockedAxios.get.mockImplementation((url) => {
+      if (url.includes('/config/datasources')) {
+        return Promise.resolve({
+          data: {
+            'Test Source': {
+              data_subdir: 'test',
+              field_mapping: {},
+              filter_fields: {},
+            },
+          },
+        });
+      }
+      if (url.includes('/config/model-combos')) {
+        return Promise.resolve({
+          data: {
+            'Test Combo': {
+              embedding_model: 'e5_large',
+              summarization_model: 'qwen2.5-7b-instruct',
+              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+            },
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    const pushStateSpy = jest.spyOn(window.history, 'pushState');
+    window.history.pushState({}, '', '/');
+
+    render(<App />);
+
+    const nav = screen.getByRole('navigation');
+    expect(within(nav).getByRole('button', { name: 'Search' })).toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole('button', { name: /Monitor/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Documents' }));
+
+    expect(await screen.findByText('Documents View')).toBeInTheDocument();
+    expect(pushStateSpy).toHaveBeenCalledWith(
+      null,
+      '',
+      expect.stringContaining('/documents')
+    );
+  });
+
+  test('uses selected model combo for search params', async () => {
+    mockedAxios.get.mockImplementation((url) => {
+      if (url.includes('/config/datasources')) {
+        return Promise.resolve({
+          data: {
+            'Test Source': {
+              data_subdir: 'test',
+              field_mapping: {},
+              filter_fields: {},
+            },
+          },
+        });
+      }
+      if (url.includes('/config/model-combos')) {
+        return Promise.resolve({
+          data: {
+            'Azure Foundry': {
+              embedding_model: 'azure_small',
+              summarization_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              semantic_highlighting_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+            },
+            'Huggingface': {
+              embedding_model: 'e5_large',
+              summarization_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              semantic_highlighting_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+            },
+            'Azure Foundry': {
+              embedding_model: 'azure_small',
+              summarization_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              semantic_highlighting_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+            },
+            'Huggingface': {
+              embedding_model: 'e5_large',
+              summarization_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              semantic_highlighting_model: {
+                model: 'qwen2.5-7b-instruct',
+                max_tokens: 500,
+                temperature: 0.2,
+                chunk_overlap: 800,
+                chunk_tokens_ratio: 0.5,
+              },
+              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+            },
+          },
+        });
+      }
+      if (url.includes('/facets')) {
+        return Promise.resolve({
+          data: {
+            facets: {},
+            filter_fields: {},
+          },
+        });
+      }
+      if (url.includes('/search')) {
+        return Promise.resolve({
+          data: {
+            results: [],
+            total: 0,
+            query: '',
+            filters: {},
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    render(<App />);
+
+    const nav = screen.getByRole('navigation');
+    fireEvent.click(within(nav).getByRole('button', { name: 'Search' }));
+
+    const modelButton = await screen.findByRole('button', { name: /Models/i });
+    fireEvent.click(modelButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'Huggingface' }));
+
+    expect(await screen.findByRole('button', { name: /Models Huggingface/i })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Search documents'), {
+      target: { value: 'test query' },
+    });
+    const searchButtons = screen.getAllByRole('button', { name: 'Search' });
+    fireEvent.click(searchButtons[searchButtons.length - 1]);
+
+    const searchCalls = mockedAxios.get.mock.calls
+      .map(([callUrl]) => String(callUrl))
+      .filter((callUrl) => callUrl.includes('/search?'));
+    expect(searchCalls.length).toBeGreaterThan(0);
+    const lastSearch = searchCalls[searchCalls.length - 1];
+    expect(lastSearch).toContain('model=e5_large');
+    expect(lastSearch).toContain('rerank_model=jinaai%2Fjina-reranker-v2-base-multilingual');
+    expect(lastSearch).toContain('data_source=test');
+  });
+});

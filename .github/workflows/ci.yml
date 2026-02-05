@@ -1,0 +1,284 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop, copilot/** ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ui/frontend
+
+      - name: Run pre-commit hooks
+        run: |
+          pre-commit run --all-files
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      # Python dependency vulnerability scanning
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r requirements.txt --desc on || true
+        continue-on-error: true
+
+      # Python SAST with Bandit
+      - name: Run Bandit
+        run: |
+          pip install bandit
+          bandit -r pipeline/ ui/backend/ -f json -o bandit-report.json -ll || true
+        continue-on-error: true
+
+      - name: Upload Bandit Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit-report.json
+        if: always()
+
+      # JavaScript dependency vulnerability scanning
+      - name: Install frontend dependencies
+        working-directory: ui/frontend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ui/frontend
+        run: |
+          npm audit --audit-level=high || true
+        continue-on-error: true
+
+      # Dockerfile linting
+      - name: Run Hadolint on main Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          ignore: DL3008,DL3013,DL3042
+        continue-on-error: true
+
+      - name: Run Hadolint on backend Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ui/backend/Dockerfile
+          ignore: DL3008,DL3013,DL3042
+        continue-on-error: true
+
+      - name: Run Hadolint on frontend Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ui/frontend/Dockerfile
+          ignore: DL3008,DL3013,DL3042
+        continue-on-error: true
+
+      # Secret scanning with Gitleaks
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+  container-scan:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image for scanning
+        run: docker build -t evidencelab-api:scan -f ui/backend/Dockerfile .
+
+      - name: Build frontend image for scanning
+        run: docker build -t evidencelab-ui:scan -f ui/frontend/Dockerfile ui/frontend/
+
+      - name: Run Trivy on API image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'evidencelab-api:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+        continue-on-error: true
+
+      - name: Run Trivy on UI image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'evidencelab-ui:scan'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+        continue-on-error: true
+
+  tests:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    env:
+      HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: tests
+    environment: ENV1
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+      UI_BASE_URL: ${{ vars.UI_BASE_URL }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      DENSE_EMBEDDING_MODEL: ${{ vars.DENSE_EMBEDDING_MODEL }}
+      QDRANT_HOST: ${{ vars.QDRANT_HOST }}
+      CELERY_BROKER_URL: ${{ vars.CELERY_BROKER_URL }}
+      CELERY_RESULT_BACKEND: ${{ vars.CELERY_RESULT_BACKEND }}
+      RATE_LIMIT_SEARCH: ${{ vars.RATE_LIMIT_SEARCH }}
+      RATE_LIMIT_DEFAULT: ${{ vars.RATE_LIMIT_DEFAULT }}
+      RATE_LIMIT_AI: ${{ vars.RATE_LIMIT_AI }}
+      AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+      DATA_MOUNT_PATH: ${{ vars.DATA_MOUNT_PATH }}
+      SHORT_QUERY_DENSE_WEIGHT: ${{ vars.SHORT_QUERY_DENSE_WEIGHT }}
+      HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          docker system prune -af
+
+      - name: Write .env for docker compose
+        run: |
+          cat <<'EOF' > .env
+          API_BASE_URL=${API_BASE_URL}
+          UI_BASE_URL=${UI_BASE_URL}
+          API_SECRET_KEY=${API_SECRET_KEY}
+          DENSE_EMBEDDING_MODEL=${DENSE_EMBEDDING_MODEL}
+          QDRANT_HOST=${QDRANT_HOST}
+          CELERY_BROKER_URL=${CELERY_BROKER_URL}
+          CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+          RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH}
+          RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT}
+          RATE_LIMIT_AI=${RATE_LIMIT_AI}
+          AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+          AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+          DATA_MOUNT_PATH=${DATA_MOUNT_PATH}
+          SHORT_QUERY_DENSE_WEIGHT=${SHORT_QUERY_DENSE_WEIGHT}
+          HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+          EOF
+        working-directory: ${{ github.workspace }}
+
+      - name: Ensure .env exists
+        run: |
+          test -f .env || touch .env
+        working-directory: ${{ github.workspace }}
+
+      - name: Start Docker services
+        run: |
+          docker compose up -d
+        working-directory: ${{ github.workspace }}
+
+      - name: Run integration tests
+        run: |
+          docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s"
+
+  ui-tests:
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ui/frontend
+
+      - name: Copy UI config.json
+        run: cp "${{ github.workspace }}/config.json" "${{ github.workspace }}/ui/frontend/src/config.json"
+
+      - name: Run UI unit tests
+        run: npm test -- --watchAll=false
+        working-directory: ui/frontend

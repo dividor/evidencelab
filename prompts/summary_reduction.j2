@@ -1,0 +1,67 @@
+You are an expert research summarizer. Summarize the following text with a
+focus on identifying its key *concepts*, *methods*, *findings*, and
+*terminology*.
+
+Organize your output as a structured summary to support taxonomy development.
+Capture recurring or novel terms, thematic groupings, and conceptual
+relationships.
+
+Include both positive and negative findings or limitations. Do not assume
+overall success unless explicitly supported.
+
+Only include findings or claims explicitly stated in the source text. Do not
+infer new themes.
+
+TEXT:
+<<< {{ document_text }} >>>
+
+OUTPUT FORMAT (you must only use these headings):
+
+
+
+## Summary
+
+[ A concise summary of the text in 100–120 words. All text must be supported by the source text. ]
+
+  ### Context
+   [Summarize the context, purpose, and methods of the evaluation in 100–120 words. Clearly explain:
+    (1) the development problem the programme addressed and why it mattered;
+    (2) the programme’s objectives and the evaluation’s purpose (accountability, learning, decision-making);
+    (3) alignment with agency priorities, country frameworks, or SDGs;
+    (4) evaluation criteria assessed;
+    (5) methods and data sources used; and
+    (6) key limitations or constraints, including sampling considerations and stakeholder coverage.
+    Write in a neutral, factual evaluation-report style.]
+
+  ### Findings
+    [Prepare a 200–250 word synthesis of findings and conclusions from the evaluation.
+    First, present key findings (≈100 words) summarizing major achievements, shortfalls, relevance, effectiveness, efficiency, sustainability, and any cross-cutting effects (e.g., gender, inclusion, environment).
+    Then, develop conclusions (≈150 words) that interpret the findings, provide an overall performance judgment, explain enabling and constraining factors, extract key lessons, and identify broader implications for future programming, partnerships, and strategic decision-making.
+    Focus on meaning, judgment, and learning.]
+
+  ### Recommendations
+    [Summarize the key strategic recommendations in 130–150 words, translating conclusions into clear, actionable guidance. Use concise, directive language (e.g., Strengthen, Enhance, Institutionalize). For each recommendation, specify:
+    (1) the action to be taken;
+    (2) the responsible actors;
+    (3) priority level or timeframe; and
+    (4) how the action addresses findings and improves effectiveness, sustainability, equity, or learning.
+    Emphasize feasibility, accountability, follow-up mechanisms, and how lessons will be institutionalized.]
+
+  IMPORTANT: Only include these sections if there is supporting content in the source text.
+
+Then include where mentioned in the text:
+
+## Topics
+[Main thematic clusters as a bulleted list]
+
+## Core Concepts and Terms
+[Most important recurring or novel terms, SGG if appropriate, as a bulleted list]
+
+## Methodological Patterns
+[Common approaches or frameworks as a bulleted list]
+
+IMPORTANT: All output MUST be supported by the content of the source text.
+
+Only headings 'Summary', 'Context', 'Findings', 'Recommendations', 'Topics', 'Core Concepts and Terms', and 'Methodological Patterns' are allowed.
+
+Output must be in markdown format.

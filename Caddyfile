@@ -1,0 +1,46 @@
+# Production Caddyfile for evidencelab.ai
+# Caddy automatically obtains and renews Let's Encrypt certificates
+#
+# Architecture: Caddy → nginx (UI) → API (internal only)
+# The API is NOT exposed by Caddy; nginx proxies /api/* internally
+#
+# Qdrant is exposed at /db/ for external pipeline workers (Container Apps)
+# Protected by API key in X-API-Key header
+
+evidencelab.ai, www.evidencelab.ai {
+	# Redirect www to bare domain
+	@www host www.evidencelab.ai
+	redir @www https://evidencelab.ai{uri} permanent
+
+	# Qdrant API at /db/ for external pipeline workers
+	# Accept both X-API-Key (curl) and api-key (qdrant-client) headers
+	@db_valid_xkey {
+		path /db/*
+		header X-API-Key {$QDRANT_API_KEY}
+	}
+	@db_valid_apikey {
+		path /db/*
+		header api-key {$QDRANT_API_KEY}
+	}
+	handle @db_valid_xkey {
+		uri strip_prefix /db
+		reverse_proxy qdrant:6333 {
+			header_up api-key {$QDRANT_API_KEY}
+		}
+	}
+	handle @db_valid_apikey {
+		uri strip_prefix /db
+		reverse_proxy qdrant:6333 {
+			header_up api-key {$QDRANT_API_KEY}
+		}
+	}
+
+	# Reject /db/ requests without valid API key
+	@db_no_key path /db/*
+	handle @db_no_key {
+		respond "Unauthorized" 401
+	}
+
+	# Everything else goes to the UI container (nginx handles /api/* internally)
+	reverse_proxy ui:80
+}

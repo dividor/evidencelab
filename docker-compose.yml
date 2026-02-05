@@ -1,0 +1,237 @@
+# Development Docker Compose
+# Exposes ports directly for local development with hot reload
+#
+# Usage:
+#   docker compose up -d --build
+#
+# Access:
+#   - Frontend: http://localhost:3000
+#   - API: http://localhost:8000
+#   - Qdrant: http://localhost:6333
+#
+# For production, use: docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  # Redis for Celery task queue
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Qdrant vector database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    environment:
+      - QDRANT__SERVICE__MAX_REQUEST_SIZE_MB=10000
+    volumes:
+      - ${DB_DATA_MOUNT:-./db}/qdrant:/qdrant/storage:z
+      - ${DB_DATA_MOUNT:-./db}/backups:/qdrant/snapshots:z
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Postgres sidecar (pgvector)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+    volumes:
+      - ${DB_DATA_MOUNT:-./db}/postgres:/var/lib/postgresql/data:z
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # Embedding Server (Infinity) - Shared GPU/CPU inference
+  embedding-server:
+    image: michaelf34/infinity:0.0.70
+    container_name: embedding-server
+    ports:
+      - "7997:7997"
+    environment:
+      # Serve the same model as DENSE_EMBEDDING_MODEL in .env
+      - INFINITY_MODEL_ID=${DENSE_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+      - INFINITY_BATCH_SIZE=8
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/logs
+    entrypoint: []
+    command: [ "/bin/sh", "-c", "infinity_emb v2 2>&1 | tee -a /logs/embedding_server.log" ]
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://localhost:7997/health || curl -fsS http://localhost:7997/ || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  # Pipeline Celery worker for background processing
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: evidencelab-ai-python:latest
+    pull_policy: build
+    container_name: pipeline
+    volumes:
+      - .:/app
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ${DB_DATA_MOUNT:-./db}:/app/db
+      - ./.cache/huggingface:/root/.cache/huggingface
+      - ./.cache/fastembed:/root/.cache/fastembed
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      qdrant:
+        condition: service_started
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      embedding-server:
+        condition: service_healthy
+    networks:
+      - app-network
+    # Run Celery worker with concurrency=1 (heavy ML tasks)
+    # Code is mounted at /app, so just restart container for code changes:
+    #   docker compose restart pipeline
+    command: celery -A pipeline.utilities.tasks worker --loglevel=info --concurrency=1
+    restart: unless-stopped
+    # Memory limit for OOM protection - Docker kills container instead of host OOM
+    # Container restart handles recovery; subprocess isolation disabled for performance
+    deploy:
+      resources:
+        limits:
+          memory: 15G
+
+  # FastAPI backend (development with hot reload)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: evidencelab-ai-python:latest
+    pull_policy: build
+    container_name: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ./.cache/huggingface:/root/.cache/huggingface
+      - ./.cache/fastembed:/root/.cache/fastembed
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - PYTHONPATH=/app
+      - API_SECRET_KEY=${REACT_APP_API_KEY}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - USE_EMBEDDING_SERVER=true
+      - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
+      - MAX_CONCURRENT_SEARCHES=${MAX_CONCURRENT_SEARCHES:-2}
+      - MAX_CONCURRENT_RERANKS=${MAX_CONCURRENT_RERANKS:-1}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      qdrant:
+        condition: service_started
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      embedding-server:
+        condition: service_healthy
+    networks:
+      - app-network
+    working_dir: /app
+    # Development: single worker with hot reload
+    command: uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log #--reload
+    restart: unless-stopped
+
+  # React frontend (development server with hot reload)
+  ui:
+    build:
+      context: ./ui/frontend
+      dockerfile: Dockerfile
+    container_name: ui
+    ports:
+      - "3000:3000"
+    environment:
+      # Use localhost for browser access (works with SSH tunnel)
+      # Integration tests override this via environment or use host.docker.internal
+      - PORT=3000
+      - REACT_APP_API_URL=http://api:8000
+      - REACT_APP_API_KEY=${API_SECRET_KEY:-}
+      - CHOKIDAR_USEPOLLING=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Required for Linux Docker
+    depends_on:
+      - api
+    networks:
+      - app-network
+    volumes:
+      - ./ui/frontend:/app
+      - /app/node_modules
+      - ./config.json:/tmp/config.json:ro
+      - ./logs:/app/logs
+    # Pipe output to file for persistent logging
+    # Copy config.json to src before starting to satisfy CRA restrictions
+    command: sh -c "cp /tmp/config.json /app/src/config.json && cd /app/logs && mv ui.log.2 ui.log.3 2>/dev/null; mv ui.log.1 ui.log.2 2>/dev/null; mv ui.log ui.log.1 2>/dev/null; cd /app && npm start 2>&1 | ts '%Y-%m-%d %H:%M:%S' | tee -a /app/logs/ui.log"
+    stdin_open: true
+    tty: true
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -qO- http://0.0.0.0:3000/ >/dev/null 2>&1 || exit 1" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge

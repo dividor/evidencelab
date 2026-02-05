@@ -1,0 +1,32 @@
+Below is text extracted from a PDF which should contain a Table of Contents (TOC).
+The TOC might be labeled "Contents", "Table of Contents", "Sommaire", "Indice", "Índice", etc.
+It's noisy, extract clean TOC entries in the format:
+
+[Hx] <Title> | page <PageNum>
+
+Rules:
+1. Use [H1] for top-level chapters, [H2] for sections, etc. Up to [H3].
+2. Example: "[H1] 1. Introduction | page 5" or "[H2] 2.1 Context | page 12".
+3. The Title does NOT need to be numbered.
+   - Capture sections such as: "Contents", "Table of Contents", "Índice", "Indice", "Siglas", "Glosario", "Anexos", "Sommaire", "Table des matières", "Conteúdo".
+   - IF a number exists, include it (e.g., "1. Resumen").
+   - Do NOT output just the number (e.g. "[H1] 1 | page 5" is WRONG).
+4. Ensure the PageNum is the last number on the line.
+5. Ignore any listing of Tables or Figures.
+6. Do not interpret all CAPS as a higher heading level.
+7. Heading levels are only determined by indentation of the first character on the heading line
+8. ONLY output the top-level anchor headings, no sub-headings
+9. A Numbered list starting with number '1' immediately after an executive summary is the same heading level
+10. If there is a Contents, Table of Contents, Sommaire, Indice, Índice at the top with no page number, it's a title, ignore it.
+11. If the text does NOT appear to contain a Table of Contents, just output the string: NO_TOC_FOUND
+   - Note: "Índice" followed by list items with page numbers IS a valid TOC.
+   Do not output anything else if no TOC is found.
+
+```text
+{{ raw_pdf_text }}
+```
+
+Your ONLY output is the cleaned TOC string, nothing else.
+Do NOT output any intro text, ending text, markdown formatting (like bolding), or fenced code blocks.
+Do NOT output python code or Regex patterns.
+Just the list of TOC entries.

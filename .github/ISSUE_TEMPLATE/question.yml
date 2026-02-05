@@ -1,0 +1,74 @@
+name: ❓ Question
+description: Ask a question about the Humanitarian evaluation AI analysis pipeline?
+title: "[Question]: "
+labels: ["question", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question about the Humanitarian evaluation AI analysis pipeline? We're here to help! Please provide as much context as possible.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please check the following before submitting
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have checked the README and documentation
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What category does your question fall into?
+      options:
+        - Installation and setup
+        - Configuration
+        - Pipline code
+        - Troubleshooting
+        - Performance
+        - Security
+        - Development/Contributing
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: Please describe your question in detail...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to accomplish? What have you tried so far?
+      placeholder: |
+        I'm trying to...
+        I've already tried...
+        My goal is to...
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (if relevant)
+      description: Your environment details (if relevant to the question)
+      placeholder: |
+        - OS: [e.g., macOS 14.0, Ubuntu 22.04, Windows 11]
+        - Python version: [e.g., 3.11.5]
+      render: markdown
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Information
+      description: Any other information that might be helpful
+      placeholder: Any additional context or information...

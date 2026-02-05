@@ -1,0 +1,122 @@
+{
+  "correct_toc_hierarchy": [
+    {
+      "name": "basic_shift_preserves_subheadings",
+      "db_toc": "[H2] Introduction | page 1\n  [H3] Background | page 2\n  [H3] Scope | page 3\n[H2] Findings | page 5",
+      "pdf_anchors": "[H1] Introduction | page 1\n[H1] Findings | page 5",
+      "raw_pdf_text": "Introduction ... 1\nBackground ... 2\nScope ... 3\nFindings ... 5",
+      "expected_corrected_toc": "x   [H2] Introduction | page 1\n      [H3] Background | page 2\n      [H3] Scope | page 3\nx   [H2] Findings | page 5"
+    },
+    {
+      "name": "front_matter_promoted_when_in_raw",
+      "db_toc": "[H3] Executive Summary | page 1\n[H2] Introduction | page 3",
+      "pdf_anchors": "[H1] Introduction | page 3",
+      "raw_pdf_text": "Executive Summary ... 1\nIntroduction ... 3",
+      "expected_corrected_toc": "    [H2] Executive Summary | page 1\nx   [H2] Introduction | page 3"
+    },
+    {
+      "name": "duplicate_anchor_not_reused",
+      "db_toc": "[H3] Annex A | page 10\n[H3] Annex A | page 11",
+      "pdf_anchors": "[H1] Annex A | page 10",
+      "raw_pdf_text": "Annex A ... 10\nAnnex A ... 11",
+      "expected_corrected_toc": "x     [H3] Annex A | page 10\n        [H4] Annex A | page 11"
+    },
+    {
+      "name": "unmatched_anchor_added",
+      "db_toc": "[H2] Introduction | page 1",
+      "pdf_anchors": "[H1] Introduction | page 1\n[H1] Findings | page 5",
+      "raw_pdf_text": "Introduction ... 1\nFindings ... 5",
+      "expected_corrected_toc": "x   [H2] Introduction | page 1\n    [H2] Findings | page 5"
+    },
+    {
+      "name": "numbered_heading_promoted",
+      "db_toc": "[H2] Preface | page 1\n[H3] 1. Introduction | page 3",
+      "pdf_anchors": "[H1] 1. Introduction | page 3",
+      "raw_pdf_text": "Preface ... 1\n1. Introduction ... 3",
+      "expected_corrected_toc": "    [H2] Preface | page 1\nx   [H2] 1. Introduction | page 3"
+    }
+  ],
+  "parse_pdf_toc_anchors": [
+    {
+      "name": "page_zero_becomes_unknown",
+      "toc_text": "[H1] Annex 1 | page 0",
+      "expected": [
+        {
+          "text": "[H1] Annex 1",
+          "page": -1,
+          "level": 1
+        }
+      ]
+    },
+    {
+      "name": "roman_page_becomes_unknown",
+      "toc_text": "[H1] Foreword | page iv",
+      "expected": [
+        {
+          "text": "[H1] Foreword",
+          "page": -1,
+          "level": 1
+        }
+      ]
+    }
+  ],
+  "filter_table_figure_box_entries": [
+    {
+      "name": "removes_figure_table_lines",
+      "input": "List of figures\nFigure 1: Foo ... 3\nTable 1: Bar ... 5\nContents ... 1",
+      "expected": "Contents ... 1"
+    },
+    {
+      "name": "multilingual_removal",
+      "input": "Lista de figuras\nFigura 2: Ejemplo ... 4\nSommaire ... 1",
+      "expected": "Sommaire ... 1"
+    }
+  ],
+  "normalize_leading_page_numbers": [
+    {
+      "name": "moves_leading_page_numbers",
+      "input": "25 1.3. Sampling strategies\n7 Introduction",
+      "expected": "1.3. Sampling strategies ... 25\nIntroduction ... 7"
+    },
+    {
+      "name": "skips_non_heading_line",
+      "input": "25 1234\n12 ....",
+      "expected": "25 1234\n12 ...."
+    }
+  ],
+  "filter_toc_continuation_lines": [
+    {
+      "name": "drops_long_indented_continuation",
+      "input": "Section A ... 3\n      This is a very long continuation line that should be removed because it is indented and exceeds the length threshold\nSection B ... 5",
+      "expected": "Section A ... 3\nSection B ... 5"
+    }
+  ],
+  "filter_toc_eval_text": [
+    {
+      "name": "drops_decimal_subheading_even_with_page",
+      "input": "1.1 Background 4\nIntroduction 2",
+      "expected": "Introduction 2"
+    },
+    {
+      "name": "drops_no_page_lines",
+      "input": "Executive Summary\nFindings ... 10",
+      "expected": "Findings ... 10"
+    }
+  ],
+  "validate_toc_quality": [
+    {
+      "name": "valid_small_toc",
+      "anchors": [
+        { "text": "Introduction", "page": 1 },
+        { "text": "Findings", "page": 5 },
+        { "text": "Conclusions", "page": 9 }
+      ],
+      "expected_valid": true
+    },
+    {
+      "name": "invalid_empty",
+      "anchors": [],
+      "expected_valid": false
+    }
+  ]
+}

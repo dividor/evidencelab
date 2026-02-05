@@ -1,0 +1,21 @@
+Instruction: {{ instructions }}
+
+Text:
+"""
+{{ chunk_text }}
+"""
+
+Based on the instructions and the text above, formulate a single natural language question.
+The question should be:
+1. Natural and human-sounding.
+2. **Corpus-Wide Context**: Phrase the question as if searching a large database of documents.
+   - DO NOT use phrases like "this project", "the text provided", "this document", "according to the text".
+3. **No Vague Geography**:
+   - DO NOT use vague geographic references like "the region", "this country", "the area", or "local context".
+   - **EITHER** specify the exact location mentioned (e.g., "in South Sudan", "in the MENA region").
+   - **OR** make the question entirely general (e.g., "challenges in humanitarian aid").
+   - A user would never search for "aid in the region"; they would search for "aid in Syria" or just "aid".
+4. **Generalization**: Do NOT use the exact phrasing from the text. Use synonyms and generalized concepts where appropriate.
+5. **Variety**: Ask about broader implications, effectiveness, challenges, or lessons learned.
+6. Simulate a user searching for this specific information without knowing the exact document it comes from.
+7. Output ONLY the question, ending with a question mark. No preamble.

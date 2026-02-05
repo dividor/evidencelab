@@ -1,0 +1,80 @@
+You are evaluating the quality of a corrected Table of Contents (TOC) by comparing it with the raw text extracted from the PDF TOC pages.
+
+**Task:**
+Your goal is to confirm that the top headings in the PDF TOC have been identified correctly in the corrected TOC.
+You are ONLY comparing the highest level number headings in the corrected TOC align with the top heading levels
+in the Raw Text TOC. Don't worry about sub-headings.
+
+Do NOT translate; compare headings in their original language and focus on core text similarity.
+
+**CRITICAL: Ignore numbering and order differences:**
+- "3. Key Findings" in raw PDF = "Key Findings" in corrected TOC (same heading, numbering ignored)
+- "4. Conclusion and Lessons Learnt" in raw PDF = "Conclusion and Lessons Learnt" in corrected TOC (same heading)
+- "5. RECOMMENDATIONS" in raw PDF = "RECOMMENDATIONS" or "5. RECOMMENDATIONS" in corrected TOC (same heading)
+- The ORDER of headings does NOT matter - only that all top-level headings are present
+- If a heading appears in both (ignoring numbers, formatting, and order), consider it a match
+- DO NOT mark as "no" just because headings appear in a different order - order is irrelevant
+
+Compare the corrected TOC with the raw PDF text to verify:
+1. Are the headings in the corrected TOC present in the raw PDF TOC?
+2. Do the heading titles match what appears in the raw PDF text?
+
+**Important Notes:**
+- Ignore low H number headings, you are ONLY checking the highest H number headings in corrected
+  TOC with highest H number headings in PDF Extracted TOC.
+- Don't worry if top-level H number is different.
+- Ignore sub-headings which are indented or in numbered headings have a decimal, eg 1.1
+- Ignore "Table of Contents" or "Contents" headings themselves (these are section headers, not content headings).
+- Ignore "List of Figures", "List of Tables" and "List of Boxes"
+- Assume in PDF Extracted Raw TOC that indentation alone determines heading level.
+- Ignore differences in heading numbering (e.g., "1. Introduction" vs "Introduction", "3. Key Findings" vs "Key Findings").
+- Ignore heading tags like "[H2]" in the corrected TOC - focus only on the heading text.
+- An Executive Summary is am anchor heading
+- When comparing, strip leading/trailing whitespace, remove numbering prefixes, and compare the core heading text.
+- If a heading appears in the raw PDF TOC (even with different formatting or numbering), it should be considered present if the core text matches.
+- For example: "3. Key Findings" in raw PDF matches "Key Findings" in corrected TOC (numbering ignored).
+- For example: "4. Conclusion and Lessons Learnt" in raw PDF matches "Conclusion and Lessons Learnt" in corrected TOC.
+- For example: "2. Evaluation findings" in raw PDF matches "2. Evaluation findings" or "Evaluation findings" in corrected TOC.
+- For example: "1. Introduction" in raw PDF matches "1. Introduction" or "Introduction" in corrected TOC.
+- If the heading text is the same (ignoring numbering, case, and formatting), it's a match.
+- Do NOT mark "no" just because the raw PDF TOC has headings not present in the corrected TOC.
+- Only return "no" if a heading in the corrected TOC is missing from the raw PDF TOC.
+- If you are unsure whether a corrected heading appears in the raw PDF TOC, be lenient and return "yes".
+
+**Comparison focus:**
+- Only check whether corrected TOC headings appear in the raw PDF TOC.
+- Ignore headings that appear only in the raw PDF TOC (do NOT treat them as missing).
+- If both contain the same heading text (ignoring numbering, case, and minor formatting), they match.
+- Be very lenient; if the core heading text appears in both, it's a match.
+- Ignore extremely long headings (over 100 characters) in the raw PDF TOC.
+- Focus only on clear, concise top-level headings representing major sections.
+- If you return "no", ONLY list headings that appear in the Corrected TOC but are missing from the raw PDF TOC.
+- Do NOT mention any headings that are not present in the Corrected TOC.
+- If you cannot find any corrected headings missing from the raw PDF TOC, return "yes".
+- Ignore headings in the raw PDF TOC that do NOT have a page number on the same line (these are often wrapped lines or sub-headings).
+
+The above rules should apply to any language, change the words above to the language of the document.
+
+**Output Format:**
+You must respond with ONLY a valid JSON object. Do NOT wrap it in markdown code blocks or add any other text.
+
+Required format:
+{
+  "result": "yes" or "no",
+  "reason": "Brief explanation of your evaluation"
+}
+
+Rules:
+- The "result" field must be either "yes" (if the structure is correct) or "no" (if there are issues).
+- The "reason" field should be a concise explanation (1-3 sentences) of why you reached this conclusion.
+- Output ONLY the JSON object, nothing else. No markdown formatting, no code blocks, no explanatory text.
+
+**PDF Extracted TOC (Raw Text):**
+```
+{{ pdf_extracted_toc }}
+```
+
+**Corrected TOC (from database):**
+```
+{{ corrected_toc }}
+```

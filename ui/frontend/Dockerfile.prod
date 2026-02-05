@@ -1,0 +1,64 @@
+# Production Dockerfile for React frontend
+# Multi-stage build: build static assets, serve with nginx
+
+# Stage 1: Build
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files from ui/frontend
+COPY ui/frontend/package.json ui/frontend/package-lock.json* ./
+
+# Install dependencies
+RUN npm ci --legacy-peer-deps
+
+# Copy source files from ui/frontend
+COPY ui/frontend/. .
+
+# Copy config.json from root (after source files)
+COPY config.json ./src/config.json
+
+# Build for production
+# API calls go to /api which Caddy proxies to the backend
+ARG REACT_APP_API_BASE_URL=/api
+ENV REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL}
+
+# Feature flags and configuration
+ARG REACT_APP_AI_SUMMARY_ON=false
+ENV REACT_APP_AI_SUMMARY_ON=${REACT_APP_AI_SUMMARY_ON}
+
+ARG REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=true
+ENV REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS}
+
+ARG REACT_APP_PDF_SEMANTIC_HIGHLIGHTS=true
+ENV REACT_APP_PDF_SEMANTIC_HIGHLIGHTS=${REACT_APP_PDF_SEMANTIC_HIGHLIGHTS}
+
+ARG REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=0.4
+ENV REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=${REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD}
+
+ARG REACT_APP_API_KEY
+ENV REACT_APP_API_KEY=${REACT_APP_API_KEY}
+
+ARG REACT_APP_BASE_PATH=
+ENV REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH}
+
+RUN npm run build
+
+# Stage 2: Production server with nginx
+FROM nginx:alpine AS production
+
+# Copy nginx config as template (API key injected at runtime)
+COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
+
+# Copy entrypoint script
+COPY ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Copy built assets from builder stage
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Use entrypoint to inject API key into nginx config
+ENTRYPOINT ["/docker-entrypoint.sh"]

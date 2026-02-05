@@ -1,0 +1,15 @@
+Act as a search quality rater.
+
+Question: "{{ question }}"
+
+Text Snippet:
+"""
+{{ chunk_text }}
+"""
+
+Is this text snippet a RELEVANT result for the question?
+- Say YES if it contains information related to the question, even if partial.
+- Say YES if it provides context or background for the question.
+- Say NO only if it is completely off-topic or irrelevant.
+
+Output ONLY "YES" or "NO".

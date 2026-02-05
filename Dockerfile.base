@@ -1,0 +1,26 @@
+# Base image with all heavy ML dependencies
+# This will be built once and reused by pipeline, api, and ui/backend
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    poppler-utils \
+    tesseract-ocr \
+    libgl1 \
+    libglib2.0-0 \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install all Python dependencies in the base image
+# This is the expensive part that we only want to do once
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install UI backend dependencies too
+COPY ui/backend/requirements.txt /app/ui/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/ui/backend/requirements.txt
+
+# Set python path
+ENV PYTHONPATH=/app

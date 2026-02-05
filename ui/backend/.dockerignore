@@ -1,0 +1,33 @@
+# Data directories - NEVER copy into Docker images
+../../data/
+data/
+
+# Node modules - NEVER copy into Docker images
+node_modules/
+**/node_modules/
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+nohup.out

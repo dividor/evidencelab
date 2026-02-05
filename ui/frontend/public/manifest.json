@@ -1,0 +1,8 @@
+{
+  "short_name": "Evidence Lab",
+  "name": "Evidence Lab",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#5B8FA8",
+  "background_color": "#ffffff"
+}

@@ -1,0 +1,16 @@
+Here is the Table of Contents for the document: "{{ doc_title }}".
+
+You are given the TOC entries as a JSON array. Each entry has:
+{"idx": <int>, "title": "<str>", "level": <int>, "page": <int|null>, "locked_label": "<str|null>"}
+
+{% if total_pages is not none %}
+Total document pages: {{ total_pages }}
+{% endif %}
+
+TOC Items:
+{{ toc_items_json }}
+
+Classify EACH item according to the taxonomy and rules provided in the system prompt.
+
+Return ONLY a valid JSON array in the required output format.
+Do not include any explanations, markdown, or extra text.

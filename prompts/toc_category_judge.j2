@@ -1,0 +1,62 @@
+You are a strict evaluator of labeled Table of Contents (TOC) entries.
+Decide whether the assigned labels are acceptable given the rules below.
+
+Avoid false positives. Only mark FAIL when there are clear, explicit violations.
+If uncertain, mark PASS but lower the score.
+Do not guess missing context. Use only the data provided.
+
+RULES (must enforce):
+- Labels must come from this taxonomy:
+  front_matter, executive_summary, acronyms, introduction, context, methodology,
+  findings, recommendations, conclusions, annexes, appendix, bibliography, other
+- Short documents: if total_pages <= 3, executive_summary may be used broadly.
+- Roman boundary (if provided): any entry at or before roman_boundary_page must be ONLY
+  front_matter, executive_summary, or acronyms.
+- Explicit title-label checks (clear violations), but ONLY for entries after roman_boundary_page
+  when roman_boundary_page is provided:
+  - Titles containing "recommendation" must be recommendations.
+  - Titles containing "conclusion" must be conclusions (unless also containing "recommendation").
+  - Titles containing "executive summary" or "evaluation brief" must be executive_summary.
+  - Titles containing "acronym", "abbreviation", or "glossary" must be acronyms.
+  - Titles containing "annex" or "annexe" must be annexes.
+  - Titles containing "appendix" must be appendix.
+  - Titles containing "bibliography" or "references" must be bibliography.
+  - Titles containing "contents", "table of contents", "list of figures", or "list of tables" must be front_matter.
+  - Titles starting with "figure" or "table" are acceptable as other/front_matter; do not flag them as missing findings.
+- Front matter boundary: entries after the first third of the document should NOT be labeled front_matter.
+- Executive summary should be a single contiguous block; later similar headings should not be executive_summary.
+- Annex boundary: after annexes begin, later entries should not be introduction/context/methodology/findings/
+  recommendations/conclusions.
+- Children usually inherit their parent's label unless the title clearly indicates a different category.
+
+Boundary clarifications:
+- If roman_boundary_page is provided, ONLY enforce that labels within that range are one of
+  front_matter/executive_summary/acronyms. Do NOT flag title/keyword mismatches inside that range.
+- The first-third boundary ONLY applies to the front_matter label. Do NOT flag other labels
+  (e.g., introduction) solely for appearing after the first third.
+- If annex_start_idx is provided, entries at or after that index may be annexes/appendix/bibliography/other.
+- If a title contains both "conclusions" and "recommendations", either label is acceptable.
+
+INPUT JSON:
+{{ input_json }}
+
+OUTPUT JSON ONLY:
+{
+  "verdict": "pass" | "fail",
+  "score": 0-100,
+  "issues": [
+    {"idx": <int>, "issue": "<short reason>"}
+  ],
+  "summary": "<brief>"
+}
+
+Output requirements:
+- Use double quotes for all JSON keys and string values.
+- Do not include trailing commas.
+- Do not add any text before or after the JSON object.
+
+Guidance:
+- If no clear issues, verdict=pass and score >= 80.
+- If there are clear issues, verdict=fail and score <= 60.
+- If uncertain, verdict=pass with score between 60-79.
+- Keep issues short and specific.

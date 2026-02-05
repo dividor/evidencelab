@@ -1,0 +1,99 @@
+# Pre-commit hooks for code quality
+# See https://pre-commit.com for more information
+repos:
+  # General file formatting
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=2000']
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: mixed-line-ending
+
+  # Python code formatting with Black
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        language_version: python3.11
+
+  # Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+
+  # Python linting with flake8
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: ['--max-line-length=100', '--extend-ignore=E203,W503']
+
+  # Type checking with mypy
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests, types-beautifulsoup4, types-openpyxl]
+        args: [--ignore-missing-imports, --no-strict-optional]
+        exclude: ^tests/
+
+  # Python security scanning with Bandit
+  # Strict: Fails on HIGH severity issues only (-lll)
+  # MEDIUM severity (like B608 SQL table names from config) reported but don't fail
+  # No global skips - nosec comments only in scripts/ for legitimate uses
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.7
+    hooks:
+      - id: bandit
+        args: ['-r', '-lll', '--exclude', 'tests,node_modules,.venv']
+        exclude: ^(tests/|alembic/|analysis/prototypes/)
+
+  # Dockerfile linting with Hadolint
+  # Ignored rules:
+  # - DL3007: Using latest for internal base images (evidencelab-ai-base)
+  # - DL3008/DL3013: Pin versions in apt/pip (handled by requirements.txt)
+  # - DL3015: --no-install-recommends (info level, minor)
+  # - DL3018: Pin versions in apk (info level)
+  # - DL3042: Avoid cache dir (handled differently)
+  # - DL3059: Multiple RUN (info level, build optimization)
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3007', '--ignore', 'DL3008', '--ignore', 'DL3013', '--ignore', 'DL3015', '--ignore', 'DL3018', '--ignore', 'DL3042', '--ignore', 'DL3059']
+
+  # Secret scanning with detect-secrets
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
+
+  # Enhanced secret scanning with Gitleaks
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.1
+    hooks:
+      - id: gitleaks
+
+  # Code complexity metrics (Python + JS/TS)
+  - repo: local
+    hooks:
+      - id: code-metrics
+        name: code-metrics
+        entry: python scripts/quality/code_metrics.py --fail-on-bad
+        language: python
+        pass_filenames: false
+        additional_dependencies:
+          - lizard
+          - radon
+          - cognitive-complexity
