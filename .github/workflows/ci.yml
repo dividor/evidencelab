@@ -102,21 +102,21 @@ jobs:
 
       # Dockerfile linting
       - name: Run Hadolint on main Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile
           ignore: DL3008,DL3013,DL3042
         continue-on-error: true
 
       - name: Run Hadolint on backend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: ui/backend/Dockerfile
           ignore: DL3008,DL3013,DL3042
         continue-on-error: true
 
       - name: Run Hadolint on frontend Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: ui/frontend/Dockerfile
           ignore: DL3008,DL3013,DL3042
