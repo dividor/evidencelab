@@ -1,5 +1,5 @@
 # Stage 1: Base image with all heavy dependencies (built once, cached)
-FROM python:3.11-slim AS base
+FROM python:3.14-slim AS base
 
 # Install system dependencies including Playwright browser dependencies
 RUN apt-get update && apt-get install -y \
