@@ -53,6 +53,7 @@ class PostgresAdminMixin:
                 map_pdf_url TEXT,
                 map_report_url TEXT,
                 sys_summary TEXT,
+                sys_full_summary TEXT,
                 sys_taxonomies JSONB,
                 sys_status TEXT,
                 sys_status_timestamp TIMESTAMPTZ,
@@ -121,6 +122,7 @@ class PostgresAdminMixin:
 
         # Run column migrations BEFORE index creation (indexes may depend on columns)
         self.ensure_sys_file_format_column()
+        self.ensure_sys_full_summary_column()
         self.ensure_sys_doc_taxonomies_column()
         self.ensure_sys_chunk_taxonomies_column()
         self.ensure_doc_raw_metadata_column()
@@ -160,6 +162,16 @@ class PostgresAdminMixin:
         query = f"""
             ALTER TABLE {self.docs_table}
                 ADD COLUMN IF NOT EXISTS sys_file_format TEXT
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+            conn.commit()
+
+    def ensure_sys_full_summary_column(self) -> None:
+        query = f"""
+            ALTER TABLE {self.docs_table}
+                ADD COLUMN IF NOT EXISTS sys_full_summary TEXT
         """
         with self._get_conn() as conn:
             with conn.cursor() as cur:

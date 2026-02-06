@@ -10,7 +10,7 @@ from alembic import op  # type: ignore
 
 # revision identifiers, used by Alembic.
 revision = "2a4d7830d56f"  # pragma: allowlist secret
-down_revision = "0003_add_summary_taxonomy_cols"
+down_revision = "0002_add_sys_status_columns"
 branch_labels = None
 depends_on = None
 
@@ -72,12 +72,21 @@ def upgrade() -> None:
                         ON {table} USING gin (map_title gin_trgm_ops);
                     CREATE INDEX IF NOT EXISTS ix_{table}_summary_trgm
                         ON {table} USING gin (sys_summary gin_trgm_ops);
-                    CREATE INDEX IF NOT EXISTS ix_{table}_taxonomies
-                        ON {table} USING gin (sys_taxonomies);
                     CREATE INDEX IF NOT EXISTS ix_{table}_file_format
                         ON {table}((sys_data->>'sys_file_format'));
                     CREATE INDEX IF NOT EXISTS ix_{table}_toc_approved
                         ON {table}(((sys_data->>'sys_toc_approved')::boolean));
+                    -- sys_taxonomies is added dynamically by the pipeline;
+                    -- only create index if column exists
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = '{table}'
+                          AND column_name = 'sys_taxonomies'
+                    ) THEN
+                        CREATE INDEX IF NOT EXISTS ix_{table}_taxonomies
+                            ON {table} USING gin (sys_taxonomies);
+                    END IF;
                 END IF;
             END
             $$;
