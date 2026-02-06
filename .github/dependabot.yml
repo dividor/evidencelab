@@ -11,10 +11,8 @@ updates:
       - "dependencies"
       - "python"
     ignore:
-      # Ignore major version updates for ML libraries (may have breaking changes)
-      - dependency-name: "torch*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "transformers"
+      # Ignore major version updates (may have breaking changes)
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   # NPM dependencies for frontend
@@ -27,6 +25,10 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    ignore:
+      # Ignore major version updates (React 18/CRA5 ecosystem)
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Docker dependencies - root directory
   - package-ecosystem: "docker"
@@ -37,6 +39,9 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Docker dependencies - backend
   - package-ecosystem: "docker"
@@ -47,6 +52,9 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # Docker dependencies - frontend
   - package-ecosystem: "docker"
@@ -57,6 +65,9 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
