@@ -242,6 +242,7 @@ pipeline/integration/wfp-evaluation-ai/
 # Debug artifacts
 *_search_results.json
 *.png
+!ui/frontend/public/docs/images/*.png
 HIGHLIGHT_SCROLL_TESTING.md
 
 # Qdrant database storage (Docker volume)
