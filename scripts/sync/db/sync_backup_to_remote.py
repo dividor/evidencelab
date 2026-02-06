@@ -9,10 +9,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Setup path to import shared modules
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent.parent.parent
 sys.path.append(str(project_root))
+
+# Load .env early so os.getenv() defaults in argparse pick up values
+load_dotenv(project_root / ".env")
 
 # Reuse logic from sync_azure.py as requested
 from scripts.sync.files.sync_azure import generate_sas_token, get_env_vars  # noqa: E402
