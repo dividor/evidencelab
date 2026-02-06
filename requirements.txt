@@ -63,7 +63,7 @@ slowapi==0.1.9
 
 # LangChain and LLM integration
 langchain==1.2.8
-langchain-core==1.2.6
+langchain-core==1.2.8
 langchain-community==0.4.1
 langchain-huggingface==1.2.0
 langchain-openai==1.1.6
@@ -82,7 +82,7 @@ azure-storage-file-share==12.22.0
 
 # Visualization
 plotly==5.18.0
-kaleido==0.2.1.post1
+kaleido==0.2.1
 
 # Development dependencies
 pre-commit==3.6.0
