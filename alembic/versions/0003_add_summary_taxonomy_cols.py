@@ -1,13 +1,13 @@
 """Add sys_full_summary and sys_taxonomies columns to docs tables.
 
-Revision ID: 0003_add_summary_and_taxonomy_columns
+Revision ID: 0003_add_summary_taxonomy_cols
 Revises: 0002_add_sys_status_columns
 Create Date: 2026-02-06 00:00:00
 """
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision = "0003_add_summary_and_taxonomy_columns"
+revision = "0003_add_summary_taxonomy_cols"
 down_revision = "0002_add_sys_status_columns"
 branch_labels = None
 depends_on = None
