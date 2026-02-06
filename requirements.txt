@@ -62,7 +62,7 @@ python-multipart==0.0.6
 slowapi==0.1.9
 
 # LangChain and LLM integration
-langchain==1.2.0
+langchain==1.2.8
 langchain-core==1.2.6
 langchain-community==0.4.1
 langchain-huggingface==1.2.0
