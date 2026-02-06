@@ -13,12 +13,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pipeline.processors.tagging.tagger import SectionTypeTagger
+
 pytestmark = pytest.mark.skipif(
     not os.environ.get("HUGGINGFACE_API_KEY"),
     reason="HUGGINGFACE_API_KEY not set",
 )
-
-from pipeline.processors.tagging.tagger import SectionTypeTagger
 
 # Test data: document -> {toc: [(heading_line, expected_category), ...], num_pages}
 TEST_DOCUMENTS = {
