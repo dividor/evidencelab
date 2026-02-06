@@ -90,7 +90,7 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 4. **Run the pipeline (Docker)**
 ```bash
    # Start services
-docker compose up -d --build
+   docker compose up -d --build
 
    # Run the orchestrator (example: UNEG)
    docker compose exec pipeline \
