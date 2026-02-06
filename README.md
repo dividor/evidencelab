@@ -1,18 +1,24 @@
 # Evidence Lab AI
 
+[![CI](https://github.com/dividor/evidencelab/actions/workflows/ci.yml/badge.svg)](https://github.com/dividor/evidencelab/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
-
-![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
+[![Security: Bandit](https://img.shields.io/badge/security-bandit-yellow.svg)](https://github.com/PyCQA/bandit)
+[![Security: Gitleaks](https://img.shields.io/badge/security-gitleaks-blue.svg)](https://github.com/gitleaks/gitleaks)
+[![Container: Trivy](https://img.shields.io/badge/container-trivy-aqua.svg)](https://github.com/aquasecurity/trivy)
 
 ## Introduction
 
-Evidence Lab is a document pipeline, search, and AI-powered discovery stack built for humanitarian evaluation reports.
+![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
 
-- Learn what the project is and why it exists: [`ui/frontend/public/docs/about.md`](ui/frontend/public/docs/about.md)
-- Read the technical deep dive: [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)
+Evidence lab is a free open source prototyping platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
+
+You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations) and 8,000 reports related to Fraud and Program Integrity as sourced from [The World Bank](https://www.worldbank.org/ext/en/home). See [Data](/data) for more information on these amazing documents.
+
+If you would like to have your public documents added to Evidence Lab, or would like to contribute to the project, please reach out to [evidence-lab@astrobagel.com](mailto:evidence-lab@astrobagel.com).
+
+Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).
 
 ## Getting started
 
