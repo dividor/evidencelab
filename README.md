@@ -5,6 +5,8 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](tests/)
 
+![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
+
 ## Introduction
 
 Evidence Lab is a document pipeline, search, and AI-powered discovery stack built for humanitarian evaluation reports.
