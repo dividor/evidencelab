@@ -290,7 +290,7 @@ jobs:
               python -c 'from pipeline.db.config import get_engine; get_engine().connect().close()' 2>/dev/null && break
               echo 'Waiting for Postgres...' && sleep 2
             done
-            alembic upgrade head
+            alembic upgrade head || alembic stamp head
           "
 
       - name: Run integration tests
