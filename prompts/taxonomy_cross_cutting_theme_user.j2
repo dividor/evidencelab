@@ -1,0 +1,32 @@
+## Document Summary
+{{ context_text }}
+
+## Taxonomy Values to Evaluate
+
+**IMPORTANT INSTRUCTION**: For EACH value below, scan the document summary for the keywords listed in "Evaluation Criteria". If you find ANY of those keywords in the summary, you MUST include that value in your response.
+
+Note: The document may address multiple cross-cutting themes concurrently. Evaluate each value independently.
+
+{% for code, details in values.items() %}
+### {{ code }} - {{ details.name }}
+
+**Definition:** {{ details.definition }}
+
+**Evaluation Criteria:** {{ details.llm_prompt }}
+
+{% endfor %}
+
+## Task
+Carefully review the document summary above and the cross-cutting theme values below. Return a JSON list of ALL themes that apply, with reasons for each match.
+
+**Matching Criteria** - Include a cross-cutting theme if ANY of the following apply:
+1. **Explicit mention**: The theme name appears in the text (e.g., "Gender Equality", "Protection")
+2. **Keyword presence**: Keywords from the "Evaluation Criteria" appear in the summary (e.g., document mentions "community engagement" -> include protection_and_accountability)
+3. **Thematic alignment**: The document's activities or objectives advance the theme (e.g., "women's leadership programmes" -> include gender_equality)
+
+**Process**: For each cross-cutting theme listed below:
+- Scan the summary for the keywords listed in its "Evaluation Criteria"
+- Check if the document's themes align with the value's definition
+- If either match, INCLUDE it in your response with a specific reason
+
+Be thorough - humanitarian and development documents typically address 2-4 cross-cutting themes.

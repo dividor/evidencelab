@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 # Load Jinja2 templates for prompts
 PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
 _jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=True)
-_taxonomy_system_template = _jinja_env.get_template("taxonomy_sdg_system.j2")
-_taxonomy_user_template = _jinja_env.get_template("taxonomy_sdg_user.j2")
 
 
 class TaxonomyTagger(BaseTagger):
@@ -59,7 +57,19 @@ class TaxonomyTagger(BaseTagger):
         self._pg = PostgresClient(database.data_source)
 
     def setup(self) -> None:
-        """Initialize tagger resources."""
+        """Initialize tagger resources. Validates that prompt templates exist."""
+        missing = []
+        for tax_key in self.taxonomies_config:
+            for suffix in ("system", "user"):
+                template_name = f"taxonomy_{tax_key}_{suffix}.j2"
+                template_path = PROMPTS_DIR / template_name
+                if not template_path.exists():
+                    missing.append(template_name)
+        if missing:
+            raise FileNotFoundError(
+                f"Missing taxonomy prompt templates: {', '.join(missing)}. "
+                f"Expected in {PROMPTS_DIR}"
+            )
         logger.info(
             "TaxonomyTagger initialized with taxonomies: %s",
             list(self.taxonomies_config.keys()),
@@ -78,13 +88,18 @@ class TaxonomyTagger(BaseTagger):
         taxonomy_name = taxonomy_config.get("name", taxonomy_key)
         values = taxonomy_config.get("values", {})
 
-        # Render system prompt from template
-        system_prompt = _taxonomy_system_template.render(
+        system_template = _jinja_env.get_template(
+            f"taxonomy_{taxonomy_key}_system.j2"
+        )
+        user_template = _jinja_env.get_template(
+            f"taxonomy_{taxonomy_key}_user.j2"
+        )
+
+        system_prompt = system_template.render(
             taxonomy_name=taxonomy_name
         ).strip()
 
-        # Render user prompt from template
-        user_prompt = _taxonomy_user_template.render(
+        user_prompt = user_template.render(
             context_text=context_text, values=values
         ).strip()
 
