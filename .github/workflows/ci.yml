@@ -141,13 +141,34 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build base image (required by backend)
-        run: docker build -t evidencelab-ai-base:latest -f Dockerfile.base .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.base
+          load: true
+          tags: evidencelab-ai-base:latest
+          cache-from: type=gha,scope=base
+          cache-to: type=gha,mode=max,scope=base
 
       - name: Build backend image for scanning
-        run: docker build -t evidencelab-api:scan -f ui/backend/Dockerfile .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ui/backend/Dockerfile
+          load: true
+          tags: evidencelab-api:scan
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
       - name: Build frontend image for scanning
-        run: docker build -t evidencelab-ui:scan -f ui/frontend/Dockerfile ui/frontend/
+        uses: docker/build-push-action@v6
+        with:
+          context: ui/frontend
+          file: ui/frontend/Dockerfile
+          load: true
+          tags: evidencelab-ui:scan
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
 
       - name: Run Trivy on API image
         uses: aquasecurity/trivy-action@master
