@@ -1,6 +1,6 @@
 # Data
 
-In order to test a document ingestion piepline and AI tools, and to confirm it's fast and runs on a desktop computer, some volume is needed. So online [evidencelab.ai](https://evidencelab.ai) includes ...
+In order to test a document ingestion pipeline and AI tools, and to confirm it's fast and runs on a desktop computer, some volume is needed. So online [evidencelab.ai](https://evidencelab.ai) includes ...
 
 - About 20,000 United Nations humanitarian evaluation reports from 30+ agencies sourced from the [United Nations Evaluation Group (UNEG)](https://www.un.org/evaluations).
 - About 8,000 reports related to Fraud and Program Integrity as sourced from [The World Bank](https://www.worldbank.org/ext/en/home).

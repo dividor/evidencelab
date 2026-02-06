@@ -12,7 +12,7 @@
 
 ![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
 
-Evidence lab is a free open source prototyping platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
+Evidence lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
 
 You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations) and 8,000 reports related to Fraud and Program Integrity as sourced from [The World Bank](https://www.worldbank.org/ext/en/home). See [Data](/data) for more information on these amazing documents.
 
@@ -20,9 +20,9 @@ If you would like to have your public documents added to Evidence Lab, or would 
 
 Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).
 
-## Philosphy
+## Philosophy
 
-Evidence lab was developed out of research work for the blog, so core principals are ...
+Evidence lab was developed out of research work for the blog, so core principles are ...
 
 * The full pipeline can run on a desktop computer and process 20,000 30-page documents in a week for less than $50.
 * The pipeline and user interface should be easily configured for use with any folder of documents
@@ -34,7 +34,7 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 ## Features
 
-Evidence lab document processing pipeline include the following features:
+Evidence lab document processing pipeline includes the following features:
 
 1. Processing pipeline
 
@@ -43,18 +43,20 @@ Evidence lab document processing pipeline include the following features:
 - Basic table extraction, with support for more expensive processing as required
 - AI-assisted document summarization
 - AI-assisted tagging of documents
-- Indexing with Open (Huggingface) or propriety models (Azure foundry, but extensible)
+- Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
 
 2. User interface
 
 - Hybrid search with AI summary and reranking
+- Experimental features such as heatmapper to tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
-- Semanitic highlighting in search results
+- Semantic highlighting in search results
 - Basic language translation 
 - PDF preview with in-document search
 - Administration views to track pipeline, documents, performance and errors
-- Experimental features such as heatmapper to tracking trends in content
+
+More features will be added soon, focused on document evidence analysis.
 
 ## Getting started
 

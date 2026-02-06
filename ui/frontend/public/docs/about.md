@@ -10,7 +10,7 @@ Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@as
 
 ## Philosophy
 
-Evidence lab was developed out of research work for the blog, so core principals are ...
+Evidence lab was developed out of research work for the blog, so core principles are ...
 
 * **The full pipeline can run on a desktop computer and process 20,000 30-page documents in a week for less than $50.**
 * **The pipeline and user interface should be easily configured for use with any folder of documents**

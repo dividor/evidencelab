@@ -48,15 +48,15 @@ Generates comprehensive document summaries using a multi-strategy approach:
 
 See [here](https://medium.com/data-science-collective/automatically-identifying-taxonomies-from-documents-using-the-taxoadapt-algorithm-with-ca265d87bc08) for discussion on the summarization technique ...
 
-LLM Summarization is done using a Map-Reduce processes, splitting text into chunks and summarizing in parallel. The summaries are then reduced into a single summary using the LLM.
+LLM Summarization is done using a Map-Reduce process, splitting text into chunks and summarizing in parallel. The summaries are then reduced into a single summary using the LLM.
 
-The chunks are determined by using the document structure and matching for sections with titles similar to 'Executive summary', 'Abstract', etc. If this isn't possible, the documented is split into chunks and clustered according to semantic similarity. The clusters centroid is used to find representative chunks, which are then summarized.
+The chunks are determined by using the document structure and matching for sections with titles similar to 'Executive summary', 'Abstract', etc. If this isn't possible, the document is split into chunks and clustered according to semantic similarity. The clusters centroid is used to find representative chunks, which are then summarized.
 
 #### 4. Tagger (`tagger.py`)
 
 Classifies every chunk into a taxonomy (`findings`, `methodology`, `executive_summary`, etc.). This is done using a hybrid approach that combines deterministic keyword rules with LLM-based classification for ambiguous headers, coupled with TOC propagation.
 
-It should be noted ths LLM/Heuristics approach is imperfect and meant as a way to seed the system. The user interface also supports being able to correct and approv section categories, to be used to train more accurate classification models in later phases.
+It should be noted this LLM/Heuristics approach is imperfect and meant as a way to seed the system. The user interface also supports being able to correct and approve section categories, to be used to train more accurate classification models in later phases.
 
 **Taxonomy Classification**:
 The system also supports configurable document-level taxonomies (defined in `config.json`). For example, classifying documents against **Sustainable Development Goals (SDGs)**. This is performed by analyzing the comprehensive document summary with an LLM and storing the results as faceted tags in the search index.
@@ -101,7 +101,7 @@ Tools for managing the pipeline and data quality.
 
 * **Containerized Architecture**: Fully dockerized.
 * **Modern Frontend**: React + TypeScript.
-* **Python Backend**: FastAPI + LangChain + Qdrant.
+* **Python Backend**: FastAPI + LangChain + Qdrant + Postgres.
 
 ## Configuring Evaluation Lab for Your Documents
 
