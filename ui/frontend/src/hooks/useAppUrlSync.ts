@@ -58,10 +58,8 @@ export const useAppUrlSync = ({
 
     const checkURLForDataset = () => {
       const searchState = getSearchStateFromURL(coreFilterFields, DEFAULT_SECTION_TYPES);
-      if (searchState.dataset && availableDomains.includes(searchState.dataset)) {
-        if (selectedDomain !== searchState.dataset) {
-          setSelectedDomain(searchState.dataset);
-        }
+      if (searchState.dataset && availableDomains.includes(searchState.dataset) && selectedDomain !== searchState.dataset) {
+        setSelectedDomain(searchState.dataset);
       }
     };
 

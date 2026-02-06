@@ -2,6 +2,9 @@
 import { buildOrderedElements } from '../components/searchResultCardUtils';
 import { SearchResult } from '../types/api';
 
+const IMG_15_PATH = '/img15.png';
+const IMG_11_PATH = '/img11.png';
+
 describe('Image Filtering Logic', () => {
     const baseResult: SearchResult = {
         chunk_id: '1',
@@ -48,13 +51,13 @@ describe('Image Filtering Logic', () => {
                 ],
                 // Page 15 is > 10+1. Should be filtered.
                 images: [
-                    { path: '/img15.png', page: 15, bbox: [0, 0, 200, 200], position_hint: 1 }
+                    { path: IMG_15_PATH, page: 15, bbox: [0, 0, 200, 200], position_hint: 1 }
                 ]
             };
 
             // New logic: result.page_num is 10. Page 15 is > 10+1. Should be filtered.
             const ordered = buildOrderedElements(result);
-            expect(ordered.find(el => el.element_type === 'image' && el.path === '/img15.png')).toBeUndefined();
+            expect(ordered.find(el => el.element_type === 'image' && el.path === IMG_15_PATH)).toBeUndefined();
         });
 
         it('should allow images within range (e.g. page 11)', () => {
@@ -65,13 +68,13 @@ describe('Image Filtering Logic', () => {
                     { type: 'TextItem', label: 'text', text: 'Next page text', page: 11, bbox: [0, 0, 100, 100], position_hint: 0 }
                 ],
                 images: [
-                    { path: '/img11.png', page: 11, bbox: [0, 0, 200, 200], position_hint: 1 }
+                    { path: IMG_11_PATH, page: 11, bbox: [0, 0, 200, 200], position_hint: 1 }
                 ]
             };
 
             // Page 11 is within range of 10.
             const ordered = buildOrderedElements(result);
-            expect(ordered.find(el => el.element_type === 'image' && el.path === '/img11.png')).toBeDefined();
+            expect(ordered.find(el => el.element_type === 'image' && el.path === IMG_11_PATH)).toBeDefined();
         });
     });
 
@@ -87,11 +90,11 @@ describe('Image Filtering Logic', () => {
                     // Noise on p15
                     { element_type: 'text', text: 'text p15', page: 15, bbox: [0, 0, 100, 100], position_hint: 0 },
                     // Image on p15 overlapping noise
-                    { element_type: 'image', path: '/img15.png', page: 15, bbox: [0, 0, 50, 50], position_hint: 0 }
+                    { element_type: 'image', path: IMG_15_PATH, page: 15, bbox: [0, 0, 50, 50], position_hint: 0 }
                 ]
             };
             const ordered = buildOrderedElements(result);
-            expect(ordered.find(el => el.element_type === 'image' && el.path === '/img15.png')).toBeUndefined();
+            expect(ordered.find(el => el.element_type === 'image' && el.path === IMG_15_PATH)).toBeUndefined();
         });
 
         it('should keep image near anchor page', () => {
@@ -101,11 +104,11 @@ describe('Image Filtering Logic', () => {
                 chunk_elements: [
                     { element_type: 'text', text: 'text p10', page: 10, bbox: [0, 0, 100, 100], position_hint: 0 },
                     { element_type: 'text', text: 'text p11', page: 11, bbox: [0, 0, 100, 100], position_hint: 0 },
-                    { element_type: 'image', path: '/img11.png', page: 11, bbox: [0, 0, 50, 50], position_hint: 0 }
+                    { element_type: 'image', path: IMG_11_PATH, page: 11, bbox: [0, 0, 50, 50], position_hint: 0 }
                 ]
             };
             const ordered = buildOrderedElements(result);
-            expect(ordered.find(el => el.element_type === 'image' && el.path === '/img11.png')).toBeDefined();
+            expect(ordered.find(el => el.element_type === 'image' && el.path === IMG_11_PATH)).toBeDefined();
         });
 
         it('should remove table far from anchor page', () => {

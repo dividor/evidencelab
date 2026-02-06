@@ -138,11 +138,7 @@ const filterChunkVisualsByTextOverlap = (elements: ChunkElement[], anchorPage?: 
 
   return elements.filter((element) => {
     if (element.element_type === 'table') {
-      // Filter out tables that are not on the current, previous, or following pages relative to the result anchor
-      if (anchorPage && anchorPage > 0 && Math.abs(element.page - anchorPage) > pageTolerance) {
-        return false;
-      }
-      return true;
+      return !(anchorPage && anchorPage > 0 && Math.abs(element.page - anchorPage) > pageTolerance);
     }
 
     if (element.element_type !== 'image') {

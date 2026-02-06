@@ -34,6 +34,8 @@ jest.mock('../components/SearchResultCard', () => ({
 }));
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
+const TEST_SUMMARIZATION_MODEL = 'qwen2.5-7b-instruct';
+const TEST_RERANKER_MODEL = 'jinaai/jina-reranker-v2-base-multilingual';
 
 describe('App', () => {
   test('loads config and navigates tabs', async () => {
@@ -54,8 +56,8 @@ describe('App', () => {
           data: {
             'Test Combo': {
               embedding_model: 'e5_large',
-              summarization_model: 'qwen2.5-7b-instruct',
-              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+              summarization_model: TEST_SUMMARIZATION_MODEL,
+              reranker_model: TEST_RERANKER_MODEL,
             },
           },
         });
@@ -100,74 +102,74 @@ describe('App', () => {
             'Azure Foundry': {
               embedding_model: 'azure_small',
               summarization_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
               semantic_highlighting_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
-              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+              reranker_model: TEST_RERANKER_MODEL,
             },
             'Huggingface': {
               embedding_model: 'e5_large',
               summarization_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
               semantic_highlighting_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
-              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+              reranker_model: TEST_RERANKER_MODEL,
             },
             'Azure Foundry': {
               embedding_model: 'azure_small',
               summarization_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
               semantic_highlighting_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
-              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+              reranker_model: TEST_RERANKER_MODEL,
             },
             'Huggingface': {
               embedding_model: 'e5_large',
               summarization_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
               semantic_highlighting_model: {
-                model: 'qwen2.5-7b-instruct',
+                model: TEST_SUMMARIZATION_MODEL,
                 max_tokens: 500,
                 temperature: 0.2,
                 chunk_overlap: 800,
                 chunk_tokens_ratio: 0.5,
               },
-              reranker_model: 'jinaai/jina-reranker-v2-base-multilingual',
+              reranker_model: TEST_RERANKER_MODEL,
             },
           },
         });

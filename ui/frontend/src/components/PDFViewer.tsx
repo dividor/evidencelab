@@ -553,6 +553,26 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   };
 
+  const getOrCreatePageContainer = (pageNumber: number): HTMLDivElement => {
+    const heightToUse = actualPageHeightRef.current;
+    let container = document.getElementById(`pdf-page-${pageNumber}`) as HTMLDivElement;
+    if (!container) {
+      container = document.createElement('div');
+      container.id = `pdf-page-${pageNumber}`;
+      container.className = 'pdf-page-wrapper';
+      container.style.position = 'absolute';
+      container.style.top = `${(pageNumber - 1) * heightToUse}px`;
+      container.style.left = '50%';
+      container.style.transform = 'translateX(-50%)';
+      container.style.overflow = 'visible';
+      container.style.marginBottom = '20px';
+      pagesContainerRef.current!.appendChild(container);
+    } else {
+      container.style.top = `${(pageNumber - 1) * heightToUse}px`;
+    }
+    return container;
+  };
+
   const renderPage = async (pageNumber: number) => {
     if (!pdfDoc || !pagesContainerRef.current) return;
 
@@ -569,24 +589,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       // Update actual page height based on ANY rendered page (if not yet set properly)
       updatePageHeights(viewport.height + 20, pageNumber);
 
-      // Get or create page container - use ref for immediate value
-      const heightToUse = actualPageHeightRef.current;
-      let pageContainer = document.getElementById(`pdf-page-${pageNumber}`) as HTMLDivElement;
-      if (!pageContainer) {
-        pageContainer = document.createElement('div');
-        pageContainer.id = `pdf-page-${pageNumber}`;
-        pageContainer.className = 'pdf-page-wrapper';
-        pageContainer.style.position = 'absolute';
-        pageContainer.style.top = `${(pageNumber - 1) * heightToUse}px`;
-        pageContainer.style.left = '50%';
-        pageContainer.style.transform = 'translateX(-50%)';
-        pageContainer.style.overflow = 'visible';
-        pageContainer.style.marginBottom = '20px';
-        pagesContainerRef.current.appendChild(pageContainer);
-      } else {
-        // Update position with actual height
-        pageContainer.style.top = `${(pageNumber - 1) * heightToUse}px`;
-      }
+      // Get or create page container
+      const pageContainer = getOrCreatePageContainer(pageNumber);
 
       // Clear existing content
       pageContainer.innerHTML = '';

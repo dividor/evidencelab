@@ -7,6 +7,8 @@ import {
   formatTimestamp,
 } from './documentsModalUtils';
 
+const MARKDOWN_MARGIN = '0 0 0.5em 0';
+
 type ParsedTocLine = {
   level: string;
   title: string;
@@ -124,9 +126,9 @@ const renderSummarySection = (
     <div className="markdown-content">
       <ReactMarkdown
         components={{
-          p: ({ node, ...props }) => <p style={{ margin: '0 0 0.5em 0' }} {...props} />,
-          ul: ({ node, ...props }) => <ul style={{ margin: '0 0 0.5em 0', paddingLeft: '1.5em' }} {...props} />,
-          ol: ({ node, ...props }) => <ol style={{ margin: '0 0 0.5em 0', paddingLeft: '1.5em' }} {...props} />,
+          p: ({ node, ...props }) => <p style={{ margin: MARKDOWN_MARGIN }} {...props} />,
+          ul: ({ node, ...props }) => <ul style={{ margin: MARKDOWN_MARGIN, paddingLeft: '1.5em' }} {...props} />,
+          ol: ({ node, ...props }) => <ol style={{ margin: MARKDOWN_MARGIN, paddingLeft: '1.5em' }} {...props} />,
           li: ({ node, ...props }) => <li style={{ margin: '0.2em 0' }} {...props} />,
           h1: ({ node, ...props }) => <strong style={{ display: 'block', margin: '0.4em 0 0.2em' }} {...props} />,
           h2: ({ node, ...props }) => <strong style={{ display: 'block', margin: '0.4em 0 0.2em' }} {...props} />,

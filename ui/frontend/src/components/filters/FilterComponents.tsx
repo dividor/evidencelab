@@ -232,9 +232,9 @@ const FilterCheckboxList = ({
             </span>
             {stacked && (item.organization || item.published_year) && (
               <span className="filter-checkbox-subtitle">
-                {item.organization && item.organization}
+                {item.organization}
                 {item.organization && item.published_year && ' • '}
-                {item.published_year && item.published_year}
+                {item.published_year}
               </span>
             )}
           </div>

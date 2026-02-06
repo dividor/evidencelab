@@ -7,6 +7,8 @@ interface NavTabsProps {
   onTabChange: (tab: TabName) => void;
 }
 
+const ACTIVE_CLASS = 'nav-tab-active';
+
 export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
   const [monitorDropdownOpen, setMonitorDropdownOpen] = useState(false);
   const monitorActive = activeTab === 'documents' || activeTab === 'pipeline' || activeTab === 'processing' || activeTab === 'stats';
@@ -27,13 +29,13 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
   return (
     <nav className="nav-tabs">
       <button
-        className={`nav-tab ${activeTab === 'search' ? 'nav-tab-active' : ''}`}
+        className={`nav-tab ${activeTab === 'search' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('search')}
       >
         Search
       </button>
       <button
-        className={`nav-tab ${activeTab === 'heatmap' ? 'nav-tab-active' : ''}`}
+        className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('heatmap')}
       >
         Heatmapper
@@ -41,7 +43,7 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
       <span className="nav-separator">|</span>
       <div className="dropdown-container nav-dropdown">
         <button
-          className={`nav-tab nav-tab-dropdown ${monitorActive ? 'nav-tab-active' : ''}`}
+          className={`nav-tab nav-tab-dropdown ${monitorActive ? ACTIVE_CLASS : ''}`}
           onClick={handleToggleMonitorDropdown}
           onBlur={handleMonitorBlur}
         >

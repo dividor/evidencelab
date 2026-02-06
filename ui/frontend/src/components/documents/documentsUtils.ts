@@ -152,23 +152,27 @@ export const getCategoricalOptions = (
   }
 };
 
+const compareAny = (a: any, b: any): number => {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+};
+
+const getSortValue = (doc: any, sortField: string): any => {
+  if (sortField === 'last_updated') {
+    const ts = getLastUpdatedTimestamp(doc.stages || {});
+    return ts ? Date.parse(ts) : Number.NEGATIVE_INFINITY;
+  }
+  return doc[sortField] || '';
+};
+
 export const sortDocuments = (
   documents: any[],
   sortField: string,
   sortDirection: 'asc' | 'desc'
 ): any[] => {
   return [...documents].sort((a, b) => {
-    if (sortField === 'last_updated') {
-      const aTimestamp = getLastUpdatedTimestamp(a.stages || {});
-      const bTimestamp = getLastUpdatedTimestamp(b.stages || {});
-      const aVal = aTimestamp ? Date.parse(aTimestamp) : Number.NEGATIVE_INFINITY;
-      const bVal = bTimestamp ? Date.parse(bTimestamp) : Number.NEGATIVE_INFINITY;
-      const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-      return sortDirection === 'asc' ? comparison : -comparison;
-    }
-    const aVal = a[sortField] || '';
-    const bVal = b[sortField] || '';
-    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    const comparison = compareAny(getSortValue(a, sortField), getSortValue(b, sortField));
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 };

@@ -93,6 +93,30 @@ export const findWordMatches = (text: string, query: string): TextMatch[] => {
     );
 };
 
+const expandToPhraseStart = (text: string, pos: number): number => {
+  let start = pos;
+  while (start > 0) {
+    const char = text[start - 1];
+    if (/[.!?;:\n]/.test(char)) break;
+    if (char === ' ' && start > 1 && text[start - 2] === ' ') break;
+    start--;
+  }
+  while (start < pos && /\s/.test(text[start])) start++;
+  return start;
+};
+
+const expandToPhraseEnd = (text: string, pos: number): number => {
+  let end = pos;
+  while (end < text.length) {
+    const char = text[end];
+    if (/[.!?;:\n]/.test(char)) { end++; break; }
+    if (char === ' ' && end < text.length - 1 && text[end + 1] === ' ') break;
+    end++;
+  }
+  while (end > pos && /\s/.test(text[end - 1])) end--;
+  return end;
+};
+
 // Expand matches to include complete phrases (mimics PDF span-based highlighting)
 export const expandMatchesToPhrases = (text: string, matches: TextMatch[]): TextMatch[] => {
   if (matches.length === 0) return matches;
@@ -100,42 +124,11 @@ export const expandMatchesToPhrases = (text: string, matches: TextMatch[]): Text
   const expandedMatches: TextMatch[] = [];
 
   matches.forEach(match => {
-    let start = match.start;
-    let end = match.end;
-
-    // Expand backwards to start of phrase/sentence (stop at punctuation or whitespace clusters)
-    while (start > 0) {
-      const char = text[start - 1];
-      // Stop at sentence boundaries or multiple spaces
-      if (/[.!?;:\n]/.test(char)) break;
-      // Stop at double spaces (paragraph boundaries)
-      if (char === ' ' && start > 1 && text[start - 2] === ' ') break;
-      start--;
-    }
-
-    // Expand forward to end of phrase/sentence
-    while (end < text.length) {
-      const char = text[end];
-      // Stop at sentence boundaries
-      if (/[.!?;:\n]/.test(char)) {
-        end++; // Include the punctuation
-        break;
-      }
-      // Stop at double spaces
-      if (char === ' ' && end < text.length - 1 && text[end + 1] === ' ') break;
-      end++;
-    }
-
-    // Trim leading/trailing whitespace from expanded match
-    while (start < end && /\s/.test(text[start])) start++;
-    while (end > start && /\s/.test(text[end - 1])) end--;
+    const start = expandToPhraseStart(text, match.start);
+    const end = expandToPhraseEnd(text, match.end);
 
     if (start < end) {
-      expandedMatches.push({
-        start,
-        end,
-        matchedText: text.substring(start, end)
-      });
+      expandedMatches.push({ start, end, matchedText: text.substring(start, end) });
     }
   });
 
