@@ -2,7 +2,7 @@ title = "Gitleaks config for EvidenceLab"
 
 [allowlist]
   description = "Known false positives"
-  regexTarget = "match"
+  regexTarget = "line"
   regexes = [
-    '''tokenizer=self\._tokenizer''',
+    '''tokenizer=self\._tokenizer.*chunker=hybrid_chunker''',
   ]
