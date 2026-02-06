@@ -25,7 +25,7 @@ Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@as
 Evidence Lab grew out of research work for the [AstroBagel Blog](https://medium.com/@astrobagel). The core design principles are:
 
 * **Runs on a desktop** — the full pipeline can process 20,000 30-page documents in a week for less than $50
-* **Works with any documents** — point it at a folder of PDFs and configure via a single `config.json`
+* **Configurable** — point it at a folder of PDFs and configure via a single `config.json`
 * **Progressive complexity** — start with simple parsing and layer on richer features (image annotation, reranking) later without re-processing
 * **Model-agnostic** — supports both open-source and proprietary embedding and LLM models
 * **Observable** — built-in tools for monitoring pipeline progress and exploring AI retrieval quality
