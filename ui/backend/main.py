@@ -247,6 +247,7 @@ async def get_documents(
     target_language: Optional[str] = None,
     toc_approved: Optional[bool] = None,
     sdg: Optional[str] = None,
+    cross_cutting_theme: Optional[str] = None,
     sort_by: str = "year",
     order: str = "desc",
 ):
@@ -267,6 +268,7 @@ async def get_documents(
         target_language=target_language,
         toc_approved=toc_approved,
         sdg=sdg,
+        cross_cutting_theme=cross_cutting_theme,
         sort_by=sort_by,
         order=order,
     )

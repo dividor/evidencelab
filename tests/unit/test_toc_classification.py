@@ -2,14 +2,21 @@
 Unit tests for TOC section type classification.
 
 These tests call the actual LLM classification pipeline and verify results.
+Requires HUGGINGFACE_API_KEY to be set.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("HUGGINGFACE_API_KEY"),
+    reason="HUGGINGFACE_API_KEY not set",
+)
 
 from pipeline.processors.tagging.tagger import SectionTypeTagger
 

@@ -154,7 +154,8 @@ class TestTaxonomyTagger:
 
         tagger.compute_document_tags(document)
 
-        args, _ = mock_llm.invoke.call_args
+        # Use first call (SDG taxonomy), not last (cross_cutting_theme)
+        args, _ = mock_llm.invoke.call_args_list[0]
         messages = args[0]
         system_prompt = messages[0].content
         user_prompt = messages[1].content

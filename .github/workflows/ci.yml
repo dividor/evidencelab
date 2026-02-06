@@ -138,6 +138,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build base image (required by backend)
+        run: docker build -t evidencelab-ai-base:latest -f Dockerfile.base .
+
       - name: Build backend image for scanning
         run: docker build -t evidencelab-api:scan -f ui/backend/Dockerfile .
 

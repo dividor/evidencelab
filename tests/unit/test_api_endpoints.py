@@ -554,6 +554,19 @@ async def test_get_document_chunks(monkeypatch):
     )
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
+    class PgMock:
+        def fetch_chunks(self, chunk_ids):
+            return {
+                str(cid): {
+                    "sys_page_num": 1,
+                    "sys_headings": [],
+                    "sys_bbox": [],
+                }
+                for cid in chunk_ids
+            }
+
+    monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: PgMock())
+
     result = await main_module.get_document_chunks(
         "doc-1",
         data_source=None,
