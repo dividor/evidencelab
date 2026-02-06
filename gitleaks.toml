@@ -1,0 +1,8 @@
+title = "Gitleaks config for EvidenceLab"
+
+[allowlist]
+  description = "Known false positives"
+  regexTarget = "match"
+  regexes = [
+    '''tokenizer=self\._tokenizer''',
+  ]
