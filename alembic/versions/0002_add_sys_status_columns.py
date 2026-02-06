@@ -5,8 +5,6 @@ Revises: 0001_create_sidecar_tables
 Create Date: 2026-01-28 00:00:00
 """
 
-import sqlalchemy as sa
-
 from alembic import op  # type: ignore[attr-defined]
 
 revision = "0002_add_sys_status_columns"
@@ -15,12 +13,28 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    op.add_column("docs_uneg", sa.Column("sys_status", sa.Text(), nullable=True))
-    op.add_column(
-        "docs_uneg",
-        sa.Column("sys_status_timestamp", sa.DateTime(timezone=True), nullable=True),
+def _add_column_if_not_exists(table: str, column: str, col_type: str) -> None:
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = '{table}'
+                  AND column_name = '{column}'
+            ) THEN
+                ALTER TABLE {table} ADD COLUMN {column} {col_type};
+            END IF;
+        END
+        $$;
+        """
     )
+
+
+def upgrade() -> None:
+    _add_column_if_not_exists("docs_uneg", "sys_status", "TEXT")
+    _add_column_if_not_exists("docs_uneg", "sys_status_timestamp", "TIMESTAMPTZ")
 
 
 def downgrade() -> None:
