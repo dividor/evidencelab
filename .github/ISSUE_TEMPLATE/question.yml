@@ -28,7 +28,7 @@ body:
       options:
         - Installation and setup
         - Configuration
-        - Pipline code
+        - Pipeline code
         - Troubleshooting
         - Performance
         - Security

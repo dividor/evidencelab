@@ -22,13 +22,13 @@ Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@as
 
 ## Philosophy
 
-Evidence lab was developed out of research work for the blog, so core principles are ...
+Evidence Lab grew out of research work for the [AstroBagel Blog](https://medium.com/@astrobagel). The core design principles are:
 
-* The full pipeline can run on a desktop computer and process 20,000 30-page documents in a week for less than $50.
-* The pipeline and user interface should be easily configured for use with any folder of documents
-* Should support quick/cheap parsing to start, with ability to activate more complex components later on without having to reprocess everything
-* The platform can run with open as well as proprietary models
-* The environment should have tools for easily monitoring processing as well as exploring AI information retrieval
+* **Runs on a desktop** — the full pipeline can process 20,000 30-page documents in a week for less than $50
+* **Works with any documents** — point it at a folder of PDFs and configure via a single `config.json`
+* **Progressive complexity** — start with simple parsing and layer on richer features (image annotation, reranking) later without re-processing
+* **Model-agnostic** — supports both open-source and proprietary embedding and LLM models
+* **Observable** — built-in tools for monitoring pipeline progress and exploring AI retrieval quality
 
 Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there, and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
 
