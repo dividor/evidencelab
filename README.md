@@ -30,7 +30,7 @@ Evidence Lab grew out of research work for the [AstroBagel Blog](https://medium.
 * **Model-agnostic** — supports both open-source and proprietary embedding and LLM models
 * **Observable** — built-in tools for monitoring pipeline progress and exploring AI retrieval quality
 
-Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there, and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
+Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there (but can be if you add more processing power), and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
 
 ## Features
 
