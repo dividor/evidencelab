@@ -243,6 +243,7 @@ pipeline/integration/wfp-evaluation-ai/
 *_search_results.json
 *.png
 !ui/frontend/public/docs/images/*.png
+!ui/frontend/public/logo.png
 HIGHLIGHT_SCROLL_TESTING.md
 
 # Qdrant database storage (Docker volume)
