@@ -1268,6 +1268,33 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   );
 
 
+  const applyHeatmapUrlParams = (params: URLSearchParams) => {
+    const urlRow = params.get(HEATMAP_URL_KEYS.row);
+    const urlColumn = params.get(HEATMAP_URL_KEYS.column);
+    const urlSensitivity = params.get(HEATMAP_URL_KEYS.sensitivity);
+    const urlQuery = params.get(HEATMAP_URL_KEYS.query);
+    const urlRowQueries = params.getAll(HEATMAP_URL_KEYS.rowQuery);
+
+    if (urlRow && rowOptions.some((option) => option.value === urlRow)) {
+      setRowDimension(urlRow);
+    }
+    if (urlColumn && columnOptions.some((option) => option.value === urlColumn)) {
+      setColumnDimension(urlColumn);
+    }
+    const parsedSensitivity = urlSensitivity ? Number(urlSensitivity) : NaN;
+    if (!Number.isNaN(parsedSensitivity)) {
+      setSimilarityCutoff(parsedSensitivity);
+    }
+    if (urlRow === 'queries' && urlRowQueries.length > 0) {
+      setRowQueries(urlRowQueries);
+    } else if (urlRow !== 'queries' && urlQuery) {
+      setGridQuery(urlQuery);
+    }
+
+    heatmapAutoRunRef.current = params.get(HEATMAP_URL_KEYS.run) === 'true';
+    heatmapUrlInitRef.current = true;
+  };
+
   useEffect(() => {
     if (heatmapUrlInitRef.current || !facets) {
       return;
@@ -1281,36 +1308,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (facetsDataSource && facetsDataSource !== dataSource) {
       return;
     }
-    const urlRow = params.get(HEATMAP_URL_KEYS.row);
-    const urlColumn = params.get(HEATMAP_URL_KEYS.column);
-    const urlSensitivity = params.get(HEATMAP_URL_KEYS.sensitivity);
-    const urlQuery = params.get(HEATMAP_URL_KEYS.query);
-    const urlRowQueries = params.getAll(HEATMAP_URL_KEYS.rowQuery);
-    const shouldRun = params.get(HEATMAP_URL_KEYS.run) === 'true';
 
-    if (urlRow && rowOptions.some((option) => option.value === urlRow)) {
-      setRowDimension(urlRow);
-    }
-    if (urlColumn && columnOptions.some((option) => option.value === urlColumn)) {
-      setColumnDimension(urlColumn);
-    }
-    if (urlSensitivity) {
-      const parsed = Number(urlSensitivity);
-      if (!Number.isNaN(parsed)) {
-        setSimilarityCutoff(parsed);
-      }
-    }
-
-    if (urlRow === 'queries') {
-      if (urlRowQueries.length > 0) {
-        setRowQueries(urlRowQueries);
-      }
-    } else if (urlQuery) {
-      setGridQuery(urlQuery);
-    }
-
-    heatmapAutoRunRef.current = shouldRun;
-    heatmapUrlInitRef.current = true;
+    applyHeatmapUrlParams(params);
   }, [
     columnOptions,
     dataSource,

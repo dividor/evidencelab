@@ -43,15 +43,22 @@ interface PhaseDistributionData {
   Indexing: number[];
 }
 
+const PARSE_FAILED = 'Parse Failed';
+const SUMMARIZATION_FAILED = 'Summarization Failed';
+const INDEXING_FAILED = 'Indexing Failed';
+const CHART_FONT_FAMILY = 'Open Sans, sans-serif';
+const ANNOTATION_BG = 'rgba(255,255,255,0.8)';
+const ANNOTATION_BORDER = 'rgba(200,200,200,0.5)';
+
 interface TimelineData {
   histogram: HistogramData;
   phase_distribution: PhaseDistributionData;
   pages_histogram: HistogramData;
   errors_histogram: {
     x: string[];
-    "Parse Failed": number[];
-    "Summarization Failed": number[];
-    "Indexing Failed": number[];
+    [PARSE_FAILED]: number[];
+    [SUMMARIZATION_FAILED]: number[];
+    [INDEXING_FAILED]: number[];
   };
 }
 
@@ -102,17 +109,17 @@ const filterErrorsHistogram = (
   for (let i = 0; i < errors.x.length; i++) {
     if (new Date(errors.x[i]) >= cutoff) {
       filteredErrX.push(errors.x[i]);
-      filteredParseFailed.push(errors["Parse Failed"]?.[i] || 0);
-      filteredSummFailed.push(errors["Summarization Failed"]?.[i] || 0);
-      filteredIndexFailed.push(errors["Indexing Failed"]?.[i] || 0);
+      filteredParseFailed.push(errors[PARSE_FAILED]?.[i] || 0);
+      filteredSummFailed.push(errors[SUMMARIZATION_FAILED]?.[i] || 0);
+      filteredIndexFailed.push(errors[INDEXING_FAILED]?.[i] || 0);
     }
   }
 
   return {
     x: filteredErrX,
-    "Parse Failed": filteredParseFailed,
-    "Summarization Failed": filteredSummFailed,
-    "Indexing Failed": filteredIndexFailed,
+    [PARSE_FAILED]: filteredParseFailed,
+    [SUMMARIZATION_FAILED]: filteredSummFailed,
+    [INDEXING_FAILED]: filteredIndexFailed,
   };
 };
 
@@ -167,9 +174,9 @@ const filterTimelineData = (
     errors_histogram: filterErrorsHistogram(
       timelineData.errors_histogram ?? {
         x: [],
-        "Parse Failed": [],
-        "Summarization Failed": [],
-        "Indexing Failed": [],
+        [PARSE_FAILED]: [],
+        [SUMMARIZATION_FAILED]: [],
+        [INDEXING_FAILED]: [],
       },
       cutoff
     ),
@@ -294,7 +301,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
             title: {},
             font: {
               size: 12,
-              family: 'Open Sans, sans-serif'
+              family: CHART_FONT_FAMILY
             },
             height: 600,
             paper_bgcolor: 'white',
@@ -303,7 +310,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
             hoverlabel: {
               bgcolor: '#2C3E50',
               font: {
-                family: 'Open Sans, sans-serif',
+                family: CHART_FONT_FAMILY,
                 size: 13,
                 color: 'white'
               },
@@ -323,7 +330,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 yref: 'paper',
                 text: `UN Organization (orgs=${sankeyData.annotations.num_orgs.toLocaleString()}, reports=${sankeyData.annotations.total_records.toLocaleString()})`,
                 showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                 xanchor: 'left'
               },
               {
@@ -333,11 +340,11 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 yref: 'paper',
                 text: `reports=${sankeyData.annotations.layer2_count.toLocaleString()}`,
                 showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                 xanchor: 'center',
-                bgcolor: 'rgba(255,255,255,0.8)',
+                bgcolor: ANNOTATION_BG,
                 borderpad: 8,
-                bordercolor: 'rgba(200,200,200,0.5)',
+                bordercolor: ANNOTATION_BORDER,
                 borderwidth: 1
               },
               {
@@ -347,11 +354,11 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 yref: 'paper',
                 text: `reports=${sankeyData.annotations.layer3_count.toLocaleString()}`,
                 showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                 xanchor: 'center',
-                bgcolor: 'rgba(255,255,255,0.8)',
+                bgcolor: ANNOTATION_BG,
                 borderpad: 8,
-                bordercolor: 'rgba(200,200,200,0.5)',
+                bordercolor: ANNOTATION_BORDER,
                 borderwidth: 1
               },
               {
@@ -361,11 +368,11 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 yref: 'paper',
                 text: `reports=${sankeyData.annotations.layer4_count.toLocaleString()}`,
                 showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                 xanchor: 'right',
-                bgcolor: 'rgba(255,255,255,0.8)',
+                bgcolor: ANNOTATION_BG,
                 borderpad: 8,
-                bordercolor: 'rgba(200,200,200,0.5)',
+                bordercolor: ANNOTATION_BORDER,
                 borderwidth: 1
               }
             ]
@@ -579,15 +586,15 @@ const PipelineErrorChart = ({
         {
           type: 'bar',
           x: errorsHistogram.x,
-          y: errorsHistogram["Parse Failed"],
-          name: 'Parse Failed',
+          y: errorsHistogram[PARSE_FAILED],
+          name: PARSE_FAILED,
           marker: { color: '#FF851B' },
           stackgroup: 'errors',
         },
         {
           type: 'bar',
           x: errorsHistogram.x,
-          y: errorsHistogram["Summarization Failed"],
+          y: errorsHistogram[SUMMARIZATION_FAILED],
           name: 'Summ. Failed',
           marker: { color: '#FFDC00' },
           stackgroup: 'errors',
@@ -595,8 +602,8 @@ const PipelineErrorChart = ({
         {
           type: 'bar',
           x: errorsHistogram.x,
-          y: errorsHistogram["Indexing Failed"],
-          name: 'Indexing Failed',
+          y: errorsHistogram[INDEXING_FAILED],
+          name: INDEXING_FAILED,
           marker: { color: '#85144b' },
           stackgroup: 'errors',
         },
@@ -645,9 +652,9 @@ const PipelineTimelineSection = ({
   };
   const errorsHistogram = filteredData.errors_histogram ?? {
     x: [],
-    "Parse Failed": [],
-    "Summarization Failed": [],
-    "Indexing Failed": [],
+    [PARSE_FAILED]: [],
+    [SUMMARIZATION_FAILED]: [],
+    [INDEXING_FAILED]: [],
   };
 
   const hasTimelineData =
@@ -834,7 +841,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                 },
                 font: {
                   size: 12,
-                  family: 'Open Sans, sans-serif'
+                  family: CHART_FONT_FAMILY
                 },
                 height: 600,
                 paper_bgcolor: 'white',
@@ -843,7 +850,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                 hoverlabel: {
                   bgcolor: '#2C3E50',
                   font: {
-                    family: 'Open Sans, sans-serif',
+                    family: CHART_FONT_FAMILY,
                     size: 13,
                     color: 'white'
                   },
@@ -864,7 +871,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     yref: 'paper',
                     text: `UN Organization (orgs=${sankeyData.annotations.num_orgs.toLocaleString()}, reports=${sankeyData.annotations.total_records.toLocaleString()})`,
                     showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                     xanchor: 'left'
                   },
                   // Layer 2 label
@@ -875,11 +882,11 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     yref: 'paper',
                     text: `reports=${sankeyData.annotations.layer2_count.toLocaleString()}`,
                     showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                     xanchor: 'center',
-                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bgcolor: ANNOTATION_BG,
                     borderpad: 8,
-                    bordercolor: 'rgba(200,200,200,0.5)',
+                    bordercolor: ANNOTATION_BORDER,
                     borderwidth: 1
                   },
                   // Layer 3 label
@@ -890,11 +897,11 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     yref: 'paper',
                     text: `reports=${sankeyData.annotations.layer3_count.toLocaleString()}`,
                     showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                     xanchor: 'center',
-                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bgcolor: ANNOTATION_BG,
                     borderpad: 8,
-                    bordercolor: 'rgba(200,200,200,0.5)',
+                    bordercolor: ANNOTATION_BORDER,
                     borderwidth: 1
                   },
                   // Layer 4 label
@@ -905,11 +912,11 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     yref: 'paper',
                     text: `reports=${sankeyData.annotations.layer4_count.toLocaleString()}`,
                     showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: 'Open Sans, sans-serif' },
+                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
                     xanchor: 'right',
-                    bgcolor: 'rgba(255,255,255,0.8)',
+                    bgcolor: ANNOTATION_BG,
                     borderpad: 8,
-                    bordercolor: 'rgba(200,200,200,0.5)',
+                    bordercolor: ANNOTATION_BORDER,
                     borderwidth: 1
                   }
                 ]

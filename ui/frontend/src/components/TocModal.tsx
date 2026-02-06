@@ -100,7 +100,9 @@ const renderPageElement = (
     return null;
   }
   const pageValue = info.page;
-  const pageText = `p. ${info.page}${info.roman ? ` (${info.roman})` : ''}${info.front ? ' [Front]' : ''}`;
+  const romanSuffix = info.roman ? ' (' + info.roman + ')' : '';
+  const frontSuffix = info.front ? ' [Front]' : '';
+  const pageText = 'p. ' + info.page + romanSuffix + frontSuffix;
   if (onPageSelect) {
     return (
       <button

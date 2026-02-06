@@ -10,9 +10,7 @@ from alembic import op  # type: ignore
 
 # revision identifiers, used by Alembic.
 revision = "2a4d7830d56f"  # pragma: allowlist secret
-down_revision = (
-    "0002_add_sys_status_columns"  # Assuming this is the previous one based on list_dir
-)
+down_revision = "0003_add_summary_and_taxonomy_columns"
 branch_labels = None
 depends_on = None
 

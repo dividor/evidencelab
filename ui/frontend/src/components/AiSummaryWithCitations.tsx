@@ -49,8 +49,10 @@ const stripListPrefix = (line: string, listType: 'numbered' | 'bullet'): string 
   return line.trim().replace(BULLET_LIST_REGEX, '');
 };
 
-const buildCitationLinkTitle = (result: SearchResult): string =>
-  `${result.title} (${result.organization || 'Unknown'}${result.year ? `, ${result.year}` : ''})`;
+const buildCitationLinkTitle = (result: SearchResult): string => {
+  const yearSuffix = result.year ? ', ' + result.year : '';
+  return result.title + ' (' + (result.organization || 'Unknown') + yearSuffix + ')';
+};
 
 const renderCitationLinks = (
   rawNumbers: string,

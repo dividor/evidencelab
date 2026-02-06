@@ -801,10 +801,8 @@ function App() {
         CORE_FILTER_FIELDS,
         DEFAULT_SECTION_TYPES
       );
-      if (searchState.dataset && availableDomains.includes(searchState.dataset)) {
-        if (selectedDomain !== searchState.dataset) {
-          setSelectedDomain(searchState.dataset);
-        }
+      if (searchState.dataset && availableDomains.includes(searchState.dataset) && selectedDomain !== searchState.dataset) {
+        setSelectedDomain(searchState.dataset);
       }
     };
 
@@ -1006,16 +1004,7 @@ function App() {
           delete next[field];
           return next;
         });
-        return;
       }
-
-      // For generic fields, we process them.
-      // Note: We need a smarter way to debounce multiple fields.
-      // Current simple approach: debounce the LATEST change.
-      // But iterating all keys causes re-fires on any change.
-      // Ideally we'd have a timeout per field or a single timeout that checks what changed.
-      // For simplicity in this React component:
-      // We'll trust that the user types in ONE box at a time.
     });
 
     // Better Approach: Iterate and find which one triggered? No, simpler:

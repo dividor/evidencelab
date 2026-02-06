@@ -26,7 +26,7 @@
     "extends": [
       "react-app",
       "plugin:security/recommended-legacy",
-      "plugin:sonarjs/recommended-legacy"
+      "plugin:sonarjs/recommended"
     ],
     "plugins": [
       "security",

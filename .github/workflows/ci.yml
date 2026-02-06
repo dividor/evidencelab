@@ -283,6 +283,16 @@ jobs:
           docker compose up -d
         working-directory: ${{ github.workspace }}
 
+      - name: Wait for Postgres and run migrations
+        run: |
+          docker compose exec -T pipeline /bin/bash -lc "
+            for i in \$(seq 1 30); do
+              python -c 'from pipeline.db.config import get_engine; get_engine().connect().close()' 2>/dev/null && break
+              echo 'Waiting for Postgres...' && sleep 2
+            done
+            alembic upgrade head
+          "
+
       - name: Run integration tests
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s"

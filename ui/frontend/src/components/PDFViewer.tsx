@@ -12,6 +12,14 @@ declare global {
   }
 }
 
+const getResponsiveScale = (): number => {
+  if (window.innerWidth <= 640) {
+    const containerWidth = window.innerWidth - 32;
+    return Math.max(0.5, Math.min(containerWidth / 600, 1.5));
+  }
+  return 1.5;
+};
+
 interface PDFViewerProps {
   docId: string;
   chunkId: string;
@@ -257,18 +265,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   // Calculate scale based on viewport width for mobile
   useEffect(() => {
-    const updateScale = () => {
-      if (window.innerWidth <= 640) {
-        // Mobile: scale to fit container width
-        // Assuming PDF page is ~600pt wide, container has 16px padding
-        const containerWidth = window.innerWidth - 32;
-        const newScale = containerWidth / 600;
-        setScale(Math.max(0.5, Math.min(newScale, 1.5)));
-      } else {
-        setScale(1.5);
-      }
-    };
-
+    const updateScale = () => setScale(getResponsiveScale());
     updateScale();
     window.addEventListener('resize', updateScale);
     return () => window.removeEventListener('resize', updateScale);
@@ -541,6 +538,21 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   };
 
+  const updatePageHeights = (calculatedHeight: number, pageNumber: number) => {
+    if (actualPageHeightRef.current === ESTIMATED_PAGE_HEIGHT || Math.abs(calculatedHeight - actualPageHeightRef.current) > 10) {
+      console.log(`Setting actualPageHeight from page ${pageNumber}: ${calculatedHeight}px`);
+      actualPageHeightRef.current = calculatedHeight;
+      setActualPageHeight(calculatedHeight);
+      document.querySelectorAll('[id^="pdf-page-"]').forEach(el => {
+        const match = el.id.match(/pdf-page-(\d+)/);
+        if (match) {
+          const pNum = parseInt(match[1], 10);
+          (el as HTMLElement).style.top = `${(pNum - 1) * calculatedHeight}px`;
+        }
+      });
+    }
+  };
+
   const renderPage = async (pageNumber: number) => {
     if (!pdfDoc || !pagesContainerRef.current) return;
 
@@ -555,21 +567,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       const viewport = page.getViewport({ scale });
 
       // Update actual page height based on ANY rendered page (if not yet set properly)
-      const calculatedHeight = viewport.height + 20; // Add margin
-      if (actualPageHeightRef.current === ESTIMATED_PAGE_HEIGHT || Math.abs(calculatedHeight - actualPageHeightRef.current) > 10) {
-        console.log(`Setting actualPageHeight from page ${pageNumber}: ${calculatedHeight}px`);
-        actualPageHeightRef.current = calculatedHeight; // Update ref immediately for subsequent pages
-        setActualPageHeight(calculatedHeight); // Also update state for re-renders
-
-        // Reposition all existing pages with the new height
-        document.querySelectorAll('[id^="pdf-page-"]').forEach(el => {
-          const match = el.id.match(/pdf-page-(\d+)/);
-          if (match) {
-            const pNum = parseInt(match[1], 10);
-            (el as HTMLElement).style.top = `${(pNum - 1) * calculatedHeight}px`;
-          }
-        });
-      }
+      updatePageHeights(viewport.height + 20, pageNumber);
 
       // Get or create page container - use ref for immediate value
       const heightToUse = actualPageHeightRef.current;
@@ -907,15 +905,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     setScale(prev => Math.max(prev - 0.25, 0.5)); // Min 0.5x zoom
   };
 
-  const handleResetZoom = () => {
-    if (window.innerWidth <= 640) {
-      const containerWidth = window.innerWidth - 32;
-      const newScale = containerWidth / 600;
-      setScale(Math.max(0.5, Math.min(newScale, 1.5)));
-    } else {
-      setScale(1.5);
-    }
-  };
+  const handleResetZoom = () => setScale(getResponsiveScale());
 
   // In-PDF search function
   const performInPdfSearch = async (query: string) => {
@@ -1049,8 +1039,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         if (value === null || value === undefined || value === '') return false;
         // Filter out empty arrays or objects
         if (Array.isArray(value) && value.length === 0) return false;
-        if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return false;
-        return true;
+        return !(typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0);
       })
       .sort(([keyA], [keyB]) => keyA.localeCompare(keyB));
 
