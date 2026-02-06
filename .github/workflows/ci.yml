@@ -301,6 +301,31 @@ jobs:
             alembic upgrade head
           "
 
+      - name: Wait for API to be healthy
+        run: |
+          echo "Waiting for API at http://localhost:8000/health..."
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/health >/dev/null 2>&1; then
+              echo "API is healthy."
+              break
+            fi
+            echo "Waiting for API... ($i/60)"
+            sleep 2
+          done
+
+      - name: Wait for embedding server
+        run: |
+          echo "Waiting for embedding server at http://localhost:7997..."
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:7997/health >/dev/null 2>&1 || \
+               curl -fsS http://localhost:7997/ >/dev/null 2>&1; then
+              echo "Embedding server is ready."
+              break
+            fi
+            echo "Waiting for embedding server... ($i/60)"
+            sleep 2
+          done
+
       - name: Run integration tests
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s"
