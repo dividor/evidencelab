@@ -1,4 +1,4 @@
-# Evidence Lab AI
+# Evidence Lab
 
 [![CI](https://github.com/dividor/evidencelab/actions/workflows/ci.yml/badge.svg)](https://github.com/dividor/evidencelab/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -19,6 +19,42 @@ You can run the code yourself, or explore the online version at [evidencelab.ai]
 If you would like to have your public documents added to Evidence Lab, or would like to contribute to the project, please reach out to [evidence-lab@astrobagel.com](mailto:evidence-lab@astrobagel.com).
 
 Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).
+
+## Philosphy
+
+Evidence lab was developed out of research work for the blog, so core principals are ...
+
+* The full pipeline can run on a desktop computer and process 20,000 30-page documents in a week for less than $50.
+* The pipeline and user interface should be easily configured for use with any folder of documents
+* Should support quick/cheap parsing to start, with ability to activate more complex components later on without having to reprocess everything
+* The platform can run with open as well as proprietary models
+* The environment should have tools for easily monitoring processing as well as exploring AI information retrieval
+
+Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there, and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
+
+## Features
+
+Evidence lab document processing pipeline include the following features:
+
+1. Processing pipeline
+
+- PDF/Word parsing with Docling, to include document structure detection
+- Footnote and references, images and table detection
+- Basic table extraction, with support for more expensive processing as required
+- AI-assisted document summarization
+- AI-assisted tagging of documents
+- Indexing with Open (Huggingface) or propriety models (Azure foundry, but extensible)
+
+2. User interface
+
+- Hybrid search with AI summary and reranking
+- Filtering by metadata, in-document section types
+- Search and reranking settings to explore different models
+- Semanitic highlighting in search results
+- Basic language translation 
+- PDF preview with in-document search
+- Administration views to track pipeline, documents, performance and errors
+- Experimental features such as heatmapper to tracking trends in content
 
 ## Getting started
 
@@ -68,9 +104,3 @@ docker compose up -d --build
 6. **Next steps**
    - See the technical deep dive for pipeline commands, downloaders, and architecture details:
      [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)
-
-## Documentation
-
-- [`ui/frontend/public/docs/about.md`](ui/frontend/public/docs/about.md) - project background and goals
-- [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md) - architecture and pipeline details
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) - tests, evaluation, performance, and CI
