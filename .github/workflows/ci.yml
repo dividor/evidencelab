@@ -240,8 +240,11 @@ jobs:
 
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/share/swift \
+            /usr/local/graalvm /usr/local/share/boost /usr/share/miniconda
           docker system prune -af
+          df -h /
 
       - name: Write .env for docker compose
         run: |
