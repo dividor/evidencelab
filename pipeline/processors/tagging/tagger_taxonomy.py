@@ -88,16 +88,10 @@ class TaxonomyTagger(BaseTagger):
         taxonomy_name = taxonomy_config.get("name", taxonomy_key)
         values = taxonomy_config.get("values", {})
 
-        system_template = _jinja_env.get_template(
-            f"taxonomy_{taxonomy_key}_system.j2"
-        )
-        user_template = _jinja_env.get_template(
-            f"taxonomy_{taxonomy_key}_user.j2"
-        )
+        system_template = _jinja_env.get_template(f"taxonomy_{taxonomy_key}_system.j2")
+        user_template = _jinja_env.get_template(f"taxonomy_{taxonomy_key}_user.j2")
 
-        system_prompt = system_template.render(
-            taxonomy_name=taxonomy_name
-        ).strip()
+        system_prompt = system_template.render(taxonomy_name=taxonomy_name).strip()
 
         user_prompt = user_template.render(
             context_text=context_text, values=values
