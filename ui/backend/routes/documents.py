@@ -727,7 +727,9 @@ async def serve_file(file_path: str):
 
         # Convert absolute path to relative if needed
         # Images may be stored with DATA_MOUNT_PATH prefix, need to convert to data/ prefix
-        data_mount_path = os.environ.get("DATA_MOUNT_PATH") or "/mnt/files/evaluation-db"
+        data_mount_path = (
+            os.environ.get("DATA_MOUNT_PATH") or "/mnt/files/evaluation-db"
+        )
         # Strip leading slash from both for comparison (since file_path comes from URL)
         data_mount_normalized = data_mount_path.lstrip("/")
         if data_mount_normalized and decoded_path.startswith(data_mount_normalized):
