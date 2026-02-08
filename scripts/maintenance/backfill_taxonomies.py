@@ -246,6 +246,7 @@ def backfill_taxonomies(
 
     global global_tagger
     global_tagger = TaxonomyTagger(config=tag_config)
+    global_tagger.setup()
 
     # Process with workers
     success_count = 0

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DocumentsChart } from './documents/DocumentsChart';
 import { useDocumentsState } from './documents/useDocumentsState';
 
@@ -12,6 +12,28 @@ export const Stats: React.FC<StatsProps> = ({
     onNavigateToDocuments,
 }) => {
     const state = useDocumentsState(dataSource);
+
+    // Auto-switch to first chart view that has data when current view is empty
+    useEffect(() => {
+        if (!state.stats) return;
+        const breakdownMap: Record<string, Record<string, unknown>> = {
+            year: state.stats.year_breakdown || {},
+            type: state.stats.type_breakdown || {},
+            agency: state.stats.agency_breakdown || {},
+            language: state.stats.language_breakdown || {},
+            format: state.stats.format_breakdown || {},
+            status: state.stats.status_breakdown || {},
+        };
+        const current = breakdownMap[state.chartView];
+        if (current && Object.keys(current).length > 0) return;
+        const views = ['status', 'year', 'type', 'agency', 'language', 'format'] as const;
+        for (const view of views) {
+            if (Object.keys(breakdownMap[view] || {}).length > 0) {
+                state.setChartView(view);
+                return;
+            }
+        }
+    }, [state.stats, state.chartView, state.setChartView]);
 
     const handleBarClick = (category: string) => {
         // Navigate to Documents tab with the selected filter

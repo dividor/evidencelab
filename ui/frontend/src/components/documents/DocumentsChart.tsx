@@ -299,48 +299,49 @@ export const DocumentsChart: React.FC<DocumentsChartProps> = ({
 }) => {
   const { breakdown, title } = getChartData(stats, chartView);
   const entries = getChartEntries(breakdown, chartView);
-
-  if (entries.length === 0) {
-    return <p>No data available for this view.</p>;
-  }
-
   const maxCount = getMaxCount(breakdown);
   const statuses = sortStatuses(getAllStatuses(breakdown, chartView));
 
   return (
     <>
       <ChartToggleButtons chartView={chartView} onChange={onChartViewChange} />
-      <div className="chart-header-row">
-        {title && <h3 className="chart-subtitle">{title}</h3>}
-        {chartView !== 'status' && (
-          <ChartLegend statuses={statuses} chartView={chartView} />
-        )}
-      </div>
-      <div className="chart-bars">
-        {entries.map(([category, data]) => (
-          <ChartBarItem
-            key={category}
-            category={category}
-            data={data}
-            chartView={chartView}
-            maxCount={maxCount}
-            statuses={statuses}
-            hoveredBar={hoveredBar}
-            tooltipPos={tooltipPos}
-            onHoverChange={onHoverChange}
-            onTooltipMove={onTooltipMove}
-            onBarClick={onBarClick}
-          />
-        ))}
-      </div>
-      <div className="chart-x-axis">
-        <div className="chart-x-axis-ticks">
-          {generateAxisTicks(maxCount).map((tick, idx) => (
-            <span key={idx}>{tick.toLocaleString()}</span>
-          ))}
-        </div>
-      </div>
-      <div className="chart-x-axis-label">Number of Documents</div>
+      {entries.length === 0 ? (
+        <p>No data available for this view.</p>
+      ) : (
+        <>
+          <div className="chart-header-row">
+            {title && <h3 className="chart-subtitle">{title}</h3>}
+            {chartView !== 'status' && (
+              <ChartLegend statuses={statuses} chartView={chartView} />
+            )}
+          </div>
+          <div className="chart-bars">
+            {entries.map(([category, data]) => (
+              <ChartBarItem
+                key={category}
+                category={category}
+                data={data}
+                chartView={chartView}
+                maxCount={maxCount}
+                statuses={statuses}
+                hoveredBar={hoveredBar}
+                tooltipPos={tooltipPos}
+                onHoverChange={onHoverChange}
+                onTooltipMove={onTooltipMove}
+                onBarClick={onBarClick}
+              />
+            ))}
+          </div>
+          <div className="chart-x-axis">
+            <div className="chart-x-axis-ticks">
+              {generateAxisTicks(maxCount).map((tick, idx) => (
+                <span key={idx}>{tick.toLocaleString()}</span>
+              ))}
+            </div>
+          </div>
+          <div className="chart-x-axis-label">Number of Documents</div>
+        </>
+      )}
     </>
   );
 };
