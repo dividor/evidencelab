@@ -97,7 +97,7 @@ pytest-asyncio==0.23.5
 pytest-playwright==0.4.4
 playwright==1.40.0
 types-requests==2.32.4.20250913
-types-beautifulsoup4==4.12.0.7
+types-beautifulsoup4==4.12.0.20250516
 types-html5lib==1.1.11.20251014
 types-openpyxl==3.1.0.20240311
 watchdog==4.0.0
