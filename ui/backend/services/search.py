@@ -824,11 +824,14 @@ def scroll_filtered_chunks(
         with_payload=True,
         with_vectors=False,
     )
-    # Assign a dummy score so callers that expect ScoredPoint-like objects work
-    for point in points:
-        if not hasattr(point, "score"):
-            point.score = 0.0
-    return points
+    # Qdrant scroll returns Record (Pydantic) objects without a score field.
+    # Wrap them so downstream code that expects .score works.
+    from types import SimpleNamespace
+
+    return [
+        SimpleNamespace(id=p.id, payload=p.payload, score=0.0)
+        for p in points
+    ]
 
 
 def _collect_unique_doc_payloads(results: List[Any]) -> List[Dict[str, Any]]:

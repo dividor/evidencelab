@@ -1395,7 +1395,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const filteredGridResults = useMemo<Record<string, CellResult>>(() => {
     const nextResults: Record<string, CellResult> = {};
     for (const [cellKey, results] of Object.entries(gridResults)) {
-      const filtered = results.filter((result) => result.score >= similarityCutoff);
+      // score === 0 means no similarity was computed (filter-only scroll), always include
+      const filtered = results.filter((result) => result.score === 0 || result.score >= similarityCutoff);
       const count =
         heatmapMetric === 'documents'
           ? new Set(filtered.map((result) => result.doc_id)).size
