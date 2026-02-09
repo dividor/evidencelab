@@ -1556,7 +1556,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
     Object.values(gridResults).forEach((results) => {
       results.forEach((result) => {
-        if (!Number.isFinite(result.score)) {
+        // score === 0 means filter-only (no similarity), skip for bounds
+        if (!Number.isFinite(result.score) || result.score === 0) {
           return;
         }
         hasScores = true;
@@ -2062,8 +2063,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
 
               <div className="heatmap-control heatmap-slider">
-                <label htmlFor="heatmap-cutoff">
-                  Sensitivity: {similarityCutoff.toFixed(3)}
+                <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+                  Sensitivity: {scoreBounds.hasScores ? similarityCutoff.toFixed(3) : 'n/a'}
                 </label>
                 <input
                   id="heatmap-cutoff"
@@ -2073,6 +2074,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   step={0.001}
                   value={similarityCutoff}
                   onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
+                  disabled={!scoreBounds.hasScores}
+                  title={!scoreBounds.hasScores ? 'Sensitivity requires a search query' : undefined}
                 />
               </div>
               <HeatmapActionButtons
