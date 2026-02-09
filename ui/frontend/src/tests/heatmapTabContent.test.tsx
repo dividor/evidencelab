@@ -82,8 +82,10 @@ describe('HeatmapTabContent', () => {
 
     const rowSelect = screen.getByLabelText('Rows') as HTMLSelectElement;
     const columnSelect = screen.getByLabelText('Columns') as HTMLSelectElement;
+    const metricSelect = screen.getByLabelText('Metric') as HTMLSelectElement;
     expect(rowSelect.value).toBe('document_type');
     expect(columnSelect.value).toBe('published_year');
+    expect(metricSelect.value).toBe('documents');
 
     const searchButton = screen.getByRole('button', { name: 'Heatmap Search' });
     expect(searchButton).toBeDisabled();

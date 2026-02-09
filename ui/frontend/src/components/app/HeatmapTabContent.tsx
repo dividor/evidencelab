@@ -731,12 +731,15 @@ const getTranslatedSemanticMatches = async (
   }
 };
 
+type HeatmapMetric = 'documents' | 'chunks';
+
 const HEATMAP_URL_KEYS = {
   row: 'hm_row',
   column: 'hm_col',
   sensitivity: 'hm_sens',
   query: 'hm_q',
   rowQuery: 'hm_row_q',
+  metric: 'hm_metric',
   run: 'hm_run',
 } as const;
 
@@ -796,6 +799,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [columnDimension, setColumnDimension] = useState<string>('published_year');
   const [rowDimension, setRowDimension] = useState<string>('document_type');
   const [similarityCutoff, setSimilarityCutoff] = useState<number>(0.5);
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('documents');
   const [gridQuery, setGridQuery] = useState<string>('');
   const [gridResults, setGridResults] = useState<RawCellResults>({});
   const [gridLoading, setGridLoading] = useState<boolean>(false);
@@ -1234,6 +1238,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
       params.set(HEATMAP_URL_KEYS.row, rowDimension);
       params.set(HEATMAP_URL_KEYS.column, columnDimension);
+      params.set(HEATMAP_URL_KEYS.metric, heatmapMetric);
       params.set(HEATMAP_URL_KEYS.sensitivity, similarityCutoff.toString());
 
       params.delete(HEATMAP_URL_KEYS.query);
@@ -1264,7 +1269,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       url.search = params.toString();
       window.history.replaceState(null, '', url.toString());
     },
-    [columnDimension, filters, gridQuery, rowDimension, rowQueries, similarityCutoff]
+    [columnDimension, filters, gridQuery, heatmapMetric, rowDimension, rowQueries, similarityCutoff]
   );
 
 
@@ -1280,6 +1285,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     }
     if (urlColumn && columnOptions.some((option) => option.value === urlColumn)) {
       setColumnDimension(urlColumn);
+    }
+    const urlMetric = params.get(HEATMAP_URL_KEYS.metric);
+    if (urlMetric === 'documents' || urlMetric === 'chunks') {
+      setHeatmapMetric(urlMetric);
     }
     const parsedSensitivity = urlSensitivity ? Number(urlSensitivity) : NaN;
     if (!Number.isNaN(parsedSensitivity)) {
@@ -1329,6 +1338,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     columnDimension,
     gridQuery,
     hasGridSearchQuery,
+    heatmapMetric,
     rowDimension,
     rowQueries,
     similarityCutoff,
@@ -1385,10 +1395,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const nextResults: Record<string, CellResult> = {};
     for (const [cellKey, results] of Object.entries(gridResults)) {
       const filtered = results.filter((result) => result.score >= similarityCutoff);
-      nextResults[cellKey] = { results: filtered, count: filtered.length };
+      const count =
+        heatmapMetric === 'documents'
+          ? new Set(filtered.map((result) => result.doc_id)).size
+          : filtered.length;
+      nextResults[cellKey] = { results: filtered, count };
     }
     return nextResults;
-  }, [gridResults, similarityCutoff]);
+  }, [gridResults, heatmapMetric, similarityCutoff]);
 
   const hasCompletedGridSearch = useMemo(() => {
     return !gridLoading && Object.keys(gridResults).length > 0;
@@ -2028,6 +2042,19 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                       {option.label}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              <div className="heatmap-control">
+                <label htmlFor="heatmap-metric">Metric</label>
+                <select
+                  id="heatmap-metric"
+                  className="heatmap-select"
+                  value={heatmapMetric}
+                  onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
+                >
+                  <option value="documents">Documents</option>
+                  <option value="chunks">Chunks</option>
                 </select>
               </div>
 
