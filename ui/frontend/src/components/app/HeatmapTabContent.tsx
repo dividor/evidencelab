@@ -978,8 +978,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (rowDimension === 'queries' || rowDimension === 'title') {
       return rowQueries.some((query) => query.trim().length > 0);
     }
-    return gridQuery.trim().length > 0;
-  }, [gridQuery, rowDimension, rowQueries]);
+    // Allow blank queries for non-query dimensions (count by dimensions only)
+    return true;
+  }, [rowDimension, rowQueries]);
 
   const performRowTitleSearch = useCallback(
     (rowIndex: number, query: string) => {
@@ -1679,7 +1680,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       filteredColumnValues.forEach((columnValue) => {
         const cellKey = buildCellKey(String(rowKey), columnValue);
         const cellQuery = buildCellQuery(rowValue, columnValue, rowIndex);
-        if (!cellQuery) {
+        // For 'queries' dimension, skip cells with no query text
+        if (rowDimension === 'queries' && !cellQuery) {
           setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
           return;
         }

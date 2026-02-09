@@ -805,6 +805,32 @@ def search_chunks(
     return search_result
 
 
+def scroll_filtered_chunks(
+    filters: dict = None,
+    limit: int = 50,
+    data_source: str | None = None,
+    section_types: List[str] = None,
+) -> List[Any]:
+    """Scroll chunks matching filters without a search query.
+
+    Returns Qdrant points (with payload) so callers can count documents.
+    """
+    db = _get_search_db(None, data_source)
+    query_filter = _build_query_filter(filters, section_types, data_source)
+    points, _next_offset = db.client.scroll(
+        collection_name=db.chunks_collection,
+        scroll_filter=query_filter,
+        limit=limit,
+        with_payload=True,
+        with_vectors=False,
+    )
+    # Assign a dummy score so callers that expect ScoredPoint-like objects work
+    for point in points:
+        if not hasattr(point, "score"):
+            point.score = 0.0
+    return points
+
+
 def _collect_unique_doc_payloads(results: List[Any]) -> List[Dict[str, Any]]:
     seen_doc_ids = set()
     unique_docs = []
@@ -829,6 +855,11 @@ def _accumulate_facet_counts(
             continue
         if core_field == "published_year":
             counter[str(val)] += 1
+            continue
+        if isinstance(val, list):
+            for item in val:
+                if item:
+                    counter[item] += 1
             continue
         if isinstance(val, str) and "," in val and core_field in ["country", "region"]:
             for item in val.split(","):
@@ -867,6 +898,9 @@ def get_search_facets(
     source = data_source or "uneg"
     db = _get_search_db(None, source)
     filter_fields_config = get_filter_fields(source)
+    from pipeline.db import get_taxonomy_filter_fields  # noqa: PLC0415
+
+    filter_fields_config = {**filter_fields_config, **get_taxonomy_filter_fields(source)}
 
     # 1. Determine which fields we need to fetch
     needed_fields = ["doc_id", "sys_doc_id"]  # Include sys_doc_id for deduplication
