@@ -828,10 +828,7 @@ def scroll_filtered_chunks(
     # Wrap them so downstream code that expects .score works.
     from types import SimpleNamespace
 
-    return [
-        SimpleNamespace(id=p.id, payload=p.payload, score=0.0)
-        for p in points
-    ]
+    return [SimpleNamespace(id=p.id, payload=p.payload, score=0.0) for p in points]
 
 
 def _collect_unique_doc_payloads(results: List[Any]) -> List[Dict[str, Any]]:
@@ -843,6 +840,23 @@ def _collect_unique_doc_payloads(results: List[Any]) -> List[Dict[str, Any]]:
             seen_doc_ids.add(doc_id)
             unique_docs.append(hit.payload)
     return unique_docs
+
+
+def _count_year_value(counter: Counter, val: Any) -> None:
+    counter[str(val)] += 1
+
+
+def _count_list_values(counter: Counter, val: List) -> None:
+    for item in val:
+        if item:
+            counter[item] += 1
+
+
+def _count_comma_separated(counter: Counter, val: str) -> None:
+    for item in val.split(","):
+        item = item.strip()
+        if item:
+            counter[item] += 1
 
 
 def _accumulate_facet_counts(
@@ -857,20 +871,15 @@ def _accumulate_facet_counts(
         if not val:
             continue
         if core_field == "published_year":
-            counter[str(val)] += 1
-            continue
-        if isinstance(val, list):
-            for item in val:
-                if item:
-                    counter[item] += 1
-            continue
-        if isinstance(val, str) and "," in val and core_field in ["country", "region"]:
-            for item in val.split(","):
-                item = item.strip()
-                if item:
-                    counter[item] += 1
-            continue
-        counter[val] += 1
+            _count_year_value(counter, val)
+        elif isinstance(val, list):
+            _count_list_values(counter, val)
+        elif (
+            isinstance(val, str) and "," in val and core_field in ["country", "region"]
+        ):
+            _count_comma_separated(counter, val)
+        else:
+            counter[val] += 1
     return counter
 
 
@@ -903,7 +912,10 @@ def get_search_facets(
     filter_fields_config = get_filter_fields(source)
     from pipeline.db import get_taxonomy_filter_fields  # noqa: PLC0415
 
-    filter_fields_config = {**filter_fields_config, **get_taxonomy_filter_fields(source)}
+    filter_fields_config = {
+        **filter_fields_config,
+        **get_taxonomy_filter_fields(source),
+    }
 
     # 1. Determine which fields we need to fetch
     needed_fields = ["doc_id", "sys_doc_id"]  # Include sys_doc_id for deduplication

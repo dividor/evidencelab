@@ -487,7 +487,9 @@ const HeatmapTable = ({
                 </span>
               </th>
               {filteredColumnValues.map((column) => (
-                <th key={column}>{column}</th>
+                <th key={column} className="heatmap-column-header">
+                  <div className="heatmap-column-header-text">{column}</div>
+                </th>
               ))}
             </tr>
           </thead>
