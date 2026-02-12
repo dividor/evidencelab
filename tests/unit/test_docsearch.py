@@ -2,10 +2,12 @@
 Unit tests for /docsearch endpoint.
 """
 
-import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+import pytest
 from fastapi import Request
+
 from ui.backend.routes.search import docsearch
 
 
@@ -22,7 +24,9 @@ class FakeDB:
         from qdrant_client.http import models as qmodels
 
         return [
-            qmodels.FieldCondition(key="map_title", match=qmodels.MatchText(text=query)),
+            qmodels.FieldCondition(
+                key="map_title", match=qmodels.MatchText(text=query)
+            ),
             qmodels.FieldCondition(
                 key="sys_full_summary", match=qmodels.MatchText(text=query)
             ),

@@ -761,7 +761,8 @@ async def docsearch(
                     qmodels.Filter(
                         must=[
                             qmodels.FieldCondition(
-                                key=storage_field, match=qmodels.MatchAny(any=[taxonomy_code])
+                                key=storage_field,
+                                match=qmodels.MatchAny(any=[taxonomy_code]),
                             )
                         ]
                     )

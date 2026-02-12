@@ -108,7 +108,11 @@ def backpopulate_taxonomies(data_source="uneg", dry_run=False):
                 continue
 
             # Extract codes from list
-            codes = [item.get("code") for item in tax_list if isinstance(item, dict) and "code" in item]
+            codes = [
+                item.get("code")
+                for item in tax_list
+                if isinstance(item, dict) and "code" in item
+            ]
 
             if codes:
                 field_name = f"tag_{tax_type}"
@@ -138,7 +142,9 @@ def backpopulate_taxonomies(data_source="uneg", dry_run=False):
                     points=[qdrant_doc_id],
                     wait=True,
                 )
-                logger.debug(f"  ✓ Updated {doc_id} with {len(updates)} taxonomy fields")
+                logger.debug(
+                    f"  ✓ Updated {doc_id} with {len(updates)} taxonomy fields"
+                )
 
             updated_count += 1
 

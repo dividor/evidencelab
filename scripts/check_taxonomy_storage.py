@@ -1,6 +1,8 @@
 """Quick script to check what's actually stored in Qdrant documents collection."""
-import sys
+
 import os
+import sys
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pipeline.db import get_db
