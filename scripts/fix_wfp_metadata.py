@@ -15,14 +15,13 @@ Mapping fixes:
 """
 
 import argparse
-import sys
 import time
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 QDRANT_URL = "http://localhost:6333"
-QDRANT_API_KEY = "31eff66a2391853e426f264c5edc5ca7969016591d29bb88cb135b80fbca44f2"
+QDRANT_API_KEY = "31eff66a2391853e426f264c5edc5ca7969016591d29bb88cb135b80fbca44f2"  # pragma: allowlist secret  # noqa: E501
 DOCS_COLLECTION = "documents_wfp"
 CHUNKS_COLLECTION = "chunks_wfp"
 
@@ -86,7 +85,9 @@ def fix_documents(client: QdrantClient, dry_run: bool = False) -> dict:
                 )
 
         batch += 1
-        print(f"  Documents batch {batch}: processed {len(points)} docs (total {len(doc_updates)})")
+        print(
+            f"  Documents batch {batch}: processed {len(points)} docs (total {len(doc_updates)})"
+        )
 
         if next_offset is None:
             break
@@ -142,7 +143,9 @@ def fix_chunks(client: QdrantClient, doc_updates: dict, dry_run: bool = False):
         total_chunks += len(chunk_ids)
 
         if (i + 1) % 25 == 0 or (i + 1) == len(doc_updates):
-            print(f"  Chunks: processed {i + 1}/{len(doc_updates)} docs ({total_chunks} chunks)")
+            print(
+                f"  Chunks: processed {i + 1}/{len(doc_updates)} docs ({total_chunks} chunks)"
+            )
 
     return total_chunks
 
@@ -159,7 +162,7 @@ def fix_postgres(doc_updates: dict, dry_run: bool = False):
         host="localhost",
         port=5432,
         user="evidencelab",
-        password="changeme",
+        password="changeme",  # pragma: allowlist secret
         dbname="evidencelab",
     )
     cursor = conn.cursor()
@@ -188,7 +191,9 @@ def fix_postgres(doc_updates: dict, dry_run: bool = False):
 
 def main():
     parser = argparse.ArgumentParser(description="Fix WFP metadata mapping in Qdrant")
-    parser.add_argument("--dry-run", action="store_true", help="Preview changes without writing")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without writing"
+    )
     args = parser.parse_args()
 
     print(f"Connecting to Qdrant at {QDRANT_URL}")
