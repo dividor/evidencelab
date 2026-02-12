@@ -96,7 +96,7 @@ pytest-cov==5.0.0
 pytest-asyncio==0.26.0
 pytest-playwright==0.4.4
 playwright==1.40.0
-types-requests==2.32.4.20250913
+types-requests==2.32.4.20260107
 types-beautifulsoup4==4.12.0.7
 types-html5lib==1.1.11.20251014
 types-openpyxl==3.1.0.20240311
