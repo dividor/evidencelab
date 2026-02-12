@@ -6429,10 +6429,36 @@ h6,
   color: var(--gray-500);
 }
 
+.heatmap-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmap-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 4px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 4px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
 .heatmap-modal-thumbnails {
   border-bottom: 1px solid var(--gray-200);
   padding: 1rem 1.5rem;
   background: var(--gray-50);
+  flex-shrink: 0;
 }
 
 .heatmap-modal-thumbnails-label {
@@ -6512,11 +6538,23 @@ h6,
 
 .heatmap-modal-thumbnail-title {
   padding: 0.5rem;
+  border-top: 1px solid var(--gray-200);
+  background: var(--gray-50);
+}
+
+.heatmap-modal-thumbnail-doc-title {
   font-size: 0.75rem;
   line-height: 1.3;
   color: var(--gray-700);
-  border-top: 1px solid var(--gray-200);
-  background: var(--gray-50);
+  word-wrap: break-word;
+  margin-bottom: 0.25rem;
+}
+
+.heatmap-modal-thumbnail-source {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: var(--gray-500);
+  font-style: italic;
   word-wrap: break-word;
 }
 
@@ -6557,5 +6595,5 @@ h6,
 
 .heatmap-modal-body {
   padding: 1.5rem;
-  overflow-y: auto;
+  flex: 1;
 }

@@ -2375,8 +2375,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 ×
               </button>
             </div>
-            {uniqueActiveCellDocuments.length > 0 && (
-              <div className="heatmap-modal-thumbnails">
+            <div className="heatmap-modal-content">
+              {uniqueActiveCellDocuments.length > 0 && (
+                <div className="heatmap-modal-thumbnails">
                 <div className="heatmap-modal-thumbnails-label">
                   Documents ({uniqueActiveCellDocuments.length}):
                 </div>
@@ -2427,7 +2428,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                           </div>
                         )}
                         <div className="heatmap-modal-thumbnail-title">
-                          {doc.title || 'Untitled'}
+                          <div className="heatmap-modal-thumbnail-doc-title">
+                            {doc.title || 'Untitled'}
+                          </div>
+                          {doc.organization && (
+                            <div className="heatmap-modal-thumbnail-source">
+                              {doc.organization}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -2461,6 +2469,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 onLanguageChange={handleHeatmapLanguageChange}
                 onRequestHighlight={handleHeatmapHighlight}
               />
+            </div>
             </div>
           </div>
         </div>
