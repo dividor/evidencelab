@@ -190,6 +190,34 @@ def get_filter_fields(data_source: str) -> Dict[str, str]:
     return {}
 
 
+def get_taxonomy_filter_fields(data_source: str) -> Dict[str, str]:
+    """Return taxonomy fields configured for a datasource as {tag_key: label}.
+
+    Reads the ``pipeline.tag.taxonomies`` section of config.json and
+    produces entries like ``{"tag_sdg": "SDG", "tag_cross_cutting_theme": "Cross-cutting Theme"}``.
+    """
+    config = load_datasources_config()
+    datasources = config.get("datasources", config)
+    if not isinstance(datasources, dict):
+        return {}
+
+    for domain_config in datasources.values():
+        if (
+            isinstance(domain_config, dict)
+            and domain_config.get("data_subdir") == data_source
+        ):
+            taxonomies = (
+                domain_config.get("pipeline", {}).get("tag", {}).get("taxonomies", {})
+            )
+            result: Dict[str, str] = {}
+            for tax_key, tax_def in taxonomies.items():
+                tag_field = f"tag_{tax_key}"
+                label = tax_def.get("name", tax_key)
+                result[tag_field] = label
+            return result
+    return {}
+
+
 def core_to_source_field(data_source: str, core_field: str) -> str:
     """Map a core field name to source field name."""
     mapping = get_field_mapping(data_source)

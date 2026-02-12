@@ -6120,6 +6120,19 @@ h6,
   min-width: 360px;
 }
 
+.heatmap-column-header {
+  vertical-align: bottom;
+  height: 120px;
+  padding: 0.6rem 0.3rem;
+}
+
+.heatmap-column-header-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  text-align: left;
+}
+
 .heatmap-query-cell {
   text-align: left;
   background: var(--gray-50);

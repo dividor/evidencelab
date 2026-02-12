@@ -487,7 +487,9 @@ const HeatmapTable = ({
                 </span>
               </th>
               {filteredColumnValues.map((column) => (
-                <th key={column}>{column}</th>
+                <th key={column} className="heatmap-column-header">
+                  <div className="heatmap-column-header-text">{column}</div>
+                </th>
               ))}
             </tr>
           </thead>
@@ -731,12 +733,15 @@ const getTranslatedSemanticMatches = async (
   }
 };
 
+type HeatmapMetric = 'documents' | 'chunks';
+
 const HEATMAP_URL_KEYS = {
   row: 'hm_row',
   column: 'hm_col',
   sensitivity: 'hm_sens',
   query: 'hm_q',
   rowQuery: 'hm_row_q',
+  metric: 'hm_metric',
   run: 'hm_run',
 } as const;
 
@@ -796,6 +801,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [columnDimension, setColumnDimension] = useState<string>('published_year');
   const [rowDimension, setRowDimension] = useState<string>('document_type');
   const [similarityCutoff, setSimilarityCutoff] = useState<number>(0.5);
+  const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('documents');
   const [gridQuery, setGridQuery] = useState<string>('');
   const [gridResults, setGridResults] = useState<RawCellResults>({});
   const [gridLoading, setGridLoading] = useState<boolean>(false);
@@ -974,8 +980,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (rowDimension === 'queries' || rowDimension === 'title') {
       return rowQueries.some((query) => query.trim().length > 0);
     }
-    return gridQuery.trim().length > 0;
-  }, [gridQuery, rowDimension, rowQueries]);
+    // Allow blank queries for non-query dimensions (count by dimensions only)
+    return true;
+  }, [rowDimension, rowQueries]);
 
   const performRowTitleSearch = useCallback(
     (rowIndex: number, query: string) => {
@@ -1234,6 +1241,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
       params.set(HEATMAP_URL_KEYS.row, rowDimension);
       params.set(HEATMAP_URL_KEYS.column, columnDimension);
+      params.set(HEATMAP_URL_KEYS.metric, heatmapMetric);
       params.set(HEATMAP_URL_KEYS.sensitivity, similarityCutoff.toString());
 
       params.delete(HEATMAP_URL_KEYS.query);
@@ -1264,7 +1272,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       url.search = params.toString();
       window.history.replaceState(null, '', url.toString());
     },
-    [columnDimension, filters, gridQuery, rowDimension, rowQueries, similarityCutoff]
+    [columnDimension, filters, gridQuery, heatmapMetric, rowDimension, rowQueries, similarityCutoff]
   );
 
 
@@ -1280,6 +1288,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     }
     if (urlColumn && columnOptions.some((option) => option.value === urlColumn)) {
       setColumnDimension(urlColumn);
+    }
+    const urlMetric = params.get(HEATMAP_URL_KEYS.metric);
+    if (urlMetric === 'documents' || urlMetric === 'chunks') {
+      setHeatmapMetric(urlMetric);
     }
     const parsedSensitivity = urlSensitivity ? Number(urlSensitivity) : NaN;
     if (!Number.isNaN(parsedSensitivity)) {
@@ -1329,6 +1341,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     columnDimension,
     gridQuery,
     hasGridSearchQuery,
+    heatmapMetric,
     rowDimension,
     rowQueries,
     similarityCutoff,
@@ -1384,11 +1397,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const filteredGridResults = useMemo<Record<string, CellResult>>(() => {
     const nextResults: Record<string, CellResult> = {};
     for (const [cellKey, results] of Object.entries(gridResults)) {
-      const filtered = results.filter((result) => result.score >= similarityCutoff);
-      nextResults[cellKey] = { results: filtered, count: filtered.length };
+      // score === 0 means no similarity was computed (filter-only scroll), always include
+      const filtered = results.filter((result) => result.score === 0 || result.score >= similarityCutoff);
+      const count =
+        heatmapMetric === 'documents'
+          ? new Set(filtered.map((result) => result.doc_id)).size
+          : filtered.length;
+      nextResults[cellKey] = { results: filtered, count };
     }
     return nextResults;
-  }, [gridResults, similarityCutoff]);
+  }, [gridResults, heatmapMetric, similarityCutoff]);
 
   const hasCompletedGridSearch = useMemo(() => {
     return !gridLoading && Object.keys(gridResults).length > 0;
@@ -1540,7 +1558,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
     Object.values(gridResults).forEach((results) => {
       results.forEach((result) => {
-        if (!Number.isFinite(result.score)) {
+        // score === 0 means filter-only (no similarity), skip for bounds
+        if (!Number.isFinite(result.score) || result.score === 0) {
           return;
         }
         hasScores = true;
@@ -1665,7 +1684,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       filteredColumnValues.forEach((columnValue) => {
         const cellKey = buildCellKey(String(rowKey), columnValue);
         const cellQuery = buildCellQuery(rowValue, columnValue, rowIndex);
-        if (!cellQuery) {
+        // For 'queries' dimension, skip cells with no query text
+        if (rowDimension === 'queries' && !cellQuery) {
           setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
           return;
         }
@@ -2031,9 +2051,22 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 </select>
               </div>
 
+              <div className="heatmap-control">
+                <label htmlFor="heatmap-metric">Metric</label>
+                <select
+                  id="heatmap-metric"
+                  className="heatmap-select"
+                  value={heatmapMetric}
+                  onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
+                >
+                  <option value="documents">Documents</option>
+                  <option value="chunks">Chunks</option>
+                </select>
+              </div>
+
               <div className="heatmap-control heatmap-slider">
-                <label htmlFor="heatmap-cutoff">
-                  Sensitivity: {similarityCutoff.toFixed(3)}
+                <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+                  Sensitivity: {scoreBounds.hasScores ? similarityCutoff.toFixed(3) : 'n/a'}
                 </label>
                 <input
                   id="heatmap-cutoff"
@@ -2043,6 +2076,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   step={0.001}
                   value={similarityCutoff}
                   onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
+                  disabled={!scoreBounds.hasScores}
+                  title={!scoreBounds.hasScores ? 'Sensitivity requires a search query' : undefined}
                 />
               </div>
               <HeatmapActionButtons
