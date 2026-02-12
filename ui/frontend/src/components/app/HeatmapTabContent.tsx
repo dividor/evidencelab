@@ -1505,7 +1505,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
-    const orderedValues = sortFacetValues(baseValues, modalSelectedValues);
+    // Transform taxonomy values to display clean names
+    const transformedValues = baseValues.map((facetValue) => ({
+      ...facetValue,
+      value: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
+    }));
+    const orderedValues = sortFacetValues(transformedValues, modalSelectedValues);
     return {
       filter_fields: { [heatmapFilterModal.field]: heatmapFilterModal.label },
       facets: { [heatmapFilterModal.field]: orderedValues },
@@ -1521,9 +1526,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (!results) {
       return heatmapFacetSearchResults;
     }
+    // Transform taxonomy values to display clean names
+    const transformedResults = results.map((facetValue) => ({
+      ...facetValue,
+      value: extractTaxonomyName(facetValue.value, field),
+    }));
     return {
       ...heatmapFacetSearchResults,
-      [field]: sortFacetValues(results, modalSelectedValues),
+      [field]: sortFacetValues(transformedResults, modalSelectedValues),
     };
   }, [heatmapFacetSearchResults, heatmapFilterModal, modalSelectedValues, sortFacetValues]);
 
