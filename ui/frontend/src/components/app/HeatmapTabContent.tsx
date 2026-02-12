@@ -1871,26 +1871,40 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const uniqueActiveCellDocuments = useMemo(() => {
     if (!activeCellResults || activeCellResults.length === 0) return [];
 
+    // Create composite key from title, year, and organization
+    const getDocKey = (result: SearchResult) => {
+      const title = result.title || '';
+      const year = result.year || result.metadata?.year || '';
+      const org = result.organization || result.metadata?.organization || '';
+      return `${title}|${year}|${org}`;
+    };
+
     // Count results per document
     const docCounts = new Map<string, number>();
     activeCellResults.forEach((result) => {
-      docCounts.set(result.doc_id, (docCounts.get(result.doc_id) || 0) + 1);
+      const key = getDocKey(result);
+      if (key !== '||') { // Skip if all fields are empty
+        docCounts.set(key, (docCounts.get(key) || 0) + 1);
+      }
     });
 
     // Get unique documents
     const seenDocs = new Set<string>();
     const uniqueDocs: SearchResult[] = [];
     activeCellResults.forEach((result) => {
-      if (!seenDocs.has(result.doc_id)) {
-        seenDocs.add(result.doc_id);
+      const key = getDocKey(result);
+      if (key !== '||' && !seenDocs.has(key)) {
+        seenDocs.add(key);
         uniqueDocs.push(result);
       }
     });
 
     // Sort by result count (descending)
     uniqueDocs.sort((a, b) => {
-      const countA = docCounts.get(a.doc_id) || 0;
-      const countB = docCounts.get(b.doc_id) || 0;
+      const keyA = getDocKey(a);
+      const keyB = getDocKey(b);
+      const countA = docCounts.get(keyA) || 0;
+      const countB = docCounts.get(keyB) || 0;
       return countB - countA;
     });
 
