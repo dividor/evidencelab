@@ -19,7 +19,7 @@ from pipeline.orchestrator.core_docs import (
     sort_recent_first,
 )
 from pipeline.orchestrator.core_processing import mark_as_stopped, run_processing
-from pipeline.orchestrator.logging import setup_logging
+from pipeline.orchestrator.log_config import setup_logging
 from pipeline.processors import ScanProcessor
 from pipeline.utilities.embedding_server import EmbeddingServerManager
 
