@@ -830,22 +830,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
-  useEffect(() => {
-    const fieldsToSync = [rowDimension, columnDimension];
-    fieldsToSync.forEach((field) => {
-      if (!filters[field] || heatmapSelectedFilters[field]) {
-        return;
-      }
-      const nextValues = filters[field]!
-        .split(',')
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0);
-      if (nextValues.length === 0) {
-        return;
-      }
-      setHeatmapSelectedFilters((prev) => ({ ...prev, [field]: nextValues }));
-    });
-  }, [columnDimension, filters, heatmapSelectedFilters, rowDimension]);
+  // Heatmap filters are now completely isolated from global filters
+  // No syncing needed
 
   const columnOptions = useMemo(() => {
     if (!facets) return [];
@@ -1048,15 +1034,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     (field: string, label: string) => {
       const values = getFieldValues(field);
       const currentSelected = heatmapSelectedFilters[field];
-      const defaultSelectedValues = (filters[field] || '')
-        .split(',')
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0);
-      const initialSelectedValues = currentSelected
-        ? [...currentSelected]
-        : defaultSelectedValues.length > 0
-          ? [...defaultSelectedValues]
-          : [...values];
+      const initialSelectedValues = currentSelected ? [...currentSelected] : [...values];
       setHeatmapCollapsedFilters(new Set());
       setHeatmapExpandedFilterLists(new Set());
       setHeatmapFilterSearchTerms((prev) => ({ ...prev, [field]: '' }));
@@ -1066,7 +1044,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         }
         return {
           ...prev,
-          [field]: defaultSelectedValues.length > 0 ? defaultSelectedValues : values,
+          [field]: values,
         };
       });
       setHeatmapFilterModal({ field, label, initialSelectedValues });
@@ -1212,15 +1190,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     []
   );
 
+  const handleHeatmapRemoveFilter = useCallback((coreField: string, value: string) => {
+    setHeatmapSelectedFilters((prev) => {
+      const currentValues = prev[coreField] || [];
+      const nextValues = currentValues.filter((v) => v !== value);
+      return { ...prev, [coreField]: nextValues };
+    });
+  }, []);
+
   const clearHeatmapFilterField = useCallback((field: string) => {
     setHeatmapSelectedFilters((prev) => ({ ...prev, [field]: [] }));
   }, []);
 
   const isHeatmapFieldFiltered = useCallback(
     (field: string) => {
-      if (filters[field]) {
-        return true;
-      }
       const selected = heatmapSelectedFilters[field];
       if (!selected) {
         return false;
@@ -1231,7 +1214,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       }
       return selected.length !== allValues.length;
     },
-    [filters, getFieldValues, heatmapSelectedFilters]
+    [getFieldValues, heatmapSelectedFilters]
   );
 
   const updateHeatmapURL = useCallback(
@@ -1255,9 +1238,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         params.set(HEATMAP_URL_KEYS.query, gridQuery.trim());
       }
 
-      for (const [field, value] of Object.entries(filters)) {
-        if (value) {
-          params.set(field, value);
+      for (const [field, values] of Object.entries(heatmapSelectedFilters)) {
+        if (values && values.length > 0) {
+          params.set(field, values.join(','));
         } else {
           params.delete(field);
         }
@@ -1272,7 +1255,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       url.search = params.toString();
       window.history.replaceState(null, '', url.toString());
     },
-    [columnDimension, filters, gridQuery, heatmapMetric, rowDimension, rowQueries, similarityCutoff]
+    [columnDimension, heatmapSelectedFilters, gridQuery, heatmapMetric, rowDimension, rowQueries, similarityCutoff]
   );
 
 
@@ -1301,6 +1284,26 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       setRowQueries(urlRowQueries);
     } else if (urlRow !== 'queries' && urlQuery) {
       setGridQuery(urlQuery);
+    }
+
+    // Load filter parameters from URL into heatmap filters
+    if (facets) {
+      const urlFilters: Record<string, string[]> = {};
+      const allFilterFields = Object.keys(facets.filter_fields);
+
+      allFilterFields.forEach((field) => {
+        const urlValue = params.get(field);
+        if (urlValue) {
+          const values = urlValue.split(',').map((v) => v.trim()).filter((v) => v.length > 0);
+          if (values.length > 0) {
+            urlFilters[field] = values;
+          }
+        }
+      });
+
+      if (Object.keys(urlFilters).length > 0) {
+        setHeatmapSelectedFilters(urlFilters);
+      }
     }
 
     heatmapAutoRunRef.current = params.get(HEATMAP_URL_KEYS.run) === 'true';
@@ -1675,9 +1678,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const tasks: Array<() => Promise<void>> = [];
     let failedRequests = 0;
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
-    const filterEntries = Object.entries(filters).filter(
-      ([field]) => !excludedFields.has(field)
-    );
+    const filterEntries = Object.entries(heatmapSelectedFilters)
+      .filter(([field]) => !excludedFields.has(field))
+      .map(([field, values]) => [field, values.length > 0 ? values.join(',') : null] as [string, string | null]);
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
@@ -1738,7 +1741,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     columnDimension,
     buildCellQuery,
     dataSource,
-    filters,
+    heatmapSelectedFilters,
     filteredColumnValues,
     filteredRowValues,
     gridQuery,
@@ -1961,17 +1964,17 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
   const filtersPanelProps: FiltersPanelProps = {
     facets,
-    selectedFilters,
-    collapsedFilters,
-    expandedFilterLists,
-    filterSearchTerms,
-    titleSearchResults,
-    facetSearchResults,
-    onRemoveFilter,
-    onToggleFilter,
-    onFilterSearchTermChange,
-    onToggleFilterListExpansion,
-    onFilterValuesChange,
+    selectedFilters: heatmapSelectedFilters,
+    collapsedFilters: heatmapCollapsedFilters,
+    expandedFilterLists: heatmapExpandedFilterLists,
+    filterSearchTerms: heatmapFilterSearchTerms,
+    titleSearchResults: heatmapTitleSearchResults,
+    facetSearchResults: heatmapFacetSearchResults,
+    onRemoveFilter: handleHeatmapRemoveFilter,
+    onToggleFilter: toggleHeatmapFilter,
+    onFilterSearchTermChange: handleHeatmapFilterSearchTermChange,
+    onToggleFilterListExpansion: toggleHeatmapFilterListExpansion,
+    onFilterValuesChange: handleHeatmapFilterValuesChange,
     searchDenseWeight,
     onSearchDenseWeightChange,
     keywordBoostShortQueries,

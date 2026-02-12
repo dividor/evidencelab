@@ -443,7 +443,8 @@ function App() {
             total: response.data?.total_documents,
           };
         } catch (error) {
-          console.error(`Failed to fetch stats for ${domainName}:`, error);
+          // Silently handle missing or unavailable data sources
+          // (e.g., WorldBank may be configured but not yet populated)
           return null;
         }
       }));
