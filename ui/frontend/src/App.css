@@ -6124,13 +6124,14 @@ h6,
   vertical-align: bottom;
   height: 120px;
   padding: 0.6rem 0.3rem;
+  text-align: center;
 }
 
 .heatmap-column-header-text {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   white-space: nowrap;
-  text-align: left;
+  display: inline-block;
 }
 
 .heatmap-query-cell {
