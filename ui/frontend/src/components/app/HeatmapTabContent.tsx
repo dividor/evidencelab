@@ -371,10 +371,31 @@ type HeatmapTableProps = {
   openCellModal: (rowIndex: number, columnValue: string) => void;
 };
 
+// Mapping from old SDG names to new SDG names with number prefix
+const SDG_NAME_MAPPING: Record<string, string> = {
+  'No Poverty': 'SDG1 - No Poverty',
+  'Zero Hunger': 'SDG2 - Zero Hunger',
+  'Good Health and Well-being': 'SDG3 - Good Health and Well-being',
+  'Quality Education': 'SDG4 - Quality Education',
+  'Gender Equality': 'SDG5 - Gender Equality',
+  'Clean Water and Sanitation': 'SDG6 - Clean Water and Sanitation',
+  'Affordable and Clean Energy': 'SDG7 - Affordable and Clean Energy',
+  'Decent Work and Economic Growth': 'SDG8 - Decent Work and Economic Growth',
+  'Industry, Innovation and Infrastructure': 'SDG9 - Industry, Innovation and Infrastructure',
+  'Reduced Inequalities': 'SDG10 - Reduced Inequalities',
+  'Sustainable Cities and Communities': 'SDG11 - Sustainable Cities and Communities',
+  'Responsible Consumption and Production': 'SDG12 - Responsible Consumption and Production',
+  'Climate Action': 'SDG13 - Climate Action',
+  'Life Below Water': 'SDG14 - Life Below Water',
+  'Life on Land': 'SDG15 - Life on Land',
+  'Peace, Justice and Strong Institutions': 'SDG16 - Peace, Justice and Strong Institutions',
+  'Partnerships for the Goals': 'SDG17 - Partnerships for the Goals',
+};
+
 /**
  * Extract display name from taxonomy value.
- * Taxonomy values are stored as "code - name" (e.g., "sdg1 - SDG1 - No Poverty").
- * This function returns only the name portion for cleaner display.
+ * Taxonomy values are stored as "code - name" (e.g., "sdg1 - No Poverty" or "sdg1 - SDG1 - No Poverty").
+ * This function returns only the name portion and applies name mapping for updated SDG names.
  */
 const extractTaxonomyName = (value: string, fieldName: string): string => {
   // Only process taxonomy fields (those starting with "tag_")
@@ -388,8 +409,15 @@ const extractTaxonomyName = (value: string, fieldName: string): string => {
     return value;
   }
 
-  // Return everything after the first " - "
-  return value.substring(separatorIndex + 3);
+  // Extract the name portion (everything after the first " - ")
+  let name = value.substring(separatorIndex + 3);
+
+  // For SDG taxonomy, apply name mapping to show updated names
+  if (fieldName === 'tag_sdg' && SDG_NAME_MAPPING[name]) {
+    name = SDG_NAME_MAPPING[name];
+  }
+
+  return name;
 };
 
 const HeatmapTable = ({
