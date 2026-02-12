@@ -14,7 +14,7 @@ from fastembed import TextEmbedding
 
 from pipeline.db import Database, get_db
 from pipeline.orchestrator import env
-from pipeline.orchestrator.logging import setup_logging
+from pipeline.orchestrator.log_config import setup_logging
 from pipeline.processors import (
     IndexProcessor,
     ParseProcessor,

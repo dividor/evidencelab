@@ -8,12 +8,13 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from qdrant_client.http import models as qmodels
 
-from pipeline.db import get_field_mapping, get_filter_fields
+from pipeline.db import get_field_mapping, get_filter_fields, get_taxonomy_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
 from ui.backend.services.search import (
     get_search_facets,
+    scroll_filtered_chunks,
     search_chunks,
     search_facet_values,
     search_titles,
@@ -367,6 +368,27 @@ def _build_facets_from_db(
             facets_result[core_field] = []
             continue
 
+        # Taxonomy tag fields live on chunks, not documents
+        if core_field.startswith("tag_"):
+            # Skip if db doesn't have facet method (e.g., in test mocks)
+            if not hasattr(db, "facet"):
+                facets_result[core_field] = []
+                continue
+            raw_counts = db.facet(
+                collection_name=db.chunks_collection,
+                key=core_field,
+                filter_conditions=None,
+                limit=2000,
+                exact=False,
+            )
+            # Don't split on commas - taxonomy values may contain commas
+            facets_result[core_field] = [
+                FacetValue(value=str(v), count=c)
+                for v, c in sorted(raw_counts.items(), key=lambda x: -x[1])
+                if v not in (None, "")
+            ]
+            continue
+
         storage_field = _resolve_storage_field(
             core_field, db.data_source if db else None
         )
@@ -446,11 +468,54 @@ async def perform_title_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _handle_title_filter(
+    pg, core_filters: Dict[str, Any], q: str
+) -> Optional[SearchResponse]:
+    title_filter = core_filters.get("title")
+    if not title_filter:
+        return None
+
+    t_title_filter_start = time.time()
+    title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
+    t_title_filter_end = time.time()
+    logger.info(
+        "[TIMING] title_doc_id_fetch: %.3fs (%s matches)",
+        t_title_filter_end - t_title_filter_start,
+        len(title_doc_ids),
+    )
+    if not title_doc_ids:
+        return SearchResponse(
+            results=[],
+            total=0,
+            query=q,
+            filters={"title": [title_filter]},
+        )
+    core_filters.pop("title", None)
+    core_filters["doc_id"] = title_doc_ids
+    return None
+
+
+def _build_filters_response(
+    core_filters: Dict[str, Any], title_filter: Optional[str]
+) -> Dict[str, List[str]]:
+    filters_response: Dict[str, List[str]] = {}
+    for key, value in core_filters.items():
+        if value is None:
+            filters_response[key] = []
+        elif isinstance(value, list):
+            filters_response[key] = [str(item) for item in value]
+        else:
+            filters_response[key] = [value]
+    if title_filter:
+        filters_response["title"] = [title_filter]
+    return filters_response
+
+
 @router.get("/search", response_model=SearchResponse)
 @limiter.limit(RATE_LIMIT_SEARCH)
 async def search(
     request: Request,
-    q: str = Query(..., description="Search query"),
+    q: str = Query("", description="Search query (empty for filter-only counting)"),
     limit: int = Query(50, description="Maximum results"),
     # Core field names (mapped to source fields internally)
     organization: Optional[str] = Query(None, description="Filter by organization"),
@@ -515,43 +580,44 @@ async def search(
             country,
             language,
         )
+        # Pick up tag_* query params (taxonomy filters) dynamically
+        for param_name, param_value in request.query_params.items():
+            if param_name.startswith("tag_") and param_value:
+                core_filters[param_name] = param_value
+
         title_filter = core_filters.get("title")
-        if title_filter:
-            t_title_filter_start = time.time()
-            title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
-            t_title_filter_end = time.time()
-            logger.info(
-                "[TIMING] title_doc_id_fetch: %.3fs (%s matches)",
-                t_title_filter_end - t_title_filter_start,
-                len(title_doc_ids),
-            )
-            if not title_doc_ids:
-                return SearchResponse(
-                    results=[],
-                    total=0,
-                    query=q,
-                    filters={"title": [title_filter]},
-                )
-            core_filters.pop("title", None)
-            core_filters["doc_id"] = title_doc_ids
+        early_response = _handle_title_filter(pg, core_filters, q)
+        if early_response:
+            return early_response
+
         section_types_list = _parse_section_types(section_types)
 
-        results = await _run_search_chunks(
-            q,
-            limit=limit,
-            dense_weight=dense_weight,
-            db=db,
-            filters=core_filters or None,
-            rerank=rerank,
-            recency_boost=recency_boost,
-            recency_weight=recency_weight,
-            recency_scale_days=recency_scale_days,
-            section_types=section_types_list,
-            keyword_boost_short_queries=keyword_boost_short_queries,
-            min_chunk_size=min_chunk_size,
-            dense_model=model,
-            rerank_model=rerank_model,
-        )
+        if not q.strip():
+            # Empty query: scroll with filters only (no embedding needed)
+            results = await run_in_threadpool(
+                scroll_filtered_chunks,
+                filters=core_filters or None,
+                limit=limit,
+                data_source=source,
+                section_types=section_types_list,
+            )
+        else:
+            results = await _run_search_chunks(
+                q,
+                limit=limit,
+                dense_weight=dense_weight,
+                db=db,
+                filters=core_filters or None,
+                rerank=rerank,
+                recency_boost=recency_boost,
+                recency_weight=recency_weight,
+                recency_scale_days=recency_scale_days,
+                section_types=section_types_list,
+                keyword_boost_short_queries=keyword_boost_short_queries,
+                min_chunk_size=min_chunk_size,
+                dense_model=model,
+                rerank_model=rerank_model,
+            )
 
         t2 = time.time()
         t_doc_cache_start = time.time()
@@ -603,16 +669,7 @@ async def search(
         )
         logger.info("[TIMING] TOTAL /search: %.3fs", t3 - t_start)
 
-        filters_response: Dict[str, List[str]] = {}
-        for key, value in core_filters.items():
-            if value is None:
-                filters_response[key] = []
-            elif isinstance(value, list):
-                filters_response[key] = [str(item) for item in value]
-            else:
-                filters_response[key] = [value]
-        if title_filter:
-            filters_response["title"] = [title_filter]
+        filters_response = _build_filters_response(core_filters, title_filter)
         return SearchResponse(
             results=filtered_results,
             total=len(filtered_results),
@@ -684,6 +741,8 @@ async def get_facets(
         db = get_db_for_source(source)
         pg = get_pg_for_source(source)
         filter_fields_config = get_filter_fields(source)
+        taxonomy_fields = get_taxonomy_filter_fields(source)
+        filter_fields_config = {**filter_fields_config, **taxonomy_fields}
 
         core_filters = _build_core_filters_from_params(
             organization,

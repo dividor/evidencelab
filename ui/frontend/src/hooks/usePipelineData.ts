@@ -24,6 +24,8 @@ interface SankeyData {
     layer2_count: number;
     layer3_count: number;
     layer4_count: number;
+    layer5_count?: number;
+    layer6_count?: number;
   };
 }
 
