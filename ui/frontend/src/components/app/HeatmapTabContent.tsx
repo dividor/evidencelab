@@ -1881,6 +1881,24 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return uniqueDocs;
   }, [activeCellResults]);
 
+  const [filteredDocId, setFilteredDocId] = useState<string | null>(null);
+
+  const displayedCellResults = useMemo(() => {
+    if (!filteredDocId) return activeCellResults;
+    return activeCellResults.filter(result => result.doc_id === filteredDocId);
+  }, [activeCellResults, filteredDocId]);
+
+  const filteredDocTitle = useMemo(() => {
+    if (!filteredDocId) return null;
+    const doc = uniqueActiveCellDocuments.find(d => d.doc_id === filteredDocId);
+    return doc?.title || 'Unknown Document';
+  }, [filteredDocId, uniqueActiveCellDocuments]);
+
+  // Reset filter when cell changes
+  useEffect(() => {
+    setFilteredDocId(null);
+  }, [activeCell]);
+
   const handleHeatmapHighlight = useCallback(
     async (chunkId: string, text: string) => {
       if (!activeCell || !semanticHighlighting || !SEARCH_SEMANTIC_HIGHLIGHTS) {
@@ -2365,16 +2383,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     const thumbnailUrl = parsedFolder
                       ? `${API_BASE_URL}/file/${parsedFolder}/thumbnail.png`
                       : null;
+                    const isSelected = filteredDocId === doc.doc_id;
                     return (
                       <div
                         key={doc.doc_id}
-                        className="heatmap-modal-thumbnail"
+                        className={`heatmap-modal-thumbnail ${isSelected ? 'selected' : ''}`}
                         onClick={() => {
-                          // Scroll to this document in results
-                          const docElement = document.getElementById(`search-result-${doc.doc_id}`);
-                          if (docElement) {
-                            docElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          }
+                          // Toggle filter for this document
+                          setFilteredDocId(isSelected ? null : doc.doc_id);
                         }}
                         title={doc.title || 'No title'}
                       >
@@ -2404,8 +2420,22 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             )}
             <div className="heatmap-modal-body">
+              {filteredDocId && (
+                <div className="heatmap-modal-filter-indicator">
+                  <span className="heatmap-modal-filter-text">
+                    Showing results from: <strong>{filteredDocTitle}</strong>
+                  </span>
+                  <button
+                    className="heatmap-modal-filter-clear"
+                    onClick={() => setFilteredDocId(null)}
+                    title="Clear filter"
+                  >
+                    × Clear filter
+                  </button>
+                </div>
+              )}
               <SearchResultsList
-                results={activeCellResults}
+                results={displayedCellResults}
                 minScore={0}
                 loading={false}
                 query={activeCell.query}
