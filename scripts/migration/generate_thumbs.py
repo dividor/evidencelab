@@ -62,10 +62,10 @@ def generate_thumbnail(pdf_path: str, output_folder: str) -> bool:
         # Get the first page
         page = doc[0]
 
-        # Calculate zoom to get ~300px max dimension
+        # Calculate zoom to get ~210px max dimension
         rect = page.rect
         max_dimension = max(rect.width, rect.height)
-        target_size = 300
+        target_size = 210
         zoom = target_size / max_dimension
 
         # Create transformation matrix for rendering
