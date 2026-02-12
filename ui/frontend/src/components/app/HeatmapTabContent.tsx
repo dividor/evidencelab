@@ -2348,8 +2348,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 </div>
                 <div className="heatmap-modal-thumbnails-container">
                   {uniqueActiveCellDocuments.map((doc) => {
-                    console.log('Debug doc:', { doc_id: doc.doc_id, sys_parsed_folder: doc.sys_parsed_folder, metadata: doc.metadata });
-
                     // Try to get sys_parsed_folder from multiple locations with fallback
                     let parsedFolder = doc.sys_parsed_folder;
 
@@ -2367,7 +2365,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     const thumbnailUrl = parsedFolder
                       ? `${API_BASE_URL}/file/${parsedFolder}/thumbnail.png`
                       : null;
-                    console.log('Thumbnail URL:', thumbnailUrl);
                     return (
                       <div
                         key={doc.doc_id}
