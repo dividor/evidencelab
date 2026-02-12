@@ -371,6 +371,27 @@ type HeatmapTableProps = {
   openCellModal: (rowIndex: number, columnValue: string) => void;
 };
 
+/**
+ * Extract display name from taxonomy value.
+ * Taxonomy values are stored as "code - name" (e.g., "sdg1 - SDG1 - No Poverty").
+ * This function returns only the name portion for cleaner display.
+ */
+const extractTaxonomyName = (value: string, fieldName: string): string => {
+  // Only process taxonomy fields (those starting with "tag_")
+  if (!fieldName.startsWith('tag_')) {
+    return value;
+  }
+
+  // Check if value contains " - " separator
+  const separatorIndex = value.indexOf(' - ');
+  if (separatorIndex === -1) {
+    return value;
+  }
+
+  // Return everything after the first " - "
+  return value.substring(separatorIndex + 3);
+};
+
 const HeatmapTable = ({
   rowDimension,
   rowOptions,
@@ -488,7 +509,7 @@ const HeatmapTable = ({
               </th>
               {filteredColumnValues.map((column) => (
                 <th key={column} className="heatmap-column-header">
-                  <div className="heatmap-column-header-text">{column}</div>
+                  <div className="heatmap-column-header-text">{extractTaxonomyName(column, columnDimension)}</div>
                 </th>
               ))}
             </tr>
@@ -566,7 +587,7 @@ const HeatmapTable = ({
                       </button>
                     </div>
                   ) : (
-                    <div className="heatmap-row-label">{rowValue}</div>
+                    <div className="heatmap-row-label">{extractTaxonomyName(rowValue, rowDimension)}</div>
                   )}
                 </td>
                 {filteredColumnValues.map((column) => {
@@ -1520,13 +1541,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
 
-    const headerRow = [`${rowLabel} \\ ${columnLabel}`, ...filteredColumnValues];
+    const headerRow = [
+      `${rowLabel} \\ ${columnLabel}`,
+      ...filteredColumnValues.map((col) => extractTaxonomyName(col, columnDimension))
+    ];
     const rows = filteredRowValues.map((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
       const label =
         rowDimension === 'queries' || rowDimension === 'title'
           ? rowValue.trim() || `Row ${rowIndex + 1}`
-          : rowValue;
+          : extractTaxonomyName(rowValue, rowDimension);
 
       const cellValues = filteredColumnValues.map((columnValue) => {
         const cellKey = buildCellKey(String(rowKey), columnValue);
