@@ -298,7 +298,7 @@ jobs:
 
       - name: Start Docker services
         run: |
-          docker compose up -d --no-build
+          docker compose up -d
         working-directory: ${{ github.workspace }}
 
       - name: Wait for Postgres and run migrations
