@@ -682,6 +682,162 @@ async def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/docsearch", response_model=SearchResponse)
+@limiter.limit(RATE_LIMIT_SEARCH)
+async def docsearch(
+    request: Request,
+    q: str = Query(
+        "",
+        description="Search query for document title/summary (empty for filter-only)",
+    ),
+    limit: int = Query(50, description="Maximum results"),
+    # Core field names (mapped to source fields internally)
+    organization: Optional[str] = Query(None, description="Filter by organization"),
+    title: Optional[str] = Query(None, description="Filter by title (partial match)"),
+    published_year: Optional[str] = Query(None, description="Filter by published year"),
+    document_type: Optional[str] = Query(None, description="Filter by document type"),
+    country: Optional[str] = Query(None, description="Filter by country"),
+    language: Optional[str] = Query(None, description="Filter by language"),
+    data_source: Optional[str] = Query(
+        None, description="Data source (e.g., 'uneg', 'gcf')"
+    ),
+):
+    """
+    Perform document-level search (searches title and summary, not chunks).
+    Returns documents matching the query and filters.
+    Used by heatmap when no query is specified and rows are not 'queries'.
+    """
+    t_start = time.time()
+    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    db = get_db_for_source(source)
+
+    try:
+        core_filters = _build_core_filters(
+            organization,
+            title,
+            published_year,
+            document_type,
+            country,
+            language,
+        )
+        # Pick up tag_* query params (taxonomy filters) dynamically
+        for param_name, param_value in request.query_params.items():
+            if param_name.startswith("tag_") and param_value:
+                core_filters[param_name] = param_value
+
+        # Build Qdrant filter conditions
+        filter_conditions = []
+
+        # Add text search conditions for query
+        if q.strip():
+            search_conditions = db._search_conditions(q.strip())
+            if search_conditions:
+                filter_conditions.append(qmodels.Filter(should=search_conditions))
+
+        # Add metadata filters
+        for core_field, value in core_filters.items():
+            if not value:
+                continue
+            storage_field = map_core_field_to_storage(core_field)
+            if not storage_field:
+                continue
+
+            # Handle title as text search
+            if core_field == "title":
+                filter_conditions.append(
+                    qmodels.Filter(
+                        should=[
+                            qmodels.FieldCondition(
+                                key=storage_field, match=qmodels.MatchText(text=value)
+                            )
+                        ]
+                    )
+                )
+            # Handle taxonomy fields (tag_*) as array matching
+            elif core_field.startswith("tag_"):
+                # Extract just the code if value contains " - " (e.g., "gender_equality - Gender Equality..." -> "gender_equality")
+                taxonomy_code = value.split(" - ")[0] if " - " in value else value
+                filter_conditions.append(
+                    qmodels.Filter(
+                        must=[
+                            qmodels.FieldCondition(
+                                key=storage_field, match=qmodels.MatchAny(any=[taxonomy_code])
+                            )
+                        ]
+                    )
+                )
+            else:
+                filter_conditions.append(
+                    qmodels.Filter(
+                        must=[
+                            qmodels.FieldCondition(
+                                key=storage_field, match=qmodels.MatchValue(value=value)
+                            )
+                        ]
+                    )
+                )
+
+        # Combine all filter conditions
+        if filter_conditions:
+            combined_filter = qmodels.Filter(must=filter_conditions)
+        else:
+            combined_filter = None
+
+        # Scroll documents
+        results = await run_in_threadpool(
+            db._scroll_documents, query_filter=combined_filter, end_idx=limit
+        )
+
+        # Format results
+        documents = []
+        for point in results[:limit]:
+            if not point.payload:
+                continue
+
+            doc_data = {"doc_id": str(point.id), **point.payload}
+            # Normalize to core field names
+            normalized_doc = normalize_document_payload(doc_data)
+            # Create a pseudo-chunk result with document data
+            result = SearchResult(
+                chunk_id=str(point.id),
+                doc_id=str(point.id),
+                text=normalized_doc.get("sys_full_summary", "")[
+                    :500
+                ],  # Truncate summary
+                page_num=1,
+                headings=[],  # Document-level search has no chunk headings
+                score=1.0,  # No scoring for filter-only search
+                title=normalized_doc.get("title", ""),
+                organization=normalized_doc.get("organization"),
+                year=normalized_doc.get("published_year"),
+                metadata=normalized_doc.get("metadata", {}),
+                sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
+                sys_filepath=normalized_doc.get("sys_filepath"),
+            )
+            documents.append(result)
+
+        t_end = time.time()
+        logger.info(
+            "[TIMING] TOTAL /docsearch: %.3fs (%d docs)",
+            t_end - t_start,
+            len(documents),
+        )
+
+        filters_response = _build_filters_response(
+            core_filters, core_filters.get("title")
+        )
+        return SearchResponse(
+            results=documents,
+            total=len(documents),
+            query=q,
+            filters=filters_response,
+        )
+
+    except Exception as e:
+        logger.exception("Document search error", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/search/facet-values")
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def search_facet_values_endpoint(
