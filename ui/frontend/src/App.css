@@ -6475,19 +6475,18 @@ h6,
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--white);
-  border: 1px solid var(--gray-200);
+  border: 2px solid var(--gray-200);
   transition: all 0.2s ease;
 }
 
 .heatmap-modal-thumbnail:hover {
-  border-color: var(--brand-primary);
+  border: 2px solid var(--brand-primary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transform: translateY(-2px);
 }
 
 .heatmap-modal-thumbnail.selected {
-  border-color: var(--brand-primary);
-  border-width: 2px;
+  border: 2px solid var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.2);
 }
 
