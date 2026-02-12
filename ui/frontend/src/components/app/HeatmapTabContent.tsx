@@ -1868,6 +1868,19 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return filteredGridResults[cellKey]?.results || [];
   }, [activeCell, filteredGridResults, filteredRowValues, rowDimension]);
 
+  const uniqueActiveCellDocuments = useMemo(() => {
+    if (!activeCellResults || activeCellResults.length === 0) return [];
+    const seenDocs = new Set<string>();
+    const uniqueDocs: SearchResult[] = [];
+    activeCellResults.forEach((result) => {
+      if (!seenDocs.has(result.doc_id)) {
+        seenDocs.add(result.doc_id);
+        uniqueDocs.push(result);
+      }
+    });
+    return uniqueDocs;
+  }, [activeCellResults]);
+
   const handleHeatmapHighlight = useCallback(
     async (chunkId: string, text: string) => {
       if (!activeCell || !semanticHighlighting || !SEARCH_SEMANTIC_HIGHLIGHTS) {
@@ -2328,6 +2341,71 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 ×
               </button>
             </div>
+            {uniqueActiveCellDocuments.length > 0 && (
+              <div className="heatmap-modal-thumbnails">
+                <div className="heatmap-modal-thumbnails-label">
+                  Documents ({uniqueActiveCellDocuments.length}):
+                </div>
+                <div className="heatmap-modal-thumbnails-container">
+                  {uniqueActiveCellDocuments.map((doc) => {
+                    console.log('Debug doc:', { doc_id: doc.doc_id, sys_parsed_folder: doc.sys_parsed_folder, metadata: doc.metadata });
+
+                    // Try to get sys_parsed_folder from multiple locations with fallback
+                    let parsedFolder = doc.sys_parsed_folder;
+
+                    // Check if it's in metadata.sys_data
+                    if (!parsedFolder && doc.metadata?.sys_data?.sys_parsed_folder) {
+                      parsedFolder = doc.metadata.sys_data.sys_parsed_folder;
+                    }
+
+                    // Fallback: construct path from available data
+                    if (!parsedFolder && doc.organization && doc.year && doc.doc_id) {
+                      const dataSource = doc.data_source || selectedDomain;
+                      parsedFolder = `data/${dataSource}/parsed/${doc.organization}/${doc.year}/${doc.doc_id}`;
+                    }
+
+                    const thumbnailUrl = parsedFolder
+                      ? `${API_BASE_URL}/file/${parsedFolder}/thumbnail.png`
+                      : null;
+                    console.log('Thumbnail URL:', thumbnailUrl);
+                    return (
+                      <div
+                        key={doc.doc_id}
+                        className="heatmap-modal-thumbnail"
+                        onClick={() => {
+                          // Scroll to this document in results
+                          const docElement = document.getElementById(`search-result-${doc.doc_id}`);
+                          if (docElement) {
+                            docElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }}
+                        title={doc.title || 'No title'}
+                      >
+                        {thumbnailUrl ? (
+                          <img
+                            src={thumbnailUrl}
+                            alt={doc.title || 'Document thumbnail'}
+                            className="heatmap-modal-thumbnail-image"
+                            onError={(e) => {
+                              // Hide thumbnail on error
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <div className="heatmap-modal-thumbnail-placeholder">
+                            No thumbnail
+                          </div>
+                        )}
+                        <div className="heatmap-modal-thumbnail-title">
+                          {doc.title || 'Untitled'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="heatmap-modal-body">
               <SearchResultsList
                 results={activeCellResults}

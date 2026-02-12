@@ -96,6 +96,9 @@ export interface SearchResult {
   title: string;
   organization?: string;
   year?: string;
+  // System fields
+  sys_parsed_folder?: string;
+  sys_filepath?: string;
   // ALL document metadata as flexible JSON - any field can appear here
   metadata: Record<string, any>;
   // Allow any additional fields to be passed through
