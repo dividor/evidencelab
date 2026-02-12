@@ -1453,7 +1453,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       const filtered = results.filter((result) => result.score === 0 || result.score >= similarityCutoff);
       const count =
         heatmapMetric === 'documents'
-          ? new Set(filtered.map((result) => result.doc_id)).size
+          ? (() => {
+              // Use composite key (title|year|org) for deduplication to match thumbnail logic
+              const uniqueKeys = new Set<string>();
+              filtered.forEach((result) => {
+                const title = result.title || '';
+                const year = result.year || result.metadata?.year || '';
+                const org = result.organization || result.metadata?.organization || '';
+                const key = `${title}|${year}|${org}`;
+                if (key !== '||') {
+                  uniqueKeys.add(key);
+                }
+              });
+              return uniqueKeys.size;
+            })()
           : filtered.length;
       nextResults[cellKey] = { results: filtered, count };
     }
