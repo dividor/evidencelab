@@ -275,9 +275,7 @@ def _apply_status_counts(
 
     total_tagged = c_tagged + c_indexed + c_index_failed + c_indexing
     total_summarized = c_summarized + total_tagged + c_tagging
-    total_parsed = (
-        c_parsed + total_summarized + c_summarizing + c_summarize_failed
-    )
+    total_parsed = c_parsed + total_summarized + c_summarizing + c_summarize_failed
     total_downloaded = (
         c_downloaded + total_parsed + c_parse_failed + c_parsing + c_stopped
     )
