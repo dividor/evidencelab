@@ -291,9 +291,14 @@ jobs:
           test -f .env || touch .env
         working-directory: ${{ github.workspace }}
 
+      - name: Build shared Python image
+        run: |
+          docker build -t evidencelab-ai-python:latest --target runtime .
+        working-directory: ${{ github.workspace }}
+
       - name: Start Docker services
         run: |
-          docker compose up -d
+          docker compose up -d --no-build
         working-directory: ${{ github.workspace }}
 
       - name: Wait for Postgres and run migrations
