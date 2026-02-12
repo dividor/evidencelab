@@ -311,31 +311,46 @@ const HeatmapActionButtons = ({
   executeGridSearch,
   gridLoading,
   hasGridSearchQuery,
+  rowDimension,
+  gridQuery,
+  setGridQuery,
 }: {
   hasCompletedGridSearch: boolean;
   handleDownloadExcel: () => void;
   executeGridSearch: () => void;
   gridLoading: boolean;
   hasGridSearchQuery: boolean;
+  rowDimension: string;
+  gridQuery: string;
+  setGridQuery: (value: string) => void;
 }) => (
   <div className="heatmap-actions">
-    {hasCompletedGridSearch && (
-      <button
-        className="heatmap-download-button"
-        onClick={handleDownloadExcel}
-        type="button"
-      >
-        <span className="heatmap-download-icon" aria-hidden="true">
-          <svg viewBox="0 0 20 20" focusable="false">
-            <path
-              d="M10 2a1 1 0 0 1 1 1v7.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V3a1 1 0 0 1 1-1zm-6 12a1 1 0 0 1 1 1v2h10v-2a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"
-              fill="currentColor"
-            />
-          </svg>
-        </span>
-        Download Heatmap
-      </button>
+    {rowDimension !== 'queries' && (
+      <input
+        id="heatmap-grid-query"
+        className="heatmap-query-input"
+        type="text"
+        value={gridQuery}
+        onChange={(event) => setGridQuery(event.target.value)}
+        placeholder="Enter your search query"
+      />
     )}
+    <button
+      className="heatmap-download-button"
+      onClick={handleDownloadExcel}
+      disabled={!hasCompletedGridSearch}
+      type="button"
+    >
+      <span className="heatmap-download-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20" focusable="false">
+          <path
+            d="M10 2a1 1 0 0 1 1 1v7.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V3a1 1 0 0 1 1-1zm-6 12a1 1 0 0 1 1 1v2h10v-2a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"
+            fill="currentColor"
+          />
+        </svg>
+      </span>
+      Download Heatmap
+    </button>
     <button
       className="search-button heatmap-search-button"
       onClick={executeGridSearch}
@@ -353,8 +368,6 @@ type HeatmapTableProps = {
   filteredColumnValues: string[];
   columnDimension: string;
   columnHeaderLabel: string;
-  gridQuery: string;
-  setGridQuery: (value: string) => void;
   rowQueries: string[];
   rowTitleSelections: Record<number, FacetValue>;
   rowTitleInputRefs: React.MutableRefObject<Record<number, HTMLInputElement | null>>;
@@ -427,8 +440,6 @@ const HeatmapTable = ({
   filteredColumnValues,
   columnDimension,
   columnHeaderLabel,
-  gridQuery,
-  setGridQuery,
   rowQueries,
   rowTitleSelections,
   rowTitleInputRefs,
@@ -446,18 +457,6 @@ const HeatmapTable = ({
 }: HeatmapTableProps) => {
   return (
     <div className="heatmap-table-wrapper">
-      {rowDimension !== 'queries' && (
-        <div className="heatmap-query-row">
-          <input
-            id="heatmap-grid-query"
-            className="heatmap-query-input"
-            type="text"
-            value={gridQuery}
-            onChange={(event) => setGridQuery(event.target.value)}
-            placeholder="Enter your search query"
-          />
-        </div>
-      )}
       <div className="heatmap-table-scroll">
         <table className="heatmap-table">
           <colgroup>
@@ -657,8 +656,6 @@ const HeatmapGridContent = ({
   rowOptions,
   columnDimension,
   columnHeaderLabel,
-  gridQuery,
-  setGridQuery,
   rowQueries,
   rowTitleSelections,
   rowTitleInputRefs,
@@ -706,8 +703,6 @@ const HeatmapGridContent = ({
       filteredColumnValues={filteredColumnValues}
       columnDimension={columnDimension}
       columnHeaderLabel={columnHeaderLabel}
-      gridQuery={gridQuery}
-      setGridQuery={setGridQuery}
       rowQueries={rowQueries}
       rowTitleSelections={rowTitleSelections}
       rowTitleInputRefs={rowTitleInputRefs}
@@ -871,6 +866,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const selectAllRef = useRef<HTMLInputElement | null>(null);
   const [activeCell, setActiveCell] = useState<{
     rowIndex: number;
+    rowValue: string;
     columnValue: string;
     query: string;
   } | null>(null);
@@ -1865,7 +1861,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const rowValue = filteredRowValues[rowIndex] || '';
     const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
     const query = buildCellQuery(rowValue, columnValue, rowIndex);
-    setActiveCell({ rowIndex, columnValue, query: query || '' });
+    setActiveCell({ rowIndex, rowValue, columnValue, query: query || '' });
   };
 
   const closeCellModal = () => {
@@ -2225,6 +2221,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 executeGridSearch={executeGridSearch}
                 gridLoading={gridLoading}
                 hasGridSearchQuery={hasGridSearchQuery}
+                rowDimension={rowDimension}
+                gridQuery={gridQuery}
+                setGridQuery={setGridQuery}
               />
             </div>
 
@@ -2238,8 +2237,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               rowOptions={rowOptions}
               columnDimension={columnDimension}
               columnHeaderLabel={columnHeaderLabel}
-              gridQuery={gridQuery}
-              setGridQuery={setGridQuery}
               rowQueries={rowQueries}
               rowTitleSelections={rowTitleSelections}
               rowTitleInputRefs={rowTitleInputRefs}
@@ -2395,7 +2392,13 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           <div className="heatmap-modal" onClick={(event) => event.stopPropagation()}>
             <div className="heatmap-modal-header">
               <div>
-                <h3>Results for {activeCell.columnValue}</h3>
+                <h3>
+                  {rowDimension === 'queries'
+                    ? `Query ${activeCell.rowIndex + 1}`
+                    : `${rowOptions.find((option) => option.value === rowDimension)?.label || rowDimension}: ${extractTaxonomyName(activeCell.rowValue, rowDimension)}`}
+                  {' | '}
+                  {columnHeaderLabel}: {extractTaxonomyName(activeCell.columnValue, columnDimension)}
+                </h3>
                 <div className="heatmap-modal-subtitle">{activeCell.query || 'No query'}</div>
               </div>
               <button className="heatmap-modal-close" onClick={closeCellModal}>

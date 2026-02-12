@@ -5872,7 +5872,18 @@ h6,
   display: flex;
   gap: var(--spacing-sm);
   align-items: center;
-  margin-left: auto;
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.heatmap-actions .heatmap-query-input {
+  flex: 1;
+  min-width: 400px;
+  height: 48px;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 1.125rem;
 }
 
 .heatmap-download-button {
@@ -5880,23 +5891,21 @@ h6,
   align-items: center;
   gap: 0.5rem;
   height: 48px;
-  padding: 1rem 2.25rem;
+  padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--gray-200);
   background: var(--white);
   color: var(--gray-800);
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   font-family: 'Poppins', sans-serif;
-  min-width: 170px;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
   box-shadow: var(--shadow-xs);
-  align-self: flex-end;
-  margin-top: 22px;
+  flex-shrink: 0;
 }
 
-.heatmap-download-button:hover {
+.heatmap-download-button:hover:not(:disabled) {
   border-color: var(--gray-300);
   background: var(--gray-100);
 }
@@ -5906,12 +5915,17 @@ h6,
   border-color: var(--gray-200);
   background: var(--gray-100);
   cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.heatmap-download-button:disabled .heatmap-download-icon {
+  color: var(--gray-400);
 }
 
 .heatmap-download-icon {
   display: inline-flex;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #217346;
 }
 
@@ -6359,11 +6373,9 @@ h6,
 }
 
 .heatmap-search-button {
-  margin-left: auto;
   height: 48px;
-  min-width: 160px;
-  align-self: flex-end;
-  margin-top: 22px;
+  min-width: 140px;
+  flex-shrink: 0;
 }
 
 .heatmap-cell {
