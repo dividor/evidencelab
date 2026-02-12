@@ -1171,6 +1171,58 @@ class ParseProcessor(BaseProcessor):
         """
         return save_images_metadata(self, document, output_folder)
 
+    def _generate_thumbnail(
+        self, filepath: str, output_folder: str, file_format: str
+    ) -> None:
+        """
+        Generate a thumbnail from the first page of the document.
+
+        Creates thumbnail.png in the output folder with a max dimension of 300px.
+
+        Args:
+            filepath: Path to the source document
+            output_folder: Directory where thumbnail.png will be saved
+            file_format: File format (pdf, docx, etc.)
+        """
+        try:
+            # Only generate thumbnails for PDF files
+            if file_format != "pdf":
+                logger.debug("  Skipping thumbnail generation for non-PDF file")
+                return
+
+            # Open the PDF
+            doc = fitz.open(filepath)
+            if len(doc) == 0:
+                logger.warning("  ⚠ Cannot generate thumbnail: PDF has no pages")
+                doc.close()
+                return
+
+            # Get the first page
+            page = doc[0]
+
+            # Calculate zoom to get ~300px max dimension
+            # page.rect gives us page dimensions in points
+            rect = page.rect
+            max_dimension = max(rect.width, rect.height)
+            target_size = 300
+            zoom = target_size / max_dimension
+
+            # Create transformation matrix for rendering
+            mat = fitz.Matrix(zoom, zoom)
+
+            # Render page to pixmap (image)
+            pix = page.get_pixmap(matrix=mat)
+
+            # Save as PNG
+            thumbnail_path = Path(output_folder) / "thumbnail.png"
+            pix.save(str(thumbnail_path))
+
+            doc.close()
+            logger.info("  ✓ Generated thumbnail: thumbnail.png")
+
+        except Exception as e:
+            logger.warning("  ⚠ Failed to generate thumbnail: %s", e)
+
     def _parse_chunks(self, chunk_files: list[dict]) -> list[dict]:
         """Parse PDF chunks with optional timeouts."""
         return parse_chunks(self, chunk_files)
