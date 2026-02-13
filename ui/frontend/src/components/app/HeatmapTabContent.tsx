@@ -2496,7 +2496,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     </>
                   ) : (
                     <>
-                      Showing all results. Click on a document to filter.
+                      Showing all results. Click on a document above to filter.
                     </>
                   )}
                 </span>

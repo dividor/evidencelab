@@ -6613,6 +6613,7 @@ h6,
   font-style: italic;
   word-wrap: break-word;
   margin-top: auto;
+  margin-bottom: 0.3rem;
 }
 
 .heatmap-modal-filter-indicator {
