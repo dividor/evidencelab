@@ -2407,16 +2407,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 </h3>
                 <div className="heatmap-modal-subtitle">{activeCell.query || 'No query'}</div>
               </div>
-              <button className="heatmap-modal-close" onClick={closeCellModal}>
-                ×
-              </button>
+              <div className="heatmap-modal-header-right">
+                {uniqueActiveCellDocuments.length > 0 && (
+                  <div className="heatmap-modal-doc-count">
+                    {uniqueActiveCellDocuments.length} {uniqueActiveCellDocuments.length === 1 ? 'Document' : 'Documents'}
+                  </div>
+                )}
+                <button className="heatmap-modal-close" onClick={closeCellModal}>
+                  ×
+                </button>
+              </div>
             </div>
             <div className="heatmap-modal-content">
               {uniqueActiveCellDocuments.length > 0 && (
                 <div className="heatmap-modal-thumbnails">
-                <div className="heatmap-modal-thumbnails-label">
-                  Documents ({uniqueActiveCellDocuments.length}):
-                </div>
                 <div className="heatmap-modal-thumbnails-container">
                   {uniqueActiveCellDocuments.map((doc) => {
                     // Try to get sys_parsed_folder from multiple locations with fallback

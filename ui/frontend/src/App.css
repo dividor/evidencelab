@@ -6447,6 +6447,22 @@ h6,
   font-size: 0.85rem;
 }
 
+.heatmap-modal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.heatmap-modal-doc-count {
+  background: var(--brand-primary);
+  color: var(--white);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .heatmap-modal-close {
   background: none;
   border: none;
@@ -6522,8 +6538,8 @@ h6,
 
 .heatmap-modal-thumbnail {
   flex-shrink: 0;
-  width: 280px;
-  height: 126px;
+  width: 196px;
+  height: 88px;
   cursor: pointer;
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -6547,8 +6563,8 @@ h6,
 
 .heatmap-modal-thumbnail-image-container {
   flex-shrink: 0;
-  width: 105px;
-  height: 126px;
+  width: 74px;
+  height: 88px;
   background: var(--white);
 }
 
