@@ -393,33 +393,38 @@ def _build_query_filter(
         text_match_fields = {"map_title"}
         for field, value in filters.items():
             if field == "doc_id":
+                # doc_id filter must be required, but we need to check both doc_id and sys_doc_id
+                # Create a nested filter: MUST(doc_id=X OR sys_doc_id=X)
+                doc_id_should_conditions = []
                 multi_values = _as_multi_values(value)
                 if multi_values:
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="doc_id",
                             match=models.MatchAny(any=multi_values),
                         )
                     )
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="sys_doc_id",
                             match=models.MatchAny(any=multi_values),
                         )
                     )
                 else:
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="doc_id",
                             match=models.MatchValue(value=value),
                         )
                     )
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="sys_doc_id",
                             match=models.MatchValue(value=value),
                         )
                     )
+                # Wrap the should conditions in a nested filter and add to must
+                must_conditions.append(models.Filter(should=doc_id_should_conditions))
                 continue
             condition = _build_filter_condition(field, value, text_match_fields)
             if condition:

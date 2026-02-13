@@ -31,6 +31,8 @@ interface SearchTabContentProps {
   minScore: number;
   maxScore: number;
   onMinScoreChange: (value: number) => void;
+  autoMinScore: boolean;
+  onAutoMinScoreToggle: (value: boolean) => void;
   rerankEnabled: boolean;
   onRerankToggle: (value: boolean) => void;
   recencyBoostEnabled: boolean;
@@ -90,6 +92,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   minScore,
   maxScore,
   onMinScoreChange,
+  autoMinScore,
+  onAutoMinScoreToggle,
   rerankEnabled,
   onRerankToggle,
   recencyBoostEnabled,
@@ -154,6 +158,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         minScore={minScore}
         maxScore={maxScore}
         onMinScoreChange={onMinScoreChange}
+        autoMinScore={autoMinScore}
+        onAutoMinScoreToggle={onAutoMinScoreToggle}
         rerankEnabled={rerankEnabled}
         onRerankToggle={onRerankToggle}
         recencyBoostEnabled={recencyBoostEnabled}

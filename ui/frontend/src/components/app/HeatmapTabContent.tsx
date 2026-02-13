@@ -62,6 +62,8 @@ interface HeatmapTabContentProps {
   minScore: number;
   maxScore: number;
   onMinScoreChange: (value: number) => void;
+  autoMinScore: boolean;
+  onAutoMinScoreToggle: (value: boolean) => void;
   rerankEnabled: boolean;
   onRerankToggle: (value: boolean) => void;
   recencyBoostEnabled: boolean;
@@ -863,6 +865,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   minScore,
   maxScore,
   onMinScoreChange,
+  autoMinScore,
+  onAutoMinScoreToggle,
   rerankEnabled,
   onRerankToggle,
   recencyBoostEnabled,
@@ -2316,6 +2320,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     minScore,
     maxScore,
     onMinScoreChange,
+    autoMinScore,
+    onAutoMinScoreToggle,
     rerankEnabled,
     onRerankToggle,
     recencyBoostEnabled,

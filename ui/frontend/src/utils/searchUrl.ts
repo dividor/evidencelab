@@ -13,6 +13,7 @@ export interface SearchStateFromURL {
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   semanticHighlighting: boolean;
+  autoMinScore: boolean;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -117,6 +118,7 @@ export const getSearchStateFromURL = (
     keywordBoostShortQueries: parseBooleanParam(params, 'keyword_boost', true),
     minChunkSize: parseIntParam(params, 'min_chunk_size', 100),
     semanticHighlighting: parseBooleanParam(params, 'highlight', true),
+    autoMinScore: parseBooleanParam(params, 'auto_min_score', false),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -194,6 +196,7 @@ export const buildSearchURL = (
   keywordBoostShortQueries?: boolean,
   minChunkSize?: number,
   semanticHighlighting?: boolean,
+  autoMinScore?: boolean,
   model?: string | null,
   modelCombo?: string | null,
   dataset?: string | null
@@ -212,6 +215,7 @@ export const buildSearchURL = (
   setParamIfFalse(params, 'keyword_boost', keywordBoostShortQueries);
   setParamIfNotDefault(params, 'min_chunk_size', minChunkSize, 100);
   setParamIfFalse(params, 'highlight', semanticHighlighting);
+  setParamIfTrue(params, 'auto_min_score', autoMinScore);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

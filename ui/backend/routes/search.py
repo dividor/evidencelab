@@ -187,6 +187,36 @@ def _strip_heading_row(text: str, chunk_payload: Dict[str, Any]) -> str:
     return "\n".join(lines).lstrip("\n")
 
 
+def _apply_auto_min_score_filter(results: List[SearchResult]) -> List[SearchResult]:
+    """
+    Filter results by calculating 30th percentile threshold.
+    Results below this threshold are filtered out.
+    """
+    if not results:
+        return results
+
+    scores = [r.score for r in results if r.score is not None]
+    if not scores:
+        return results
+
+    # Calculate 30th percentile
+    sorted_scores = sorted(scores)
+    percentile_index = int(len(sorted_scores) * 0.3)
+    if percentile_index >= len(sorted_scores):
+        percentile_index = len(sorted_scores) - 1
+    threshold = sorted_scores[percentile_index]
+
+    # Filter results
+    filtered = [r for r in results if r.score is not None and r.score >= threshold]
+    logger.info(
+        "[AUTO_MIN_SCORE] 30th percentile threshold: %.6f, filtered %d/%d results",
+        threshold,
+        len(results) - len(filtered),
+        len(results),
+    )
+    return filtered
+
+
 def _build_search_results(
     results,
     doc_cache,
@@ -558,6 +588,9 @@ async def search(
     rerank_model: Optional[str] = Query(
         None, description="Name of reranker model to use"
     ),
+    auto_min_score: bool = Query(
+        False, description="Automatically filter bottom 30% of results by score"
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -660,6 +693,10 @@ async def search(
             t_build_results_end - t_build_results_start,
             len(filtered_results),
         )
+
+        # Apply auto min score filtering if enabled
+        if auto_min_score:
+            filtered_results = _apply_auto_min_score_filter(filtered_results)
 
         t3 = time.time()
         logger.info(
