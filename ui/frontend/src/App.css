@@ -6599,7 +6599,6 @@ h6,
   background: var(--gray-50);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
 }
 
 .heatmap-modal-thumbnail-doc-title {
