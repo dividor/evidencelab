@@ -682,6 +682,180 @@ async def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _get_indexed_doc_ids(pg, source: str) -> List[str]:
+    """Fetch indexed document IDs from Postgres."""
+    return pg.fetch_indexed_doc_ids()
+
+
+def _build_metadata_filter_condition(
+    core_field: str, value: Any, storage_field: str
+) -> qmodels.Filter:
+    """Build a Qdrant filter condition for a single metadata field."""
+    if core_field == "title":
+        return qmodels.Filter(
+            should=[
+                qmodels.FieldCondition(
+                    key=storage_field, match=qmodels.MatchText(text=value)
+                )
+            ]
+        )
+    if core_field.startswith("tag_"):
+        taxonomy_code = value.split(" - ")[0] if " - " in value else value
+        return qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key=storage_field,
+                    match=qmodels.MatchAny(any=[taxonomy_code]),
+                )
+            ]
+        )
+    return qmodels.Filter(
+        must=[
+            qmodels.FieldCondition(
+                key=storage_field, match=qmodels.MatchValue(value=value)
+            )
+        ]
+    )
+
+
+def _build_docsearch_filters(
+    q: str, core_filters: Dict[str, Any], indexed_doc_ids: List[str], db
+) -> Optional[qmodels.Filter]:
+    """Build combined Qdrant filter conditions for document search."""
+    filter_conditions = []
+
+    if q.strip():
+        search_conditions = db._search_conditions(q.strip())
+        if search_conditions:
+            filter_conditions.append(qmodels.Filter(should=search_conditions))
+
+    for core_field, value in core_filters.items():
+        if not value:
+            continue
+        storage_field = map_core_field_to_storage(core_field)
+        if not storage_field:
+            continue
+        filter_conditions.append(
+            _build_metadata_filter_condition(core_field, value, storage_field)
+        )
+
+    filter_conditions.append(
+        qmodels.Filter(should=[qmodels.HasIdCondition(has_id=indexed_doc_ids)])
+    )
+
+    return qmodels.Filter(must=filter_conditions) if filter_conditions else None
+
+
+def _format_document_result(
+    point, sys_fields_map: Dict[str, Any], source: str
+) -> Optional[SearchResult]:
+    """Format a single document point into a SearchResult."""
+    if not point.payload:
+        return None
+
+    doc_data = {"doc_id": str(point.id), **point.payload}
+    sys_fields = sys_fields_map.get(str(point.id), {})
+    doc_data.update(sys_fields)
+    normalized_doc = normalize_document_payload(doc_data)
+
+    full_summary = normalized_doc.get("sys_full_summary", "")
+    return SearchResult(
+        chunk_id=str(point.id),
+        doc_id=str(point.id),
+        text=(
+            full_summary[:500] if full_summary else ""
+        ),  # Truncated for backwards compatibility
+        page_num=1,
+        headings=[],
+        score=0.0,
+        title=normalized_doc.get("title", ""),
+        organization=normalized_doc.get("organization"),
+        year=normalized_doc.get("published_year"),
+        metadata=normalized_doc.get("metadata", {}),
+        sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
+        sys_filepath=normalized_doc.get("sys_filepath"),
+        sys_full_summary=full_summary,  # Full summary without truncation
+        data_source=source,
+    )
+
+
+@router.get("/docsearch", response_model=SearchResponse)
+@limiter.limit(RATE_LIMIT_SEARCH)
+async def docsearch(
+    request: Request,
+    q: str = Query(
+        "",
+        description="Search query for document title/summary (empty for filter-only)",
+    ),
+    limit: int = Query(50, description="Maximum results"),
+    # Core field names (mapped to source fields internally)
+    organization: Optional[str] = Query(None, description="Filter by organization"),
+    title: Optional[str] = Query(None, description="Filter by title (partial match)"),
+    published_year: Optional[str] = Query(None, description="Filter by published year"),
+    document_type: Optional[str] = Query(None, description="Filter by document type"),
+    country: Optional[str] = Query(None, description="Filter by country"),
+    language: Optional[str] = Query(None, description="Filter by language"),
+    data_source: Optional[str] = Query(
+        None, description="Data source (e.g., 'uneg', 'gcf')"
+    ),
+):
+    """
+    Perform document-level search (searches title and summary, not chunks).
+    Returns documents matching the query and filters.
+    Used by heatmap when no query is specified and rows are not 'queries'.
+    """
+    t_start = time.time()
+    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    db = get_db_for_source(source)
+    pg = get_pg_for_source(source)
+
+    try:
+        indexed_doc_ids = _get_indexed_doc_ids(pg, source)
+        if not indexed_doc_ids:
+            return SearchResponse(results=[], total=0, query=q, filters={}, facets=None)
+
+        core_filters = _build_core_filters(
+            organization, title, published_year, document_type, country, language
+        )
+        for param_name, param_value in request.query_params.items():
+            if param_name.startswith("tag_") and param_value:
+                core_filters[param_name] = param_value
+
+        combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
+
+        results = await run_in_threadpool(
+            db._scroll_documents, query_filter=combined_filter, end_idx=limit
+        )
+
+        doc_ids = [str(point.id) for point in results[:limit] if point.id]
+        sys_fields_map = pg.fetch_docs(doc_ids) if doc_ids else {}
+
+        documents = [
+            result
+            for point in results[:limit]
+            if (result := _format_document_result(point, sys_fields_map, source))
+            is not None
+        ]
+
+        t_end = time.time()
+        logger.info(
+            "[TIMING] TOTAL /docsearch: %.3fs (%d docs)",
+            t_end - t_start,
+            len(documents),
+        )
+
+        filters_response = _build_filters_response(
+            core_filters, core_filters.get("title")
+        )
+        return SearchResponse(
+            results=documents, total=len(documents), query=q, filters=filters_response
+        )
+
+    except Exception as e:
+        logger.exception("Document search error", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/search/facet-values")
 @limiter.limit(RATE_LIMIT_DEFAULT)
 async def search_facet_values_endpoint(

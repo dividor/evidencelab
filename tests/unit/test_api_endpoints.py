@@ -341,6 +341,7 @@ async def test_search_endpoint(monkeypatch):
     pg.fetch_chunks = lambda chunk_ids: {
         "chunk-1": {"sys_page_num": 1, "sys_bbox": [], "sys_headings": ["H1"]}
     }
+    pg.fetch_indexed_doc_ids = lambda: ["doc-1", "doc-2", "doc-3"]
     monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: pg)
 
     hit = SimpleNamespace(

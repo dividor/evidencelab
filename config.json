@@ -247,87 +247,87 @@
               "type": "multi",
               "values": {
                 "sdg1": {
-                  "name": "No Poverty",
+                  "name": "SDG1 - No Poverty",
                   "definition": "End poverty in all its forms everywhere, including eradicating extreme poverty, implementing social protection measures, and ensuring equal access to economic resources and basic services.",
                   "llm_prompt": "Assign SDG 1 if the document discusses: (1) Extreme poverty - people living below international or national poverty lines, poverty measurement, income below $2.15/day; (2) Social protection systems - cash transfers, pensions, unemployment benefits, social safety nets, welfare programs; (3) Equal economic rights - access to land ownership, property rights, financial services, credit, microfinance; (4) Basic services access - ensuring poor populations have access to essential services, economic resources, technology. Keywords: poverty reduction, poverty eradication, vulnerable populations, economic disadvantage, social security, income inequality at poverty level."
                 },
                 "sdg2": {
-                  "name": "Zero Hunger",
+                  "name": "SDG2 - Zero Hunger",
                   "definition": "End hunger, achieve food security and improved nutrition, and promote sustainable agriculture. Includes addressing malnutrition, doubling agricultural productivity, and ensuring sustainable food production systems.",
                   "llm_prompt": "Assign SDG 2 if the document discusses: (1) Hunger and malnutrition - undernourishment, stunting, wasting in children, food insecurity, famine relief; (2) Food security - access to sufficient, safe, nutritious food year-round, food availability, food systems; (3) Agricultural productivity - crop yields, smallholder farmers, agricultural practices, farming techniques, irrigation; (4) Sustainable agriculture - resilient farming, genetic diversity of seeds, agricultural adaptation to climate. Keywords: food production, nutrition, agricultural development, farming, food access, malnutrition, food systems, crop production, livestock."
                 },
                 "sdg3": {
-                  "name": "Good Health and Well-being",
+                  "name": "SDG3 - Good Health and Well-being",
                   "definition": "Ensure healthy lives and promote well-being for all at all ages. Focuses on maternal and child health, fighting communicable diseases, reducing mortality from non-communicable diseases, and strengthening health systems.",
                   "llm_prompt": "Assign SDG 3 if the document discusses: (1) Maternal and child health - maternal mortality, infant mortality, reproductive health, family planning, prenatal care; (2) Communicable diseases - HIV/AIDS, tuberculosis, malaria, infectious diseases, epidemics, pandemics, vaccinations; (3) Non-communicable diseases - cardiovascular disease, cancer, diabetes, mental health, substance abuse; (4) Healthcare systems - universal health coverage, access to medicines, health workforce, health facilities, health insurance. Keywords: health services, disease prevention, mortality rates, health outcomes, medical care, public health, health coverage, immunization."
                 },
                 "sdg4": {
-                  "name": "Quality Education",
+                  "name": "SDG4 - Quality Education",
                   "definition": "Ensure inclusive and equitable quality education and promote lifelong learning opportunities for all. Covers access to early childhood, primary, secondary, and tertiary education, as well as vocational training and skills for employment.",
                   "llm_prompt": "Assign SDG 4 if the document discusses: (1) Educational access - school enrollment, completion rates, barriers to education, educational attainment, literacy rates; (2) Education quality - learning outcomes, teaching quality, curriculum, educational standards, student performance; (3) Early childhood education - pre-primary education, early learning, childcare centers; (4) Vocational training - technical skills, job training, apprenticeships, skills development, TVET; (5) Higher education - tertiary education, universities, scholarships; (6) Lifelong learning - adult education, continuing education. Keywords: schools, teachers, students, learning, educational facilities, literacy, numeracy, education systems."
                 },
                 "sdg5": {
-                  "name": "Gender Equality",
+                  "name": "SDG5 - Gender Equality",
                   "definition": "Achieve gender equality and empower all women and girls. Includes ending discrimination and violence against women, ensuring full participation in leadership, and universal access to reproductive health rights.",
                   "llm_prompt": "Assign SDG 5 if the document discusses: (1) Gender-based violence - domestic violence, sexual violence, harassment, harmful practices like FGM or child marriage; (2) Women's empowerment - women's rights, female leadership, political participation, economic participation; (3) Gender discrimination - wage gaps, employment discrimination, legal rights, property rights; (4) Reproductive rights - family planning, maternal health, reproductive health services, sexual health; (5) Women in leadership - women in parliament, decision-making positions, corporate boards. Keywords: gender equality, women's rights, girls' rights, gender parity, female empowerment, gender-based discrimination, women in politics."
                 },
                 "sdg6": {
-                  "name": "Clean Water and Sanitation",
+                  "name": "SDG6 - Clean Water and Sanitation",
                   "definition": "Ensure availability and sustainable management of water and sanitation for all. Focuses on safe drinking water, adequate sanitation and hygiene, water quality, and water-use efficiency.",
                   "llm_prompt": "Assign SDG 6 if the document discusses: (1) Drinking water - safe water access, water supply, potable water, water treatment, drinking water quality, water sources; (2) Sanitation - toilets, sewage systems, open defecation, wastewater treatment, sanitation facilities; (3) Hygiene - handwashing, hygiene practices, WASH programs; (4) Water resources management - water scarcity, water efficiency, water stress, aquifer management, integrated water resource management, water ecosystems. Keywords: water access, sanitation infrastructure, water quality, wastewater, water and sanitation services, water security, freshwater."
                 },
                 "sdg7": {
-                  "name": "Affordable and Clean Energy",
+                  "name": "SDG7 - Affordable and Clean Energy",
                   "definition": "Ensure access to affordable, reliable, sustainable and modern energy for all. Key targets include universal access to energy services, increasing renewable energy share, and improving energy efficiency.",
                   "llm_prompt": "Assign SDG 7 if the document discusses: (1) Energy access - electricity access, off-grid energy, energy poverty, electrification, modern cooking fuels; (2) Renewable energy - solar power, wind energy, hydropower, geothermal, biomass energy, renewable energy capacity, clean energy transition; (3) Energy efficiency - energy consumption reduction, efficient appliances, building efficiency, industrial energy efficiency; (4) Energy infrastructure - power grids, energy distribution, energy storage. Do NOT assign for fossil fuels unless discussing transition away from them. Keywords: electricity, power generation, renewable sources, energy services, sustainable energy, clean energy technology."
                 },
                 "sdg8": {
-                  "name": "Decent Work and Economic Growth",
+                  "name": "SDG8 - Decent Work and Economic Growth",
                   "definition": "Promote sustained, inclusive and sustainable economic growth, full and productive employment and decent work for all. Includes supporting job creation, entrepreneurship, labor rights, and safe working environments.",
                   "llm_prompt": "Assign SDG 8 if the document discusses: (1) Economic growth - GDP growth, productivity, economic development, sustainable economic growth, economic diversification; (2) Employment - job creation, unemployment, youth employment, full employment, labor markets; (3) Decent work conditions - fair wages, working conditions, occupational safety, labor standards, workplace safety; (4) Labor rights - workers' rights, collective bargaining, forced labor, child labor, modern slavery; (5) Entrepreneurship - small businesses, startups, MSMEs, business development. Keywords: jobs, employment, economic productivity, work, income generation, labor force, working conditions, entrepreneurship."
                 },
                 "sdg9": {
-                  "name": "Industry, Innovation and Infrastructure",
+                  "name": "SDG9 - Industry, Innovation and Infrastructure",
                   "definition": "Build resilient infrastructure, promote inclusive and sustainable industrialization and foster innovation. Focuses on reliable infrastructure, sustainable industrialization, access to financial services, and scientific research.",
                   "llm_prompt": "Assign SDG 9 if the document discusses: (1) Infrastructure - roads, bridges, ports, airports, railways, telecommunications, digital infrastructure, broadband, ICT, transportation networks; (2) Industrialization - manufacturing, industrial development, industrial policy, value addition, industrial sectors; (3) Innovation - research and development, R&D spending, technology development, patents, scientific research; (4) Technology access - internet access, mobile coverage, technology adoption, digital divide, technology transfer; (5) Sustainable industry - resource-efficient industries, clean technologies, industrial upgrading. Keywords: infrastructure development, industrial growth, innovation, technology, connectivity, manufacturing, telecommunications."
                 },
                 "sdg10": {
-                  "name": "Reduced Inequalities",
+                  "name": "SDG10 - Reduced Inequalities",
                   "definition": "Reduce inequality within and among countries. Includes income growth of the bottom 40%, social/economic/political inclusion, and ensuring equal opportunity and reducing inequalities of outcome.",
                   "llm_prompt": "Assign SDG 10 if the document discusses: (1) Income inequality - wealth distribution, income gaps, Gini coefficient, bottom 40% income growth, wage disparities; (2) Social inclusion - marginalized groups, discrimination, disability inclusion, age discrimination, migrant rights; (3) Economic inclusion - access to financial services, economic opportunities for disadvantaged groups; (4) Global inequality - inequality between countries, development gaps, special treatment for developing countries, migration; (5) Equal opportunity - social mobility, reducing disparities in outcomes. Keywords: inequality, disparity, inclusion, marginalization, discrimination, equity, wealth gap, social exclusion."
                 },
                 "sdg11": {
-                  "name": "Sustainable Cities and Communities",
+                  "name": "SDG11 - Sustainable Cities and Communities",
                   "definition": "Make cities and human settlements inclusive, safe, resilient and sustainable. Covers housing, transport, urbanization, cultural heritage, and disaster risk reduction in urban settings.",
                   "llm_prompt": "Assign SDG 11 if the document discusses: (1) Urban housing - affordable housing, slum upgrading, adequate housing, housing policy in cities; (2) Urban transport - public transportation, sustainable mobility, urban transport systems, mass transit; (3) Urbanization - urban planning, urban development, smart cities, urban growth management; (4) Public spaces - parks, green spaces, public areas, accessible spaces; (5) Disaster resilience in cities - urban disaster risk reduction, city resilience to natural disasters; (6) Cultural heritage - protecting heritage sites, cultural preservation; (7) Air quality - urban air pollution, particulate matter in cities. Keywords: cities, urban areas, urban development, municipal services, city planning, urban infrastructure."
                 },
                 "sdg12": {
-                  "name": "Responsible Consumption and Production",
+                  "name": "SDG12 - Responsible Consumption and Production",
                   "definition": "Ensure sustainable consumption and production patterns. Includes sustainable management of natural resources, reducing waste generation, and encouraging companies to adopt sustainable practices.",
                   "llm_prompt": "Assign SDG 12 if the document discusses: (1) Resource efficiency - material footprint, resource productivity, sustainable resource use, circular economy; (2) Waste management - waste reduction, recycling, waste generation, waste treatment, e-waste, plastic waste; (3) Sustainable practices - corporate sustainability, sustainable production methods, green businesses, eco-design; (4) Food waste - food loss, reducing food waste along supply chains; (5) Chemical management - hazardous waste, chemical pollution, safe chemical handling; (6) Sustainable consumption - consumer awareness, sustainable lifestyles, sustainable procurement. Do NOT assign for general environmental issues. Keywords: waste reduction, recycling, sustainable production, circular economy, resource use, consumption patterns."
                 },
                 "sdg13": {
-                  "name": "Climate Action",
+                  "name": "SDG13 - Climate Action",
                   "definition": "Take urgent action to combat climate change and its impacts. Focuses on strengthening resilience to climate-related hazards, integrating climate measures into policies, and improving education/awareness.",
                   "llm_prompt": "Assign SDG 13 if the document discusses: (1) Climate change mitigation (emission reduction, carbon capture, decarbonization, net zero targets); (2) Climate adaptation (adaptation strategies, climate resilience building, climate vulnerability assessments); (3) Climate-related hazards (extreme weather events, droughts, floods, sea level rise due to climate change); (4) Climate policy and governance (Paris Agreement, NDCs, carbon pricing, climate regulations, climate finance); (5) Climate education and awareness. Do NOT assign for general weather patterns or local environmental pollution unrelated to climate change. Keywords: climate change, global warming, greenhouse gas emissions, carbon footprint, climate resilience, climate adaptation, climate mitigation, Paris Agreement, climate policy, decarbonization."
                 },
                 "sdg14": {
-                  "name": "Life Below Water",
+                  "name": "SDG14 - Life Below Water",
                   "definition": "Conserve and sustainably use the oceans, seas and marine resources for sustainable development. Includes reducing marine pollution, protecting ecosystems, and regulating fishing.",
                   "llm_prompt": "Assign SDG 14 if the document discusses: (1) Marine conservation (ocean conservation, marine protected areas, coral reef protection); (2) Marine pollution (ocean pollution, plastic in oceans, marine debris, oil spills, nutrient pollution); (3) Sustainable fishing and aquaculture (overfishing, illegal fishing, fisheries management, fish stock sustainability); (4) Ocean acidification and ocean health; (5) Coastal and marine ecosystems (mangroves, seagrass beds, coastal wetlands); (6) Blue economy and sustainable use of marine resources. Do NOT assign for freshwater or terrestrial ecosystems. Keywords: ocean, marine, sea, fishing, marine pollution, coral reefs, overfishing, marine ecosystems, ocean conservation, coastal zones, marine biodiversity."
                 },
                 "sdg15": {
-                  "name": "Life on Land",
+                  "name": "SDG15 - Life on Land",
                   "definition": "Protect, restore and promote sustainable use of terrestrial ecosystems, sustainably manage forests, combat desertification, and halt and reverse land degradation and halt biodiversity loss.",
                   "llm_prompt": "Assign SDG 15 if the document discusses: (1) Terrestrial ecosystems (forests, grasslands, mountains, drylands, wetlands); (2) Forest management (deforestation, reforestation, sustainable forestry, forest conservation, illegal logging); (3) Desertification and land degradation (soil erosion, land restoration, degraded land rehabilitation); (4) Biodiversity conservation (species extinction, endangered species, habitat loss, protected areas, wildlife conservation); (5) Invasive alien species management; (6) Poaching and illegal wildlife trade. Do NOT assign for marine or aquatic ecosystems (use SDG 14 instead). Keywords: forest, deforestation, biodiversity, species conservation, ecosystem, land degradation, desertification, wildlife, terrestrial, habitat, conservation, endangered species."
                 },
                 "sdg16": {
-                  "name": "Peace, Justice and Strong Institutions",
+                  "name": "SDG16 - Peace, Justice and Strong Institutions",
                   "definition": "Promote peaceful and inclusive societies for sustainable development, provide access to justice for all and build effective, accountable and inclusive institutions at all levels.",
                   "llm_prompt": "Assign SDG 16 if the document discusses: (1) Peacebuilding and conflict prevention (violence reduction, armed conflict, peace processes, post-conflict reconstruction); (2) Access to justice (legal services, judicial systems, legal aid, court access, dispute resolution); (3) Rule of law (legal frameworks, law enforcement, judicial independence, legal institutions); (4) Effective and accountable institutions (governance quality, public administration, transparency, anti-corruption measures, institutional capacity); (5) Human rights and fundamental freedoms (civil rights, political rights, freedom of expression, freedom of assembly); (6) Inclusive and participatory decision-making. Keywords: peace, justice, rule of law, governance, institutions, human rights, corruption, transparency, accountability, violence reduction, conflict, legal systems."
                 },
                 "sdg17": {
-                  "name": "Partnerships for the Goals",
+                  "name": "SDG17 - Partnerships for the Goals",
                   "definition": "Strengthen the means of implementation and revitalize the Global Partnership for Sustainable Development. Focuses on finance, technology, capacity building, trade, and systemic issues.",
                   "llm_prompt": "Assign SDG 17 if the document discusses: (1) Global partnerships and cooperation (international cooperation, North-South cooperation, South-South cooperation, triangular cooperation); (2) Development finance (ODA, official development assistance, development aid, public finance mobilization, foreign direct investment); (3) Technology transfer and cooperation (technology sharing, innovation cooperation, access to technology); (4) Capacity building and technical assistance (skills development for SDGs, knowledge sharing, institutional strengthening); (5) International trade (trade agreements, trade facilitation, market access for developing countries, fair trade); (6) Multi-stakeholder partnerships (public-private partnerships, civil society collaboration); (7) Data, monitoring and accountability for SDGs. Keywords: partnership, international cooperation, development assistance, ODA, technology transfer, capacity building, global cooperation, multi-stakeholder, SDG implementation, development finance."
                 }

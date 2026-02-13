@@ -1166,6 +1166,57 @@ function App() {
     });
   };
 
+  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
+    try {
+      if (loadingConfig && initialSearchState.dataset) {
+        return;
+      }
+      const includeQuery = options?.includeQuery ?? true;
+      const filtersToUse = options?.filtersOverride ?? filters;
+      const params = new URLSearchParams();
+      // Add all filter values using core field names
+      for (const [field, value] of Object.entries(filtersToUse)) {
+        if (value) {
+          params.append(field, value);
+        }
+      }
+      params.append('data_source', dataSource);
+      if (includeQuery && query && query.trim()) {
+        params.append('q', query.trim());
+      }
+
+      const url = `${API_BASE_URL}/facets?${params}`;
+      const response = await axios.get<Facets>(url);
+      const data = response.data as Facets;
+
+      // Always update facets
+      setFacets(data);
+      setFacetsDataSource(dataSource);
+    } catch (error: any) {
+      console.error('Error loading facets:', error);
+      if (error?.response?.status === 502 || error?.response?.status === 503 || error?.response?.status === 504) {
+        console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
+      }
+    }
+  }, [loadingConfig, initialSearchState.dataset, filters, dataSource, query]);
+
+  const loadAllFacets = useCallback(async () => {
+    try {
+      if (loadingConfig && initialSearchState.dataset) {
+        return;
+      }
+      const params = new URLSearchParams();
+      params.append('data_source', dataSource);
+      const url = `${API_BASE_URL}/facets?${params}`;
+      const response = await axios.get<Facets>(url);
+      const data = response.data as Facets;
+      setAllFacets(data);
+      setAllFacetsDataSource(dataSource);
+    } catch (error) {
+      console.error('Error loading all facets:', error);
+    }
+  }, [loadingConfig, initialSearchState.dataset, dataSource]);
+
   // Load about/tech/data/privacy content when help tabs are active
   useEffect(() => {
     if (activeTab === 'help') {
@@ -1206,11 +1257,11 @@ function App() {
     } else {
       loadFacets();
     }
-  }, [filters, heatmapFilters, buildHeatmapFacetFilters, dataSource, activeTab]);
+  }, [filters, heatmapFilters, dataSource, activeTab, loadFacets, buildHeatmapFacetFilters]);
 
   useEffect(() => {
     loadAllFacets();
-  }, [dataSource]);
+  }, [dataSource, loadAllFacets]);
 
   useEffect(() => {
     defaultYearFiltersAppliedRef.current = false;
@@ -1293,56 +1344,7 @@ function App() {
     selectedModelCombo,
   ]);
 
-  const loadFacets = async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
-    try {
-      if (loadingConfig && initialSearchState.dataset) {
-        return;
-      }
-      const includeQuery = options?.includeQuery ?? true;
-      const filtersToUse = options?.filtersOverride ?? filters;
-      const params = new URLSearchParams();
-      // Add all filter values using core field names
-      for (const [field, value] of Object.entries(filtersToUse)) {
-        if (value) {
-          params.append(field, value);
-        }
-      }
-      params.append('data_source', dataSource);
-      if (includeQuery && query && query.trim()) {
-        params.append('q', query.trim());
-      }
 
-      const url = `${API_BASE_URL}/facets?${params}`;
-      const response = await axios.get<Facets>(url);
-      const data = response.data as Facets;
-
-      // Always update facets
-      setFacets(data);
-      setFacetsDataSource(dataSource);
-    } catch (error: any) {
-      console.error('Error loading facets:', error);
-      if (error?.response?.status === 502 || error?.response?.status === 503 || error?.response?.status === 504) {
-        console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
-      }
-    }
-  };
-
-  const loadAllFacets = async () => {
-    try {
-      if (loadingConfig && initialSearchState.dataset) {
-        return;
-      }
-      const params = new URLSearchParams();
-      params.append('data_source', dataSource);
-      const url = `${API_BASE_URL}/facets?${params}`;
-      const response = await axios.get<Facets>(url);
-      const data = response.data as Facets;
-      setAllFacets(data);
-      setAllFacetsDataSource(dataSource);
-    } catch (error) {
-      console.error('Error loading all facets:', error);
-    }
-  };
 
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const isSearchingRef = useRef(false);

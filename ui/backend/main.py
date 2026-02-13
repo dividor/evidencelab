@@ -533,6 +533,9 @@ class SearchResult(BaseModel):
     file_format: Optional[str] = None
     # ALL document metadata as flexible JSON - any field can appear here
     metadata: Dict[str, Any] = {}
+    sys_parsed_folder: Optional[str] = None
+    sys_filepath: Optional[str] = None
+    sys_full_summary: Optional[str] = None
 
     class Config:
         extra = "allow"  # Allow additional fields not explicitly defined

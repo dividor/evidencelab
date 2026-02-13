@@ -304,7 +304,9 @@ class PostgresDocMixin:
                 map_region,
                 map_theme,
                 map_pdf_url,
-                map_report_url
+                map_report_url,
+                sys_parsed_folder,
+                sys_filepath
             FROM {self.docs_table}
             WHERE doc_id IN ({placeholders})
         """
@@ -333,6 +335,8 @@ class PostgresDocMixin:
                 map_theme,
                 map_pdf_url,
                 map_report_url,
+                sys_parsed_folder,
+                sys_filepath,
             ) = row
             sys_toc = None
             sys_toc_classified = None
@@ -360,6 +364,8 @@ class PostgresDocMixin:
                 "map_theme": map_theme,
                 "map_pdf_url": map_pdf_url,
                 "map_report_url": map_report_url,
+                "sys_parsed_folder": sys_parsed_folder,
+                "sys_filepath": sys_filepath,
             }
             results[str(doc_id)] = payload
         return results
@@ -477,6 +483,20 @@ class PostgresDocMixin:
         with self._get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(query, (f"%{title}%", limit))
+                rows = cur.fetchall()
+        return [str(row[0]) for row in rows]
+
+    def fetch_indexed_doc_ids(self) -> List[str]:
+        """Fetch all indexed document IDs."""
+        query = f"""
+            SELECT doc_id
+            FROM {self.docs_table}
+            WHERE sys_status = 'indexed'
+        """
+        rows: List[tuple] = []
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
                 rows = cur.fetchall()
         return [str(row[0]) for row in rows]
 
