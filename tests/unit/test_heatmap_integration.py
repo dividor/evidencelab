@@ -6,7 +6,7 @@ with regular filters and taxonomy filters.
 """
 
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from fastapi import Request
@@ -76,13 +76,23 @@ def create_fake_chunk(chunk_id, doc_id, text, score=0.8):
     )
 
 
+@pytest.fixture
+def mock_pg():
+    """Create a mock Postgres client."""
+    mock = MagicMock()
+    # By default, return all document IDs as indexed
+    mock.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
+    mock.fetch_docs.return_value = {}
+    return mock
+
+
 # ============================================================================
 # DOCS MODE TESTS (no query, uses /docsearch endpoint)
 # ============================================================================
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_organization_filter():
+async def test_heatmap_docs_mode_with_organization_filter(mock_pg):
     """Test heatmap docs mode (no query) with organization filter."""
     fake_db = FakeDB(
         scroll_results=[
@@ -117,7 +127,7 @@ async def test_heatmap_docs_mode_with_organization_filter():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_year_filter():
+async def test_heatmap_docs_mode_with_year_filter(mock_pg):
     """Test heatmap docs mode with published_year filter."""
     fake_db = FakeDB(
         scroll_results=[
@@ -152,7 +162,7 @@ async def test_heatmap_docs_mode_with_year_filter():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_taxonomy_filter():
+async def test_heatmap_docs_mode_with_taxonomy_filter(mock_pg):
     """Test heatmap docs mode with taxonomy filter (tag_sdg)."""
     fake_db = FakeDB(
         scroll_results=[
@@ -187,7 +197,7 @@ async def test_heatmap_docs_mode_with_taxonomy_filter():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_mixed_filters():
+async def test_heatmap_docs_mode_with_mixed_filters(mock_pg):
     """Test heatmap docs mode with both regular and taxonomy filters."""
     fake_db = FakeDB(
         scroll_results=[
@@ -221,7 +231,7 @@ async def test_heatmap_docs_mode_with_mixed_filters():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_country_filter():
+async def test_heatmap_docs_mode_with_country_filter(mock_pg):
     """Test heatmap docs mode with country filter."""
     fake_db = FakeDB(
         scroll_results=[
@@ -541,7 +551,7 @@ async def test_heatmap_chunks_mode_with_section_types():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_returns_empty_with_no_matches():
+async def test_heatmap_docs_mode_returns_empty_with_no_matches(mock_pg):
     """Test heatmap docs mode returns empty when no documents match filters."""
     fake_db = FakeDB(scroll_results=[])
 
@@ -615,7 +625,7 @@ async def test_heatmap_chunks_mode_returns_empty_with_no_matches():
 
 
 @pytest.mark.asyncio
-async def test_heatmap_docs_mode_with_multiple_taxonomy_filters():
+async def test_heatmap_docs_mode_with_multiple_taxonomy_filters(mock_pg):
     """Test heatmap docs mode with multiple taxonomy filters."""
     fake_db = FakeDB(
         scroll_results=[

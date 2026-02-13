@@ -87,10 +87,11 @@ class TestTaxonomyTagger:
         sdg_values = tags["sys_taxonomies"]["sdg"]
         assert len(sdg_values) == 2
         assert any(
-            v["code"] == "sdg1" and v["name"] == "No Poverty" for v in sdg_values
+            v["code"] == "sdg1" and v["name"] == "SDG1 - No Poverty" for v in sdg_values
         )
         assert any(
-            v["code"] == "sdg5" and v["name"] == "Gender Equality" for v in sdg_values
+            v["code"] == "sdg5" and v["name"] == "SDG5 - Gender Equality"
+            for v in sdg_values
         )
         # Verify reasons are captured
         assert all("reason" in v for v in sdg_values)

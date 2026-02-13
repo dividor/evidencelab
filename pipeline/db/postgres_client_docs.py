@@ -486,6 +486,20 @@ class PostgresDocMixin:
                 rows = cur.fetchall()
         return [str(row[0]) for row in rows]
 
+    def fetch_indexed_doc_ids(self) -> List[str]:
+        """Fetch all indexed document IDs."""
+        query = f"""
+            SELECT doc_id
+            FROM {self.docs_table}
+            WHERE sys_status = 'indexed'
+        """
+        rows: List[tuple] = []
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                rows = cur.fetchall()
+        return [str(row[0]) for row in rows]
+
     def fetch_all_docs(self) -> List[Dict[str, Any]]:
         query = f"""
             SELECT

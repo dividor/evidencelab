@@ -58,8 +58,18 @@ def create_fake_document(doc_id, title, organization, year, summary="Test summar
     )
 
 
+@pytest.fixture
+def mock_pg():
+    """Create a mock Postgres client."""
+    mock = MagicMock()
+    # By default, return all document IDs as indexed
+    mock.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
+    mock.fetch_docs.return_value = {}
+    return mock
+
+
 @pytest.mark.asyncio
-async def test_docsearch_empty_query_with_filters():
+async def test_docsearch_empty_query_with_filters(mock_pg):
     """Test docsearch with empty query and filters returns filtered documents."""
     fake_db = FakeDB(
         scroll_results=[
@@ -67,27 +77,29 @@ async def test_docsearch_empty_query_with_filters():
             create_fake_document("2", "Study 2023", "WHO", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            # Mock threadpool to directly call the function
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                # Mock threadpool to directly call the function
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year="2023",
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year="2023",
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 2
     assert len(result.results) == 2
@@ -97,33 +109,35 @@ async def test_docsearch_empty_query_with_filters():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_with_query_searches_title_and_summary():
+async def test_docsearch_with_query_searches_title_and_summary(mock_pg):
     """Test docsearch with query searches in title and summary fields."""
     fake_db = FakeDB(
         scroll_results=[
             create_fake_document("1", "Education Report", "UNICEF", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="education",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="education",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 1
     assert len(result.results) == 1
@@ -133,7 +147,7 @@ async def test_docsearch_with_query_searches_title_and_summary():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_respects_limit():
+async def test_docsearch_respects_limit(mock_pg):
     """Test docsearch respects the limit parameter."""
     fake_db = FakeDB(
         scroll_results=[
@@ -144,26 +158,28 @@ async def test_docsearch_respects_limit():
             create_fake_document("5", "Doc 5", "Org E", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2", "3", "4", "5"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=3,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=3,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 3
     assert len(result.results) == 3
@@ -171,33 +187,35 @@ async def test_docsearch_respects_limit():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_with_taxonomy_filters():
+async def test_docsearch_with_taxonomy_filters(mock_pg):
     """Test docsearch accepts taxonomy filters from query params."""
     fake_db = FakeDB(
         scroll_results=[
             create_fake_document("1", "SDG Report", "UNICEF", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {"tag_sdg": "sdg4", "tag_theme": "education"}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 1
     # Verify scroll was called (taxonomy filters should be included)
@@ -205,40 +223,42 @@ async def test_docsearch_with_taxonomy_filters():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_with_organization_filter():
+async def test_docsearch_with_organization_filter(mock_pg):
     """Test docsearch filters by organization."""
     fake_db = FakeDB(
         scroll_results=[
             create_fake_document("1", "UNICEF Report", "UNICEF", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=10,
-                organization="UNICEF",
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization="UNICEF",
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 1
     assert result.results[0].organization == "UNICEF"
 
 
 @pytest.mark.asyncio
-async def test_docsearch_returns_document_level_results():
+async def test_docsearch_returns_document_level_results(mock_pg):
     """Test docsearch returns document-level results with proper structure."""
     fake_db = FakeDB(
         scroll_results=[
@@ -247,26 +267,28 @@ async def test_docsearch_returns_document_level_results():
             ),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["doc123"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 1
     doc_result = result.results[0]
@@ -286,52 +308,23 @@ async def test_docsearch_returns_document_level_results():
 def test_get_indexed_doc_ids_returns_list_of_doc_ids():
     """Test _get_indexed_doc_ids fetches indexed documents from Postgres."""
     mock_pg = Mock()
-    mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = [(1,), (2,), (3,)]
-
-    mock_conn_context = MagicMock()
-    mock_conn_context.__enter__ = MagicMock(
-        return_value=MagicMock(
-            cursor=MagicMock(
-                return_value=MagicMock(
-                    __enter__=MagicMock(return_value=mock_cursor), __exit__=MagicMock()
-                )
-            )
-        )
-    )
-    mock_conn_context.__exit__ = MagicMock()
-    mock_pg._get_conn.return_value = mock_conn_context
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
 
     result = _get_indexed_doc_ids(mock_pg, "uneg")
 
     assert result == ["1", "2", "3"]
-    mock_cursor.execute.assert_called_once_with(
-        "SELECT doc_id FROM docs_uneg WHERE sys_status = 'indexed'"
-    )
+    mock_pg.fetch_indexed_doc_ids.assert_called_once()
 
 
 def test_get_indexed_doc_ids_returns_empty_list_when_no_indexed_docs():
     """Test _get_indexed_doc_ids returns empty list when no indexed documents."""
     mock_pg = Mock()
-    mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = []
-
-    mock_conn_context = MagicMock()
-    mock_conn_context.__enter__ = MagicMock(
-        return_value=MagicMock(
-            cursor=MagicMock(
-                return_value=MagicMock(
-                    __enter__=MagicMock(return_value=mock_cursor), __exit__=MagicMock()
-                )
-            )
-        )
-    )
-    mock_conn_context.__exit__ = MagicMock()
-    mock_pg._get_conn.return_value = mock_conn_context
+    mock_pg.fetch_indexed_doc_ids.return_value = []
 
     result = _get_indexed_doc_ids(mock_pg, "uneg")
 
     assert result == []
+    mock_pg.fetch_indexed_doc_ids.assert_called_once()
 
 
 def test_build_metadata_filter_condition_title_uses_match_text():
@@ -527,42 +520,32 @@ def test_format_document_result_merges_sys_fields_from_postgres():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_returns_empty_when_no_indexed_documents():
+async def test_docsearch_returns_empty_when_no_indexed_documents(mock_pg):
     """Test docsearch returns empty response when no indexed documents exist."""
-    mock_pg = Mock()
-    mock_cursor = MagicMock()
-    mock_cursor.fetchall.return_value = []  # No indexed documents
-
-    mock_conn_context = MagicMock()
-    mock_conn_context.__enter__ = MagicMock(
-        return_value=MagicMock(
-            cursor=MagicMock(
-                return_value=MagicMock(
-                    __enter__=MagicMock(return_value=mock_cursor), __exit__=MagicMock()
-                )
-            )
-        )
-    )
-    mock_conn_context.__exit__ = MagicMock()
-    mock_pg._get_conn.return_value = mock_conn_context
+    mock_pg.fetch_indexed_doc_ids.return_value = []  # No indexed documents
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
-    with patch("ui.backend.routes.search.get_db_for_source"):
+    fake_db = FakeDB(scroll_results=[])
+
+    with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
         with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
-            result = await docsearch(
-                request=mock_request,
-                q="test",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+
+                result = await docsearch(
+                    request=mock_request,
+                    q="test",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     assert result.total == 0
     assert len(result.results) == 0
@@ -570,7 +553,7 @@ async def test_docsearch_returns_empty_when_no_indexed_documents():
 
 
 @pytest.mark.asyncio
-async def test_docsearch_filters_out_documents_without_payload():
+async def test_docsearch_filters_out_documents_without_payload(mock_pg):
     """Test docsearch filters out documents that have no payload."""
     fake_db = FakeDB(
         scroll_results=[
@@ -579,26 +562,28 @@ async def test_docsearch_filters_out_documents_without_payload():
             create_fake_document("3", "Another Valid", "WHO", "2023"),
         ]
     )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
 
     mock_request = Mock(spec=Request)
     mock_request.query_params = {}
 
     with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
-        with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
-            mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
 
-            result = await docsearch(
-                request=mock_request,
-                q="",
-                limit=10,
-                organization=None,
-                title=None,
-                published_year=None,
-                document_type=None,
-                country=None,
-                language=None,
-                data_source="uneg",
-            )
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
 
     # Should only return 2 valid documents, filtering out the one without payload
     assert result.total == 2

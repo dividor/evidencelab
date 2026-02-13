@@ -684,12 +684,7 @@ async def search(
 
 def _get_indexed_doc_ids(pg, source: str) -> List[str]:
     """Fetch indexed document IDs from Postgres."""
-    with pg._get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                f"SELECT doc_id FROM docs_{source} WHERE sys_status = 'indexed'"
-            )
-            return [str(row[0]) for row in cur.fetchall()]
+    return pg.fetch_indexed_doc_ids()
 
 
 def _build_metadata_filter_condition(
