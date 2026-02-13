@@ -2424,7 +2424,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 )}
                 <div className="heatmap-control heatmap-slider">
                   <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
-                    Sensitivity: {scoreBounds.hasScores ? similarityCutoff.toFixed(3) : 'n/a'}
+                    Search sensitivity
                   </label>
                   <input
                     id="heatmap-cutoff"
@@ -2435,7 +2435,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     value={similarityCutoff}
                     onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
                     disabled={!scoreBounds.hasScores}
-                    title={!scoreBounds.hasScores ? 'Sensitivity requires a search query' : undefined}
                   />
                 </div>
               </div>
