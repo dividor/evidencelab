@@ -8,7 +8,7 @@ webdriver-manager==4.0.2
 # PDF processing
 PyPDF2==3.0.1
 pypdf==3.17.4
-PyMuPDF==1.26.5
+PyMuPDF==1.27.1
 pdfplumber==0.11.9
 
 # Docling for advanced PDF parsing with dependencies
@@ -58,7 +58,7 @@ mistral-common[sentencepiece]>=1.0.0
 flask==3.0.0
 fastapi==0.104.1
 uvicorn[standard]==0.40.0
-python-multipart==0.0.6
+python-multipart==0.0.22
 slowapi==0.1.9
 
 # LangChain and LLM integration
@@ -71,14 +71,13 @@ langchain-anthropic==1.3.1
 
 
 # Task queue
-celery[redis]==5.4.0
+celery[redis]==5.6.2
 redis==5.3.1
 
 # Utilities
 python-dotenv==1.2.1
-setproctitle==1.3.3
-azure-storage-file-share==12.22.0
-
+setproctitle==1.3.7
+azure-storage-file-share==12.24.0
 
 # Visualization
 plotly==5.18.0
@@ -96,7 +95,7 @@ pytest-cov==5.0.0
 pytest-asyncio==0.26.0
 pytest-playwright==0.4.4
 playwright==1.40.0
-types-requests==2.32.4.20250913
+types-requests==2.32.4.20260107
 types-beautifulsoup4==4.12.0.7
 types-html5lib==1.1.11.20251014
 types-openpyxl==3.1.0.20240311
