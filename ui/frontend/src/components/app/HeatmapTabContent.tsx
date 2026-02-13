@@ -1577,7 +1577,35 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
 
-    // Sheet 1: Summary (counts only)
+    // Sheet 1: Settings
+    const settingsData = [
+      ['Heatmap Settings', ''],
+      ['Parameter', 'Value'],
+      ['Row Dimension', rowLabel],
+      ['Column Dimension', columnLabel],
+      ['Metric', heatmapMetric],
+      ['Query', gridQuery || '(none)'],
+      ['Sensitivity', similarityCutoff.toFixed(3)],
+      ['', ''],
+      ['Active Filters', ''],
+    ];
+    Object.entries(heatmapSelectedFilters).forEach(([field, values]) => {
+      if (values && values.length > 0) {
+        const fieldLabel = (filters?.filter_fields as any)?.[field] || field;
+        settingsData.push([fieldLabel, values.join(', ')]);
+      }
+    });
+    const settingsSheet = XLSX.utils.aoa_to_sheet(settingsData);
+    // Format settings sheet
+    settingsSheet['!cols'] = [{ wch: 20 }, { wch: 60 }];
+    if (settingsSheet['A1']) {
+      settingsSheet['A1'].s = {
+        font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 14 },
+        fill: { fgColor: { rgb: '1F2A44' } }
+      };
+    }
+
+    // Sheet 2: Summary (counts only)
     const summaryHeaderRow = [
       `${rowLabel} \\ ${columnLabel}`,
       ...filteredColumnValues.map((col) => extractTaxonomyName(col, columnDimension))
@@ -1601,9 +1629,23 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeaderRow, ...summaryRows]);
     applyHeatmapHeaderStyles(summarySheet);
 
-    // Sheet 2: Detail (one row per document)
+    // Sheet 3: Detail (one row per document with Title URL and Text subcolumns)
     const detailRows: any[][] = [];
-    detailRows.push([rowLabel, ...filteredColumnValues.map((col) => extractTaxonomyName(col, columnDimension))]);
+    // Header row 1: Column group labels
+    const headerRow1 = [rowLabel];
+    filteredColumnValues.forEach((col) => {
+      headerRow1.push(extractTaxonomyName(col, columnDimension));
+      headerRow1.push(''); // Placeholder for merged cell
+    });
+    detailRows.push(headerRow1);
+
+    // Header row 2: Subcolumn labels
+    const headerRow2 = [''];
+    filteredColumnValues.forEach(() => {
+      headerRow2.push('Document Title');
+      headerRow2.push('Text');
+    });
+    detailRows.push(headerRow2);
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
@@ -1630,9 +1672,18 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             const doc = docs[docIdx];
             const title = doc.title || 'Untitled';
             const page = doc.page_num ? ` (p${doc.page_num})` : '';
-            row.push(`${title}${page}`);
+            const url = resolveResultUrl(doc);
+            const text = resolveResultExcerpt(doc);
+
+            // Add hyperlink for title if URL exists
+            if (url) {
+              row.push({ f: `HYPERLINK("${url}", "${title}${page}")` } as any);
+            } else {
+              row.push(`${title}${page}`);
+            }
+            row.push(text);
           } else {
-            row.push('');
+            row.push('', '');
           }
         });
         detailRows.push(row);
@@ -1640,12 +1691,35 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     });
 
     const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+
+    // Merge cells for column group headers
+    const merges = [];
+    for (let colIdx = 0; colIdx < filteredColumnValues.length; colIdx++) {
+      const startCol = 1 + colIdx * 2;
+      const endCol = startCol + 1;
+      merges.push({
+        s: { r: 0, c: startCol },
+        e: { r: 0, c: endCol }
+      });
+    }
+    detailSheet['!merges'] = merges;
+
+    // Apply header styling
     applyHeatmapHeaderStyles(detailSheet);
 
-    // Create workbook with both sheets
+    // Set column widths
+    const colWidths = [{ wch: 30 }]; // Row label column
+    filteredColumnValues.forEach(() => {
+      colWidths.push({ wch: 40 }); // Title column
+      colWidths.push({ wch: 60 }); // Text column
+    });
+    detailSheet['!cols'] = colWidths;
+
+    // Create workbook with all sheets
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
     XLSX.utils.book_append_sheet(workbook, detailSheet, 'Detail');
+    XLSX.utils.book_append_sheet(workbook, settingsSheet, 'Settings');
 
     const fileName = `heatmap-${rowDimension}-by-${columnDimension}.xlsx`;
     XLSX.writeFile(workbook, fileName);
@@ -1657,6 +1731,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     rowDimension,
     rowOptions,
     filteredRowValues,
+    heatmapMetric,
+    gridQuery,
+    similarityCutoff,
+    heatmapSelectedFilters,
+    filters,
   ]);
 
   const scoreBounds = useMemo(() => {
