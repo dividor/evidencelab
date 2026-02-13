@@ -288,11 +288,11 @@ const HeatmapFiltersTabButton = ({
 
 const HeatmapSearchButtonContent = ({ gridLoading }: { gridLoading: boolean }) => {
   if (!gridLoading) {
-    return <span>Heatmap Search</span>;
+    return <span>Generate Heatmap</span>;
   }
   return (
     <>
-      {Array.from('Searching...').map((char, index) => (
+      {Array.from('Generating...').map((char, index) => (
         <span
           key={index}
           className="wave-char"
@@ -311,30 +311,14 @@ const HeatmapActionButtons = ({
   executeGridSearch,
   gridLoading,
   hasGridSearchQuery,
-  rowDimension,
-  gridQuery,
-  setGridQuery,
 }: {
   hasCompletedGridSearch: boolean;
   handleDownloadExcel: () => void;
   executeGridSearch: () => void;
   gridLoading: boolean;
   hasGridSearchQuery: boolean;
-  rowDimension: string;
-  gridQuery: string;
-  setGridQuery: (value: string) => void;
 }) => (
-  <div className="heatmap-actions">
-    {rowDimension !== 'queries' && (
-      <input
-        id="heatmap-grid-query"
-        className="heatmap-query-input"
-        type="text"
-        value={gridQuery}
-        onChange={(event) => setGridQuery(event.target.value)}
-        placeholder="Enter your search query"
-      />
-    )}
+  <div className="heatmap-action-buttons">
     <button
       className="heatmap-download-button"
       onClick={handleDownloadExcel}
@@ -2162,77 +2146,91 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               onToggleFiltersExpanded={onToggleFiltersExpanded}
             />
             <div className="heatmap-controls">
-              <div className="heatmap-control">
-                <label htmlFor="heatmap-rows">Rows</label>
-                <select
-                  id="heatmap-rows"
-                  className="heatmap-select"
-                  value={rowDimension}
-                  onChange={(event) => setRowDimension(event.target.value)}
-                >
-                  {rowOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* First row: Rows, Columns, Metric, Download, Search */}
+              <div className="heatmap-controls-row">
+                <div className="heatmap-control">
+                  <label htmlFor="heatmap-rows">Rows</label>
+                  <select
+                    id="heatmap-rows"
+                    className="heatmap-select"
+                    value={rowDimension}
+                    onChange={(event) => setRowDimension(event.target.value)}
+                  >
+                    {rowOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="heatmap-control">
-                <label htmlFor="heatmap-columns">Columns</label>
-                <select
-                  id="heatmap-columns"
-                  className="heatmap-select"
-                  value={columnDimension}
-                  onChange={(event) => setColumnDimension(event.target.value)}
-                >
-                  {columnOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="heatmap-control">
+                  <label htmlFor="heatmap-columns">Columns</label>
+                  <select
+                    id="heatmap-columns"
+                    className="heatmap-select"
+                    value={columnDimension}
+                    onChange={(event) => setColumnDimension(event.target.value)}
+                  >
+                    {columnOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="heatmap-control">
-                <label htmlFor="heatmap-metric">Metric</label>
-                <select
-                  id="heatmap-metric"
-                  className="heatmap-select"
-                  value={heatmapMetric}
-                  onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
-                >
-                  <option value="documents">Documents</option>
-                  <option value="chunks">Chunks</option>
-                </select>
-              </div>
+                <div className="heatmap-control">
+                  <label htmlFor="heatmap-metric">Metric</label>
+                  <select
+                    id="heatmap-metric"
+                    className="heatmap-select"
+                    value={heatmapMetric}
+                    onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
+                  >
+                    <option value="documents">Documents</option>
+                    <option value="chunks">Chunks</option>
+                  </select>
+                </div>
 
-              <div className="heatmap-control heatmap-slider">
-                <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
-                  Sensitivity: {scoreBounds.hasScores ? similarityCutoff.toFixed(3) : 'n/a'}
-                </label>
-                <input
-                  id="heatmap-cutoff"
-                  type="range"
-                  min={scoreBounds.min}
-                  max={scoreBounds.max}
-                  step={0.001}
-                  value={similarityCutoff}
-                  onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
-                  disabled={!scoreBounds.hasScores}
-                  title={!scoreBounds.hasScores ? 'Sensitivity requires a search query' : undefined}
+                <HeatmapActionButtons
+                  hasCompletedGridSearch={hasCompletedGridSearch}
+                  handleDownloadExcel={handleDownloadExcel}
+                  executeGridSearch={executeGridSearch}
+                  gridLoading={gridLoading}
+                  hasGridSearchQuery={hasGridSearchQuery}
                 />
               </div>
-              <HeatmapActionButtons
-                hasCompletedGridSearch={hasCompletedGridSearch}
-                handleDownloadExcel={handleDownloadExcel}
-                executeGridSearch={executeGridSearch}
-                gridLoading={gridLoading}
-                hasGridSearchQuery={hasGridSearchQuery}
-                rowDimension={rowDimension}
-                gridQuery={gridQuery}
-                setGridQuery={setGridQuery}
-              />
+
+              {/* Second row: Query input and Sensitivity slider */}
+              <div className="heatmap-controls-row heatmap-query-controls">
+                {rowDimension !== 'queries' && (
+                  <input
+                    id="heatmap-grid-query"
+                    className="heatmap-query-input"
+                    type="text"
+                    value={gridQuery}
+                    onChange={(event) => setGridQuery(event.target.value)}
+                    placeholder="Enter your search query"
+                  />
+                )}
+                <div className="heatmap-control heatmap-slider">
+                  <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+                    Sensitivity: {scoreBounds.hasScores ? similarityCutoff.toFixed(3) : 'n/a'}
+                  </label>
+                  <input
+                    id="heatmap-cutoff"
+                    type="range"
+                    min={scoreBounds.min}
+                    max={scoreBounds.max}
+                    step={0.001}
+                    value={similarityCutoff}
+                    onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
+                    disabled={!scoreBounds.hasScores}
+                    title={!scoreBounds.hasScores ? 'Sensitivity requires a search query' : undefined}
+                  />
+                </div>
+              </div>
             </div>
 
             {gridError && <div className="heatmap-error">{gridError}</div>}

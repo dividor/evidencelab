@@ -5862,21 +5862,24 @@ h6,
 
 .heatmap-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-lg);
-  align-items: flex-start;
+  flex-direction: column;
+  gap: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
 }
 
-.heatmap-actions {
+.heatmap-controls-row {
   display: flex;
-  gap: var(--spacing-sm);
-  align-items: center;
-  flex: 1 1 100%;
-  width: 100%;
+  gap: var(--spacing-lg);
+  align-items: flex-end;
+  flex-wrap: nowrap;
 }
 
-.heatmap-actions .heatmap-query-input {
+.heatmap-query-controls {
+  gap: var(--spacing-sm);
+  flex-wrap: nowrap;
+}
+
+.heatmap-query-controls .heatmap-query-input {
   flex: 1;
   min-width: 400px;
   height: 48px;
@@ -5886,11 +5889,20 @@ h6,
   font-size: 1.125rem;
 }
 
+.heatmap-action-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .heatmap-download-button {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   height: 48px;
+  min-width: 180px;
   padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--gray-200);
@@ -5938,7 +5950,8 @@ h6,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 180px;
+  min-width: 140px;
+  flex-shrink: 1;
 }
 
 .heatmap-control label {
@@ -5950,10 +5963,11 @@ h6,
 .heatmap-select {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-md);
-  padding: 0.5rem;
+  padding: 0.75rem 0.5rem;
   font-size: 0.9rem;
   background: var(--white);
   color: var(--gray-800);
+  height: 48px;
 }
 
 .heatmap-slider input {
@@ -6374,7 +6388,7 @@ h6,
 
 .heatmap-search-button {
   height: 48px;
-  min-width: 140px;
+  min-width: 180px;
   flex-shrink: 0;
 }
 
