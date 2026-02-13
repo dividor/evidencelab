@@ -6569,7 +6569,7 @@ h6,
   min-height: 3rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .heatmap-modal-thumbnail-doc-title {
@@ -6586,6 +6586,7 @@ h6,
   color: var(--gray-500);
   font-style: italic;
   word-wrap: break-word;
+  margin-top: auto;
 }
 
 .heatmap-modal-filter-indicator {
