@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import API_BASE_URL from '../config';
 import { ChunkElement, SearchResult } from '../types/api';
@@ -239,6 +239,7 @@ export const SearchResultElements = ({
   query,
   onResultClick
 }: SearchResultElementsProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
   const { contentItems, footnoteGroups } = groupFootnotes(orderedElements);
   const indentContext: { lastType: 'none' | 'number' | 'bullet' | 'letter'; level: number } = {
     lastType: 'none',
@@ -250,9 +251,36 @@ export const SearchResultElements = ({
   if (hasNoQuery) {
     const summary = result.sys_full_summary || result.metadata?.sys_full_summary || result.text;
     if (summary) {
+      const TRUNCATE_LENGTH = 500; // characters
+      const shouldTruncate = summary.length > TRUNCATE_LENGTH;
+      const displaySummary = isExpanded || !shouldTruncate
+        ? summary
+        : summary.substring(0, TRUNCATE_LENGTH) + '...';
+
       return (
         <div className="result-snippet result-full-summary">
-          <ReactMarkdown>{summary}</ReactMarkdown>
+          <ReactMarkdown>{displaySummary}</ReactMarkdown>
+          {shouldTruncate && (
+            <button
+              className="show-more-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+              style={{
+                marginTop: '0.5rem',
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.85rem',
+                color: 'var(--brand-primary)',
+                background: 'transparent',
+                border: '1px solid var(--brand-primary)',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              {isExpanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
         </div>
       );
     }
