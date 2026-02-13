@@ -183,8 +183,11 @@ const resolveResultUrl = (result: SearchResult) =>
   result.metadata?.url ||
   '';
 
-const resolveResultExcerpt = (result: SearchResult) =>
-  (result.text || '').replace(/\n\n+/g, '\n').trim() || 'No excerpt';
+const resolveResultExcerpt = (result: SearchResult) => {
+  // Use sys_full_summary if available (full text), otherwise use text field
+  const fullText = (result as any).sys_full_summary || result.text || '';
+  return fullText.replace(/\n\n+/g, '\n').trim() || 'No excerpt';
+};
 
 const formatHeatmapResultLine = (result: SearchResult, idx: number) => {
   const title = resolveResultTitle(result);
@@ -211,6 +214,7 @@ const applyHeatmapHeaderStyles = (worksheet: XLSX.WorkSheet) => {
     alignment: { wrapText: true, vertical: 'top' }
   };
 
+  // Style first row (column headers)
   for (let col = range.s.c; col <= range.e.c; col += 1) {
     const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
     if (worksheet[cellAddress]) {
@@ -218,7 +222,35 @@ const applyHeatmapHeaderStyles = (worksheet: XLSX.WorkSheet) => {
     }
   }
 
+  // Style first column (row headers)
   for (let row = 1; row <= range.e.r; row += 1) {
+    const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
+    if (worksheet[cellAddress]) {
+      worksheet[cellAddress].s = headerStyle;
+    }
+  }
+};
+
+const applyDetailSheetHeaderStyles = (worksheet: XLSX.WorkSheet) => {
+  const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+  const headerStyle = {
+    font: { color: { rgb: 'FFFFFF' }, bold: true },
+    fill: { fgColor: { rgb: '1F2A44' } },
+    alignment: { wrapText: true, vertical: 'top' }
+  };
+
+  // Style first two rows (both header rows)
+  for (let row = 0; row <= 1; row += 1) {
+    for (let col = range.s.c; col <= range.e.c; col += 1) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      if (worksheet[cellAddress]) {
+        worksheet[cellAddress].s = headerStyle;
+      }
+    }
+  }
+
+  // Style first column for all data rows (row labels)
+  for (let row = 2; row <= range.e.r; row += 1) {
     const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
     if (worksheet[cellAddress]) {
       worksheet[cellAddress].s = headerStyle;
@@ -1598,11 +1630,32 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const settingsSheet = XLSX.utils.aoa_to_sheet(settingsData);
     // Format settings sheet
     settingsSheet['!cols'] = [{ wch: 20 }, { wch: 60 }];
+
+    const headerStyle = {
+      font: { color: { rgb: 'FFFFFF' }, bold: true },
+      fill: { fgColor: { rgb: '1F2A44' } },
+      alignment: { wrapText: true, vertical: 'top' }
+    };
+
+    // Style title row (A1)
     if (settingsSheet['A1']) {
       settingsSheet['A1'].s = {
         font: { color: { rgb: 'FFFFFF' }, bold: true, sz: 14 },
         fill: { fgColor: { rgb: '1F2A44' } }
       };
+    }
+
+    // Style header row (row 2: "Parameter", "Value")
+    if (settingsSheet['A2']) {
+      settingsSheet['A2'].s = headerStyle;
+    }
+    if (settingsSheet['B2']) {
+      settingsSheet['B2'].s = headerStyle;
+    }
+
+    // Style "Active Filters" header (row 9)
+    if (settingsSheet['A9']) {
+      settingsSheet['A9'].s = headerStyle;
     }
 
     // Sheet 2: Summary (counts only)
@@ -1704,8 +1757,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     }
     detailSheet['!merges'] = merges;
 
-    // Apply header styling
-    applyHeatmapHeaderStyles(detailSheet);
+    // Apply header styling (both header rows + row labels)
+    applyDetailSheetHeaderStyles(detailSheet);
 
     // Set column widths
     const colWidths = [{ wch: 30 }]; // Row label column
