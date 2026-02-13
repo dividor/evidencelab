@@ -5970,6 +5970,10 @@ h6,
   height: 48px;
 }
 
+.heatmap-slider {
+  margin-left: auto;
+}
+
 .heatmap-slider input {
   width: 200px;
   margin-top: 12px;
