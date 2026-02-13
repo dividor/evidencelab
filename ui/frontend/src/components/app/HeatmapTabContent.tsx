@@ -2488,11 +2488,19 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             )}
             <div className="heatmap-modal-body">
-              {filteredDocId && (
-                <div className="heatmap-modal-filter-indicator">
-                  <span className="heatmap-modal-filter-text">
-                    Showing results from: <strong>{filteredDocTitle}</strong>
-                  </span>
+              <div className="heatmap-modal-filter-indicator">
+                <span className="heatmap-modal-filter-text">
+                  {filteredDocId ? (
+                    <>
+                      Showing results from: <strong>{filteredDocTitle}</strong>
+                    </>
+                  ) : (
+                    <>
+                      Showing all results. Click on a document to filter.
+                    </>
+                  )}
+                </span>
+                {filteredDocId && (
                   <button
                     className="heatmap-modal-filter-clear"
                     onClick={() => setFilteredDocId(null)}
@@ -2500,8 +2508,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   >
                     × Clear filter
                   </button>
-                </div>
-              )}
+                )}
+              </div>
               <SearchResultsList
                 results={displayedCellResults}
                 minScore={0}

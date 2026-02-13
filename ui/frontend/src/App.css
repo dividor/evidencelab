@@ -6603,6 +6603,7 @@ h6,
   line-height: 1.2;
   color: var(--gray-700);
   word-wrap: break-word;
+  margin-bottom: 0.3rem;
 }
 
 .heatmap-modal-thumbnail-source {
