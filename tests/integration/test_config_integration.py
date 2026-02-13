@@ -53,14 +53,17 @@ class TestConfigIntegration(unittest.TestCase):
         # We should patch the embedding model instantiation in orchestrator to avoid heavy lift
         # but let the config logic run real.
 
-        from unittest.mock import patch
+        from unittest.mock import MagicMock, patch
 
         # We need to patch where the classes are DEFINED or IMPORTED.
         # orchestrator imports RemoteEmbeddingClient from pipeline.utilities.embedding_client
         # it imports TextEmbedding inside the function from fastembed
+        # Mock TextEmbedding.list_supported_models() to avoid fastembed installation check
+        mock_text_embedding = MagicMock()
+        mock_text_embedding.list_supported_models.return_value = ["mock-model"]
 
         with patch("pipeline.utilities.embedding_client.RemoteEmbeddingClient"), patch(
-            "fastembed.TextEmbedding"
+            "fastembed.TextEmbedding", mock_text_embedding
         ), patch("pipeline.db.Database.init_collections"), patch(
             "pipeline.db.Database.create_payload_indexes"
         ):
