@@ -1700,6 +1700,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     });
     detailRows.push(headerRow2);
 
+    // Store metadata for creating hyperlinks after sheet is created
+    const hyperlinkCells: Array<{ row: number; col: number; url: string; title: string }> = [];
+
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
       const label =
@@ -1717,8 +1720,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       const maxDocs = Math.max(...rowDocs.map(docs => docs.length), 1);
 
       // Create rows for each document
+
       for (let docIdx = 0; docIdx < maxDocs; docIdx++) {
         const row = [docIdx === 0 ? label : '']; // Row label only on first doc
+        const rowIndex = detailRows.length; // Current row index in array
+
         filteredColumnValues.forEach((_, colIdx) => {
           const docs = rowDocs[colIdx];
           if (docIdx < docs.length) {
@@ -1728,13 +1734,21 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             const url = resolveResultUrl(doc);
             const text = resolveResultExcerpt(doc);
 
-            // Add hyperlink for title if URL exists
-            if (url) {
-              row.push({ f: `HYPERLINK("${url}", "${title}${page}")` } as any);
-            } else {
-              row.push(`${title}${page}`);
-            }
+            // Store title (will be converted to hyperlink later if URL exists)
+            const titleText = `${title}${page}`;
+            row.push(titleText);
             row.push(text);
+
+            // Remember this cell needs a hyperlink
+            if (url) {
+              const colIndex = 1 + colIdx * 2; // Column index for this title
+              hyperlinkCells.push({
+                row: rowIndex,
+                col: colIndex,
+                url: url,
+                title: titleText
+              });
+            }
           } else {
             row.push('', '');
           }
@@ -1744,6 +1758,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     });
 
     const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+
+    // Apply hyperlinks to cells
+    hyperlinkCells.forEach(({ row, col, url, title }) => {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      if (detailSheet[cellAddress]) {
+        // Set cell as hyperlink using XLSX link format
+        detailSheet[cellAddress].l = { Target: url, Tooltip: title };
+        // Style hyperlinks blue and underlined
+        if (!detailSheet[cellAddress].s) {
+          detailSheet[cellAddress].s = {};
+        }
+        detailSheet[cellAddress].s.font = { color: { rgb: '0563C1' }, underline: true };
+      }
+    });
 
     // Merge cells for column group headers
     const merges = [];
@@ -1775,7 +1803,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     XLSX.utils.book_append_sheet(workbook, settingsSheet, 'Settings');
 
     const fileName = `heatmap-${rowDimension}-by-${columnDimension}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+    XLSX.writeFile(workbook, fileName, { cellStyles: true });
   }, [
     columnDimension,
     columnOptions,
