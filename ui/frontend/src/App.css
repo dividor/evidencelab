@@ -6540,7 +6540,7 @@ h6,
 .heatmap-modal-thumbnail {
   flex-shrink: 0;
   width: 196px;
-  height: 88px;
+  height: 96px;
   cursor: pointer;
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -6565,7 +6565,7 @@ h6,
 .heatmap-modal-thumbnail-image-container {
   flex-shrink: 0;
   width: 74px;
-  height: 88px;
+  height: 96px;
   background: var(--white);
   display: flex;
   align-items: center;
