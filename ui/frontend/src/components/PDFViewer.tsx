@@ -922,19 +922,19 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     setIsSearching(true);
     try {
-      // Call search API with query
+      // Call search API with query and title filter to get results only for this document
       const response = await axios.get(`${API_BASE_URL}/search`, {
         params: {
           q: query,
-          limit: 100
+          limit: 100,
+          title: title,  // Filter by document title at backend
+          data_source: dataSource
         }
       });
 
-      // Filter results to only include chunks from current document
+      // Backend already filtered by title, so all results are for this document
       const data = response.data as { results?: any[] };
-      const docResults = (data.results || []).filter(
-        (result: any) => result.doc_id === docId
-      );
+      const docResults = data.results || [];
       // Extract unique page numbers and sort them
       const pages = [...new Set(docResults.map((r: any) => r.page_num))]
         .filter((p): p is number => typeof p === 'number')
