@@ -6594,7 +6594,7 @@ h6,
 
 .heatmap-modal-thumbnail-title {
   flex: 1;
-  padding: 0.5rem;
+  padding: 0.5rem 0.5rem 0.65rem 0.5rem;
   border-left: 1px solid var(--gray-200);
   background: var(--gray-50);
   display: flex;
