@@ -6454,13 +6454,14 @@ h6,
 }
 
 .heatmap-modal-doc-count {
-  background: var(--brand-primary);
-  color: var(--white);
+  background: var(--gray-100);
+  color: var(--gray-700);
   padding: 0.4rem 0.9rem;
   border-radius: var(--radius-md);
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
+  border: 1px solid var(--gray-200);
 }
 
 .heatmap-modal-close {
@@ -6614,6 +6615,7 @@ h6,
   color: var(--gray-500);
   font-style: italic;
   word-wrap: break-word;
+  margin-top: 0.35rem;
 }
 
 .heatmap-modal-filter-indicator {
