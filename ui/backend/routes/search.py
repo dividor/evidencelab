@@ -758,10 +758,13 @@ def _format_document_result(
     doc_data.update(sys_fields)
     normalized_doc = normalize_document_payload(doc_data)
 
+    full_summary = normalized_doc.get("sys_full_summary", "")
     return SearchResult(
         chunk_id=str(point.id),
         doc_id=str(point.id),
-        text=normalized_doc.get("sys_full_summary", "")[:500],
+        text=(
+            full_summary[:500] if full_summary else ""
+        ),  # Truncated for backwards compatibility
         page_num=1,
         headings=[],
         score=0.0,
@@ -771,6 +774,7 @@ def _format_document_result(
         metadata=normalized_doc.get("metadata", {}),
         sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
         sys_filepath=normalized_doc.get("sys_filepath"),
+        sys_full_summary=full_summary,  # Full summary without truncation
         data_source=source,
     )
 
