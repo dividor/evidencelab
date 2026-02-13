@@ -225,14 +225,16 @@ def _init_org_flows():
             "not_downloaded": 0,
             "parsed": 0,
             "parse_failed": 0,
-            "not_parsed": 0,
+            "stopped": 0,
+            "parsing": 0,
             "summarized": 0,
-            "not_summarized": 0,
+            "summarize_failed": 0,
+            "summarizing": 0,
             "indexed": 0,
             "index_failed": 0,
-            "not_indexed": 0,
+            "indexing": 0,
             "tagged": 0,
-            "not_tagged": 0,
+            "tagging": 0,
         }
     )
 
@@ -264,11 +266,19 @@ def _apply_status_counts(
     c_parse_failed = status_counts.get("parse_failed", 0)
     c_downloaded = status_counts.get("downloaded", 0)
     c_download_error = status_counts.get("download_error", 0)
+    c_summarize_failed = status_counts.get("summarize_failed", 0)
+    c_stopped = status_counts.get("stopped", 0)
+    c_indexing = status_counts.get("indexing", 0)
+    c_tagging = status_counts.get("tagging", 0)
+    c_summarizing = status_counts.get("summarizing", 0)
+    c_parsing = status_counts.get("parsing", 0)
 
-    total_tagged = c_tagged + c_indexed + c_index_failed
-    total_summarized = c_summarized + total_tagged
-    total_parsed = c_parsed + total_summarized
-    total_downloaded = c_downloaded + total_parsed + c_parse_failed
+    total_tagged = c_tagged + c_indexed + c_index_failed + c_indexing
+    total_summarized = c_summarized + total_tagged + c_tagging
+    total_parsed = c_parsed + total_summarized + c_summarizing + c_summarize_failed
+    total_downloaded = (
+        c_downloaded + total_parsed + c_parse_failed + c_parsing + c_stopped
+    )
 
     flows["indexed"] += c_indexed
     flows["index_failed"] += c_index_failed
@@ -276,12 +286,14 @@ def _apply_status_counts(
     flows["summarized"] += total_summarized
     flows["parsed"] += total_parsed
     flows["parse_failed"] += c_parse_failed
+    flows["summarize_failed"] += c_summarize_failed
     flows["downloaded"] += total_downloaded
 
-    flows["not_indexed"] = total_tagged - (c_indexed + c_index_failed)
-    flows["not_tagged"] = total_summarized - total_tagged
-    flows["not_summarized"] = total_parsed - total_summarized
-    flows["not_parsed"] = total_downloaded - (total_parsed + c_parse_failed)
+    flows["indexing"] += c_tagged + c_indexing
+    flows["tagging"] += c_summarized + c_tagging
+    flows["summarizing"] += c_parsed + c_summarizing
+    flows["stopped"] += c_stopped
+    flows["parsing"] += c_downloaded + c_parsing
     flows["not_downloaded"] = c_download_error
 
     flows["total"] = total_downloaded + flows["not_downloaded"]
@@ -328,13 +340,16 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
         "not_downloaded": sum(f["not_downloaded"] for f in org_flows.values()),
         "parsed": sum(f["parsed"] for f in org_flows.values()),
         "parse_failed": sum(f["parse_failed"] for f in org_flows.values()),
+        "stopped": sum(f["stopped"] for f in org_flows.values()),
+        "parsing": sum(f["parsing"] for f in org_flows.values()),
         "summarized": sum(f["summarized"] for f in org_flows.values()),
-        "not_summarized": sum(f["not_summarized"] for f in org_flows.values()),
+        "summarize_failed": sum(f["summarize_failed"] for f in org_flows.values()),
+        "summarizing": sum(f["summarizing"] for f in org_flows.values()),
         "tagged": sum(f["tagged"] for f in org_flows.values()),
-        "not_tagged": sum(f["not_tagged"] for f in org_flows.values()),
+        "tagging": sum(f["tagging"] for f in org_flows.values()),
         "indexed": sum(f["indexed"] for f in org_flows.values()),
         "index_failed": sum(f["index_failed"] for f in org_flows.values()),
-        "not_indexed": sum(f["not_indexed"] for f in org_flows.values()),
+        "indexing": sum(f["indexing"] for f in org_flows.values()),
     }
 
     def add_node(key: str, label: str, color: str) -> None:
@@ -354,16 +369,31 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
         f"Parse Failed ({totals['parse_failed']})",
         "rgb(255, 100, 100)",
     )
+    add_node(
+        "stopped",
+        f"Stopped ({totals['stopped']})",
+        "rgb(255, 100, 100)",
+    )
+    add_node(
+        "parsing",
+        f"Parsing ({totals['parsing']})",
+        "rgb(200, 200, 200)",
+    )
     add_node("summarized", f"Summarized ({totals['summarized']})", "rgb(166, 216, 84)")
     add_node(
-        "not_summarized",
-        f"Not Summarized ({totals['not_summarized']})",
+        "summarize_failed",
+        f"Summarize Failed ({totals['summarize_failed']})",
+        "rgb(255, 100, 100)",
+    )
+    add_node(
+        "summarizing",
+        f"Summarizing ({totals['summarizing']})",
         "rgb(200, 200, 200)",
     )
     add_node("tagged", f"Tagged ({totals['tagged']})", "rgb(255, 217, 47)")
     add_node(
-        "not_tagged",
-        f"Not Tagged ({totals['not_tagged']})",
+        "tagging",
+        f"Tagging ({totals['tagging']})",
         "rgb(200, 200, 200)",
     )
     add_node("indexed", f"Indexed ({totals['indexed']})", "rgb(229, 196, 148)")
@@ -373,8 +403,8 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
         "rgb(255, 100, 100)",
     )
     add_node(
-        "not_indexed",
-        f"Not Indexed ({totals['not_indexed']})",
+        "indexing",
+        f"Indexing ({totals['indexing']})",
         "rgb(200, 200, 200)",
     )
 
@@ -416,18 +446,36 @@ def _build_sankey_links(
             flows["parse_failed"],
             "rgb(255, 100, 100)",
         )
+        add_link(
+            "downloaded",
+            "stopped",
+            flows["stopped"],
+            "rgb(255, 100, 100)",
+        )
+        add_link(
+            "downloaded",
+            "parsing",
+            flows["parsing"],
+            "rgb(200, 200, 200)",
+        )
         add_link("parsed", "summarized", flows["summarized"], "rgb(166, 216, 84)")
         add_link(
             "parsed",
-            "not_summarized",
-            flows["not_summarized"],
+            "summarize_failed",
+            flows["summarize_failed"],
+            "rgb(255, 100, 100)",
+        )
+        add_link(
+            "parsed",
+            "summarizing",
+            flows["summarizing"],
             "rgb(200, 200, 200)",
         )
         add_link("summarized", "tagged", flows["tagged"], "rgb(255, 217, 47)")
         add_link(
             "summarized",
-            "not_tagged",
-            flows["not_tagged"],
+            "tagging",
+            flows["tagging"],
             "rgb(200, 200, 200)",
         )
         add_link("tagged", "indexed", flows["indexed"], "rgb(229, 196, 148)")
@@ -439,8 +487,8 @@ def _build_sankey_links(
         )
         add_link(
             "tagged",
-            "not_indexed",
-            flows["not_indexed"],
+            "indexing",
+            flows["indexing"],
             "rgb(200, 200, 200)",
         )
 
@@ -455,6 +503,8 @@ def _build_sankey_annotations(
         "not_downloaded": sum(f["not_downloaded"] for f in org_flows.values()),
         "parsed": sum(f["parsed"] for f in org_flows.values()),
         "summarized": sum(f["summarized"] for f in org_flows.values()),
+        "tagged": sum(f["tagged"] for f in org_flows.values()),
+        "indexed": sum(f["indexed"] for f in org_flows.values()),
     }
     total_records = sum(org_flows[org]["total"] for org in sorted_orgs)
     return {
@@ -463,6 +513,8 @@ def _build_sankey_annotations(
         "layer2_count": totals["downloaded"] + totals["not_downloaded"],
         "layer3_count": totals["parsed"],
         "layer4_count": totals["summarized"],
+        "layer5_count": totals["tagged"],
+        "layer6_count": totals["indexed"],
     }
 
 

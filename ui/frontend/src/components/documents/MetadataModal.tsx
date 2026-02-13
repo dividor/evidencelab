@@ -228,14 +228,18 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
       return null;
     }
 
-    const allTags: string[] = [];
+    const allTags: { label: string; reason?: string }[] = [];
     Object.entries(value).forEach(([taxName, tags]) => {
       if (Array.isArray(tags)) {
         tags.forEach(tag => {
-          // For cleaner display, maybe prefix with taxonomy name if multiple?
-          // But usually it's just SDG.
-          // Let's just use the tag string which now contains "code - Name"
-          allTags.push(String(tag));
+          if (typeof tag === 'object' && tag !== null) {
+            const code = tag.code || '';
+            const name = tag.name || '';
+            const label = name ? `${code} - ${name}` : code;
+            allTags.push({ label, reason: tag.reason });
+          } else {
+            allTags.push({ label: String(tag) });
+          }
         });
       }
     });
@@ -249,7 +253,12 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
       <div className="taxonomy-list">
         {visibleTags.map((tag, idx) => (
           <div key={idx} className="taxonomy-item" style={{ marginBottom: '4px' }}>
-            {tag}
+            <span>{tag.label}</span>
+            {tag.reason && isExpanded && (
+              <div style={{ fontSize: '0.85em', color: '#666', marginLeft: '8px' }}>
+                {tag.reason}
+              </div>
+            )}
           </div>
         ))}
         {hasMore && renderToggleLink(isExpanded, onToggle)}
@@ -299,7 +308,9 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
       );
     }
 
-    const valueStr = Array.isArray(item.value) ? item.value.join(', ') : String(item.value);
+    const valueStr = Array.isArray(item.value)
+      ? item.value.map(v => (typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v))).join(', ')
+      : String(item.value);
     return renderValueParts(valueStr);
   };
 

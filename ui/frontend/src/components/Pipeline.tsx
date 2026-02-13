@@ -25,6 +25,8 @@ interface SankeyData {
     layer2_count: number;
     layer3_count: number;
     layer4_count: number;
+    layer5_count?: number;
+    layer6_count?: number;
   };
 }
 
@@ -334,7 +336,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 xanchor: 'left'
               },
               {
-                x: 0.35,
+                x: 0.22,
                 y: -0.08,
                 xref: 'paper',
                 yref: 'paper',
@@ -348,7 +350,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 borderwidth: 1
               },
               {
-                x: 0.65,
+                x: 0.52,
                 y: -0.08,
                 xref: 'paper',
                 yref: 'paper',
@@ -361,7 +363,21 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 bordercolor: ANNOTATION_BORDER,
                 borderwidth: 1
               },
+              ...(sankeyData.annotations.layer6_count != null ? [
               {
+                x: 0.98,
+                y: -0.08,
+                xref: 'paper',
+                yref: 'paper',
+                text: `reports=${sankeyData.annotations.layer6_count.toLocaleString()}`,
+                showarrow: false,
+                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
+                xanchor: 'right',
+                bgcolor: ANNOTATION_BG,
+                borderpad: 8,
+                bordercolor: ANNOTATION_BORDER,
+                borderwidth: 1
+              }] : [{
                 x: 0.98,
                 y: -0.08,
                 xref: 'paper',
@@ -374,7 +390,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
                 borderpad: 8,
                 bordercolor: ANNOTATION_BORDER,
                 borderwidth: 1
-              }
+              }])
             ]
           }}
           config={{
@@ -876,7 +892,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                   },
                   // Layer 2 label
                   {
-                    x: 0.35,
+                    x: 0.22,
                     y: -0.08,
                     xref: 'paper',
                     yref: 'paper',
@@ -891,7 +907,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                   },
                   // Layer 3 label
                   {
-                    x: 0.65,
+                    x: 0.52,
                     y: -0.08,
                     xref: 'paper',
                     yref: 'paper',
@@ -904,8 +920,21 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     bordercolor: ANNOTATION_BORDER,
                     borderwidth: 1
                   },
-                  // Layer 4 label
-                  {
+                  // Layer 6 label (indexed)
+                  ...(sankeyData.annotations.layer6_count != null ? [{
+                    x: 0.98,
+                    y: -0.08,
+                    xref: 'paper',
+                    yref: 'paper',
+                    text: `reports=${sankeyData.annotations.layer6_count.toLocaleString()}`,
+                    showarrow: false,
+                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
+                    xanchor: 'right',
+                    bgcolor: ANNOTATION_BG,
+                    borderpad: 8,
+                    bordercolor: ANNOTATION_BORDER,
+                    borderwidth: 1
+                  }] : [{
                     x: 0.98,
                     y: -0.08,
                     xref: 'paper',
@@ -918,7 +947,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                     borderpad: 8,
                     bordercolor: ANNOTATION_BORDER,
                     borderwidth: 1
-                  }
+                  }])
                 ]
               }}
               config={{

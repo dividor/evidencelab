@@ -84,21 +84,28 @@ if [ -n "$DATA_MOUNT_PATH" ]; then
     DATA_MOUNT_PATH="${DATA_MOUNT_PATH%\"}"
     DATA_MOUNT_PATH="${DATA_MOUNT_PATH#\"}"
     DATA_DIR="./data"
-    if [ ! -L "$DATA_DIR" ]; then
-        echo "❌ Error: $DATA_DIR is not a symlink."
+
+    # If ./data doesn't exist at all, suggest creating a symlink
+    if [ ! -e "$DATA_DIR" ]; then
+        echo "❌ Error: $DATA_DIR does not exist."
         echo "   DATA_MOUNT_PATH is set to: $DATA_MOUNT_PATH"
         echo "   Create a symlink so relative paths resolve correctly:"
         echo "   ln -s \"$DATA_MOUNT_PATH\" $DATA_DIR"
         exit 1
     fi
-    LINK_TARGET="$(readlink "$DATA_DIR")"
-    if [ "$LINK_TARGET" != "$DATA_MOUNT_PATH" ]; then
-        echo "❌ Error: $DATA_DIR symlink target mismatch."
-        echo "   Expected: $DATA_MOUNT_PATH"
-        echo "   Found:    $LINK_TARGET"
-        echo "   Fix with: ln -sf \"$DATA_MOUNT_PATH\" $DATA_DIR"
-        exit 1
+
+    # If ./data is a symlink, validate it points to DATA_MOUNT_PATH
+    if [ -L "$DATA_DIR" ]; then
+        LINK_TARGET="$(readlink "$DATA_DIR")"
+        if [ "$LINK_TARGET" != "$DATA_MOUNT_PATH" ]; then
+            echo "❌ Error: $DATA_DIR symlink target mismatch."
+            echo "   Expected: $DATA_MOUNT_PATH"
+            echo "   Found:    $LINK_TARGET"
+            echo "   Fix with: ln -sf \"$DATA_MOUNT_PATH\" $DATA_DIR"
+            exit 1
+        fi
     fi
+    # If ./data is a regular directory, that's fine - use it as-is
 fi
 
 # Set necessary environment variables for Host execution

@@ -112,9 +112,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
       - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
+      - DATA_MOUNT_PATH=/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
