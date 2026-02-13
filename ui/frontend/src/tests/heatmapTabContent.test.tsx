@@ -75,21 +75,20 @@ const baseProps = {
 };
 
 describe('HeatmapTabContent', () => {
-  test('renders defaults and enables Heatmap Search when query entered', async () => {
+  test('renders defaults and enables Heatmap Search for dimension rows without query', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
     expect(await screen.findByText('2020')).toBeInTheDocument();
 
     const rowSelect = screen.getByLabelText('Rows') as HTMLSelectElement;
     const columnSelect = screen.getByLabelText('Columns') as HTMLSelectElement;
+    const metricSelect = screen.getByLabelText('Metric') as HTMLSelectElement;
     expect(rowSelect.value).toBe('document_type');
     expect(columnSelect.value).toBe('published_year');
+    expect(metricSelect.value).toBe('documents');
 
+    // Dimension vs dimension: button enabled even without a query
     const searchButton = screen.getByRole('button', { name: 'Heatmap Search' });
-    expect(searchButton).toBeDisabled();
-
-    const gridQueryInput = screen.getByPlaceholderText('Enter your search query');
-    fireEvent.change(gridQueryInput, { target: { value: 'food security' } });
     expect(searchButton).toBeEnabled();
   });
 

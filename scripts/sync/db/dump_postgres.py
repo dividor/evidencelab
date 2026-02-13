@@ -1,10 +1,11 @@
 import argparse
+import json
 import logging
 import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 
@@ -37,6 +38,20 @@ def _require_value(value: Optional[str], name: str) -> str:
     raise RuntimeError(f"Missing required value: {name}")
 
 
+def _get_valid_data_sources(root_dir: Path) -> List[str]:
+    config_path = root_dir / "config.json"
+    if not config_path.exists():
+        raise RuntimeError(f"Config file not found: {config_path}")
+    with open(config_path, encoding="utf-8") as handle:
+        config = json.load(handle)
+    datasources = config.get("datasources", {})
+    return [
+        ds.get("data_subdir")
+        for ds in datasources.values()
+        if isinstance(ds, dict) and ds.get("data_subdir")
+    ]
+
+
 def dump_postgres(
     *,
     root_dir: Path,
@@ -46,12 +61,14 @@ def dump_postgres(
     db_password: str,
     use_prod: bool,
     prefix: str = "",
+    data_source: Optional[str] = None,
 ) -> Path:
     output_dir = _resolve_output_dir(output_dir, root_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dir_name = f"postgres_dump_{db_name}_{timestamp}"
+    suffix = f"_{data_source}" if data_source else ""
+    dir_name = f"postgres_dump_{db_name}{suffix}_{timestamp}"
     if prefix:
         dir_name = f"{prefix}{dir_name}"
 
@@ -59,12 +76,18 @@ def dump_postgres(
     backup_dir.mkdir(parents=True, exist_ok=True)
     dump_path = backup_dir / "postgres.dump"
 
-    logger.info("Dumping Postgres database...")
+    if data_source:
+        table_flags = f"-t docs_{data_source} -t chunks_{data_source}"
+        logger.info("Dumping tables for data source '%s'...", data_source)
+    else:
+        table_flags = ""
+        logger.info("Dumping full Postgres database...")
+
     cmd = (
         f"{_compose_base_command(use_prod)} exec -T "
         f"-e PGPASSWORD={db_password} postgres "
-        f"pg_dump -U {db_user} -d {db_name} -F c"
-    )
+        f"pg_dump -U {db_user} -d {db_name} -F c {table_flags}"
+    ).rstrip()
     with open(dump_path, "wb") as handle:
         result = subprocess.run(
             cmd, shell=True, cwd=root_dir, stdout=handle
@@ -113,9 +136,22 @@ def main() -> int:
         default="",
         help="Prefix to add to backup directory name.",
     )
+    parser.add_argument(
+        "--data-source",
+        default=None,
+        help="Dump only tables for this data source (e.g. wfp, uneg, worldbank).",
+    )
     args = parser.parse_args()
 
     try:
+        if args.data_source:
+            valid = _get_valid_data_sources(root_dir)
+            if args.data_source not in valid:
+                raise RuntimeError(
+                    f"Unknown data source '{args.data_source}'. "
+                    f"Valid sources: {', '.join(sorted(valid))}"
+                )
+
         db_name = _require_value(args.db_name, "POSTGRES_DB")
         db_user = _require_value(args.db_user, "POSTGRES_USER")
         db_password = _require_value(args.db_password, "POSTGRES_PASSWORD")
@@ -127,6 +163,7 @@ def main() -> int:
             db_password=db_password,
             use_prod=args.prod,
             prefix=args.prefix,
+            data_source=args.data_source,
         )
     except RuntimeError as exc:
         logger.error(str(exc))

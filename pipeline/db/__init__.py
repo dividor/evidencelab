@@ -52,6 +52,7 @@ from pipeline.db.config import (  # noqa: E402
     get_application_config,
     get_field_mapping,
     get_filter_fields,
+    get_taxonomy_filter_fields,
     load_datasources_config,
     source_to_core_field,
 )
@@ -103,6 +104,7 @@ __all__ = [
     "get_default_db",
     "get_field_mapping",
     "get_filter_fields",
+    "get_taxonomy_filter_fields",
     "load_datasources_config",
     "make_stage",
     "open",

@@ -382,12 +382,10 @@ def main():
             db_name = require_value(args.db_name, "POSTGRES_DB")
             expected_prefix = f"postgres_dump_{db_name}_"
         normalized_name = source_path.name
-        if normalized_name.startswith("Post-backfill_"):
-            normalized_name = normalized_name.replace("Post-backfill_", "", 1)
-        if not normalized_name.startswith(expected_prefix):
+        if expected_prefix not in normalized_name:
             logger.error(
                 "Provided source does not match data source. "
-                f"Expected prefix '{expected_prefix}'."
+                f"Expected '{expected_prefix}' in directory name."
             )
             sys.exit(1)
         logger.info(f"Using provided source: {source_path}")
