@@ -16,7 +16,6 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -25,8 +24,8 @@ sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
-from pipeline.db import get_db
-from pipeline.db.postgres_client import PostgresClient
+from pipeline.db import get_db  # noqa: E402
+from pipeline.db.postgres_client import PostgresClient  # noqa: E402
 
 # Load environment variables from .env file
 load_dotenv()
@@ -102,7 +101,8 @@ def backpopulate_taxonomies(data_source="uneg", dry_run=False):
         updates = {}
 
         # Extract taxonomy codes from the JSON structure
-        # Structure: {"sdg": [{"code": "sdg1", ...}], "cross_cutting_theme": [{"code": "gender_equality", ...}]}
+        # Structure: {"sdg": [{"code": "sdg1", ...}],
+        #             "cross_cutting_theme": [{"code": "gender_equality", ...}]}
         for tax_type, tax_list in sys_taxonomies.items():
             if not isinstance(tax_list, list):
                 continue

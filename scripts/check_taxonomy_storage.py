@@ -5,12 +5,9 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pipeline.db import get_db
+from pipeline.db import get_db  # noqa: E402
 
 db = get_db("uneg")
-
-# Get a document that should have taxonomies
-from qdrant_client.http import models
 
 results = db.client.scroll(
     collection_name=db.documents_collection,

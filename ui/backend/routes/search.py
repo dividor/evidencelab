@@ -682,6 +682,104 @@ async def search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _get_indexed_doc_ids(pg, source: str) -> List[str]:
+    """Fetch indexed document IDs from Postgres."""
+    with pg._get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT doc_id FROM docs_{source} WHERE sys_status = 'indexed'"
+            )
+            return [str(row[0]) for row in cur.fetchall()]
+
+
+def _build_metadata_filter_condition(
+    core_field: str, value: Any, storage_field: str
+) -> qmodels.Filter:
+    """Build a Qdrant filter condition for a single metadata field."""
+    if core_field == "title":
+        return qmodels.Filter(
+            should=[
+                qmodels.FieldCondition(
+                    key=storage_field, match=qmodels.MatchText(text=value)
+                )
+            ]
+        )
+    if core_field.startswith("tag_"):
+        taxonomy_code = value.split(" - ")[0] if " - " in value else value
+        return qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key=storage_field,
+                    match=qmodels.MatchAny(any=[taxonomy_code]),
+                )
+            ]
+        )
+    return qmodels.Filter(
+        must=[
+            qmodels.FieldCondition(
+                key=storage_field, match=qmodels.MatchValue(value=value)
+            )
+        ]
+    )
+
+
+def _build_docsearch_filters(
+    q: str, core_filters: Dict[str, Any], indexed_doc_ids: List[str], db
+) -> Optional[qmodels.Filter]:
+    """Build combined Qdrant filter conditions for document search."""
+    filter_conditions = []
+
+    if q.strip():
+        search_conditions = db._search_conditions(q.strip())
+        if search_conditions:
+            filter_conditions.append(qmodels.Filter(should=search_conditions))
+
+    for core_field, value in core_filters.items():
+        if not value:
+            continue
+        storage_field = map_core_field_to_storage(core_field)
+        if not storage_field:
+            continue
+        filter_conditions.append(
+            _build_metadata_filter_condition(core_field, value, storage_field)
+        )
+
+    filter_conditions.append(
+        qmodels.Filter(should=[qmodels.HasIdCondition(has_id=indexed_doc_ids)])
+    )
+
+    return qmodels.Filter(must=filter_conditions) if filter_conditions else None
+
+
+def _format_document_result(
+    point, sys_fields_map: Dict[str, Any], source: str
+) -> Optional[SearchResult]:
+    """Format a single document point into a SearchResult."""
+    if not point.payload:
+        return None
+
+    doc_data = {"doc_id": str(point.id), **point.payload}
+    sys_fields = sys_fields_map.get(str(point.id), {})
+    doc_data.update(sys_fields)
+    normalized_doc = normalize_document_payload(doc_data)
+
+    return SearchResult(
+        chunk_id=str(point.id),
+        doc_id=str(point.id),
+        text=normalized_doc.get("sys_full_summary", "")[:500],
+        page_num=1,
+        headings=[],
+        score=0.0,
+        title=normalized_doc.get("title", ""),
+        organization=normalized_doc.get("organization"),
+        year=normalized_doc.get("published_year"),
+        metadata=normalized_doc.get("metadata", {}),
+        sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
+        sys_filepath=normalized_doc.get("sys_filepath"),
+        data_source=source,
+    )
+
+
 @router.get("/docsearch", response_model=SearchResponse)
 @limiter.limit(RATE_LIMIT_SEARCH)
 async def docsearch(
@@ -713,147 +811,32 @@ async def docsearch(
     pg = get_pg_for_source(source)
 
     try:
-        # Only include indexed documents - get doc_ids from Postgres
-        indexed_doc_ids = []
-        with pg._get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT doc_id FROM docs_{source} WHERE sys_status = 'indexed'"
-                )
-                indexed_doc_ids = [str(row[0]) for row in cur.fetchall()]
-
+        indexed_doc_ids = _get_indexed_doc_ids(pg, source)
         if not indexed_doc_ids:
-            # No indexed documents, return empty results
-            return SearchResponse(
-                results=[],
-                total=0,
-                query=q,
-                filters={},
-                facets=None,
-            )
+            return SearchResponse(results=[], total=0, query=q, filters={}, facets=None)
 
         core_filters = _build_core_filters(
-            organization,
-            title,
-            published_year,
-            document_type,
-            country,
-            language,
+            organization, title, published_year, document_type, country, language
         )
-        # Pick up tag_* query params (taxonomy filters) dynamically
         for param_name, param_value in request.query_params.items():
             if param_name.startswith("tag_") and param_value:
                 core_filters[param_name] = param_value
 
-        # Build Qdrant filter conditions
-        filter_conditions = []
+        combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
 
-        # Add text search conditions for query
-        if q.strip():
-            search_conditions = db._search_conditions(q.strip())
-            if search_conditions:
-                filter_conditions.append(qmodels.Filter(should=search_conditions))
-
-        # Add metadata filters
-        for core_field, value in core_filters.items():
-            if not value:
-                continue
-            storage_field = map_core_field_to_storage(core_field)
-            if not storage_field:
-                continue
-
-            # Handle title as text search
-            if core_field == "title":
-                filter_conditions.append(
-                    qmodels.Filter(
-                        should=[
-                            qmodels.FieldCondition(
-                                key=storage_field, match=qmodels.MatchText(text=value)
-                            )
-                        ]
-                    )
-                )
-            # Handle taxonomy fields (tag_*) as array matching
-            elif core_field.startswith("tag_"):
-                # Extract code from "code - label" format
-                taxonomy_code = value.split(" - ")[0] if " - " in value else value
-                filter_conditions.append(
-                    qmodels.Filter(
-                        must=[
-                            qmodels.FieldCondition(
-                                key=storage_field,
-                                match=qmodels.MatchAny(any=[taxonomy_code]),
-                            )
-                        ]
-                    )
-                )
-            else:
-                filter_conditions.append(
-                    qmodels.Filter(
-                        must=[
-                            qmodels.FieldCondition(
-                                key=storage_field, match=qmodels.MatchValue(value=value)
-                            )
-                        ]
-                    )
-                )
-
-        # Only include indexed documents (filter by sys_status from Postgres)
-        # Add filter to match only the doc_ids that have sys_status = 'indexed'
-        filter_conditions.append(
-            qmodels.Filter(should=[qmodels.HasIdCondition(has_id=indexed_doc_ids)])
-        )
-
-        # Combine all filter conditions
-        if filter_conditions:
-            combined_filter = qmodels.Filter(must=filter_conditions)
-        else:
-            combined_filter = None
-
-        # Scroll documents
         results = await run_in_threadpool(
             db._scroll_documents, query_filter=combined_filter, end_idx=limit
         )
 
-        # Fetch sys_ fields from Postgres (includes sys_parsed_folder for thumbnails)
         doc_ids = [str(point.id) for point in results[:limit] if point.id]
         sys_fields_map = pg.fetch_docs(doc_ids) if doc_ids else {}
 
-        # Format results
-        documents = []
-        for point in results[:limit]:
-            if not point.payload:
-                continue
-
-            doc_data = {"doc_id": str(point.id), **point.payload}
-            # Merge sys_ fields from Postgres
-            sys_fields = sys_fields_map.get(str(point.id), {})
-            doc_data.update(sys_fields)
-            # Normalize to core field names
-            normalized_doc = normalize_document_payload(doc_data)
-
-            # Don't set default sys_parsed_folder - let frontend fallback handle it
-            # Frontend constructs: data/{source}/parsed/{org}/{year}/{doc_id}
-
-            # Create a pseudo-chunk result with document data
-            result = SearchResult(
-                chunk_id=str(point.id),
-                doc_id=str(point.id),
-                text=normalized_doc.get("sys_full_summary", "")[
-                    :500
-                ],  # Truncate summary
-                page_num=1,
-                headings=[],  # Document-level search has no chunk headings
-                score=0.0,  # Score 0 = filter-only (no deduplication)
-                title=normalized_doc.get("title", ""),
-                organization=normalized_doc.get("organization"),
-                year=normalized_doc.get("published_year"),
-                metadata=normalized_doc.get("metadata", {}),
-                sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
-                sys_filepath=normalized_doc.get("sys_filepath"),
-                data_source=source,  # Add data_source for thumbnail fallback
-            )
-            documents.append(result)
+        documents = [
+            result
+            for point in results[:limit]
+            if (result := _format_document_result(point, sys_fields_map, source))
+            is not None
+        ]
 
         t_end = time.time()
         logger.info(
@@ -866,10 +849,7 @@ async def docsearch(
             core_filters, core_filters.get("title")
         )
         return SearchResponse(
-            results=documents,
-            total=len(documents),
-            query=q,
-            filters=filters_response,
+            results=documents, total=len(documents), query=q, filters=filters_response
         )
 
     except Exception as e:
