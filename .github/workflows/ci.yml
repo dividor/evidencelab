@@ -245,17 +245,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-
       - name: Free disk space
         run: |
+          echo "Disk space before cleanup:"
+          df -h /
+          # Remove large unused packages and directories
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
             /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/share/swift \
-            /usr/local/graalvm /usr/local/share/boost /usr/share/miniconda
-          docker system prune -af
+            /usr/local/graalvm /usr/local/share/boost /usr/share/miniconda \
+            /usr/local/share/powershell /usr/share/az_* /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache
+          # Clean docker and container images
+          docker system prune -af --volumes
+          # Clean apt cache
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          echo "Disk space after cleanup:"
           df -h /
 
       - name: Write .env for docker compose
@@ -284,6 +289,11 @@ jobs:
       - name: Ensure .env exists
         run: |
           test -f .env || touch .env
+        working-directory: ${{ github.workspace }}
+
+      - name: Build shared Python image
+        run: |
+          docker build -t evidencelab-ai-python:latest --target runtime .
         working-directory: ${{ github.workspace }}
 
       - name: Start Docker services
