@@ -1447,8 +1447,28 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     for (const [cellKey, results] of Object.entries(gridResults)) {
       // score === 0 means no similarity was computed (filter-only scroll), always include
       const filtered = results.filter((result) => result.score === 0 || result.score >= similarityCutoff);
-      // Count all documents, no deduplication (user wants to see all indexed docs)
-      const count = filtered.length;
+
+      // Determine if this is a query search (has scores > 0) vs filter-only (/docsearch)
+      const hasQuery = filtered.some((result) => result.score > 0);
+
+      const count =
+        heatmapMetric === 'documents' && hasQuery
+          ? (() => {
+              // Deduplicate by title|year|org for query searches
+              const uniqueKeys = new Set<string>();
+              filtered.forEach((result) => {
+                const title = result.title || '';
+                const year = result.year || result.metadata?.year || '';
+                const org = result.organization || result.metadata?.organization || '';
+                const key = `${title}|${year}|${org}`;
+                if (key !== '||') {
+                  uniqueKeys.add(key);
+                }
+              });
+              return uniqueKeys.size;
+            })()
+          : filtered.length; // No deduplication for filter-only /docsearch
+
       nextResults[cellKey] = { results: filtered, count };
     }
     return nextResults;

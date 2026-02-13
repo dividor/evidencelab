@@ -831,6 +831,12 @@ async def docsearch(
             doc_data.update(sys_fields)
             # Normalize to core field names
             normalized_doc = normalize_document_payload(doc_data)
+
+            # Set default sys_parsed_folder if not present
+            parsed_folder = normalized_doc.get("sys_parsed_folder")
+            if not parsed_folder:
+                parsed_folder = f"./data/{source}/parsed"
+
             # Create a pseudo-chunk result with document data
             result = SearchResult(
                 chunk_id=str(point.id),
@@ -840,12 +846,12 @@ async def docsearch(
                 ],  # Truncate summary
                 page_num=1,
                 headings=[],  # Document-level search has no chunk headings
-                score=1.0,  # No scoring for filter-only search
+                score=0.0,  # Score 0 = filter-only (no deduplication)
                 title=normalized_doc.get("title", ""),
                 organization=normalized_doc.get("organization"),
                 year=normalized_doc.get("published_year"),
                 metadata=normalized_doc.get("metadata", {}),
-                sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
+                sys_parsed_folder=parsed_folder,
                 sys_filepath=normalized_doc.get("sys_filepath"),
             )
             documents.append(result)
