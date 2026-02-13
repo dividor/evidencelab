@@ -710,8 +710,28 @@ async def docsearch(
     t_start = time.time()
     source = data_source if isinstance(data_source, str) and data_source else "uneg"
     db = get_db_for_source(source)
+    pg = get_pg_for_source(source)
 
     try:
+        # Only include indexed documents - get doc_ids from Postgres
+        indexed_doc_ids = []
+        with pg._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT doc_id FROM docs_{source} WHERE sys_status = 'indexed'"
+                )
+                indexed_doc_ids = [str(row[0]) for row in cur.fetchall()]
+
+        if not indexed_doc_ids:
+            # No indexed documents, return empty results
+            return SearchResponse(
+                results=[],
+                total=0,
+                query=q,
+                filters={},
+                facets=None,
+            )
+
         core_filters = _build_core_filters(
             organization,
             title,
@@ -755,7 +775,7 @@ async def docsearch(
                 )
             # Handle taxonomy fields (tag_*) as array matching
             elif core_field.startswith("tag_"):
-                # Extract just the code if value contains " - " (e.g., "gender_equality - Gender Equality..." -> "gender_equality")
+                # Extract code from "code - label" format
                 taxonomy_code = value.split(" - ")[0] if " - " in value else value
                 filter_conditions.append(
                     qmodels.Filter(
@@ -778,6 +798,12 @@ async def docsearch(
                     )
                 )
 
+        # Only include indexed documents (filter by sys_status from Postgres)
+        # Add filter to match only the doc_ids that have sys_status = 'indexed'
+        filter_conditions.append(
+            qmodels.Filter(should=[qmodels.HasIdCondition(has_id=indexed_doc_ids)])
+        )
+
         # Combine all filter conditions
         if filter_conditions:
             combined_filter = qmodels.Filter(must=filter_conditions)
@@ -789,6 +815,10 @@ async def docsearch(
             db._scroll_documents, query_filter=combined_filter, end_idx=limit
         )
 
+        # Fetch sys_ fields from Postgres (includes sys_parsed_folder for thumbnails)
+        doc_ids = [str(point.id) for point in results[:limit] if point.id]
+        sys_fields_map = pg.fetch_docs(doc_ids) if doc_ids else {}
+
         # Format results
         documents = []
         for point in results[:limit]:
@@ -796,6 +826,9 @@ async def docsearch(
                 continue
 
             doc_data = {"doc_id": str(point.id), **point.payload}
+            # Merge sys_ fields from Postgres
+            sys_fields = sys_fields_map.get(str(point.id), {})
+            doc_data.update(sys_fields)
             # Normalize to core field names
             normalized_doc = normalize_document_payload(doc_data)
             # Create a pseudo-chunk result with document data

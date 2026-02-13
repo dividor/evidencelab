@@ -1447,23 +1447,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     for (const [cellKey, results] of Object.entries(gridResults)) {
       // score === 0 means no similarity was computed (filter-only scroll), always include
       const filtered = results.filter((result) => result.score === 0 || result.score >= similarityCutoff);
-      const count =
-        heatmapMetric === 'documents'
-          ? (() => {
-              // Use composite key (title|year|org) for deduplication to match thumbnail logic
-              const uniqueKeys = new Set<string>();
-              filtered.forEach((result) => {
-                const title = result.title || '';
-                const year = result.year || result.metadata?.year || '';
-                const org = result.organization || result.metadata?.organization || '';
-                const key = `${title}|${year}|${org}`;
-                if (key !== '||') {
-                  uniqueKeys.add(key);
-                }
-              });
-              return uniqueKeys.size;
-            })()
-          : filtered.length;
+      // Count all documents, no deduplication (user wants to see all indexed docs)
+      const count = filtered.length;
       nextResults[cellKey] = { results: filtered, count };
     }
     return nextResults;
@@ -1786,7 +1771,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
         tasks.push(async () => {
           try {
-            const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
+            // Use /docsearch for document-level search when no query
+            const useDocSearch = !cellQuery.trim() && rowDimension !== 'queries';
+            const endpoint = useDocSearch ? 'docsearch' : 'search';
+            const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`);
             const data = response.data as SearchResponse;
             setGridResults((prev) => ({ ...prev, [cellKey]: data.results }));
           } catch (error) {
