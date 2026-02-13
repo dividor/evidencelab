@@ -950,11 +950,18 @@ class Database:
 
     def delete_document_chunks(self, doc_id: str) -> int:
         """
-        Delete all chunks for a specific document.
+        Delete all chunks for a specific document from both Qdrant and Postgres.
 
         Returns:
-            Number of deleted chunks
+            Number of deleted chunks from Qdrant
         """
+        # Delete from Postgres first
+        pg_deleted = self.pg.delete_chunks_for_doc(str(doc_id))
+        logger.info(
+            "Deleted %s chunks from Postgres for document %s", pg_deleted, doc_id
+        )
+
+        # Count chunks in Qdrant before delete
         filter_conditions = models.Filter(
             must=[
                 models.FieldCondition(
@@ -963,20 +970,21 @@ class Database:
             ]
         )
 
-        # Count chunks before delete
         chunk_count = self.client.count(
             collection_name=self.chunks_collection,
             count_filter=filter_conditions,
         ).count
 
-        # Delete
+        # Delete from Qdrant
         self.client.delete(
             collection_name=self.chunks_collection,
             points_selector=filter_conditions,
             wait=True,
         )
 
-        logger.info("Deleted %s chunks for document %s", chunk_count, doc_id)
+        logger.info(
+            "Deleted %s chunks from Qdrant for document %s", chunk_count, doc_id
+        )
         return chunk_count
 
     def collection_exists(self, collection_name: str) -> bool:

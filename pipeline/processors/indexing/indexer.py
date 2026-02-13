@@ -653,6 +653,13 @@ class IndexProcessor(BaseProcessor):
 
             # Remove existing chunks for this document to avoid duplicates
             try:
+                # Delete from Postgres first
+                pg_deleted = self.pg.delete_chunks_for_doc(str(doc_id))
+                logger.info(
+                    "  Deleted %s chunks from Postgres for doc %s", pg_deleted, doc_id
+                )
+
+                # Then delete from Qdrant
                 db.client.delete(
                     collection_name=db.chunks_collection,
                     points_selector=models.Filter(
@@ -665,7 +672,7 @@ class IndexProcessor(BaseProcessor):
                     ),
                     wait=True,
                 )
-                logger.info("  Cleared existing chunks for doc %s", doc_id)
+                logger.info("  Cleared existing chunks from Qdrant for doc %s", doc_id)
             except Exception as exc:
                 return self._build_failure(
                     doc,
