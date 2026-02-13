@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { HeatmapTabContent } from '../components/app/HeatmapTabContent';
 import { Facets } from '../types/api';
@@ -78,7 +78,9 @@ describe('HeatmapTabContent', () => {
   test('renders defaults and enables Generate Heatmap for dimension rows without query', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
-    expect(await screen.findByText('2020')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('2020')).toBeInTheDocument();
+    });
 
     const rowSelect = screen.getByLabelText('Rows') as HTMLSelectElement;
     const columnSelect = screen.getByLabelText('Columns') as HTMLSelectElement;
@@ -95,7 +97,9 @@ describe('HeatmapTabContent', () => {
   test('switching to Search query rows hides grid query input', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
-    expect(await screen.findByText('2020')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('2020')).toBeInTheDocument();
+    });
 
     const rowSelect = screen.getByLabelText('Rows');
     fireEvent.change(rowSelect, { target: { value: 'queries' } });
