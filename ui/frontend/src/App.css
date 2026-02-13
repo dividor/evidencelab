@@ -6522,13 +6522,16 @@ h6,
 
 .heatmap-modal-thumbnail {
   flex-shrink: 0;
-  width: 105px;
+  width: 280px;
+  height: 126px;
   cursor: pointer;
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--gray-50);
   border: 2px solid var(--gray-200);
   transition: all 0.2s ease;
+  display: flex;
+  flex-direction: row;
 }
 
 .heatmap-modal-thumbnail:hover {
@@ -6542,9 +6545,16 @@ h6,
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.2);
 }
 
+.heatmap-modal-thumbnail-image-container {
+  flex-shrink: 0;
+  width: 105px;
+  height: 126px;
+  background: var(--white);
+}
+
 .heatmap-modal-thumbnail-image {
   width: 100%;
-  height: 126px;
+  height: 100%;
   object-fit: contain;
   background: var(--white);
   display: block;
@@ -6553,7 +6563,7 @@ h6,
 
 .heatmap-modal-thumbnail-placeholder {
   width: 100%;
-  height: 126px;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6563,10 +6573,10 @@ h6,
 }
 
 .heatmap-modal-thumbnail-title {
-  padding: 0.4rem;
-  border-top: 1px solid var(--gray-200);
+  flex: 1;
+  padding: 0.5rem;
+  border-left: 1px solid var(--gray-200);
   background: var(--gray-50);
-  min-height: 3rem;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;

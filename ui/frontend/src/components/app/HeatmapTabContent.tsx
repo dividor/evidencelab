@@ -2447,22 +2447,24 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                         }}
                         title="Click on a document to filter results below"
                       >
-                        {thumbnailUrl ? (
-                          <img
-                            src={thumbnailUrl}
-                            alt={doc.title || 'Document thumbnail'}
-                            className="heatmap-modal-thumbnail-image"
-                            onError={(e) => {
-                              // Hide thumbnail on error
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="heatmap-modal-thumbnail-placeholder">
-                            No thumbnail
-                          </div>
-                        )}
+                        <div className="heatmap-modal-thumbnail-image-container">
+                          {thumbnailUrl ? (
+                            <img
+                              src={thumbnailUrl}
+                              alt={doc.title || 'Document thumbnail'}
+                              className="heatmap-modal-thumbnail-image"
+                              onError={(e) => {
+                                // Hide thumbnail on error
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="heatmap-modal-thumbnail-placeholder">
+                              No thumbnail
+                            </div>
+                          )}
+                        </div>
                         <div className="heatmap-modal-thumbnail-title">
                           <div className="heatmap-modal-thumbnail-doc-title">
                             {doc.title || 'Untitled'}
