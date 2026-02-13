@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
 import API_BASE_URL from '../config';
 import { ChunkElement, SearchResult } from '../types/api';
 import {
@@ -243,6 +244,19 @@ export const SearchResultElements = ({
     lastType: 'none',
     level: 0
   };
+
+  // If no query, show full summary with markdown
+  const hasNoQuery = !query || query.trim() === '' || query === 'No query';
+  if (hasNoQuery) {
+    const summary = result.sys_full_summary || result.metadata?.sys_full_summary || result.text;
+    if (summary) {
+      return (
+        <div className="result-snippet result-full-summary">
+          <ReactMarkdown>{summary}</ReactMarkdown>
+        </div>
+      );
+    }
+  }
 
   return (
     <>
