@@ -183,10 +183,22 @@ const resolveResultUrl = (result: SearchResult) => {
   if (result.metadata?.document_url) return result.metadata.document_url;
   if (result.metadata?.url) return result.metadata.url;
 
-  // Construct URL from doc_id and data_source
-  if (result.doc_id) {
+  // Construct file URL from sys_filepath or sys_parsed_folder
+  let parsedFolder = result.sys_parsed_folder || result.metadata?.sys_parsed_folder;
+
+  // Check if it's in metadata.sys_data
+  if (!parsedFolder && result.metadata?.sys_data?.sys_parsed_folder) {
+    parsedFolder = result.metadata.sys_data.sys_parsed_folder;
+  }
+
+  // Fallback: construct path from available data
+  if (!parsedFolder && result.organization && result.year && result.doc_id) {
     const dataSource = result.data_source || result.metadata?.data_source || 'uneg';
-    let url = `${API_BASE_URL}/pdf/${result.doc_id}?data_source=${dataSource}`;
+    parsedFolder = `data/${dataSource}/parsed/${result.organization}/${result.year}/${result.doc_id}`;
+  }
+
+  if (parsedFolder) {
+    let url = `${API_BASE_URL}/file/${parsedFolder}/document.pdf`;
     // Add page fragment if page_num is available (chunk mode)
     if (result.page_num) {
       url += `#page=${result.page_num}`;
