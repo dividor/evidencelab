@@ -1689,6 +1689,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     filteredColumnValues.forEach((col) => {
       headerRow1.push(extractTaxonomyName(col, columnDimension));
       headerRow1.push(''); // Placeholder for merged cell
+      headerRow1.push(''); // Placeholder for merged cell
     });
     detailRows.push(headerRow1);
 
@@ -1696,12 +1697,13 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const headerRow2 = [''];
     filteredColumnValues.forEach(() => {
       headerRow2.push('Document Title');
+      headerRow2.push('Link');
       headerRow2.push('Text');
     });
     detailRows.push(headerRow2);
 
-    // Store metadata for creating hyperlinks after sheet is created
-    const hyperlinkCells: Array<{ row: number; col: number; url: string; title: string }> = [];
+    // Check if we have a query (chunk mode) or no query (document mode)
+    const hasQuery = gridQuery && gridQuery.trim() !== '' && gridQuery !== 'No query';
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
@@ -1720,37 +1722,25 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       const maxDocs = Math.max(...rowDocs.map(docs => docs.length), 1);
 
       // Create rows for each document
-
       for (let docIdx = 0; docIdx < maxDocs; docIdx++) {
         const row = [docIdx === 0 ? label : '']; // Row label only on first doc
-        const rowIndex = detailRows.length; // Current row index in array
 
         filteredColumnValues.forEach((_, colIdx) => {
           const docs = rowDocs[colIdx];
           if (docIdx < docs.length) {
             const doc = docs[docIdx];
             const title = doc.title || 'Untitled';
-            const page = doc.page_num ? ` (p${doc.page_num})` : '';
+            // Only include page number if we have a query (chunk mode)
+            const page = hasQuery && doc.page_num ? ` (p${doc.page_num})` : '';
             const url = resolveResultUrl(doc);
             const text = resolveResultExcerpt(doc);
 
-            // Store title (will be converted to hyperlink later if URL exists)
-            const titleText = `${title}${page}`;
-            row.push(titleText);
+            // Add title, link, and text columns
+            row.push(`${title}${page}`);
+            row.push(url || '');
             row.push(text);
-
-            // Remember this cell needs a hyperlink
-            if (url) {
-              const colIndex = 1 + colIdx * 2; // Column index for this title
-              hyperlinkCells.push({
-                row: rowIndex,
-                col: colIndex,
-                url: url,
-                title: titleText
-              });
-            }
           } else {
-            row.push('', '');
+            row.push('', '', '');
           }
         });
         detailRows.push(row);
@@ -1759,25 +1749,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
     const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
 
-    // Apply hyperlinks to cells
-    hyperlinkCells.forEach(({ row, col, url, title }) => {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-      if (detailSheet[cellAddress]) {
-        // Set cell as hyperlink using XLSX link format
-        detailSheet[cellAddress].l = { Target: url, Tooltip: title };
-        // Style hyperlinks blue and underlined
-        if (!detailSheet[cellAddress].s) {
-          detailSheet[cellAddress].s = {};
-        }
-        detailSheet[cellAddress].s.font = { color: { rgb: '0563C1' }, underline: true };
-      }
-    });
-
-    // Merge cells for column group headers
+    // Merge cells for column group headers (now spanning 3 columns: Title, Link, Text)
     const merges = [];
     for (let colIdx = 0; colIdx < filteredColumnValues.length; colIdx++) {
-      const startCol = 1 + colIdx * 2;
-      const endCol = startCol + 1;
+      const startCol = 1 + colIdx * 3;
+      const endCol = startCol + 2;
       merges.push({
         s: { r: 0, c: startCol },
         e: { r: 0, c: endCol }
@@ -1792,6 +1768,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const colWidths = [{ wch: 30 }]; // Row label column
     filteredColumnValues.forEach(() => {
       colWidths.push({ wch: 40 }); // Title column
+      colWidths.push({ wch: 50 }); // Link column
       colWidths.push({ wch: 60 }); // Text column
     });
     detailSheet['!cols'] = colWidths;
