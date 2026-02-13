@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import * as XLSX from 'xlsx';
+import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL, {
   SEARCH_RESULTS_PAGE_SIZE,
   SEARCH_SEMANTIC_HIGHLIGHTS,
