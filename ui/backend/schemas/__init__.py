@@ -28,6 +28,7 @@ class SearchResult(BaseModel):
     metadata: Dict[str, Any] = {}
     sys_parsed_folder: Optional[str] = None
     sys_filepath: Optional[str] = None
+    sys_full_summary: Optional[str] = None
 
     class Config:
         extra = "allow"
