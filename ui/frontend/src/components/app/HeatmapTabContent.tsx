@@ -2447,7 +2447,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                           // Toggle filter for this document
                           setFilteredDocId(isSelected ? null : doc.doc_id);
                         }}
-                        title={doc.title || 'No title'}
+                        title="Click on a document to filter results below"
                       >
                         {thumbnailUrl ? (
                           <img
