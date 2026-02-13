@@ -1577,30 +1577,75 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
 
-    const headerRow = [
+    // Sheet 1: Summary (counts only)
+    const summaryHeaderRow = [
       `${rowLabel} \\ ${columnLabel}`,
       ...filteredColumnValues.map((col) => extractTaxonomyName(col, columnDimension))
     ];
-    const rows = filteredRowValues.map((rowValue, rowIndex) => {
+    const summaryRows = filteredRowValues.map((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
       const label =
         rowDimension === 'queries' || rowDimension === 'title'
           ? rowValue.trim() || `Row ${rowIndex + 1}`
           : extractTaxonomyName(rowValue, rowDimension);
 
-      const cellValues = filteredColumnValues.map((columnValue) => {
+      const cellCounts = filteredColumnValues.map((columnValue) => {
         const cellKey = buildCellKey(String(rowKey), columnValue);
         const cellResults = filteredGridResults[cellKey]?.results || [];
-        return formatHeatmapCellValue(cellResults);
+        return cellResults.length || '';
       });
 
-      return [label, ...cellValues];
+      return [label, ...cellCounts];
     });
 
-    const worksheet = XLSX.utils.aoa_to_sheet([headerRow, ...rows]);
-    applyHeatmapHeaderStyles(worksheet);
+    const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeaderRow, ...summaryRows]);
+    applyHeatmapHeaderStyles(summarySheet);
+
+    // Sheet 2: Detail (one row per document)
+    const detailRows: any[][] = [];
+    detailRows.push([rowLabel, ...filteredColumnValues.map((col) => extractTaxonomyName(col, columnDimension))]);
+
+    filteredRowValues.forEach((rowValue, rowIndex) => {
+      const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
+      const label =
+        rowDimension === 'queries' || rowDimension === 'title'
+          ? rowValue.trim() || `Row ${rowIndex + 1}`
+          : extractTaxonomyName(rowValue, rowDimension);
+
+      // Collect all documents for this row across all columns
+      const rowDocs = filteredColumnValues.map((columnValue) => {
+        const cellKey = buildCellKey(String(rowKey), columnValue);
+        return filteredGridResults[cellKey]?.results || [];
+      });
+
+      // Find max docs in any column for this row
+      const maxDocs = Math.max(...rowDocs.map(docs => docs.length), 1);
+
+      // Create rows for each document
+      for (let docIdx = 0; docIdx < maxDocs; docIdx++) {
+        const row = [docIdx === 0 ? label : '']; // Row label only on first doc
+        filteredColumnValues.forEach((_, colIdx) => {
+          const docs = rowDocs[colIdx];
+          if (docIdx < docs.length) {
+            const doc = docs[docIdx];
+            const title = doc.title || 'Untitled';
+            const page = doc.page_num ? ` (p${doc.page_num})` : '';
+            row.push(`${title}${page}`);
+          } else {
+            row.push('');
+          }
+        });
+        detailRows.push(row);
+      }
+    });
+
+    const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+    applyHeatmapHeaderStyles(detailSheet);
+
+    // Create workbook with both sheets
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Heatmap');
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(workbook, detailSheet, 'Detail');
 
     const fileName = `heatmap-${rowDimension}-by-${columnDimension}.xlsx`;
     XLSX.writeFile(workbook, fileName);

@@ -251,11 +251,14 @@ export const SearchResultElements = ({
   if (hasNoQuery) {
     const summary = result.sys_full_summary || result.metadata?.sys_full_summary || result.text;
     if (summary) {
-      const TRUNCATE_LENGTH = 500; // characters
-      const shouldTruncate = summary.length > TRUNCATE_LENGTH;
+      // Smart truncation: show first heading + first paragraph, then "Show more" for rest
+      const paragraphs = summary.split(/\n\n+/); // Split by double newlines (paragraphs)
+      const shouldTruncate = paragraphs.length > 2;
+
+      // Show first 2 paragraphs (usually heading + first paragraph)
       const displaySummary = isExpanded || !shouldTruncate
         ? summary
-        : summary.substring(0, TRUNCATE_LENGTH) + '...';
+        : paragraphs.slice(0, 2).join('\n\n');
 
       return (
         <div className="result-snippet result-full-summary">
