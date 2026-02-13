@@ -935,6 +935,32 @@ function App() {
     [buildFilterValue, handleHeatmapFilterChange]
   );
 
+  // Auto-collapse all filter fields (including taxonomy fields) when facets first load
+  useEffect(() => {
+    if (facets?.filter_fields) {
+      setCollapsedFilters(prev => {
+        const newSet = new Set(prev);
+        Object.keys(facets.filter_fields).forEach(field => {
+          newSet.add(field);
+        });
+        return newSet;
+      });
+    }
+  }, [facets?.filter_fields]);
+
+  // Auto-collapse all filter fields in heatmap tab when facets load
+  useEffect(() => {
+    if (allFacets?.filter_fields) {
+      setHeatmapCollapsedFilters(prev => {
+        const newSet = new Set(prev);
+        Object.keys(allFacets.filter_fields).forEach(field => {
+          newSet.add(field);
+        });
+        return newSet;
+      });
+    }
+  }, [allFacets?.filter_fields]);
+
   // Perform title search when title filter input changes
   useEffect(() => {
     const titleQuery = filterSearchTerms['title'];
