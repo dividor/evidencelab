@@ -2419,7 +2419,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     type="text"
                     value={gridQuery}
                     onChange={(event) => setGridQuery(event.target.value)}
-                    placeholder="Enter your search query"
+                    placeholder="Add a search query to filter your results ..."
                   />
                 )}
                 <div className="heatmap-control heatmap-slider">
