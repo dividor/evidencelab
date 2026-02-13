@@ -176,12 +176,26 @@ const resolveResultPageLabel = (result: SearchResult) => {
   return page ? `p. ${page}` : 'page n/a';
 };
 
-const resolveResultUrl = (result: SearchResult) =>
-  result.pdf_url ||
-  result.metadata?.pdf_url ||
-  result.metadata?.document_url ||
-  result.metadata?.url ||
-  '';
+const resolveResultUrl = (result: SearchResult) => {
+  // First try explicit PDF URL fields
+  if (result.pdf_url) return result.pdf_url;
+  if (result.metadata?.pdf_url) return result.metadata.pdf_url;
+  if (result.metadata?.document_url) return result.metadata.document_url;
+  if (result.metadata?.url) return result.metadata.url;
+
+  // Construct URL from doc_id and data_source
+  if (result.doc_id) {
+    const dataSource = result.data_source || result.metadata?.data_source || 'uneg';
+    let url = `${API_BASE_URL}/pdf/${result.doc_id}?data_source=${dataSource}`;
+    // Add page fragment if page_num is available (chunk mode)
+    if (result.page_num) {
+      url += `#page=${result.page_num}`;
+    }
+    return url;
+  }
+
+  return '';
+};
 
 const resolveResultExcerpt = (result: SearchResult) => {
   // Use sys_full_summary if available (full text), otherwise use text field

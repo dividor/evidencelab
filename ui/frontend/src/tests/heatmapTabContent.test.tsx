@@ -75,7 +75,7 @@ const baseProps = {
 };
 
 describe('HeatmapTabContent', () => {
-  test('renders defaults and enables Heatmap Search for dimension rows without query', async () => {
+  test('renders defaults and enables Generate Heatmap for dimension rows without query', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
     expect(await screen.findByText('2020')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('HeatmapTabContent', () => {
     expect(metricSelect.value).toBe('documents');
 
     // Dimension vs dimension: button enabled even without a query
-    const searchButton = screen.getByRole('button', { name: 'Heatmap Search' });
+    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
     expect(searchButton).toBeEnabled();
   });
 
@@ -103,7 +103,7 @@ describe('HeatmapTabContent', () => {
     const rowInputs = screen.getAllByPlaceholderText('Enter your search query');
     expect(rowInputs).toHaveLength(1);
 
-    const searchButton = screen.getByRole('button', { name: 'Heatmap Search' });
+    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
     expect(searchButton).toBeDisabled();
 
     fireEvent.change(rowInputs[0], { target: { value: 'climate' } });
