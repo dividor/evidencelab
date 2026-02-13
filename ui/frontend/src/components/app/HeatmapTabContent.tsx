@@ -2467,9 +2467,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                           <div className="heatmap-modal-thumbnail-doc-title">
                             {doc.title || 'Untitled'}
                           </div>
-                          {doc.organization && (
+                          {(doc.organization || doc.year) && (
                             <div className="heatmap-modal-thumbnail-source">
                               {doc.organization}
+                              {doc.organization && doc.year && ' • '}
+                              {doc.year}
                             </div>
                           )}
                         </div>
