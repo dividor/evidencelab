@@ -304,7 +304,9 @@ class PostgresDocMixin:
                 map_region,
                 map_theme,
                 map_pdf_url,
-                map_report_url
+                map_report_url,
+                sys_parsed_folder,
+                sys_filepath
             FROM {self.docs_table}
             WHERE doc_id IN ({placeholders})
         """
@@ -333,6 +335,8 @@ class PostgresDocMixin:
                 map_theme,
                 map_pdf_url,
                 map_report_url,
+                sys_parsed_folder,
+                sys_filepath,
             ) = row
             sys_toc = None
             sys_toc_classified = None
@@ -360,6 +364,8 @@ class PostgresDocMixin:
                 "map_theme": map_theme,
                 "map_pdf_url": map_pdf_url,
                 "map_report_url": map_report_url,
+                "sys_parsed_folder": sys_parsed_folder,
+                "sys_filepath": sys_filepath,
             }
             results[str(doc_id)] = payload
         return results

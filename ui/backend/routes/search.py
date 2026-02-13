@@ -832,10 +832,8 @@ async def docsearch(
             # Normalize to core field names
             normalized_doc = normalize_document_payload(doc_data)
 
-            # Set default sys_parsed_folder if not present
-            parsed_folder = normalized_doc.get("sys_parsed_folder")
-            if not parsed_folder:
-                parsed_folder = f"./data/{source}/parsed"
+            # Don't set default sys_parsed_folder - let frontend fallback handle it
+            # Frontend constructs: data/{source}/parsed/{org}/{year}/{doc_id}
 
             # Create a pseudo-chunk result with document data
             result = SearchResult(
@@ -851,8 +849,9 @@ async def docsearch(
                 organization=normalized_doc.get("organization"),
                 year=normalized_doc.get("published_year"),
                 metadata=normalized_doc.get("metadata", {}),
-                sys_parsed_folder=parsed_folder,
+                sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
                 sys_filepath=normalized_doc.get("sys_filepath"),
+                data_source=source,  # Add data_source for thumbnail fallback
             )
             documents.append(result)
 
