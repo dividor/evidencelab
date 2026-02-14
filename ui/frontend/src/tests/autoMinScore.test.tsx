@@ -37,6 +37,27 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 const TEST_SUMMARIZATION_MODEL = 'qwen2.5-7b-instruct';
 const TEST_RERANKER_MODEL = 'jinaai/jina-reranker-v2-base-multilingual';
 
+const mockFacets = {
+  facets: {
+    organization: [],
+    published_year: [],
+    document_type: [],
+    country: [],
+    language: [],
+    tag_sdg: [],
+    tag_cross_cutting_theme: [],
+  },
+  filter_fields: {
+    organization: 'Organization',
+    published_year: 'Published Year',
+    document_type: 'Document Type',
+    country: 'Country',
+    language: 'Language',
+    tag_sdg: 'SDG',
+    tag_cross_cutting_theme: 'Cross-Cutting Theme',
+  },
+};
+
 const mockSearchResults = {
   results: [
     { chunk_id: '1', text: 'Result 1', score: 0.9, title: 'Doc 1', page_num: 1, doc_id: 'd1' },
@@ -50,19 +71,13 @@ const mockSearchResults = {
     { chunk_id: '9', text: 'Result 9', score: 0.1, title: 'Doc 9', page_num: 1, doc_id: 'd9' },
     { chunk_id: '10', text: 'Result 10', score: 0.05, title: 'Doc 10', page_num: 1, doc_id: 'd10' },
   ],
-  facets: {
-    organization: [],
-    published_year: [],
-    document_type: [],
-    country: [],
-    language: [],
-    tag_sdg: [],
-    tag_cross_cutting_theme: [],
-  },
+  facets: mockFacets,
 };
 
 describe('Auto Min Score Feature', () => {
   beforeEach(() => {
+    // Set URL with a query so App auto-searches on load (renders search tab with Filters)
+    window.history.pushState({}, '', '/?q=test');
     mockedAxios.get.mockImplementation((url) => {
       if (url.includes('/config/datasources')) {
         return Promise.resolve({
@@ -103,17 +118,21 @@ describe('Auto Min Score Feature', () => {
         return Promise.resolve({ data: mockSearchResults });
       }
       if (url.includes('/facets')) {
-        return Promise.resolve({ data: mockSearchResults.facets });
+        return Promise.resolve({ data: mockFacets });
       }
       return Promise.resolve({ data: {} });
     });
+  });
+
+  afterEach(() => {
+    window.history.pushState({}, '', '/');
   });
 
   test('Auto checkbox appears and toggles correctly', async () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings
@@ -138,7 +157,7 @@ describe('Auto Min Score Feature', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings
@@ -162,7 +181,7 @@ describe('Auto Min Score Feature', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings and enable auto
@@ -188,7 +207,7 @@ describe('Auto Min Score Feature', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings
@@ -234,7 +253,7 @@ describe('Auto Min Score Feature', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings
@@ -248,12 +267,11 @@ describe('Auto Min Score Feature', () => {
 
   test('Auto mode updates URL with auto_min_score parameter', async () => {
     const pushStateSpy = jest.spyOn(window.history, 'pushState');
-    window.history.pushState({}, '', '/');
 
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
     // Expand search settings
@@ -277,95 +295,32 @@ describe('Auto Min Score Feature', () => {
         expect.stringContaining('auto_min_score=true')
       );
     });
+
+    pushStateSpy.mockRestore();
   });
 
   test('Backend filters results when auto_min_score is enabled', async () => {
-    // Mock backend to return filtered results (simulating server-side filtering)
-    const filteredMockResults = {
-      results: mockSearchResults.results.slice(3), // Backend filters bottom 3 results
-      facets: mockSearchResults.facets,
-    };
-
-    mockedAxios.get.mockImplementation((url) => {
-      if (url.includes('/config/datasources')) {
-        return Promise.resolve({
-          data: {
-            'Test Source': {
-              data_subdir: 'test',
-              field_mapping: {},
-              filter_fields: {},
-            },
-          },
-        });
-      }
-      if (url.includes('/config/model-combos')) {
-        return Promise.resolve({
-          data: {
-            'Test Combo': {
-              embedding_model: 'e5_large',
-              summarization_model: {
-                model: TEST_SUMMARIZATION_MODEL,
-                max_tokens: 500,
-                temperature: 0.2,
-                chunk_overlap: 800,
-                chunk_tokens_ratio: 0.5,
-              },
-              semantic_highlighting_model: {
-                model: TEST_SUMMARIZATION_MODEL,
-                max_tokens: 500,
-                temperature: 0.2,
-                chunk_overlap: 800,
-                chunk_tokens_ratio: 0.5,
-              },
-              reranker_model: TEST_RERANKER_MODEL,
-            },
-          },
-        });
-      }
-      if (url.includes('/search') && url.includes('auto_min_score=true')) {
-        return Promise.resolve({ data: filteredMockResults });
-      }
-      if (url.includes('/search')) {
-        return Promise.resolve({ data: mockSearchResults });
-      }
-      if (url.includes('/facets')) {
-        return Promise.resolve({ data: mockSearchResults.facets });
-      }
-      return Promise.resolve({ data: {} });
-    });
-
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText('Filters')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
     });
 
-    // Expand search settings
+    // Expand search settings and enable auto
     const searchSettingsHeader = screen.getByText('Search Settings');
     fireEvent.click(searchSettingsHeader);
-
-    // Enable auto
     const autoCheckbox = screen.getByRole('checkbox', { name: /Auto/i });
     fireEvent.click(autoCheckbox);
 
-    // Perform search
+    // Perform search with auto mode enabled
     const searchInput = screen.getByPlaceholderText(/search/i);
-    fireEvent.change(searchInput, { target: { value: 'test' } });
+    fireEvent.change(searchInput, { target: { value: 'auto filter test' } });
     fireEvent.submit(searchInput.closest('form')!);
 
-    // Verify backend was called with auto_min_score parameter
+    // Verify backend was called with auto_min_score parameter in a search request
     await waitFor(() => {
       expect(mockedAxios.get).toHaveBeenCalledWith(
-        expect.stringContaining('auto_min_score=true'),
-      );
-    });
-
-    // Backend returns already-filtered results (7 instead of 10)
-    // Frontend displays what backend returns
-    await waitFor(() => {
-      // This verifies the backend filtering is working
-      expect(mockedAxios.get).toHaveBeenCalledWith(
-        expect.stringContaining('/search'),
+        expect.stringMatching(/\/search.*auto_min_score=true/),
       );
     });
   });
