@@ -2636,22 +2636,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 <div className="heatmap-modal-thumbnails">
                 <div className="heatmap-modal-thumbnails-container">
                   {uniqueActiveCellDocuments.map((doc) => {
-                    // Try to get sys_parsed_folder from multiple locations with fallback
-                    let parsedFolder = doc.sys_parsed_folder;
-
-                    // Check if it's in metadata.sys_data
-                    if (!parsedFolder && doc.metadata?.sys_data?.sys_parsed_folder) {
-                      parsedFolder = doc.metadata.sys_data.sys_parsed_folder;
-                    }
-
-                    // Fallback: construct path from available data
-                    if (!parsedFolder && doc.organization && doc.year && doc.doc_id) {
-                      const dataSource = doc.data_source || selectedDomain;
-                      parsedFolder = `data/${dataSource}/parsed/${doc.organization}/${doc.year}/${doc.doc_id}`;
-                    }
-
-                    const thumbnailUrl = parsedFolder
-                      ? `${API_BASE_URL}/file/${parsedFolder}/thumbnail.png`
+                    // Use document-based API endpoint for thumbnails
+                    const dataSource = doc.data_source || selectedDomain;
+                    const thumbnailUrl = doc.doc_id
+                      ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
                       : null;
                     const isSelected = filteredDocId === doc.doc_id;
                     return (
