@@ -407,7 +407,7 @@ class PostgresDocMixin:
                    map_document_type, map_country, map_language, map_region, map_theme,
                    map_pdf_url, map_report_url, sys_status
             FROM {self.docs_table}
-            WHERE sys_data ->> 'sys_status' = %s
+            WHERE sys_status = %s
             {year_clause}
         """
         rows: List[tuple] = []
@@ -582,7 +582,7 @@ class PostgresDocMixin:
         query = f"""
             SELECT DISTINCT map_published_year
             FROM {self.docs_table}
-            WHERE sys_data ->> 'sys_status' = %s
+            WHERE sys_status = %s
               AND map_published_year IS NOT NULL
               AND map_published_year <> ''
         """
