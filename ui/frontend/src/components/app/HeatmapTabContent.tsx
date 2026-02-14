@@ -2438,8 +2438,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     min={scoreBounds.min}
                     max={scoreBounds.max}
                     step={0.001}
-                    value={similarityCutoff}
-                    onChange={(event) => setSimilarityCutoff(Number(event.target.value))}
+                    value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+                    onChange={(event) => setSimilarityCutoff(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
                     disabled={!scoreBounds.hasScores}
                   />
                 </div>
