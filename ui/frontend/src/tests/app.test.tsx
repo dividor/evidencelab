@@ -248,8 +248,8 @@ describe('App - Deep Linking', () => {
     cleanup();
   });
 
-  // Note: This test passes when run in isolation but may be flaky when run with other tests
-  // due to shared state in React/Jest. Run with: npm test -- --testNamePattern="deep-links"
+  // Note: This test is intended to run in isolation to avoid state pollution from other tests.
+  // To run: npm test -- --testNamePattern="deep-links"
   test('deep-links to PDF modal with doc_id and chunk_id in URL', async () => {
     // Set up URL with query, dataset, and doc_id/chunk_id parameters
     window.history.pushState({}, '', '/?tab=search&q=test+query&dataset=Test+Source&doc_id=test-doc-123&chunk_id=test-chunk-456');
@@ -274,14 +274,14 @@ describe('App - Deep Linking', () => {
     };
 
     // Track if mock is set up correctly
-    let configCalled = 0;
-    let searchCalled = false;
+    let configCallCount = 0;
+    let wasSearchCalled = false;
 
     mockedAxios.get.mockImplementation((url) => {
       const urlStr = String(url);
       
       if (urlStr.includes('/config/datasources')) {
-        configCalled++;
+        configCallCount++;
         return Promise.resolve({
           data: {
             'Test Source': {
@@ -293,7 +293,7 @@ describe('App - Deep Linking', () => {
         });
       }
       if (urlStr.includes('/config/model-combos')) {
-        configCalled++;
+        configCallCount++;
         return Promise.resolve({
           data: {
             'Test Combo': {
@@ -314,7 +314,7 @@ describe('App - Deep Linking', () => {
         });
       }
       if (urlStr.includes('/search')) {
-        searchCalled = true;
+        wasSearchCalled = true;
         return Promise.resolve({
           data: {
             results: [mockSearchResult],
@@ -333,16 +333,16 @@ describe('App - Deep Linking', () => {
 
     // Wait for configs to load first
     await waitFor(() => {
-      expect(configCalled).toBeGreaterThanOrEqual(2);
+      expect(configCallCount).toBeGreaterThanOrEqual(2);
     }, { timeout: 2000 });
 
     // Wait for search to be called
     await waitFor(() => {
-      expect(searchCalled).toBe(true);
+      expect(wasSearchCalled).toBe(true);
     }, { timeout: 5000 });
 
     // Wait for the PDF viewer to appear (modal auto-opens with matching result)
-    expect(await screen.findByText('PDF Viewer', {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(await screen.findByText('PDF Viewer', { timeout: 3000 })).toBeInTheDocument();
 
     // Verify the URL contains doc_id and chunk_id
     await waitFor(() => {
