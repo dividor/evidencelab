@@ -92,6 +92,11 @@ SEARCH_EXACT = search_models.SEARCH_EXACT
 QUANTIZATION_RESCORE = search_models.QUANTIZATION_RESCORE
 SEARCH_FETCH_LIMIT = search_models.SEARCH_FETCH_LIMIT
 
+# Minimal payload fields to request from Qdrant during search.
+# Heavy fields (sys_text, sys_bbox, sys_tables, etc.) are fetched from
+# PostgreSQL instead, avoiding large payload transfers from Qdrant.
+SEARCH_PAYLOAD_FIELDS = ["doc_id", "sys_doc_id", "tag_section_type"]
+
 _resolved_embedding_api_url: Optional[str] = None
 
 
@@ -393,33 +398,38 @@ def _build_query_filter(
         text_match_fields = {"map_title"}
         for field, value in filters.items():
             if field == "doc_id":
+                # doc_id filter must be required, but we need to check both doc_id and sys_doc_id
+                # Create a nested filter: MUST(doc_id=X OR sys_doc_id=X)
+                doc_id_should_conditions = []
                 multi_values = _as_multi_values(value)
                 if multi_values:
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="doc_id",
                             match=models.MatchAny(any=multi_values),
                         )
                     )
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="sys_doc_id",
                             match=models.MatchAny(any=multi_values),
                         )
                     )
                 else:
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="doc_id",
                             match=models.MatchValue(value=value),
                         )
                     )
-                    should_conditions.append(
+                    doc_id_should_conditions.append(
                         models.FieldCondition(
                             key="sys_doc_id",
                             match=models.MatchValue(value=value),
                         )
                     )
+                # Wrap the should conditions in a nested filter and add to must
+                must_conditions.append(models.Filter(should=doc_id_should_conditions))
                 continue
             condition = _build_filter_condition(field, value, text_match_fields)
             if condition:
@@ -444,10 +454,8 @@ def _build_search_params() -> models.SearchParams:
     return models.SearchParams(
         hnsw_ef=SEARCH_HNSW_EF,
         exact=SEARCH_EXACT,
-        quantization=(
-            models.QuantizationSearchParams(rescore=QUANTIZATION_RESCORE)
-            if QUANTIZATION_RESCORE
-            else None
+        quantization=models.QuantizationSearchParams(
+            rescore=QUANTIZATION_RESCORE,
         ),
     )
 
@@ -554,6 +562,7 @@ def _run_hybrid_search(
         fetch_limit * 3,
         payload_fields,
     )
+    t_dense_end = time.time()
     sparse_results = _run_sparse_search(
         db,
         collection,
@@ -564,7 +573,10 @@ def _run_hybrid_search(
     )
     t_qdrant_end = time.time()
     logger.info(
-        "[TIMING] Qdrant queries (hybrid): %.3fs", t_qdrant_end - t_qdrant_start
+        "[TIMING] Qdrant queries (hybrid): %.3fs (dense=%.3fs, sparse=%.3fs)",
+        t_qdrant_end - t_qdrant_start,
+        t_dense_end - t_qdrant_start,
+        t_qdrant_end - t_dense_end,
     )
     return _merge_hybrid_results(dense_results, sparse_results, weight, limit)
 

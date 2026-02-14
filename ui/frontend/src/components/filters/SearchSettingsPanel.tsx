@@ -12,6 +12,8 @@ interface SearchSettingsPanelProps {
   minScore: number;
   maxScore: number;
   onMinScoreChange: (value: number) => void;
+  autoMinScore: boolean;
+  onAutoMinScoreToggle: (value: boolean) => void;
   rerankEnabled: boolean;
   onRerankToggle: (value: boolean) => void;
   recencyBoostEnabled: boolean;
@@ -223,6 +225,8 @@ export const SearchSettingsPanel = ({
   minScore,
   maxScore,
   onMinScoreChange,
+  autoMinScore,
+  onAutoMinScoreToggle,
   rerankEnabled,
   onRerankToggle,
   recencyBoostEnabled,
@@ -289,21 +293,49 @@ export const SearchSettingsPanel = ({
               ⓘ
             </span>
           </label>
-          <ScoreSlider
-            label={`Min Score: ${minScore.toFixed(3)}`}
-            value={minScore}
-            min={0}
-            max={maxScore}
-            step={0.001}
-            onChange={onMinScoreChange}
-            gradient={`linear-gradient(to right,
-              #d1d5db 0%,
-              #d1d5db ${(minScore / maxScore) * 100}%,
-              #0066cc ${(minScore / maxScore) * 100}%,
-              #0066cc 100%)`}
-            leftLabel="0.000"
-            rightLabel={maxScore.toFixed(3)}
-          />
+          <div className="search-settings-group">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label className="search-settings-label">Min Score{!autoMinScore && `: ${minScore.toFixed(3)}`}</label>
+              <label style={{ fontSize: '0.875rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="checkbox"
+                  checked={autoMinScore}
+                  onChange={(e) => onAutoMinScoreToggle(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span>Auto</span>
+              </label>
+            </div>
+            {!autoMinScore && (
+              <>
+                <input
+                  type="range"
+                  min={0}
+                  max={maxScore}
+                  step={0.001}
+                  value={minScore}
+                  onChange={(event) => onMinScoreChange(parseFloat(event.target.value))}
+                  className="score-slider"
+                  style={{
+                    background: `linear-gradient(to right,
+                      #d1d5db 0%,
+                      #d1d5db ${(minScore / maxScore) * 100}%,
+                      #0066cc ${(minScore / maxScore) * 100}%,
+                      #0066cc 100%)`
+                  }}
+                />
+                <div className="score-range-labels">
+                  <span>0.000</span>
+                  <span>{maxScore.toFixed(3)}</span>
+                </div>
+              </>
+            )}
+            {autoMinScore && (
+              <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>
+                &nbsp;
+              </div>
+            )}
+          </div>
           <label className="rerank-checkbox-label">
             <input
               type="checkbox"

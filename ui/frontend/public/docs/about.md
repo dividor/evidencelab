@@ -19,3 +19,16 @@ Evidence lab was developed out of research work for the blog, so core principles
 * **The environment should have tools for easily monitoring processing as well as exploring AI information retrieval**
 
 Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there, and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
+
+## Search Features
+
+Evidence Lab provides powerful search capabilities:
+
+- **Hybrid Search**: Combines keyword (BM25) and semantic (vector) search with adjustable weights
+- **AI Summary**: Automatically generates summaries of search results
+- **Reranking**: Cross-encoder models improve result relevance
+- **Auto Min Score**: Intelligent score filtering that automatically calculates the 30th percentile threshold to filter out low-quality results
+- **Semantic Highlighting**: AI-powered highlighting of relevant phrases in search results
+- **In-PDF Search**: Search within specific documents with inherited search settings
+- **Metadata Filtering**: Filter by organization, year, document type, country, language, and custom taxonomies
+- **Section Type Filtering**: Focus on specific document sections (executive summary, findings, recommendations, etc.)

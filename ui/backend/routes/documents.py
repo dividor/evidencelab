@@ -339,6 +339,56 @@ async def get_document(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/document/{doc_id}/thumbnail")
+async def get_document_thumbnail(
+    doc_id: str,
+    data_source: Optional[str] = Query(
+        None, description="Data source (e.g., 'uneg', 'gcf')"
+    ),
+):
+    """Get thumbnail image for a document"""
+    try:
+        source = data_source or "uneg"
+        pg = get_pg_for_source(source)
+        doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Try to get sys_parsed_folder from document (check multiple locations)
+        parsed_folder = doc.get("sys_parsed_folder") or doc.get("sys_data", {}).get(
+            "sys_parsed_folder"
+        )
+
+        # Fallback: construct path from document metadata
+        if not parsed_folder:
+            org = doc.get("map_organization")
+            year = doc.get("map_published_year")
+            if org and year and doc_id:
+                parsed_folder = f"data/{source}/parsed/{org}/{year}/{doc_id}"
+
+        if not parsed_folder:
+            raise HTTPException(status_code=404, detail="Thumbnail path not found")
+
+        # Construct thumbnail path
+        thumbnail_path = f"{parsed_folder}/thumbnail.png"
+
+        # Serve the thumbnail file
+        app_root = Path(os.environ.get("APP_ROOT", "/app")).resolve()
+        full_path = (app_root / thumbnail_path).resolve()
+
+        if not full_path.exists():
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+        return FileResponse(full_path, media_type="image/png")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting document thumbnail: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/document/{doc_id}/logs")
 async def get_document_logs(
     doc_id: str,

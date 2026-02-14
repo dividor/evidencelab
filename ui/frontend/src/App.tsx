@@ -287,6 +287,7 @@ const buildSearchParams = ({
   rerankModel,
   searchModel,
   dataSource,
+  autoMinScore,
 }: {
   query: string;
   filters: SearchFilters;
@@ -301,6 +302,7 @@ const buildSearchParams = ({
   rerankModel: string | null;
   searchModel: string | null;
   dataSource: string;
+  autoMinScore: boolean;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -325,6 +327,9 @@ const buildSearchParams = ({
   }
   if (searchModel) {
     params.append('model', searchModel);
+  }
+  if (autoMinScore) {
+    params.append('auto_min_score', 'true');
   }
   params.append('data_source', dataSource);
   return params;
@@ -687,6 +692,7 @@ function App() {
 
   const [minScore, setMinScore] = useState<number>(0.0);
   const [maxScore, setMaxScore] = useState<number>(1.0);
+  const [autoMinScore, setAutoMinScore] = useState<boolean>(initialSearchState.autoMinScore);
   const [searchDenseWeight, setSearchDenseWeight] = useState<number>(initialSearchState.denseWeight); // Default from .env or URL
   const [rerankEnabled, setRerankEnabled] = useState<boolean>(initialSearchState.rerank); // Reranker toggle from URL
   // Recency boost state
@@ -935,6 +941,32 @@ function App() {
     [buildFilterValue, handleHeatmapFilterChange]
   );
 
+  // Auto-collapse all filter fields (including taxonomy fields) when facets first load
+  useEffect(() => {
+    if (facets?.filter_fields) {
+      setCollapsedFilters(prev => {
+        const newSet = new Set(prev);
+        Object.keys(facets.filter_fields).forEach(field => {
+          newSet.add(field);
+        });
+        return newSet;
+      });
+    }
+  }, [facets?.filter_fields]);
+
+  // Auto-collapse all filter fields in heatmap tab when facets load
+  useEffect(() => {
+    if (allFacets?.filter_fields) {
+      setHeatmapCollapsedFilters(prev => {
+        const newSet = new Set(prev);
+        Object.keys(allFacets.filter_fields).forEach(field => {
+          newSet.add(field);
+        });
+        return newSet;
+      });
+    }
+  }, [allFacets?.filter_fields]);
+
   // Perform title search when title filter input changes
   useEffect(() => {
     const titleQuery = filterSearchTerms['title'];
@@ -1140,6 +1172,57 @@ function App() {
     });
   };
 
+  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
+    try {
+      if (loadingConfig && initialSearchState.dataset) {
+        return;
+      }
+      const includeQuery = options?.includeQuery ?? true;
+      const filtersToUse = options?.filtersOverride ?? filters;
+      const params = new URLSearchParams();
+      // Add all filter values using core field names
+      for (const [field, value] of Object.entries(filtersToUse)) {
+        if (value) {
+          params.append(field, value);
+        }
+      }
+      params.append('data_source', dataSource);
+      if (includeQuery && query && query.trim()) {
+        params.append('q', query.trim());
+      }
+
+      const url = `${API_BASE_URL}/facets?${params}`;
+      const response = await axios.get<Facets>(url);
+      const data = response.data as Facets;
+
+      // Always update facets
+      setFacets(data);
+      setFacetsDataSource(dataSource);
+    } catch (error: any) {
+      console.error('Error loading facets:', error);
+      if (error?.response?.status === 502 || error?.response?.status === 503 || error?.response?.status === 504) {
+        console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
+      }
+    }
+  }, [loadingConfig, initialSearchState.dataset, filters, dataSource, query]);
+
+  const loadAllFacets = useCallback(async () => {
+    try {
+      if (loadingConfig && initialSearchState.dataset) {
+        return;
+      }
+      const params = new URLSearchParams();
+      params.append('data_source', dataSource);
+      const url = `${API_BASE_URL}/facets?${params}`;
+      const response = await axios.get<Facets>(url);
+      const data = response.data as Facets;
+      setAllFacets(data);
+      setAllFacetsDataSource(dataSource);
+    } catch (error) {
+      console.error('Error loading all facets:', error);
+    }
+  }, [loadingConfig, initialSearchState.dataset, dataSource]);
+
   // Load about/tech/data/privacy content when help tabs are active
   useEffect(() => {
     if (activeTab === 'help') {
@@ -1180,11 +1263,11 @@ function App() {
     } else {
       loadFacets();
     }
-  }, [filters, heatmapFilters, buildHeatmapFacetFilters, dataSource, activeTab]);
+  }, [filters, heatmapFilters, dataSource, activeTab, loadFacets, buildHeatmapFacetFilters]);
 
   useEffect(() => {
     loadAllFacets();
-  }, [dataSource]);
+  }, [dataSource, loadAllFacets]);
 
   useEffect(() => {
     defaultYearFiltersAppliedRef.current = false;
@@ -1241,6 +1324,7 @@ function App() {
         keywordBoostShortQueries,
         minChunkSize,
         semanticHighlighting,
+        autoMinScore,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1263,60 +1347,12 @@ function App() {
     sectionTypes,
     keywordBoostShortQueries,
     semanticHighlighting,
+    autoMinScore,
     searchModel,
     selectedModelCombo,
   ]);
 
-  const loadFacets = async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
-    try {
-      if (loadingConfig && initialSearchState.dataset) {
-        return;
-      }
-      const includeQuery = options?.includeQuery ?? true;
-      const filtersToUse = options?.filtersOverride ?? filters;
-      const params = new URLSearchParams();
-      // Add all filter values using core field names
-      for (const [field, value] of Object.entries(filtersToUse)) {
-        if (value) {
-          params.append(field, value);
-        }
-      }
-      params.append('data_source', dataSource);
-      if (includeQuery && query && query.trim()) {
-        params.append('q', query.trim());
-      }
 
-      const url = `${API_BASE_URL}/facets?${params}`;
-      const response = await axios.get<Facets>(url);
-      const data = response.data as Facets;
-
-      // Always update facets
-      setFacets(data);
-      setFacetsDataSource(dataSource);
-    } catch (error: any) {
-      console.error('Error loading facets:', error);
-      if (error?.response?.status === 502 || error?.response?.status === 503 || error?.response?.status === 504) {
-        console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
-      }
-    }
-  };
-
-  const loadAllFacets = async () => {
-    try {
-      if (loadingConfig && initialSearchState.dataset) {
-        return;
-      }
-      const params = new URLSearchParams();
-      params.append('data_source', dataSource);
-      const url = `${API_BASE_URL}/facets?${params}`;
-      const response = await axios.get<Facets>(url);
-      const data = response.data as Facets;
-      setAllFacets(data);
-      setAllFacetsDataSource(dataSource);
-    } catch (error) {
-      console.error('Error loading all facets:', error);
-    }
-  };
 
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const isSearchingRef = useRef(false);
@@ -1438,6 +1474,8 @@ function App() {
     }
   }, [semanticHighlighting, handleRequestHighlight]);
 
+  // Auto min_score is now handled server-side - no client calculation needed
+
   const handleSearchError = useCallback((error: any) => {
     console.error('Error searching:', error);
     setSearchError(buildSearchErrorMessage(error));
@@ -1471,6 +1509,7 @@ function App() {
         rerankModel,
         searchModel,
         dataSource,
+        autoMinScore,
       });
 
       const searchStartTime = performance.now();
@@ -1549,6 +1588,24 @@ function App() {
     searchModel,
   ]);
 
+  // Handler for toggling auto min score mode
+  const handleAutoMinScoreToggle = useCallback((enabled: boolean) => {
+    setAutoMinScore(enabled);
+    if (enabled) {
+      // Reset to 0 when enabling auto mode - will be calculated after search
+      setMinScore(0);
+    }
+  }, []);
+
+  // Handler for manual min score changes - disables auto mode
+  const handleMinScoreChange = useCallback((value: number) => {
+    setMinScore(value);
+    // Disable auto mode when user manually adjusts the slider
+    if (autoMinScore) {
+      setAutoMinScore(false);
+    }
+  }, [autoMinScore]);
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     // When form is submitted (Enter key), search immediately
@@ -1568,6 +1625,7 @@ function App() {
         keywordBoostShortQueries,
         minChunkSize,
         semanticHighlighting,
+        autoMinScore,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1596,6 +1654,7 @@ function App() {
         keywordBoostShortQueries,
         minChunkSize,
         semanticHighlighting,
+        autoMinScore,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1860,7 +1919,9 @@ function App() {
       onSemanticHighlightingChange={setSemanticHighlighting}
       minScore={minScore}
       maxScore={maxScore}
-      onMinScoreChange={setMinScore}
+      onMinScoreChange={handleMinScoreChange}
+      autoMinScore={autoMinScore}
+      onAutoMinScoreToggle={handleAutoMinScoreToggle}
       rerankEnabled={rerankEnabled}
       onRerankToggle={setRerankEnabled}
       recencyBoostEnabled={recencyBoostEnabled}
@@ -1926,7 +1987,9 @@ function App() {
       onSemanticHighlightingChange={setSemanticHighlighting}
       minScore={minScore}
       maxScore={maxScore}
-      onMinScoreChange={setMinScore}
+      onMinScoreChange={handleMinScoreChange}
+      autoMinScore={autoMinScore}
+      onAutoMinScoreToggle={handleAutoMinScoreToggle}
       rerankEnabled={rerankEnabled}
       onRerankToggle={setRerankEnabled}
       recencyBoostEnabled={recencyBoostEnabled}
@@ -2043,6 +2106,17 @@ function App() {
         semanticHighlightModelConfig={semanticHighlightModelConfig}
         onClose={handleClosePreview}
         onOpenMetadata={handleOpenMetadata}
+        searchDenseWeight={searchDenseWeight}
+        rerankEnabled={rerankEnabled}
+        recencyBoostEnabled={recencyBoostEnabled}
+        recencyWeight={recencyWeight}
+        recencyScaleDays={recencyScaleDays}
+        sectionTypes={sectionTypes}
+        keywordBoostShortQueries={keywordBoostShortQueries}
+        minChunkSize={minChunkSize}
+        minScore={minScore}
+        rerankModel={rerankModel}
+        searchModel={searchModel}
       />
 
       {/* TOC Modal for Search Results */}

@@ -9,6 +9,18 @@ interface PdfPreviewOverlayProps {
   semanticHighlightModelConfig?: SummaryModelConfig | null;
   onClose: () => void;
   onOpenMetadata?: (metadata: Record<string, any>) => void;
+  // Search settings
+  searchDenseWeight: number;
+  rerankEnabled: boolean;
+  recencyBoostEnabled: boolean;
+  recencyWeight: number;
+  recencyScaleDays: number;
+  sectionTypes: string[];
+  keywordBoostShortQueries: boolean;
+  minChunkSize: number;
+  minScore: number;
+  rerankModel: string | null;
+  searchModel: string | null;
 }
 
 const buildInitialBBox = (selectedDoc: SearchResult) => {
@@ -42,6 +54,17 @@ export const PdfPreviewOverlay: React.FC<PdfPreviewOverlayProps> = ({
   semanticHighlightModelConfig,
   onClose,
   onOpenMetadata,
+  searchDenseWeight,
+  rerankEnabled,
+  recencyBoostEnabled,
+  recencyWeight,
+  recencyScaleDays,
+  sectionTypes,
+  keywordBoostShortQueries,
+  minChunkSize,
+  minScore,
+  rerankModel,
+  searchModel,
 }) => {
   if (!selectedDoc) {
     return null;
@@ -62,6 +85,17 @@ export const PdfPreviewOverlay: React.FC<PdfPreviewOverlayProps> = ({
           semanticHighlightModelConfig={semanticHighlightModelConfig}
           initialBBox={buildInitialBBox(selectedDoc)}
           onOpenMetadata={onOpenMetadata}
+          searchDenseWeight={searchDenseWeight}
+          rerankEnabled={rerankEnabled}
+          recencyBoostEnabled={recencyBoostEnabled}
+          recencyWeight={recencyWeight}
+          recencyScaleDays={recencyScaleDays}
+          sectionTypes={sectionTypes}
+          keywordBoostShortQueries={keywordBoostShortQueries}
+          minChunkSize={minChunkSize}
+          minScore={minScore}
+          rerankModel={rerankModel}
+          searchModel={searchModel}
         />
       </div>
     </div>

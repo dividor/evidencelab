@@ -51,9 +51,13 @@ SEARCH_DENSE_WEIGHT = float(search_config.get("dense_weight", 1.0))
 # E5 models require special prefixes for queries and passages
 IS_E5_MODEL = "e5" in DENSE_MODEL.lower()
 
-SEARCH_HNSW_EF = int(search_config.get("hnsw_ef", 128))
-SEARCH_EXACT = search_config.get("exact", False)
-QUANTIZATION_RESCORE = search_config.get("quantization_rescore", True)
+SEARCH_HNSW_EF = int(os.getenv("SEARCH_HNSW_EF", search_config.get("hnsw_ef", 128)))
+SEARCH_EXACT = os.getenv(
+    "SEARCH_EXACT", str(search_config.get("exact", False))
+).lower() in ("1", "true", "yes")
+QUANTIZATION_RESCORE = os.getenv(
+    "QUANTIZATION_RESCORE", str(search_config.get("quantization_rescore", True))
+).lower() in ("1", "true", "yes")
 SEARCH_FETCH_LIMIT = int(os.getenv("SEARCH_FETCH_LIMIT", "50"))
 
 # Cache models for reuse

@@ -97,7 +97,10 @@ if [ -n "$DATA_MOUNT_PATH" ]; then
     # If ./data is a symlink, validate it points to DATA_MOUNT_PATH
     if [ -L "$DATA_DIR" ]; then
         LINK_TARGET="$(readlink "$DATA_DIR")"
-        if [ "$LINK_TARGET" != "$DATA_MOUNT_PATH" ]; then
+        # Normalize paths by removing trailing slashes for comparison
+        NORMALIZED_LINK_TARGET="${LINK_TARGET%/}"
+        NORMALIZED_DATA_MOUNT_PATH="${DATA_MOUNT_PATH%/}"
+        if [ "$NORMALIZED_LINK_TARGET" != "$NORMALIZED_DATA_MOUNT_PATH" ]; then
             echo "❌ Error: $DATA_DIR symlink target mismatch."
             echo "   Expected: $DATA_MOUNT_PATH"
             echo "   Found:    $LINK_TARGET"

@@ -280,3 +280,24 @@ class PostgresChunkMixin:
 
             results.append(chunk_dict)
         return results
+
+    def delete_chunks_for_doc(self, doc_id: str) -> int:
+        """
+        Delete all chunks for a specific document from Postgres.
+
+        Args:
+            doc_id: Document ID whose chunks should be deleted
+
+        Returns:
+            Number of deleted chunks
+        """
+        query = f"""
+            DELETE FROM {self.chunks_table}
+            WHERE doc_id = %s
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (doc_id,))
+                deleted_count = cur.rowcount
+            conn.commit()
+        return deleted_count

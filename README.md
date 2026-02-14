@@ -47,6 +47,7 @@ Evidence lab document processing pipeline includes the following features:
 - Experimental features such as heatmapper to tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
+- Auto min score filtering using percentile-based thresholding (filters bottom 30% of results)
 - Semantic highlighting in search results
 - Basic language translation
 - PDF preview with in-document search

@@ -324,74 +324,7 @@ const PipelineSankeySection = ({ sankeyData }: { sankeyData: SankeyData }) => {
               duration: 500,
               easing: 'cubic-in-out'
             },
-            annotations: [
-              {
-                x: 0.02,
-                y: -0.08,
-                xref: 'paper',
-                yref: 'paper',
-                text: `UN Organization (orgs=${sankeyData.annotations.num_orgs.toLocaleString()}, reports=${sankeyData.annotations.total_records.toLocaleString()})`,
-                showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                xanchor: 'left'
-              },
-              {
-                x: 0.22,
-                y: -0.08,
-                xref: 'paper',
-                yref: 'paper',
-                text: `reports=${sankeyData.annotations.layer2_count.toLocaleString()}`,
-                showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                xanchor: 'center',
-                bgcolor: ANNOTATION_BG,
-                borderpad: 8,
-                bordercolor: ANNOTATION_BORDER,
-                borderwidth: 1
-              },
-              {
-                x: 0.52,
-                y: -0.08,
-                xref: 'paper',
-                yref: 'paper',
-                text: `reports=${sankeyData.annotations.layer3_count.toLocaleString()}`,
-                showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                xanchor: 'center',
-                bgcolor: ANNOTATION_BG,
-                borderpad: 8,
-                bordercolor: ANNOTATION_BORDER,
-                borderwidth: 1
-              },
-              ...(sankeyData.annotations.layer6_count != null ? [
-              {
-                x: 0.98,
-                y: -0.08,
-                xref: 'paper',
-                yref: 'paper',
-                text: `reports=${sankeyData.annotations.layer6_count.toLocaleString()}`,
-                showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                xanchor: 'right',
-                bgcolor: ANNOTATION_BG,
-                borderpad: 8,
-                bordercolor: ANNOTATION_BORDER,
-                borderwidth: 1
-              }] : [{
-                x: 0.98,
-                y: -0.08,
-                xref: 'paper',
-                yref: 'paper',
-                text: `reports=${sankeyData.annotations.layer4_count.toLocaleString()}`,
-                showarrow: false,
-                font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                xanchor: 'right',
-                bgcolor: ANNOTATION_BG,
-                borderpad: 8,
-                bordercolor: ANNOTATION_BORDER,
-                borderwidth: 1
-              }])
-            ]
+            annotations: []
           }}
           config={{
             displayModeBar: true,
@@ -878,77 +811,7 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
                   duration: 500,
                   easing: 'cubic-in-out'
                 },
-                annotations: [
-                  // Layer 1 label (bottom)
-                  {
-                    x: 0.02,
-                    y: -0.08,
-                    xref: 'paper',
-                    yref: 'paper',
-                    text: `UN Organization (orgs=${sankeyData.annotations.num_orgs.toLocaleString()}, reports=${sankeyData.annotations.total_records.toLocaleString()})`,
-                    showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                    xanchor: 'left'
-                  },
-                  // Layer 2 label
-                  {
-                    x: 0.22,
-                    y: -0.08,
-                    xref: 'paper',
-                    yref: 'paper',
-                    text: `reports=${sankeyData.annotations.layer2_count.toLocaleString()}`,
-                    showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                    xanchor: 'center',
-                    bgcolor: ANNOTATION_BG,
-                    borderpad: 8,
-                    bordercolor: ANNOTATION_BORDER,
-                    borderwidth: 1
-                  },
-                  // Layer 3 label
-                  {
-                    x: 0.52,
-                    y: -0.08,
-                    xref: 'paper',
-                    yref: 'paper',
-                    text: `reports=${sankeyData.annotations.layer3_count.toLocaleString()}`,
-                    showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                    xanchor: 'center',
-                    bgcolor: ANNOTATION_BG,
-                    borderpad: 8,
-                    bordercolor: ANNOTATION_BORDER,
-                    borderwidth: 1
-                  },
-                  // Layer 6 label (indexed)
-                  ...(sankeyData.annotations.layer6_count != null ? [{
-                    x: 0.98,
-                    y: -0.08,
-                    xref: 'paper',
-                    yref: 'paper',
-                    text: `reports=${sankeyData.annotations.layer6_count.toLocaleString()}`,
-                    showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                    xanchor: 'right',
-                    bgcolor: ANNOTATION_BG,
-                    borderpad: 8,
-                    bordercolor: ANNOTATION_BORDER,
-                    borderwidth: 1
-                  }] : [{
-                    x: 0.98,
-                    y: -0.08,
-                    xref: 'paper',
-                    yref: 'paper',
-                    text: `reports=${sankeyData.annotations.layer4_count.toLocaleString()}`,
-                    showarrow: false,
-                    font: { size: 11, color: '#2C3E50', family: CHART_FONT_FAMILY },
-                    xanchor: 'right',
-                    bgcolor: ANNOTATION_BG,
-                    borderpad: 8,
-                    bordercolor: ANNOTATION_BORDER,
-                    borderwidth: 1
-                  }])
-                ]
+                annotations: []
               }}
               config={{
                 displayModeBar: true,

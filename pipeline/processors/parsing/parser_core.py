@@ -71,6 +71,9 @@ def parse_document_internal(
         page_count,
     )
 
+    # Generate thumbnail from first page
+    parser._generate_thumbnail(filepath, output_folder, file_format)
+
     logger.info("  ✓ Parsed: %s pages, %s words", page_count or "?", word_count)
 
     return (

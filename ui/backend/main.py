@@ -103,6 +103,8 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
         return None
     if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
         return None
+    if "/thumbnail" in request.url.path:
+        return None
     if not API_KEY:
         # If no API key configured, allow all requests (development mode)
         return None
@@ -533,6 +535,9 @@ class SearchResult(BaseModel):
     file_format: Optional[str] = None
     # ALL document metadata as flexible JSON - any field can appear here
     metadata: Dict[str, Any] = {}
+    sys_parsed_folder: Optional[str] = None
+    sys_filepath: Optional[str] = None
+    sys_full_summary: Optional[str] = None
 
     class Config:
         extra = "allow"  # Allow additional fields not explicitly defined

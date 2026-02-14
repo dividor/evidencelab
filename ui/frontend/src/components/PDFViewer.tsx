@@ -32,6 +32,18 @@ interface PDFViewerProps {
   dataSource?: string; // Data source for API requests
   semanticHighlightModelConfig?: SummaryModelConfig | null;
   onOpenMetadata?: (metadata: Record<string, any>) => void;
+  // Search settings inherited from main search
+  searchDenseWeight?: number;
+  rerankEnabled?: boolean;
+  recencyBoostEnabled?: boolean;
+  recencyWeight?: number;
+  recencyScaleDays?: number;
+  sectionTypes?: string[];
+  keywordBoostShortQueries?: boolean;
+  minChunkSize?: number;
+  minScore?: number;
+  rerankModel?: string | null;
+  searchModel?: string | null;
 }
 
 const ESTIMATED_PAGE_HEIGHT = 1200; // Approximate height per page for scrollbar
@@ -224,7 +236,18 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   metadata = {},
   dataSource = 'uneg',
   semanticHighlightModelConfig,
-  onOpenMetadata
+  onOpenMetadata,
+  searchDenseWeight = 0.8,
+  rerankEnabled = true,
+  recencyBoostEnabled = false,
+  recencyWeight = 0.15,
+  recencyScaleDays = 365,
+  sectionTypes = [],
+  keywordBoostShortQueries = true,
+  minChunkSize = 100,
+  minScore = 0,
+  rerankModel = null,
+  searchModel = null,
 }) => {
   // Extract fields from metadata
   const webUrl = metadata.report_url;
@@ -251,7 +274,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   // In-PDF search state
   const [inPdfSearchQuery, setInPdfSearchQuery] = useState('');
-  const [inPdfSearchResults, setInPdfSearchResults] = useState<number[]>([]);
+  const [inPdfSearchResults, setInPdfSearchResults] = useState<HighlightBox[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -277,6 +300,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     processedBBoxesRef.current.clear(); // Clear processed bboxes when doc/chunk/page changes
     // Always enable programmatic scrolling when doc/chunk/page changes
     isScrollingProgrammatically.current = true;
+    // Clear in-PDF search results when opening a new document
+    setInPdfSearchResults([]);
+    setInPdfSearchQuery('');
+    setCurrentMatchIndex(0);
   }, [docId, chunkId, pageNum]);
 
   // Load PDF
@@ -307,6 +334,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   // Load highlights
   useEffect(() => {
+    // Don't overwrite search highlights with initial highlights
+    if (inPdfSearchQuery || inPdfSearchResults.length > 0) {
+      return;
+    }
+
     // Set initial bbox highlights immediately (no API call needed)
     if (initialBBox && initialBBox.length > 0) {
       const immediateHighlights: HighlightBox[] = initialBBox.map(item => ({
@@ -322,7 +354,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     if (chunkId && pdfDoc && initialBBox.length === 0) {
       loadHighlights();
     }
-  }, [chunkId, pdfDoc, initialBBox]);
+  }, [chunkId, pdfDoc, initialBBox, inPdfSearchQuery, inPdfSearchResults]);
 
   // Render visible pages when current page changes
   useEffect(() => {
@@ -330,6 +362,15 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       renderVisiblePages(false);
     }
   }, [pdfDoc, currentPage, totalPages]);
+
+  // Re-render visible pages when search results change (but not on every highlight change to avoid flickering)
+  useEffect(() => {
+    if (pdfDoc && currentPage > 0 && inPdfSearchResults.length > 0) {
+      // Clear rendered pages to force re-render with new search highlights
+      setRenderedPages(new Map());
+      renderVisiblePages(true);
+    }
+  }, [inPdfSearchResults.length]); // Only re-render when search result count changes
 
   // Re-render all pages when scale changes
   useEffect(() => {
@@ -376,20 +417,15 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     // Calculate highlight offset if available
     let highlightOffset = 0;
-    if (pageHighlights.length > 0) {
-      // Find the topmost highlight (the one that appears highest on the page)
-      // In PDF coordinates, bbox.t is measured from bottom, so larger bbox.t = higher on page
-      const topHighlight = pageHighlights.reduce((prev, current) =>
-        (prev.bbox.t > current.bbox.t) ? prev : current
-      );
-
+    const targetHighlight = getTargetHighlight(pageHighlights);
+    if (targetHighlight) {
       // The viewport height in PDF units (unscaled)
       // actualPageHeight includes margin, so we need to remove it and divide by scale
       const viewportHeightPdfUnits = (actualPageHeight - 20) / scale;
 
       // Calculate y position from top of page (same formula as in renderPage)
       // This gives us the pixel offset from the top of the page container
-      highlightOffset = (viewportHeightPdfUnits - topHighlight.bbox.t) * scale;
+      highlightOffset = (viewportHeightPdfUnits - targetHighlight.bbox.t) * scale;
 
       // Add some padding (e.g. 100px) so it's not right at the edge
       // On mobile, use less padding since screen is smaller
@@ -433,7 +469,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         });
       }, 100); // Reduced delay for faster initial scroll
     }
-  }, [currentPage, totalPages, actualPageHeight, highlights, scale]);
+  }, [currentPage, totalPages, actualPageHeight, highlights, scale, currentMatchIndex, inPdfSearchResults]);
 
   // Handle scroll to determine current page
   const handleScroll = () => {
@@ -911,6 +947,22 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   const handleResetZoom = () => setScale(getResponsiveScale());
 
+  // Get the target highlight to scroll to
+  const getTargetHighlight = (pageHighlights: HighlightBox[]): HighlightBox | null => {
+    if (pageHighlights.length === 0) return null;
+
+    // If we're in search mode, scroll to the specific current match
+    if (inPdfSearchResults.length > 0 && currentMatchIndex < inPdfSearchResults.length) {
+      return inPdfSearchResults[currentMatchIndex];
+    }
+
+    // Otherwise, find the topmost highlight on the page
+    // In PDF coordinates, bbox.t is measured from bottom, so larger bbox.t = higher on page
+    return pageHighlights.reduce((prev, current) =>
+      (prev.bbox.t > current.bbox.t) ? prev : current
+    );
+  };
+
   // In-PDF search function
   const performInPdfSearch = async (query: string) => {
     if (!query.trim()) {
@@ -922,26 +974,55 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     setIsSearching(true);
     try {
-      // Call search API with query
-      const response = await axios.get(`${API_BASE_URL}/search`, {
-        params: {
-          q: query,
-          limit: 100
-        }
-      });
+      // Call search API with query, title filter, and all search settings from main search
+      const params: any = {
+        q: query,
+        limit: 100,
+        title: title,  // Filter by document title at backend
+        data_source: dataSource,
+        dense_weight: searchDenseWeight.toString(),
+        rerank: rerankEnabled.toString(),
+        recency_boost: recencyBoostEnabled.toString(),
+        recency_weight: recencyWeight.toString(),
+        recency_scale_days: recencyScaleDays.toString(),
+        keyword_boost_short_queries: keywordBoostShortQueries.toString(),
+      };
 
-      // Filter results to only include chunks from current document
+      // Add optional parameters
+      if (sectionTypes && sectionTypes.length > 0) {
+        params.section_types = sectionTypes.join(',');
+      }
+      if (minChunkSize > 0) {
+        params.min_chunk_size = minChunkSize.toString();
+      }
+      if (rerankModel) {
+        params.rerank_model = rerankModel;
+      }
+      if (searchModel) {
+        params.model = searchModel;
+      }
+
+      console.log('[In-PDF Search] Request params:', params);
+      console.log('[In-PDF Search] Query:', query, 'Title:', title, 'DataSource:', dataSource);
+
+      const response = await axios.get(`${API_BASE_URL}/search`, { params });
+
+      // Backend already filtered by title, so all results are for this document
       const data = response.data as { results?: any[] };
-      const docResults = (data.results || []).filter(
-        (result: any) => result.doc_id === docId
-      );
-      // Extract unique page numbers and sort them
-      const pages = [...new Set(docResults.map((r: any) => r.page_num))]
-        .filter((p): p is number => typeof p === 'number')
-        .sort((a, b) => a - b);
+      let docResults = data.results || [];
 
-      setInPdfSearchResults(pages);
-      setCurrentMatchIndex(0);
+      // Filter by minScore (inherited from main search)
+      if (minScore > 0) {
+        docResults = docResults.filter((result: any) => (result.score || 0) >= minScore);
+      }
+
+      console.log('[In-PDF Search] Response:', {
+        totalResults: docResults.length,
+        minScoreFilter: minScore,
+        firstResultText: docResults[0]?.text?.substring(0, 100),
+        firstResultTitle: docResults[0]?.document_title,
+        firstResultScore: docResults[0]?.score
+      });
 
       // Convert results to highlights format
       const newHighlights: HighlightBox[] = [];
@@ -978,12 +1059,21 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         }
       });
 
+      // Sort highlights by page, then by vertical position (top to bottom)
+      newHighlights.sort((a, b) => {
+        if (a.page !== b.page) return a.page - b.page;
+        // Higher bbox.t value = higher on page (PDF coords are from bottom)
+        return b.bbox.t - a.bbox.t;
+      });
+
       console.log(`[In-PDF Search] Generated ${newHighlights.length} highlights from ${docResults.length} results.`);
+      setInPdfSearchResults(newHighlights);
       setHighlights(newHighlights);
+      setCurrentMatchIndex(0);
 
       // Jump to first result
-      if (pages.length > 0) {
-        goToPage(pages[0]);
+      if (newHighlights.length > 0) {
+        goToPage(newHighlights[0].page);
       }
     } catch (error) {
       console.error('In-PDF search error:', error);
@@ -997,7 +1087,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     if (inPdfSearchResults.length === 0) return;
     const nextIndex = (currentMatchIndex + 1) % inPdfSearchResults.length;
     setCurrentMatchIndex(nextIndex);
-    goToPage(inPdfSearchResults[nextIndex]);
+    const highlight = inPdfSearchResults[nextIndex];
+    goToPage(highlight.page);
   };
 
   // Navigate to previous match
@@ -1005,7 +1096,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     if (inPdfSearchResults.length === 0) return;
     const prevIndex = (currentMatchIndex - 1 + inPdfSearchResults.length) % inPdfSearchResults.length;
     setCurrentMatchIndex(prevIndex);
-    goToPage(inPdfSearchResults[prevIndex]);
+    const highlight = inPdfSearchResults[prevIndex];
+    goToPage(highlight.page);
   };
 
   // Fetch TOC data

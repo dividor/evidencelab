@@ -1493,6 +1493,53 @@ h6,
   word-wrap: break-word;
 }
 
+.doc-title-with-thumbnail {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.doc-title-thumbnail-container {
+  flex-shrink: 0;
+  width: 40px;
+  height: 52px;
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  overflow: hidden;
+}
+
+.doc-title-thumbnail {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.doc-title-thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-50);
+  color: var(--gray-400);
+  font-size: 0.55rem;
+  text-align: center;
+  line-height: 1.1;
+  padding: 0.15rem;
+}
+
+.doc-title-text {
+  flex: 1;
+  min-width: 0;
+  word-wrap: break-word;
+}
+
 .doc-summary {
   max-width: none;
   width: 100%;
@@ -5862,17 +5909,39 @@ h6,
 
 .heatmap-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-lg);
-  align-items: flex-start;
+  flex-direction: column;
+  gap: var(--spacing-md);
   margin-bottom: var(--spacing-lg);
 }
 
-.heatmap-actions {
+.heatmap-controls-row {
+  display: flex;
+  gap: var(--spacing-lg);
+  align-items: flex-end;
+  flex-wrap: nowrap;
+}
+
+.heatmap-query-controls {
+  gap: var(--spacing-sm);
+  flex-wrap: nowrap;
+}
+
+.heatmap-query-controls .heatmap-query-input {
+  flex: 1;
+  min-width: 400px;
+  height: 48px;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 1.125rem;
+}
+
+.heatmap-action-buttons {
   display: flex;
   gap: var(--spacing-sm);
   align-items: center;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .heatmap-download-button {
@@ -5880,23 +5949,22 @@ h6,
   align-items: center;
   gap: 0.5rem;
   height: 48px;
-  padding: 1rem 2.25rem;
+  min-width: 180px;
+  padding: 0.75rem 1.5rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--gray-200);
   background: var(--white);
   color: var(--gray-800);
-  font-size: 1.0625rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   font-family: 'Poppins', sans-serif;
-  min-width: 170px;
   cursor: pointer;
   transition: border-color 0.2s ease, background 0.2s ease;
   box-shadow: var(--shadow-xs);
-  align-self: flex-end;
-  margin-top: 22px;
+  flex-shrink: 0;
 }
 
-.heatmap-download-button:hover {
+.heatmap-download-button:hover:not(:disabled) {
   border-color: var(--gray-300);
   background: var(--gray-100);
 }
@@ -5906,12 +5974,17 @@ h6,
   border-color: var(--gray-200);
   background: var(--gray-100);
   cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.heatmap-download-button:disabled .heatmap-download-icon {
+  color: var(--gray-400);
 }
 
 .heatmap-download-icon {
   display: inline-flex;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   color: #217346;
 }
 
@@ -5924,7 +5997,8 @@ h6,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 180px;
+  min-width: 140px;
+  flex-shrink: 1;
 }
 
 .heatmap-control label {
@@ -5936,10 +6010,22 @@ h6,
 .heatmap-select {
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-md);
-  padding: 0.5rem;
+  padding: 0.75rem 2rem 0.75rem 0.5rem;
   font-size: 0.9rem;
   background: var(--white);
   color: var(--gray-800);
+  height: 48px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 12px;
+}
+
+.heatmap-slider {
+  margin-left: auto;
 }
 
 .heatmap-slider input {
@@ -6124,13 +6210,14 @@ h6,
   vertical-align: bottom;
   height: 120px;
   padding: 0.6rem 0.3rem;
+  text-align: center;
 }
 
 .heatmap-column-header-text {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   white-space: nowrap;
-  text-align: left;
+  display: inline-block;
 }
 
 .heatmap-query-cell {
@@ -6358,11 +6445,9 @@ h6,
 }
 
 .heatmap-search-button {
-  margin-left: auto;
   height: 48px;
-  min-width: 160px;
-  align-self: flex-end;
-  margin-top: 22px;
+  min-width: 180px;
+  flex-shrink: 0;
 }
 
 .heatmap-cell {
@@ -6420,6 +6505,23 @@ h6,
   font-size: 0.85rem;
 }
 
+.heatmap-modal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.heatmap-modal-doc-count {
+  background: var(--gray-100);
+  color: var(--gray-700);
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+  border: 1px solid var(--gray-200);
+}
+
 .heatmap-modal-close {
   background: none;
   border: none;
@@ -6428,7 +6530,188 @@ h6,
   color: var(--gray-500);
 }
 
+.heatmap-modal-content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmap-modal-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 4px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 4px;
+}
+
+.heatmap-modal-content::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+.heatmap-modal-thumbnails {
+  border-bottom: 1px solid var(--gray-200);
+  padding: 1rem 1.5rem;
+  background: var(--gray-50);
+  flex-shrink: 0;
+}
+
+.heatmap-modal-thumbnails-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 0.75rem;
+}
+
+.heatmap-modal-thumbnails-container {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.25rem 0 0.5rem 0;
+  scroll-behavior: smooth;
+}
+
+.heatmap-modal-thumbnails-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.heatmap-modal-thumbnails-container::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 3px;
+}
+
+.heatmap-modal-thumbnails-container::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+}
+
+.heatmap-modal-thumbnails-container::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+.heatmap-modal-thumbnail {
+  flex-shrink: 0;
+  width: 196px;
+  height: 96px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--gray-50);
+  border: 2px solid var(--gray-200);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: row;
+}
+
+.heatmap-modal-thumbnail:hover {
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.heatmap-modal-thumbnail.selected {
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.2);
+}
+
+.heatmap-modal-thumbnail-image-container {
+  flex-shrink: 0;
+  width: 74px;
+  height: 96px;
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+}
+
+.heatmap-modal-thumbnail-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: var(--white);
+  display: block;
+}
+
+.heatmap-modal-thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-100);
+  color: var(--gray-400);
+  font-size: 0.65rem;
+}
+
+.heatmap-modal-thumbnail-title {
+  flex: 1;
+  padding: 0.5rem 0.5rem 0.65rem 0.5rem;
+  border-left: 1px solid var(--gray-200);
+  background: var(--gray-50);
+  display: flex;
+  flex-direction: column;
+}
+
+.heatmap-modal-thumbnail-doc-title {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: var(--gray-700);
+  word-wrap: break-word;
+}
+
+.heatmap-modal-thumbnail-source {
+  font-size: 0.6rem;
+  line-height: 1.1;
+  color: var(--gray-500);
+  font-style: italic;
+  word-wrap: break-word;
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.heatmap-modal-filter-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: rgba(91, 143, 168, 0.1);
+  border: 1px solid var(--brand-primary);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+}
+
+.heatmap-modal-filter-text {
+  color: var(--gray-700);
+}
+
+.heatmap-modal-filter-text strong {
+  color: var(--brand-primary);
+}
+
+.heatmap-modal-filter-clear {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease;
+}
+
+.heatmap-modal-filter-clear:hover {
+  background: rgba(91, 143, 168, 0.15);
+}
+
 .heatmap-modal-body {
   padding: 1.5rem;
-  overflow-y: auto;
+  flex: 1;
 }

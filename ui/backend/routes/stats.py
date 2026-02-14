@@ -357,50 +357,50 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
         nodes.append(label)
         node_colors.append(color)
 
-    add_node("downloaded", f"Downloaded ({totals['downloaded']})", "rgb(102, 194, 165)")
+    add_node("downloaded", f"Downloaded ({totals['downloaded']})", "rgb(100, 116, 139)")
     add_node(
         "not_downloaded",
-        f"Not Downloaded ({totals['not_downloaded']})",
-        "rgb(255, 100, 100)",
+        f"Document unavailable ({totals['not_downloaded']})",
+        "rgb(253, 224, 71)",
     )
-    add_node("parsed", f"Parsed ({totals['parsed']})", "rgb(141, 160, 203)")
+    add_node("parsed", f"Parsed ({totals['parsed']})", "rgb(139, 92, 246)")
     add_node(
         "parse_failed",
         f"Parse Failed ({totals['parse_failed']})",
-        "rgb(255, 100, 100)",
+        "rgb(239, 68, 68)",
     )
     add_node(
         "stopped",
         f"Stopped ({totals['stopped']})",
-        "rgb(255, 100, 100)",
+        "rgb(239, 68, 68)",
     )
     add_node(
         "parsing",
         f"Parsing ({totals['parsing']})",
         "rgb(200, 200, 200)",
     )
-    add_node("summarized", f"Summarized ({totals['summarized']})", "rgb(166, 216, 84)")
+    add_node("summarized", f"Summarized ({totals['summarized']})", "rgb(16, 185, 129)")
     add_node(
         "summarize_failed",
         f"Summarize Failed ({totals['summarize_failed']})",
-        "rgb(255, 100, 100)",
+        "rgb(239, 68, 68)",
     )
     add_node(
         "summarizing",
         f"Summarizing ({totals['summarizing']})",
         "rgb(200, 200, 200)",
     )
-    add_node("tagged", f"Tagged ({totals['tagged']})", "rgb(255, 217, 47)")
+    add_node("tagged", f"Tagged ({totals['tagged']})", "rgb(245, 158, 11)")
     add_node(
         "tagging",
         f"Tagging ({totals['tagging']})",
         "rgb(200, 200, 200)",
     )
-    add_node("indexed", f"Indexed ({totals['indexed']})", "rgb(229, 196, 148)")
+    add_node("indexed", f"Indexed ({totals['indexed']})", "rgb(14, 165, 233)")
     add_node(
         "index_failed",
         f"Index Failed ({totals['index_failed']})",
-        "rgb(255, 100, 100)",
+        "rgb(239, 68, 68)",
     )
     add_node(
         "indexing",
@@ -409,6 +409,11 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
     )
 
     return nodes, node_idx, node_colors, org_color_map, sorted_orgs
+
+
+def _rgb_to_rgba(rgb: str, alpha: float = 0.3) -> str:
+    """Convert 'rgb(r, g, b)' to 'rgba(r, g, b, alpha)' for transparent links."""
+    return rgb.replace("rgb(", "rgba(").replace(")", f", {alpha})")
 
 
 def _build_sankey_links(
@@ -430,66 +435,93 @@ def _build_sankey_links(
         values.append(value)
         link_colors.append(color)
 
+    link_alpha = 0.25
+
     for org in sorted_orgs:
         flows = org_flows[org]
-        add_link(f"{org}_total", "downloaded", flows["downloaded"], org_color_map[org])
+        add_link(
+            f"{org}_total",
+            "downloaded",
+            flows["downloaded"],
+            _rgb_to_rgba(org_color_map[org], link_alpha),
+        )
         add_link(
             f"{org}_total",
             "not_downloaded",
             flows["not_downloaded"],
-            "rgb(255, 100, 100)",
+            _rgb_to_rgba("rgb(253, 224, 71)", 0.4),
         )
-        add_link("downloaded", "parsed", flows["parsed"], "rgb(141, 160, 203)")
+        add_link(
+            "downloaded",
+            "parsed",
+            flows["parsed"],
+            _rgb_to_rgba("rgb(139, 92, 246)", link_alpha),
+        )
         add_link(
             "downloaded",
             "parse_failed",
             flows["parse_failed"],
-            "rgb(255, 100, 100)",
+            _rgb_to_rgba("rgb(239, 68, 68)", 0.35),
         )
         add_link(
             "downloaded",
             "stopped",
             flows["stopped"],
-            "rgb(255, 100, 100)",
+            _rgb_to_rgba("rgb(239, 68, 68)", 0.35),
         )
         add_link(
             "downloaded",
             "parsing",
             flows["parsing"],
-            "rgb(200, 200, 200)",
+            _rgb_to_rgba("rgb(200, 200, 200)", link_alpha),
         )
-        add_link("parsed", "summarized", flows["summarized"], "rgb(166, 216, 84)")
+        add_link(
+            "parsed",
+            "summarized",
+            flows["summarized"],
+            _rgb_to_rgba("rgb(16, 185, 129)", link_alpha),
+        )
         add_link(
             "parsed",
             "summarize_failed",
             flows["summarize_failed"],
-            "rgb(255, 100, 100)",
+            _rgb_to_rgba("rgb(239, 68, 68)", 0.35),
         )
         add_link(
             "parsed",
             "summarizing",
             flows["summarizing"],
-            "rgb(200, 200, 200)",
+            _rgb_to_rgba("rgb(200, 200, 200)", link_alpha),
         )
-        add_link("summarized", "tagged", flows["tagged"], "rgb(255, 217, 47)")
+        add_link(
+            "summarized",
+            "tagged",
+            flows["tagged"],
+            _rgb_to_rgba("rgb(245, 158, 11)", link_alpha),
+        )
         add_link(
             "summarized",
             "tagging",
             flows["tagging"],
-            "rgb(200, 200, 200)",
+            _rgb_to_rgba("rgb(200, 200, 200)", link_alpha),
         )
-        add_link("tagged", "indexed", flows["indexed"], "rgb(229, 196, 148)")
+        add_link(
+            "tagged",
+            "indexed",
+            flows["indexed"],
+            _rgb_to_rgba("rgb(14, 165, 233)", link_alpha),
+        )
         add_link(
             "tagged",
             "index_failed",
             flows["index_failed"],
-            "rgb(255, 100, 100)",
+            _rgb_to_rgba("rgb(239, 68, 68)", 0.35),
         )
         add_link(
             "tagged",
             "indexing",
             flows["indexing"],
-            "rgb(200, 200, 200)",
+            _rgb_to_rgba("rgb(200, 200, 200)", link_alpha),
         )
 
     return {"source": sources, "target": targets, "value": values, "color": link_colors}

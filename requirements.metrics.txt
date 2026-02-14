@@ -1,0 +1,11 @@
+# Dependencies for code quality metrics script (scripts/quality/code_metrics.py)
+# Install with: pip install -r requirements.metrics.txt
+
+# Cyclomatic complexity
+lizard==1.17.10
+
+# Cognitive complexity (Python)
+cognitive-complexity==1.3.0
+
+# Maintainability Index (Python)
+radon==6.0.1
