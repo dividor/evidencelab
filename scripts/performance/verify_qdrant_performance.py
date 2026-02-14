@@ -6,6 +6,12 @@ from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
+# Retry on connection failures (e.g. Qdrant still starting or wrong host)
+QDRANT_CONNECT_RETRIES = int(os.getenv("QDRANT_CONNECT_RETRIES", "3"))
+QDRANT_CONNECT_RETRY_DELAY = float(os.getenv("QDRANT_CONNECT_RETRY_DELAY", "2.0"))
+# Short timeout for connect phase so we don't hang; full timeout used for benchmark after connect
+QDRANT_CONNECT_TIMEOUT = float(os.getenv("QDRANT_CONNECT_TIMEOUT", "15.0"))
+
 
 def _swap_internal_host(host: str) -> str:
     if "://db" in host or "://qdrant" in host or host == "db" or host == "qdrant":
@@ -31,6 +37,28 @@ def load_env():
     load_dotenv(os.path.join(project_root, ".env"))
 
 
+def _is_connection_error(exc: BaseException) -> bool:
+    """True if the error is connection refused, reset, timeout, or similar (worth retrying)."""
+    msg = str(exc).lower()
+    if "connection refused" in msg or "connection reset" in msg:
+        return True
+    if "timeout" in msg or "timed out" in msg:
+        return True
+    if "errno 111" in msg or "errno 104" in msg:
+        return True
+    return False
+
+
+def _host_candidates(primary: str) -> list[str]:
+    """Build list of URLs to try: primary first, then localhost fallbacks when on host."""
+    candidates = [primary]
+    if not os.path.exists("/.dockerenv"):
+        for fallback in ("http://127.0.0.1:6333", "http://localhost:6333"):
+            if fallback not in candidates:
+                candidates.append(fallback)
+    return candidates
+
+
 def debug_qdrant():
     print("--- Debugging Qdrant Performance (Hybrid + Filter Logic) ---")
 
@@ -46,13 +74,49 @@ def debug_qdrant():
     if host.startswith("https://") and "localhost" in host:
         host = host.replace("https://", "http://", 1)
 
-    print(f"Connecting to Qdrant at {host}...")
-    client = QdrantClient(url=host, api_key=api_key, timeout=timeout)
-
-    # 2. Identify Collection and Params
     collection_name = "chunks_uneg"  # Default
     target_vector_name = os.getenv("TARGET_MODEL", "e5_large")  # Allow overriding model
     sparse_vector_name = "bm25"
+
+    # Connect with retries and fallbacks (e.g. Qdrant still starting, or try localhost on host)
+    candidates = _host_candidates(host)
+    client = None
+    info = None
+    last_error: Exception | None = None
+
+    for try_url in candidates:
+        if client is not None:
+            break
+        for attempt in range(1, QDRANT_CONNECT_RETRIES + 1):
+            try:
+                print(f"Connecting to Qdrant at {try_url}...")
+                connect_client = QdrantClient(
+                    url=try_url, api_key=api_key, timeout=QDRANT_CONNECT_TIMEOUT
+                )
+                info = connect_client.get_collection(collection_name)
+                # Use full timeout for the benchmark
+                client = QdrantClient(url=try_url, api_key=api_key, timeout=timeout)
+                host = try_url
+                break
+            except Exception as e:
+                last_error = e
+                if _is_connection_error(e) and attempt < QDRANT_CONNECT_RETRIES:
+                    print(
+                        f"  Connection failed ({e}), retrying in {QDRANT_CONNECT_RETRY_DELAY}s..."
+                    )
+                    time.sleep(QDRANT_CONNECT_RETRY_DELAY)
+                else:
+                    if try_url != candidates[-1]:
+                        print(f"  {e}, trying next host...")
+                    break
+        if client is not None:
+            break
+        else:
+            client = None
+
+    if client is None or info is None:
+        print(f"Error getting collection {collection_name}: {last_error}")
+        return
 
     # Params from App Logic causing slowness
     SEARCH_HNSW_EF = 128
@@ -77,23 +141,18 @@ def debug_qdrant():
     print(f"Target Sparse: {sparse_vector_name}")
     print(f"Params: HNSW_EF={SEARCH_HNSW_EF}, Rescore={QUANTIZATION_RESCORE}")
 
-    try:
-        info = client.get_collection(collection_name)
-        print(f"Collection Status: {info.status} (Points: {info.points_count})")
-        if "section_type" in info.payload_schema:
-            print("✅ 'section_type' is indexed.")
-        else:
-            print("❌ 'section_type' is NOT indexed.")
+    print(f"Collection Status: {info.status} (Points: {info.points_count})")
+    if "section_type" in info.payload_schema:
+        print("✅ 'section_type' is indexed.")
+    else:
+        print("❌ 'section_type' is NOT indexed.")
 
-        # Check Quantization Status
-        if info.config.quantization_config:
-            q_conf = info.config.quantization_config
-            print(f"✅ Quantization Enabled: {q_conf}")
-        else:
-            print("❌ Quantization DISABLED (Expect Cold Start Slowness)")
-    except Exception as e:
-        print(f"Error getting collection {collection_name}: {e}")
-        return
+    # Check Quantization Status
+    if info.config.quantization_config:
+        q_conf = info.config.quantization_config
+        print(f"✅ Quantization Enabled: {q_conf}")
+    else:
+        print("❌ Quantization DISABLED (Expect Cold Start Slowness)")
 
     # 3. Setup Filter (The Heavy Operation)
     section_types = [
