@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor, cleanup } from '@testing-library/react';
 import axios from 'axios';
 
 jest.mock('react-markdown', () => {
@@ -38,6 +38,18 @@ const TEST_SUMMARIZATION_MODEL = 'qwen2.5-7b-instruct';
 const TEST_RERANKER_MODEL = 'jinaai/jina-reranker-v2-base-multilingual';
 
 describe('App', () => {
+  beforeEach(() => {
+    // Reset mocks before each test - clears call history but keeps implementations
+    jest.clearAllMocks();
+    // Reset the URL
+    window.history.pushState({}, '', '/');
+  });
+
+  afterEach(() => {
+    // Clean up React components
+    cleanup();
+  });
+
   test('loads config and navigates tabs', async () => {
     mockedAxios.get.mockImplementation((url) => {
       if (url.includes('/config/datasources')) {
@@ -220,5 +232,153 @@ describe('App', () => {
     expect(lastSearch).toContain('model=e5_large');
     expect(lastSearch).toContain('rerank_model=jinaai%2Fjina-reranker-v2-base-multilingual');
     expect(lastSearch).toContain('data_source=test');
+  });
+});
+
+describe('App - Deep Linking', () => {
+  beforeEach(() => {
+    // Reset mocks before each test - clears call history but keeps implementations
+    jest.clearAllMocks();
+    // Reset the URL
+    window.history.pushState({}, '', '/');
+  });
+
+  afterEach(() => {
+    // Clean up React components
+    cleanup();
+  });
+
+  // Note: This test passes when run in isolation but may be flaky when run with other tests
+  // due to shared state in React/Jest. Run with: npm test -- --testNamePattern="deep-links"
+  test('deep-links to PDF modal with doc_id and chunk_id in URL', async () => {
+    // Set up URL with query, dataset, and doc_id/chunk_id parameters
+    window.history.pushState({}, '', '/?tab=search&q=test+query&dataset=Test+Source&doc_id=test-doc-123&chunk_id=test-chunk-456');
+
+    const mockSearchResult = {
+      chunk_id: 'test-chunk-456',
+      doc_id: 'test-doc-123',
+      text: 'This is test chunk content',
+      page_num: 1,
+      headings: ['Test Heading'],
+      score: 0.95,
+      title: 'Test Document',
+      metadata: {},
+    };
+
+    const TEST_MODEL_CONFIG = {
+      model: TEST_SUMMARIZATION_MODEL,
+      max_tokens: 500,
+      temperature: 0.2,
+      chunk_overlap: 800,
+      chunk_tokens_ratio: 0.5,
+    };
+
+    // Track if mock is set up correctly
+    let configCalled = 0;
+    let searchCalled = false;
+
+    mockedAxios.get.mockImplementation((url) => {
+      const urlStr = String(url);
+      
+      if (urlStr.includes('/config/datasources')) {
+        configCalled++;
+        return Promise.resolve({
+          data: {
+            'Test Source': {
+              data_subdir: 'test',
+              field_mapping: {},
+              filter_fields: {},
+            },
+          },
+        });
+      }
+      if (urlStr.includes('/config/model-combos')) {
+        configCalled++;
+        return Promise.resolve({
+          data: {
+            'Test Combo': {
+              embedding_model: 'e5_large',
+              summarization_model: TEST_MODEL_CONFIG,
+              semantic_highlighting_model: TEST_MODEL_CONFIG,
+              reranker_model: TEST_RERANKER_MODEL,
+            },
+          },
+        });
+      }
+      if (urlStr.includes('/facets')) {
+        return Promise.resolve({
+          data: {
+            facets: {},
+            filter_fields: {},
+          },
+        });
+      }
+      if (urlStr.includes('/search')) {
+        searchCalled = true;
+        return Promise.resolve({
+          data: {
+            results: [mockSearchResult],
+            total: 1,
+            query: 'test query',
+            filters: {},
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+
+    const replaceStateSpy = jest.spyOn(window.history, 'replaceState');
+
+    render(<App />);
+
+    // Wait for configs to load first
+    await waitFor(() => {
+      expect(configCalled).toBeGreaterThanOrEqual(2);
+    }, { timeout: 2000 });
+
+    // Wait for search to be called
+    await waitFor(() => {
+      expect(searchCalled).toBe(true);
+    }, { timeout: 5000 });
+
+    // Wait for the PDF viewer to appear (modal auto-opens with matching result)
+    expect(await screen.findByText('PDF Viewer', {}, { timeout: 3000 })).toBeInTheDocument();
+
+    // Verify the URL contains doc_id and chunk_id
+    await waitFor(() => {
+      expect(window.location.search).toContain('doc_id=test-doc-123');
+      expect(window.location.search).toContain('chunk_id=test-chunk-456');
+    });
+
+    // Find the overlay element
+    const overlay = document.querySelector('.preview-overlay');
+    expect(overlay).toBeInTheDocument();
+
+    // Close the modal by clicking the overlay
+    if (overlay) {
+      fireEvent.click(overlay);
+    }
+
+    // Wait for the modal to close
+    await waitFor(() => {
+      expect(screen.queryByText('PDF Viewer')).not.toBeInTheDocument();
+    });
+
+    // Verify that closing the modal removes doc_id and chunk_id from URL
+    await waitFor(() => {
+      const calls = replaceStateSpy.mock.calls;
+      const hasCallWithoutDocId = calls.some(call => {
+        const url = call[2] as string;
+        return !url.includes('doc_id=');
+      });
+      expect(hasCallWithoutDocId).toBe(true);
+    });
+
+    // Check that query parameter is still present in the last call
+    const lastCall = replaceStateSpy.mock.calls[replaceStateSpy.mock.calls.length - 1];
+    const lastUrl = lastCall[2] as string;
+    expect(lastUrl).toContain('q=test+query'); // Query should still be present
+    expect(lastUrl).not.toContain('doc_id='); // doc_id should be removed
+    expect(lastUrl).not.toContain('chunk_id='); // chunk_id should be removed
   });
 });
