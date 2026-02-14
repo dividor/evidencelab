@@ -161,6 +161,7 @@ export interface HighlightBox {
     b: number;
   };
   text: string;
+  isTextMatch?: boolean; // true for local text search matches (bright highlight)
   semanticMatches?: Array<{
     start: number;
     end: number;
