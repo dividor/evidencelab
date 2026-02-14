@@ -103,6 +103,8 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
         return None
     if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
         return None
+    if "/thumbnail" in request.url.path:
+        return None
     if not API_KEY:
         # If no API key configured, allow all requests (development mode)
         return None

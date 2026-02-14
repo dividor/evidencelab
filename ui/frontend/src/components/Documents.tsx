@@ -61,6 +61,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           onCloseFilterPopover={state.handleCloseFilterPopover}
           onPageChange={state.setCurrentPage}
           dataSourceConfig={dataSourceConfig}
+          dataSource={dataSource}
         />
 
       </div>

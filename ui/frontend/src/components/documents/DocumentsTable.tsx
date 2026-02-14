@@ -47,6 +47,7 @@ interface DocumentsTableProps {
   onCloseFilterPopover: () => void;
   onPageChange: (page: number) => void;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
+  dataSource?: string;
 }
 
 // Generate sortable headers dynamically based on config
@@ -195,6 +196,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   onCloseFilterPopover,
   onPageChange,
   dataSourceConfig,
+  dataSource,
 }) => {
   const [tableContainer, setTableContainer] = React.useState<HTMLDivElement | null>(null);
 
@@ -328,6 +330,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 onOpenQueue={onOpenQueue}
                 reprocessingDocId={reprocessingDocId}
                 dataSourceConfig={dataSourceConfig}
+                dataSource={dataSource}
               />
             ))}
           </tbody>

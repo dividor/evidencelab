@@ -9,6 +9,16 @@ import { DocumentStatusCell } from './DocumentStatusCell';
 import { DocumentsSummaryCell } from './DocumentsSummaryCell';
 import { TaxonomyCell } from './TaxonomyCell';
 import { formatTimestamp, getLastUpdatedTimestamp } from './documentsModalUtils';
+import API_BASE_URL from '../../config';
+
+// Helper function to construct thumbnail URL using the API endpoint
+const getThumbnailUrl = (doc: any, dataSource: string): string | null => {
+  const docId = doc.doc_id || doc.id;
+  if (!docId) return null;
+
+  const docDataSource = doc.data_source || dataSource;
+  return `${API_BASE_URL}/document/${docId}/thumbnail?data_source=${docDataSource}`;
+};
 
 export const DocumentsTableRow: React.FC<{
   doc: any;
@@ -24,6 +34,7 @@ export const DocumentsTableRow: React.FC<{
   onOpenQueue: () => void;
   reprocessingDocId: string | null;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
+  dataSource?: string;
 }> = ({
   doc,
   index,
@@ -38,15 +49,59 @@ export const DocumentsTableRow: React.FC<{
   onOpenQueue,
   reprocessingDocId,
   dataSourceConfig,
+  dataSource = 'uneg',
 }) => {
     const lastUpdated = formatTimestamp(getLastUpdatedTimestamp(doc.stages || {}));
 
     // Get taxonomy configurations
     const taxonomies = dataSourceConfig?.pipeline?.tag?.taxonomies || {};
 
+    // Check if document has reached parsed status or later
+    // Show thumbnail for any document that has been successfully parsed (exclude 'downloaded' and error states)
+    const hasParsedStatus = doc.status && doc.status !== 'downloaded' && !doc.status.includes('error');
+
+    // Construct thumbnail URL (only for parsed or later documents)
+    const thumbnailUrl = hasParsedStatus ? getThumbnailUrl(doc, dataSource) : null;
+
     return (
       <tr key={doc.id || index}>
-        <td className="doc-title">{doc.title || 'Untitled'}</td>
+        <td className="doc-title">
+          {hasParsedStatus ? (
+            <div className="doc-title-with-thumbnail">
+              <div className="doc-title-thumbnail-container">
+                {thumbnailUrl ? (
+                  <>
+                    <img
+                      src={thumbnailUrl}
+                      alt={doc.title || 'Document thumbnail'}
+                      className="doc-title-thumbnail"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const placeholder = target.nextElementSibling as HTMLElement;
+                        if (placeholder) {
+                          placeholder.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
+                      No preview
+                    </div>
+                  </>
+                ) : (
+                  <div className="doc-title-thumbnail-placeholder">
+                    No preview
+                  </div>
+                )}
+              </div>
+              <div className="doc-title-text">
+                {doc.title || 'Untitled'}
+              </div>
+            </div>
+          ) : (
+            <div>{doc.title || 'Untitled'}</div>
+          )}
+        </td>
         <DocumentLinksCell doc={doc} />
         <td className="doc-summary">
           <DocumentsSummaryCell
