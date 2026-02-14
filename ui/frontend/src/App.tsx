@@ -383,6 +383,15 @@ function App() {
     DEFAULT_SECTION_TYPES
   );
   const initialQueryFromUrlRef = useRef(Boolean(initialSearchState.query.trim()));
+  // Capture doc_id/chunk_id from URL so we can auto-open the PDF modal after search completes
+  const initialDocFromUrl = useRef<{ doc_id: string; chunk_id: string } | null>(
+    (() => {
+      const params = new URLSearchParams(window.location.search);
+      const docId = params.get('doc_id');
+      const chunkId = params.get('chunk_id');
+      return docId && chunkId ? { doc_id: docId, chunk_id: chunkId } : null;
+    })()
+  );
   const [activeTab, setActiveTab] = useState<TabName>(getTabFromPath);
 
   // Config state
@@ -1329,8 +1338,20 @@ function App() {
         selectedModelCombo,
         selectedDomain
       );
-      const newURL = withBasePath(searchParams ? `/?${searchParams}` : '/');
-      if (window.location.search !== `?${searchParams}`) {
+      // Build URLSearchParams from the base search params
+      const params = new URLSearchParams(searchParams || '');
+      // Append or remove doc_id/chunk_id depending on whether a document is selected
+      if (selectedDoc) {
+        params.set('doc_id', selectedDoc.doc_id);
+        params.set('chunk_id', selectedDoc.chunk_id);
+      } else {
+        params.delete('doc_id');
+        params.delete('chunk_id');
+      }
+      const finalParams = params.toString();
+      const searchString = finalParams ? `?${finalParams}` : '';
+      const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
+      if (window.location.search !== searchString) {
         window.history.replaceState(null, '', newURL);
       }
     }
@@ -1346,13 +1367,25 @@ function App() {
     recencyScaleDays,
     sectionTypes,
     keywordBoostShortQueries,
+    minChunkSize,
     semanticHighlighting,
     autoMinScore,
     searchModel,
     selectedModelCombo,
+    selectedDomain,
+    selectedDoc,
   ]);
 
-
+  // Auto-open PDF modal if URL contained doc_id/chunk_id when page loaded
+  useEffect(() => {
+    if (!initialDocFromUrl.current || results.length === 0) return;
+    const { doc_id, chunk_id } = initialDocFromUrl.current;
+    const match = results.find(r => r.doc_id === doc_id && r.chunk_id === chunk_id);
+    if (match) {
+      setSelectedDoc(match);
+      initialDocFromUrl.current = null; // Only do this once
+    }
+  }, [results]);
 
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const isSearchingRef = useRef(false);

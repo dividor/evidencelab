@@ -293,7 +293,7 @@ def _apply_status_counts(
     flows["tagging"] += c_summarized + c_tagging
     flows["summarizing"] += c_parsed + c_summarizing
     flows["stopped"] += c_stopped
-    flows["parsing"] += c_downloaded + c_parsing
+    flows["parsing"] += c_parsing
     flows["not_downloaded"] = c_download_error
 
     flows["total"] = total_downloaded + flows["not_downloaded"]
