@@ -67,7 +67,13 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities|property-information|hast-util-whitespace|space-separated-tokens|comma-separated-tokens|ccount|escape-string-regexp|markdown-table)/)"
-    ]
+      "node_modules/(?!(react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile.*|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities.*|character-reference-invalid|property-information|hast-util-.*|space-separated-tokens|comma-separated-tokens|ccount|escape-string-regexp|markdown-table|devlop|trim-lines|estree-util-.*|html-url-attributes|is-alphabetical|is-alphanumerical|is-decimal|is-hexadecimal|longest-streak|parse-entities|stringify-entities|zwitch|@ungap)/)"
+    ],
+    "moduleNameMapper": {
+      "^unist-util-visit-parents/do-not-use-color$": "unist-util-visit-parents/lib/color.node.js",
+      "^#minpath$": "<rootDir>/node_modules/vfile/lib/minpath.js",
+      "^#minproc$": "<rootDir>/node_modules/vfile/lib/minproc.js",
+      "^#minurl$": "<rootDir>/node_modules/vfile/lib/minurl.js"
+    }
   }
 }

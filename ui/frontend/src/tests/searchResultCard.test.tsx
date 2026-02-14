@@ -70,7 +70,7 @@ describe('SearchResultCard', () => {
     render(
       <SearchResultCard
         result={result}
-        query=""
+        query="figure"
         isSelected={false}
         onClick={jest.fn()}
         onOpenMetadata={jest.fn()}
