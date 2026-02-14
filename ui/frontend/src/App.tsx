@@ -383,6 +383,15 @@ function App() {
     DEFAULT_SECTION_TYPES
   );
   const initialQueryFromUrlRef = useRef(Boolean(initialSearchState.query.trim()));
+  // Capture doc_id/chunk_id from URL so we can auto-open the PDF modal after search completes
+  const initialDocFromUrl = useRef<{ doc_id: string; chunk_id: string } | null>(
+    (() => {
+      const params = new URLSearchParams(window.location.search);
+      const docId = params.get('doc_id');
+      const chunkId = params.get('chunk_id');
+      return docId && chunkId ? { doc_id: docId, chunk_id: chunkId } : null;
+    })()
+  );
   const [activeTab, setActiveTab] = useState<TabName>(getTabFromPath);
 
   // Config state
@@ -1329,8 +1338,16 @@ function App() {
         selectedModelCombo,
         selectedDomain
       );
-      const newURL = withBasePath(searchParams ? `/?${searchParams}` : '/');
-      if (window.location.search !== `?${searchParams}`) {
+      // Append doc_id/chunk_id if a document is selected (PDF modal open)
+      let finalParams = searchParams;
+      if (selectedDoc) {
+        const extra = new URLSearchParams();
+        extra.set('doc_id', selectedDoc.doc_id);
+        extra.set('chunk_id', selectedDoc.chunk_id);
+        finalParams = finalParams ? `${finalParams}&${extra.toString()}` : extra.toString();
+      }
+      const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
+      if (window.location.search !== `?${finalParams}`) {
         window.history.replaceState(null, '', newURL);
       }
     }
@@ -1350,9 +1367,19 @@ function App() {
     autoMinScore,
     searchModel,
     selectedModelCombo,
+    selectedDoc,
   ]);
 
-
+  // Auto-open PDF modal if URL contained doc_id/chunk_id when page loaded
+  useEffect(() => {
+    if (!initialDocFromUrl.current || results.length === 0) return;
+    const { doc_id, chunk_id } = initialDocFromUrl.current;
+    const match = results.find(r => r.doc_id === doc_id && r.chunk_id === chunk_id);
+    if (match) {
+      setSelectedDoc(match);
+      initialDocFromUrl.current = null; // Only do this once
+    }
+  }, [results]);
 
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const isSearchingRef = useRef(false);
