@@ -1363,10 +1363,12 @@ function App() {
     recencyScaleDays,
     sectionTypes,
     keywordBoostShortQueries,
+    minChunkSize,
     semanticHighlighting,
     autoMinScore,
     searchModel,
     selectedModelCombo,
+    selectedDomain,
     selectedDoc,
   ]);
 
