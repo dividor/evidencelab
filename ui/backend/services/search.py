@@ -92,6 +92,11 @@ SEARCH_EXACT = search_models.SEARCH_EXACT
 QUANTIZATION_RESCORE = search_models.QUANTIZATION_RESCORE
 SEARCH_FETCH_LIMIT = search_models.SEARCH_FETCH_LIMIT
 
+# Minimal payload fields to request from Qdrant during search.
+# Heavy fields (sys_text, sys_bbox, sys_tables, etc.) are fetched from
+# PostgreSQL instead, avoiding large payload transfers from Qdrant.
+SEARCH_PAYLOAD_FIELDS = ["doc_id", "sys_doc_id", "tag_section_type"]
+
 _resolved_embedding_api_url: Optional[str] = None
 
 
@@ -449,10 +454,8 @@ def _build_search_params() -> models.SearchParams:
     return models.SearchParams(
         hnsw_ef=SEARCH_HNSW_EF,
         exact=SEARCH_EXACT,
-        quantization=(
-            models.QuantizationSearchParams(rescore=QUANTIZATION_RESCORE)
-            if QUANTIZATION_RESCORE
-            else None
+        quantization=models.QuantizationSearchParams(
+            rescore=QUANTIZATION_RESCORE,
         ),
     )
 
@@ -559,6 +562,7 @@ def _run_hybrid_search(
         fetch_limit * 3,
         payload_fields,
     )
+    t_dense_end = time.time()
     sparse_results = _run_sparse_search(
         db,
         collection,
@@ -569,7 +573,10 @@ def _run_hybrid_search(
     )
     t_qdrant_end = time.time()
     logger.info(
-        "[TIMING] Qdrant queries (hybrid): %.3fs", t_qdrant_end - t_qdrant_start
+        "[TIMING] Qdrant queries (hybrid): %.3fs (dense=%.3fs, sparse=%.3fs)",
+        t_qdrant_end - t_qdrant_start,
+        t_dense_end - t_qdrant_start,
+        t_qdrant_end - t_dense_end,
     )
     return _merge_hybrid_results(dense_results, sparse_results, weight, limit)
 

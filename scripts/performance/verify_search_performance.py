@@ -186,6 +186,7 @@ class DockerTimingReader:
 class PerfResult(TypedDict):
     combo: str
     mode: str
+    query: str
     duration_avg: float
     duration_p50: float
     duration_p90: float
@@ -412,11 +413,21 @@ def test_search_performance(
         print(f"  - {combo_name}")
 
     # 3. Test Search for EACH Combo (rerank on/off)
-    search_query = query
+    # Use different queries per test to avoid any caching effects
+    search_queries = [q.strip() for q in query.split(",") if q.strip()]
+    if len(search_queries) < 2:
+        search_queries = [
+            search_queries[0] if search_queries else "evaluation",
+            "food security",
+            "climate change adaptation",
+            "gender equality",
+        ]
 
     results: list[PerfResult] = []
+    query_idx = 0
 
     print("\n=== Benchmarking Search Performance ===")
+    print(f"Query pool: {search_queries}")
 
     for combo_name, combo_config in UI_MODEL_COMBOS.items():
         embedding_model = combo_config.get("embedding_model")
@@ -427,8 +438,10 @@ def test_search_performance(
             continue
 
         for rerank_enabled in (False, True):
+            search_query = search_queries[query_idx % len(search_queries)]
+            query_idx += 1
             mode_label = "rerank" if rerank_enabled else "no-rerank"
-            print(f"\n>> Benchmarking Combo: {combo_name} ({mode_label})")
+            print(f"\n>> Benchmarking Combo: {combo_name} ({mode_label}) q=\"{search_query}\"")
             params = {
                 "q": search_query,
                 "data_source": "uneg",
@@ -456,6 +469,7 @@ def test_search_performance(
                 {
                     "combo": combo_name,
                     "mode": mode_label,
+                    "query": search_query,
                     "duration_avg": total_stats["avg"],
                     "duration_p50": total_stats["p50"],
                     "duration_p90": total_stats["p90"],
@@ -467,22 +481,24 @@ def test_search_performance(
             )
 
     # Summary Report
-    print("\n" + "=" * 65)
+    print("\n" + "=" * 95)
     header = (
-        f"{'Combo':<25} | {'Mode':<10} | {'Avg (s)':<9} | "
-        f"{'P90 (s)':<9} | {'Hdr (s)':<8} | {'Read (s)':<9} | {'Docs Found':<12}"
+        f"{'Combo':<25} | {'Mode':<10} | {'Query':<25} | {'Avg (s)':<9} | "
+        f"{'P90 (s)':<9} | {'Hdr (s)':<8} | {'Read (s)':<9} | {'Docs':<6}"
     )
     print(header)
-    print("-" * 65)
+    print("-" * 95)
     for res in results:
+        q_display = res["query"][:25]
         row = (
             f"{res['combo']:<25} | {res['mode']:<10} | "
+            f"{q_display:<25} | "
             f"{res['duration_avg']:<9.4f} | {res['duration_p90']:<9.4f} | "
             f"{res['headers_avg']:<8.4f} | {res['read_avg']:<9.4f} | "
-            f"{res['count']:<12}"
+            f"{res['count']:<6}"
         )
         print(row)
-    print("=" * 65)
+    print("=" * 95)
     if log_reader:
         print("\n=== Log Timing Breakdown (avg/p90) ===")
         for res in results:
