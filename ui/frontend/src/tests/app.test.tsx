@@ -233,20 +233,6 @@ describe('App', () => {
     expect(lastSearch).toContain('rerank_model=jinaai%2Fjina-reranker-v2-base-multilingual');
     expect(lastSearch).toContain('data_source=test');
   });
-});
-
-describe('App - Deep Linking', () => {
-  beforeEach(() => {
-    // Reset mocks before each test - clears call history but keeps implementations
-    jest.clearAllMocks();
-    // Reset the URL
-    window.history.pushState({}, '', '/');
-  });
-
-  afterEach(() => {
-    // Clean up React components
-    cleanup();
-  });
 
   // Note: This test is intended to run in isolation to avoid state pollution from other tests.
   // To run: npm test -- --testNamePattern="deep-links"
