@@ -1338,16 +1338,20 @@ function App() {
         selectedModelCombo,
         selectedDomain
       );
-      // Append doc_id/chunk_id if a document is selected (PDF modal open)
-      let finalParams = searchParams;
+      // Build URLSearchParams from the base search params
+      const params = new URLSearchParams(searchParams || '');
+      // Append or remove doc_id/chunk_id depending on whether a document is selected
       if (selectedDoc) {
-        const extra = new URLSearchParams();
-        extra.set('doc_id', selectedDoc.doc_id);
-        extra.set('chunk_id', selectedDoc.chunk_id);
-        finalParams = finalParams ? `${finalParams}&${extra.toString()}` : extra.toString();
+        params.set('doc_id', selectedDoc.doc_id);
+        params.set('chunk_id', selectedDoc.chunk_id);
+      } else {
+        params.delete('doc_id');
+        params.delete('chunk_id');
       }
+      const finalParams = params.toString();
+      const searchString = finalParams ? `?${finalParams}` : '';
       const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
-      if (window.location.search !== `?${finalParams}`) {
+      if (window.location.search !== searchString) {
         window.history.replaceState(null, '', newURL);
       }
     }
