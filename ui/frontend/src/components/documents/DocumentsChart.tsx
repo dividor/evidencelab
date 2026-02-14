@@ -33,10 +33,16 @@ const STATUS_COLORS: Record<string, string> = {
   summarized: '#10b981',
   tagged: '#f59e0b',
   error: '#ef4444',
-  download_error: '#FACC15',
-  download_failed: '#FACC15',
+  download_error: '#FDE047',
+  download_failed: '#FDE047',
   parse_failed: '#ef4444',
+  summarize_failed: '#ef4444',
   index_failed: '#ef4444',
+  stopped: '#ef4444',
+  parsing: '#c8c8c8',
+  summarizing: '#c8c8c8',
+  tagging: '#c8c8c8',
+  indexing: '#c8c8c8',
   other: '#9ca3af',
 };
 
@@ -145,8 +151,11 @@ const normalizeEntry = (category: string, data: BreakdownValue): {
   };
 };
 
-const getDisplayLabel = (chartView: ChartView, category: string): string =>
-  chartView === 'language' && LANGUAGES[category] ? LANGUAGES[category] : category;
+const getDisplayLabel = (chartView: ChartView, category: string): string => {
+  if (chartView === 'language' && LANGUAGES[category]) return LANGUAGES[category];
+  if (chartView === 'status') return formatStatusLabel(category);
+  return category;
+};
 
 const ChartToggleButtons: React.FC<{
   chartView: ChartView;
