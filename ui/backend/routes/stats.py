@@ -360,8 +360,8 @@ def _build_sankey_nodes(org_flows: Dict[str, Dict[str, int]]):
     add_node("downloaded", f"Downloaded ({totals['downloaded']})", "rgb(102, 194, 165)")
     add_node(
         "not_downloaded",
-        f"Not Downloaded ({totals['not_downloaded']})",
-        "rgb(255, 100, 100)",
+        f"Document unavailable ({totals['not_downloaded']})",
+        "rgb(250, 204, 21)",
     )
     add_node("parsed", f"Parsed ({totals['parsed']})", "rgb(141, 160, 203)")
     add_node(
@@ -437,7 +437,7 @@ def _build_sankey_links(
             f"{org}_total",
             "not_downloaded",
             flows["not_downloaded"],
-            "rgb(255, 100, 100)",
+            "rgb(250, 204, 21)",
         )
         add_link("downloaded", "parsed", flows["parsed"], "rgb(141, 160, 203)")
         add_link(
