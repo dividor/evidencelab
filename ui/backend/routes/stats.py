@@ -115,10 +115,16 @@ def _collect_stats_pg(pg) -> tuple[
             skip_unknown=True,
             normalize_unknown=True,
         )
-    format_status_breakdown = _build_breakdown_from_pg(
-        pg.fetch_field_status_breakdown("sys_file_format", from_sys_data=False),
-        skip_empty=True,
-    )
+    try:
+        format_status_breakdown = _build_breakdown_from_pg(
+            pg.fetch_field_status_breakdown("sys_file_format", from_sys_data=False),
+            skip_empty=True,
+        )
+    except Exception:
+        format_status_breakdown = _build_breakdown_from_pg(
+            pg.fetch_field_status_breakdown("sys_file_format", from_sys_data=True),
+            skip_empty=True,
+        )
     return (
         status_counts,
         agency_status_breakdown,
