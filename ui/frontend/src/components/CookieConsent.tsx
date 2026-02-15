@@ -45,13 +45,10 @@ export const CookieConsent: React.FC = () => {
       boxShadow: '0 -2px 12px rgba(0,0,0,0.1)',
     }}>
       <p style={{ color: 'var(--gray-700)', fontSize: '0.9rem', lineHeight: 1.5, margin: 0, maxWidth: '600px' }}>
-        This site uses cookies and Google Analytics to help us understand usage and improve the experience.
-        No data is used for advertising. See our{' '}
-        <a href="/privacy" style={{ color: 'var(--primary-blue)' }}
-          onClick={(e) => { e.preventDefault(); handleDecline(); window.location.href = '/privacy'; }}
-        >Privacy</a>{' '}page for details.
+        This site uses cookies and Google Analytics to help us understand usage and improve the platform.
+        No data is used for advertising.
       </p>
-      <div style={{ display: 'flex', gap: '0.75rem', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexShrink: 0 }}>
         <button
           onClick={handleDecline}
           style={{
@@ -64,7 +61,7 @@ export const CookieConsent: React.FC = () => {
             fontSize: '0.85rem',
           }}
         >
-          Essential only
+          Reject all
         </button>
         <button
           onClick={handleAccept}
@@ -81,6 +78,13 @@ export const CookieConsent: React.FC = () => {
         >
           Accept all
         </button>
+        <a
+          href="/privacy"
+          onClick={(e) => { e.preventDefault(); handleDecline(); window.location.href = '/privacy'; }}
+          style={{ color: 'var(--primary-blue)', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+        >
+          Privacy policy
+        </a>
       </div>
     </div>
   );

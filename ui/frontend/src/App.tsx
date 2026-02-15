@@ -31,7 +31,7 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
-import { CookieConsent } from './components/CookieConsent';
+import { CookieConsent, getGaConsent } from './components/CookieConsent';
 import { DEFAULT_SECTION_TYPES, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
@@ -1262,7 +1262,7 @@ function App() {
       fetch(`${withBasePath('/docs/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => {
-          if (GA_MEASUREMENT_ID) {
+          if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
             const gaSection = [
               '',
               '## Analytics',

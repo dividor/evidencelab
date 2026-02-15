@@ -51,14 +51,12 @@ const TrackingToggle = () => {
         <p>
           You have accepted analytics cookies. Tracking is <strong>enabled</strong>.
           {' '}
-          <button
-            type="button"
-            onClick={handleRevoke}
-            className="app-footer-link"
-            style={{ fontSize: 'inherit' }}
+          <a
+            href="#stop-tracking"
+            onClick={(e) => { e.preventDefault(); handleRevoke(); }}
           >
-            Withdraw consent
-          </button>
+            Stop tracking
+          </a>
         </p>
       </div>
     );
@@ -68,17 +66,7 @@ const TrackingToggle = () => {
     <div style={{ marginTop: '1.5em' }}>
       <h3>Your cookie preferences</h3>
       <p>
-        You have declined analytics cookies. Tracking is <strong>disabled</strong>.
-        {' '}
-        If you change your mind,{' '}
-        <button
-          type="button"
-          onClick={handleGrant}
-          className="app-footer-link"
-          style={{ fontSize: 'inherit' }}
-        >
-          accept analytics cookies
-        </button>.
+        You have declined analytics cookies. Anonymous tracking is <strong>disabled</strong>.
       </p>
     </div>
   );
