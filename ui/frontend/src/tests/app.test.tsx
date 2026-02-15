@@ -312,9 +312,12 @@ describe('App', () => {
     const nav = screen.getByRole('navigation');
     fireEvent.click(within(nav).getByRole('button', { name: 'Search' }));
 
-    // Fill and submit the search form
+    // Fill the search form and wait for React to process the state update
     const searchInput = await screen.findByPlaceholderText('Search documents');
     fireEvent.change(searchInput, { target: { value: 'test query' } });
+    await screen.findByDisplayValue('test query');
+
+    // Submit the search
     const searchButtons = screen.getAllByRole('button', { name: 'Search' });
     fireEvent.click(searchButtons[searchButtons.length - 1]);
 
