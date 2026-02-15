@@ -85,6 +85,7 @@ const baseProps = {
   aiSummaryExpanded: false,
   aiSummaryLoading: false,
   aiSummary: '',
+  aiSummaryResults: [] as SearchResult[],
   aiPrompt: '',
   showPromptModal: false,
   selectedDomain: 'uneg',
