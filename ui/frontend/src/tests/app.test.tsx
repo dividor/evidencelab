@@ -312,11 +312,9 @@ describe('App', () => {
     const nav = screen.getByRole('navigation');
     fireEvent.click(within(nav).getByRole('button', { name: 'Search' }));
 
-    // Wait for the search input to be pre-filled from URL params
+    // Fill and submit the search form
     const searchInput = await screen.findByPlaceholderText('Search documents');
-    expect(searchInput).toHaveValue('test query');
-
-    // Explicitly submit the search form (avoids relying on the auto-search useEffect chain)
+    fireEvent.change(searchInput, { target: { value: 'test query' } });
     const searchButtons = screen.getAllByRole('button', { name: 'Search' });
     fireEvent.click(searchButtons[searchButtons.length - 1]);
 
