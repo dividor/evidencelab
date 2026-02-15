@@ -236,6 +236,15 @@ const buildPageTextMap = (items: any[]): { fullText: string; charMap: CharMappin
       charMap.push({ itemIdx: i, charIdx: c });
     }
     fullText += str;
+    // Insert a synthetic space between adjacent items that lack whitespace,
+    // preventing false cross-item matches (e.g. "of"+"MOH" → "ofMOH" matching "fmoh")
+    if (i < items.length - 1 && str.length > 0 && !str.endsWith(' ') && !str.endsWith('\n')) {
+      const nextStr = items[i + 1]?.str || '';
+      if (nextStr.length > 0 && !nextStr.startsWith(' ')) {
+        fullText += ' ';
+        charMap.push({ itemIdx: -1, charIdx: -1 });
+      }
+    }
   }
   return { fullText, charMap };
 };
@@ -312,9 +321,17 @@ const findTextMatchesOnPage = (
   const matches: HighlightBox[] = [];
   let pos = 0;
 
+  let skipped = 0;
   while ((pos = lowerText.indexOf(searchTerm, pos)) !== -1) {
     const endPos = pos + searchTerm.length - 1;
     if (endPos >= charMap.length) break;
+
+    // Skip matches that span a synthetic space (false cross-item match)
+    let crossesGap = false;
+    for (let p = pos; p <= endPos; p++) {
+      if (charMap[p].itemIdx < 0) { crossesGap = true; break; }
+    }
+    if (crossesGap) { skipped++; pos += 1; continue; }
 
     const bbox = computeMatchBBox(items, charMap[pos], charMap[endPos]);
     if (bbox) {
@@ -326,6 +343,10 @@ const findTextMatchesOnPage = (
       });
     }
     pos += 1;
+  }
+
+  if (skipped > 0) {
+    console.log(`[Text Search] Page ${pageNum}: skipped ${skipped} false cross-item matches for "${searchTerm}"`);
   }
 
   return matches;
@@ -390,6 +411,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const isScrollingProgrammatically = useRef(false);
   const lastProgrammaticScrollTime = useRef(0);
   const hasSnappedToHighlight = useRef(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedBBoxesRef = useRef<Set<string>>(new Set()); // Track which bboxes have been semantically highlighted
 
   // Calculate scale based on viewport width for mobile
@@ -462,21 +484,17 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [chunkId, pdfDoc, initialBBox, inPdfSearchQuery, inPdfSearchResults]);
 
-  // Render visible pages when current page changes
+  // Render visible pages when current page or search results change
+  // Merged into a single effect to prevent two concurrent renderVisiblePages calls
+  // racing and cancelling each other's PDF.js render tasks
+  const prevSearchResultsRef = useRef<HighlightBox[]>([]);
   useEffect(() => {
     if (pdfDoc && currentPage > 0) {
-      renderVisiblePages(false);
+      const searchResultsChanged = inPdfSearchResults !== prevSearchResultsRef.current;
+      prevSearchResultsRef.current = inPdfSearchResults;
+      renderVisiblePages(searchResultsChanged && inPdfSearchResults.length > 0);
     }
-  }, [pdfDoc, currentPage, totalPages]);
-
-  // Re-render visible pages when search results change (but not on every highlight change to avoid flickering)
-  useEffect(() => {
-    if (pdfDoc && currentPage > 0 && inPdfSearchResults.length > 0) {
-      // Clear rendered pages to force re-render with new search highlights
-      setRenderedPages(new Map());
-      renderVisiblePages(true);
-    }
-  }, [inPdfSearchResults.length]); // Only re-render when search result count changes
+  }, [pdfDoc, currentPage, totalPages, inPdfSearchResults]);
 
   // Re-render all pages when scale changes
   useEffect(() => {
@@ -518,26 +536,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     const pageHighlights = highlights.filter(h => h.page === currentPage);
 
-    let targetScroll = (currentPage - 1) * actualPageHeight;
     let shouldScroll = false;
 
-    // Calculate highlight offset if available
-    let highlightOffset = 0;
+    // Find the target highlight for scroll offset calculation
     const targetHighlight = getTargetHighlight(pageHighlights);
-    if (targetHighlight) {
-      // The viewport height in PDF units (unscaled)
-      // actualPageHeight includes margin, so we need to remove it and divide by scale
-      const viewportHeightPdfUnits = (actualPageHeight - 20) / scale;
-
-      // Calculate y position from top of page (same formula as in renderPage)
-      // This gives us the pixel offset from the top of the page container
-      highlightOffset = (viewportHeightPdfUnits - targetHighlight.bbox.t) * scale;
-
-      // Add some padding (e.g. 100px) so it's not right at the edge
-      // On mobile, use less padding since screen is smaller
-      const padding = window.innerWidth <= 640 ? 50 : 100;
-      highlightOffset = Math.max(0, highlightOffset - padding);
-    }
 
     // IMMEDIATE scroll when programmatic flag is set (opening new doc/chunk/page)
     // Don't wait for highlights - scroll to page immediately
@@ -545,35 +547,57 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       shouldScroll = true;
       // If highlights are already available, use them; otherwise just scroll to page top
       if (pageHighlights.length > 0) {
-        targetScroll += highlightOffset;
         hasSnappedToHighlight.current = true;
-        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} WITH highlights at ${targetScroll}px`);
+        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} WITH highlights (will recalculate in callback)`);
       } else {
-        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} at ${targetScroll}px (highlights will adjust later)`);
+        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} (will recalculate in callback, highlights will adjust later)`);
         // Don't mark as snapped yet - let the secondary scroll happen when highlights load
         // hasSnappedToHighlight.current stays false
       }
-      isScrollingProgrammatically.current = false;
+      // NOTE: Don't consume isScrollingProgrammatically here. It's consumed in the
+      // setTimeout callback below. This ensures that if actualPageHeight changes
+      // (e.g. landscape→portrait page renders), the effect re-runs and recalculates.
     }
     // SECONDARY scroll when highlights load after initial page scroll
     else if (!hasSnappedToHighlight.current && pageHighlights.length > 0) {
       // Highlights just loaded - adjust scroll position to show them
-      targetScroll += highlightOffset;
       shouldScroll = true;
       hasSnappedToHighlight.current = true;
-      console.log(`[Scroll] ADJUSTING scroll for ${pageHighlights.length} highlights to ${targetScroll}px`);
+      console.log(`[Scroll] ADJUSTING scroll for ${pageHighlights.length} highlights (will recalculate in callback)`);
     }
 
     if (shouldScroll) {
-      lastProgrammaticScrollTime.current = Date.now();
-      // Use setTimeout to ensure all rendering is complete before scrolling
-      setTimeout(() => {
+      // Cancel any pending scroll timer so we recalculate with the latest height.
+      // This handles the case where actualPageHeight changes multiple times
+      // (e.g. landscape page renders first, then portrait page updates the height).
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+      // Recalculate scroll target inside the callback using the ref (always up-to-date)
+      // to avoid stale-closure issues when page height changes between effect and callback
+      const hasHighlightOffset = targetHighlight != null;
+      const bboxT = targetHighlight?.bbox.t ?? 0;
+      scrollTimerRef.current = setTimeout(() => {
         requestAnimationFrame(() => {
           if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = targetScroll;
+            const latestHeight = actualPageHeightRef.current;
+            let finalTarget = (currentPage - 1) * latestHeight;
+            if (hasHighlightOffset) {
+              const vpHeightPdfUnits = (latestHeight - 20) / scale;
+              let hOffset = (vpHeightPdfUnits - bboxT) * scale;
+              const padding = window.innerWidth <= 640 ? 50 : 100;
+              hOffset = Math.max(0, hOffset - padding);
+              finalTarget += hOffset;
+            }
+            console.log(`[Scroll] Setting scrollTop=${finalTarget} (pageHeight=${latestHeight}, page=${currentPage})`);
+            lastProgrammaticScrollTime.current = Date.now();
+            scrollContainerRef.current.scrollTop = finalTarget;
           }
+          // Consume the programmatic flag AFTER the scroll is set
+          isScrollingProgrammatically.current = false;
+          scrollTimerRef.current = null;
         });
-      }, 100); // Reduced delay for faster initial scroll
+      }, 150);
     }
   }, [currentPage, totalPages, actualPageHeight, highlights, scale, currentMatchIndex, inPdfSearchResults]);
 
@@ -1077,6 +1101,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       setInPdfSearchResults([]);
       setCurrentMatchIndex(0);
       setHighlights([]);
+      processedBBoxesRef.current.clear();
       return;
     }
 
@@ -1115,7 +1140,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         docResults = docResults.filter((r: any) => (r.score || 0) >= minScore);
       }
 
-      // Build all bbox highlights AND one navigation point per chunk
+      // Build semantic chunk highlights from API results
       const allHighlights: HighlightBox[] = [];
       const chunkNavPoints: HighlightBox[] = [];
 
@@ -1132,19 +1157,18 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
           });
         }
         if (chunkBoxes.length > 0) {
-          // Pick the topmost bbox on the earliest page as navigation point
           chunkBoxes.sort((a, b) => a.page !== b.page ? a.page - b.page : b.bbox.t - a.bbox.t);
           chunkNavPoints.push(chunkBoxes[0]);
         }
       });
 
-      // --- Local text matches for literal keyword hits ---
+      // Local text search for literal keyword matches (used for navigation)
       const textNavPoints: HighlightBox[] = [];
       if (pdfDoc) {
         const searchTerm = query.toLowerCase();
         for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-          const page = await pdfDoc.getPage(pageNum);
-          const textContent = await page.getTextContent();
+          const pg = await pdfDoc.getPage(pageNum);
+          const textContent = await pg.getTextContent();
           const textMatches = findTextMatchesOnPage(textContent.items, searchTerm, pageNum);
           textMatches.forEach(m => {
             allHighlights.push(m);
@@ -1153,11 +1177,13 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         }
       }
 
-      // Navigation: use literal text matches if any, otherwise fall back to semantic chunks
+      // Navigate by text matches when available (they contain the literal term);
+      // fall back to semantic chunks only if no literal matches found
       const navPoints = textNavPoints.length > 0 ? textNavPoints : chunkNavPoints;
 
       console.log(`[In-PDF Search] ${docResults.length} API chunks, ${textNavPoints.length} text matches, ${allHighlights.length} total highlights`);
 
+      processedBBoxesRef.current.clear();
       setInPdfSearchResults(navPoints);
       setHighlights(allHighlights);
       setCurrentMatchIndex(0);
