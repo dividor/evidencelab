@@ -735,6 +735,12 @@ function App() {
   // Update URL when tab changes
   const handleTabChange = useCallback((tab: TabName) => {
     setActiveTab(tab);
+
+    // Reset search filters when navigating to the search tab
+    if (tab === 'search') {
+      setSelectedFilters(buildEmptySelectedFilters());
+    }
+
     let newPath = tab === 'search' ? '/' : `/${tab}`;
     newPath = withBasePath(newPath);
 

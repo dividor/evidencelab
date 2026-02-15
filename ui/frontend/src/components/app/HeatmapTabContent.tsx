@@ -288,19 +288,9 @@ const applyDetailSheetHeaderStyles = (worksheet: XLSX.WorkSheet) => {
     alignment: { wrapText: true, vertical: 'top' }
   };
 
-  // Style first two rows (both header rows)
-  for (let row = 0; row <= 1; row += 1) {
-    for (let col = range.s.c; col <= range.e.c; col += 1) {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-      if (worksheet[cellAddress]) {
-        worksheet[cellAddress].s = headerStyle;
-      }
-    }
-  }
-
-  // Style first column for all data rows (row labels)
-  for (let row = 2; row <= range.e.r; row += 1) {
-    const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
+  // Style header row only
+  for (let col = range.s.c; col <= range.e.c; col += 1) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
     if (worksheet[cellAddress]) {
       worksheet[cellAddress].s = headerStyle;
     }
@@ -948,10 +938,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
   const columnOptions = useMemo(() => {
     if (!facets) return [];
-    return Object.entries(facets.filter_fields).map(([value, label]) => ({
-      value,
-      label,
-    }));
+    return Object.entries(facets.filter_fields)
+      .filter(([value]) => value !== 'title')
+      .map(([value, label]) => ({
+        value,
+        label,
+      }));
   }, [facets]);
 
   useEffect(() => {
@@ -977,7 +969,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       { value: 'title', label: 'Report Title' },
       ...facetEntries.map(([value, label]) => ({
         value,
-        label,
+        label: value.startsWith('tag_') ? `${label} (AI-generated : Experimental)` : label,
       })),
     ];
   }, [facets]);
@@ -1693,6 +1685,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         : rowOptions.find((option) => option.value === rowDimension)?.label || rowDimension;
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
+    const metricLabel = heatmapMetric === 'chunks' ? 'Text Excerpts' : 'Documents';
 
     // Sheet 1: Settings
     const settingsData = [
@@ -1700,7 +1693,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       ['Parameter', 'Value'],
       ['Row Dimension', rowLabel],
       ['Column Dimension', columnLabel],
-      ['Metric', heatmapMetric],
+      ['Metric', metricLabel],
       ['Query', gridQuery || '(none)'],
       ['Sensitivity', similarityCutoff.toFixed(3)],
       ['', ''],
@@ -1767,96 +1760,68 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeaderRow, ...summaryRows]);
     applyHeatmapHeaderStyles(summarySheet);
 
-    // Sheet 3: Detail (one row per document with Title URL and Text subcolumns)
-    const detailRows: any[][] = [];
-    // Header row 1: Column group labels
-    const headerRow1 = [rowLabel];
-    filteredColumnValues.forEach((col) => {
-      headerRow1.push(extractTaxonomyName(col, columnDimension));
-      headerRow1.push(''); // Placeholder for merged cell
-      headerRow1.push(''); // Placeholder for merged cell
-    });
-    detailRows.push(headerRow1);
+    // Sheet 3: Detail (flat format — one row per result)
+    const EXCEL_MAX_CELL_LENGTH = 32767;
+    const truncateCell = (text: string) =>
+      text.length > EXCEL_MAX_CELL_LENGTH ? text.slice(0, EXCEL_MAX_CELL_LENGTH - 3) + '...' : text;
 
-    // Header row 2: Subcolumn labels
-    const headerRow2 = [''];
-    filteredColumnValues.forEach(() => {
-      headerRow2.push('Document Title');
-      headerRow2.push('Link');
-      headerRow2.push('Text');
-    });
-    detailRows.push(headerRow2);
-
-    // Check if we have a query (chunk mode) or no query (document mode)
     const hasQuery = gridQuery && gridQuery.trim() !== '' && gridQuery !== 'No query';
+
+    const detailHeader = [
+      rowLabel, columnLabel, 'Query', 'Sensitivity',
+      'Metric', 'Title', 'Source System Hosting Page', 'Source System Document',
+      'Organization', 'Year', 'Content'
+    ];
+    const detailData: any[][] = [detailHeader];
+    const showSensitivity = hasQuery || rowDimension === 'queries';
+    const queryValue = gridQuery || '';
+    const sensitivityValue = showSensitivity ? similarityCutoff.toFixed(3) : '';
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
-      const label =
+      const rowDisplayLabel =
         rowDimension === 'queries' || rowDimension === 'title'
           ? rowValue.trim() || `Row ${rowIndex + 1}`
           : extractTaxonomyName(rowValue, rowDimension);
 
-      // Collect all documents for this row across all columns
-      const rowDocs = filteredColumnValues.map((columnValue) => {
+      filteredColumnValues.forEach((columnValue) => {
+        const colDisplayLabel = extractTaxonomyName(columnValue, columnDimension);
         const cellKey = buildCellKey(String(rowKey), columnValue);
-        return filteredGridResults[cellKey]?.results || [];
-      });
+        const results = filteredGridResults[cellKey]?.results || [];
 
-      // Find max docs in any column for this row
-      const maxDocs = Math.max(...rowDocs.map(docs => docs.length), 1);
-
-      // Create rows for each document
-      for (let docIdx = 0; docIdx < maxDocs; docIdx++) {
-        const row = [docIdx === 0 ? label : '']; // Row label only on first doc
-
-        filteredColumnValues.forEach((_, colIdx) => {
-          const docs = rowDocs[colIdx];
-          if (docIdx < docs.length) {
-            const doc = docs[docIdx];
-            const title = doc.title || 'Untitled';
-            // Only include page number if we have a query (chunk mode)
-            const page = hasQuery && doc.page_num ? ` (p${doc.page_num})` : '';
-            const url = resolveResultUrl(doc);
-            const text = resolveResultExcerpt(doc);
-
-            // Add title, link, and text columns
-            row.push(`${title}${page}`);
-            row.push(url || '');
-            row.push(text);
-          } else {
-            row.push('', '', '');
+        results.forEach((doc) => {
+          let content = resolveResultExcerpt(doc);
+          // In document mode (no query), keep only first heading + paragraph
+          if (!hasQuery) {
+            const lines = content.split('\n');
+            const firstTwo = lines.slice(0, 2).join('\n');
+            content = firstTwo || content;
           }
+
+          detailData.push([
+            rowDisplayLabel,
+            colDisplayLabel,
+            queryValue,
+            sensitivityValue,
+            metricLabel,
+            truncateCell(doc.title || 'Untitled'),
+            doc.report_url || doc.metadata?.report_url || '',
+            doc.pdf_url || doc.metadata?.pdf_url || '',
+            doc.organization || '',
+            doc.year || '',
+            truncateCell(content),
+          ]);
         });
-        detailRows.push(row);
-      }
-    });
-
-    const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
-
-    // Merge cells for column group headers (now spanning 3 columns: Title, Link, Text)
-    const merges = [];
-    for (let colIdx = 0; colIdx < filteredColumnValues.length; colIdx++) {
-      const startCol = 1 + colIdx * 3;
-      const endCol = startCol + 2;
-      merges.push({
-        s: { r: 0, c: startCol },
-        e: { r: 0, c: endCol }
       });
-    }
-    detailSheet['!merges'] = merges;
-
-    // Apply header styling (both header rows + row labels)
-    applyDetailSheetHeaderStyles(detailSheet);
-
-    // Set column widths
-    const colWidths = [{ wch: 30 }]; // Row label column
-    filteredColumnValues.forEach(() => {
-      colWidths.push({ wch: 40 }); // Title column
-      colWidths.push({ wch: 50 }); // Link column
-      colWidths.push({ wch: 60 }); // Text column
     });
-    detailSheet['!cols'] = colWidths;
+
+    const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
+    applyDetailSheetHeaderStyles(detailSheet);
+    detailSheet['!cols'] = [
+      { wch: 30 }, { wch: 20 }, { wch: 40 }, { wch: 10 },
+      { wch: 14 }, { wch: 50 }, { wch: 50 }, { wch: 50 },
+      { wch: 20 }, { wch: 8 }, { wch: 80 },
+    ];
 
     // Create workbook with all sheets
     const workbook = XLSX.utils.book_new();
@@ -2484,7 +2449,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
                   >
                     <option value="documents">Documents</option>
-                    <option value="chunks">Chunks</option>
+                    <option value="chunks">Text Excerpts</option>
                   </select>
                 </div>
 

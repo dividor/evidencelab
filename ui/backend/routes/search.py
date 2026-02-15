@@ -798,6 +798,8 @@ def _format_document_result(
         title=normalized_doc.get("title", ""),
         organization=normalized_doc.get("organization"),
         year=normalized_doc.get("published_year"),
+        pdf_url=normalized_doc.get("pdf_url"),
+        report_url=normalized_doc.get("report_url"),
         metadata=normalized_doc.get("metadata", {}),
         sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
         sys_filepath=normalized_doc.get("sys_filepath"),
