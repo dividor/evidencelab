@@ -6,7 +6,8 @@ import API_BASE_URL, {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
   SEARCH_RESULTS_PAGE_SIZE,
-  APP_BASE_PATH
+  APP_BASE_PATH,
+  GA_MEASUREMENT_ID
 } from './config';
 
 import {
@@ -30,6 +31,7 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
+import { CookieConsent } from './components/CookieConsent';
 import { DEFAULT_SECTION_TYPES, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
@@ -1259,7 +1261,23 @@ function App() {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setPrivacyContent(text))
+        .then(text => {
+          if (GA_MEASUREMENT_ID) {
+            const gaSection = [
+              '',
+              '## Analytics',
+              '',
+              'This instance of Evidence Lab uses [Google Analytics](https://marketingplatform.google.com/about/analytics/) to understand how the platform is used and to improve performance and usability. Analytics data is only collected after you consent via the cookie preferences popup shown on your first visit.',
+              '',
+              'The information collected may include anonymized IP addresses, page views, and basic device information. We do not use analytics data for advertising or cross-site tracking.',
+              '',
+              'Analytics data may be processed by Google LLC, including on servers outside the European Union, under appropriate legal safeguards.',
+            ].join('\n');
+            setPrivacyContent(text.trimEnd() + '\n' + gaSection);
+          } else {
+            setPrivacyContent(text);
+          }
+        })
         .catch(err => console.error('Failed to load privacy content:', err));
     }
   }, [activeTab]);
@@ -2171,6 +2189,8 @@ function App() {
         onClose={handleCloseMetadataModal}
         metadataDoc={metadataModalDoc}
       />
+
+      <CookieConsent />
     </div >
   );
 }
