@@ -262,6 +262,7 @@ export const SearchResultElements = ({
 
       return (
         <div className="result-snippet result-full-summary">
+          <em className="result-summary-ai-badge">AI-generated (Experimental)</em>
           <ReactMarkdown>{displaySummary}</ReactMarkdown>
           {shouldTruncate && (
             <button

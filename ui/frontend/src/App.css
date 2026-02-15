@@ -4027,6 +4027,19 @@ h6,
   border-bottom: 1px solid var(--gray-200);
 }
 
+.result-full-summary {
+  position: relative;
+}
+
+.result-snippet-container em.result-summary-ai-badge {
+  float: right;
+  font-size: 0.7rem;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--gray-400);
+  margin-left: 1rem;
+}
+
 .result-snippet {
   margin: 0;
 }
