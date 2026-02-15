@@ -74,6 +74,15 @@ const mockSearchResults = {
   facets: mockFacets,
 };
 
+/** Wait for search tab to load, then expand the collapsible Global Filters panel. */
+const expandFilters = async () => {
+  const filtersBtn = await screen.findByRole('button', { name: 'Global Filters' });
+  fireEvent.click(filtersBtn);
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
+  });
+};
+
 describe('Auto Min Score Feature', () => {
   beforeEach(() => {
     // Set URL with a query so App auto-searches on load (renders search tab with Filters)
@@ -131,9 +140,7 @@ describe('Auto Min Score Feature', () => {
   test('Auto checkbox appears and toggles correctly', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -156,9 +163,7 @@ describe('Auto Min Score Feature', () => {
   test('Slider disappears when auto is enabled', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -180,9 +185,7 @@ describe('Auto Min Score Feature', () => {
   test('Auto mode sends auto_min_score parameter to backend', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings and enable auto
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -206,9 +209,7 @@ describe('Auto Min Score Feature', () => {
   test('Manual slider adjustment disables auto mode', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -252,9 +253,7 @@ describe('Auto Min Score Feature', () => {
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -270,9 +269,7 @@ describe('Auto Min Score Feature', () => {
 
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings
     const searchSettingsHeader = screen.getByText('Search Settings');
@@ -302,9 +299,7 @@ describe('Auto Min Score Feature', () => {
   test('Backend filters results when auto_min_score is enabled', async () => {
     render(<App />);
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-    });
+    await expandFilters();
 
     // Expand search settings and enable auto
     const searchSettingsHeader = screen.getByText('Search Settings');
