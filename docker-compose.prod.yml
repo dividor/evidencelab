@@ -20,10 +20,9 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: qdrant
-    # Internal only - external access through Caddy HTTPS at /db/
-    # Port 6333 NOT exposed to host for security (API key over HTTP is insecure)
-    expose:
-      - "6333"
+    # Prod: 127.0.0.1 only — host access for admin/scripts; not on public interface
+    ports:
+      - "127.0.0.1:6333:6333"
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
     volumes:
@@ -131,9 +130,9 @@ services:
       target: runtime
     image: evidencelab-ai-python:latest
     container_name: api
-    # Not exposed to host; only visible to nginx (UI container)
-    expose:
-      - "8000"
+    # Prod: 127.0.0.1 only — host access for scripts (e.g. verify_search_performance); not public
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - ${DATA_MOUNT_PATH:-./data}:/app/data
       - ${CACHE_MOUNT_PATH:-/mnt/data/cache}/huggingface:/root/.cache/huggingface
@@ -228,7 +227,7 @@ services:
     depends_on:
       - api
       - ui
-      - db
+      - qdrant
       - postgres
     deploy:
       resources:
