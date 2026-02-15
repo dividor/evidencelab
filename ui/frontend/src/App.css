@@ -6240,7 +6240,19 @@ h6,
 .heatmap-field-label {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.heatmap-field-ai-badge {
+  display: block;
+  width: 100%;
+  font-size: 0.7rem;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--gray-400);
+  text-align: center;
 }
 
 .heatmap-field-filter-button {

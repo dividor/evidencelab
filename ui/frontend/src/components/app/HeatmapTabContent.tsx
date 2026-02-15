@@ -1455,6 +1455,19 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   );
 
 
+  const applyHeatmapUrlFilters = (params: URLSearchParams) => {
+    if (!facets) return;
+    const allFilterFields = Object.keys(facets.filter_fields ?? {});
+    const urlFilters = Object.fromEntries(
+      allFilterFields
+        .map((field) => [field, (params.get(field) ?? '').split(',').map((v) => v.trim()).filter(Boolean)] as const)
+        .filter(([, values]) => values.length > 0)
+    );
+    if (Object.keys(urlFilters).length > 0) {
+      setHeatmapSelectedFilters(urlFilters);
+    }
+  };
+
   const applyHeatmapUrlParams = (params: URLSearchParams) => {
     const urlRow = params.get(HEATMAP_URL_KEYS.row);
     const urlColumn = params.get(HEATMAP_URL_KEYS.column);
@@ -1482,25 +1495,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       setGridQuery(urlQuery);
     }
 
-    // Load filter parameters from URL into heatmap filters
-    if (facets) {
-      const urlFilters: Record<string, string[]> = {};
-      const allFilterFields = Object.keys(facets.filter_fields ?? {});
-
-      allFilterFields.forEach((field) => {
-        const urlValue = params.get(field);
-        if (urlValue) {
-          const values = urlValue.split(',').map((v) => v.trim()).filter((v) => v.length > 0);
-          if (values.length > 0) {
-            urlFilters[field] = values;
-          }
-        }
-      });
-
-      if (Object.keys(urlFilters).length > 0) {
-        setHeatmapSelectedFilters(urlFilters);
-      }
-    }
+    applyHeatmapUrlFilters(params);
 
     heatmapAutoRunRef.current = params.get(HEATMAP_URL_KEYS.run) === 'true';
     heatmapUrlInitRef.current = true;
