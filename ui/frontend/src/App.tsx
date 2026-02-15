@@ -1607,7 +1607,19 @@ function App() {
       !availableModelCombos.length
       || (searchModel && summaryModelConfig && semanticHighlightModelConfig)
     );
+    console.log('[Initial Search Effect] Checking conditions:', {
+      initialSearchDone,
+      initialQueryFromUrl: initialQueryFromUrlRef.current,
+      queryTrimmed: query.trim(),
+      modelCombosLoading,
+      availableModelCombosLength: availableModelCombos.length,
+      searchModel,
+      hasSummaryModelConfig: !!summaryModelConfig,
+      hasSemanticHighlightModelConfig: !!semanticHighlightModelConfig,
+      modelsReady,
+    });
     if (!initialSearchDone && initialQueryFromUrlRef.current && query.trim() && modelsReady) {
+      console.log('[Initial Search Effect] Triggering initial search');
       setInitialSearchDone(true);
       hasSearchedRef.current = true;
       performSearch();
