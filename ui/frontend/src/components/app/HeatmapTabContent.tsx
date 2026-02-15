@@ -1064,7 +1064,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [rowDimension, rowOptions]);
 
   const columnValues = useMemo(() => {
-    if (!facets || !columnDimension) return [];
+    if (!facets?.facets || !columnDimension) return [];
     const values = facets.facets[columnDimension] || [];
     const seen = new Set<string>();
     const deduped = values.filter((item) => {
@@ -1092,7 +1092,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (rowDimension === 'queries' || rowDimension === 'title') {
       return rowQueries;
     }
-    if (!facets || !rowDimension) return [];
+    if (!facets?.facets || !rowDimension) return [];
     const values = facets.facets[rowDimension] || [];
     const seen = new Set<string>();
     const deduped = values.filter((item) => {
@@ -1682,7 +1682,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [heatmapFilterModal, heatmapSelectedFilters]);
 
   const heatmapModalFacets = useMemo(() => {
-    if (!heatmapFilterModal || !facets) {
+    if (!heatmapFilterModal || !facets?.facets) {
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
