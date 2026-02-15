@@ -45,6 +45,8 @@ interface SearchTabContentProps {
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
   onSectionTypesChange: (next: string[]) => void;
+  deduplicateEnabled: boolean;
+  onDeduplicateToggle: (value: boolean) => void;
   aiSummaryEnabled: boolean;
   aiSummaryCollapsed: boolean;
   aiSummaryExpanded: boolean;
@@ -106,6 +108,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onMinChunkSizeChange,
   sectionTypes,
   onSectionTypesChange,
+  deduplicateEnabled,
+  onDeduplicateToggle,
   aiSummaryEnabled,
   aiSummaryCollapsed,
   aiSummaryExpanded,
@@ -172,6 +176,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onMinChunkSizeChange={onMinChunkSizeChange}
         sectionTypes={sectionTypes}
         onSectionTypesChange={onSectionTypesChange}
+        deduplicateEnabled={deduplicateEnabled}
+        onDeduplicateToggle={onDeduplicateToggle}
       />
 
       <main className="results-section">

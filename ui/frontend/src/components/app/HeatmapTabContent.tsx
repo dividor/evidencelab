@@ -77,6 +77,8 @@ interface HeatmapTabContentProps {
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
   onSectionTypesChange: (next: string[]) => void;
+  deduplicateEnabled: boolean;
+  onDeduplicateToggle: (value: boolean) => void;
   dataSource: string;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
@@ -891,6 +893,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onMinChunkSizeChange,
   sectionTypes,
   onSectionTypesChange,
+  deduplicateEnabled,
+  onDeduplicateToggle,
   dataSource,
   selectedDoc,
   onResultClick,
@@ -2380,6 +2384,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onMinChunkSizeChange,
     sectionTypes,
     onSectionTypesChange,
+    deduplicateEnabled,
+    onDeduplicateToggle,
   };
 
   return (

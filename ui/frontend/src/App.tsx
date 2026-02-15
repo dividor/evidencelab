@@ -290,6 +290,7 @@ const buildSearchParams = ({
   searchModel,
   dataSource,
   autoMinScore,
+  deduplicateEnabled,
 }: {
   query: string;
   filters: SearchFilters;
@@ -305,6 +306,7 @@ const buildSearchParams = ({
   searchModel: string | null;
   dataSource: string;
   autoMinScore: boolean;
+  deduplicateEnabled: boolean;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -333,6 +335,7 @@ const buildSearchParams = ({
   if (autoMinScore) {
     params.append('auto_min_score', 'true');
   }
+  params.append('deduplicate', deduplicateEnabled.toString());
   params.append('data_source', dataSource);
   return params;
 };
@@ -717,6 +720,8 @@ function App() {
   // Content settings
   const [sectionTypes, setSectionTypes] = useState<string[]>(initialSearchState.sectionTypes);
   const [minChunkSize, setMinChunkSize] = useState<number>(initialSearchState.minChunkSize);
+  // Deduplicate cross-document results
+  const [deduplicateEnabled, setDeduplicateEnabled] = useState<boolean>(initialSearchState.deduplicate);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -810,6 +815,7 @@ function App() {
       setMinChunkSize(searchState.minChunkSize);
       // Restore semantic highlighting
       setSemanticHighlighting(searchState.semanticHighlighting);
+      setDeduplicateEnabled(searchState.deduplicate);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1358,6 +1364,7 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1394,6 +1401,7 @@ function App() {
     minChunkSize,
     semanticHighlighting,
     autoMinScore,
+    deduplicateEnabled,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1567,6 +1575,7 @@ function App() {
         searchModel,
         dataSource,
         autoMinScore,
+        deduplicateEnabled,
       });
 
       const searchStartTime = performance.now();
@@ -1683,6 +1692,7 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1712,6 +1722,7 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1992,6 +2003,8 @@ function App() {
       onMinChunkSizeChange={setMinChunkSize}
       sectionTypes={sectionTypes}
       onSectionTypesChange={setSectionTypes}
+      deduplicateEnabled={deduplicateEnabled}
+      onDeduplicateToggle={setDeduplicateEnabled}
       aiSummaryEnabled={AI_SUMMARY_ON}
       aiSummaryCollapsed={aiSummaryCollapsed}
       aiSummaryExpanded={aiSummaryExpanded}
@@ -2060,6 +2073,8 @@ function App() {
       onMinChunkSizeChange={setMinChunkSize}
       sectionTypes={sectionTypes}
       onSectionTypesChange={setSectionTypes}
+      deduplicateEnabled={deduplicateEnabled}
+      onDeduplicateToggle={setDeduplicateEnabled}
       rerankModel={rerankModel}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSource={dataSource}

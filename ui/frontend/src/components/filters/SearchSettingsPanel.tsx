@@ -26,6 +26,8 @@ interface SearchSettingsPanelProps {
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
   onSectionTypesChange: (next: string[]) => void;
+  deduplicateEnabled: boolean;
+  onDeduplicateToggle: (value: boolean) => void;
 }
 
 const SECTION_TYPE_OPTIONS = [
@@ -239,6 +241,8 @@ export const SearchSettingsPanel = ({
   onMinChunkSizeChange,
   sectionTypes,
   onSectionTypesChange,
+  deduplicateEnabled,
+  onDeduplicateToggle,
 }: SearchSettingsPanelProps) => (
   <>
     <div className="filter-section">
@@ -359,6 +363,21 @@ export const SearchSettingsPanel = ({
             recencyScaleDays={recencyScaleDays}
             onRecencyScaleDaysChange={onRecencyScaleDaysChange}
           />
+          <label className="rerank-checkbox-label">
+            <input
+              type="checkbox"
+              checked={deduplicateEnabled}
+              onChange={(event) => onDeduplicateToggle(event.target.checked)}
+              className="rerank-checkbox"
+            />
+            <span>Deduplicate</span>
+            <span
+              className="rerank-tooltip"
+              title="Deduplicate content found in multiple reports"
+            >
+              ⓘ
+            </span>
+          </label>
         </div>
       )}
     </div>
