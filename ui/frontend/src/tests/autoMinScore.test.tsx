@@ -74,9 +74,9 @@ const mockSearchResults = {
   facets: mockFacets,
 };
 
-/** Wait for search tab to load, then expand the collapsible Global Filters panel. */
+/** Wait for search tab to load, then expand the collapsible More Filters panel. */
 const expandFilters = async () => {
-  const filtersBtn = await screen.findByRole('button', { name: 'Global Filters' });
+  const filtersBtn = await screen.findByRole('button', { name: 'More Filters' });
   fireEvent.click(filtersBtn);
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();

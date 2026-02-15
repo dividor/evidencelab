@@ -71,6 +71,7 @@ interface SearchTabContentProps {
   onRequestHighlight?: (chunkId: string, text: string) => void;
   onRegenerateAiSummary?: (results: SearchResult[]) => void;
   aiSummaryResults: SearchResult[];
+  searchId: number;
 }
 
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
@@ -137,41 +138,63 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onRequestHighlight,
   onRegenerateAiSummary,
   aiSummaryResults,
+  searchId,
 }) => {
-  const [filteredOrg, setFilteredOrg] = useState<string | null>(null);
-  const [filteredDocId, setFilteredDocId] = useState<string | null>(null);
+  const [filteredOrg, setFilteredOrg] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('carousel_org') || null;
+  });
+  const [filteredDocId, setFilteredDocId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('carousel_doc') || null;
+  });
   const isUserFilterAction = useRef(false);
+  const prevSearchIdRef = useRef(searchId);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
     results.filter((r) => r.score >= minScore),
     [results, minScore]);
 
-  // Stable fingerprint of which chunks are present – changes only on a new
-  // search, NOT when semantic-highlighting mutates individual result objects.
-  const resultsFingerprint = useMemo(
-    () => results.map((r) => r.chunk_id).join(','),
-    [results]
-  );
-
-  // Reset filters when the actual result set changes (new search)
+  // Reset carousel filters when a new search is performed.
+  // searchId increments in App.tsx each time performSearch is called.
+  // On initial mount prevSearchIdRef matches searchId, so no reset occurs
+  // — this preserves URL-driven carousel filters on page load.
   useEffect(() => {
+    if (prevSearchIdRef.current === searchId) return;
+    prevSearchIdRef.current = searchId;
     setFilteredOrg(null);
     setFilteredDocId(null);
-  }, [resultsFingerprint]);
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('carousel_org') || url.searchParams.has('carousel_doc')) {
+      url.searchParams.delete('carousel_org');
+      url.searchParams.delete('carousel_doc');
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [searchId]);
 
-  // Regenerate AI summary when user changes carousel filters
+  // Regenerate AI summary and sync URL when user changes carousel filters
   useEffect(() => {
-    if (!isUserFilterAction.current || !onRegenerateAiSummary) return;
+    if (!isUserFilterAction.current) return;
     isUserFilterAction.current = false;
 
-    if (filteredOrg || filteredDocId) {
-      const filtered = results
-        .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
-        .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
-      onRegenerateAiSummary(filtered);
-    } else {
-      onRegenerateAiSummary(results);
+    // Sync carousel filter state to URL
+    const url = new URL(window.location.href);
+    if (filteredOrg) url.searchParams.set('carousel_org', filteredOrg);
+    else url.searchParams.delete('carousel_org');
+    if (filteredDocId) url.searchParams.set('carousel_doc', filteredDocId);
+    else url.searchParams.delete('carousel_doc');
+    window.history.replaceState(null, '', url.toString());
+
+    if (onRegenerateAiSummary) {
+      if (filteredOrg || filteredDocId) {
+        const filtered = results
+          .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
+          .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
+        onRegenerateAiSummary(filtered);
+      } else {
+        onRegenerateAiSummary(results);
+      }
     }
   }, [filteredOrg, filteredDocId, results, onRegenerateAiSummary]);
 
@@ -259,7 +282,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       <div className={`${contentGridClass} search-panel-with-tab`}>
         {!filtersExpanded ? (
           <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
-            Global Filters
+            More Filters
           </button>
         ) : (
           <button

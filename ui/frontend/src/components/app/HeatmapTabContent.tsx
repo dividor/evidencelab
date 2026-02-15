@@ -492,7 +492,7 @@ const HeatmapFiltersTabButton = ({
   }
   return (
     <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
-      Global Filters
+      More Filters
     </button>
   );
 };
@@ -2536,7 +2536,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         filtersExpanded={filtersExpanded}
         activeFiltersCount={activeFiltersCount}
         onToggle={onToggleFiltersExpanded}
-        label="Global Filters"
+        label="More Filters"
       />
 
       <div className={getContentGridClass(filtersExpanded)}>

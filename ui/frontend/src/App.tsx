@@ -667,6 +667,7 @@ function App() {
   // Initialize search state from URL parameters - MOVED TO TOP
   const [query, setQuery] = useState(initialSearchState.query);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [searchId, setSearchId] = useState(0);
   const [facets, setFacets] = useState<Facets | null>(null);
   const [allFacets, setAllFacets] = useState<Facets | null>(null);
   const [facetsDataSource, setFacetsDataSource] = useState<string | null>(null);
@@ -1384,6 +1385,12 @@ function App() {
         params.delete('doc_id');
         params.delete('chunk_id');
       }
+      // Preserve carousel filter params if present in current URL
+      const currentParams = new URLSearchParams(window.location.search);
+      const carouselOrg = currentParams.get('carousel_org');
+      const carouselDoc = currentParams.get('carousel_doc');
+      if (carouselOrg) params.set('carousel_org', carouselOrg);
+      if (carouselDoc) params.set('carousel_doc', carouselDoc);
       const finalParams = params.toString();
       const searchString = finalParams ? `?${finalParams}` : '';
       const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
@@ -1504,12 +1511,26 @@ function App() {
     setAiSummaryBuffer('');
     setAiPrompt('');
 
+    // Strip results to only the fields the backend prompt template needs,
+    // avoiding huge payloads from chunk_elements, images, tables, etc.
+    const leanResults = sliced.map((r) => ({
+      chunk_id: r.chunk_id,
+      doc_id: r.doc_id,
+      text: r.text,
+      title: r.title,
+      organization: r.organization,
+      year: r.year,
+      page_num: r.page_num,
+      headings: r.headings,
+      score: r.score,
+    })) as SearchResult[];
+
     streamAiSummary({
       apiBaseUrl: API_BASE_URL,
       apiKey: API_KEY || undefined,
       dataSource,
       query,
-      results: sliced,
+      results: leanResults,
       summaryModelConfig,
       signal: abortController.signal,
       handlers: {
@@ -1578,6 +1599,7 @@ function App() {
     setSearchError(null);
     processingHighlightsRef.current.clear(); // Clear highlight locks
     isSearchingRef.current = true;
+    setSearchId((prev) => prev + 1);
 
     try {
       const params = buildSearchParams({
@@ -2035,6 +2057,7 @@ function App() {
       showPromptModal={showPromptModal}
       selectedDomain={selectedDomain}
       results={results}
+      searchId={searchId}
       onRegenerateAiSummary={startAiSummaryStream}
       loading={loading}
       query={query}
