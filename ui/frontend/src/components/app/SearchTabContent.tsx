@@ -236,17 +236,23 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onToggle={onToggleFiltersExpanded}
       />
 
-      <div className={contentGridClass}>
+      <div className={`${contentGridClass} search-panel-with-tab`}>
+        {!filtersExpanded ? (
+          <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
+            Global Filters
+          </button>
+        ) : (
+          <button
+            className="global-filters-tab global-filters-tab-close"
+            onClick={onToggleFiltersExpanded}
+            aria-label="Hide filters"
+            title="Hide filters"
+          >
+            ‹
+          </button>
+        )}
         {filtersExpanded && (
           <div className="global-filters-column">
-            <button
-              className="global-filters-tab global-filters-tab-close"
-              onClick={onToggleFiltersExpanded}
-              aria-label="Hide filters"
-              title="Hide filters"
-            >
-              ›
-            </button>
             <FiltersPanel
               filtersExpanded={filtersExpanded}
               onClearFilters={onClearFilters}
@@ -291,29 +297,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
           </div>
         )}
 
-        <main className="results-section search-panel-with-tab">
-          {!filtersExpanded && (
-            <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
-              Global Filters
-            </button>
-          )}
-          <AiSummaryPanel
-            enabled={aiSummaryEnabled}
-            aiSummaryCollapsed={aiSummaryCollapsed}
-            aiSummaryExpanded={aiSummaryExpanded}
-            aiSummaryLoading={aiSummaryLoading}
-            aiSummary={aiSummary}
-            minScore={minScore}
-            results={results}
-            aiPrompt={aiPrompt}
-            showPromptModal={showPromptModal}
-            onToggleCollapsed={onToggleCollapsed}
-            onToggleExpanded={onToggleExpanded}
-            onResultClick={onResultClick}
-            onOpenPrompt={onOpenPrompt}
-            onClosePrompt={onClosePrompt}
-          />
-
+        <main className="results-section">
           {showFilters && (
             <div className="search-result-filters">
               {uniqueOrgs.length > 1 && (
@@ -413,6 +397,23 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               )}
             </div>
           )}
+
+          <AiSummaryPanel
+            enabled={aiSummaryEnabled}
+            aiSummaryCollapsed={aiSummaryCollapsed}
+            aiSummaryExpanded={aiSummaryExpanded}
+            aiSummaryLoading={aiSummaryLoading}
+            aiSummary={aiSummary}
+            minScore={minScore}
+            results={results}
+            aiPrompt={aiPrompt}
+            showPromptModal={showPromptModal}
+            onToggleCollapsed={onToggleCollapsed}
+            onToggleExpanded={onToggleExpanded}
+            onResultClick={onResultClick}
+            onOpenPrompt={onOpenPrompt}
+            onClosePrompt={onClosePrompt}
+          />
 
           <SearchResultsList
             results={hasActiveFilter ? displayedResults : results}

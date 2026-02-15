@@ -5922,7 +5922,7 @@ h6,
 .global-filters-tab {
   position: absolute;
   left: -32px;
-  top: 32px;
+  top: 15px;
   padding: 10px 8px;
   background: var(--gray-100);
   color: var(--gray-600);
@@ -5945,16 +5945,15 @@ h6,
 }
 
 .global-filters-tab-close {
-  background: var(--gray-100);
-  color: var(--gray-600);
-  border: 1px solid var(--gray-200);
-  border-right: none;
-  box-shadow: var(--shadow-sm);
   writing-mode: horizontal-tb;
-  text-orientation: mixed;
-  font-size: 1.1rem;
-  padding: 0;
+  transform: none;
+  font-size: 1.2rem;
+  letter-spacing: 0;
   width: 32px;
+  padding: 0;
+  border-left: 1px solid var(--gray-200);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
 }
 
 .global-filters-tab-close:hover {
@@ -6874,7 +6873,7 @@ h6,
   border: 1px solid var(--gray-200);
   border-radius: var(--radius-md);
   background: var(--white);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .search-result-filters-orgs {
