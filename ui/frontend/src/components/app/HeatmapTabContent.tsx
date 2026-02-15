@@ -149,6 +149,25 @@ const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scor
   </div>
 );
 
+const GroupedSelectOptions = ({ options }: { options: { value: string; label: string }[] }) => {
+  const standard = options.filter((o) => !o.value.startsWith('tag_'));
+  const taxonomy = options.filter((o) => o.value.startsWith('tag_'));
+  return (
+    <>
+      {standard.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+      {taxonomy.length > 0 && (
+        <optgroup label="AI-generated (Experimental)">
+          {taxonomy.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
+};
+
 const OrgFilterLabels = ({ orgs, filteredOrg, onToggle }: {
   orgs: { org: string; count: number }[];
   filteredOrg: string | null;
@@ -581,6 +600,7 @@ const HeatmapTable = ({
               <th className="heatmap-column-label" colSpan={filteredColumnValues.length}>
                 <span className="heatmap-field-label">
                   {columnHeaderLabel}
+                  {columnDimension.startsWith('tag_') && <em className="heatmap-field-ai-badge">AI-generated (Experimental)</em>}
                   <button
                     type="button"
                     className={`heatmap-field-filter-button${
@@ -609,6 +629,7 @@ const HeatmapTable = ({
                   {rowDimension === 'queries'
                     ? 'Query'
                     : rowOptions.find((option) => option.value === rowDimension)?.label}
+                  {rowDimension.startsWith('tag_') && <em className="heatmap-field-ai-badge">AI-generated (Experimental)</em>}
                   {rowDimension !== 'queries' && (
                     <button
                       type="button"
@@ -1015,7 +1036,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [columnDimension, columnOptions]);
 
   const rowOptions = useMemo(() => {
-    if (!facets) {
+    if (!facets?.filter_fields) {
       return [
         { value: 'queries', label: 'Search query' },
         { value: 'title', label: 'Report Title' }
@@ -1027,7 +1048,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       { value: 'title', label: 'Report Title' },
       ...facetEntries.map(([value, label]) => ({
         value,
-        label: value.startsWith('tag_') ? `${label} (AI-generated : Experimental)` : label,
+        label,
       })),
     ];
   }, [facets]);
@@ -1464,7 +1485,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     // Load filter parameters from URL into heatmap filters
     if (facets) {
       const urlFilters: Record<string, string[]> = {};
-      const allFilterFields = Object.keys(facets.filter_fields);
+      const allFilterFields = Object.keys(facets.filter_fields ?? {});
 
       allFilterFields.forEach((field) => {
         const urlValue = params.get(field);
@@ -2486,11 +2507,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     value={rowDimension}
                     onChange={(event) => setRowDimension(event.target.value)}
                   >
-                    {rowOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    <option value="queries">Search query</option>
+                    <option value="title">Report Title</option>
+                    <GroupedSelectOptions options={rowOptions.filter((o) => o.value !== 'queries' && o.value !== 'title')} />
                   </select>
                 </div>
 
@@ -2502,11 +2521,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     value={columnDimension}
                     onChange={(event) => setColumnDimension(event.target.value)}
                   >
-                    {columnOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    <GroupedSelectOptions options={columnOptions} />
                   </select>
                 </div>
 
