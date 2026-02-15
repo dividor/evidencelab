@@ -995,7 +995,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // No syncing needed
 
   const columnOptions = useMemo(() => {
-    if (!facets) return [];
+    if (!facets?.filter_fields) return [];
     return Object.entries(facets.filter_fields)
       .filter(([value]) => value !== 'title')
       .map(([value, label]) => ({
