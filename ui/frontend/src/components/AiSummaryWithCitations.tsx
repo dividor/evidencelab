@@ -10,7 +10,8 @@ interface AiSummaryWithCitationsProps {
 
 const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
 const NUMBERED_LIST_REGEX = /^\d+[\.)]\s/;
-const BULLET_LIST_REGEX = /^\*\s/;
+const BULLET_LIST_REGEX = /^[-*]\s/;
+const HEADING_REGEX = /^(#{1,4})\s+(.+)$/;
 
 const parseCitationNumbers = (rawNumbers: string): number[] =>
   rawNumbers.split(',').map((item) => parseInt(item.trim(), 10));
@@ -35,18 +36,12 @@ const buildCitationMapping = (summaryText: string): Map<number, number> => {
 const splitSummaryBlocks = (summaryText: string): string[] =>
   summaryText.split(/\n\n+/);
 
-const getListType = (lines: string[]): 'numbered' | 'bullet' | 'paragraph' => {
-  const isNumberedList = lines.some((line) => NUMBERED_LIST_REGEX.test(line.trim()));
-  if (isNumberedList) return 'numbered';
-  const isBulletList = lines.some((line) => BULLET_LIST_REGEX.test(line.trim()));
-  return isBulletList ? 'bullet' : 'paragraph';
-};
 
 const stripListPrefix = (line: string, listType: 'numbered' | 'bullet'): string => {
   if (listType === 'numbered') {
     return line.replace(NUMBERED_LIST_REGEX, '');
   }
-  return line.trim().replace(BULLET_LIST_REGEX, '');
+  return line.trim().replace(/^[-*]\s/, '');
 };
 
 const buildCitationLinkTitle = (result: SearchResult): string => {
@@ -151,43 +146,84 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
       {blocks.map((block, blockIndex) => {
         if (!block.trim()) return null;
         const lines = block.split(/\n/);
-        const listType = getListType(lines);
 
-        if (listType === 'numbered' || listType === 'bullet') {
-          const ListTag: React.ElementType = listType === 'numbered' ? 'ol' : 'ul';
+        // Render each line according to its type, grouping consecutive
+        // lines of the same kind into a single element.
+        const elements: React.ReactNode[] = [];
+        let pendingParagraphLines: string[] = [];
+        let pendingListItems: string[] = [];
+        let pendingListType: 'numbered' | 'bullet' | null = null;
 
-          return (
-            <ListTag key={blockIndex}>
-              {lines.map((line, lineIndex) => {
-                const content = stripListPrefix(line, listType);
-                if (!content.trim()) return null;
-                return (
-                  <li key={lineIndex}>
-                    {renderLineWithCitations(
-                      content,
-                      searchResults,
-                      citationMapping,
-                      onResultClick,
-                      `${blockIndex}-${lineIndex}`
-                    )}
-                  </li>
-                );
-              })}
+        const flushParagraph = () => {
+          if (pendingParagraphLines.length === 0) return;
+          elements.push(
+            <p key={`${blockIndex}-p-${elements.length}`}>
+              {pendingParagraphLines.map((line, li) => (
+                <React.Fragment key={li}>
+                  {li > 0 && <br />}
+                  {renderLineWithCitations(line, searchResults, citationMapping, onResultClick, `${blockIndex}-${elements.length}-${li}`)}
+                </React.Fragment>
+              ))}
+            </p>
+          );
+          pendingParagraphLines = [];
+        };
+
+        const flushList = () => {
+          if (pendingListItems.length === 0 || !pendingListType) return;
+          const ListTag: React.ElementType = pendingListType === 'numbered' ? 'ol' : 'ul';
+          const lt = pendingListType;
+          elements.push(
+            <ListTag key={`${blockIndex}-list-${elements.length}`}>
+              {pendingListItems.map((item, li) => (
+                <li key={li}>
+                  {renderLineWithCitations(stripListPrefix(item, lt), searchResults, citationMapping, onResultClick, `${blockIndex}-${elements.length}-${li}`)}
+                </li>
+              ))}
             </ListTag>
           );
-        }
+          pendingListItems = [];
+          pendingListType = null;
+        };
 
-        return (
-          <p key={blockIndex}>
-            {renderLineWithCitations(
-              block,
-              searchResults,
-              citationMapping,
-              onResultClick,
-              `${blockIndex}-0`
-            )}
-          </p>
-        );
+        lines.forEach((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+
+          const headingMatch = trimmed.match(HEADING_REGEX);
+          if (headingMatch) {
+            flushParagraph();
+            flushList();
+            const content = renderLineWithCitations(headingMatch[2], searchResults, citationMapping, onResultClick, `${blockIndex}-h-${elements.length}`);
+            const level = Math.min(headingMatch[1].length + 2, 6);
+            elements.push(React.createElement(`h${level}`, { key: `${blockIndex}-h-${elements.length}` }, content));
+            return;
+          }
+
+          if (NUMBERED_LIST_REGEX.test(trimmed)) {
+            flushParagraph();
+            if (pendingListType && pendingListType !== 'numbered') flushList();
+            pendingListType = 'numbered';
+            pendingListItems.push(trimmed);
+            return;
+          }
+
+          if (BULLET_LIST_REGEX.test(trimmed)) {
+            flushParagraph();
+            if (pendingListType && pendingListType !== 'bullet') flushList();
+            pendingListType = 'bullet';
+            pendingListItems.push(trimmed);
+            return;
+          }
+
+          flushList();
+          pendingParagraphLines.push(line);
+        });
+
+        flushParagraph();
+        flushList();
+
+        return <React.Fragment key={blockIndex}>{elements}</React.Fragment>;
       })}
     </>
   );
