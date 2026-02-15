@@ -469,7 +469,7 @@ const HeatmapFiltersColumn = ({
         aria-label="Hide filters"
         title="Hide filters"
       >
-        ›
+        ‹
       </button>
       <FiltersPanel
         {...filtersPanelProps}
