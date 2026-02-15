@@ -3460,6 +3460,11 @@ h6,
   text-decoration: underline;
 }
 
+.ai-summary-ref-number {
+  color: var(--primary-blue);
+  font-weight: 600;
+}
+
 .ai-summary-expand-button {
   background: none;
   border: none;

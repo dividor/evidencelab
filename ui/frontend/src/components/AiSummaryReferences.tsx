@@ -68,7 +68,7 @@ export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
                 onResultClick(result);
               }}
             >
-              [{sequential}] {result.title}
+              <span className="ai-summary-ref-number">[{sequential}]</span> {result.title}
               {result.page_num && `, page ${result.page_num}`}
               {result.organization && ` (${result.organization}`}
               {result.year && `${result.organization ? ', ' : '('}${result.year}`}
