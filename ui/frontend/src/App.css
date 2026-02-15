@@ -1676,11 +1676,10 @@ h6,
 
 .toc-item {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
   padding: 6px 12px 6px 0;
   border-bottom: 1px solid var(--gray-100);
-  gap: 16px;
+  gap: 10px;
 }
 
 .toc-item-before-boundary {
@@ -1731,6 +1730,14 @@ h6,
 
 .toc-title {
   flex: 1;
+  min-width: 0;
+}
+
+.toc-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .toc-boundary-badge {
@@ -1748,6 +1755,8 @@ h6,
   font-size: 0.75rem;
   color: var(--gray-500);
   font-weight: 400;
+  min-width: 100px;
+  text-align: right;
 }
 
 .toc-page-link {
