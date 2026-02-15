@@ -22,13 +22,16 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 ## Search Features
 
-Evidence Lab provides powerful search capabilities:
+Evidence Lab provides search capabilities:
 
 - **Hybrid Search**: Combines keyword (BM25) and semantic (vector) search with adjustable weights
 - **AI Summary**: Automatically generates summaries of search results
 - **Reranking**: Cross-encoder models improve result relevance
-- **Auto Min Score**: Intelligent score filtering that automatically calculates the 30th percentile threshold to filter out low-quality results
 - **Semantic Highlighting**: AI-powered highlighting of relevant phrases in search results
 - **In-PDF Search**: Search within specific documents with inherited search settings
 - **Metadata Filtering**: Filter by organization, year, document type, country, language, and custom taxonomies
-- **Section Type Filtering**: Focus on specific document sections (executive summary, findings, recommendations, etc.)
+- **Section Type Filtering**: Focus on specific document sections (executive summary, findings, recommendations, etc.), where sections have been classified using AI
+
+## Evidence Research Capabilities
+
+- **Heatmapper**: Evidence Lab also includes tools for evidence mining of documents, specifically a Heatmapper tool which allows you to see patterns in content, with the ability to drill down into patterns and trends.
