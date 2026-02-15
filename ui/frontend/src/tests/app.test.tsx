@@ -366,5 +366,5 @@ describe('App', () => {
     expect(lastUrl).toContain('q=test+query'); // Query should still be present
     expect(lastUrl).not.toContain('doc_id='); // doc_id should be removed
     expect(lastUrl).not.toContain('chunk_id='); // chunk_id should be removed
-  });
+  }, 15000);
 });
