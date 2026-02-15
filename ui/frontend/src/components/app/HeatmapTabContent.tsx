@@ -1426,6 +1426,27 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     selectedDomain,
   ]);
 
+  // Apply default year filter for UNEG data source (years after 2020)
+  useEffect(() => {
+    if (
+      dataSource === 'uneg' &&
+      columnDimension === 'published_year' &&
+      columnValues.length > 0 &&
+      !heatmapSelectedFilters['published_year']
+    ) {
+      const recentYears = columnValues.filter((year) => {
+        const yearNum = Number(year);
+        return !Number.isNaN(yearNum) && yearNum > 2020;
+      });
+      if (recentYears.length > 0 && recentYears.length < columnValues.length) {
+        setHeatmapSelectedFilters((prev) => ({
+          ...prev,
+          published_year: recentYears,
+        }));
+      }
+    }
+  }, [dataSource, columnDimension, columnValues]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!heatmapUrlInitRef.current) {
       return;
