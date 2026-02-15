@@ -896,6 +896,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [gridResults, setGridResults] = useState<RawCellResults>({});
   const [gridLoading, setGridLoading] = useState<boolean>(false);
   const [gridError, setGridError] = useState<string | null>(null);
+  const [queryTuningExpanded, setQueryTuningExpanded] = useState<boolean>(false);
   const [heatmapSelectedFilters, setHeatmapSelectedFilters] = useState<Record<string, string[]>>({});
   const [heatmapFilterModal, setHeatmapFilterModal] = useState<HeatmapFilterModalState | null>(null);
   const [heatmapFilterSearchTerms, setHeatmapFilterSearchTerms] = useState<Record<string, string>>({});
@@ -2437,33 +2438,45 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 />
               </div>
 
-              {/* Second row: Query input and Sensitivity slider */}
-              <div className="heatmap-controls-row heatmap-query-controls">
-                {rowDimension !== 'queries' && (
-                  <input
-                    id="heatmap-grid-query"
-                    className="heatmap-query-input"
-                    type="text"
-                    value={gridQuery}
-                    onChange={(event) => setGridQuery(event.target.value)}
-                    placeholder="Add a search query to filter your results ..."
-                  />
+              {/* Collapsible query tuning section */}
+              <div className="heatmap-query-tuning">
+                <button
+                  type="button"
+                  className="heatmap-query-tuning-toggle"
+                  onClick={() => setQueryTuningExpanded((prev) => !prev)}
+                >
+                  <span className={`heatmap-query-tuning-chevron${queryTuningExpanded ? ' expanded' : ''}`}>&#9654;</span>
+                  Tune your heatmap using a search query
+                </button>
+                {queryTuningExpanded && (
+                  <div className="heatmap-controls-row heatmap-query-controls">
+                    {rowDimension !== 'queries' && (
+                      <input
+                        id="heatmap-grid-query"
+                        className="heatmap-query-input"
+                        type="text"
+                        value={gridQuery}
+                        onChange={(event) => setGridQuery(event.target.value)}
+                        placeholder="Add a search query to filter the results for your heatmap ..."
+                      />
+                    )}
+                    <div className="heatmap-control heatmap-slider">
+                      <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+                        Search sensitivity
+                      </label>
+                      <input
+                        id="heatmap-cutoff"
+                        type="range"
+                        min={scoreBounds.min}
+                        max={scoreBounds.max}
+                        step={0.001}
+                        value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+                        onChange={(event) => setSimilarityCutoff(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
+                        disabled={!scoreBounds.hasScores}
+                      />
+                    </div>
+                  </div>
                 )}
-                <div className="heatmap-control heatmap-slider">
-                  <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
-                    Search sensitivity
-                  </label>
-                  <input
-                    id="heatmap-cutoff"
-                    type="range"
-                    min={scoreBounds.min}
-                    max={scoreBounds.max}
-                    step={0.001}
-                    value={scoreBounds.min + scoreBounds.max - similarityCutoff}
-                    onChange={(event) => setSimilarityCutoff(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
-                    disabled={!scoreBounds.hasScores}
-                  />
-                </div>
               </div>
             </div>
 

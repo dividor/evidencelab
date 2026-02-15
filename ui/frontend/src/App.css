@@ -5921,9 +5921,38 @@ h6,
   flex-wrap: nowrap;
 }
 
+.heatmap-query-tuning-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  color: var(--gray-500);
+  padding: 0.25rem 0;
+}
+
+.heatmap-query-tuning-toggle:hover {
+  color: var(--gray-700);
+}
+
+.heatmap-query-tuning-chevron {
+  display: inline-block;
+  font-size: 0.625rem;
+  transition: transform 0.2s ease;
+}
+
+.heatmap-query-tuning-chevron.expanded {
+  transform: rotate(90deg);
+}
+
 .heatmap-query-controls {
   gap: var(--spacing-sm);
   flex-wrap: nowrap;
+  margin-top: var(--spacing-xs);
 }
 
 .heatmap-query-controls .heatmap-query-input {
