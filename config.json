@@ -131,7 +131,7 @@
       "sparse_model": "bm25",
       "summarization_model": {
         "model": "gpt-4.1-mini",
-        "max_tokens": 500,
+        "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
