@@ -284,4 +284,29 @@ describe('SearchTabContent result filters', () => {
     expect(titles[0].textContent).toBe('Popular Report');
     expect(titles[1].textContent).toBe('Rare Report');
   });
+
+  test('semantic highlight updates do not reset active filter', () => {
+    const results = [
+      buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
+      buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Report B', organization: 'WFP' }),
+    ];
+
+    const { rerender } = render(<SearchTabContent {...baseProps} results={results} />);
+
+    // Activate a document filter
+    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    fireEvent.click(thumbnails[0]);
+    expect(screen.queryByTestId('result-c2')).not.toBeInTheDocument();
+
+    // Simulate semantic highlighting: new array, same chunk_ids, mutated properties
+    const highlightedResults = results.map((r) => ({
+      ...r,
+      semanticMatches: [{ start: 0, end: 5, matchedText: 'test' }],
+    }));
+    rerender(<SearchTabContent {...baseProps} results={highlightedResults} />);
+
+    // Filter should still be active
+    expect(screen.queryByTestId('result-c2')).not.toBeInTheDocument();
+    expect(screen.getByTestId('result-c1')).toBeInTheDocument();
+  });
 });

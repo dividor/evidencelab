@@ -141,11 +141,18 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
     results.filter((r) => r.score >= minScore),
     [results, minScore]);
 
-  // Reset filters when results change (new search)
+  // Stable fingerprint of which chunks are present – changes only on a new
+  // search, NOT when semantic-highlighting mutates individual result objects.
+  const resultsFingerprint = useMemo(
+    () => results.map((r) => r.chunk_id).join(','),
+    [results]
+  );
+
+  // Reset filters when the actual result set changes (new search)
   useEffect(() => {
     setFilteredOrg(null);
     setFilteredDocId(null);
-  }, [results]);
+  }, [resultsFingerprint]);
 
   // Unique documents from visible results
   const uniqueDocuments = useMemo(() => {
