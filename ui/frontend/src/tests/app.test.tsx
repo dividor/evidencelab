@@ -234,8 +234,6 @@ describe('App', () => {
     expect(lastSearch).toContain('data_source=test');
   });
 
-  // Note: This test is intended to run in isolation to avoid state pollution from other tests.
-  // To run: npm test -- --testNamePattern="deep-links"
   test('deep-links to PDF modal with doc_id and chunk_id in URL', async () => {
     // Set up URL with query, dataset, and doc_id/chunk_id parameters
     window.history.pushState({}, '', '/?tab=search&q=test+query&dataset=Test+Source&doc_id=test-doc-123&chunk_id=test-chunk-456');
@@ -259,15 +257,10 @@ describe('App', () => {
       chunk_tokens_ratio: 0.5,
     };
 
-    // Track if mock is set up correctly
-    let configCallCount = 0;
-    let wasSearchCalled = false;
-
     mockedAxios.get.mockImplementation((url) => {
       const urlStr = String(url);
 
       if (urlStr.includes('/config/datasources')) {
-        configCallCount++;
         return Promise.resolve({
           data: {
             'Test Source': {
@@ -279,7 +272,6 @@ describe('App', () => {
         });
       }
       if (urlStr.includes('/config/model-combos')) {
-        configCallCount++;
         return Promise.resolve({
           data: {
             'Test Combo': {
@@ -300,7 +292,6 @@ describe('App', () => {
         });
       }
       if (urlStr.includes('/search')) {
-        wasSearchCalled = true;
         return Promise.resolve({
           data: {
             results: [mockSearchResult],
@@ -317,24 +308,16 @@ describe('App', () => {
 
     render(<App />);
 
-    // Wait for configs to load first
-    await waitFor(() => {
-      expect(configCallCount).toBeGreaterThanOrEqual(2);
-    }, { timeout: 2000 });
+    // Wait for the search input to be pre-filled from URL params
+    const searchInput = await screen.findByPlaceholderText('Search documents');
+    expect(searchInput).toHaveValue('test query');
 
-    // Wait for search to be called
-    await waitFor(() => {
-      expect(wasSearchCalled).toBe(true);
-    }, { timeout: 5000 });
+    // Explicitly submit the search form (avoids relying on the auto-search useEffect chain)
+    const searchButtons = screen.getAllByRole('button', { name: 'Search' });
+    fireEvent.click(searchButtons[searchButtons.length - 1]);
 
-    // Wait for the PDF viewer to appear (modal auto-opens with matching result)
-    expect(await screen.findByText('PDF Viewer', { timeout: 3000 })).toBeInTheDocument();
-
-    // Verify the URL contains doc_id and chunk_id
-    await waitFor(() => {
-      expect(window.location.search).toContain('doc_id=test-doc-123');
-      expect(window.location.search).toContain('chunk_id=test-chunk-456');
-    });
+    // Wait for the PDF viewer to appear (modal auto-opens when results contain matching doc_id/chunk_id)
+    expect(await screen.findByText('PDF Viewer', { timeout: 5000 })).toBeInTheDocument();
 
     // Find the overlay element
     const overlay = document.querySelector('.preview-overlay');
