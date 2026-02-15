@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Facets, FacetValue, SearchResult } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
@@ -69,6 +69,8 @@ interface SearchTabContentProps {
   onOpenMetadata: (result: SearchResult) => void;
   onLanguageChange: (result: SearchResult, newLang: string) => void;
   onRequestHighlight?: (chunkId: string, text: string) => void;
+  onRegenerateAiSummary?: (results: SearchResult[]) => void;
+  aiSummaryResults: SearchResult[];
 }
 
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
@@ -133,9 +135,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onOpenMetadata,
   onLanguageChange,
   onRequestHighlight,
+  onRegenerateAiSummary,
+  aiSummaryResults,
 }) => {
   const [filteredOrg, setFilteredOrg] = useState<string | null>(null);
   const [filteredDocId, setFilteredDocId] = useState<string | null>(null);
+  const isUserFilterAction = useRef(false);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
@@ -154,6 +159,21 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
     setFilteredOrg(null);
     setFilteredDocId(null);
   }, [resultsFingerprint]);
+
+  // Regenerate AI summary when user changes carousel filters
+  useEffect(() => {
+    if (!isUserFilterAction.current || !onRegenerateAiSummary) return;
+    isUserFilterAction.current = false;
+
+    if (filteredOrg || filteredDocId) {
+      const filtered = results
+        .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
+        .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
+      onRegenerateAiSummary(filtered);
+    } else {
+      onRegenerateAiSummary(results);
+    }
+  }, [filteredOrg, filteredDocId, results, onRegenerateAiSummary]);
 
   // Unique documents from visible results
   const uniqueDocuments = useMemo(() => {
@@ -307,6 +327,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                       key={org}
                       className={`search-result-filters-org-label ${filteredOrg === org ? 'active' : ''}`}
                       onClick={() => {
+                        isUserFilterAction.current = true;
                         setFilteredOrg(filteredOrg === org ? null : org);
                         setFilteredDocId(null);
                       }}
@@ -337,7 +358,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                       <div
                         key={doc.doc_id}
                         className={`search-result-filters-thumbnail ${isSelected ? 'selected' : ''}`}
-                        onClick={() => setFilteredDocId(isSelected ? null : doc.doc_id)}
+                        onClick={() => { isUserFilterAction.current = true; setFilteredDocId(isSelected ? null : doc.doc_id); }}
                         title="Click on a document to filter results below"
                       >
                         <div className="search-result-filters-thumbnail-image">
@@ -389,7 +410,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                   </span>
                   <button
                     className="search-result-filters-clear"
-                    onClick={() => { setFilteredOrg(null); setFilteredDocId(null); }}
+                    onClick={() => { isUserFilterAction.current = true; setFilteredOrg(null); setFilteredDocId(null); }}
                   >
                     × Clear filter
                   </button>
@@ -404,8 +425,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             aiSummaryExpanded={aiSummaryExpanded}
             aiSummaryLoading={aiSummaryLoading}
             aiSummary={aiSummary}
-            minScore={minScore}
-            results={results}
+            minScore={hasActiveFilter ? 0 : minScore}
+            results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
             aiPrompt={aiPrompt}
             showPromptModal={showPromptModal}
             onToggleCollapsed={onToggleCollapsed}

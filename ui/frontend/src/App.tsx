@@ -731,6 +731,8 @@ function App() {
   const [showPromptModal, setShowPromptModal] = useState<boolean>(false);
   const [aiSummaryCollapsed, setAiSummaryCollapsed] = useState<boolean>(false);
   const [aiSummaryExpanded, setAiSummaryExpanded] = useState<boolean>(false);
+  const [aiSummaryResults, setAiSummaryResults] = useState<SearchResult[]>([]);
+  const aiSummaryAbortRef = useRef<AbortController | null>(null);
 
   const [aiSummaryBuffer, setAiSummaryBuffer] = useState<string>(''); // Buffer for character animation
 
@@ -1475,8 +1477,8 @@ function App() {
     }
   }, [query, semanticHighlightModelConfig]);
 
-  const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
-    if (!AI_SUMMARY_ON || data.results.length === 0) {
+  const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
+    if (!AI_SUMMARY_ON || summaryResults.length === 0) {
       setAiSummary('');
       setAiPrompt('');
       return;
@@ -1488,6 +1490,15 @@ function App() {
       return;
     }
 
+    // Abort any in-flight stream
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    aiSummaryAbortRef.current = abortController;
+
+    const sliced = summaryResults.slice(0, 20);
+    setAiSummaryResults(sliced);
     setAiSummaryLoading(true);
     setAiSummary('');
     setAiSummaryBuffer('');
@@ -1498,8 +1509,9 @@ function App() {
       apiKey: API_KEY || undefined,
       dataSource,
       query,
-      results: data.results.slice(0, 20),
+      results: sliced,
       summaryModelConfig,
+      signal: abortController.signal,
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
@@ -1511,11 +1523,16 @@ function App() {
         },
       },
     }).catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('AI summary streaming failed:', error);
       setAiSummary('Uh oh. Something went wrong asking the AI.');
       setAiSummaryLoading(false);
     });
   }, [dataSource, query, summaryModelConfig]);
+
+  const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
+    startAiSummaryStream(data.results);
+  }, [startAiSummaryStream]);
 
   const handlePostSearchResults = useCallback((data: SearchResponse) => {
     if (data.results.length > 0) {
@@ -2013,10 +2030,12 @@ function App() {
       aiSummaryExpanded={aiSummaryExpanded}
       aiSummaryLoading={aiSummaryLoading}
       aiSummary={aiSummary}
+      aiSummaryResults={aiSummaryResults}
       aiPrompt={aiPrompt}
       showPromptModal={showPromptModal}
       selectedDomain={selectedDomain}
       results={results}
+      onRegenerateAiSummary={startAiSummaryStream}
       loading={loading}
       query={query}
       selectedDoc={selectedDoc}
