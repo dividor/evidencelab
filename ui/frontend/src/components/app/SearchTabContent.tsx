@@ -150,6 +150,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   });
   const isUserFilterAction = useRef(false);
   const prevSearchIdRef = useRef(searchId);
+  const pendingUrlFilterRegen = useRef(filteredOrg !== null || filteredDocId !== null);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
@@ -172,6 +173,17 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       window.history.replaceState(null, '', url.toString());
     }
   }, [searchId]);
+
+  // On URL load with carousel filters, regenerate AI summary once results arrive
+  useEffect(() => {
+    if (!pendingUrlFilterRegen.current || results.length === 0 || !onRegenerateAiSummary) return;
+    pendingUrlFilterRegen.current = false;
+    const filtered = results
+      .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
+      .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
+    onRegenerateAiSummary(filtered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
 
   // Regenerate AI summary and sync URL when user changes carousel filters
   useEffect(() => {
