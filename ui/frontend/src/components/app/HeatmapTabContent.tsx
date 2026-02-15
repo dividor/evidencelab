@@ -97,6 +97,50 @@ type RawCellResults = Record<string, SearchResult[]>;
 
 const buildCellKey = (rowKey: string, columnValue: string) => `${rowKey}::${columnValue}`;
 
+const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scoreBounds, similarityCutoff, onCutoffChange }: {
+  expanded: boolean;
+  onToggle: () => void;
+  gridQuery: string;
+  onQueryChange: (value: string) => void;
+  scoreBounds: { min: number; max: number; hasScores: boolean };
+  similarityCutoff: number;
+  onCutoffChange: (value: number) => void;
+}) => (
+  <div className="heatmap-query-tuning">
+    <button type="button" className="heatmap-query-tuning-toggle" onClick={onToggle}>
+      <span className={`heatmap-query-tuning-chevron${expanded ? ' expanded' : ''}`}>&#9654;</span>
+      Tune your heatmap using a search query
+    </button>
+    {expanded && (
+      <div className="heatmap-controls-row heatmap-query-controls">
+        <input
+          id="heatmap-grid-query"
+          className="heatmap-query-input"
+          type="text"
+          value={gridQuery}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Add a search query to filter the results for your heatmap ..."
+        />
+        <div className="heatmap-control heatmap-slider">
+          <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+            Search sensitivity
+          </label>
+          <input
+            id="heatmap-cutoff"
+            type="range"
+            min={scoreBounds.min}
+            max={scoreBounds.max}
+            step={0.001}
+            value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+            onChange={(event) => onCutoffChange(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
+            disabled={!scoreBounds.hasScores}
+          />
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 const OrgFilterLabels = ({ orgs, filteredOrg, onToggle }: {
   orgs: { org: string; count: number }[];
   filteredOrg: string | null;
@@ -1691,7 +1735,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         : rowOptions.find((option) => option.value === rowDimension)?.label || rowDimension;
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
-    const metricLabel = heatmapMetric === 'chunks' ? 'Text Excerpts' : 'Documents';
+    const metricLabel = heatmapMetric === 'chunks' ? 'Paragraphs' : 'Documents';
 
     // Sheet 1: Settings
     const settingsData = [
@@ -2390,6 +2434,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onDeduplicateToggle,
   };
 
+  const isQueryRow = rowDimension === 'queries';
+  const hasGlobalQuery = gridQuery.trim() !== '';
+  const metricEnabled = isQueryRow || hasGlobalQuery;
+  const metricValue = metricEnabled ? heatmapMetric : 'documents';
+
   return (
     <div className="main-content">
       <MobileFiltersToggle
@@ -2458,11 +2507,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   <select
                     id="heatmap-metric"
                     className="heatmap-select"
-                    value={heatmapMetric}
+                    value={metricValue}
                     onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
+                    disabled={!metricEnabled}
                   >
                     <option value="documents">Documents</option>
-                    <option value="chunks">Text Excerpts</option>
+                    <option value="chunks">Paragraphs</option>
                   </select>
                 </div>
 
@@ -2476,45 +2526,17 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
 
               {/* Collapsible query tuning section */}
-              <div className="heatmap-query-tuning">
-                <button
-                  type="button"
-                  className="heatmap-query-tuning-toggle"
-                  onClick={() => setQueryTuningExpanded((prev) => !prev)}
-                >
-                  <span className={`heatmap-query-tuning-chevron${queryTuningExpanded ? ' expanded' : ''}`}>&#9654;</span>
-                  Tune your heatmap using a search query
-                </button>
-                {queryTuningExpanded && (
-                  <div className="heatmap-controls-row heatmap-query-controls">
-                    {rowDimension !== 'queries' && (
-                      <input
-                        id="heatmap-grid-query"
-                        className="heatmap-query-input"
-                        type="text"
-                        value={gridQuery}
-                        onChange={(event) => setGridQuery(event.target.value)}
-                        placeholder="Add a search query to filter the results for your heatmap ..."
-                      />
-                    )}
-                    <div className="heatmap-control heatmap-slider">
-                      <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
-                        Search sensitivity
-                      </label>
-                      <input
-                        id="heatmap-cutoff"
-                        type="range"
-                        min={scoreBounds.min}
-                        max={scoreBounds.max}
-                        step={0.001}
-                        value={scoreBounds.min + scoreBounds.max - similarityCutoff}
-                        onChange={(event) => setSimilarityCutoff(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
-                        disabled={!scoreBounds.hasScores}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
+              {!isQueryRow && (
+                <HeatmapQueryTuning
+                  expanded={queryTuningExpanded}
+                  onToggle={() => setQueryTuningExpanded((prev) => !prev)}
+                  gridQuery={gridQuery}
+                  onQueryChange={setGridQuery}
+                  scoreBounds={scoreBounds}
+                  similarityCutoff={similarityCutoff}
+                  onCutoffChange={setSimilarityCutoff}
+                />
+              )}
             </div>
 
             {gridError && <div className="heatmap-error">{gridError}</div>}
