@@ -265,7 +265,7 @@ describe('App', () => {
 
     mockedAxios.get.mockImplementation((url) => {
       const urlStr = String(url);
-      
+
       if (urlStr.includes('/config/datasources')) {
         configCallCount++;
         return Promise.resolve({
