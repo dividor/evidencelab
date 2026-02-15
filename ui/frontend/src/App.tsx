@@ -1751,6 +1751,7 @@ function App() {
     const metadata = result.metadata || {};
     return {
       doc_id: metadata.doc_id ?? result.doc_id,
+      chunk_id: result.chunk_id,
       ...metadata,
       organization: metadata.organization ?? result.organization,
       published_year: metadata.published_year ?? result.year,
