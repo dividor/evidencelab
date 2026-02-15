@@ -5956,6 +5956,10 @@ h6,
   text-decoration: underline;
 }
 
+.heatmap-sensitivity-info {
+  margin-left: 6px;
+}
+
 .heatmap-controls {
   display: flex;
   flex-direction: column;

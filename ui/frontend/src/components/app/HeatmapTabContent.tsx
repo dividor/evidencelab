@@ -124,6 +124,14 @@ const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scor
         <div className="heatmap-control heatmap-slider">
           <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
             Search sensitivity
+            {scoreBounds.hasScores && (
+              <span
+                className="rerank-tooltip heatmap-sensitivity-info"
+                title="Adjust this to be more specific in your search. The higher the sensitivity the more results you will get, but some may end up being less relevant for what you want. Generate a heatmap and try it out!"
+              >
+                ⓘ
+              </span>
+            )}
           </label>
           <input
             id="heatmap-cutoff"
