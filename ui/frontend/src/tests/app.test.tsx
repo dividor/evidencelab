@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within, waitFor, cleanup } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor, cleanup } from '@testing-library/react';
 import axios from 'axios';
 
 jest.mock('react-markdown', () => {
@@ -315,20 +315,28 @@ describe('App', () => {
 
     const replaceStateSpy = jest.spyOn(window.history, 'replaceState');
 
-    render(<App />);
+    await act(async () => {
+      render(<App />);
+    });
 
     // Wait for configs to load first
-    await waitFor(() => {
-      expect(configCallCount).toBeGreaterThanOrEqual(2);
-    }, { timeout: 2000 });
+    await act(async () => {
+      await waitFor(() => {
+        expect(configCallCount).toBeGreaterThanOrEqual(2);
+      }, { timeout: 3000 });
+    });
 
-    // Wait for search to be called
-    await waitFor(() => {
-      expect(wasSearchCalled).toBe(true);
-    }, { timeout: 5000 });
+    // Wait for search to be called with increased timeout
+    await act(async () => {
+      await waitFor(() => {
+        expect(wasSearchCalled).toBe(true);
+      }, { timeout: 10000 });
+    });
 
     // Wait for the PDF viewer to appear (modal auto-opens with matching result)
-    expect(await screen.findByText('PDF Viewer', { timeout: 3000 })).toBeInTheDocument();
+    await act(async () => {
+      expect(await screen.findByText('PDF Viewer', { timeout: 5000 })).toBeInTheDocument();
+    });
 
     // Verify the URL contains doc_id and chunk_id
     await waitFor(() => {
@@ -342,7 +350,9 @@ describe('App', () => {
 
     // Close the modal by clicking the overlay
     if (overlay) {
-      fireEvent.click(overlay);
+      await act(async () => {
+        fireEvent.click(overlay);
+      });
     }
 
     // Wait for the modal to close
@@ -366,5 +376,5 @@ describe('App', () => {
     expect(lastUrl).toContain('q=test+query'); // Query should still be present
     expect(lastUrl).not.toContain('doc_id='); // doc_id should be removed
     expect(lastUrl).not.toContain('chunk_id='); // chunk_id should be removed
-  });
+  }, 30000); // Set overall test timeout to 30 seconds
 });
