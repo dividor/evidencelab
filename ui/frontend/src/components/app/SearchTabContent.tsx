@@ -359,7 +359,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                         key={doc.doc_id}
                         className={`search-result-filters-thumbnail ${isSelected ? 'selected' : ''}`}
                         onClick={() => { isUserFilterAction.current = true; setFilteredDocId(isSelected ? null : doc.doc_id); }}
-                        title="Click on a document to filter results below"
+                        title={doc.title || 'Untitled'}
                       >
                         <div className="search-result-filters-thumbnail-image">
                           {thumbnailUrl ? (
