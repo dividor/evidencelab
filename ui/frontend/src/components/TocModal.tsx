@@ -382,7 +382,7 @@ const TocModal: React.FC<TocModalProps> = ({
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="toc-header">
-            <h2>Table of Contents</h2>
+            <h2>Table of Contents<em className="header-label-subtitle">(AI-generated : Experimental)</em></h2>
             {frontMatterBoundary && frontMatterBoundary > 0 ? (
               <span className="toc-boundary-note">
                 Front matter boundary: p. {frontMatterBoundary}

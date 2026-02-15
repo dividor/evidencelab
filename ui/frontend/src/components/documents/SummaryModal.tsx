@@ -18,7 +18,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, sum
     <div className="preview-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <h2>{title}</h2>
+          <h2>{title}<em className="header-label-subtitle">(AI-generated : Experimental)</em></h2>
           <div className="modal-header-actions">
             <button onClick={onClose} className="modal-close">
               ×
