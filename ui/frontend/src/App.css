@@ -6881,7 +6881,6 @@ h6,
   flex-wrap: wrap;
   gap: 0.4rem;
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--gray-200);
 }
 
 .search-result-filters-org-label {
@@ -6908,7 +6907,7 @@ h6,
 
 .search-result-filters-thumbnails {
   padding: 0.75rem 1rem;
-  background: var(--gray-50);
+  background: var(--white);
   position: relative;
   display: flex;
   align-items: center;
