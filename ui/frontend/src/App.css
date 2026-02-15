@@ -4406,6 +4406,24 @@ h6,
   font-weight: 500;
 }
 
+.pdf-viewer-badges-row .pdf-badge-link {
+  display: inline;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--primary-blue);
+  text-decoration: none;
+  padding: 3px 8px;
+  border: 1px solid var(--primary-blue);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0;
+}
+
+.pdf-viewer-badges-row .pdf-badge-link:hover {
+  background: var(--primary-blue);
+  color: white;
+  text-decoration: none;
+}
+
 .pdf-viewer-badges-row .result-score {
   font-size: 0.875rem;
   color: var(--color-score-text);

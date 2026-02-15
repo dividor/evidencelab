@@ -376,9 +376,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   rerankModel = null,
   searchModel = null,
 }) => {
-  // Extract fields from metadata
-  const webUrl = metadata.report_url;
-  const pdfUrl = metadata.pdf_url;
+  // Extract fields from metadata (check multiple possible field locations)
+  const webUrl = metadata.report_url || metadata.map_report_url || metadata.src_doc_raw_metadata?.report_url;
+  const pdfUrl = metadata.pdf_url || metadata.map_pdf_url || metadata.src_doc_raw_metadata?.pdf_url;
   const organization = metadata.organization;
   const year = metadata.year;
   const score = metadata.score;
@@ -1307,22 +1307,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       <div className="pdf-viewer-header">
         <div className="pdf-viewer-title-row">
           <h4 title={title}>{title}</h4>
-          <div className="pdf-viewer-links">
-            {(webUrl || pdfUrl) && (
-              <>
-                {webUrl && (
-                  <a href={webUrl} target="_blank" rel="noopener noreferrer" className="doc-link">
-                    Web
-                  </a>
-                )}
-                {pdfUrl && (
-                  <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="doc-link">
-                    PDF
-                  </a>
-                )}
-              </>
-            )}
-          </div>
           <button onClick={onClose} className="close-button">✕</button>
         </div>
 
@@ -1335,6 +1319,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             <span className="badge badge-year">{year}</span>
           )}
           <span className="badge badge-page">Page {pageNum}</span>
+          {webUrl && (
+            <a href={webUrl} target="_blank" rel="noopener noreferrer" className="pdf-badge-link" title="Hosting page for the document">
+              {dataSource ? `${dataSource.toUpperCase()} Hosting Page` : 'Hosting Page'}
+            </a>
+          )}
+          {pdfUrl && (
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="pdf-badge-link" title="Source document">
+              {organization ? `${organization} Source Document` : 'Source Document'}
+            </a>
+          )}
           <button
             className="pdf-metadata-link"
             onClick={() => {
