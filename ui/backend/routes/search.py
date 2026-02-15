@@ -736,16 +736,6 @@ def _build_metadata_filter_condition(
                 )
             ]
         )
-    if core_field.startswith("tag_"):
-        taxonomy_code = value.split(" - ")[0] if " - " in value else value
-        return qmodels.Filter(
-            must=[
-                qmodels.FieldCondition(
-                    key=storage_field,
-                    match=qmodels.MatchAny(any=[taxonomy_code]),
-                )
-            ]
-        )
     return qmodels.Filter(
         must=[
             qmodels.FieldCondition(

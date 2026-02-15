@@ -974,7 +974,13 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const columnValues = useMemo(() => {
     if (!facets || !columnDimension) return [];
     const values = facets.facets[columnDimension] || [];
-    const sorted = [...values].sort((a, b) => {
+    const seen = new Set<string>();
+    const deduped = values.filter((item) => {
+      if (item.value == null || seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+    const sorted = [...deduped].sort((a, b) => {
       const aValue = a.value ?? '';
       const bValue = b.value ?? '';
       const aNumber = Number(aValue);
@@ -996,7 +1002,13 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     }
     if (!facets || !rowDimension) return [];
     const values = facets.facets[rowDimension] || [];
-    const sorted = [...values].sort((a, b) => {
+    const seen = new Set<string>();
+    const deduped = values.filter((item) => {
+      if (item.value == null || seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+    const sorted = [...deduped].sort((a, b) => {
       const aValue = a.value ?? '';
       const bValue = b.value ?? '';
       const aNumber = Number(aValue);

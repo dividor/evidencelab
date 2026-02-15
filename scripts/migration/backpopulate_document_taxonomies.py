@@ -107,17 +107,21 @@ def backpopulate_taxonomies(data_source="uneg", dry_run=False):
             if not isinstance(tax_list, list):
                 continue
 
-            # Extract codes from list
-            codes = [
-                item.get("code")
+            # Build full labels matching pipeline format:
+            # "code - name" (e.g. "sdg1 - No Poverty")
+            values = [
+                (
+                    f"{item['code']} - {item['name']}"
+                    if item.get("name")
+                    else item["code"]
+                )
                 for item in tax_list
                 if isinstance(item, dict) and "code" in item
             ]
 
-            if codes:
+            if values:
                 field_name = f"tag_{tax_type}"
-                # Store as array for Qdrant MatchAny support
-                updates[field_name] = codes
+                updates[field_name] = values
 
         if not updates:
             skipped_count += 1
