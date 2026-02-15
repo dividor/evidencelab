@@ -140,17 +140,19 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   aiSummaryResults,
   searchId,
 }) => {
-  const [filteredOrg, setFilteredOrg] = useState<string | null>(() => {
+  const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('carousel_org') || null;
+    const orgParam = params.get('carousel_org');
+    return orgParam ? orgParam.split(',') : [];
   });
-  const [filteredDocId, setFilteredDocId] = useState<string | null>(() => {
+  const [filteredDocIds, setFilteredDocIds] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('carousel_doc') || null;
+    const docParam = params.get('carousel_doc');
+    return docParam ? docParam.split(',') : [];
   });
   const isUserFilterAction = useRef(false);
   const prevSearchIdRef = useRef(searchId);
-  const pendingUrlFilterRegen = useRef(filteredOrg !== null || filteredDocId !== null);
+  const pendingUrlFilterRegen = useRef(filteredOrgs.length > 0 || filteredDocIds.length > 0);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
@@ -164,8 +166,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   useEffect(() => {
     if (prevSearchIdRef.current === searchId) return;
     prevSearchIdRef.current = searchId;
-    setFilteredOrg(null);
-    setFilteredDocId(null);
+    setFilteredOrgs([]);
+    setFilteredDocIds([]);
     const url = new URL(window.location.href);
     if (url.searchParams.has('carousel_org') || url.searchParams.has('carousel_doc')) {
       url.searchParams.delete('carousel_org');
@@ -179,8 +181,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
     if (!pendingUrlFilterRegen.current || results.length === 0 || !onRegenerateAiSummary) return;
     pendingUrlFilterRegen.current = false;
     const filtered = results
-      .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
-      .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
+      .filter((r) => filteredOrgs.length === 0 || filteredOrgs.includes(r.organization || 'Unknown'))
+      .filter((r) => filteredDocIds.length === 0 || filteredDocIds.includes(r.doc_id));
     onRegenerateAiSummary(filtered);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results]);
@@ -192,23 +194,23 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
     // Sync carousel filter state to URL
     const url = new URL(window.location.href);
-    if (filteredOrg) url.searchParams.set('carousel_org', filteredOrg);
+    if (filteredOrgs.length > 0) url.searchParams.set('carousel_org', filteredOrgs.join(','));
     else url.searchParams.delete('carousel_org');
-    if (filteredDocId) url.searchParams.set('carousel_doc', filteredDocId);
+    if (filteredDocIds.length > 0) url.searchParams.set('carousel_doc', filteredDocIds.join(','));
     else url.searchParams.delete('carousel_doc');
     window.history.replaceState(null, '', url.toString());
 
     if (onRegenerateAiSummary) {
-      if (filteredOrg || filteredDocId) {
+      if (filteredOrgs.length > 0 || filteredDocIds.length > 0) {
         const filtered = results
-          .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
-          .filter((r) => !filteredDocId || r.doc_id === filteredDocId);
+          .filter((r) => filteredOrgs.length === 0 || filteredOrgs.includes(r.organization || 'Unknown'))
+          .filter((r) => filteredDocIds.length === 0 || filteredDocIds.includes(r.doc_id));
         onRegenerateAiSummary(filtered);
       } else {
         onRegenerateAiSummary(results);
       }
     }
-  }, [filteredOrg, filteredDocId, results, onRegenerateAiSummary]);
+  }, [filteredOrgs, filteredDocIds, results, onRegenerateAiSummary]);
 
   // Unique documents from visible results
   const uniqueDocuments = useMemo(() => {
@@ -249,12 +251,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       .map(([org, count]) => ({ org, count }));
   }, [uniqueDocuments]);
 
-  // Documents filtered by selected org
+  // Documents filtered by selected orgs
   const filteredUniqueDocuments = useMemo(() =>
-    filteredOrg
-      ? uniqueDocuments.filter((doc) => (doc.organization || 'Unknown') === filteredOrg)
+    filteredOrgs.length > 0
+      ? uniqueDocuments.filter((doc) => filteredOrgs.includes(doc.organization || 'Unknown'))
       : uniqueDocuments,
-    [uniqueDocuments, filteredOrg]);
+    [uniqueDocuments, filteredOrgs]);
 
   const { ref: thumbnailsRef, canScrollLeft, canScrollRight, scroll: scrollThumbnails } =
     useCarouselScroll([filteredUniqueDocuments]);
@@ -262,23 +264,24 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   // Results filtered by org and document
   const displayedResults = useMemo(() =>
     results
-      .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
-      .filter((r) => !filteredDocId || r.doc_id === filteredDocId),
-    [results, filteredOrg, filteredDocId]);
-
-  const filteredDocTitle = useMemo(() => {
-    if (!filteredDocId) return null;
-    const doc = uniqueDocuments.find(d => d.doc_id === filteredDocId);
-    return doc?.title || 'Unknown Document';
-  }, [filteredDocId, uniqueDocuments]);
+      .filter((r) => filteredOrgs.length === 0 || filteredOrgs.includes(r.organization || 'Unknown'))
+      .filter((r) => filteredDocIds.length === 0 || filteredDocIds.includes(r.doc_id)),
+    [results, filteredOrgs, filteredDocIds]);
 
   const filterLabel = useMemo(() => {
-    if (filteredDocId) return filteredDocTitle;
-    if (filteredOrg) return filteredOrg;
-    return null;
-  }, [filteredDocId, filteredOrg, filteredDocTitle]);
+    const parts: string[] = [];
+    if (filteredOrgs.length > 0) parts.push(filteredOrgs.join(', '));
+    if (filteredDocIds.length > 0) {
+      const docTitles = filteredDocIds.map(id => {
+        const doc = uniqueDocuments.find(d => d.doc_id === id);
+        return doc?.title || 'Unknown Document';
+      });
+      parts.push(docTitles.join(', '));
+    }
+    return parts.length > 0 ? parts.join(' \u00b7 ') : null;
+  }, [filteredOrgs, filteredDocIds, uniqueDocuments]);
 
-  const hasActiveFilter = filteredOrg !== null || filteredDocId !== null;
+  const hasActiveFilter = filteredOrgs.length > 0 || filteredDocIds.length > 0;
   const showFilters = visibleResults.length > 0 && uniqueDocuments.length > 1;
 
   const contentGridClass = `content-grid ${filtersExpanded ? '' : 'content-grid-no-filters'}`;
@@ -360,11 +363,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                   {uniqueOrgs.map(({ org, count }) => (
                     <button
                       key={org}
-                      className={`search-result-filters-org-label ${filteredOrg === org ? 'active' : ''}`}
+                      className={`search-result-filters-org-label ${filteredOrgs.includes(org) ? 'active' : ''}`}
                       onClick={() => {
                         isUserFilterAction.current = true;
-                        setFilteredOrg(filteredOrg === org ? null : org);
-                        setFilteredDocId(null);
+                        setFilteredOrgs(prev => prev.includes(org) ? prev.filter(o => o !== org) : [...prev, org]);
                       }}
                     >
                       {org} ({count})
@@ -388,12 +390,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                     const thumbnailUrl = doc.doc_id
                       ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
                       : null;
-                    const isSelected = filteredDocId === doc.doc_id;
+                    const isSelected = filteredDocIds.includes(doc.doc_id);
                     return (
                       <div
                         key={doc.doc_id}
                         className={`search-result-filters-thumbnail ${isSelected ? 'selected' : ''}`}
-                        onClick={() => { isUserFilterAction.current = true; setFilteredDocId(isSelected ? null : doc.doc_id); }}
+                        onClick={() => { isUserFilterAction.current = true; setFilteredDocIds(prev => prev.includes(doc.doc_id) ? prev.filter(d => d !== doc.doc_id) : [...prev, doc.doc_id]); }}
                         title={doc.title || 'Untitled'}
                       >
                         <div className="search-result-filters-thumbnail-image">
@@ -445,9 +447,9 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                   </span>
                   <button
                     className="search-result-filters-clear"
-                    onClick={() => { isUserFilterAction.current = true; setFilteredOrg(null); setFilteredDocId(null); }}
+                    onClick={() => { isUserFilterAction.current = true; setFilteredOrgs([]); setFilteredDocIds([]); }}
                   >
-                    × Clear filter
+                    × Clear filters
                   </button>
                 </div>
               )}
