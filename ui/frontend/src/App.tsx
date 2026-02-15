@@ -2143,7 +2143,7 @@ function App() {
           Privacy
         </button>
         <span className="app-footer-divider">•</span>
-        <a href="https://github.com/dividor/evidencelab-ai" target="_blank" rel="noreferrer">
+        <a href="https://github.com/dividor/evidencelab" target="_blank" rel="noreferrer">
           GitHub
         </a>
         <span className="app-footer-divider">•</span>

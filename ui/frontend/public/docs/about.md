@@ -8,10 +8,6 @@ If you would like to have your public documents added to Evidence Lab, or would 
 
 Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).
 
-## Analytics
-
-Evidence Lab optionally supports Google Analytics to help operators understand usage patterns. Analytics is only active when configured, and requires cookie consent before any data is collected. You can manage your preferences on the [Privacy](/privacy) page.
-
 ## Philosophy
 
 Evidence lab was developed out of research work for the blog, so core principles are ...
