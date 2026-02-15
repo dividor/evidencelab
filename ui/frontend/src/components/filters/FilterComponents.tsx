@@ -238,7 +238,7 @@ const FilterCheckboxList = ({
               </span>
             )}
           </div>
-          <span className="filter-checkbox-count">({item.count})</span>
+          <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
         </div>
       </label>
     ))}
