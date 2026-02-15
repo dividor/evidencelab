@@ -22,6 +22,7 @@ import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { RainbowText } from '../RainbowText';
 import { findSemanticMatches, TextMatch } from '../../utils/textHighlighting';
+import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 const API_KEY = process.env.REACT_APP_API_KEY;
 
@@ -185,6 +186,71 @@ const OrgFilterLabels = ({ orgs, filteredOrg, onToggle }: {
           {org} ({count})
         </button>
       ))}
+    </div>
+  );
+};
+
+const ThumbnailCarousel = ({ documents, selectedDomain, filteredDocId, onSelectDoc, containerClass, itemClass }: {
+  documents: any[];
+  selectedDomain: string;
+  filteredDocId: string | null;
+  onSelectDoc: (docId: string | null) => void;
+  containerClass: string;
+  itemClass: string;
+}) => {
+  const { ref, canScrollLeft, canScrollRight, scroll } = useCarouselScroll([documents]);
+  return (
+    <div className={containerClass}>
+      {canScrollLeft && (
+        <button className="thumbnail-carousel-arrow thumbnail-carousel-arrow-left" onClick={() => scroll('left')} aria-label="Scroll left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+      )}
+      <div className={`${containerClass}-container`} ref={ref}>
+        {documents.map((doc) => {
+          const dataSource = doc.data_source || selectedDomain;
+          const thumbnailUrl = doc.doc_id
+            ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
+            : null;
+          const isSelected = filteredDocId === doc.doc_id;
+          return (
+            <div
+              key={doc.doc_id}
+              className={`${itemClass} ${isSelected ? 'selected' : ''}`}
+              onClick={() => onSelectDoc(isSelected ? null : doc.doc_id)}
+              title="Click on a document to filter results below"
+            >
+              <div className={`${itemClass}-image-container`}>
+                {thumbnailUrl ? (
+                  <img
+                    src={thumbnailUrl}
+                    alt={doc.title || 'Document thumbnail'}
+                    className={`${itemClass}-image`}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className={`${itemClass}-placeholder`}>No thumbnail</div>
+                )}
+              </div>
+              <div className={`${itemClass}-title`}>
+                <div className={`${itemClass}-doc-title`}>{doc.title || 'Untitled'}</div>
+                {(doc.organization || doc.year) && (
+                  <div className={`${itemClass}-source`}>
+                    {doc.organization}
+                    {doc.organization && doc.year && ' \u2022 '}
+                    {doc.year}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {canScrollRight && (
+        <button className="thumbnail-carousel-arrow thumbnail-carousel-arrow-right" onClick={() => scroll('right')} aria-label="Scroll right">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
+      )}
     </div>
   );
 };
@@ -2238,6 +2304,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       : uniqueActiveCellDocuments,
     [uniqueActiveCellDocuments, filteredOrg]);
 
+
   const displayedCellResults = useMemo(() =>
     activeCellResults
       .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
@@ -2745,60 +2812,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             <div className="heatmap-modal-content">
               <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
               {filteredUniqueDocuments.length > 0 && (
-                <div className="heatmap-modal-thumbnails">
-                <div className="heatmap-modal-thumbnails-container">
-                  {filteredUniqueDocuments.map((doc) => {
-                    // Use document-based API endpoint for thumbnails
-                    const dataSource = doc.data_source || selectedDomain;
-                    const thumbnailUrl = doc.doc_id
-                      ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
-                      : null;
-                    const isSelected = filteredDocId === doc.doc_id;
-                    return (
-                      <div
-                        key={doc.doc_id}
-                        className={`heatmap-modal-thumbnail ${isSelected ? 'selected' : ''}`}
-                        onClick={() => {
-                          // Toggle filter for this document
-                          setFilteredDocId(isSelected ? null : doc.doc_id);
-                        }}
-                        title="Click on a document to filter results below"
-                      >
-                        <div className="heatmap-modal-thumbnail-image-container">
-                          {thumbnailUrl ? (
-                            <img
-                              src={thumbnailUrl}
-                              alt={doc.title || 'Document thumbnail'}
-                              className="heatmap-modal-thumbnail-image"
-                              onError={(e) => {
-                                // Hide thumbnail on error
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="heatmap-modal-thumbnail-placeholder">
-                              No thumbnail
-                            </div>
-                          )}
-                        </div>
-                        <div className="heatmap-modal-thumbnail-title">
-                          <div className="heatmap-modal-thumbnail-doc-title">
-                            {doc.title || 'Untitled'}
-                          </div>
-                          {(doc.organization || doc.year) && (
-                            <div className="heatmap-modal-thumbnail-source">
-                              {doc.organization}
-                              {doc.organization && doc.year && ' • '}
-                              {doc.year}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                <ThumbnailCarousel
+                  documents={filteredUniqueDocuments}
+                  selectedDomain={selectedDomain}
+                  filteredDocId={filteredDocId}
+                  onSelectDoc={setFilteredDocId}
+                  containerClass="heatmap-modal-thumbnails"
+                  itemClass="heatmap-modal-thumbnail"
+                />
             )}
             <div className="heatmap-modal-body">
               <div className="heatmap-modal-filter-indicator">

@@ -5,6 +5,7 @@ import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
+import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 interface SearchTabContentProps {
   filtersExpanded: boolean;
@@ -200,6 +201,9 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       : uniqueDocuments,
     [uniqueDocuments, filteredOrg]);
 
+  const { ref: thumbnailsRef, canScrollLeft, canScrollRight, scroll: scrollThumbnails } =
+    useCarouselScroll([filteredUniqueDocuments]);
+
   // Results filtered by org and document
   const displayedResults = useMemo(() =>
     results
@@ -310,7 +314,16 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                 </div>
               )}
               <div className="search-result-filters-thumbnails">
-                <div className="search-result-filters-thumbnails-container">
+                {canScrollLeft && (
+                  <button
+                    className="thumbnail-carousel-arrow thumbnail-carousel-arrow-left"
+                    onClick={() => scrollThumbnails('left')}
+                    aria-label="Scroll left"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                  </button>
+                )}
+                <div className="search-result-filters-thumbnails-container" ref={thumbnailsRef}>
                   {filteredUniqueDocuments.map((doc) => {
                     const dataSource = doc.data_source || selectedDomain;
                     const thumbnailUrl = doc.doc_id
@@ -356,6 +369,15 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                     );
                   })}
                 </div>
+                {canScrollRight && (
+                  <button
+                    className="thumbnail-carousel-arrow thumbnail-carousel-arrow-right"
+                    onClick={() => scrollThumbnails('right')}
+                    aria-label="Scroll right"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                )}
               </div>
               {hasActiveFilter && (
                 <div className="search-result-filters-indicator">

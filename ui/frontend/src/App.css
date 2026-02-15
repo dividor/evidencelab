@@ -6720,6 +6720,8 @@ h6,
   padding: 1rem 1.5rem;
   background: var(--gray-50);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
 .heatmap-modal-thumbnails-label {
@@ -6733,26 +6735,14 @@ h6,
   display: flex;
   gap: 1rem;
   overflow-x: auto;
-  padding: 0.25rem 0 0.5rem 0;
+  padding: 0.25rem 0 0.25rem 0;
   scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .heatmap-modal-thumbnails-container::-webkit-scrollbar {
-  height: 6px;
-}
-
-.heatmap-modal-thumbnails-container::-webkit-scrollbar-track {
-  background: var(--gray-100);
-  border-radius: 3px;
-}
-
-.heatmap-modal-thumbnails-container::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
-  border-radius: 3px;
-}
-
-.heatmap-modal-thumbnails-container::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+  display: none;
 }
 
 .heatmap-modal-thumbnail {
@@ -6919,32 +6909,58 @@ h6,
 .search-result-filters-thumbnails {
   padding: 0.75rem 1rem;
   background: var(--gray-50);
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .search-result-filters-thumbnails-container {
   display: flex;
   gap: 0.75rem;
   overflow-x: auto;
-  padding: 0.25rem 0 0.5rem 0;
+  padding: 0.25rem 0 0.25rem 0;
   scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .search-result-filters-thumbnails-container::-webkit-scrollbar {
-  height: 6px;
+  display: none;
 }
 
-.search-result-filters-thumbnails-container::-webkit-scrollbar-track {
-  background: var(--gray-100);
-  border-radius: 3px;
+.thumbnail-carousel-arrow {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: var(--white);
+  color: var(--gray-500);
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease;
+  z-index: 2;
 }
 
-.search-result-filters-thumbnails-container::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
-  border-radius: 3px;
+.thumbnail-carousel-arrow:hover {
+  color: var(--brand-primary);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
-.search-result-filters-thumbnails-container::-webkit-scrollbar-thumb:hover {
-  background: var(--gray-400);
+.thumbnail-carousel-arrow:active {
+  transform: scale(0.92);
+}
+
+.thumbnail-carousel-arrow-left {
+  margin-right: 0.5rem;
+}
+
+.thumbnail-carousel-arrow-right {
+  margin-left: 0.5rem;
 }
 
 .search-result-filters-thumbnail {
