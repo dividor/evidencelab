@@ -6809,3 +6809,193 @@ h6,
   padding: 1.5rem;
   flex: 1;
 }
+
+/* ── Search result filters (org labels + document thumbnails) ── */
+
+.search-result-filters {
+  margin-bottom: 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  overflow: hidden;
+}
+
+.search-result-filters-orgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.search-result-filters-org-label {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 1rem;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.search-result-filters-org-label:hover {
+  border-color: var(--primary-blue);
+  color: var(--primary-blue);
+}
+
+.search-result-filters-org-label.active {
+  background: var(--primary-blue);
+  border-color: var(--primary-blue);
+  color: white;
+}
+
+.search-result-filters-thumbnails {
+  padding: 0.75rem 1rem;
+  background: var(--gray-50);
+}
+
+.search-result-filters-thumbnails-container {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding: 0.25rem 0 0.5rem 0;
+  scroll-behavior: smooth;
+}
+
+.search-result-filters-thumbnails-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.search-result-filters-thumbnails-container::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 3px;
+}
+
+.search-result-filters-thumbnails-container::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 3px;
+}
+
+.search-result-filters-thumbnails-container::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-400);
+}
+
+.search-result-filters-thumbnail {
+  flex-shrink: 0;
+  width: 196px;
+  height: 96px;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--gray-50);
+  border: 2px solid var(--gray-200);
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: row;
+}
+
+.search-result-filters-thumbnail:hover {
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.search-result-filters-thumbnail.selected {
+  border: 2px solid var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.2);
+}
+
+.search-result-filters-thumbnail-image {
+  flex-shrink: 0;
+  width: 74px;
+  height: 96px;
+  background: var(--white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+}
+
+.search-result-filters-thumbnail-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: var(--white);
+  display: block;
+}
+
+.search-result-filters-thumbnail-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gray-100);
+  color: var(--gray-400);
+  font-size: 0.65rem;
+}
+
+.search-result-filters-thumbnail-info {
+  flex: 1;
+  padding: 0.5rem 0.5rem 0.65rem 0.5rem;
+  border-left: 1px solid var(--gray-200);
+  background: var(--gray-50);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.search-result-filters-thumbnail-title {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: var(--gray-700);
+  word-wrap: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.search-result-filters-thumbnail-source {
+  font-size: 0.6rem;
+  line-height: 1.1;
+  color: var(--gray-500);
+  font-style: italic;
+  word-wrap: break-word;
+  margin-top: 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.search-result-filters-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1rem;
+  background: rgba(91, 143, 168, 0.1);
+  border-top: 1px solid var(--gray-200);
+  font-size: 0.85rem;
+}
+
+.search-result-filters-indicator-text {
+  color: var(--gray-700);
+}
+
+.search-result-filters-indicator-text strong {
+  color: var(--brand-primary);
+}
+
+.search-result-filters-clear {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease;
+}
+
+.search-result-filters-clear:hover {
+  background: rgba(91, 143, 168, 0.15);
+}

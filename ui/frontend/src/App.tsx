@@ -2012,6 +2012,7 @@ function App() {
       aiSummary={aiSummary}
       aiPrompt={aiPrompt}
       showPromptModal={showPromptModal}
+      selectedDomain={selectedDomain}
       results={results}
       loading={loading}
       query={query}
