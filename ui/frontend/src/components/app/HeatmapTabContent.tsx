@@ -94,6 +94,27 @@ type RawCellResults = Record<string, SearchResult[]>;
 
 const buildCellKey = (rowKey: string, columnValue: string) => `${rowKey}::${columnValue}`;
 
+const OrgFilterLabels = ({ orgs, filteredOrg, onToggle }: {
+  orgs: { org: string; count: number }[];
+  filteredOrg: string | null;
+  onToggle: (org: string | null) => void;
+}) => {
+  if (orgs.length <= 1) return null;
+  return (
+    <div className="heatmap-modal-org-labels">
+      {orgs.map(({ org, count }) => (
+        <button
+          key={org}
+          className={`heatmap-modal-org-label ${filteredOrg === org ? 'active' : ''}`}
+          onClick={() => onToggle(filteredOrg === org ? null : org)}
+        >
+          {org} ({count})
+        </button>
+      ))}
+    </div>
+  );
+};
+
 const buildExcludedFilterFields = (rowDimension: string, columnDimension: string) => {
   const excludedFields = new Set<string>();
   if (rowDimension !== 'queries') {
@@ -2159,11 +2180,30 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [activeCellResults]);
 
   const [filteredDocId, setFilteredDocId] = useState<string | null>(null);
+  const [filteredOrg, setFilteredOrg] = useState<string | null>(null);
 
-  const displayedCellResults = useMemo(() => {
-    if (!filteredDocId) return activeCellResults;
-    return activeCellResults.filter(result => result.doc_id === filteredDocId);
-  }, [activeCellResults, filteredDocId]);
+  const uniqueOrgs = useMemo(() => {
+    const orgCounts = new Map<string, number>();
+    uniqueActiveCellDocuments.forEach((doc) => {
+      const org = doc.organization || 'Unknown';
+      orgCounts.set(org, (orgCounts.get(org) || 0) + 1);
+    });
+    return Array.from(orgCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([org, count]) => ({ org, count }));
+  }, [uniqueActiveCellDocuments]);
+
+  const filteredUniqueDocuments = useMemo(() =>
+    filteredOrg
+      ? uniqueActiveCellDocuments.filter((doc) => (doc.organization || 'Unknown') === filteredOrg)
+      : uniqueActiveCellDocuments,
+    [uniqueActiveCellDocuments, filteredOrg]);
+
+  const displayedCellResults = useMemo(() =>
+    activeCellResults
+      .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
+      .filter((r) => !filteredDocId || r.doc_id === filteredDocId),
+    [activeCellResults, filteredDocId, filteredOrg]);
 
   const filteredDocTitle = useMemo(() => {
     if (!filteredDocId) return null;
@@ -2171,9 +2211,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return doc?.title || 'Unknown Document';
   }, [filteredDocId, uniqueActiveCellDocuments]);
 
-  // Reset filter when cell changes
+  const filterLabel = useMemo(() => {
+    if (filteredDocId) return filteredDocTitle;
+    if (filteredOrg) return filteredOrg;
+    return null;
+  }, [filteredDocId, filteredOrg, filteredDocTitle]);
+
+  // Reset filters when cell changes
   useEffect(() => {
     setFilteredDocId(null);
+    setFilteredOrg(null);
   }, [activeCell]);
 
   const handleHeatmapHighlight = useCallback(
@@ -2678,10 +2725,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             </div>
             <div className="heatmap-modal-content">
-              {uniqueActiveCellDocuments.length > 0 && (
+              <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
+              {filteredUniqueDocuments.length > 0 && (
                 <div className="heatmap-modal-thumbnails">
                 <div className="heatmap-modal-thumbnails-container">
-                  {uniqueActiveCellDocuments.map((doc) => {
+                  {filteredUniqueDocuments.map((doc) => {
                     // Use document-based API endpoint for thumbnails
                     const dataSource = doc.data_source || selectedDomain;
                     const thumbnailUrl = doc.doc_id
@@ -2737,20 +2785,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             <div className="heatmap-modal-body">
               <div className="heatmap-modal-filter-indicator">
                 <span className="heatmap-modal-filter-text">
-                  {filteredDocId ? (
-                    <>
-                      Showing results from: <strong>{filteredDocTitle}</strong>
-                    </>
+                  {filterLabel ? (
+                    <>Showing results from: <strong>{filterLabel}</strong></>
                   ) : (
-                    <>
-                      Showing all results. Click on a document above to filter.
-                    </>
+                    <>Showing all results. Click on a document above to filter.</>
                   )}
                 </span>
-                {filteredDocId && (
+                {filterLabel && (
                   <button
                     className="heatmap-modal-filter-clear"
-                    onClick={() => setFilteredDocId(null)}
+                    onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
                     title="Clear filter"
                   >
                     × Clear filter
