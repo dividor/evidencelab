@@ -462,9 +462,9 @@ const HeatmapFiltersColumn = ({
     return null;
   }
   return (
-    <div className="heatmap-filters-column">
+    <div className="global-filters-column">
       <button
-        className="heatmap-filters-tab heatmap-filters-tab-close"
+        className="global-filters-tab global-filters-tab-close"
         onClick={onToggleFiltersExpanded}
         aria-label="Hide filters"
         title="Hide filters"
@@ -491,7 +491,7 @@ const HeatmapFiltersTabButton = ({
     return null;
   }
   return (
-    <button className="heatmap-filters-tab" onClick={onToggleFiltersExpanded}>
+    <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
       Global Filters
     </button>
   );

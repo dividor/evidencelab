@@ -4928,7 +4928,7 @@ h6,
     box-shadow: var(--shadow-md);
   }
 
-  .heatmap-filters-tab {
+  .global-filters-tab {
     display: none;
   }
 
@@ -5907,18 +5907,19 @@ h6,
   min-height: 75vh;
 }
 
-.heatmap-panel-with-tab {
+.heatmap-panel-with-tab,
+.search-panel-with-tab {
   position: relative;
 }
 
-.heatmap-filters-column {
+.global-filters-column {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
 }
 
-.heatmap-filters-tab {
+.global-filters-tab {
   position: absolute;
   left: -32px;
   top: 32px;
@@ -5943,7 +5944,7 @@ h6,
   white-space: nowrap;
 }
 
-.heatmap-filters-tab-close {
+.global-filters-tab-close {
   background: var(--gray-100);
   color: var(--gray-600);
   border: 1px solid var(--gray-200);
@@ -5956,12 +5957,12 @@ h6,
   width: 32px;
 }
 
-.heatmap-filters-tab-close:hover {
+.global-filters-tab-close:hover {
   background: var(--gray-200);
   color: var(--gray-800);
 }
 
-.heatmap-filters-tab:hover {
+.global-filters-tab:hover {
   background: var(--gray-200);
   color: var(--gray-800);
 }

@@ -226,6 +226,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   const hasActiveFilter = filteredOrg !== null || filteredDocId !== null;
   const showFilters = visibleResults.length > 0 && uniqueDocuments.length > 1;
 
+  const contentGridClass = `content-grid ${filtersExpanded ? '' : 'content-grid-no-filters'}`;
+
   return (
     <div className="main-content">
       <MobileFiltersToggle
@@ -234,50 +236,67 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onToggle={onToggleFiltersExpanded}
       />
 
-      <div className="content-grid">
-        <FiltersPanel
-          filtersExpanded={filtersExpanded}
-          onClearFilters={onClearFilters}
-          facets={facets}
-          selectedFilters={selectedFilters}
-          collapsedFilters={collapsedFilters}
-          expandedFilterLists={expandedFilterLists}
-          filterSearchTerms={filterSearchTerms}
-          titleSearchResults={titleSearchResults}
-          facetSearchResults={facetSearchResults}
-          onRemoveFilter={onRemoveFilter}
-          onToggleFilter={onToggleFilter}
-          onFilterSearchTermChange={onFilterSearchTermChange}
-          onToggleFilterListExpansion={onToggleFilterListExpansion}
-          onFilterValuesChange={onFilterValuesChange}
-          searchDenseWeight={searchDenseWeight}
-          onSearchDenseWeightChange={onSearchDenseWeightChange}
-          keywordBoostShortQueries={keywordBoostShortQueries}
-          onKeywordBoostChange={onKeywordBoostChange}
-          semanticHighlighting={semanticHighlighting}
-          onSemanticHighlightingChange={onSemanticHighlightingChange}
-          minScore={minScore}
-          maxScore={maxScore}
-          onMinScoreChange={onMinScoreChange}
-          autoMinScore={autoMinScore}
-          onAutoMinScoreToggle={onAutoMinScoreToggle}
-          rerankEnabled={rerankEnabled}
-          onRerankToggle={onRerankToggle}
-          recencyBoostEnabled={recencyBoostEnabled}
-          onRecencyBoostToggle={onRecencyBoostToggle}
-          recencyWeight={recencyWeight}
-          onRecencyWeightChange={onRecencyWeightChange}
-          recencyScaleDays={recencyScaleDays}
-          onRecencyScaleDaysChange={onRecencyScaleDaysChange}
-          minChunkSize={minChunkSize}
-          onMinChunkSizeChange={onMinChunkSizeChange}
-          sectionTypes={sectionTypes}
-          onSectionTypesChange={onSectionTypesChange}
-          deduplicateEnabled={deduplicateEnabled}
-          onDeduplicateToggle={onDeduplicateToggle}
-        />
+      <div className={contentGridClass}>
+        {filtersExpanded && (
+          <div className="global-filters-column">
+            <button
+              className="global-filters-tab global-filters-tab-close"
+              onClick={onToggleFiltersExpanded}
+              aria-label="Hide filters"
+              title="Hide filters"
+            >
+              ›
+            </button>
+            <FiltersPanel
+              filtersExpanded={filtersExpanded}
+              onClearFilters={onClearFilters}
+              facets={facets}
+              selectedFilters={selectedFilters}
+              collapsedFilters={collapsedFilters}
+              expandedFilterLists={expandedFilterLists}
+              filterSearchTerms={filterSearchTerms}
+              titleSearchResults={titleSearchResults}
+              facetSearchResults={facetSearchResults}
+              onRemoveFilter={onRemoveFilter}
+              onToggleFilter={onToggleFilter}
+              onFilterSearchTermChange={onFilterSearchTermChange}
+              onToggleFilterListExpansion={onToggleFilterListExpansion}
+              onFilterValuesChange={onFilterValuesChange}
+              searchDenseWeight={searchDenseWeight}
+              onSearchDenseWeightChange={onSearchDenseWeightChange}
+              keywordBoostShortQueries={keywordBoostShortQueries}
+              onKeywordBoostChange={onKeywordBoostChange}
+              semanticHighlighting={semanticHighlighting}
+              onSemanticHighlightingChange={onSemanticHighlightingChange}
+              minScore={minScore}
+              maxScore={maxScore}
+              onMinScoreChange={onMinScoreChange}
+              autoMinScore={autoMinScore}
+              onAutoMinScoreToggle={onAutoMinScoreToggle}
+              rerankEnabled={rerankEnabled}
+              onRerankToggle={onRerankToggle}
+              recencyBoostEnabled={recencyBoostEnabled}
+              onRecencyBoostToggle={onRecencyBoostToggle}
+              recencyWeight={recencyWeight}
+              onRecencyWeightChange={onRecencyWeightChange}
+              recencyScaleDays={recencyScaleDays}
+              onRecencyScaleDaysChange={onRecencyScaleDaysChange}
+              minChunkSize={minChunkSize}
+              onMinChunkSizeChange={onMinChunkSizeChange}
+              sectionTypes={sectionTypes}
+              onSectionTypesChange={onSectionTypesChange}
+              deduplicateEnabled={deduplicateEnabled}
+              onDeduplicateToggle={onDeduplicateToggle}
+            />
+          </div>
+        )}
 
-        <main className="results-section">
+        <main className="results-section search-panel-with-tab">
+          {!filtersExpanded && (
+            <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
+              Global Filters
+            </button>
+          )}
           <AiSummaryPanel
             enabled={aiSummaryEnabled}
             aiSummaryCollapsed={aiSummaryCollapsed}
