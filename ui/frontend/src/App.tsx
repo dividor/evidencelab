@@ -373,8 +373,11 @@ const getTabFromPath = (): TabName => {
   if (params.get('search') || params.get('view') || params.get('page')) {
     return 'documents';
   }
+  if (params.get('q')) {
+    return 'search';
+  }
   const path = stripBasePath(window.location.pathname).replace('/', '').toLowerCase();
-  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
+  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'heatmap';
 };
 
 // Core field names used in URL and API (order matters for display)
@@ -746,7 +749,7 @@ function App() {
       setSelectedFilters(buildEmptySelectedFilters());
     }
 
-    let newPath = tab === 'search' ? '/' : `/${tab}`;
+    let newPath = tab === 'heatmap' ? '/' : `/${tab}`;
     newPath = withBasePath(newPath);
 
     // Preserve dataset/model in URL when switching tabs
@@ -760,7 +763,7 @@ function App() {
     if (selectedModelCombo) {
       params.set('model_combo', selectedModelCombo);
     }
-    if (tab !== 'search') {
+    if (tab !== 'heatmap') {
       params.set('tab', tab);
     }
 
