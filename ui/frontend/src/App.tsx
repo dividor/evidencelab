@@ -1619,6 +1619,8 @@ function App() {
     performSearch,
     query,
     searchModel,
+    summaryModelConfig,
+    semanticHighlightModelConfig,
   ]);
 
   // Handler for toggling auto min score mode
