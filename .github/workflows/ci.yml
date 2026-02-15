@@ -222,7 +222,7 @@ jobs:
 
   integration-tests:
     runs-on: ubuntu-latest
-    needs: tests
+    needs: [tests, ui-tests]
     environment: ENV1
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}

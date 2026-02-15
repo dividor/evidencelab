@@ -29,16 +29,16 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
   return (
     <nav className="nav-tabs">
       <button
-        className={`nav-tab ${activeTab === 'search' ? ACTIVE_CLASS : ''}`}
-        onClick={() => onTabChange('search')}
-      >
-        Search
-      </button>
-      <button
         className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('heatmap')}
       >
         Heatmapper
+      </button>
+      <button
+        className={`nav-tab ${activeTab === 'search' ? ACTIVE_CLASS : ''}`}
+        onClick={() => onTabChange('search')}
+      >
+        Search
       </button>
       <span className="nav-separator">|</span>
       <div className="dropdown-container nav-dropdown">

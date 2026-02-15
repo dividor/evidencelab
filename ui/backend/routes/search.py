@@ -187,6 +187,41 @@ def _strip_heading_row(text: str, chunk_payload: Dict[str, Any]) -> str:
     return "\n".join(lines).lstrip("\n")
 
 
+def _deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
+    """
+    Remove results with identical text across different documents.
+    When duplicates are found, keep the one from the most recently published
+    document (highest year). Ties broken by higher search score.
+    """
+    if not results:
+        return results
+
+    seen: dict[str, SearchResult] = {}
+    for result in results:
+        key = result.text.strip()
+        existing = seen.get(key)
+        if existing is None:
+            seen[key] = result
+        else:
+            existing_year = int(existing.year or "0")
+            result_year = int(result.year or "0")
+            if result_year > existing_year or (
+                result_year == existing_year and result.score > existing.score
+            ):
+                seen[key] = result
+
+    deduped = list(seen.values())
+    removed = len(results) - len(deduped)
+    if removed > 0:
+        logger.info(
+            "[DEDUPLICATE] Removed %d duplicate results (%d -> %d)",
+            removed,
+            len(results),
+            len(deduped),
+        )
+    return deduped
+
+
 def _apply_auto_min_score_filter(results: List[SearchResult]) -> List[SearchResult]:
     """
     Filter results by calculating 30th percentile threshold.
@@ -591,6 +626,11 @@ async def search(
     auto_min_score: bool = Query(
         False, description="Automatically filter bottom 30% of results by score"
     ),
+    deduplicate: bool = Query(
+        True,
+        description="Deduplicate results with identical text "
+        "across documents, keeping the most recently published",
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -698,6 +738,10 @@ async def search(
         if auto_min_score:
             filtered_results = _apply_auto_min_score_filter(filtered_results)
 
+        # Deduplicate results with identical text across documents
+        if deduplicate:
+            filtered_results = _deduplicate_results(filtered_results)
+
         t3 = time.time()
         logger.info(
             "[TIMING] doc_fetch+filter: %.3fs (%s docs)",
@@ -733,16 +777,6 @@ def _build_metadata_filter_condition(
             should=[
                 qmodels.FieldCondition(
                     key=storage_field, match=qmodels.MatchText(text=value)
-                )
-            ]
-        )
-    if core_field.startswith("tag_"):
-        taxonomy_code = value.split(" - ")[0] if " - " in value else value
-        return qmodels.Filter(
-            must=[
-                qmodels.FieldCondition(
-                    key=storage_field,
-                    match=qmodels.MatchAny(any=[taxonomy_code]),
                 )
             ]
         )
@@ -808,6 +842,8 @@ def _format_document_result(
         title=normalized_doc.get("title", ""),
         organization=normalized_doc.get("organization"),
         year=normalized_doc.get("published_year"),
+        pdf_url=normalized_doc.get("pdf_url"),
+        report_url=normalized_doc.get("report_url"),
         metadata=normalized_doc.get("metadata", {}),
         sys_parsed_folder=normalized_doc.get("sys_parsed_folder"),
         sys_filepath=normalized_doc.get("sys_filepath"),

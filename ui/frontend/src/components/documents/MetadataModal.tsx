@@ -338,7 +338,12 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
                     )}
                     {section.items.map((item) => (
                       <tr key={item.key}>
-                        <td className="metadata-key">{item.displayKey}</td>
+                        <td className="metadata-key">
+                          {item.displayKey}
+                          {(item.key === 'sys_taxonomies' || item.key === 'full_summary') && (
+                            <em className="header-label-subtitle">(AI-generated : Experimental)</em>
+                          )}
+                        </td>
                         <td className="metadata-value">{renderValue(item)}</td>
                       </tr>
                     ))}

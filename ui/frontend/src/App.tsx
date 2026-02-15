@@ -6,7 +6,8 @@ import API_BASE_URL, {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
   SEARCH_RESULTS_PAGE_SIZE,
-  APP_BASE_PATH
+  APP_BASE_PATH,
+  GA_MEASUREMENT_ID
 } from './config';
 
 import {
@@ -30,6 +31,7 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
+import { CookieConsent, getGaConsent } from './components/CookieConsent';
 import { DEFAULT_SECTION_TYPES, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
@@ -288,6 +290,7 @@ const buildSearchParams = ({
   searchModel,
   dataSource,
   autoMinScore,
+  deduplicateEnabled,
 }: {
   query: string;
   filters: SearchFilters;
@@ -303,6 +306,7 @@ const buildSearchParams = ({
   searchModel: string | null;
   dataSource: string;
   autoMinScore: boolean;
+  deduplicateEnabled: boolean;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -331,6 +335,7 @@ const buildSearchParams = ({
   if (autoMinScore) {
     params.append('auto_min_score', 'true');
   }
+  params.append('deduplicate', deduplicateEnabled.toString());
   params.append('data_source', dataSource);
   return params;
 };
@@ -368,8 +373,11 @@ const getTabFromPath = (): TabName => {
   if (params.get('search') || params.get('view') || params.get('page')) {
     return 'documents';
   }
+  if (params.get('q')) {
+    return 'search';
+  }
   const path = stripBasePath(window.location.pathname).replace('/', '').toLowerCase();
-  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
+  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'heatmap';
 };
 
 // Core field names used in URL and API (order matters for display)
@@ -383,6 +391,15 @@ function App() {
     DEFAULT_SECTION_TYPES
   );
   const initialQueryFromUrlRef = useRef(Boolean(initialSearchState.query.trim()));
+  // Capture doc_id/chunk_id from URL so we can auto-open the PDF modal after search completes
+  const initialDocFromUrl = useRef<{ doc_id: string; chunk_id: string } | null>(
+    (() => {
+      const params = new URLSearchParams(window.location.search);
+      const docId = params.get('doc_id');
+      const chunkId = params.get('chunk_id');
+      return docId && chunkId ? { doc_id: docId, chunk_id: chunkId } : null;
+    })()
+  );
   const [activeTab, setActiveTab] = useState<TabName>(getTabFromPath);
 
   // Config state
@@ -706,6 +723,8 @@ function App() {
   // Content settings
   const [sectionTypes, setSectionTypes] = useState<string[]>(initialSearchState.sectionTypes);
   const [minChunkSize, setMinChunkSize] = useState<number>(initialSearchState.minChunkSize);
+  // Deduplicate cross-document results
+  const [deduplicateEnabled, setDeduplicateEnabled] = useState<boolean>(initialSearchState.deduplicate);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -724,7 +743,13 @@ function App() {
   // Update URL when tab changes
   const handleTabChange = useCallback((tab: TabName) => {
     setActiveTab(tab);
-    let newPath = tab === 'search' ? '/' : `/${tab}`;
+
+    // Reset search filters when navigating to the search tab
+    if (tab === 'search') {
+      setSelectedFilters(buildEmptySelectedFilters());
+    }
+
+    let newPath = tab === 'heatmap' ? '/' : `/${tab}`;
     newPath = withBasePath(newPath);
 
     // Preserve dataset/model in URL when switching tabs
@@ -738,7 +763,7 @@ function App() {
     if (selectedModelCombo) {
       params.set('model_combo', selectedModelCombo);
     }
-    if (tab !== 'search') {
+    if (tab !== 'heatmap') {
       params.set('tab', tab);
     }
 
@@ -793,6 +818,7 @@ function App() {
       setMinChunkSize(searchState.minChunkSize);
       // Restore semantic highlighting
       setSemanticHighlighting(searchState.semanticHighlighting);
+      setDeduplicateEnabled(searchState.deduplicate);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1250,7 +1276,23 @@ function App() {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setPrivacyContent(text))
+        .then(text => {
+          if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
+            const gaSection = [
+              '',
+              '## Analytics',
+              '',
+              'This instance of Evidence Lab uses [Google Analytics](https://marketingplatform.google.com/about/analytics/) to understand how the platform is used and to improve performance and usability. Analytics data is only collected after you consent via the cookie preferences popup shown on your first visit.',
+              '',
+              'The information collected may include anonymized IP addresses, page views, and basic device information. We do not use analytics data for advertising or cross-site tracking.',
+              '',
+              'Analytics data may be processed by Google LLC, including on servers outside the European Union, under appropriate legal safeguards.',
+            ].join('\n');
+            setPrivacyContent(text.trimEnd() + '\n' + gaSection);
+          } else {
+            setPrivacyContent(text);
+          }
+        })
         .catch(err => console.error('Failed to load privacy content:', err));
     }
   }, [activeTab]);
@@ -1325,12 +1367,25 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
       );
-      const newURL = withBasePath(searchParams ? `/?${searchParams}` : '/');
-      if (window.location.search !== `?${searchParams}`) {
+      // Build URLSearchParams from the base search params
+      const params = new URLSearchParams(searchParams || '');
+      // Append or remove doc_id/chunk_id depending on whether a document is selected
+      if (selectedDoc) {
+        params.set('doc_id', selectedDoc.doc_id);
+        params.set('chunk_id', selectedDoc.chunk_id);
+      } else {
+        params.delete('doc_id');
+        params.delete('chunk_id');
+      }
+      const finalParams = params.toString();
+      const searchString = finalParams ? `?${finalParams}` : '';
+      const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
+      if (window.location.search !== searchString) {
         window.history.replaceState(null, '', newURL);
       }
     }
@@ -1346,13 +1401,26 @@ function App() {
     recencyScaleDays,
     sectionTypes,
     keywordBoostShortQueries,
+    minChunkSize,
     semanticHighlighting,
     autoMinScore,
+    deduplicateEnabled,
     searchModel,
     selectedModelCombo,
+    selectedDomain,
+    selectedDoc,
   ]);
 
-
+  // Auto-open PDF modal if URL contained doc_id/chunk_id when page loaded
+  useEffect(() => {
+    if (!initialDocFromUrl.current || results.length === 0) return;
+    const { doc_id, chunk_id } = initialDocFromUrl.current;
+    const match = results.find(r => r.doc_id === doc_id && r.chunk_id === chunk_id);
+    if (match) {
+      setSelectedDoc(match);
+      initialDocFromUrl.current = null; // Only do this once
+    }
+  }, [results]);
 
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const isSearchingRef = useRef(false);
@@ -1510,6 +1578,7 @@ function App() {
         searchModel,
         dataSource,
         autoMinScore,
+        deduplicateEnabled,
       });
 
       const searchStartTime = performance.now();
@@ -1626,6 +1695,7 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1655,6 +1725,7 @@ function App() {
         minChunkSize,
         semanticHighlighting,
         autoMinScore,
+        deduplicateEnabled,
         searchModel,
         selectedModelCombo,
         selectedDomain
@@ -1694,6 +1765,7 @@ function App() {
     const metadata = result.metadata || {};
     return {
       doc_id: metadata.doc_id ?? result.doc_id,
+      chunk_id: result.chunk_id,
       ...metadata,
       organization: metadata.organization ?? result.organization,
       published_year: metadata.published_year ?? result.year,
@@ -1934,6 +2006,8 @@ function App() {
       onMinChunkSizeChange={setMinChunkSize}
       sectionTypes={sectionTypes}
       onSectionTypesChange={setSectionTypes}
+      deduplicateEnabled={deduplicateEnabled}
+      onDeduplicateToggle={setDeduplicateEnabled}
       aiSummaryEnabled={AI_SUMMARY_ON}
       aiSummaryCollapsed={aiSummaryCollapsed}
       aiSummaryExpanded={aiSummaryExpanded}
@@ -1941,6 +2015,7 @@ function App() {
       aiSummary={aiSummary}
       aiPrompt={aiPrompt}
       showPromptModal={showPromptModal}
+      selectedDomain={selectedDomain}
       results={results}
       loading={loading}
       query={query}
@@ -2002,6 +2077,8 @@ function App() {
       onMinChunkSizeChange={setMinChunkSize}
       sectionTypes={sectionTypes}
       onSectionTypesChange={setSectionTypes}
+      deduplicateEnabled={deduplicateEnabled}
+      onDeduplicateToggle={setDeduplicateEnabled}
       rerankModel={rerankModel}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSource={dataSource}
@@ -2092,7 +2169,7 @@ function App() {
           Privacy
         </button>
         <span className="app-footer-divider">•</span>
-        <a href="https://github.com/dividor/evidencelab-ai" target="_blank" rel="noreferrer">
+        <a href="https://github.com/dividor/evidencelab" target="_blank" rel="noreferrer">
           GitHub
         </a>
         <span className="app-footer-divider">•</span>
@@ -2138,6 +2215,8 @@ function App() {
         onClose={handleCloseMetadataModal}
         metadataDoc={metadataModalDoc}
       />
+
+      <CookieConsent />
     </div >
   );
 }

@@ -14,6 +14,7 @@ export interface SearchStateFromURL {
   minChunkSize: number;
   semanticHighlighting: boolean;
   autoMinScore: boolean;
+  deduplicate: boolean;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -119,6 +120,7 @@ export const getSearchStateFromURL = (
     minChunkSize: parseIntParam(params, 'min_chunk_size', 100),
     semanticHighlighting: parseBooleanParam(params, 'highlight', true),
     autoMinScore: parseBooleanParam(params, 'auto_min_score', false),
+    deduplicate: parseBooleanParam(params, 'deduplicate', true),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -197,6 +199,7 @@ export const buildSearchURL = (
   minChunkSize?: number,
   semanticHighlighting?: boolean,
   autoMinScore?: boolean,
+  deduplicate?: boolean,
   model?: string | null,
   modelCombo?: string | null,
   dataset?: string | null
@@ -216,6 +219,7 @@ export const buildSearchURL = (
   setParamIfNotDefault(params, 'min_chunk_size', minChunkSize, 100);
   setParamIfFalse(params, 'highlight', semanticHighlighting);
   setParamIfTrue(params, 'auto_min_score', autoMinScore);
+  setParamIfFalse(params, 'deduplicate', deduplicate);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

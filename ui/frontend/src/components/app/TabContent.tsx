@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { GA_MEASUREMENT_ID } from '../../config';
+import { getGaConsent, setGaConsent } from '../CookieConsent';
 
 type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'help' | 'tech' | 'data' | 'privacy' | 'stats';
 
@@ -23,6 +25,59 @@ const HelpTabContent = ({ content }: { content: string }) => (
     <div className="about-page-container">
       <div className="about-content">
         <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
+    </div>
+  </div>
+);
+
+const TrackingToggle = () => {
+  const [consent, setConsent] = useState(getGaConsent);
+
+  const handleRevoke = () => {
+    setGaConsent('denied');
+    window[`ga-disable-${GA_MEASUREMENT_ID}` as any] = true as any;
+    setConsent('denied');
+  };
+
+  const handleGrant = () => {
+    setGaConsent('granted');
+    window.location.reload();
+  };
+
+  if (consent === 'granted') {
+    return (
+      <div style={{ marginTop: '1.5em' }}>
+        <h3>Your cookie preferences</h3>
+        <p>
+          You have accepted analytics cookies. Tracking is <strong>enabled</strong>.
+          {' '}
+          <a
+            href="#stop-tracking"
+            onClick={(e) => { e.preventDefault(); handleRevoke(); }}
+          >
+            Stop tracking
+          </a>
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: '1.5em' }}>
+      <h3>Your cookie preferences</h3>
+      <p>
+        You have declined analytics cookies. Anonymous tracking is <strong>disabled</strong>.
+      </p>
+    </div>
+  );
+};
+
+const PrivacyTabContent = ({ content }: { content: string }) => (
+  <div className="main-content">
+    <div className="about-page-container">
+      <div className="about-content">
+        <ReactMarkdown>{content}</ReactMarkdown>
+        {GA_MEASUREMENT_ID && <TrackingToggle />}
       </div>
     </div>
   </div>
@@ -62,7 +117,7 @@ export const TabContent: React.FC<TabContentProps> = ({
     case 'stats':
       return <>{statsTab}</>;
     case 'privacy':
-      return <HelpTabContent content={privacyContent} />;
+      return <PrivacyTabContent content={privacyContent} />;
     default:
       return null;
   }

@@ -54,7 +54,7 @@ const processMapItems = (items: any[], coreKeys: string[], metadata: Record<stri
   return [...items, ...missingCore].sort((a, b) => a.displayKey.localeCompare(b.displayKey));
 };
 
-const processSysItems = (items: any[], specialEntries: [string, any][], docIdValue?: any, fileIdValue?: any) => {
+const processSysItems = (items: any[], specialEntries: [string, any][], docIdValue?: any, fileIdValue?: any, chunkIdValue?: any) => {
   let processedItems = [...items];
 
   if (specialEntries.length > 0) {
@@ -67,6 +67,13 @@ const processSysItems = (items: any[], specialEntries: [string, any][], docIdVal
         value,
       }));
     processedItems = [...specialItems, ...processedItems];
+  }
+
+  if (chunkIdValue !== undefined) {
+    const hasChunkIdItem = processedItems.some((item) => item.displayKey === 'chunk_id');
+    if (!hasChunkIdItem) {
+      processedItems = [{ key: 'chunk_id', displayKey: 'chunk_id', value: chunkIdValue }, ...processedItems];
+    }
   }
 
   if (docIdValue !== undefined) {
@@ -133,6 +140,9 @@ export const buildMetadataSections = (metadata: Record<string, any>) => {
   const docIdValue = Object.prototype.hasOwnProperty.call(metadata, 'doc_id')
     ? metadata.doc_id
     : undefined;
+  const chunkIdValue = Object.prototype.hasOwnProperty.call(metadata, 'chunk_id')
+    ? metadata.chunk_id
+    : undefined;
 
   return sections.map((section) => {
     let items = entries
@@ -153,7 +163,7 @@ export const buildMetadataSections = (metadata: Record<string, any>) => {
     }
 
     if (section.prefix === 'sys_') {
-      items = processSysItems(items, specialEntries, docIdValue, fileIdValue);
+      items = processSysItems(items, specialEntries, docIdValue, fileIdValue, chunkIdValue);
     }
 
     return { ...section, items };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within, cleanup } from '@testing-library/react';
 import axios from 'axios';
 
 jest.mock('react-markdown', () => {
@@ -38,6 +38,18 @@ const TEST_SUMMARIZATION_MODEL = 'qwen2.5-7b-instruct';
 const TEST_RERANKER_MODEL = 'jinaai/jina-reranker-v2-base-multilingual';
 
 describe('App', () => {
+  beforeEach(() => {
+    // Reset mocks before each test - clears call history but keeps implementations
+    jest.clearAllMocks();
+    // Reset the URL
+    window.history.pushState({}, '', '/');
+  });
+
+  afterEach(() => {
+    // Clean up React components
+    cleanup();
+  });
+
   test('loads config and navigates tabs', async () => {
     mockedAxios.get.mockImplementation((url) => {
       if (url.includes('/config/datasources')) {
@@ -221,4 +233,5 @@ describe('App', () => {
     expect(lastSearch).toContain('rerank_model=jinaai%2Fjina-reranker-v2-base-multilingual');
     expect(lastSearch).toContain('data_source=test');
   });
+
 });

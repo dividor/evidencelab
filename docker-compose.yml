@@ -207,6 +207,8 @@ services:
       - PORT=3000
       - REACT_APP_API_URL=http://api:8000
       - REACT_APP_API_KEY=${API_SECRET_KEY:-}
+      - REACT_APP_GA_MEASUREMENT_ID=${REACT_APP_GA_MEASUREMENT_ID:-}
+      - REACT_APP_HEATMAP_LIMIT=${REACT_APP_HEATMAP_LIMIT:-1000}
       - CHOKIDAR_USEPOLLING=true
     extra_hosts:
       - "host.docker.internal:host-gateway" # Required for Linux Docker

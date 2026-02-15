@@ -128,13 +128,27 @@ def process_doc_worker(doc_id, doc_data, data_source, wet_run):
             f"with {total_values} total values for {doc_id}"
         )
 
+        # Extract tag_* fields for Qdrant documents collection
+        qdrant_updates = {
+            k: v for k, v in tagging_result.items() if k.startswith("tag_")
+        }
+
         if not wet_run:
             thread_logger.info(f"[DRY RUN] Would update doc {doc_id}")
         else:
-            # Call merge_doc_sys_fields directly with sys_taxonomies parameter
+            # Save sys_taxonomies to Postgres
             db.pg.merge_doc_sys_fields(
                 doc_id=doc_id, sys_fields=sys_fields, sys_taxonomies=sys_taxonomies
             )
+            # Save tag_* fields to Qdrant documents collection
+            if qdrant_updates:
+                point_id = int(doc_id) if doc_id.isdigit() else doc_id
+                db.client.set_payload(
+                    collection_name=db.documents_collection,
+                    payload=qdrant_updates,
+                    points=[point_id],
+                    wait=True,
+                )
             thread_logger.info(f"Successfully updated taxonomies for {doc_id}")
 
         return True

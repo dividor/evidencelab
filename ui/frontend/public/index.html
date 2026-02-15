@@ -12,6 +12,26 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <title>Evidence Lab</title>
+    <!-- Google Analytics (optional, enabled via REACT_APP_GA_MEASUREMENT_ID) -->
+    <!-- GA only loads after user grants cookie consent (GDPR) -->
+    <script>
+      (function() {
+        var gaId = '%REACT_APP_GA_MEASUREMENT_ID%';
+        if (gaId && gaId.startsWith('G-')) {
+          window.__GA_ID__ = gaId;
+          if (localStorage.getItem('ga-consent') !== 'granted') return;
+          var s = document.createElement('script');
+          s.async = true;
+          s.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+          document.head.appendChild(s);
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          window.gtag = gtag;
+          gtag('js', new Date());
+          gtag('config', gaId);
+        }
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

@@ -178,7 +178,8 @@ const formatStatusLabel = (status: string): string => {
   if (status === 'download_error' || status === 'download_failed') {
     return 'Document unavailable';
   }
-  return status.replace('_', ' ');
+  const label = status.replace(/_/g, ' ');
+  return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
 const ChartLegend: React.FC<{

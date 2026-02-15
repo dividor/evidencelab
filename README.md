@@ -68,6 +68,7 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 2. **Set environment variables**
    - Copy `.env.example` to `.env`.
    - Fill in the API keys and service URLs required by the pipeline and UI.
+   - Optionally set `REACT_APP_GA_MEASUREMENT_ID` (e.g. `G-XXXXXXXXXX`) to enable Google Analytics with EU-compliant cookie consent. A consent popup is shown on first visit; tracking only activates after the user accepts.
 
 3. **Add documents + metadata**
    - Save documents under `data/<data_subdir>/pdfs/<organization>/<year>/`.

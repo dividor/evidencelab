@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL, {
-  SEARCH_RESULTS_PAGE_SIZE,
+  HEATMAP_CELL_LIMIT,
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
 } from '../../config';
@@ -17,6 +17,7 @@ import {
 } from '../../types/api';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { FilterSections } from '../filters/FilterComponents';
+import { HeatmapInfoModal } from '../HeatmapInfoModal';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { RainbowText } from '../RainbowText';
@@ -77,6 +78,8 @@ interface HeatmapTabContentProps {
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
   onSectionTypesChange: (next: string[]) => void;
+  deduplicateEnabled: boolean;
+  onDeduplicateToggle: (value: boolean) => void;
   dataSource: string;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
@@ -93,6 +96,98 @@ type CellResult = {
 type RawCellResults = Record<string, SearchResult[]>;
 
 const buildCellKey = (rowKey: string, columnValue: string) => `${rowKey}::${columnValue}`;
+
+const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scoreBounds, similarityCutoff, onCutoffChange }: {
+  expanded: boolean;
+  onToggle: () => void;
+  gridQuery: string;
+  onQueryChange: (value: string) => void;
+  scoreBounds: { min: number; max: number; hasScores: boolean };
+  similarityCutoff: number;
+  onCutoffChange: (value: number) => void;
+}) => (
+  <div className="heatmap-query-tuning">
+    <button type="button" className="heatmap-query-tuning-toggle" onClick={onToggle}>
+      <span className={`heatmap-query-tuning-chevron${expanded ? ' expanded' : ''}`}>&#9654;</span>
+      Tune your heatmap using a search query
+    </button>
+    {expanded && (
+      <div className="heatmap-controls-row heatmap-query-controls">
+        <input
+          id="heatmap-grid-query"
+          className="heatmap-query-input"
+          type="text"
+          value={gridQuery}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Add a search query to filter the results for your heatmap ..."
+        />
+        <div className="heatmap-control heatmap-slider">
+          <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+            Search sensitivity
+            {scoreBounds.hasScores && (
+              <span
+                className="rerank-tooltip heatmap-sensitivity-info"
+                title="Adjust this to be more specific in your search. The higher the sensitivity the more results you will get, but some may end up being less relevant for what you want. Generate a heatmap and try it out!"
+              >
+                ⓘ
+              </span>
+            )}
+          </label>
+          <input
+            id="heatmap-cutoff"
+            type="range"
+            min={scoreBounds.min}
+            max={scoreBounds.max}
+            step={0.001}
+            value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+            onChange={(event) => onCutoffChange(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
+            disabled={!scoreBounds.hasScores}
+          />
+        </div>
+      </div>
+    )}
+  </div>
+);
+
+const GroupedSelectOptions = ({ options }: { options: { value: string; label: string }[] }) => {
+  const standard = options.filter((o) => !o.value.startsWith('tag_'));
+  const taxonomy = options.filter((o) => o.value.startsWith('tag_'));
+  return (
+    <>
+      {standard.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+      {taxonomy.length > 0 && (
+        <optgroup label="AI-generated (Experimental)">
+          {taxonomy.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
+};
+
+const OrgFilterLabels = ({ orgs, filteredOrg, onToggle }: {
+  orgs: { org: string; count: number }[];
+  filteredOrg: string | null;
+  onToggle: (org: string | null) => void;
+}) => {
+  if (orgs.length <= 1) return null;
+  return (
+    <div className="heatmap-modal-org-labels">
+      {orgs.map(({ org, count }) => (
+        <button
+          key={org}
+          className={`heatmap-modal-org-label ${filteredOrg === org ? 'active' : ''}`}
+          onClick={() => onToggle(filteredOrg === org ? null : org)}
+        >
+          {org} ({count})
+        </button>
+      ))}
+    </div>
+  );
+};
 
 const buildExcludedFilterFields = (rowDimension: string, columnDimension: string) => {
   const excludedFields = new Set<string>();
@@ -122,7 +217,7 @@ const buildSearchParams = (options: {
   searchModel: string | null;
   dataSource: string;
 }) => {
-  const params = new URLSearchParams({ q: options.cellQuery, limit: SEARCH_RESULTS_PAGE_SIZE });
+  const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
   for (const [field, value] of options.filterEntries) {
     if (value) {
       params.append(field, value);
@@ -267,19 +362,9 @@ const applyDetailSheetHeaderStyles = (worksheet: XLSX.WorkSheet) => {
     alignment: { wrapText: true, vertical: 'top' }
   };
 
-  // Style first two rows (both header rows)
-  for (let row = 0; row <= 1; row += 1) {
-    for (let col = range.s.c; col <= range.e.c; col += 1) {
-      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-      if (worksheet[cellAddress]) {
-        worksheet[cellAddress].s = headerStyle;
-      }
-    }
-  }
-
-  // Style first column for all data rows (row labels)
-  for (let row = 2; row <= range.e.r; row += 1) {
-    const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
+  // Style header row only
+  for (let col = range.s.c; col <= range.e.c; col += 1) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
     if (worksheet[cellAddress]) {
       worksheet[cellAddress].s = headerStyle;
     }
@@ -515,6 +600,7 @@ const HeatmapTable = ({
               <th className="heatmap-column-label" colSpan={filteredColumnValues.length}>
                 <span className="heatmap-field-label">
                   {columnHeaderLabel}
+                  {columnDimension.startsWith('tag_') && <em className="heatmap-field-ai-badge">AI-generated (Experimental)</em>}
                   <button
                     type="button"
                     className={`heatmap-field-filter-button${
@@ -543,6 +629,7 @@ const HeatmapTable = ({
                   {rowDimension === 'queries'
                     ? 'Query'
                     : rowOptions.find((option) => option.value === rowDimension)?.label}
+                  {rowDimension.startsWith('tag_') && <em className="heatmap-field-ai-badge">AI-generated (Experimental)</em>}
                   {rowDimension !== 'queries' && (
                     <button
                       type="button"
@@ -880,6 +967,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onMinChunkSizeChange,
   sectionTypes,
   onSectionTypesChange,
+  deduplicateEnabled,
+  onDeduplicateToggle,
   dataSource,
   selectedDoc,
   onResultClick,
@@ -896,6 +985,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [gridResults, setGridResults] = useState<RawCellResults>({});
   const [gridLoading, setGridLoading] = useState<boolean>(false);
   const [gridError, setGridError] = useState<string | null>(null);
+  const [queryTuningExpanded, setQueryTuningExpanded] = useState<boolean>(false);
   const [heatmapSelectedFilters, setHeatmapSelectedFilters] = useState<Record<string, string[]>>({});
   const [heatmapFilterModal, setHeatmapFilterModal] = useState<HeatmapFilterModalState | null>(null);
   const [heatmapFilterSearchTerms, setHeatmapFilterSearchTerms] = useState<Record<string, string>>({});
@@ -917,6 +1007,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     query: string;
   } | null>(null);
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
@@ -925,11 +1016,13 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // No syncing needed
 
   const columnOptions = useMemo(() => {
-    if (!facets) return [];
-    return Object.entries(facets.filter_fields).map(([value, label]) => ({
-      value,
-      label,
-    }));
+    if (!facets?.filter_fields) return [];
+    return Object.entries(facets.filter_fields)
+      .filter(([value]) => value !== 'title')
+      .map(([value, label]) => ({
+        value,
+        label,
+      }));
   }, [facets]);
 
   useEffect(() => {
@@ -943,7 +1036,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [columnDimension, columnOptions]);
 
   const rowOptions = useMemo(() => {
-    if (!facets) {
+    if (!facets?.filter_fields) {
       return [
         { value: 'queries', label: 'Search query' },
         { value: 'title', label: 'Report Title' }
@@ -971,9 +1064,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [rowDimension, rowOptions]);
 
   const columnValues = useMemo(() => {
-    if (!facets || !columnDimension) return [];
+    if (!facets?.facets || !columnDimension) return [];
     const values = facets.facets[columnDimension] || [];
-    const sorted = [...values].sort((a, b) => {
+    const seen = new Set<string>();
+    const deduped = values.filter((item) => {
+      if (item.value == null || seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+    const sorted = [...deduped].sort((a, b) => {
       const aValue = a.value ?? '';
       const bValue = b.value ?? '';
       const aNumber = Number(aValue);
@@ -993,9 +1092,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (rowDimension === 'queries' || rowDimension === 'title') {
       return rowQueries;
     }
-    if (!facets || !rowDimension) return [];
+    if (!facets?.facets || !rowDimension) return [];
     const values = facets.facets[rowDimension] || [];
-    const sorted = [...values].sort((a, b) => {
+    const seen = new Set<string>();
+    const deduped = values.filter((item) => {
+      if (item.value == null || seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+    const sorted = [...deduped].sort((a, b) => {
       const aValue = a.value ?? '';
       const bValue = b.value ?? '';
       const aNumber = Number(aValue);
@@ -1350,6 +1455,19 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   );
 
 
+  const applyHeatmapUrlFilters = (params: URLSearchParams) => {
+    if (!facets) return;
+    const allFilterFields = Object.keys(facets.filter_fields ?? {});
+    const urlFilters = Object.fromEntries(
+      allFilterFields
+        .map((field) => [field, (params.get(field) ?? '').split(',').map((v) => v.trim()).filter(Boolean)] as const)
+        .filter(([, values]) => values.length > 0)
+    );
+    if (Object.keys(urlFilters).length > 0) {
+      setHeatmapSelectedFilters(urlFilters);
+    }
+  };
+
   const applyHeatmapUrlParams = (params: URLSearchParams) => {
     const urlRow = params.get(HEATMAP_URL_KEYS.row);
     const urlColumn = params.get(HEATMAP_URL_KEYS.column);
@@ -1377,25 +1495,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       setGridQuery(urlQuery);
     }
 
-    // Load filter parameters from URL into heatmap filters
-    if (facets) {
-      const urlFilters: Record<string, string[]> = {};
-      const allFilterFields = Object.keys(facets.filter_fields);
-
-      allFilterFields.forEach((field) => {
-        const urlValue = params.get(field);
-        if (urlValue) {
-          const values = urlValue.split(',').map((v) => v.trim()).filter((v) => v.length > 0);
-          if (values.length > 0) {
-            urlFilters[field] = values;
-          }
-        }
-      });
-
-      if (Object.keys(urlFilters).length > 0) {
-        setHeatmapSelectedFilters(urlFilters);
-      }
-    }
+    applyHeatmapUrlFilters(params);
 
     heatmapAutoRunRef.current = params.get(HEATMAP_URL_KEYS.run) === 'true';
     heatmapUrlInitRef.current = true;
@@ -1425,6 +1525,27 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     rowOptions,
     selectedDomain,
   ]);
+
+  // Apply default year filter for UNEG data source (years after 2020)
+  useEffect(() => {
+    if (
+      dataSource === 'uneg' &&
+      columnDimension === 'published_year' &&
+      columnValues.length > 0 &&
+      !heatmapSelectedFilters['published_year']
+    ) {
+      const recentYears = columnValues.filter((year) => {
+        const yearNum = Number(year);
+        return !Number.isNaN(yearNum) && yearNum > 2020;
+      });
+      if (recentYears.length > 0 && recentYears.length < columnValues.length) {
+        setHeatmapSelectedFilters((prev) => ({
+          ...prev,
+          published_year: recentYears,
+        }));
+      }
+    }
+  }, [dataSource, columnDimension, columnValues]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!heatmapUrlInitRef.current) {
@@ -1561,7 +1682,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [heatmapFilterModal, heatmapSelectedFilters]);
 
   const heatmapModalFacets = useMemo(() => {
-    if (!heatmapFilterModal || !facets) {
+    if (!heatmapFilterModal || !facets?.facets) {
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
@@ -1638,6 +1759,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         : rowOptions.find((option) => option.value === rowDimension)?.label || rowDimension;
     const columnLabel =
       columnOptions.find((option) => option.value === columnDimension)?.label || columnDimension;
+    const metricLabel = heatmapMetric === 'chunks' ? 'Paragraphs' : 'Documents';
 
     // Sheet 1: Settings
     const settingsData = [
@@ -1645,7 +1767,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       ['Parameter', 'Value'],
       ['Row Dimension', rowLabel],
       ['Column Dimension', columnLabel],
-      ['Metric', heatmapMetric],
+      ['Metric', metricLabel],
       ['Query', gridQuery || '(none)'],
       ['Sensitivity', similarityCutoff.toFixed(3)],
       ['', ''],
@@ -1712,96 +1834,68 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const summarySheet = XLSX.utils.aoa_to_sheet([summaryHeaderRow, ...summaryRows]);
     applyHeatmapHeaderStyles(summarySheet);
 
-    // Sheet 3: Detail (one row per document with Title URL and Text subcolumns)
-    const detailRows: any[][] = [];
-    // Header row 1: Column group labels
-    const headerRow1 = [rowLabel];
-    filteredColumnValues.forEach((col) => {
-      headerRow1.push(extractTaxonomyName(col, columnDimension));
-      headerRow1.push(''); // Placeholder for merged cell
-      headerRow1.push(''); // Placeholder for merged cell
-    });
-    detailRows.push(headerRow1);
+    // Sheet 3: Detail (flat format — one row per result)
+    const EXCEL_MAX_CELL_LENGTH = 32767;
+    const truncateCell = (text: string) =>
+      text.length > EXCEL_MAX_CELL_LENGTH ? text.slice(0, EXCEL_MAX_CELL_LENGTH - 3) + '...' : text;
 
-    // Header row 2: Subcolumn labels
-    const headerRow2 = [''];
-    filteredColumnValues.forEach(() => {
-      headerRow2.push('Document Title');
-      headerRow2.push('Link');
-      headerRow2.push('Text');
-    });
-    detailRows.push(headerRow2);
-
-    // Check if we have a query (chunk mode) or no query (document mode)
     const hasQuery = gridQuery && gridQuery.trim() !== '' && gridQuery !== 'No query';
+
+    const detailHeader = [
+      rowLabel, columnLabel, 'Query', 'Sensitivity',
+      'Metric', 'Title', 'Source System Hosting Page', 'Source System Document',
+      'Organization', 'Year', 'Content'
+    ];
+    const detailData: any[][] = [detailHeader];
+    const showSensitivity = hasQuery || rowDimension === 'queries';
+    const queryValue = gridQuery || '';
+    const sensitivityValue = showSensitivity ? similarityCutoff.toFixed(3) : '';
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;
-      const label =
+      const rowDisplayLabel =
         rowDimension === 'queries' || rowDimension === 'title'
           ? rowValue.trim() || `Row ${rowIndex + 1}`
           : extractTaxonomyName(rowValue, rowDimension);
 
-      // Collect all documents for this row across all columns
-      const rowDocs = filteredColumnValues.map((columnValue) => {
+      filteredColumnValues.forEach((columnValue) => {
+        const colDisplayLabel = extractTaxonomyName(columnValue, columnDimension);
         const cellKey = buildCellKey(String(rowKey), columnValue);
-        return filteredGridResults[cellKey]?.results || [];
-      });
+        const results = filteredGridResults[cellKey]?.results || [];
 
-      // Find max docs in any column for this row
-      const maxDocs = Math.max(...rowDocs.map(docs => docs.length), 1);
-
-      // Create rows for each document
-      for (let docIdx = 0; docIdx < maxDocs; docIdx++) {
-        const row = [docIdx === 0 ? label : '']; // Row label only on first doc
-
-        filteredColumnValues.forEach((_, colIdx) => {
-          const docs = rowDocs[colIdx];
-          if (docIdx < docs.length) {
-            const doc = docs[docIdx];
-            const title = doc.title || 'Untitled';
-            // Only include page number if we have a query (chunk mode)
-            const page = hasQuery && doc.page_num ? ` (p${doc.page_num})` : '';
-            const url = resolveResultUrl(doc);
-            const text = resolveResultExcerpt(doc);
-
-            // Add title, link, and text columns
-            row.push(`${title}${page}`);
-            row.push(url || '');
-            row.push(text);
-          } else {
-            row.push('', '', '');
+        results.forEach((doc) => {
+          let content = resolveResultExcerpt(doc);
+          // In document mode (no query), keep only first heading + paragraph
+          if (!hasQuery) {
+            const lines = content.split('\n');
+            const firstTwo = lines.slice(0, 2).join('\n');
+            content = firstTwo || content;
           }
+
+          detailData.push([
+            rowDisplayLabel,
+            colDisplayLabel,
+            queryValue,
+            sensitivityValue,
+            metricLabel,
+            truncateCell(doc.title || 'Untitled'),
+            doc.report_url || doc.metadata?.report_url || '',
+            doc.pdf_url || doc.metadata?.pdf_url || '',
+            doc.organization || '',
+            doc.year || '',
+            truncateCell(content),
+          ]);
         });
-        detailRows.push(row);
-      }
-    });
-
-    const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
-
-    // Merge cells for column group headers (now spanning 3 columns: Title, Link, Text)
-    const merges = [];
-    for (let colIdx = 0; colIdx < filteredColumnValues.length; colIdx++) {
-      const startCol = 1 + colIdx * 3;
-      const endCol = startCol + 2;
-      merges.push({
-        s: { r: 0, c: startCol },
-        e: { r: 0, c: endCol }
       });
-    }
-    detailSheet['!merges'] = merges;
-
-    // Apply header styling (both header rows + row labels)
-    applyDetailSheetHeaderStyles(detailSheet);
-
-    // Set column widths
-    const colWidths = [{ wch: 30 }]; // Row label column
-    filteredColumnValues.forEach(() => {
-      colWidths.push({ wch: 40 }); // Title column
-      colWidths.push({ wch: 50 }); // Link column
-      colWidths.push({ wch: 60 }); // Text column
     });
-    detailSheet['!cols'] = colWidths;
+
+    const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
+    applyDetailSheetHeaderStyles(detailSheet);
+    detailSheet['!cols'] = [
+      { wch: 30 }, { wch: 20 }, { wch: 40 }, { wch: 10 },
+      { wch: 14 }, { wch: 50 }, { wch: 50 }, { wch: 50 },
+      { wch: 20 }, { wch: 8 }, { wch: 80 },
+    ];
 
     // Create workbook with all sheets
     const workbook = XLSX.utils.book_new();
@@ -2125,11 +2219,30 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [activeCellResults]);
 
   const [filteredDocId, setFilteredDocId] = useState<string | null>(null);
+  const [filteredOrg, setFilteredOrg] = useState<string | null>(null);
 
-  const displayedCellResults = useMemo(() => {
-    if (!filteredDocId) return activeCellResults;
-    return activeCellResults.filter(result => result.doc_id === filteredDocId);
-  }, [activeCellResults, filteredDocId]);
+  const uniqueOrgs = useMemo(() => {
+    const orgCounts = new Map<string, number>();
+    uniqueActiveCellDocuments.forEach((doc) => {
+      const org = doc.organization || 'Unknown';
+      orgCounts.set(org, (orgCounts.get(org) || 0) + 1);
+    });
+    return Array.from(orgCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([org, count]) => ({ org, count }));
+  }, [uniqueActiveCellDocuments]);
+
+  const filteredUniqueDocuments = useMemo(() =>
+    filteredOrg
+      ? uniqueActiveCellDocuments.filter((doc) => (doc.organization || 'Unknown') === filteredOrg)
+      : uniqueActiveCellDocuments,
+    [uniqueActiveCellDocuments, filteredOrg]);
+
+  const displayedCellResults = useMemo(() =>
+    activeCellResults
+      .filter((r) => !filteredOrg || (r.organization || 'Unknown') === filteredOrg)
+      .filter((r) => !filteredDocId || r.doc_id === filteredDocId),
+    [activeCellResults, filteredDocId, filteredOrg]);
 
   const filteredDocTitle = useMemo(() => {
     if (!filteredDocId) return null;
@@ -2137,9 +2250,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return doc?.title || 'Unknown Document';
   }, [filteredDocId, uniqueActiveCellDocuments]);
 
-  // Reset filter when cell changes
+  const filterLabel = useMemo(() => {
+    if (filteredDocId) return filteredDocTitle;
+    if (filteredOrg) return filteredOrg;
+    return null;
+  }, [filteredDocId, filteredOrg, filteredDocTitle]);
+
+  // Reset filters when cell changes
   useEffect(() => {
     setFilteredDocId(null);
+    setFilteredOrg(null);
   }, [activeCell]);
 
   const handleHeatmapHighlight = useCallback(
@@ -2334,7 +2454,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onMinChunkSizeChange,
     sectionTypes,
     onSectionTypesChange,
+    deduplicateEnabled,
+    onDeduplicateToggle,
   };
+
+  const isQueryRow = rowDimension === 'queries';
+  const hasGlobalQuery = gridQuery.trim() !== '';
+  const metricEnabled = isQueryRow || hasGlobalQuery;
+  const metricValue = metricEnabled ? heatmapMetric : 'documents';
 
   return (
     <div className="main-content">
@@ -2359,6 +2486,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               filtersExpanded={filtersExpanded}
               onToggleFiltersExpanded={onToggleFiltersExpanded}
             />
+            <div className="heatmap-info-link-row">
+              <button className="heatmap-info-link" onClick={() => setInfoModalOpen(true)}>
+                What is Heatmapper?
+              </button>
+            </div>
             <div className="heatmap-controls">
               {/* First row: Rows, Columns, Metric, Download, Search */}
               <div className="heatmap-controls-row">
@@ -2370,11 +2502,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     value={rowDimension}
                     onChange={(event) => setRowDimension(event.target.value)}
                   >
-                    {rowOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    <option value="queries">Search query</option>
+                    <option value="title">Report Title</option>
+                    <GroupedSelectOptions options={rowOptions.filter((o) => o.value !== 'queries' && o.value !== 'title')} />
                   </select>
                 </div>
 
@@ -2386,11 +2516,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                     value={columnDimension}
                     onChange={(event) => setColumnDimension(event.target.value)}
                   >
-                    {columnOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    <GroupedSelectOptions options={columnOptions} />
                   </select>
                 </div>
 
@@ -2399,11 +2525,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   <select
                     id="heatmap-metric"
                     className="heatmap-select"
-                    value={heatmapMetric}
+                    value={metricValue}
                     onChange={(event) => setHeatmapMetric(event.target.value as HeatmapMetric)}
+                    disabled={!metricEnabled}
                   >
                     <option value="documents">Documents</option>
-                    <option value="chunks">Chunks</option>
+                    <option value="chunks">Paragraphs</option>
                   </select>
                 </div>
 
@@ -2416,34 +2543,18 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 />
               </div>
 
-              {/* Second row: Query input and Sensitivity slider */}
-              <div className="heatmap-controls-row heatmap-query-controls">
-                {rowDimension !== 'queries' && (
-                  <input
-                    id="heatmap-grid-query"
-                    className="heatmap-query-input"
-                    type="text"
-                    value={gridQuery}
-                    onChange={(event) => setGridQuery(event.target.value)}
-                    placeholder="Add a search query to filter your results ..."
-                  />
-                )}
-                <div className="heatmap-control heatmap-slider">
-                  <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
-                    Search sensitivity
-                  </label>
-                  <input
-                    id="heatmap-cutoff"
-                    type="range"
-                    min={scoreBounds.min}
-                    max={scoreBounds.max}
-                    step={0.001}
-                    value={scoreBounds.min + scoreBounds.max - similarityCutoff}
-                    onChange={(event) => setSimilarityCutoff(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
-                    disabled={!scoreBounds.hasScores}
-                  />
-                </div>
-              </div>
+              {/* Collapsible query tuning section */}
+              {!isQueryRow && (
+                <HeatmapQueryTuning
+                  expanded={queryTuningExpanded}
+                  onToggle={() => setQueryTuningExpanded((prev) => !prev)}
+                  gridQuery={gridQuery}
+                  onQueryChange={setGridQuery}
+                  scoreBounds={scoreBounds}
+                  similarityCutoff={similarityCutoff}
+                  onCutoffChange={setSimilarityCutoff}
+                />
+              )}
             </div>
 
             {gridError && <div className="heatmap-error">{gridError}</div>}
@@ -2632,10 +2743,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             </div>
             <div className="heatmap-modal-content">
-              {uniqueActiveCellDocuments.length > 0 && (
+              <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
+              {filteredUniqueDocuments.length > 0 && (
                 <div className="heatmap-modal-thumbnails">
                 <div className="heatmap-modal-thumbnails-container">
-                  {uniqueActiveCellDocuments.map((doc) => {
+                  {filteredUniqueDocuments.map((doc) => {
                     // Use document-based API endpoint for thumbnails
                     const dataSource = doc.data_source || selectedDomain;
                     const thumbnailUrl = doc.doc_id
@@ -2691,20 +2803,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             <div className="heatmap-modal-body">
               <div className="heatmap-modal-filter-indicator">
                 <span className="heatmap-modal-filter-text">
-                  {filteredDocId ? (
-                    <>
-                      Showing results from: <strong>{filteredDocTitle}</strong>
-                    </>
+                  {filterLabel ? (
+                    <>Showing results from: <strong>{filterLabel}</strong></>
                   ) : (
-                    <>
-                      Showing all results. Click on a document above to filter.
-                    </>
+                    <>Showing all results. Click on a document above to filter.</>
                   )}
                 </span>
-                {filteredDocId && (
+                {filterLabel && (
                   <button
                     className="heatmap-modal-filter-clear"
-                    onClick={() => setFilteredDocId(null)}
+                    onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
                     title="Clear filter"
                   >
                     × Clear filter
@@ -2727,6 +2835,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           </div>
         </div>
       )}
+
+      <HeatmapInfoModal isOpen={infoModalOpen} onClose={() => setInfoModalOpen(false)} />
     </div>
   );
 };

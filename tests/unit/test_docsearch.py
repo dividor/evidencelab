@@ -338,17 +338,17 @@ def test_build_metadata_filter_condition_title_uses_match_text():
     assert result.should[0].match.text == "Education"
 
 
-def test_build_metadata_filter_condition_taxonomy_extracts_code():
-    """Test _build_metadata_filter_condition extracts code from taxonomy value."""
+def test_build_metadata_filter_condition_taxonomy_uses_full_value():
+    """Test _build_metadata_filter_condition uses full taxonomy value."""
     result = _build_metadata_filter_condition(
-        "tag_sdg", "sdg4 - Quality Education", "tag_sdg"
+        "tag_sdg", "sdg4 - SDG4 Quality Education", "tag_sdg"
     )
 
     assert isinstance(result, qmodels.Filter)
     assert len(result.must) == 1
     assert result.must[0].key == "tag_sdg"
-    assert isinstance(result.must[0].match, qmodels.MatchAny)
-    assert result.must[0].match.any == ["sdg4"]
+    assert isinstance(result.must[0].match, qmodels.MatchValue)
+    assert result.must[0].match.value == "sdg4 - SDG4 Quality Education"
 
 
 def test_build_metadata_filter_condition_taxonomy_without_label():
@@ -357,7 +357,8 @@ def test_build_metadata_filter_condition_taxonomy_without_label():
 
     assert isinstance(result, qmodels.Filter)
     assert len(result.must) == 1
-    assert result.must[0].match.any == ["education"]
+    assert isinstance(result.must[0].match, qmodels.MatchValue)
+    assert result.must[0].match.value == "education"
 
 
 def test_build_metadata_filter_condition_standard_field_uses_match_value():

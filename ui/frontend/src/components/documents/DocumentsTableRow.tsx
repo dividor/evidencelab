@@ -11,13 +11,44 @@ import { TaxonomyCell } from './TaxonomyCell';
 import { formatTimestamp, getLastUpdatedTimestamp } from './documentsModalUtils';
 import API_BASE_URL from '../../config';
 
-// Helper function to construct thumbnail URL using the API endpoint
 const getThumbnailUrl = (doc: any, dataSource: string): string | null => {
   const docId = doc.doc_id || doc.id;
   if (!docId) return null;
-
   const docDataSource = doc.data_source || dataSource;
   return `${API_BASE_URL}/document/${docId}/thumbnail?data_source=${docDataSource}`;
+};
+
+const handleThumbnailError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const target = e.target as HTMLImageElement;
+  target.style.display = 'none';
+  const container = target.closest('.doc-title-thumbnail-container');
+  const placeholder = container?.querySelector('.doc-title-thumbnail-placeholder') as HTMLElement;
+  if (placeholder) placeholder.style.display = 'flex';
+};
+
+const DocumentThumbnail: React.FC<{ doc: any; thumbnailUrl: string }> = ({ doc, thumbnailUrl }) => {
+  const img = (
+    <img
+      src={thumbnailUrl}
+      alt={doc.title || 'Document thumbnail'}
+      className="doc-title-thumbnail"
+      onError={handleThumbnailError}
+    />
+  );
+
+  if (doc.pdf_url) {
+    return (
+      <a
+        href={doc.pdf_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={doc.organization ? `${doc.organization} Document` : 'Document'}
+      >
+        {img}
+      </a>
+    );
+  }
+  return img;
 };
 
 export const DocumentsTableRow: React.FC<{
@@ -71,19 +102,7 @@ export const DocumentsTableRow: React.FC<{
               <div className="doc-title-thumbnail-container">
                 {thumbnailUrl ? (
                   <>
-                    <img
-                      src={thumbnailUrl}
-                      alt={doc.title || 'Document thumbnail'}
-                      className="doc-title-thumbnail"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = 'none';
-                        const placeholder = target.nextElementSibling as HTMLElement;
-                        if (placeholder) {
-                          placeholder.style.display = 'flex';
-                        }
-                      }}
-                    />
+                    <DocumentThumbnail doc={doc} thumbnailUrl={thumbnailUrl} />
                     <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
                       No preview
                     </div>
@@ -102,7 +121,7 @@ export const DocumentsTableRow: React.FC<{
             <div>{doc.title || 'Untitled'}</div>
           )}
         </td>
-        <DocumentLinksCell doc={doc} />
+        <DocumentLinksCell doc={doc} dataSource={dataSource} />
         <td className="doc-summary">
           <DocumentsSummaryCell
             summary={doc.full_summary}

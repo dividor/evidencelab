@@ -30,7 +30,12 @@ export const SortableHeader: React.FC<SortableHeaderProps> = ({
     <th className="sortable-header">
       <div className="header-content">
         <span onClick={() => onSort(columnKey)} className="header-label">
-          {label}
+          {label.includes('\n') ? (
+            <>
+              {label.split('\n')[0]}
+              <em className="header-label-subtitle">{label.split('\n')[1]}</em>
+            </>
+          ) : label}
         </span>
         <div className="header-icons">
           <button

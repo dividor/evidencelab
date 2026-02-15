@@ -176,6 +176,25 @@ class Chunker:
             # Step 6: Post-process chunks to detect inline references
             processed_chunks = post_process_chunks(doc, processed_chunks)
 
+            # Step 7: Deduplicate chunks that ended up with identical text
+            # post_process_chunks can produce duplicates when footnotes are
+            # redistributed across chunks sharing the same heading hierarchy.
+            before_dedup = len(processed_chunks)
+            seen_texts: set[tuple[int, str]] = set()
+            deduped_chunks: list[Dict[str, Any]] = []
+            for chunk in processed_chunks:
+                key = (chunk.get("page_num", 0), chunk["text"])
+                if key not in seen_texts:
+                    seen_texts.add(key)
+                    deduped_chunks.append(chunk)
+            processed_chunks = deduped_chunks
+            if before_dedup != len(processed_chunks):
+                logger.info(
+                    "  Deduplicated %s -> %s chunks",
+                    before_dedup,
+                    len(processed_chunks),
+                )
+
             # Log summary
             logger.info("  Generated %s chunks", len(processed_chunks))
 

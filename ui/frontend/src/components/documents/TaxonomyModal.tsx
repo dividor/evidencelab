@@ -32,6 +32,7 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
           <h2>
             {taxonomyValue.code.toUpperCase()}
             {taxonomyValue.name ? ` - ${taxonomyValue.name}` : ''}
+            <em className="header-label-subtitle">(AI-generated : Experimental)</em>
           </h2>
           <div className="modal-header-actions">
             <button onClick={onClose} className="modal-close">

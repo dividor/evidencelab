@@ -1313,3 +1313,30 @@ class TestPipelineIntegration:
 
         assert found, "Expected to find bracketed footnote markers in chunks"
         print("\n✅ Footnote marker persistence test passed!")
+
+    def test_no_duplicate_chunks(self, pipeline_processed: Dict[str, Any]):
+        """
+        Test: No duplicate chunks exist for the test document.
+
+        Duplicate chunks (same doc_id + page + text) cause repeated search
+        results and waste storage.
+        """
+        db = Database(data_source=DATA_SOURCE)
+        doc_id = str(pipeline_processed["doc_id"])
+        chunks = db.pg.fetch_chunks_for_doc(doc_id)
+
+        seen: set[tuple[int, str]] = set()
+        duplicates = []
+        for chunk in chunks:
+            key = (chunk.get("sys_page_num", 0), chunk.get("sys_text", ""))
+            if key in seen:
+                duplicates.append(key)
+            else:
+                seen.add(key)
+
+        assert not duplicates, (
+            f"Found {len(duplicates)} duplicate chunks for doc {doc_id}. "
+            f"First duplicate: page={duplicates[0][0]}, "
+            f"text={duplicates[0][1][:60]}..."
+        )
+        print(f"\n✅ No duplicate chunks ({len(chunks)} total, all unique)")

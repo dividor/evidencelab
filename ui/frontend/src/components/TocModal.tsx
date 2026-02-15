@@ -382,7 +382,7 @@ const TocModal: React.FC<TocModalProps> = ({
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="toc-header">
-            <h2>Table of Contents</h2>
+            <h2>Table of Contents<em className="header-label-subtitle">(AI-generated : Experimental)</em></h2>
             {frontMatterBoundary && frontMatterBoundary > 0 ? (
               <span className="toc-boundary-note">
                 Front matter boundary: p. {frontMatterBoundary}
@@ -427,14 +427,14 @@ const TocModal: React.FC<TocModalProps> = ({
                       <div
                         key={index}
                         className={`toc-item toc-level-${renderInfo.level} ${draggedOverIndices.has(index) ? 'toc-item-drag-over' : ''} ${renderInfo.isBeforeFrontMatterBoundary ? 'toc-item-before-boundary' : ''}`}
-                        style={{ paddingLeft: `${renderInfo.indent}px`, display: 'flex', alignItems: 'center', gap: '10px' }}
+                        style={{ paddingLeft: `${renderInfo.indent}px` }}
                         onDragOver={(e) => handleDragOver(e, index)}
                         onDrop={(e) => handleDrop(e)}
                       >
-                        <span className="toc-title" style={{ flex: 1 }}>
+                        <span className="toc-title">
                           {renderInfo.title}
                         </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div className="toc-controls">
                           <select
                             value={renderInfo.sectionType}
                             onChange={(e) => handleTocCategoryChange(index, e.target.value)}

@@ -41,6 +41,8 @@ interface FiltersPanelProps {
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
   onSectionTypesChange: (next: string[]) => void;
+  deduplicateEnabled: boolean;
+  onDeduplicateToggle: (value: boolean) => void;
 }
 
 export const FiltersPanel: React.FC<FiltersPanelProps> = ({
@@ -81,6 +83,8 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onMinChunkSizeChange,
   sectionTypes,
   onSectionTypesChange,
+  deduplicateEnabled,
+  onDeduplicateToggle,
 }) => (
   <aside className={`filters-section ${filtersExpanded ? 'filters-section-expanded' : ''}`}>
     <div className="filters-card">
@@ -138,6 +142,8 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onMinChunkSizeChange={onMinChunkSizeChange}
             sectionTypes={sectionTypes}
             onSectionTypesChange={onSectionTypesChange}
+            deduplicateEnabled={deduplicateEnabled}
+            onDeduplicateToggle={onDeduplicateToggle}
           />
         </>
       )}

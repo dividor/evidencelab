@@ -225,6 +225,133 @@ const appendSpanGroups = (
   });
 };
 
+type CharMapping = { itemIdx: number; charIdx: number };
+
+const buildPageTextMap = (items: any[]): { fullText: string; charMap: CharMapping[] } => {
+  let fullText = '';
+  const charMap: CharMapping[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const str = items[i].str || '';
+    for (let c = 0; c < str.length; c++) {
+      charMap.push({ itemIdx: i, charIdx: c });
+    }
+    fullText += str;
+    // Insert a synthetic space between adjacent items that lack whitespace,
+    // preventing false cross-item matches (e.g. "of"+"MOH" → "ofMOH" matching "fmoh")
+    if (i < items.length - 1 && str.length > 0 && !str.endsWith(' ') && !str.endsWith('\n')) {
+      const nextStr = items[i + 1]?.str || '';
+      if (nextStr.length > 0 && !nextStr.startsWith(' ')) {
+        fullText += ' ';
+        charMap.push({ itemIdx: -1, charIdx: -1 });
+      }
+    }
+  }
+  return { fullText, charMap };
+};
+
+const computeItemEdge = (
+  item: any,
+  charIdx: number,
+  side: 'left' | 'right'
+): number => {
+  const ix = item.transform[4];
+  const iw = item.width || 0;
+  const cw = item.str.length > 0 ? iw / item.str.length : 0;
+  if (side === 'left') return ix + charIdx * cw;
+  return ix + (charIdx + 1) * cw;
+};
+
+const computeMatchBBox = (
+  items: any[],
+  startMap: CharMapping,
+  endMap: CharMapping
+): { l: number; b: number; r: number; t: number } | null => {
+  let l = Infinity, b = Infinity, r = -Infinity, t = -Infinity;
+
+  for (let idx = startMap.itemIdx; idx <= endMap.itemIdx; idx++) {
+    const item = items[idx];
+    if (!item.transform) continue;
+
+    const ix = item.transform[4];
+    const iy = item.transform[5];
+    const iw = item.width || 0;
+    const ih = Math.abs(item.transform[3]) || item.height || 10;
+
+    const isStart = idx === startMap.itemIdx;
+    const isEnd = idx === endMap.itemIdx;
+    const itemL = isStart ? computeItemEdge(item, startMap.charIdx, 'left') : ix;
+    const itemR = isEnd ? computeItemEdge(item, endMap.charIdx, 'right') : ix + iw;
+
+    l = Math.min(l, itemL);
+    r = Math.max(r, itemR);
+    b = Math.min(b, iy);
+    t = Math.max(t, iy + ih);
+  }
+
+  return l < Infinity ? { l, b, r, t } : null;
+};
+
+const parseBBoxItem = (
+  bboxItem: any,
+  fallbackPage: number
+): { page: number; bbox: { l: number; b: number; r: number; t: number } } | null => {
+  let page = fallbackPage;
+  let coords: number[] | null = null;
+
+  if (Array.isArray(bboxItem) && bboxItem.length === 2 && Array.isArray(bboxItem[1])) {
+    page = Number(bboxItem[0]);
+    coords = bboxItem[1];
+  } else if (Array.isArray(bboxItem) && bboxItem.length === 4 && typeof bboxItem[0] === 'number') {
+    coords = bboxItem;
+  }
+
+  if (!coords || coords.length < 4) return null;
+  return { page, bbox: { l: coords[0], b: coords[1], r: coords[2], t: coords[3] } };
+};
+
+const findTextMatchesOnPage = (
+  items: any[],
+  searchTerm: string,
+  pageNum: number
+): HighlightBox[] => {
+  if (items.length === 0) return [];
+
+  const { fullText, charMap } = buildPageTextMap(items);
+  const lowerText = fullText.toLowerCase();
+  const matches: HighlightBox[] = [];
+  let pos = 0;
+
+  let skipped = 0;
+  while ((pos = lowerText.indexOf(searchTerm, pos)) !== -1) {
+    const endPos = pos + searchTerm.length - 1;
+    if (endPos >= charMap.length) break;
+
+    // Skip matches that span a synthetic space (false cross-item match)
+    let crossesGap = false;
+    for (let p = pos; p <= endPos; p++) {
+      if (charMap[p].itemIdx < 0) { crossesGap = true; break; }
+    }
+    if (crossesGap) { skipped++; pos += 1; continue; }
+
+    const bbox = computeMatchBBox(items, charMap[pos], charMap[endPos]);
+    if (bbox) {
+      matches.push({
+        page: pageNum,
+        bbox,
+        text: fullText.substring(pos, pos + searchTerm.length),
+        isTextMatch: true
+      });
+    }
+    pos += 1;
+  }
+
+  if (skipped > 0) {
+    console.log(`[Text Search] Page ${pageNum}: skipped ${skipped} false cross-item matches for "${searchTerm}"`);
+  }
+
+  return matches;
+};
+
 export const PDFViewer: React.FC<PDFViewerProps> = ({
   docId,
   chunkId,
@@ -249,9 +376,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   rerankModel = null,
   searchModel = null,
 }) => {
-  // Extract fields from metadata
-  const webUrl = metadata.report_url;
-  const pdfUrl = metadata.pdf_url;
+  // Extract fields from metadata (check multiple possible field locations)
+  const webUrl = metadata.report_url || metadata.map_report_url || metadata.src_doc_raw_metadata?.report_url;
+  const pdfUrl = metadata.pdf_url || metadata.map_pdf_url || metadata.src_doc_raw_metadata?.pdf_url;
   const organization = metadata.organization;
   const year = metadata.year;
   const score = metadata.score;
@@ -284,6 +411,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const isScrollingProgrammatically = useRef(false);
   const lastProgrammaticScrollTime = useRef(0);
   const hasSnappedToHighlight = useRef(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processedBBoxesRef = useRef<Set<string>>(new Set()); // Track which bboxes have been semantically highlighted
 
   // Calculate scale based on viewport width for mobile
@@ -356,21 +484,17 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     }
   }, [chunkId, pdfDoc, initialBBox, inPdfSearchQuery, inPdfSearchResults]);
 
-  // Render visible pages when current page changes
+  // Render visible pages when current page or search results change
+  // Merged into a single effect to prevent two concurrent renderVisiblePages calls
+  // racing and cancelling each other's PDF.js render tasks
+  const prevSearchResultsRef = useRef<HighlightBox[]>([]);
   useEffect(() => {
     if (pdfDoc && currentPage > 0) {
-      renderVisiblePages(false);
+      const searchResultsChanged = inPdfSearchResults !== prevSearchResultsRef.current;
+      prevSearchResultsRef.current = inPdfSearchResults;
+      renderVisiblePages(searchResultsChanged && inPdfSearchResults.length > 0);
     }
-  }, [pdfDoc, currentPage, totalPages]);
-
-  // Re-render visible pages when search results change (but not on every highlight change to avoid flickering)
-  useEffect(() => {
-    if (pdfDoc && currentPage > 0 && inPdfSearchResults.length > 0) {
-      // Clear rendered pages to force re-render with new search highlights
-      setRenderedPages(new Map());
-      renderVisiblePages(true);
-    }
-  }, [inPdfSearchResults.length]); // Only re-render when search result count changes
+  }, [pdfDoc, currentPage, totalPages, inPdfSearchResults]);
 
   // Re-render all pages when scale changes
   useEffect(() => {
@@ -412,26 +536,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     const pageHighlights = highlights.filter(h => h.page === currentPage);
 
-    let targetScroll = (currentPage - 1) * actualPageHeight;
     let shouldScroll = false;
 
-    // Calculate highlight offset if available
-    let highlightOffset = 0;
+    // Find the target highlight for scroll offset calculation
     const targetHighlight = getTargetHighlight(pageHighlights);
-    if (targetHighlight) {
-      // The viewport height in PDF units (unscaled)
-      // actualPageHeight includes margin, so we need to remove it and divide by scale
-      const viewportHeightPdfUnits = (actualPageHeight - 20) / scale;
-
-      // Calculate y position from top of page (same formula as in renderPage)
-      // This gives us the pixel offset from the top of the page container
-      highlightOffset = (viewportHeightPdfUnits - targetHighlight.bbox.t) * scale;
-
-      // Add some padding (e.g. 100px) so it's not right at the edge
-      // On mobile, use less padding since screen is smaller
-      const padding = window.innerWidth <= 640 ? 50 : 100;
-      highlightOffset = Math.max(0, highlightOffset - padding);
-    }
 
     // IMMEDIATE scroll when programmatic flag is set (opening new doc/chunk/page)
     // Don't wait for highlights - scroll to page immediately
@@ -439,35 +547,57 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       shouldScroll = true;
       // If highlights are already available, use them; otherwise just scroll to page top
       if (pageHighlights.length > 0) {
-        targetScroll += highlightOffset;
         hasSnappedToHighlight.current = true;
-        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} WITH highlights at ${targetScroll}px`);
+        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} WITH highlights (will recalculate in callback)`);
       } else {
-        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} at ${targetScroll}px (highlights will adjust later)`);
+        console.log(`[Scroll] IMMEDIATE scroll to page ${currentPage} (will recalculate in callback, highlights will adjust later)`);
         // Don't mark as snapped yet - let the secondary scroll happen when highlights load
         // hasSnappedToHighlight.current stays false
       }
-      isScrollingProgrammatically.current = false;
+      // NOTE: Don't consume isScrollingProgrammatically here. It's consumed in the
+      // setTimeout callback below. This ensures that if actualPageHeight changes
+      // (e.g. landscape→portrait page renders), the effect re-runs and recalculates.
     }
     // SECONDARY scroll when highlights load after initial page scroll
     else if (!hasSnappedToHighlight.current && pageHighlights.length > 0) {
       // Highlights just loaded - adjust scroll position to show them
-      targetScroll += highlightOffset;
       shouldScroll = true;
       hasSnappedToHighlight.current = true;
-      console.log(`[Scroll] ADJUSTING scroll for ${pageHighlights.length} highlights to ${targetScroll}px`);
+      console.log(`[Scroll] ADJUSTING scroll for ${pageHighlights.length} highlights (will recalculate in callback)`);
     }
 
     if (shouldScroll) {
-      lastProgrammaticScrollTime.current = Date.now();
-      // Use setTimeout to ensure all rendering is complete before scrolling
-      setTimeout(() => {
+      // Cancel any pending scroll timer so we recalculate with the latest height.
+      // This handles the case where actualPageHeight changes multiple times
+      // (e.g. landscape page renders first, then portrait page updates the height).
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+      // Recalculate scroll target inside the callback using the ref (always up-to-date)
+      // to avoid stale-closure issues when page height changes between effect and callback
+      const hasHighlightOffset = targetHighlight != null;
+      const bboxT = targetHighlight?.bbox.t ?? 0;
+      scrollTimerRef.current = setTimeout(() => {
         requestAnimationFrame(() => {
           if (scrollContainerRef.current) {
-            scrollContainerRef.current.scrollTop = targetScroll;
+            const latestHeight = actualPageHeightRef.current;
+            let finalTarget = (currentPage - 1) * latestHeight;
+            if (hasHighlightOffset) {
+              const vpHeightPdfUnits = (latestHeight - 20) / scale;
+              let hOffset = (vpHeightPdfUnits - bboxT) * scale;
+              const padding = window.innerWidth <= 640 ? 50 : 100;
+              hOffset = Math.max(0, hOffset - padding);
+              finalTarget += hOffset;
+            }
+            console.log(`[Scroll] Setting scrollTop=${finalTarget} (pageHeight=${latestHeight}, page=${currentPage})`);
+            lastProgrammaticScrollTime.current = Date.now();
+            scrollContainerRef.current.scrollTop = finalTarget;
           }
+          // Consume the programmatic flag AFTER the scroll is set
+          isScrollingProgrammatically.current = false;
+          scrollTimerRef.current = null;
         });
-      }, 100); // Reduced delay for faster initial scroll
+      }, 150);
     }
   }, [currentPage, totalPages, actualPageHeight, highlights, scale, currentMatchIndex, inPdfSearchResults]);
 
@@ -707,18 +837,19 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         const padding = 5;
 
         const div = document.createElement('div');
-        div.className = 'highlight-overlay';
+        div.className = highlight.isTextMatch ? 'text-match-overlay' : 'highlight-overlay';
         Object.assign(div.style, {
           position: 'absolute',
           pointerEvents: 'none',
-          background: 'var(--pdf-highlight-bg)',
-          border: 'var(--pdf-highlight-border)',
-          zIndex: '10',
+          zIndex: highlight.isTextMatch ? '15' : '10',
           left: `${x - padding}px`,
           top: `${y - padding}px`,
           width: `${width + padding * 2}px`,
           height: `${height + padding * 2}px`,
-          borderRadius: '4px'
+          borderRadius: '4px',
+          ...(highlight.isTextMatch
+            ? { background: 'rgba(255, 165, 0, 0.4)', border: '2px solid rgba(255, 140, 0, 0.8)' }
+            : { background: 'var(--pdf-highlight-bg)', border: 'var(--pdf-highlight-border)' })
         });
         div.title = highlight.text.substring(0, 100);
         pageContainer.appendChild(div);
@@ -729,13 +860,13 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         Object.assign(indicator.style, {
           position: 'absolute',
           pointerEvents: 'none',
-          backgroundColor: 'rgba(0, 102, 204, 0.8)', // Solid blue
+          backgroundColor: highlight.isTextMatch ? 'rgba(255, 140, 0, 0.9)' : 'rgba(0, 102, 204, 0.8)',
           zIndex: '10',
           right: '0',
           top: `${y}px`,
-          width: '12px', // Increased from 6px to 12px for better visibility
+          width: '12px',
           height: `${height}px`,
-          borderRadius: '6px 0 0 6px' // Updated border radius to match new width
+          borderRadius: '6px 0 0 6px'
         });
         pageContainer.appendChild(indicator);
       });
@@ -963,22 +1094,24 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     );
   };
 
-  // In-PDF search function
+  // In-PDF search: semantic search via API filtered to this document,
+  // plus local text matches for literal keyword hits
   const performInPdfSearch = async (query: string) => {
     if (!query.trim()) {
       setInPdfSearchResults([]);
       setCurrentMatchIndex(0);
       setHighlights([]);
+      processedBBoxesRef.current.clear();
       return;
     }
 
     setIsSearching(true);
     try {
-      // Call search API with query, title filter, and all search settings from main search
+      // --- Semantic search via API ---
       const params: any = {
         q: query,
         limit: 100,
-        title: title,  // Filter by document title at backend
+        title: title,
         data_source: dataSource,
         dense_weight: searchDenseWeight.toString(),
         rerank: rerankEnabled.toString(),
@@ -987,8 +1120,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         recency_scale_days: recencyScaleDays.toString(),
         keyword_boost_short_queries: keywordBoostShortQueries.toString(),
       };
-
-      // Add optional parameters
       if (sectionTypes && sectionTypes.length > 0) {
         params.section_types = sectionTypes.join(',');
       }
@@ -1002,78 +1133,64 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         params.model = searchModel;
       }
 
-      console.log('[In-PDF Search] Request params:', params);
-      console.log('[In-PDF Search] Query:', query, 'Title:', title, 'DataSource:', dataSource);
-
       const response = await axios.get(`${API_BASE_URL}/search`, { params });
-
-      // Backend already filtered by title, so all results are for this document
       const data = response.data as { results?: any[] };
       let docResults = data.results || [];
-
-      // Filter by minScore (inherited from main search)
       if (minScore > 0) {
-        docResults = docResults.filter((result: any) => (result.score || 0) >= minScore);
+        docResults = docResults.filter((r: any) => (r.score || 0) >= minScore);
       }
 
-      console.log('[In-PDF Search] Response:', {
-        totalResults: docResults.length,
-        minScoreFilter: minScore,
-        firstResultText: docResults[0]?.text?.substring(0, 100),
-        firstResultTitle: docResults[0]?.document_title,
-        firstResultScore: docResults[0]?.score
-      });
-
-      // Convert results to highlights format
-      const newHighlights: HighlightBox[] = [];
+      // Build semantic chunk highlights from API results
+      const allHighlights: HighlightBox[] = [];
+      const chunkNavPoints: HighlightBox[] = [];
 
       docResults.forEach((result: any) => {
+        const chunkBoxes: HighlightBox[] = [];
         if (result.bbox && Array.isArray(result.bbox)) {
           result.bbox.forEach((bboxItem: any) => {
-            let page = result.page_num;
-            let coords = null;
-
-            // Handle [page, [l, b, r, t]] format
-            if (Array.isArray(bboxItem) && bboxItem.length === 2 && Array.isArray(bboxItem[1])) {
-              page = Number(bboxItem[0]);
-              coords = bboxItem[1];
-            }
-            // Handle [l, b, r, t] format (fallback)
-            else if (Array.isArray(bboxItem) && bboxItem.length === 4 && typeof bboxItem[0] === 'number') {
-              coords = bboxItem;
-            }
-
-            if (coords && coords.length >= 4) {
-              newHighlights.push({
-                page: page,
-                bbox: {
-                  l: coords[0],
-                  b: coords[1],
-                  r: coords[2],
-                  t: coords[3]
-                },
-                text: result.text
-              });
+            const parsed = parseBBoxItem(bboxItem, result.page_num);
+            if (parsed) {
+              const h: HighlightBox = { page: parsed.page, bbox: parsed.bbox, text: result.text };
+              chunkBoxes.push(h);
+              allHighlights.push(h);
             }
           });
         }
+        if (chunkBoxes.length > 0) {
+          chunkBoxes.sort((a, b) => a.page !== b.page ? a.page - b.page : b.bbox.t - a.bbox.t);
+          chunkNavPoints.push(chunkBoxes[0]);
+        }
       });
 
-      // Sort highlights by page, then by vertical position (top to bottom)
-      newHighlights.sort((a, b) => {
-        if (a.page !== b.page) return a.page - b.page;
-        // Higher bbox.t value = higher on page (PDF coords are from bottom)
-        return b.bbox.t - a.bbox.t;
-      });
+      // Local text search for literal keyword matches (used for navigation)
+      const textNavPoints: HighlightBox[] = [];
+      if (pdfDoc) {
+        const searchTerm = query.toLowerCase();
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+          const pg = await pdfDoc.getPage(pageNum);
+          const textContent = await pg.getTextContent();
+          const textMatches = findTextMatchesOnPage(textContent.items, searchTerm, pageNum);
+          textMatches.forEach(m => {
+            allHighlights.push(m);
+            textNavPoints.push(m);
+          });
+        }
+      }
 
-      console.log(`[In-PDF Search] Generated ${newHighlights.length} highlights from ${docResults.length} results.`);
-      setInPdfSearchResults(newHighlights);
-      setHighlights(newHighlights);
+      // Navigate by text matches when available (they contain the literal term);
+      // fall back to semantic chunks only if no literal matches found
+      const navPoints = textNavPoints.length > 0 ? textNavPoints : chunkNavPoints;
+
+      console.log(`[In-PDF Search] ${docResults.length} API chunks, ${textNavPoints.length} text matches, ${allHighlights.length} total highlights`);
+
+      processedBBoxesRef.current.clear();
+      setInPdfSearchResults(navPoints);
+      setHighlights(allHighlights);
       setCurrentMatchIndex(0);
 
-      // Jump to first result
-      if (newHighlights.length > 0) {
-        goToPage(newHighlights[0].page);
+      if (navPoints.length > 0) {
+        hasSnappedToHighlight.current = false;
+        goToPage(navPoints[0].page);
       }
     } catch (error) {
       console.error('In-PDF search error:', error);
@@ -1189,23 +1306,24 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     <div className="pdf-viewer-container">
       <div className="pdf-viewer-header">
         <div className="pdf-viewer-title-row">
+          {pdfUrl ? (
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" title="Source document">
+              <img
+                src={`${API_BASE_URL}/document/${docId}/thumbnail?data_source=${dataSource}`}
+                alt=""
+                className="pdf-thumbnail"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </a>
+          ) : (
+            <img
+              src={`${API_BASE_URL}/document/${docId}/thumbnail?data_source=${dataSource}`}
+              alt=""
+              className="pdf-thumbnail"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
           <h4 title={title}>{title}</h4>
-          <div className="pdf-viewer-links">
-            {(webUrl || pdfUrl) && (
-              <>
-                {webUrl && (
-                  <a href={webUrl} target="_blank" rel="noopener noreferrer" className="doc-link">
-                    Web
-                  </a>
-                )}
-                {pdfUrl && (
-                  <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="doc-link">
-                    PDF
-                  </a>
-                )}
-              </>
-            )}
-          </div>
           <button onClick={onClose} className="close-button">✕</button>
         </div>
 
@@ -1218,6 +1336,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
             <span className="badge badge-year">{year}</span>
           )}
           <span className="badge badge-page">Page {pageNum}</span>
+          {webUrl && (
+            <a href={webUrl} target="_blank" rel="noopener noreferrer" className="pdf-badge-link" title="Hosting page for the document">
+              {dataSource ? `${dataSource.toUpperCase()} Hosting Page` : 'Hosting Page'}
+            </a>
+          )}
+          {pdfUrl && (
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="pdf-badge-link" title="Source document">
+              {organization ? `${organization} Source Document` : 'Source Document'}
+            </a>
+          )}
           <button
             className="pdf-metadata-link"
             onClick={() => {
