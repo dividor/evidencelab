@@ -10,4 +10,4 @@ For example, you can view:
 
 .. and more!
 
-You can get granular, filtering searches down the individual documents and queries, and all data can be exported to Excel for further analysis.
+You can get granular, filtering searches down the individual documents and queries, drill down into the underlying content, and all data can be exported to Excel for further analysis.

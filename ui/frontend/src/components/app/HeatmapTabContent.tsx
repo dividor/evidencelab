@@ -17,6 +17,7 @@ import {
 } from '../../types/api';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { FilterSections } from '../filters/FilterComponents';
+import { HeatmapInfoModal } from '../HeatmapInfoModal';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { RainbowText } from '../RainbowText';
@@ -933,6 +934,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     query: string;
   } | null>(null);
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
@@ -2411,6 +2413,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               filtersExpanded={filtersExpanded}
               onToggleFiltersExpanded={onToggleFiltersExpanded}
             />
+            <div className="heatmap-info-link-row">
+              <button className="heatmap-info-link" onClick={() => setInfoModalOpen(true)}>
+                What is Heatmapper?
+              </button>
+            </div>
             <div className="heatmap-controls">
               {/* First row: Rows, Columns, Metric, Download, Search */}
               <div className="heatmap-controls-row">
@@ -2788,6 +2795,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           </div>
         </div>
       )}
+
+      <HeatmapInfoModal isOpen={infoModalOpen} onClose={() => setInfoModalOpen(false)} />
     </div>
   );
 };

@@ -5936,6 +5936,26 @@ h6,
   color: var(--gray-800);
 }
 
+.heatmap-info-link-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--spacing-xs);
+}
+
+.heatmap-info-link {
+  background: none;
+  border: none;
+  color: var(--primary-color, #4a6fa5);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+
+.heatmap-info-link:hover {
+  text-decoration: underline;
+}
+
 .heatmap-controls {
   display: flex;
   flex-direction: column;
