@@ -308,6 +308,10 @@ describe('App', () => {
 
     render(<App />);
 
+    // Ensure the Search tab is active (guards against tab state leaking from prior tests)
+    const nav = screen.getByRole('navigation');
+    fireEvent.click(within(nav).getByRole('button', { name: 'Search' }));
+
     // Wait for the search input to be pre-filled from URL params
     const searchInput = await screen.findByPlaceholderText('Search documents');
     expect(searchInput).toHaveValue('test query');
