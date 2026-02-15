@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL, {
-  SEARCH_RESULTS_PAGE_SIZE,
+  HEATMAP_CELL_LIMIT,
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
 } from '../../config';
@@ -122,7 +122,7 @@ const buildSearchParams = (options: {
   searchModel: string | null;
   dataSource: string;
 }) => {
-  const params = new URLSearchParams({ q: options.cellQuery, limit: SEARCH_RESULTS_PAGE_SIZE });
+  const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
   for (const [field, value] of options.filterEntries) {
     if (value) {
       params.append(field, value);

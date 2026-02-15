@@ -32,4 +32,7 @@ export const AI_SUMMARY_ON = config.application.ai_summary.enabled;
 // Search results page size (defaults to 50)
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
+// Heatmap per-cell result limit (defaults to 1000)
+export const HEATMAP_CELL_LIMIT = process.env.REACT_APP_HEATMAP_LIMIT || '1000';
+
 export default API_BASE_URL;
