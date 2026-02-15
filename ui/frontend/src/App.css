@@ -4391,6 +4391,17 @@ h6,
   gap: var(--spacing-md);
 }
 
+.pdf-thumbnail {
+  height: 48px;
+  width: auto;
+  max-width: 36px;
+  object-fit: contain;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
 .pdf-viewer-badges-row {
   display: flex;
   align-items: center;

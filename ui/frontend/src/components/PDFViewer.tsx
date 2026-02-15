@@ -1306,6 +1306,23 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     <div className="pdf-viewer-container">
       <div className="pdf-viewer-header">
         <div className="pdf-viewer-title-row">
+          {pdfUrl ? (
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" title="Source document">
+              <img
+                src={`${API_BASE_URL}/document/${docId}/thumbnail?data_source=${dataSource}`}
+                alt=""
+                className="pdf-thumbnail"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </a>
+          ) : (
+            <img
+              src={`${API_BASE_URL}/document/${docId}/thumbnail?data_source=${dataSource}`}
+              alt=""
+              className="pdf-thumbnail"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
           <h4 title={title}>{title}</h4>
           <button onClick={onClose} className="close-button">✕</button>
         </div>
