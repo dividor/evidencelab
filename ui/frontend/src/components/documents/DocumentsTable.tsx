@@ -293,8 +293,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 />
               ))}
               <th>Links</th>
-              <th className="summary-column">Summary
-(AI-generated : Experimental)</th>
+              <th className="summary-column">Summary<em className="header-label-subtitle">(AI-generated : Experimental)</em></th>
               <th>Metadata</th>
               {SORTABLE_HEADERS.slice(1).map((column) => (
                 <SortableHeader

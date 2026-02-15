@@ -1232,6 +1232,14 @@ h6,
   color: var(--primary-blue);
 }
 
+.header-label-subtitle {
+  display: block;
+  font-size: 0.7rem;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--gray-400);
+}
+
 .header-icons {
   display: flex;
   gap: 2px;

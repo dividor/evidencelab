@@ -281,7 +281,10 @@ export const FilterSections = ({
         <div key={coreField} className="filter-section">
           <div className="filter-section-header" onClick={() => onToggleFilter(coreField)}>
             <span className="filter-section-toggle">{isCollapsed ? '▶' : '▼'}</span>
-            <span className="filter-section-title">{displayLabel}</span>
+            <span className="filter-section-title">
+              {displayLabel}
+              {coreField.startsWith('tag_') && <em className="header-label-subtitle">(AI-generated : Experimental)</em>}
+            </span>
           </div>
           {showContent && (
             <div className="filter-section-content">
