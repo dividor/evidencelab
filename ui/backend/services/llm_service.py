@@ -224,28 +224,49 @@ async def translate_text(text: str, target_language: str) -> str:
     if not text:
         return ""
 
-    # Map full language names or codes to ISO codes
+    # Map full language names or codes to deep-translator ISO codes.
+    # Note: "zh" is not accepted by GoogleTranslator; use "zh-CN".
     lang_map = {
         "english": "en",
         "french": "fr",
         "spanish": "es",
         "arabic": "ar",
-        "chinese": "zh",
+        "chinese": "zh-CN",
         "portuguese": "pt",
         "russian": "ru",
         "swahili": "sw",
         "hindi": "hi",
         "bengali": "bn",
+        "german": "de",
+        "greek": "el",
+        "italian": "it",
+        "lithuanian": "lt",
+        "vietnamese": "vi",
+        "dutch": "nl",
+        "polish": "pl",
+        "turkish": "tr",
+        "japanese": "ja",
+        "korean": "ko",
         "en": "en",
         "fr": "fr",
         "es": "es",
         "ar": "ar",
-        "zh": "zh",
+        "zh": "zh-CN",
         "pt": "pt",
         "ru": "ru",
         "sw": "sw",
         "hi": "hi",
         "bn": "bn",
+        "de": "de",
+        "el": "el",
+        "it": "it",
+        "lt": "lt",
+        "vi": "vi",
+        "nl": "nl",
+        "pl": "pl",
+        "tr": "tr",
+        "ja": "ja",
+        "ko": "ko",
     }
 
     target_lang_code = lang_map.get(target_language.lower(), "en")
