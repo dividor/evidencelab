@@ -737,6 +737,9 @@ function App() {
   const aiSummaryAbortRef = useRef<AbortController | null>(null);
 
   const [aiSummaryBuffer, setAiSummaryBuffer] = useState<string>(''); // Buffer for character animation
+  const [aiSummaryTranslatedText, setAiSummaryTranslatedText] = useState<string | null>(null);
+  const [aiSummaryTranslatingLang, setAiSummaryTranslatingLang] = useState<string | null>(null);
+  const [aiSummaryTranslatedLang, setAiSummaryTranslatedLang] = useState<string | null>(null);
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {
@@ -1511,6 +1514,9 @@ function App() {
     setAiSummary('');
     setAiSummaryBuffer('');
     setAiPrompt('');
+    setAiSummaryTranslatedText(null);
+    setAiSummaryTranslatingLang(null);
+    setAiSummaryTranslatedLang(null);
 
     // Strip results to only the fields the backend prompt template needs,
     // avoiding huge payloads from chunk_elements, images, tables, etc.
@@ -1875,6 +1881,27 @@ function App() {
     }
   };
 
+  const handleAiSummaryLanguageChange = async (newLang: string) => {
+    if (newLang === 'en') {
+      setAiSummaryTranslatedText(null);
+      setAiSummaryTranslatingLang(null);
+      setAiSummaryTranslatedLang(null);
+      return;
+    }
+    if (aiSummaryTranslatedLang === newLang) {
+      return;
+    }
+    setAiSummaryTranslatingLang(newLang);
+    try {
+      const translated = await translateViaApi(aiSummary, newLang, 'en');
+      setAiSummaryTranslatedText(translated);
+      setAiSummaryTranslatedLang(newLang);
+    } catch (error) {
+      console.error('AI summary translation error', error);
+    }
+    setAiSummaryTranslatingLang(null);
+  };
+
   // Fetch TOC data for a document
   const fetchTocData = async (docId: string) => {
     setLoadingToc(true);
@@ -2071,6 +2098,10 @@ function App() {
       onOpenMetadata={handleOpenSearchMetadata}
       onLanguageChange={handleResultLanguageChange}
       onRequestHighlight={requestHighlightHandler}
+      aiSummaryTranslatedText={aiSummaryTranslatedText}
+      aiSummaryTranslatingLang={aiSummaryTranslatingLang}
+      aiSummaryTranslatedLang={aiSummaryTranslatedLang}
+      onAiSummaryLanguageChange={handleAiSummaryLanguageChange}
     />
   );
 

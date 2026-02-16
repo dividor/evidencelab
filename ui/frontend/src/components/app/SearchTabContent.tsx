@@ -71,6 +71,10 @@ interface SearchTabContentProps {
   onRequestHighlight?: (chunkId: string, text: string) => void;
   onRegenerateAiSummary?: (results: SearchResult[]) => void;
   aiSummaryResults: SearchResult[];
+  aiSummaryTranslatedText?: string | null;
+  aiSummaryTranslatingLang?: string | null;
+  aiSummaryTranslatedLang?: string | null;
+  onAiSummaryLanguageChange?: (newLang: string) => void;
   searchId: number;
 }
 
@@ -138,6 +142,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onRequestHighlight,
   onRegenerateAiSummary,
   aiSummaryResults,
+  aiSummaryTranslatedText,
+  aiSummaryTranslatingLang,
+  aiSummaryTranslatedLang,
+  onAiSummaryLanguageChange,
   searchId,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
@@ -466,6 +474,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
             aiPrompt={aiPrompt}
             showPromptModal={showPromptModal}
+            translatedSummary={aiSummaryTranslatedText}
+            translatedLang={aiSummaryTranslatedLang}
+            isTranslating={!!aiSummaryTranslatingLang}
+            translatingLang={aiSummaryTranslatingLang}
+            onLanguageChange={onAiSummaryLanguageChange}
             onToggleCollapsed={onToggleCollapsed}
             onToggleExpanded={onToggleExpanded}
             onResultClick={onResultClick}
