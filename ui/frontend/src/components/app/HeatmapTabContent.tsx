@@ -25,6 +25,7 @@ import { findSemanticMatches, TextMatch } from '../../utils/textHighlighting';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 const API_KEY = process.env.REACT_APP_API_KEY;
+const HEATMAP_DEFAULT_SENSITIVITY = 0.2;
 
 type HeatmapFilterModalState = {
   field: string;
@@ -283,6 +284,8 @@ const buildSearchParams = (options: {
   rerankModel: string | null;
   rerankModelPageSize: number | null;
   searchModel: string | null;
+  autoMinScore: boolean;
+  deduplicateEnabled: boolean;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
@@ -316,6 +319,10 @@ const buildSearchParams = (options: {
   if (options.searchModel) {
     params.append('model', options.searchModel);
   }
+  if (options.autoMinScore) {
+    params.append('auto_min_score', 'true');
+  }
+  params.append('deduplicate', options.deduplicateEnabled.toString());
   params.append('data_source', options.dataSource);
   return params;
 };
@@ -1055,7 +1062,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [rowQueries, setRowQueries] = useState<string[]>(['']);
   const [columnDimension, setColumnDimension] = useState<string>('published_year');
   const [rowDimension, setRowDimension] = useState<string>('document_type');
-  const [similarityCutoff, setSimilarityCutoff] = useState<number>(0.5);
+  const [similarityCutoff, setSimilarityCutoff] = useState<number>(HEATMAP_DEFAULT_SENSITIVITY);
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('documents');
   const [gridQuery, setGridQuery] = useState<string>('');
   const [gridResults, setGridResults] = useState<RawCellResults>({});
@@ -1085,6 +1092,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
+  const prevScoreBoundsRef = useRef({ min: 0, max: 0 });
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
@@ -1307,7 +1315,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       const values = getFieldValues(field);
       const currentSelected = heatmapSelectedFilters[field];
       const initialSelectedValues = currentSelected ? [...currentSelected] : [...values];
-      setHeatmapCollapsedFilters(new Set());
+      setHeatmapCollapsedFilters(new Set([field]));
       setHeatmapExpandedFilterLists(new Set());
       setHeatmapFilterSearchTerms((prev) => ({ ...prev, [field]: '' }));
       setHeatmapSelectedFilters((prev) => {
@@ -2037,8 +2045,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (!scoreBounds.hasScores) {
       return;
     }
-    const midpoint = scoreBounds.min + (scoreBounds.max - scoreBounds.min) / 2;
-    setSimilarityCutoff(midpoint);
+    const prev = prevScoreBoundsRef.current;
+    if (prev.min === scoreBounds.min && prev.max === scoreBounds.max) {
+      return;
+    }
+    prevScoreBoundsRef.current = { min: scoreBounds.min, max: scoreBounds.max };
+    setSimilarityCutoff(HEATMAP_DEFAULT_SENSITIVITY);
   }, [scoreBounds]);
 
   const maxCellCount = useMemo(() => {
@@ -2153,6 +2165,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           rerankModel,
           rerankModelPageSize,
           searchModel,
+          autoMinScore,
+          deduplicateEnabled,
           dataSource,
         });
 
