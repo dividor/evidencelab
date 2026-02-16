@@ -12,6 +12,14 @@ load_dotenv(env_path)
 def check_config():
     print("--- Qdrant Collection Config Inspector ---")
 
+    # Show environment variable settings
+    print("\n[Environment Settings]")
+    print(f"  - QUANTIZATION_RESCORE: {os.getenv('QUANTIZATION_RESCORE', 'not set')}")
+    print(
+        f"  - QUANTIZATION_ALWAYS_RAM: {os.getenv('QUANTIZATION_ALWAYS_RAM', 'not set')}"
+    )
+    print(f"  - VECTORS_ON_DISK: {os.getenv('VECTORS_ON_DISK', 'not set')}")
+
     # 1. Connect
     host = os.getenv("QDRANT_HOST", "localhost:6333")
     if "http" not in host:
@@ -48,8 +56,19 @@ def check_config():
         quant_config = info.config.quantization_config
         print("\n[Quantization]")
         if quant_config:
-            print(f"  - Type: {type(quant_config)}")
+            print(f"  - Type: {type(quant_config).__name__}")
             print(f"  - Config: {quant_config}")
+            # Extract specific settings if scalar quantization
+            if hasattr(quant_config, "scalar"):
+                scalar = quant_config.scalar
+                print(f"  - Quantization Type: {scalar.type}")
+                print(f"  - Always RAM: {scalar.always_ram}")
+                print(f"  - Quantile: {scalar.quantile}")
+            # Check rescore setting from params
+            if hasattr(info.config.params, "quantization_config"):
+                params_quant = info.config.params.quantization_config
+                if params_quant and hasattr(params_quant, "rescore"):
+                    print(f"  - Rescore: {params_quant.rescore}")
         else:
             print("  - Status: DISABLED")
 
