@@ -1,18 +1,29 @@
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+
+# Load environment variables from .env file
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(env_path)
 
 
 def check_config():
     print("--- Qdrant Collection Config Inspector ---")
 
     # 1. Connect
-    host = os.getenv("QDRANT_HOST", "localhost")
+    host = os.getenv("QDRANT_HOST", "localhost:6333")
     if "http" not in host:
         host = f"http://{host}"
 
+    # Replace 'qdrant' (Docker hostname) with 'localhost' when running from host
+    host = host.replace("://qdrant:", "://localhost:")
+
+    api_key = os.getenv("QDRANT_API_KEY")
+
     print(f"Connecting to: {host}")
-    client = QdrantClient(url=host)
+    client = QdrantClient(url=host, api_key=api_key)
 
     collection_name = "chunks_uneg"
     print(f"Collection: {collection_name}")
