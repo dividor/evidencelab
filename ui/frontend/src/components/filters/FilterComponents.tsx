@@ -273,7 +273,7 @@ export const FilterSections = ({
         titleSearchResults,
         facetSearchResults
       );
-      const isCollapsed = collapsedFilters.has(coreField);
+      const isCollapsed = !collapsedFilters.has(coreField);
       const showContent =
         !isCollapsed && (coreField === 'title' || facetValues.length > 0 || searchTerm.length > 0);
 

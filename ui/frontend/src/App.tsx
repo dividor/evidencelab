@@ -846,19 +846,9 @@ function App() {
     return nextFilters;
   }, [heatmapFilters]);
 
-  // Collapsed filters state (all collapsed by default) - use core field names
-  const [collapsedFilters, setCollapsedFilters] = useState<Set<string>>(() => {
-    const defaultCollapsed = new Set(CORE_FILTER_FIELDS);
-    defaultCollapsed.add('search_settings');
-    defaultCollapsed.add('content_settings');
-    return defaultCollapsed;
-  });
-  const [heatmapCollapsedFilters, setHeatmapCollapsedFilters] = useState<Set<string>>(() => {
-    const defaultCollapsed = new Set(CORE_FILTER_FIELDS);
-    defaultCollapsed.add('search_settings');
-    defaultCollapsed.add('content_settings');
-    return defaultCollapsed;
-  });
+  // Tracks which filter sections the user has expanded (everything collapsed by default)
+  const [collapsedFilters, setCollapsedFilters] = useState<Set<string>>(new Set());
+  const [heatmapCollapsedFilters, setHeatmapCollapsedFilters] = useState<Set<string>>(new Set());
 
   // Track which filter lists are expanded to show all items (default shows 5)
   const [expandedFilterLists, setExpandedFilterLists] = useState<Set<string>>(new Set());
@@ -934,39 +924,8 @@ function App() {
     [buildFilterValue, handleHeatmapFilterChange]
   );
 
-  // Auto-collapse new filter fields when facets first load (don't re-collapse already-known fields)
-  const knownFilterFields = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (facets?.filter_fields) {
-      setCollapsedFilters(prev => {
-        const newSet = new Set(prev);
-        Object.keys(facets.filter_fields).forEach(field => {
-          if (!knownFilterFields.current.has(field)) {
-            newSet.add(field);
-            knownFilterFields.current.add(field);
-          }
-        });
-        return newSet;
-      });
-    }
-  }, [facets?.filter_fields]);
-
-  // Auto-collapse new filter fields in heatmap tab when facets load
-  const knownHeatmapFilterFields = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (allFacets?.filter_fields) {
-      setHeatmapCollapsedFilters(prev => {
-        const newSet = new Set(prev);
-        Object.keys(allFacets.filter_fields).forEach(field => {
-          if (!knownHeatmapFilterFields.current.has(field)) {
-            newSet.add(field);
-            knownHeatmapFilterFields.current.add(field);
-          }
-        });
-        return newSet;
-      });
-    }
-  }, [allFacets?.filter_fields]);
+  // No auto-collapse effects needed — all sections default to collapsed
+  // because collapsedFilters now tracks expanded fields (inverted semantics)
 
   // Perform title search when title filter input changes
   useEffect(() => {

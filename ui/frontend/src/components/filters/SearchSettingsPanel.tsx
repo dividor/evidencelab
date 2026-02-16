@@ -248,11 +248,11 @@ export const SearchSettingsPanel = ({
     <div className="filter-section">
       <div className="filter-section-header" onClick={() => onToggleFilter('search_settings')}>
         <span className="filter-section-toggle">
-          {collapsedFilters.has('search_settings') ? '▶' : '▼'}
+          {collapsedFilters.has('search_settings') ? '▼' : '▶'}
         </span>
         <span className="filter-section-title">Search Settings</span>
       </div>
-      {!collapsedFilters.has('search_settings') && (
+      {collapsedFilters.has('search_settings') && (
         <div className="filter-section-content">
           <ScoreSlider
             label="Search Mode"
@@ -385,11 +385,11 @@ export const SearchSettingsPanel = ({
     <div className="filter-section">
       <div className="filter-section-header" onClick={() => onToggleFilter('content_settings')}>
         <span className="filter-section-toggle">
-          {collapsedFilters.has('content_settings') ? '▶' : '▼'}
+          {collapsedFilters.has('content_settings') ? '▼' : '▶'}
         </span>
         <span className="filter-section-title">Content Settings</span>
       </div>
-      {!collapsedFilters.has('content_settings') && (
+      {collapsedFilters.has('content_settings') && (
         <div className="filter-section-content">
           <div
             className="search-settings-group"
