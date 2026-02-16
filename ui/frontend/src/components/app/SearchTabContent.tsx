@@ -366,7 +366,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         <main className="results-section">
           {showFilters && (
             <div className="search-result-filters">
-              {uniqueOrgs.length > 1 && (
+              {uniqueOrgs.length > 0 && (
                 <div className="search-result-filters-orgs">
                   {uniqueOrgs.map(({ org, count }) => (
                     <button
