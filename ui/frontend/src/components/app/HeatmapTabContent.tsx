@@ -75,6 +75,7 @@ interface HeatmapTabContentProps {
   recencyScaleDays: number;
   onRecencyScaleDaysChange: (value: number) => void;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   minChunkSize: number;
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
@@ -280,6 +281,7 @@ const buildSearchParams = (options: {
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   searchModel: string | null;
   dataSource: string;
 }) => {
@@ -307,6 +309,9 @@ const buildSearchParams = (options: {
   }
   if (options.rerankModel) {
     params.append('rerank_model', options.rerankModel);
+  }
+  if (options.rerankModelPageSize != null && options.rerankModelPageSize > 0) {
+    params.append('rerank_model_page_size', options.rerankModelPageSize.toString());
   }
   if (options.searchModel) {
     params.append('model', options.searchModel);
@@ -1033,6 +1038,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   recencyScaleDays,
   onRecencyScaleDaysChange,
   rerankModel,
+  rerankModelPageSize,
   minChunkSize,
   onMinChunkSizeChange,
   sectionTypes,
@@ -2145,6 +2151,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           keywordBoostShortQueries,
           minChunkSize,
           rerankModel,
+          rerankModelPageSize,
           searchModel,
           dataSource,
         });

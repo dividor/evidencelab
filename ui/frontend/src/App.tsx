@@ -289,6 +289,7 @@ const buildSearchParams = ({
   keywordBoostShortQueries,
   minChunkSize,
   rerankModel,
+  rerankModelPageSize,
   searchModel,
   dataSource,
   autoMinScore,
@@ -305,6 +306,7 @@ const buildSearchParams = ({
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   searchModel: string | null;
   dataSource: string;
   autoMinScore: boolean;
@@ -330,6 +332,9 @@ const buildSearchParams = ({
   }
   if (rerankModel) {
     params.append('rerank_model', rerankModel);
+  }
+  if (rerankModelPageSize != null && rerankModelPageSize > 0) {
+    params.append('rerank_model_page_size', rerankModelPageSize.toString());
   }
   if (searchModel) {
     params.append('model', searchModel);
@@ -420,6 +425,7 @@ function App() {
   const [semanticHighlightModelConfig, setSemanticHighlightModelConfig] =
     useState<SummaryModelConfig | null>(null);
   const [rerankModel, setRerankModel] = useState<string | null>(null);
+  const [rerankModelPageSize, setRerankModelPageSize] = useState<number | null>(null);
 
   // Fetch datasources config on mount (includes total_documents per datasource)
   useEffect(() => {
@@ -525,6 +531,7 @@ function App() {
     setSummaryModelConfig(combo.summarization_model);
     setSemanticHighlightModelConfig(combo.semantic_highlighting_model);
     setRerankModel(combo.reranker_model);
+    setRerankModelPageSize(combo.rerank_model_page_size ?? null);
   }, [selectedModelCombo, modelCombos]);
 
 
@@ -1551,6 +1558,7 @@ function App() {
         keywordBoostShortQueries,
         minChunkSize,
         rerankModel,
+        rerankModelPageSize,
         searchModel,
         dataSource,
         autoMinScore,
@@ -2084,6 +2092,7 @@ function App() {
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
       rerankModel={rerankModel}
+      rerankModelPageSize={rerankModelPageSize}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSource={dataSource}
       selectedDoc={selectedDoc}
