@@ -246,7 +246,7 @@ def rerank_results(
     query: str,
     results: List[Any],
     limit: Optional[int] = None,
-    max_rerank_candidates: int = 10,
+    max_rerank_candidates: int = 0,
     rerank_model: Optional[str] = None,
     chunk_cache: Optional[Dict[str, Any]] = None,
 ) -> List[Any]:
