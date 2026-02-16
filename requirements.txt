@@ -27,7 +27,7 @@ torchvision
 # OCR engines
 easyocr==1.7.2
 rapidocr-onnxruntime==1.4.4
-rapidocr==3.4.2
+rapidocr==3.6.0
 
 # ONNX runtime for model inference
 onnxruntime==1.23.2
