@@ -37,7 +37,9 @@ def _make_search_result(chunk_id: str = "c1") -> main_module.SearchResult:
 
 @pytest.mark.asyncio
 async def test_translate_success(monkeypatch):
-    async def fake_translate(text: str, target_language: str) -> str:
+    async def fake_translate(
+        text: str, target_language: str, source_language: str | None = None
+    ) -> str:
         return f"{text}-{target_language}"
 
     llm_module = ModuleType("llm_service")
@@ -53,7 +55,9 @@ async def test_translate_success(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_translate_error(monkeypatch):
-    async def fake_translate(text: str, target_language: str) -> str:
+    async def fake_translate(
+        text: str, target_language: str, source_language: str | None = None
+    ) -> str:
         raise RuntimeError("boom")
 
     llm_module = ModuleType("llm_service")
@@ -279,7 +283,9 @@ async def test_get_documents_translation(monkeypatch):
 
     monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: PgMock())
 
-    async def fake_translate(text: str, target_language: str) -> str:
+    async def fake_translate(
+        text: str, target_language: str, source_language: str | None = None
+    ) -> str:
         return f"{text}-{target_language}"
 
     llm_module = ModuleType("ui.backend.services.llm_service")
