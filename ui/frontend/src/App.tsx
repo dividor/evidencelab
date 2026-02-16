@@ -80,6 +80,7 @@ export interface DataSourceConfigItem {
   field_mapping: FieldMapping;
   filter_fields: FilterFields;
   pipeline?: any; // Add pipeline to access taxonomies
+  total_documents?: number;
 }
 
 type DataSourcesConfig = DataSourceConfig;
@@ -420,12 +421,23 @@ function App() {
     useState<SummaryModelConfig | null>(null);
   const [rerankModel, setRerankModel] = useState<string | null>(null);
 
-  // Fetch datasources config on mount
+  // Fetch datasources config on mount (includes total_documents per datasource)
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const response = await axios.get<DataSourcesConfig>(`${API_BASE_URL}/config/datasources`);
-        setDatasourcesConfig(response.data);
+        const data = response.data;
+        setDatasourcesConfig(data);
+
+        // Extract totals from config response
+        const totals: DatasetTotals = {};
+        for (const [name, cfg] of Object.entries(data)) {
+          const config = cfg as DataSourceConfigItem;
+          if (config.total_documents !== undefined && !Number.isNaN(config.total_documents)) {
+            totals[name] = config.total_documents;
+          }
+        }
+        setDatasetTotals(totals);
       } catch (err) {
         console.error('Failed to fetch datasources config:', err);
       } finally {
@@ -439,58 +451,6 @@ function App() {
   useEffect(() => {
     fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading);
   }, []);
-
-  useEffect(() => {
-    if (loadingConfig) {
-      return;
-    }
-    const domains = Object.entries(datasourcesConfig);
-    if (domains.length === 0) {
-      setDatasetTotals({});
-      return;
-    }
-    let isMounted = true;
-    const fetchTotals = async () => {
-      const totals = await Promise.all(domains.map(async ([domainName, cfg]) => {
-        const config = cfg as DataSourceConfigItem;
-        if (!config.data_subdir) {
-          console.error(`Missing data_subdir for dataset: ${domainName}`);
-          return null;
-        }
-        try {
-          const response = await axios.get<{ total_documents?: number }>(
-            `${API_BASE_URL}/stats?data_source=${config.data_subdir}`
-          );
-          return {
-            domainName,
-            total: response.data?.total_documents,
-          };
-        } catch (error) {
-          // Silently handle missing or unavailable data sources
-          // (e.g., WorldBank may be configured but not yet populated)
-          return null;
-        }
-      }));
-      if (!isMounted) {
-        return;
-      }
-      const nextTotals: DatasetTotals = {};
-      totals.forEach((entry) => {
-        if (!entry) {
-          return;
-        }
-        if (entry.total === undefined || Number.isNaN(entry.total)) {
-          return;
-        }
-        nextTotals[entry.domainName] = entry.total;
-      });
-      setDatasetTotals(nextTotals);
-    };
-    fetchTotals();
-    return () => {
-      isMounted = false;
-    };
-  }, [datasourcesConfig, loadingConfig]);
 
   // Get available domains from config
   const availableDomains = Object.keys(datasourcesConfig);

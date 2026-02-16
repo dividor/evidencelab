@@ -12,6 +12,7 @@ from pipeline.db import (
 )
 from ui.backend.schemas import LLMConfig, ModelComboConfig, ModelConfig
 from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_state import get_pg_for_source
 
 _RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, _RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
@@ -170,10 +171,20 @@ def get_config_model_combos():
 
 @router.get("/config/datasources")
 async def get_datasources_config():
-    """Get datasources configuration for UI."""
+    """Get datasources configuration for UI, enriched with document totals."""
     config = pipeline_db.load_datasources_config()
-    # Return only the datasources section
-    return config.get("datasources", {})
+    datasources = config.get("datasources", {})
+    for name, ds_config in datasources.items():
+        data_subdir = ds_config.get("data_subdir")
+        if not data_subdir:
+            continue
+        try:
+            pg = get_pg_for_source(data_subdir)
+            status_counts = pg.fetch_status_counts()
+            ds_config["total_documents"] = sum(status_counts.values())
+        except Exception:
+            pass
+    return datasources
 
 
 @router.get("/health")
