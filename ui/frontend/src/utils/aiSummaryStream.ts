@@ -15,6 +15,7 @@ interface AiSummaryStreamOptions {
   results: SearchResult[];
   summaryModelConfig?: SummaryModelConfig | null;
   handlers: AiSummaryStreamHandlers;
+  signal?: AbortSignal;
 }
 
 const buildHeaders = (apiKey?: string): Record<string, string> => {
@@ -123,6 +124,7 @@ export const streamAiSummary = async ({
   results,
   summaryModelConfig,
   handlers,
+  signal,
 }: AiSummaryStreamOptions): Promise<void> => {
   const response = await fetch(`${apiBaseUrl}/ai-summary/stream?data_source=${dataSource}`, {
     method: 'POST',
@@ -134,12 +136,14 @@ export const streamAiSummary = async ({
       summary_model: summaryModelConfig?.model || undefined,
       summary_model_config: summaryModelConfig || undefined,
     }),
+    signal,
   });
 
   try {
     const reader = getStreamReader(response);
     await readStream(reader, handlers);
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') return;
     handlers.onError('Uh oh. Something went wrong asking the AI.');
   }
 };

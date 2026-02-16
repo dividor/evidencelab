@@ -35,7 +35,8 @@
     "rules": {
       "security/detect-object-injection": "warn",
       "security/detect-non-literal-fs-filename": "warn",
-      "security/detect-eval-with-expression": "error"
+      "security/detect-eval-with-expression": "error",
+      "sonarjs/cognitive-complexity": ["error", 20]
     }
   },
   "browserslist": {

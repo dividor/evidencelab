@@ -1,5 +1,7 @@
 import React from 'react';
 import { SearchResult } from '../types/api';
+import { LANGUAGES } from '../constants';
+import { RainbowText } from './RainbowText';
 import { AiSummaryWithCitations } from './AiSummaryWithCitations';
 import { AiSummaryReferences } from './AiSummaryReferences';
 
@@ -13,6 +15,11 @@ interface AiSummaryPanelProps {
   results: SearchResult[];
   aiPrompt: string;
   showPromptModal: boolean;
+  translatedSummary?: string | null;
+  translatedLang?: string | null;
+  isTranslating?: boolean;
+  translatingLang?: string | null;
+  onLanguageChange?: (newLang: string) => void;
   onToggleCollapsed: () => void;
   onToggleExpanded: () => void;
   onResultClick: (result: SearchResult) => void;
@@ -182,6 +189,11 @@ export const AiSummaryPanel = ({
   results,
   aiPrompt,
   showPromptModal,
+  translatedSummary,
+  translatedLang,
+  isTranslating,
+  translatingLang,
+  onLanguageChange,
   onToggleCollapsed,
   onToggleExpanded,
   onResultClick,
@@ -193,12 +205,66 @@ export const AiSummaryPanel = ({
   }
 
   const filteredResults = results.filter((result) => result.score >= minScore);
+  const displaySummary = translatedSummary || aiSummary;
+  const selectedLang = translatedLang || 'en';
 
   return (
     <>
       <div className={`ai-summary-box ${aiSummaryCollapsed ? 'collapsed' : ''}`}>
         <div className="ai-summary-header" onClick={onToggleCollapsed}>
           <h3 className="ai-summary-title">AI Summary</h3>
+          {aiSummary && !aiSummaryLoading && onLanguageChange && (
+            <div
+              className="result-language-selector"
+              onClick={(e) => e.stopPropagation()}
+              style={{ position: 'relative', display: 'inline-block', marginLeft: 'auto' }}
+            >
+              {isTranslating && (
+                <div
+                  className="rainbow-overlay translating-dropdown"
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'white',
+                    pointerEvents: 'none',
+                    fontSize: '0.8rem',
+                    borderRadius: '4px',
+                    zIndex: 1
+                  }}
+                >
+                  <RainbowText text={LANGUAGES[translatingLang || 'en'] || '...'} />
+                </div>
+              )}
+              <select
+                value={selectedLang}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  onLanguageChange(e.target.value)
+                }
+                style={{
+                  fontSize: '0.8rem',
+                  padding: '2px 4px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: 'transparent',
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  visibility: isTranslating ? 'hidden' : 'visible'
+                }}
+              >
+                {Object.entries(LANGUAGES).map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button className="ai-summary-toggle" type="button">
             {aiSummaryCollapsed ? 'Expand' : 'Collapse'}
           </button>
@@ -207,13 +273,13 @@ export const AiSummaryPanel = ({
           collapsed={aiSummaryCollapsed}
           expanded={aiSummaryExpanded}
           loading={aiSummaryLoading}
-          summary={aiSummary}
+          summary={displaySummary}
           filteredResults={filteredResults}
           onResultClick={onResultClick}
         />
         <AiSummaryFooter
           collapsed={aiSummaryCollapsed}
-          summary={aiSummary}
+          summary={displaySummary}
           loading={aiSummaryLoading}
           expanded={aiSummaryExpanded}
           aiPrompt={aiPrompt}

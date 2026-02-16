@@ -44,7 +44,7 @@ export const DocumentsTableControls: React.FC<DocumentsTableControlsProps> = ({
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span className="table-count">
-          Showing {startIndex}-{endIndex} of {totalCount} documents
+          Showing {startIndex.toLocaleString()}-{endIndex.toLocaleString()} of {totalCount.toLocaleString()} documents
           {selectedCategory && ` (filtered by ${chartView})`}
         </span>
         <button

@@ -625,6 +625,7 @@ class AISummaryRequest(BaseModel):
 class TranslateRequest(BaseModel):
     text: str
     target_language: str
+    source_language: Optional[str] = None
 
 
 class AISummaryResponse(BaseModel):

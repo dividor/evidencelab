@@ -80,6 +80,7 @@ export interface DataSourceConfigItem {
   field_mapping: FieldMapping;
   filter_fields: FilterFields;
   pipeline?: any; // Add pipeline to access taxonomies
+  total_documents?: number;
 }
 
 type DataSourcesConfig = DataSourceConfig;
@@ -126,12 +127,12 @@ const buildSearchErrorMessage = (error: any): string => {
   return 'Search failed. Make sure the backend is running.';
 };
 
-const translateViaApi = async (text: string, targetLanguage: string): Promise<string | null> => {
+const translateViaApi = async (text: string, targetLanguage: string, sourceLanguage?: string): Promise<string | null> => {
   try {
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
-      body: JSON.stringify({ text, target_language: targetLanguage })
+      body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -155,12 +156,13 @@ const buildChunkTextForTranslation = (result: SearchResult): string => {
 
 const translateHeadings = async (
   headings: string[],
-  targetLanguage: string
+  targetLanguage: string,
+  sourceLanguage?: string
 ): Promise<string | undefined> => {
   if (!headings.length) {
     return undefined;
   }
-  const translated = await translateViaApi(headings.join(' > '), targetLanguage);
+  const translated = await translateViaApi(headings.join(' > '), targetLanguage, sourceLanguage);
   return translated ?? undefined;
 };
 
@@ -377,7 +379,7 @@ const getTabFromPath = (): TabName => {
     return 'search';
   }
   const path = stripBasePath(window.location.pathname).replace('/', '').toLowerCase();
-  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'heatmap';
+  return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
 };
 
 // Core field names used in URL and API (order matters for display)
@@ -419,12 +421,23 @@ function App() {
     useState<SummaryModelConfig | null>(null);
   const [rerankModel, setRerankModel] = useState<string | null>(null);
 
-  // Fetch datasources config on mount
+  // Fetch datasources config on mount (includes total_documents per datasource)
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const response = await axios.get<DataSourcesConfig>(`${API_BASE_URL}/config/datasources`);
-        setDatasourcesConfig(response.data);
+        const data = response.data;
+        setDatasourcesConfig(data);
+
+        // Extract totals from config response
+        const totals: DatasetTotals = {};
+        for (const [name, cfg] of Object.entries(data)) {
+          const config = cfg as DataSourceConfigItem;
+          if (config.total_documents !== undefined && !Number.isNaN(config.total_documents)) {
+            totals[name] = config.total_documents;
+          }
+        }
+        setDatasetTotals(totals);
       } catch (err) {
         console.error('Failed to fetch datasources config:', err);
       } finally {
@@ -438,58 +451,6 @@ function App() {
   useEffect(() => {
     fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading);
   }, []);
-
-  useEffect(() => {
-    if (loadingConfig) {
-      return;
-    }
-    const domains = Object.entries(datasourcesConfig);
-    if (domains.length === 0) {
-      setDatasetTotals({});
-      return;
-    }
-    let isMounted = true;
-    const fetchTotals = async () => {
-      const totals = await Promise.all(domains.map(async ([domainName, cfg]) => {
-        const config = cfg as DataSourceConfigItem;
-        if (!config.data_subdir) {
-          console.error(`Missing data_subdir for dataset: ${domainName}`);
-          return null;
-        }
-        try {
-          const response = await axios.get<{ total_documents?: number }>(
-            `${API_BASE_URL}/stats?data_source=${config.data_subdir}`
-          );
-          return {
-            domainName,
-            total: response.data?.total_documents,
-          };
-        } catch (error) {
-          // Silently handle missing or unavailable data sources
-          // (e.g., WorldBank may be configured but not yet populated)
-          return null;
-        }
-      }));
-      if (!isMounted) {
-        return;
-      }
-      const nextTotals: DatasetTotals = {};
-      totals.forEach((entry) => {
-        if (!entry) {
-          return;
-        }
-        if (entry.total === undefined || Number.isNaN(entry.total)) {
-          return;
-        }
-        nextTotals[entry.domainName] = entry.total;
-      });
-      setDatasetTotals(nextTotals);
-    };
-    fetchTotals();
-    return () => {
-      isMounted = false;
-    };
-  }, [datasourcesConfig, loadingConfig]);
 
   // Get available domains from config
   const availableDomains = Object.keys(datasourcesConfig);
@@ -667,6 +628,7 @@ function App() {
   // Initialize search state from URL parameters - MOVED TO TOP
   const [query, setQuery] = useState(initialSearchState.query);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [searchId, setSearchId] = useState(0);
   const [facets, setFacets] = useState<Facets | null>(null);
   const [allFacets, setAllFacets] = useState<Facets | null>(null);
   const [facetsDataSource, setFacetsDataSource] = useState<string | null>(null);
@@ -731,8 +693,13 @@ function App() {
   const [showPromptModal, setShowPromptModal] = useState<boolean>(false);
   const [aiSummaryCollapsed, setAiSummaryCollapsed] = useState<boolean>(false);
   const [aiSummaryExpanded, setAiSummaryExpanded] = useState<boolean>(false);
+  const [aiSummaryResults, setAiSummaryResults] = useState<SearchResult[]>([]);
+  const aiSummaryAbortRef = useRef<AbortController | null>(null);
 
   const [aiSummaryBuffer, setAiSummaryBuffer] = useState<string>(''); // Buffer for character animation
+  const [aiSummaryTranslatedText, setAiSummaryTranslatedText] = useState<string | null>(null);
+  const [aiSummaryTranslatingLang, setAiSummaryTranslatingLang] = useState<string | null>(null);
+  const [aiSummaryTranslatedLang, setAiSummaryTranslatedLang] = useState<string | null>(null);
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {
@@ -749,7 +716,7 @@ function App() {
       setSelectedFilters(buildEmptySelectedFilters());
     }
 
-    let newPath = tab === 'heatmap' ? '/' : `/${tab}`;
+    let newPath = tab === 'search' ? '/' : `/${tab}`;
     newPath = withBasePath(newPath);
 
     // Preserve dataset/model in URL when switching tabs
@@ -763,7 +730,7 @@ function App() {
     if (selectedModelCombo) {
       params.set('model_combo', selectedModelCombo);
     }
-    if (tab !== 'heatmap') {
+    if (tab !== 'search') {
       params.set('tab', tab);
     }
 
@@ -879,19 +846,9 @@ function App() {
     return nextFilters;
   }, [heatmapFilters]);
 
-  // Collapsed filters state (all collapsed by default) - use core field names
-  const [collapsedFilters, setCollapsedFilters] = useState<Set<string>>(() => {
-    const defaultCollapsed = new Set(CORE_FILTER_FIELDS);
-    defaultCollapsed.add('search_settings');
-    defaultCollapsed.add('content_settings');
-    return defaultCollapsed;
-  });
-  const [heatmapCollapsedFilters, setHeatmapCollapsedFilters] = useState<Set<string>>(() => {
-    const defaultCollapsed = new Set(CORE_FILTER_FIELDS);
-    defaultCollapsed.add('search_settings');
-    defaultCollapsed.add('content_settings');
-    return defaultCollapsed;
-  });
+  // Tracks which filter sections the user has expanded (everything collapsed by default)
+  const [collapsedFilters, setCollapsedFilters] = useState<Set<string>>(new Set());
+  const [heatmapCollapsedFilters, setHeatmapCollapsedFilters] = useState<Set<string>>(new Set());
 
   // Track which filter lists are expanded to show all items (default shows 5)
   const [expandedFilterLists, setExpandedFilterLists] = useState<Set<string>>(new Set());
@@ -967,31 +924,8 @@ function App() {
     [buildFilterValue, handleHeatmapFilterChange]
   );
 
-  // Auto-collapse all filter fields (including taxonomy fields) when facets first load
-  useEffect(() => {
-    if (facets?.filter_fields) {
-      setCollapsedFilters(prev => {
-        const newSet = new Set(prev);
-        Object.keys(facets.filter_fields).forEach(field => {
-          newSet.add(field);
-        });
-        return newSet;
-      });
-    }
-  }, [facets?.filter_fields]);
-
-  // Auto-collapse all filter fields in heatmap tab when facets load
-  useEffect(() => {
-    if (allFacets?.filter_fields) {
-      setHeatmapCollapsedFilters(prev => {
-        const newSet = new Set(prev);
-        Object.keys(allFacets.filter_fields).forEach(field => {
-          newSet.add(field);
-        });
-        return newSet;
-      });
-    }
-  }, [allFacets?.filter_fields]);
+  // No auto-collapse effects needed — all sections default to collapsed
+  // because collapsedFilters now tracks expanded fields (inverted semantics)
 
   // Perform title search when title filter input changes
   useEffect(() => {
@@ -1382,6 +1316,12 @@ function App() {
         params.delete('doc_id');
         params.delete('chunk_id');
       }
+      // Preserve carousel filter params if present in current URL
+      const currentParams = new URLSearchParams(window.location.search);
+      const carouselOrg = currentParams.get('carousel_org');
+      const carouselDoc = currentParams.get('carousel_doc');
+      if (carouselOrg) params.set('carousel_org', carouselOrg);
+      if (carouselDoc) params.set('carousel_doc', carouselDoc);
       const finalParams = params.toString();
       const searchString = finalParams ? `?${finalParams}` : '';
       const newURL = withBasePath(finalParams ? `/?${finalParams}` : '/');
@@ -1475,8 +1415,8 @@ function App() {
     }
   }, [query, semanticHighlightModelConfig]);
 
-  const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
-    if (!AI_SUMMARY_ON || data.results.length === 0) {
+  const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
+    if (!AI_SUMMARY_ON || summaryResults.length === 0) {
       setAiSummary('');
       setAiPrompt('');
       return;
@@ -1488,18 +1428,45 @@ function App() {
       return;
     }
 
+    // Abort any in-flight stream
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    aiSummaryAbortRef.current = abortController;
+
+    const sliced = summaryResults.slice(0, 20);
+    setAiSummaryResults(sliced);
     setAiSummaryLoading(true);
     setAiSummary('');
     setAiSummaryBuffer('');
     setAiPrompt('');
+    setAiSummaryTranslatedText(null);
+    setAiSummaryTranslatingLang(null);
+    setAiSummaryTranslatedLang(null);
+
+    // Strip results to only the fields the backend prompt template needs,
+    // avoiding huge payloads from chunk_elements, images, tables, etc.
+    const leanResults = sliced.map((r) => ({
+      chunk_id: r.chunk_id,
+      doc_id: r.doc_id,
+      text: r.text,
+      title: r.title,
+      organization: r.organization,
+      year: r.year,
+      page_num: r.page_num,
+      headings: r.headings,
+      score: r.score,
+    })) as SearchResult[];
 
     streamAiSummary({
       apiBaseUrl: API_BASE_URL,
       apiKey: API_KEY || undefined,
       dataSource,
       query,
-      results: data.results.slice(0, 20),
+      results: leanResults,
       summaryModelConfig,
+      signal: abortController.signal,
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
@@ -1511,11 +1478,16 @@ function App() {
         },
       },
     }).catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('AI summary streaming failed:', error);
       setAiSummary('Uh oh. Something went wrong asking the AI.');
       setAiSummaryLoading(false);
     });
   }, [dataSource, query, summaryModelConfig]);
+
+  const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
+    startAiSummaryStream(data.results);
+  }, [startAiSummaryStream]);
 
   const handlePostSearchResults = useCallback((data: SearchResponse) => {
     if (data.results.length > 0) {
@@ -1561,6 +1533,7 @@ function App() {
     setSearchError(null);
     processingHighlightsRef.current.clear(); // Clear highlight locks
     isSearchingRef.current = true;
+    setSearchId((prev) => prev + 1);
 
     try {
       const params = buildSearchParams({
@@ -1806,10 +1779,10 @@ function App() {
       const textToTranslate = buildChunkTextForTranslation(result);
       const [translatedTitle, translatedText, translatedQuery, translatedHeadings] =
         await Promise.all([
-          translateViaApi(result.title, newLang),
-          translateViaApi(textToTranslate, newLang),
+          translateViaApi(result.title, newLang, originalLanguage),
+          translateViaApi(textToTranslate, newLang, originalLanguage),
           query.trim() ? translateViaApi(query, newLang) : Promise.resolve(null),
-          translateHeadings(result.headings ?? [], newLang)
+          translateHeadings(result.headings ?? [], newLang, originalLanguage)
         ]);
 
       const translatedSemanticMatches = await computeTranslatedSemanticMatches({
@@ -1833,6 +1806,27 @@ function App() {
       console.error("Translation error", error);
       applyTranslationError(setResults, result.chunk_id);
     }
+  };
+
+  const handleAiSummaryLanguageChange = async (newLang: string) => {
+    if (newLang === 'en') {
+      setAiSummaryTranslatedText(null);
+      setAiSummaryTranslatingLang(null);
+      setAiSummaryTranslatedLang(null);
+      return;
+    }
+    if (aiSummaryTranslatedLang === newLang) {
+      return;
+    }
+    setAiSummaryTranslatingLang(newLang);
+    try {
+      const translated = await translateViaApi(aiSummary, newLang, 'en');
+      setAiSummaryTranslatedText(translated);
+      setAiSummaryTranslatedLang(newLang);
+    } catch (error) {
+      console.error('AI summary translation error', error);
+    }
+    setAiSummaryTranslatingLang(null);
   };
 
   // Fetch TOC data for a document
@@ -1953,8 +1947,8 @@ function App() {
     />
   );
 
-  const activeFiltersCount = Object.keys(filters).length;
-  const heatmapActiveFiltersCount = Object.keys(heatmapFilters).length;
+  const activeFiltersCount = Object.values(filters).filter(Boolean).length;
+  const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
   const displayFacets =
     allFacetsDataSource === dataSource && allFacets ? allFacets : facets;
@@ -2013,10 +2007,13 @@ function App() {
       aiSummaryExpanded={aiSummaryExpanded}
       aiSummaryLoading={aiSummaryLoading}
       aiSummary={aiSummary}
+      aiSummaryResults={aiSummaryResults}
       aiPrompt={aiPrompt}
       showPromptModal={showPromptModal}
       selectedDomain={selectedDomain}
       results={results}
+      searchId={searchId}
+      onRegenerateAiSummary={startAiSummaryStream}
       loading={loading}
       query={query}
       selectedDoc={selectedDoc}
@@ -2028,6 +2025,10 @@ function App() {
       onOpenMetadata={handleOpenSearchMetadata}
       onLanguageChange={handleResultLanguageChange}
       onRequestHighlight={requestHighlightHandler}
+      aiSummaryTranslatedText={aiSummaryTranslatedText}
+      aiSummaryTranslatingLang={aiSummaryTranslatingLang}
+      aiSummaryTranslatedLang={aiSummaryTranslatedLang}
+      onAiSummaryLanguageChange={handleAiSummaryLanguageChange}
     />
   );
 

@@ -85,6 +85,7 @@ const baseProps = {
   aiSummaryExpanded: false,
   aiSummaryLoading: false,
   aiSummary: '',
+  aiSummaryResults: [] as SearchResult[],
   aiPrompt: '',
   showPromptModal: false,
   selectedDomain: 'uneg',
@@ -99,9 +100,14 @@ const baseProps = {
   onToggleExpanded: jest.fn(),
   onOpenMetadata: jest.fn(),
   onLanguageChange: jest.fn(),
+  searchId: 0,
 };
 
 describe('SearchTabContent result filters', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
   test('does not show filters when there is only one unique document', () => {
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
@@ -138,7 +144,7 @@ describe('SearchTabContent result filters', () => {
     expect(screen.getByText('WFP (1)')).toBeInTheDocument();
   });
 
-  test('does not show org labels when all results share the same org', () => {
+  test('shows org badge even when all results share the same org', () => {
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
       buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Report B', organization: 'UNICEF' }),
@@ -146,7 +152,7 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    expect(document.querySelector('.search-result-filters-orgs')).not.toBeInTheDocument();
+    expect(screen.getByText('UNICEF (2)')).toBeInTheDocument();
     // Thumbnails should still be present
     const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
     expect(thumbnails).toHaveLength(2);
@@ -189,7 +195,7 @@ describe('SearchTabContent result filters', () => {
 
     // Should show filter indicator
     expect(screen.getByText('Report A', { selector: 'strong' })).toBeInTheDocument();
-    expect(screen.getByText('× Clear filter')).toBeInTheDocument();
+    expect(screen.getByText('× Clear filters')).toBeInTheDocument();
 
     // Only Report A should be in the results list
     expect(screen.getByTestId('result-c1')).toBeInTheDocument();
@@ -210,7 +216,7 @@ describe('SearchTabContent result filters', () => {
     expect(screen.queryByTestId('result-c2')).not.toBeInTheDocument();
 
     // Click clear
-    fireEvent.click(screen.getByText('× Clear filter'));
+    fireEvent.click(screen.getByText('× Clear filters'));
 
     // Both results visible again
     expect(screen.getByTestId('result-c1')).toBeInTheDocument();

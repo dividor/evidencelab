@@ -1,7 +1,6 @@
 import asyncio
 import os
 import time
-from collections import Counter
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -25,11 +24,22 @@ from ui.backend.utils.document_utils import (
     map_core_field_to_storage,
     normalize_document_payload,
 )
+from ui.backend.utils.facet_helpers import build_facets_from_db
+from ui.backend.utils.language_codes import LANGUAGE_CODES
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "2"))
 search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
+
+
+def _normalize_language_filter(language: Optional[str]) -> Optional[str]:
+    """Convert full language name(s) back to codes for DB queries."""
+    if not language:
+        return None
+    parts = [v.strip() for v in language.split(",") if v.strip()]
+    mapped = [LANGUAGE_CODES.get(p, p) for p in parts]
+    return ",".join(mapped)
 
 
 def _build_core_filters(
@@ -48,7 +58,7 @@ def _build_core_filters(
             "published_year": published_year,
             "document_type": document_type,
             "country": country,
-            "language": language,
+            "language": _normalize_language_filter(language),
         }.items()
         if v is not None
     }
@@ -361,7 +371,7 @@ def _build_core_filters_from_params(
         "published_year": published_year,
         "document_type": document_type,
         "country": country,
-        "language": language,
+        "language": _normalize_language_filter(language),
     }
 
 
@@ -393,83 +403,6 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
             )
         )
     return qmodels.Filter(must=facet_conditions) if facet_conditions else None
-
-
-def _build_year_facets(raw_counts: Dict[Any, int]) -> List[FacetValue]:
-    year_items = []
-    for raw_value, count in raw_counts.items():
-        if raw_value is None or raw_value == "":
-            continue
-        year_items.append((str(raw_value), count))
-    year_items.sort(key=lambda item: item[0], reverse=True)
-    return [FacetValue(value=value, count=count) for value, count in year_items]
-
-
-def _build_generic_facets(raw_counts: Dict[Any, int]) -> List[FacetValue]:
-    counter: Counter[str] = Counter()
-    for raw_value, count in raw_counts.items():
-        if raw_value is None or raw_value == "":
-            continue
-        if isinstance(raw_value, str) and "," in raw_value:
-            for item in raw_value.split(","):
-                item = item.strip()
-                if item:
-                    counter[item] += count
-        else:
-            counter[str(raw_value)] += count
-    return [
-        FacetValue(value=value, count=count) for value, count in counter.most_common()
-    ]
-
-
-def _build_facets_from_db(
-    db,
-    filter_fields_config: Dict[str, str],
-    facet_filter,
-) -> Dict[str, List[FacetValue]]:
-    facets_result: Dict[str, List[FacetValue]] = {}
-    for core_field in filter_fields_config.keys():
-        if core_field == "title":
-            facets_result[core_field] = []
-            continue
-
-        # Taxonomy tag fields live on chunks, not documents
-        if core_field.startswith("tag_"):
-            # Skip if db doesn't have facet method (e.g., in test mocks)
-            if not hasattr(db, "facet"):
-                facets_result[core_field] = []
-                continue
-            raw_counts = db.facet(
-                collection_name=db.chunks_collection,
-                key=core_field,
-                filter_conditions=None,
-                limit=2000,
-                exact=False,
-            )
-            # Don't split on commas - taxonomy values may contain commas
-            facets_result[core_field] = [
-                FacetValue(value=str(v), count=c)
-                for v, c in sorted(raw_counts.items(), key=lambda x: -x[1])
-                if v not in (None, "")
-            ]
-            continue
-
-        storage_field = _resolve_storage_field(
-            core_field, db.data_source if db else None
-        )
-        raw_counts = db.facet_documents(
-            key=storage_field,
-            filter_conditions=facet_filter,
-            limit=2000,
-            exact=False,
-        )
-        if core_field == "published_year":
-            facets_result[core_field] = _build_year_facets(raw_counts)
-            continue
-
-        facets_result[core_field] = _build_generic_facets(raw_counts)
-
-    return facets_result
 
 
 @router.get("/search/titles")
@@ -1027,7 +960,9 @@ async def get_facets(
 
         _build_needed_fields(filter_fields_config, source)
         facet_filter = _build_facet_filter(core_filters, source)
-        facets_result = _build_facets_from_db(db, filter_fields_config, facet_filter)
+        facets_result = build_facets_from_db(
+            db, filter_fields_config, facet_filter, _resolve_storage_field, pg=pg
+        )
         return Facets(facets=facets_result, filter_fields=filter_fields_config)
 
     except Exception as e:

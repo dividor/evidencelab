@@ -11,4 +11,8 @@ def get_rate_limits() -> tuple[str, str, str]:
     return rate_limit_search, rate_limit_default, rate_limit_ai
 
 
+def get_rate_limit_translate() -> str:
+    return os.environ.get("RATE_LIMIT_TRANSLATE", "60/minute")
+
+
 limiter = Limiter(key_func=get_remote_address)

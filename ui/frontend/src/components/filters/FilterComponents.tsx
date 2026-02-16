@@ -238,7 +238,7 @@ const FilterCheckboxList = ({
               </span>
             )}
           </div>
-          <span className="filter-checkbox-count">({item.count})</span>
+          <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
         </div>
       </label>
     ))}
@@ -273,7 +273,7 @@ export const FilterSections = ({
         titleSearchResults,
         facetSearchResults
       );
-      const isCollapsed = collapsedFilters.has(coreField);
+      const isCollapsed = !collapsedFilters.has(coreField);
       const showContent =
         !isCollapsed && (coreField === 'title' || facetValues.length > 0 || searchTerm.length > 0);
 

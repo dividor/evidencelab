@@ -92,9 +92,9 @@ async def test_language_mapping():
         await translate_text("text", "spanish")
         mock_translator_class.assert_called_with(source="auto", target="es")
 
-        # Test "zh" -> "zh"
+        # Test "zh" -> "zh-CN"
         await translate_text("text", "zh")
-        mock_translator_class.assert_called_with(source="auto", target="zh")
+        mock_translator_class.assert_called_with(source="auto", target="zh-CN")
 
         # Test unknown -> "en" default
         await translate_text("text", "klingon")
