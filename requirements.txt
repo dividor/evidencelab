@@ -98,6 +98,6 @@ playwright==1.40.0
 types-requests==2.32.4.20260107
 types-beautifulsoup4==4.12.0.7
 types-html5lib==1.1.11.20251014
-types-openpyxl==3.1.0.20240311
+types-openpyxl==3.1.5.20250919
 watchdog==4.0.0
 requests-toolbelt
