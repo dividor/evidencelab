@@ -439,7 +439,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
           <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
             More Filters
           </button>
-        ) : (
+        ) : activeFiltersCount === 0 ? (
           <button
             className="global-filters-tab global-filters-tab-close"
             onClick={onToggleFiltersExpanded}
@@ -448,7 +448,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
           >
             ‹
           </button>
-        )}
+        ) : null}
         {filtersExpanded && (
           <div className="global-filters-column">
             <FiltersPanel

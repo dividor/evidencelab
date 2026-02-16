@@ -447,6 +447,7 @@ type FiltersPanelProps = Omit<
 
 type HeatmapFiltersColumnProps = {
   filtersExpanded: boolean;
+  activeFiltersCount: number;
   onToggleFiltersExpanded: () => void;
   onClearFilters: () => void;
   filtersPanelProps: FiltersPanelProps;
@@ -454,6 +455,7 @@ type HeatmapFiltersColumnProps = {
 
 const HeatmapFiltersColumn = ({
   filtersExpanded,
+  activeFiltersCount,
   onToggleFiltersExpanded,
   onClearFilters,
   filtersPanelProps,
@@ -463,14 +465,16 @@ const HeatmapFiltersColumn = ({
   }
   return (
     <div className="global-filters-column">
-      <button
-        className="global-filters-tab global-filters-tab-close"
-        onClick={onToggleFiltersExpanded}
-        aria-label="Hide filters"
-        title="Hide filters"
-      >
-        ‹
-      </button>
+      {activeFiltersCount === 0 && (
+        <button
+          className="global-filters-tab global-filters-tab-close"
+          onClick={onToggleFiltersExpanded}
+          aria-label="Hide filters"
+          title="Hide filters"
+        >
+          ‹
+        </button>
+      )}
       <FiltersPanel
         {...filtersPanelProps}
         filtersExpanded={filtersExpanded}
@@ -2542,6 +2546,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       <div className={getContentGridClass(filtersExpanded)}>
         <HeatmapFiltersColumn
           filtersExpanded={filtersExpanded}
+          activeFiltersCount={activeFiltersCount}
           onToggleFiltersExpanded={onToggleFiltersExpanded}
           onClearFilters={onClearFilters}
           filtersPanelProps={filtersPanelProps}

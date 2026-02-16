@@ -974,26 +974,34 @@ function App() {
     [buildFilterValue, handleHeatmapFilterChange]
   );
 
-  // Auto-collapse all filter fields (including taxonomy fields) when facets first load
+  // Auto-collapse new filter fields when facets first load (don't re-collapse already-known fields)
+  const knownFilterFields = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (facets?.filter_fields) {
       setCollapsedFilters(prev => {
         const newSet = new Set(prev);
         Object.keys(facets.filter_fields).forEach(field => {
-          newSet.add(field);
+          if (!knownFilterFields.current.has(field)) {
+            newSet.add(field);
+            knownFilterFields.current.add(field);
+          }
         });
         return newSet;
       });
     }
   }, [facets?.filter_fields]);
 
-  // Auto-collapse all filter fields in heatmap tab when facets load
+  // Auto-collapse new filter fields in heatmap tab when facets load
+  const knownHeatmapFilterFields = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (allFacets?.filter_fields) {
       setHeatmapCollapsedFilters(prev => {
         const newSet = new Set(prev);
         Object.keys(allFacets.filter_fields).forEach(field => {
-          newSet.add(field);
+          if (!knownHeatmapFilterFields.current.has(field)) {
+            newSet.add(field);
+            knownHeatmapFilterFields.current.add(field);
+          }
         });
         return newSet;
       });
@@ -2020,8 +2028,8 @@ function App() {
     />
   );
 
-  const activeFiltersCount = Object.keys(filters).length;
-  const heatmapActiveFiltersCount = Object.keys(heatmapFilters).length;
+  const activeFiltersCount = Object.values(filters).filter(Boolean).length;
+  const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
   const displayFacets =
     allFacetsDataSource === dataSource && allFacets ? allFacets : facets;
