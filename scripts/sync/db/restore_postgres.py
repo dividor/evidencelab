@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 import subprocess
+import tempfile
+import zipfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -30,6 +32,20 @@ def _require_value(value: str | None, name: str) -> str:
 
 
 def _resolve_dump_path(source: Path) -> Path:
+    # Handle .zip files by extracting to temp directory
+    if source.is_file() and source.suffix == ".zip":
+        temp_dir = Path(tempfile.mkdtemp(prefix="postgres_restore_"))
+        logger.info("Extracting %s to %s...", source, temp_dir)
+        with zipfile.ZipFile(source, "r") as zip_ref:
+            zip_ref.extractall(temp_dir)
+        # Look for .dump file in extracted contents
+        candidates = list(temp_dir.rglob("*.dump"))
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            raise RuntimeError(f"Multiple .dump files found in {source}")
+        raise RuntimeError(f"No .dump file found in {source}")
+
     if source.is_file():
         return source
     if source.is_dir():
@@ -50,7 +66,7 @@ def restore_postgres(
     use_dev: bool,
     clean: bool,
 ) -> None:
-    root_dir = _load_env()
+    root_dir = Path(__file__).resolve().parents[3]
     dump_path = _resolve_dump_path(source.resolve())
     if not dump_path.exists():
         raise RuntimeError(f"Dump not found: {dump_path}")
@@ -71,12 +87,15 @@ def restore_postgres(
 
 
 def main() -> int:
+    # Load .env before parsing args so defaults work
+    _load_env()
+
     parser = argparse.ArgumentParser(description="Restore Postgres from backup.")
     parser.add_argument(
         "--source",
         "-s",
         required=True,
-        help="Path to a .dump file or directory containing a single .dump file.",
+        help="Path to a .dump file, .zip archive, or directory containing a single .dump file.",
     )
     parser.add_argument(
         "--db-name",
