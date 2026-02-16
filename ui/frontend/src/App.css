@@ -3736,6 +3736,14 @@ h6,
   color: var(--gray-700);
 }
 
+.search-results-heading {
+  font-size: 1.375rem;
+  font-weight: 600;
+  font-family: 'Poppins', sans-serif;
+  color: var(--gray-700);
+  margin: 0.75rem 0 0.25rem 0;
+}
+
 /* Results List */
 .results-list {
   display: flex;

@@ -486,6 +486,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             onClosePrompt={onClosePrompt}
           />
 
+          {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           <SearchResultsList
             results={hasActiveFilter ? displayedResults : results}
             minScore={hasActiveFilter ? 0 : minScore}
