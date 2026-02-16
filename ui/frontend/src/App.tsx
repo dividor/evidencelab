@@ -1132,13 +1132,14 @@ function App() {
     });
   };
 
-  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
+  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters; queryValue?: string }) => {
     try {
       if (loadingConfig && initialSearchState.dataset) {
         return;
       }
-      const includeQuery = options?.includeQuery ?? true;
+      const includeQuery = options?.includeQuery ?? false;
       const filtersToUse = options?.filtersOverride ?? filters;
+      const queryToUse = options?.queryValue;
       const params = new URLSearchParams();
       // Add all filter values using core field names
       for (const [field, value] of Object.entries(filtersToUse)) {
@@ -1147,8 +1148,8 @@ function App() {
         }
       }
       params.append('data_source', dataSource);
-      if (includeQuery && query && query.trim()) {
-        params.append('q', query.trim());
+      if (includeQuery && queryToUse && queryToUse.trim()) {
+        params.append('q', queryToUse.trim());
       }
 
       const url = `${API_BASE_URL}/facets?${params}`;
@@ -1164,7 +1165,7 @@ function App() {
         console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
       }
     }
-  }, [loadingConfig, initialSearchState.dataset, filters, dataSource, query]);
+  }, [loadingConfig, initialSearchState.dataset, filters, dataSource]);
 
   const loadAllFacets = useCallback(async () => {
     try {
@@ -1233,11 +1234,13 @@ function App() {
 
   // Load facets on mount, when filters change, or when data source changes
   // Heatmap uses full dataset facets by default, even if a query is present.
+  // Note: Query-based facets loading is handled separately with debouncing
   useEffect(() => {
     if (activeTab === 'heatmap') {
       loadFacets({ includeQuery: false, filtersOverride: buildHeatmapFacetFilters() });
     } else {
-      loadFacets();
+      // Load facets without query - only based on filters
+      loadFacets({ includeQuery: false });
     }
   }, [filters, heatmapFilters, dataSource, activeTab, loadFacets, buildHeatmapFacetFilters]);
 
@@ -1569,8 +1572,8 @@ function App() {
       // Initialize all headings as collapsed by default
       setCollapsedHeadings(new Set(data.results.map((_, index) => index)));
 
-      // Reload facets to reflect search result distribution
-      loadFacets();
+      // Reload facets to reflect search result distribution (with query)
+      loadFacets({ includeQuery: true, queryValue: query });
 
       handleAiSummaryForResults(data);
       handlePostSearchResults(data);

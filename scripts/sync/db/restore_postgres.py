@@ -71,12 +71,55 @@ def restore_postgres(
     if not dump_path.exists():
         raise RuntimeError(f"Dump not found: {dump_path}")
 
+    # If clean flag is set, drop and recreate the database
+    if clean:
+        logger.info("Dropping and recreating database %s...", db_name)
+
+        # Terminate active connections first
+        logger.info("Terminating active connections to %s...", db_name)
+        terminate_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f'"SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
+            f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid()\""
+        )
+        subprocess.run(terminate_cmd, shell=True, cwd=root_dir)  # nosec B602
+
+        drop_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f"'DROP DATABASE IF EXISTS {db_name}'"
+        )
+        result = subprocess.run(drop_cmd, shell=True, cwd=root_dir)  # nosec B602
+        if result.returncode != 0:
+            raise RuntimeError("Failed to drop database.")
+
+        create_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f"'CREATE DATABASE {db_name} OWNER {db_user}'"
+        )
+        result = subprocess.run(create_cmd, shell=True, cwd=root_dir)  # nosec B602
+        if result.returncode != 0:
+            raise RuntimeError("Failed to create database.")
+
+        # Enable pgvector extension
+        ext_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d {db_name} -c "
+            f"'CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm'"
+        )
+        subprocess.run(ext_cmd, shell=True, cwd=root_dir)  # nosec B602
+
     logger.info("Restoring Postgres database from %s...", dump_path)
-    clean_flag = "--clean --if-exists" if clean else ""
     cmd = (
         f"{_compose_base_command(use_dev)} exec -T "
         f"-e PGPASSWORD={db_password} postgres "
-        f"pg_restore {clean_flag} -U {db_user} -d {db_name}"
+        f"pg_restore -U {db_user} -d {db_name}"
     )
     with open(dump_path, "rb") as handle:
         result = subprocess.run(
