@@ -49,6 +49,8 @@ services:
     container_name: postgres
     ports:
       - "5432:5432"
+    env_file:
+      - .env
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
