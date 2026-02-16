@@ -3294,15 +3294,14 @@ h6,
 .ai-summary-box {
   background: #fefce8;
   color: var(--gray-700);
-  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-lg) var(--spacing-xl);
-  border-radius: 0;
+  padding: var(--spacing-lg);
+  border-radius: var(--radius-lg);
   margin-bottom: 1.25rem;
-  border: none;
-  border-left: 3px solid var(--brand-accent);
+  border: 1px solid var(--gray-200);
 }
 
 .ai-summary-box.collapsed {
-  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
 }
 
 .ai-summary-header {
