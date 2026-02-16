@@ -126,12 +126,12 @@ const buildSearchErrorMessage = (error: any): string => {
   return 'Search failed. Make sure the backend is running.';
 };
 
-const translateViaApi = async (text: string, targetLanguage: string): Promise<string | null> => {
+const translateViaApi = async (text: string, targetLanguage: string, sourceLanguage?: string): Promise<string | null> => {
   try {
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
-      body: JSON.stringify({ text, target_language: targetLanguage })
+      body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {
       const data = await resp.json();
@@ -155,12 +155,13 @@ const buildChunkTextForTranslation = (result: SearchResult): string => {
 
 const translateHeadings = async (
   headings: string[],
-  targetLanguage: string
+  targetLanguage: string,
+  sourceLanguage?: string
 ): Promise<string | undefined> => {
   if (!headings.length) {
     return undefined;
   }
-  const translated = await translateViaApi(headings.join(' > '), targetLanguage);
+  const translated = await translateViaApi(headings.join(' > '), targetLanguage, sourceLanguage);
   return translated ?? undefined;
 };
 
@@ -1845,10 +1846,10 @@ function App() {
       const textToTranslate = buildChunkTextForTranslation(result);
       const [translatedTitle, translatedText, translatedQuery, translatedHeadings] =
         await Promise.all([
-          translateViaApi(result.title, newLang),
-          translateViaApi(textToTranslate, newLang),
+          translateViaApi(result.title, newLang, originalLanguage),
+          translateViaApi(textToTranslate, newLang, originalLanguage),
           query.trim() ? translateViaApi(query, newLang) : Promise.resolve(null),
-          translateHeadings(result.headings ?? [], newLang)
+          translateHeadings(result.headings ?? [], newLang, originalLanguage)
         ]);
 
       const translatedSemanticMatches = await computeTranslatedSemanticMatches({

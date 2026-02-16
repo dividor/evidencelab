@@ -7,10 +7,15 @@ from fastapi.responses import StreamingResponse
 
 from ui.backend.schemas import AISummaryRequest, AISummaryResponse, TranslateRequest
 from ui.backend.services import llm_service as llm_service_module
-from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_limits import (
+    get_rate_limit_translate,
+    get_rate_limits,
+    limiter,
+)
 from ui.backend.utils.app_state import logger
 
 _RATE_LIMIT_SEARCH, _RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
+RATE_LIMIT_TRANSLATE = get_rate_limit_translate()
 router = APIRouter()
 
 
@@ -24,21 +29,22 @@ def _get_llm_service():
 
 
 @router.post("/translate")
-@limiter.limit(RATE_LIMIT_AI)
+@limiter.limit(RATE_LIMIT_TRANSLATE)
 async def translate(request: Request, body: TranslateRequest):
     """
     Translate text to the target language using the LLM.
     """
     try:
         logging.info(
-            "Translation Request: len=%s, target=%s, text_preview='%s'",
+            "Translation Request: len=%s, source=%s, target=%s, text_preview='%s'",
             len(body.text),
+            body.source_language,
             body.target_language,
             body.text[:100],
         )
         llm_service = _get_llm_service()
         translated_text = await llm_service.translate_text(
-            body.text, body.target_language
+            body.text, body.target_language, body.source_language
         )
         logging.info(
             "Translation Result: len=%s, text_preview='%s'",

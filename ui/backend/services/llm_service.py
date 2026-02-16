@@ -216,10 +216,16 @@ async def generate_ai_summary(
         raise
 
 
-async def translate_text(text: str, target_language: str) -> str:
+async def translate_text(
+    text: str, target_language: str, source_language: str | None = None
+) -> str:
     """
     Translate text using deep-translator (Google Translate) instead of LLM.
     Uses regex to protect reference numbers like [64] from being mangled.
+
+    Args:
+        source_language: ISO code of the original text language.
+            When provided, passed to GoogleTranslator instead of "auto".
     """
     if not text:
         return ""
@@ -270,6 +276,9 @@ async def translate_text(text: str, target_language: str) -> str:
     }
 
     target_lang_code = lang_map.get(target_language.lower(), "en")
+    source_lang_code = (
+        lang_map.get(source_language.lower(), "auto") if source_language else "auto"
+    )
 
     try:
         # 1. Protect references: [64] -> __REF_64__
@@ -288,7 +297,7 @@ async def translate_text(text: str, target_language: str) -> str:
 
         # 3. Perform translation
         # deep-translator is synchronous, suitable for direct call here.
-        translator = GoogleTranslator(source="auto", target=target_lang_code)
+        translator = GoogleTranslator(source=source_lang_code, target=target_lang_code)
         translated_text = translator.translate(protected_text)
 
         # 4. Restore references: __REF_64__ -> [64]
