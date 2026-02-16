@@ -24,6 +24,7 @@ from pipeline.db import (  # noqa: E402
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
+from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
 
 # Add parent directory to path
 
@@ -896,6 +897,8 @@ def _accumulate_facet_counts(
 
 
 def _format_facet_list(core_field: str, counter: Counter) -> List[Dict[str, Any]]:
+    if core_field == "language":
+        counter = Counter({LANGUAGE_NAMES.get(k, k): v for k, v in counter.items()})
     facets_list = [{"value": k, "count": v} for k, v in counter.most_common()]
     if core_field == "published_year":
         facets_list.sort(key=lambda x: x["value"], reverse=True)

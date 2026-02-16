@@ -8,6 +8,9 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from ui.backend import main as main_module
+from ui.backend.routes import search as search_module
+from ui.backend.utils import facet_helpers as facet_module
+from ui.backend.utils.language_codes import LANGUAGE_CODES, LANGUAGE_NAMES
 
 
 def _make_request(method: str = "GET", path: str = "/", query: str = "") -> Request:
@@ -783,3 +786,155 @@ def test_find_semantic_matches_sync_finds_phrase():
     )
     assert len(matches) == 1
     assert matches[0].text == "Hello world"
+
+
+# ---------- _build_facets_from_pg / sys_* routing tests ----------
+
+
+class _FakeCursor:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def execute(self, query, params=None):
+        pass
+
+    def fetchall(self):
+        return self._rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+
+class _FakeConn:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def cursor(self):
+        return _FakeCursor(self._rows)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        pass
+
+
+class _FakePg:
+    def __init__(self, rows):
+        self.docs_table = "docs_uneg"
+        self._rows = rows
+
+    def _get_conn(self):
+        return _FakeConn(self._rows)
+
+
+def test_build_facets_from_pg_returns_counts():
+    pg = _FakePg([("en", 100), ("fr", 20), ("es", 10)])
+    result = facet_module.build_facets_from_pg(pg, "sys_language")
+    assert result == {"en": 100, "fr": 20, "es": 10}
+
+
+def test_build_facets_from_pg_empty():
+    pg = _FakePg([])
+    result = facet_module.build_facets_from_pg(pg, "sys_language")
+    assert result == {}
+
+
+def _fake_resolve_storage_field(core_field, data_source):
+    return "sys_language" if core_field == "language" else f"map_{core_field}"
+
+
+def test_build_facets_from_db_routes_sys_fields_to_pg():
+    """sys_* storage fields should be fetched from PostgreSQL, not Qdrant."""
+    db = _make_db_mock()
+    qdrant_called_with = []
+
+    def facet_documents(key, filter_conditions=None, limit=2000, exact=False):
+        qdrant_called_with.append(key)
+        return {"OrgA": 5}
+
+    db.facet_documents = facet_documents
+
+    pg = _FakePg([("en", 100), ("fr", 20)])
+
+    filter_fields = {"organization": "Organization", "language": "Language"}
+    result = facet_module.build_facets_from_db(
+        db, filter_fields, None, _fake_resolve_storage_field, pg=pg
+    )
+
+    # Organization should go through Qdrant
+    assert "map_organization" in qdrant_called_with
+    # Language should NOT go through Qdrant (sys_* -> PG)
+    assert "sys_language" not in qdrant_called_with
+
+    # Language facets should come from PG with full names
+    lang_values = {fv.value: fv.count for fv in result["language"]}
+    assert lang_values == {"English": 100, "French": 20}
+
+    # Organization facets should come from Qdrant
+    assert result["organization"][0].value == "OrgA"
+
+
+def test_build_facets_from_db_falls_back_to_qdrant_without_pg():
+    """When pg is None, sys_* fields fall back to Qdrant query."""
+    db = _make_db_mock()
+    qdrant_called_with = []
+
+    def facet_documents(key, filter_conditions=None, limit=2000, exact=False):
+        qdrant_called_with.append(key)
+        return {}
+
+    db.facet_documents = facet_documents
+
+    filter_fields = {"language": "Language"}
+    result = facet_module.build_facets_from_db(
+        db, filter_fields, None, _fake_resolve_storage_field, pg=None
+    )
+
+    # Without pg, sys_language should still go through Qdrant
+    assert "sys_language" in qdrant_called_with
+    assert result["language"] == []
+
+
+def test_language_codes_roundtrip():
+    """Every code maps to a name and every name maps back to its code."""
+    for code, name in LANGUAGE_NAMES.items():
+        assert LANGUAGE_CODES[name] == code
+
+
+def test_normalize_language_filter_maps_names_to_codes():
+    assert search_module._normalize_language_filter("English") == "en"
+    assert search_module._normalize_language_filter("French,Spanish") == "fr,es"
+
+
+def test_normalize_language_filter_passes_through_codes():
+    """Unknown values (including raw codes) pass through unchanged."""
+    assert search_module._normalize_language_filter("en") == "en"
+    assert search_module._normalize_language_filter("Unknown") == "Unknown"
+
+
+def test_normalize_language_filter_none():
+    assert search_module._normalize_language_filter(None) is None
+    assert search_module._normalize_language_filter("") is None
+
+
+def test_language_facets_map_codes_to_full_names():
+    """Language facets should display full names, not two-letter codes."""
+    db = _make_db_mock()
+    db.facet_documents = lambda **kw: {}
+
+    pg = _FakePg([("en", 50), ("fr", 10), ("Unknown", 3)])
+
+    filter_fields = {"language": "Language"}
+    result = facet_module.build_facets_from_db(
+        db, filter_fields, None, _fake_resolve_storage_field, pg=pg
+    )
+
+    lang_values = {fv.value: fv.count for fv in result["language"]}
+    assert lang_values["English"] == 50
+    assert lang_values["French"] == 10
+    # Unknown codes pass through unchanged
+    assert lang_values["Unknown"] == 3
