@@ -4,6 +4,7 @@ import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
+import { RainbowText } from '../RainbowText';
 import { SearchResultsList } from '../SearchResultsList';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
@@ -293,6 +294,21 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   const showFilters = visibleResults.length > 0 && uniqueDocuments.length > 1;
 
   const contentGridClass = `content-grid ${filtersExpanded ? '' : 'content-grid-no-filters'}`;
+  const isInitialLoading = loading && results.length === 0;
+
+  if (isInitialLoading) {
+    return (
+      <div className="main-content">
+        <div className="content-grid content-grid-no-filters search-panel-with-tab">
+          <main className="results-section">
+            <div className="search-loading-spinner">
+              <RainbowText text="Searching..." />
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="main-content">

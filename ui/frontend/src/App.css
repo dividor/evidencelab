@@ -3744,6 +3744,14 @@ h6,
   margin: 0.75rem 0 0.25rem 0;
 }
 
+.search-loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 0;
+  font-size: 1.5rem;
+}
+
 /* Results List */
 .results-list {
   display: flex;
