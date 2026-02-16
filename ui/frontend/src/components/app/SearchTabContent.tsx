@@ -78,8 +78,8 @@ interface SearchTabContentProps {
   searchId: number;
 }
 
-const DOT_SIZES = [16, 13, 10, 7, 5];
-const DOT_OPACITIES = [1, 0.75, 0.5, 0.3, 0.15];
+const DOT_SIZES = [12, 12, 12, 12, 12];
+const DOT_OPACITIES = [1, 0.8, 0.6, 0.4, 0.2];
 const TRAIL_GAP = 10; // frames between each trailing dot
 const HISTORY_SIZE = TRAIL_GAP * 4 + 1;
 const ORBIT_RADIUS = 30;
