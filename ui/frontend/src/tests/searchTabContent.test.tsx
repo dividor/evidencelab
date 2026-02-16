@@ -144,7 +144,7 @@ describe('SearchTabContent result filters', () => {
     expect(screen.getByText('WFP (1)')).toBeInTheDocument();
   });
 
-  test('does not show org labels when all results share the same org', () => {
+  test('shows org badge even when all results share the same org', () => {
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
       buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Report B', organization: 'UNICEF' }),
@@ -152,7 +152,7 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    expect(document.querySelector('.search-result-filters-orgs')).not.toBeInTheDocument();
+    expect(screen.getByText('UNICEF (2)')).toBeInTheDocument();
     // Thumbnails should still be present
     const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
     expect(thumbnails).toHaveLength(2);
