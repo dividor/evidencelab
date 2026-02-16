@@ -459,7 +459,6 @@ type FiltersPanelProps = Omit<
 
 type HeatmapFiltersColumnProps = {
   filtersExpanded: boolean;
-  activeFiltersCount: number;
   onToggleFiltersExpanded: () => void;
   onClearFilters: () => void;
   filtersPanelProps: FiltersPanelProps;
@@ -467,7 +466,6 @@ type HeatmapFiltersColumnProps = {
 
 const HeatmapFiltersColumn = ({
   filtersExpanded,
-  activeFiltersCount,
   onToggleFiltersExpanded,
   onClearFilters,
   filtersPanelProps,
@@ -477,16 +475,14 @@ const HeatmapFiltersColumn = ({
   }
   return (
     <div className="global-filters-column">
-      {activeFiltersCount === 0 && (
-        <button
-          className="global-filters-tab global-filters-tab-close"
-          onClick={onToggleFiltersExpanded}
-          aria-label="Hide filters"
-          title="Hide filters"
-        >
-          ‹
-        </button>
-      )}
+      <button
+        className="global-filters-tab global-filters-tab-close"
+        onClick={onToggleFiltersExpanded}
+        aria-label="Hide filters"
+        title="Hide filters"
+      >
+        ‹
+      </button>
       <FiltersPanel
         {...filtersPanelProps}
         filtersExpanded={filtersExpanded}
@@ -1092,7 +1088,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
-  const prevScoreBoundsRef = useRef({ min: 0, max: 0 });
+  const pendingCutoffResetRef = useRef(false);
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
@@ -2042,14 +2038,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [gridResults]);
 
   useEffect(() => {
-    if (!scoreBounds.hasScores) {
+    if (!scoreBounds.hasScores || !pendingCutoffResetRef.current) {
       return;
     }
-    const prev = prevScoreBoundsRef.current;
-    if (prev.min === scoreBounds.min && prev.max === scoreBounds.max) {
-      return;
-    }
-    prevScoreBoundsRef.current = { min: scoreBounds.min, max: scoreBounds.max };
+    pendingCutoffResetRef.current = false;
     setSimilarityCutoff(HEATMAP_DEFAULT_SENSITIVITY);
   }, [scoreBounds]);
 
@@ -2129,6 +2121,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridLoading(true);
     setGridError(null);
     setGridResults({});
+    pendingCutoffResetRef.current = true;
     const tasks: Array<() => Promise<void>> = [];
     let failedRequests = 0;
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
@@ -2510,8 +2503,27 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     [activeCell, updateActiveCellResults]
   );
 
+  const globalFilterFacets = useMemo(() => {
+    if (!facets) return null;
+    const excludeFields = new Set<string>();
+    if (columnDimension) excludeFields.add(columnDimension);
+    if (rowDimension && rowDimension !== 'queries' && rowDimension !== 'title') {
+      excludeFields.add(rowDimension);
+    }
+    if (excludeFields.size === 0) return facets;
+    const filteredFields: Record<string, string> = {};
+    const filteredFacets: Record<string, FacetValue[]> = {};
+    for (const [field, label] of Object.entries(facets.filter_fields)) {
+      if (!excludeFields.has(field)) {
+        filteredFields[field] = label;
+        filteredFacets[field] = facets.facets[field] || [];
+      }
+    }
+    return { ...facets, filter_fields: filteredFields, facets: filteredFacets };
+  }, [facets, rowDimension, columnDimension]);
+
   const filtersPanelProps: FiltersPanelProps = {
-    facets,
+    facets: globalFilterFacets,
     selectedFilters: heatmapSelectedFilters,
     collapsedFilters: heatmapCollapsedFilters,
     expandedFilterLists: heatmapExpandedFilterLists,
@@ -2567,7 +2579,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       <div className={getContentGridClass(filtersExpanded)}>
         <HeatmapFiltersColumn
           filtersExpanded={filtersExpanded}
-          activeFiltersCount={activeFiltersCount}
           onToggleFiltersExpanded={onToggleFiltersExpanded}
           onClearFilters={onClearFilters}
           filtersPanelProps={filtersPanelProps}
