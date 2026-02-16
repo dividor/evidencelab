@@ -4,7 +4,6 @@ import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
-import { RainbowText } from '../RainbowText';
 import { SearchResultsList } from '../SearchResultsList';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
@@ -302,7 +301,13 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         <div className="content-grid content-grid-no-filters search-panel-with-tab">
           <main className="results-section">
             <div className="search-loading-spinner">
-              <RainbowText text="Searching..." />
+              <div className="search-loading-orbit">
+                <div className="search-loading-dot dot-0" />
+                <div className="search-loading-dot dot-1" />
+                <div className="search-loading-dot dot-2" />
+                <div className="search-loading-dot dot-3" />
+                <div className="search-loading-dot dot-4" />
+              </div>
             </div>
           </main>
         </div>

@@ -3749,7 +3749,61 @@ h6,
   align-items: center;
   justify-content: center;
   padding: 4rem 0;
-  font-size: 1.5rem;
+}
+
+.search-loading-orbit {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  animation: orbitSpin 1.8s linear infinite, rainbowCycle 3s linear infinite;
+}
+
+.search-loading-dot {
+  position: absolute;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  background: currentColor;
+}
+
+/* Lead dot — fixed position */
+.dot-0 { width: 16px; height: 16px; margin: -8px 0 0 -8px; transform: rotate(0deg) translateX(30px); }
+
+/* Trailing dots — oscillate between bunched-up and spread-out */
+.dot-1 { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; animation: trail1 1.6s ease-in-out infinite; }
+.dot-2 { width: 10px; height: 10px; margin: -5px 0 0 -5px;    animation: trail2 1.6s ease-in-out infinite; }
+.dot-3 { width: 7px;  height: 7px;  margin: -3.5px 0 0 -3.5px; animation: trail3 1.6s ease-in-out infinite; }
+.dot-4 { width: 5px;  height: 5px;  margin: -2.5px 0 0 -2.5px; animation: trail4 1.6s ease-in-out infinite; }
+
+@keyframes trail1 {
+  0%, 100% { transform: rotate(-10deg) translateX(30px); opacity: 0.8; }
+  50%      { transform: rotate(-45deg) translateX(30px); opacity: 0.55; }
+}
+@keyframes trail2 {
+  0%, 100% { transform: rotate(-18deg) translateX(30px); opacity: 0.65; }
+  50%      { transform: rotate(-80deg) translateX(30px); opacity: 0.35; }
+}
+@keyframes trail3 {
+  0%, 100% { transform: rotate(-24deg) translateX(30px); opacity: 0.45; }
+  50%      { transform: rotate(-110deg) translateX(30px); opacity: 0.2; }
+}
+@keyframes trail4 {
+  0%, 100% { transform: rotate(-28deg) translateX(30px); opacity: 0.3; }
+  50%      { transform: rotate(-135deg) translateX(30px); opacity: 0.1; }
+}
+
+@keyframes orbitSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rainbowCycle {
+  0%      { color: #ef4444; }
+  16.66%  { color: #f97316; }
+  33.33%  { color: #eab308; }
+  50%     { color: #22c55e; }
+  66.66%  { color: #3b82f6; }
+  83.33%  { color: #a855f7; }
+  100%    { color: #ef4444; }
 }
 
 /* Results List */
