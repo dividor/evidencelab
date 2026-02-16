@@ -25,7 +25,9 @@ import { findSemanticMatches, TextMatch } from '../../utils/textHighlighting';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 const API_KEY = process.env.REACT_APP_API_KEY;
-const HEATMAP_DEFAULT_SENSITIVITY = 0.2;
+
+// Top N% of score range to display (0.2 = show only top 20%)
+const HEATMAP_SCORE_PERCENTILE = 0.2;
 
 type HeatmapFilterModalState = {
   field: string;
@@ -1058,7 +1060,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [rowQueries, setRowQueries] = useState<string[]>(['']);
   const [columnDimension, setColumnDimension] = useState<string>('published_year');
   const [rowDimension, setRowDimension] = useState<string>('document_type');
-  const [similarityCutoff, setSimilarityCutoff] = useState<number>(HEATMAP_DEFAULT_SENSITIVITY);
+  const [similarityCutoff, setSimilarityCutoff] = useState<number>(HEATMAP_SCORE_PERCENTILE);
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('documents');
   const [gridQuery, setGridQuery] = useState<string>('');
   const [gridResults, setGridResults] = useState<RawCellResults>({});
@@ -1088,7 +1090,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
-  const pendingCutoffResetRef = useRef(false);
+  const userAdjustedCutoffRef = useRef(false);
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
@@ -2038,11 +2040,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [gridResults]);
 
   useEffect(() => {
-    if (!scoreBounds.hasScores || !pendingCutoffResetRef.current) {
+    if (!scoreBounds.hasScores || userAdjustedCutoffRef.current) {
       return;
     }
-    pendingCutoffResetRef.current = false;
-    setSimilarityCutoff(HEATMAP_DEFAULT_SENSITIVITY);
+    const cutoff = scoreBounds.max - HEATMAP_SCORE_PERCENTILE * (scoreBounds.max - scoreBounds.min);
+    setSimilarityCutoff(cutoff);
   }, [scoreBounds]);
 
   const maxCellCount = useMemo(() => {
@@ -2121,7 +2123,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridLoading(true);
     setGridError(null);
     setGridResults({});
-    pendingCutoffResetRef.current = true;
+    userAdjustedCutoffRef.current = false;
     const tasks: Array<() => Promise<void>> = [];
     let failedRequests = 0;
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
@@ -2656,7 +2658,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   onQueryChange={setGridQuery}
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
-                  onCutoffChange={setSimilarityCutoff}
+                  onCutoffChange={(value: number) => {
+                    userAdjustedCutoffRef.current = true;
+                    setSimilarityCutoff(value);
+                  }}
                 />
               )}
             </div>
