@@ -154,6 +154,38 @@ const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scor
   </div>
 );
 
+const HeatmapSensitivitySlider = ({ scoreBounds, similarityCutoff, onCutoffChange }: {
+  scoreBounds: { min: number; max: number; hasScores: boolean };
+  similarityCutoff: number;
+  onCutoffChange: (value: number) => void;
+}) => (
+  <div className="heatmap-controls-row heatmap-query-controls">
+    <div className="heatmap-control heatmap-slider">
+      <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+        Search sensitivity
+        {scoreBounds.hasScores && (
+          <span
+            className="rerank-tooltip heatmap-sensitivity-info"
+            title="Adjust this to be more specific in your search. The higher the sensitivity the more results you will get, but some may end up being less relevant for what you want. Generate a heatmap and try it out!"
+          >
+            ⓘ
+          </span>
+        )}
+      </label>
+      <input
+        id="heatmap-cutoff"
+        type="range"
+        min={scoreBounds.min}
+        max={scoreBounds.max}
+        step={0.001}
+        value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+        onChange={(event) => onCutoffChange(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
+        disabled={!scoreBounds.hasScores}
+      />
+    </div>
+  </div>
+);
+
 const GroupedSelectOptions = ({ options }: { options: { value: string; label: string }[] }) => {
   const standard = options.filter((o) => !o.value.startsWith('tag_'));
   const taxonomy = options.filter((o) => o.value.startsWith('tag_'));
@@ -2649,8 +2681,17 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 />
               </div>
 
-              {/* Collapsible query tuning section */}
-              {!isQueryRow && (
+              {/* Query tuning / sensitivity */}
+              {isQueryRow ? (
+                <HeatmapSensitivitySlider
+                  scoreBounds={scoreBounds}
+                  similarityCutoff={similarityCutoff}
+                  onCutoffChange={(value: number) => {
+                    userAdjustedCutoffRef.current = true;
+                    setSimilarityCutoff(value);
+                  }}
+                />
+              ) : (
                 <HeatmapQueryTuning
                   expanded={queryTuningExpanded}
                   onToggle={() => setQueryTuningExpanded((prev) => !prev)}
