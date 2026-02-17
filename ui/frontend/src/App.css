@@ -5151,6 +5151,12 @@ h6,
     max-width: calc(100vw - 2rem);
   }
 
+  /* Info dropdown — anchor to right edge so it doesn't overflow */
+  .dropdown-menu-help {
+    right: 0;
+    left: auto;
+  }
+
   /* Model combo panel — below instead of to the right */
   .model-combo-panel {
     position: static;
