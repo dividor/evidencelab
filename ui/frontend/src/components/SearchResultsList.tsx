@@ -12,6 +12,7 @@ interface SearchResultsListProps {
   onOpenMetadata: (result: SearchResult) => void;
   onLanguageChange: (result: SearchResult, newLang: string) => void;
   onRequestHighlight?: (chunkId: string, text: string) => void;
+  hidePageNumber?: boolean;
 }
 
 export const SearchResultsList = ({
@@ -24,6 +25,7 @@ export const SearchResultsList = ({
   onOpenMetadata,
   onLanguageChange,
   onRequestHighlight,
+  hidePageNumber,
 }: SearchResultsListProps) => {
   const visibleResults = results.filter((result) => result.score >= minScore);
 
@@ -45,6 +47,7 @@ export const SearchResultsList = ({
           onOpenMetadata={onOpenMetadata}
           onLanguageChange={onLanguageChange}
           onRequestHighlight={onRequestHighlight}
+          hidePageNumber={hidePageNumber}
         />
       ))}
     </div>

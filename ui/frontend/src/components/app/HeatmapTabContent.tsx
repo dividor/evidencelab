@@ -2923,6 +2923,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   </button>
                 )}
               </div>
+              <h2 className="heatmap-modal-results-title">
+                {activeCell.query ? 'Document Paragraphs' : 'Document Summaries'}
+              </h2>
               <SearchResultsList
                 results={displayedCellResults}
                 minScore={0}
@@ -2933,6 +2936,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 onOpenMetadata={onOpenMetadata}
                 onLanguageChange={handleHeatmapLanguageChange}
                 onRequestHighlight={handleHeatmapHighlight}
+                hidePageNumber={!activeCell.query}
               />
             </div>
             </div>

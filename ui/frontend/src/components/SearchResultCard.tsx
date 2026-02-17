@@ -20,14 +20,17 @@ interface SearchResultCardProps {
     onOpenMetadata: (result: SearchResult) => void;
     onLanguageChange: (result: SearchResult, newLang: string) => void;
     onRequestHighlight?: (chunkId: string, text: string) => void;
+    hidePageNumber?: boolean;
 }
 
 const ResultTitleRow = ({
     result,
-    onClick
+    onClick,
+    hidePageNumber
 }: {
     result: SearchResult;
     onClick: (result: SearchResult) => void;
+    hidePageNumber?: boolean;
 }) => (
     <div className="result-title-row">
         <h3
@@ -43,7 +46,7 @@ const ResultTitleRow = ({
         >
             {result.translated_title || result.title}
         </h3>
-        {result.page_num && <span className="result-page-badge">Page {result.page_num}</span>}
+        {!hidePageNumber && result.page_num && <span className="result-page-badge">Page {result.page_num}</span>}
     </div>
 );
 
@@ -183,7 +186,8 @@ const SearchResultCard = memo(({
     onClick,
     onOpenMetadata,
     onLanguageChange,
-    onRequestHighlight
+    onRequestHighlight,
+    hidePageNumber
 }: SearchResultCardProps) => {
     const cardRef = useRef<HTMLDivElement>(null);
 
@@ -224,7 +228,7 @@ const SearchResultCard = memo(({
             data-doc-id={result.doc_id}
             data-page={result.page_num}
         >
-            <ResultTitleRow result={result} onClick={onClick} />
+            <ResultTitleRow result={result} onClick={onClick} hidePageNumber={hidePageNumber} />
             <ResultSubtitleRow result={result} />
 
             <div className="result-snippet-container">
