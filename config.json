@@ -162,7 +162,8 @@
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
-      "reranker_model": "jinaai/jina-reranker-v2-base-multilingual"
+      "reranker_model": "jinaai/jina-reranker-v2-base-multilingual",
+      "rerank_model_page_size": 10
     }
   },
   "datasources": {

@@ -140,6 +140,7 @@ class ModelComboConfig(BaseModel):
     summarization_model: SummaryModelConfig
     semantic_highlighting_model: SummaryModelConfig
     reranker_model: str
+    rerank_model_page_size: Optional[int] = None
     summarization_model_location: Optional[str] = None
     semantic_highlighting_location: Optional[str] = None
     reranker_model_location: Optional[str] = None
