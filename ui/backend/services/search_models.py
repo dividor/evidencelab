@@ -380,7 +380,26 @@ def _get_azure_foundry_api_key() -> str:
 def _scores_from_results(results: Any, doc_count: int) -> Optional[List[float]]:
     if not results:
         return None
-    scores = []
+    # Check if results include an "index" field (e.g. Cohere rerank API returns
+    # results sorted by relevance, with "index" mapping back to original doc order).
+    has_index = all(isinstance(r, dict) and "index" in r for r in results)
+    if has_index:
+        scores: List[Optional[float]] = [None] * doc_count
+        for result in results:
+            idx = result["index"]
+            score = (
+                result.get("relevance_score")
+                or result.get("score")
+                or result.get("relevanceScore")
+            )
+            if score is None or not isinstance(idx, int) or idx < 0 or idx >= doc_count:
+                return None
+            scores[idx] = score
+        if any(s is None for s in scores):
+            return None
+        return [float(s) for s in scores]  # type: ignore[arg-type]
+    # Fallback: scores in iteration order (no index field)
+    scores_list = []
     for result in results:
         score = result.get("score")
         if score is None:
@@ -389,10 +408,10 @@ def _scores_from_results(results: Any, doc_count: int) -> Optional[List[float]]:
             score = result.get("relevanceScore")
         if score is None:
             return None
-        scores.append(score)
-    if len(scores) != doc_count:
+        scores_list.append(score)
+    if len(scores_list) != doc_count:
         return None
-    return scores
+    return scores_list
 
 
 def _scores_from_list(scores: Any) -> Optional[List[float]]:
@@ -500,7 +519,7 @@ def rerank_results(
     rerank_model: Optional[str] = None,
     limit: Optional[int] = None,
     chunk_cache: Optional[Dict[str, Dict[str, Any]]] = None,
-    max_rerank_candidates: int = 100,
+    max_rerank_candidates: int = 0,
     supported_rerank_models: Optional[Dict[str, Any]] = None,
     rerank_model_loader: Optional[Any] = None,
 ) -> List[Any]:
@@ -508,6 +527,8 @@ def rerank_results(
         return results
 
     t_rerank_start = time.time()
+    if max_rerank_candidates <= 0:
+        max_rerank_candidates = len(results)
     candidates_to_rerank = results[:max_rerank_candidates]
     remaining_results = results[max_rerank_candidates:]
 
