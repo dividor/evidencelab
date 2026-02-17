@@ -1,10 +1,16 @@
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
 
 def enable_quantization():
+    # Load .env file
+    env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+    load_dotenv(env_path)
+
     print("--- Enabling Scalar Quantization (INT8) ---")
 
     # 1. Connect
@@ -14,11 +20,15 @@ def enable_quantization():
     if "http" not in host:
         host = f"http://{host}"
 
+    # Auto-convert Docker hostname to localhost for host usage
+    host = host.replace("://qdrant:", "://localhost:")
+
     # If running inside API container (where QDRANT_HOST=http://qdrant:6333), this works.
     # If running on host (where QDRANT_HOST=http://localhost:6333), this works.
 
     print(f"Connecting to: {host}")
-    client = QdrantClient(url=host)
+    api_key = os.getenv("QDRANT_API_KEY")
+    client = QdrantClient(url=host, api_key=api_key)
     collection_name = "chunks_uneg"
 
     # 2. Define Scalar Quantization Config

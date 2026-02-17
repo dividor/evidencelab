@@ -289,6 +289,7 @@ const buildSearchParams = ({
   keywordBoostShortQueries,
   minChunkSize,
   rerankModel,
+  rerankModelPageSize,
   searchModel,
   dataSource,
   autoMinScore,
@@ -305,6 +306,7 @@ const buildSearchParams = ({
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   searchModel: string | null;
   dataSource: string;
   autoMinScore: boolean;
@@ -330,6 +332,9 @@ const buildSearchParams = ({
   }
   if (rerankModel) {
     params.append('rerank_model', rerankModel);
+  }
+  if (rerankModelPageSize != null && rerankModelPageSize > 0) {
+    params.append('rerank_model_page_size', rerankModelPageSize.toString());
   }
   if (searchModel) {
     params.append('model', searchModel);
@@ -420,6 +425,7 @@ function App() {
   const [semanticHighlightModelConfig, setSemanticHighlightModelConfig] =
     useState<SummaryModelConfig | null>(null);
   const [rerankModel, setRerankModel] = useState<string | null>(null);
+  const [rerankModelPageSize, setRerankModelPageSize] = useState<number | null>(null);
 
   // Fetch datasources config on mount (includes total_documents per datasource)
   useEffect(() => {
@@ -525,6 +531,7 @@ function App() {
     setSummaryModelConfig(combo.summarization_model);
     setSemanticHighlightModelConfig(combo.semantic_highlighting_model);
     setRerankModel(combo.reranker_model);
+    setRerankModelPageSize(combo.rerank_model_page_size ?? null);
   }, [selectedModelCombo, modelCombos]);
 
 
@@ -1132,13 +1139,14 @@ function App() {
     });
   };
 
-  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters }) => {
+  const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters; queryValue?: string }) => {
     try {
       if (loadingConfig && initialSearchState.dataset) {
         return;
       }
-      const includeQuery = options?.includeQuery ?? true;
+      const includeQuery = options?.includeQuery ?? false;
       const filtersToUse = options?.filtersOverride ?? filters;
+      const queryToUse = options?.queryValue;
       const params = new URLSearchParams();
       // Add all filter values using core field names
       for (const [field, value] of Object.entries(filtersToUse)) {
@@ -1147,8 +1155,8 @@ function App() {
         }
       }
       params.append('data_source', dataSource);
-      if (includeQuery && query && query.trim()) {
-        params.append('q', query.trim());
+      if (includeQuery && queryToUse && queryToUse.trim()) {
+        params.append('q', queryToUse.trim());
       }
 
       const url = `${API_BASE_URL}/facets?${params}`;
@@ -1164,7 +1172,7 @@ function App() {
         console.warn('Backend server is unreachable (502 Bad Gateway). Facets will not be available until the backend is running.');
       }
     }
-  }, [loadingConfig, initialSearchState.dataset, filters, dataSource, query]);
+  }, [loadingConfig, initialSearchState.dataset, filters, dataSource]);
 
   const loadAllFacets = useCallback(async () => {
     try {
@@ -1233,11 +1241,13 @@ function App() {
 
   // Load facets on mount, when filters change, or when data source changes
   // Heatmap uses full dataset facets by default, even if a query is present.
+  // Note: Query-based facets loading is handled separately with debouncing
   useEffect(() => {
     if (activeTab === 'heatmap') {
       loadFacets({ includeQuery: false, filtersOverride: buildHeatmapFacetFilters() });
     } else {
-      loadFacets();
+      // Load facets without query - only based on filters
+      loadFacets({ includeQuery: false });
     }
   }, [filters, heatmapFilters, dataSource, activeTab, loadFacets, buildHeatmapFacetFilters]);
 
@@ -1548,6 +1558,7 @@ function App() {
         keywordBoostShortQueries,
         minChunkSize,
         rerankModel,
+        rerankModelPageSize,
         searchModel,
         dataSource,
         autoMinScore,
@@ -1569,8 +1580,8 @@ function App() {
       // Initialize all headings as collapsed by default
       setCollapsedHeadings(new Set(data.results.map((_, index) => index)));
 
-      // Reload facets to reflect search result distribution
-      loadFacets();
+      // Reload facets to reflect search result distribution (with query)
+      loadFacets({ includeQuery: true, queryValue: query });
 
       handleAiSummaryForResults(data);
       handlePostSearchResults(data);
@@ -2081,6 +2092,7 @@ function App() {
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
       rerankModel={rerankModel}
+      rerankModelPageSize={rerankModelPageSize}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSource={dataSource}
       selectedDoc={selectedDoc}

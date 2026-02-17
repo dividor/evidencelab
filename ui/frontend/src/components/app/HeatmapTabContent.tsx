@@ -26,6 +26,9 @@ import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 const API_KEY = process.env.REACT_APP_API_KEY;
 
+// Top N% of score range to display (0.2 = show only top 20%)
+const HEATMAP_SCORE_PERCENTILE = 0.2;
+
 type HeatmapFilterModalState = {
   field: string;
   label: string;
@@ -75,6 +78,7 @@ interface HeatmapTabContentProps {
   recencyScaleDays: number;
   onRecencyScaleDaysChange: (value: number) => void;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   minChunkSize: number;
   onMinChunkSizeChange: (value: number) => void;
   sectionTypes: string[];
@@ -147,6 +151,38 @@ const HeatmapQueryTuning = ({ expanded, onToggle, gridQuery, onQueryChange, scor
         </div>
       </div>
     )}
+  </div>
+);
+
+const HeatmapSensitivitySlider = ({ scoreBounds, similarityCutoff, onCutoffChange }: {
+  scoreBounds: { min: number; max: number; hasScores: boolean };
+  similarityCutoff: number;
+  onCutoffChange: (value: number) => void;
+}) => (
+  <div className="heatmap-controls-row heatmap-query-controls">
+    <div className="heatmap-control heatmap-slider">
+      <label htmlFor="heatmap-cutoff" style={!scoreBounds.hasScores ? { opacity: 0.4 } : undefined}>
+        Search sensitivity
+        {scoreBounds.hasScores && (
+          <span
+            className="rerank-tooltip heatmap-sensitivity-info"
+            title="Adjust this to be more specific in your search. The higher the sensitivity the more results you will get, but some may end up being less relevant for what you want. Generate a heatmap and try it out!"
+          >
+            ⓘ
+          </span>
+        )}
+      </label>
+      <input
+        id="heatmap-cutoff"
+        type="range"
+        min={scoreBounds.min}
+        max={scoreBounds.max}
+        step={0.001}
+        value={scoreBounds.min + scoreBounds.max - similarityCutoff}
+        onChange={(event) => onCutoffChange(scoreBounds.min + scoreBounds.max - Number(event.target.value))}
+        disabled={!scoreBounds.hasScores}
+      />
+    </div>
   </div>
 );
 
@@ -280,7 +316,10 @@ const buildSearchParams = (options: {
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   searchModel: string | null;
+  autoMinScore: boolean;
+  deduplicateEnabled: boolean;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
@@ -308,9 +347,16 @@ const buildSearchParams = (options: {
   if (options.rerankModel) {
     params.append('rerank_model', options.rerankModel);
   }
+  if (options.rerankModelPageSize != null && options.rerankModelPageSize > 0) {
+    params.append('rerank_model_page_size', options.rerankModelPageSize.toString());
+  }
   if (options.searchModel) {
     params.append('model', options.searchModel);
   }
+  if (options.autoMinScore) {
+    params.append('auto_min_score', 'true');
+  }
+  params.append('deduplicate', options.deduplicateEnabled.toString());
   params.append('data_source', options.dataSource);
   return params;
 };
@@ -447,7 +493,6 @@ type FiltersPanelProps = Omit<
 
 type HeatmapFiltersColumnProps = {
   filtersExpanded: boolean;
-  activeFiltersCount: number;
   onToggleFiltersExpanded: () => void;
   onClearFilters: () => void;
   filtersPanelProps: FiltersPanelProps;
@@ -455,7 +500,6 @@ type HeatmapFiltersColumnProps = {
 
 const HeatmapFiltersColumn = ({
   filtersExpanded,
-  activeFiltersCount,
   onToggleFiltersExpanded,
   onClearFilters,
   filtersPanelProps,
@@ -465,16 +509,14 @@ const HeatmapFiltersColumn = ({
   }
   return (
     <div className="global-filters-column">
-      {activeFiltersCount === 0 && (
-        <button
-          className="global-filters-tab global-filters-tab-close"
-          onClick={onToggleFiltersExpanded}
-          aria-label="Hide filters"
-          title="Hide filters"
-        >
-          ‹
-        </button>
-      )}
+      <button
+        className="global-filters-tab global-filters-tab-close"
+        onClick={onToggleFiltersExpanded}
+        aria-label="Hide filters"
+        title="Hide filters"
+      >
+        ‹
+      </button>
       <FiltersPanel
         {...filtersPanelProps}
         filtersExpanded={filtersExpanded}
@@ -1033,6 +1075,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   recencyScaleDays,
   onRecencyScaleDaysChange,
   rerankModel,
+  rerankModelPageSize,
   minChunkSize,
   onMinChunkSizeChange,
   sectionTypes,
@@ -1049,7 +1092,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [rowQueries, setRowQueries] = useState<string[]>(['']);
   const [columnDimension, setColumnDimension] = useState<string>('published_year');
   const [rowDimension, setRowDimension] = useState<string>('document_type');
-  const [similarityCutoff, setSimilarityCutoff] = useState<number>(0.5);
+  const [similarityCutoff, setSimilarityCutoff] = useState<number>(HEATMAP_SCORE_PERCENTILE);
   const [heatmapMetric, setHeatmapMetric] = useState<HeatmapMetric>('documents');
   const [gridQuery, setGridQuery] = useState<string>('');
   const [gridResults, setGridResults] = useState<RawCellResults>({});
@@ -1079,6 +1122,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
+  const userAdjustedCutoffRef = useRef(false);
   const heatmapUrlInitRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
@@ -1301,7 +1345,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       const values = getFieldValues(field);
       const currentSelected = heatmapSelectedFilters[field];
       const initialSelectedValues = currentSelected ? [...currentSelected] : [...values];
-      setHeatmapCollapsedFilters(new Set());
+      setHeatmapCollapsedFilters(new Set([field]));
       setHeatmapExpandedFilterLists(new Set());
       setHeatmapFilterSearchTerms((prev) => ({ ...prev, [field]: '' }));
       setHeatmapSelectedFilters((prev) => {
@@ -2028,11 +2072,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [gridResults]);
 
   useEffect(() => {
-    if (!scoreBounds.hasScores) {
+    if (!scoreBounds.hasScores || userAdjustedCutoffRef.current) {
       return;
     }
-    const midpoint = scoreBounds.min + (scoreBounds.max - scoreBounds.min) / 2;
-    setSimilarityCutoff(midpoint);
+    const cutoff = scoreBounds.max - HEATMAP_SCORE_PERCENTILE * (scoreBounds.max - scoreBounds.min);
+    setSimilarityCutoff(cutoff);
   }, [scoreBounds]);
 
   const maxCellCount = useMemo(() => {
@@ -2111,6 +2155,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridLoading(true);
     setGridError(null);
     setGridResults({});
+    userAdjustedCutoffRef.current = false;
     const tasks: Array<() => Promise<void>> = [];
     let failedRequests = 0;
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
@@ -2145,7 +2190,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           keywordBoostShortQueries,
           minChunkSize,
           rerankModel,
+          rerankModelPageSize,
           searchModel,
+          autoMinScore,
+          deduplicateEnabled,
           dataSource,
         });
 
@@ -2489,8 +2537,27 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     [activeCell, updateActiveCellResults]
   );
 
+  const globalFilterFacets = useMemo(() => {
+    if (!facets) return null;
+    const excludeFields = new Set<string>();
+    if (columnDimension) excludeFields.add(columnDimension);
+    if (rowDimension && rowDimension !== 'queries' && rowDimension !== 'title') {
+      excludeFields.add(rowDimension);
+    }
+    if (excludeFields.size === 0) return facets;
+    const filteredFields: Record<string, string> = {};
+    const filteredFacets: Record<string, FacetValue[]> = {};
+    for (const [field, label] of Object.entries(facets.filter_fields)) {
+      if (!excludeFields.has(field)) {
+        filteredFields[field] = label;
+        filteredFacets[field] = facets.facets[field] || [];
+      }
+    }
+    return { ...facets, filter_fields: filteredFields, facets: filteredFacets };
+  }, [facets, rowDimension, columnDimension]);
+
   const filtersPanelProps: FiltersPanelProps = {
-    facets,
+    facets: globalFilterFacets,
     selectedFilters: heatmapSelectedFilters,
     collapsedFilters: heatmapCollapsedFilters,
     expandedFilterLists: heatmapExpandedFilterLists,
@@ -2546,7 +2613,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       <div className={getContentGridClass(filtersExpanded)}>
         <HeatmapFiltersColumn
           filtersExpanded={filtersExpanded}
-          activeFiltersCount={activeFiltersCount}
           onToggleFiltersExpanded={onToggleFiltersExpanded}
           onClearFilters={onClearFilters}
           filtersPanelProps={filtersPanelProps}
@@ -2615,8 +2681,17 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 />
               </div>
 
-              {/* Collapsible query tuning section */}
-              {!isQueryRow && (
+              {/* Query tuning / sensitivity */}
+              {isQueryRow ? (
+                <HeatmapSensitivitySlider
+                  scoreBounds={scoreBounds}
+                  similarityCutoff={similarityCutoff}
+                  onCutoffChange={(value: number) => {
+                    userAdjustedCutoffRef.current = true;
+                    setSimilarityCutoff(value);
+                  }}
+                />
+              ) : (
                 <HeatmapQueryTuning
                   expanded={queryTuningExpanded}
                   onToggle={() => setQueryTuningExpanded((prev) => !prev)}
@@ -2624,7 +2699,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   onQueryChange={setGridQuery}
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
-                  onCutoffChange={setSimilarityCutoff}
+                  onCutoffChange={(value: number) => {
+                    userAdjustedCutoffRef.current = true;
+                    setSimilarityCutoff(value);
+                  }}
                 />
               )}
             </div>
