@@ -17,21 +17,51 @@ def build_year_facets(raw_counts: Dict[Any, int]) -> List[FacetValue]:
     return [FacetValue(value=value, count=count) for value, count in year_items]
 
 
+def _split_multivalue(raw_value: str) -> List[str]:
+    """Split a multi-value string on '; ' or ',' separators."""
+    if "; " in raw_value:
+        return [p.strip() for p in raw_value.split("; ") if p.strip()]
+    if "," in raw_value:
+        return [p.strip() for p in raw_value.split(",") if p.strip()]
+    return []
+
+
 def build_generic_facets(raw_counts: Dict[Any, int]) -> List[FacetValue]:
     counter: Counter[str] = Counter()
     for raw_value, count in raw_counts.items():
         if raw_value is None or raw_value == "":
             continue
-        if isinstance(raw_value, str) and "," in raw_value:
-            for item in raw_value.split(","):
-                item = item.strip()
-                if item:
+        if isinstance(raw_value, str):
+            parts = _split_multivalue(raw_value)
+            if parts:
+                for item in parts:
                     counter[item] += count
-        else:
-            counter[str(raw_value)] += count
+                continue
+        counter[str(raw_value)] += count
     return [
         FacetValue(value=value, count=count) for value, count in counter.most_common()
     ]
+
+
+def expand_multivalue_filter(db, storage_field: str, selected: List[str]) -> List[str]:
+    """Expand individual filter values to include raw multi-value entries.
+
+    When ``map_country`` stores ``"Nepal; India"`` and the user selects
+    ``"Nepal"``, this returns ``["Nepal", "Nepal; India"]`` so the Qdrant
+    MatchAny filter matches both single- and multi-country documents.
+    """
+    raw_counts = db.facet_documents(
+        key=storage_field, filter_conditions=None, limit=5000, exact=False
+    )
+    selected_set = set(selected)
+    expanded = set(selected)
+    for raw_value in raw_counts:
+        raw_str = str(raw_value)
+        if "; " in raw_str:
+            parts = {p.strip() for p in raw_str.split("; ")}
+            if parts & selected_set:
+                expanded.add(raw_str)
+    return list(expanded)
 
 
 def build_facets_from_pg(pg, storage_field: str) -> Dict[str, int]:
