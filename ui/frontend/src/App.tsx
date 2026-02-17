@@ -825,7 +825,7 @@ function App() {
   }, [availableDomains, loadingConfig, selectedDomain]);
 
 
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(window.innerWidth > 1024);
   const toggleFiltersExpanded = useCallback(() => {
     setFiltersExpanded((prev) => !prev);
   }, []);

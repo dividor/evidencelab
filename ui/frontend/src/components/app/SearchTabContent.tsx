@@ -429,20 +429,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       />
 
       <div className={`${contentGridClass} search-panel-with-tab`}>
-        {!filtersExpanded ? (
-          <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
-            More Filters
-          </button>
-        ) : activeFiltersCount === 0 ? (
-          <button
-            className="global-filters-tab global-filters-tab-close"
-            onClick={onToggleFiltersExpanded}
-            aria-label="Hide filters"
-            title="Hide filters"
-          >
-            ‹
-          </button>
-        ) : null}
         {filtersExpanded && (
           <div className="global-filters-column">
             <FiltersPanel
