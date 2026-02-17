@@ -221,6 +221,7 @@ jobs:
           pytest tests/unit/ -v
 
   integration-tests:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     needs: [tests, ui-tests]
     environment: ENV1
