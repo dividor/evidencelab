@@ -348,11 +348,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       const org = r.organization || r.metadata?.organization || '';
       return `${title}|${year}|${org}`;
     };
-    const docCounts = new Map<string, number>();
-    visibleResults.forEach((r) => {
-      const key = getDocKey(r);
-      if (key !== '||') docCounts.set(key, (docCounts.get(key) || 0) + 1);
-    });
     const seen = new Set<string>();
     const docs: SearchResult[] = [];
     visibleResults.forEach((r) => {
@@ -362,7 +357,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         docs.push(r);
       }
     });
-    docs.sort((a, b) => (docCounts.get(getDocKey(b)) || 0) - (docCounts.get(getDocKey(a)) || 0));
     return docs;
   }, [visibleResults]);
 
