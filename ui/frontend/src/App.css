@@ -3919,6 +3919,20 @@ h6,
   line-height: 1.5;
 }
 
+.see-more-link {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.see-more-link:hover {
+  text-decoration: underline;
+}
+
 .result-title-link {
   color: var(--brand-primary);
   /* Brand color for clickable title */
