@@ -18,7 +18,7 @@ This document outlines the security measures, scanning tools, and best practices
 If you discover a security vulnerability in this project, please report it responsibly:
 
 1. **Do NOT** create a public GitHub issue for security vulnerabilities
-2. Email the maintainers directly with details of the vulnerability
+2. Email [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com) directly with details of the vulnerability
 3. Include steps to reproduce the issue
 4. Allow reasonable time for the issue to be addressed before public disclosure
 

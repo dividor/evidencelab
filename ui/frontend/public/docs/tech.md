@@ -1,7 +1,3 @@
-## Architecture
-
-![Evidence Lab Architecture](/docs/images/evidence-lab.png)
-
 ## Features
 
 ### Document Processing Pipeline
@@ -63,7 +59,7 @@ The system also supports configurable document-level taxonomies (defined in `con
 
 #### 5. Indexer (`indexer.py`)
 
-Prepares and stores content in **Qdrant** with placeholders for a range of vector embedding model.
+Prepares and stores content in **Qdrant** with placeholders for a range of vector embedding models.
 
 * **Multi-Vector Indexing**: Stores multiple vectors per chunk to support different retrieval strategies.
   * **Dense**: Semantic vectors (defaulting to `multilingual-e5`).
@@ -103,7 +99,7 @@ Tools for managing the pipeline and data quality.
 * **Modern Frontend**: React + TypeScript.
 * **Python Backend**: FastAPI + LangChain + Qdrant + Postgres.
 
-## Configuring Evaluation Lab for Your Documents
+## Configuring Evidence Lab for Your Documents
 
 ### Quick Start
 
@@ -131,7 +127,3 @@ Tools for managing the pipeline and data quality.
              report_123.json
              report_124.error
    ```
-
-4. **Next steps**
-   - See the technical deep dive for pipeline commands, downloaders, and architecture details:
-     [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)

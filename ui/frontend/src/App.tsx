@@ -2186,7 +2186,7 @@ function App() {
           GitHub
         </a>
         <span className="app-footer-divider">•</span>
-        <a href="mailto:evidence-lab@astrobagel.com">Contact</a>
+        <a href="mailto:evidencelab@astrobagel.com">Contact</a>
       </footer>
 
       <PdfPreviewOverlay
