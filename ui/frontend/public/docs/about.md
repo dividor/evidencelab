@@ -36,7 +36,7 @@ Evidence Lab document processing pipeline includes the following features:
 ### User interface
 
 - Hybrid search with AI summary and reranking
-- Experimental features such as [Heatmapper](/http://localhost:3000/heatmap?dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&tab=heatmap&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
+- Experimental features such as [Heatmapper](/?tab=heatmap&dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
 - Semantic highlighting in search results

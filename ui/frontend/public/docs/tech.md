@@ -6,7 +6,7 @@ The pipeline is modular and managed by `orchestrator.py`. If you put PDF/DOCX fi
 
 ### 1. Parser (`parser.py`)
 
-The parser has been designed to be inexpensive and relatively fast, while saving assets such as images and tables which can be reprocessed later with more advanced/expensive techniques as required. The current setup is ...
+The parser has been designed to be inexpensive and relatively fast, while saving assets such as images and tables which can be reprocessed later with more advanced/expensive techniques as required.
 
 Uses [Docling](https://github.com/DS4SD/docling) for advanced document understanding, leveraging its [hierarchical structure capabilities](https://ds4sd.github.io/docling/concepts/chunking/).
 
@@ -40,7 +40,7 @@ Generates comprehensive document summaries using a multi-strategy approach:
 
 * **Methodology**:
 
-See [here](https://medium.com/data-science-collective/automatically-identifying-taxonomies-from-documents-using-the-taxoadapt-algorithm-with-ca265d87bc08) for discussion on the summarization technique ...
+See [here](https://medium.com/data-science-collective/a-low-cost-pipeline-for-generating-abstracts-of-humanitarian-evaluation-reports-4efe231cd4ea) for discussion on the summarization technique.
 
 LLM Summarization is done using a Map-Reduce process, splitting text into chunks and summarizing in parallel. The summaries are then reduced into a single summary using the LLM.
 
@@ -67,7 +67,7 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 
 ## Search & Discovery
 
-A production-grade search experience powered by hybrid retrieval and AI.
+Search powered by hybrid retrieval and AI.
 
 * **Hybrid Search (RRF)**: Uses Reciprocal Rank Fusion to mathematically combine results from Semantic Search (Dense) and Keyword Search (Sparse). This captures both "conceptual matches" and "exact phrase matches".
 * **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry) and Jina Reranker (via Huggingface).
@@ -99,7 +99,7 @@ Tools for managing the pipeline and data quality.
 
 ## Configuring Evidence Lab for Your Documents
 
-For more detailed instructions refer to
+For more detailed instructions refer to the [Evidence Lab GitHub Repo](https://github.com/dividor/evidencelab).
 
 1. **Configure data sources**
    - Edit [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) in the repo root to define `datasources`, `data_subdir`, and `field_mapping`, along with fields to control how your documents are parsed.
