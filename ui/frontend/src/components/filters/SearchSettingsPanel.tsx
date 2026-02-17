@@ -28,7 +28,19 @@ interface SearchSettingsPanelProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
+  availableBoostFields: string[];
 }
+
+const BOOST_FIELD_OPTIONS = [
+  { value: 'country', label: 'Country' },
+  { value: 'organization', label: 'Organization' },
+  { value: 'document_type', label: 'Document Type' },
+  { value: 'language', label: 'Language' },
+];
 
 const SECTION_TYPE_OPTIONS = [
   { value: 'front_matter', label: 'Front Matter' },
@@ -243,6 +255,11 @@ export const SearchSettingsPanel = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
+  availableBoostFields,
 }: SearchSettingsPanelProps) => (
   <>
     <div className="filter-section">
@@ -378,6 +395,70 @@ export const SearchSettingsPanel = ({
               ⓘ
             </span>
           </label>
+          <label className="rerank-checkbox-label">
+            <input
+              type="checkbox"
+              checked={fieldBoostEnabled}
+              onChange={(event) => onFieldBoostToggle(event.target.checked)}
+              className="rerank-checkbox"
+            />
+            <span>Field Level Boosting</span>
+            <span
+              className="rerank-tooltip"
+              title="Boost fields such as organization and country if configured for this data source"
+            >
+              ⓘ
+            </span>
+          </label>
+          {fieldBoostEnabled && (
+            <div className="field-boost-fields">
+              {BOOST_FIELD_OPTIONS
+                .filter(({ value }) => availableBoostFields.includes(value))
+                .map(({ value, label }) => {
+                  const isChecked = value in fieldBoostFields;
+                  const weight = fieldBoostFields[value] ?? 0.5;
+                  return (
+                    <div key={value} className="field-boost-row">
+                      <label className="section-type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              onFieldBoostFieldsChange({ ...fieldBoostFields, [value]: 0.5 });
+                            } else {
+                              const next = { ...fieldBoostFields };
+                              delete next[value];
+                              onFieldBoostFieldsChange(next);
+                            }
+                          }}
+                        />
+                        <span>{label}</span>
+                      </label>
+                      {isChecked && (
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="2.0"
+                          step="0.1"
+                          value={weight}
+                          onChange={(event) => {
+                            const v = parseFloat(event.target.value);
+                            if (!isNaN(v)) {
+                              onFieldBoostFieldsChange({
+                                ...fieldBoostFields,
+                                [value]: v,
+                              });
+                            }
+                          }}
+                          className="field-boost-input"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -85,6 +85,10 @@ interface HeatmapTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   dataSource: string;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
@@ -320,6 +324,8 @@ const buildSearchParams = (options: {
   searchModel: string | null;
   autoMinScore: boolean;
   deduplicateEnabled: boolean;
+  fieldBoostEnabled: boolean;
+  fieldBoostFields: Record<string, number>;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
@@ -357,6 +363,13 @@ const buildSearchParams = (options: {
     params.append('auto_min_score', 'true');
   }
   params.append('deduplicate', options.deduplicateEnabled.toString());
+  params.append('field_boost', options.fieldBoostEnabled.toString());
+  if (options.fieldBoostEnabled && Object.keys(options.fieldBoostFields).length > 0) {
+    const encoded = Object.entries(options.fieldBoostFields)
+      .map(([f, w]) => `${f}:${w}`)
+      .join(',');
+    params.append('field_boost_fields', encoded);
+  }
   params.append('data_source', options.dataSource);
   return params;
 };
@@ -1082,6 +1095,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
   dataSource,
   selectedDoc,
   onResultClick,
@@ -2194,6 +2211,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           searchModel,
           autoMinScore,
           deduplicateEnabled,
+          fieldBoostEnabled,
+          fieldBoostFields,
           dataSource,
         });
 
@@ -2594,6 +2613,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onSectionTypesChange,
     deduplicateEnabled,
     onDeduplicateToggle,
+    fieldBoostEnabled,
+    onFieldBoostToggle,
+    fieldBoostFields,
+    onFieldBoostFieldsChange,
   };
 
   const isQueryRow = rowDimension === 'queries';

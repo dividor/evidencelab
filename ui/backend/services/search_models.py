@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -707,3 +708,145 @@ def apply_recency_boost(
         f"to {len(results)} results"
     )
     return reordered_results
+
+
+def _detect_field_values_in_query(
+    query: str, known_values: List[str], min_length: int = 3
+) -> List[str]:
+    """Detect which known field values appear in the query.
+
+    Uses case-insensitive word-boundary matching with longest-first ordering
+    to handle multi-word values like "South Sudan" before "Sudan".
+    Skips values shorter than min_length to avoid false positives.
+    """
+    query_lower = query.lower()
+    # Sort by length descending so "South Sudan" matches before "Sudan"
+    sorted_values = sorted(known_values, key=len, reverse=True)
+    matched = []
+    for value in sorted_values:
+        if len(value) < min_length:
+            continue
+        # Use word boundaries to avoid partial matches
+        pattern = r"\b" + re.escape(value.lower()) + r"\b"
+        if re.search(pattern, query_lower):
+            matched.append(value)
+            # Remove matched value from query to avoid double-matching
+            query_lower = re.sub(pattern, " ", query_lower)
+    return matched
+
+
+def _split_field_value(value: str) -> List[str]:
+    """Split a potentially comma-separated field value into individual values."""
+    if "," in value:
+        return [v.strip() for v in value.split(",") if v.strip()]
+    return [value.strip()] if value.strip() else []
+
+
+_FIELD_ACCESSORS = {
+    "organization": lambda r: r.organization or "",
+    "country": lambda r: r.metadata.get("map_country", "") or "",
+}
+
+
+def _build_text_patterns(
+    detected: Dict[str, List[str]],
+) -> Dict[str, List[re.Pattern]]:
+    """Pre-compile word-boundary regex patterns for text content matching."""
+    return {
+        field: [re.compile(r"\b" + re.escape(v) + r"\b", re.IGNORECASE) for v in vals]
+        for field, vals in detected.items()
+    }
+
+
+def _compute_boost_multiplier(
+    result: Any,
+    detected: Dict[str, List[str]],
+    boost_fields: Dict[str, float],
+    text_patterns: Dict[str, List[re.Pattern]],
+) -> float:
+    """Compute the boost multiplier for a single result."""
+    multiplier = 1.0
+    for field, matched_values in detected.items():
+        weight = boost_fields[field]
+        accessor = _FIELD_ACCESSORS.get(
+            field, lambda r, f=field: r.metadata.get(f"map_{f}", "") or ""
+        )
+        raw_value = accessor(result)
+        result_values = [v.lower() for v in _split_field_value(raw_value)]
+
+        if any(rv in matched_values for rv in result_values):
+            multiplier += weight
+        else:
+            text_to_check = (result.text or "") + " " + (result.title or "")
+            if any(p.search(text_to_check) for p in text_patterns[field]):
+                multiplier += weight
+    return multiplier
+
+
+def apply_field_boost(
+    results: List[Any],
+    query: str,
+    boost_fields: Dict[str, float],
+    known_values: Dict[str, List[str]],
+) -> List[Any]:
+    """Apply field-based boosting to search results.
+
+    Detects field values (e.g., country names, organizations) mentioned in the
+    query and boosts matching results via a multiplicative bonus. Non-matching
+    results keep their original score — the boost can only promote, never demote.
+
+    Score formula: score * (1 + sum_of_matching_weights)
+    e.g. with country=0.5 and org=0.5, a result matching both gets score * 2.0,
+    matching one gets score * 1.5, matching none stays at score * 1.0.
+
+    Args:
+        results: List of SearchResult objects
+        query: The original search query
+        boost_fields: Mapping of core field name to weight (0.0-1.0),
+                      e.g. {"country": 0.5, "organization": 0.5}
+        known_values: Mapping of core field name to list of known values,
+                      e.g. {"country": ["Kenya", "South Sudan", ...]}
+
+    Returns:
+        Reordered list with adjusted scores
+    """
+    if not results or not boost_fields or not query.strip():
+        return results
+
+    # Detect which values are mentioned in the query for each boost field
+    detected: Dict[str, List[str]] = {}
+    for field, weight in boost_fields.items():
+        if field not in known_values or weight <= 0:
+            continue
+        matches = _detect_field_values_in_query(query, known_values[field])
+        if matches:
+            detected[field] = [m.lower() for m in matches]
+
+    if not detected:
+        return results
+
+    text_patterns = _build_text_patterns(detected)
+
+    for result in results:
+        multiplier = _compute_boost_multiplier(
+            result, detected, boost_fields, text_patterns
+        )
+        if multiplier > 1.0:
+            result.metadata["_field_boost_multiplier"] = multiplier
+            result.metadata["_pre_field_boost_score"] = result.score
+            # Use additive boost for negative scores to avoid making them worse
+            if result.score >= 0:
+                result.score = result.score * multiplier
+            else:
+                result.score = result.score + abs(result.score) * (multiplier - 1.0)
+
+    # Re-sort by adjusted score
+    results.sort(key=lambda r: r.score, reverse=True)
+
+    boosted_fields = ", ".join(f"{f}={boost_fields[f]}" for f in detected.keys())
+    detected_str = ", ".join(f"{f}={vals}" for f, vals in detected.items())
+    logger.info(
+        f"✓ Applied field boost ({boosted_fields}) "
+        f"detected=[{detected_str}] to {len(results)} results"
+    )
+    return results

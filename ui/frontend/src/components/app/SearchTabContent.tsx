@@ -49,6 +49,10 @@ interface SearchTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   aiSummaryEnabled: boolean;
   aiSummaryCollapsed: boolean;
   aiSummaryExpanded: boolean;
@@ -239,6 +243,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
   aiSummaryEnabled,
   aiSummaryCollapsed,
   aiSummaryExpanded,
@@ -471,6 +479,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               onSectionTypesChange={onSectionTypesChange}
               deduplicateEnabled={deduplicateEnabled}
               onDeduplicateToggle={onDeduplicateToggle}
+              fieldBoostEnabled={fieldBoostEnabled}
+              onFieldBoostToggle={onFieldBoostToggle}
+              fieldBoostFields={fieldBoostFields}
+              onFieldBoostFieldsChange={onFieldBoostFieldsChange}
             />
           </div>
         )}

@@ -15,10 +15,14 @@ export interface SearchStateFromURL {
   semanticHighlighting: boolean;
   autoMinScore: boolean;
   deduplicate: boolean;
+  fieldBoost: boolean;
+  fieldBoostFields: Record<string, number>;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
 }
+
+export const DEFAULT_FIELD_BOOST_FIELDS: Record<string, number> = { country: 0.5, organization: 0.5 };
 
 export const DEFAULT_SECTION_TYPES = [
   'executive_summary',
@@ -99,6 +103,25 @@ const parseFilters = (
   return { filters, selectedFilters };
 };
 
+const parseFieldBoostFields = (params: URLSearchParams): Record<string, number> => {
+  const raw = params.get('field_boost_fields');
+  if (!raw) return { ...DEFAULT_FIELD_BOOST_FIELDS };
+  const result: Record<string, number> = {};
+  for (const item of raw.split(',')) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx > 0) {
+      const field = trimmed.slice(0, colonIdx);
+      const weight = parseFloat(trimmed.slice(colonIdx + 1));
+      result[field] = isNaN(weight) ? 0.5 : weight;
+    } else {
+      result[trimmed] = 0.5;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : { ...DEFAULT_FIELD_BOOST_FIELDS };
+};
+
 export const getSearchStateFromURL = (
   coreFields: string[],
   defaultSectionTypes: string[]
@@ -121,6 +144,8 @@ export const getSearchStateFromURL = (
     semanticHighlighting: parseBooleanParam(params, 'highlight', true),
     autoMinScore: parseBooleanParam(params, 'auto_min_score', false),
     deduplicate: parseBooleanParam(params, 'deduplicate', true),
+    fieldBoost: parseBooleanParam(params, 'field_boost', true),
+    fieldBoostFields: parseFieldBoostFields(params),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -202,7 +227,9 @@ export const buildSearchURL = (
   deduplicate?: boolean,
   model?: string | null,
   modelCombo?: string | null,
-  dataset?: string | null
+  dataset?: string | null,
+  fieldBoost?: boolean,
+  fieldBoostFields?: Record<string, number>
 ): string => {
   const params = new URLSearchParams();
   setParamIfNonEmpty(params, 'q', query);
@@ -220,6 +247,19 @@ export const buildSearchURL = (
   setParamIfFalse(params, 'highlight', semanticHighlighting);
   setParamIfTrue(params, 'auto_min_score', autoMinScore);
   setParamIfFalse(params, 'deduplicate', deduplicate);
+  setParamIfFalse(params, 'field_boost', fieldBoost);
+  if (fieldBoostFields && Object.keys(fieldBoostFields).length > 0) {
+    const defaultKeys = Object.keys(DEFAULT_FIELD_BOOST_FIELDS).sort();
+    const currentKeys = Object.keys(fieldBoostFields).sort();
+    const isDefault = currentKeys.length === defaultKeys.length
+      && currentKeys.every((k, i) => k === defaultKeys[i] && fieldBoostFields[k] === DEFAULT_FIELD_BOOST_FIELDS[k]);
+    if (!isDefault) {
+      const encoded = Object.entries(fieldBoostFields)
+        .map(([field, weight]) => `${field}:${weight}`)
+        .join(',');
+      params.set('field_boost_fields', encoded);
+    }
+  }
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

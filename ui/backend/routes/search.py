@@ -18,6 +18,7 @@ from ui.backend.services.search import (
     search_facet_values,
     search_titles,
 )
+from ui.backend.services.search_models import apply_field_boost
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.document_utils import (
@@ -511,6 +512,112 @@ def _build_filters_response(
     return filters_response
 
 
+def _parse_boost_fields(raw: Optional[str]) -> Dict[str, float]:
+    """Parse 'country:0.5,organization:0.3' into {field: weight}."""
+    if not raw:
+        return {}
+    config: Dict[str, float] = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            name, wstr = item.split(":", 1)
+            try:
+                config[name.strip()] = float(wstr)
+            except ValueError:
+                config[name.strip()] = 0.5
+        else:
+            config[item] = 0.5
+    return config
+
+
+def _add_taxonomy_filters(core_filters: Dict, query_params) -> None:
+    """Pick up tag_* query params (taxonomy filters) dynamically."""
+    for name, value in query_params.items():
+        if name.startswith("tag_") and value:
+            core_filters[name] = value
+
+
+def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
+    """Build doc/chunk caches and construct SearchResult list. Returns None if no docs."""
+    t_doc = time.time()
+    doc_cache = _build_doc_cache(pg, results)
+    logger.info(
+        "[TIMING] doc_cache_fetch: %.3fs (%s docs)", time.time() - t_doc, len(doc_cache)
+    )
+    if not doc_cache:
+        return None
+    t_chunk = time.time()
+    chunk_cache = _build_chunk_cache(pg, results)
+    logger.info(
+        "[TIMING] chunk_cache_fetch: %.3fs (%s chunks)",
+        time.time() - t_chunk,
+        len(chunk_cache),
+    )
+    t_build = time.time()
+    built = _build_search_results(
+        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size
+    )
+    logger.info(
+        "[TIMING] build_results: %.3fs (%s results)", time.time() - t_build, len(built)
+    )
+    return built
+
+
+def _apply_post_retrieval_boosts(
+    results: List,
+    query: str,
+    field_boost: bool,
+    field_boost_fields: Optional[str],
+    auto_min_score: bool,
+    deduplicate: bool,
+    db,
+    source: Optional[str],
+) -> List:
+    """Apply field boost, auto min score, and deduplication."""
+    boost_cfg = (
+        _parse_boost_fields(field_boost_fields) if field_boost and query.strip() else {}
+    )
+    if boost_cfg:
+        known = _gather_known_values(db, boost_cfg, source)
+        results = apply_field_boost(results, query, boost_cfg, known)
+    if auto_min_score:
+        results = _apply_auto_min_score_filter(results)
+    if deduplicate:
+        results = _deduplicate_results(results)
+    return results
+
+
+def _split_facet_values(raw_counts) -> List[str]:
+    """Expand raw facet counts into individual values, splitting comma-separated entries."""
+    values: set = set()
+    for rv in raw_counts:
+        if rv is None or rv == "":
+            continue
+        s = str(rv)
+        parts = [p.strip() for p in s.split(",")] if "," in s else [s]
+        values.update(p for p in parts if p)
+    return list(values)
+
+
+def _gather_known_values(
+    db, boost_fields: Dict[str, float], source: Optional[str]
+) -> Dict[str, List[str]]:
+    """Fetch known facet values for each boost field from the DB."""
+    known: Dict[str, List[str]] = {}
+    for core_field in boost_fields:
+        storage_field = _resolve_storage_field(core_field, source)
+        raw_counts = db.facet_documents(
+            key=storage_field,
+            filter_conditions=None,
+            limit=2000,
+            exact=False,
+        )
+        known[core_field] = _split_facet_values(raw_counts)
+    return known
+
+
 @router.get("/search", response_model=SearchResponse)
 @limiter.limit(RATE_LIMIT_SEARCH)
 async def search(
@@ -569,6 +676,16 @@ async def search(
         description="Deduplicate results with identical text "
         "across documents, keeping the most recently published",
     ),
+    field_boost: bool = Query(
+        True,
+        description="Boost results matching field values "
+        "(e.g. country, organization) mentioned in the query",
+    ),
+    field_boost_fields: Optional[str] = Query(
+        None,
+        description="Comma-separated core field names to boost (e.g. 'country,organization'). "
+        "Each field gets a 0.5 weight multiplier.",
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -591,10 +708,7 @@ async def search(
             country,
             language,
         )
-        # Pick up tag_* query params (taxonomy filters) dynamically
-        for param_name, param_value in request.query_params.items():
-            if param_name.startswith("tag_") and param_value:
-                core_filters[param_name] = param_value
+        _add_taxonomy_filters(core_filters, request.query_params)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
@@ -632,61 +746,25 @@ async def search(
             )
 
         t2 = time.time()
-        t_doc_cache_start = time.time()
-        doc_cache = _build_doc_cache(pg, results)
-        t_doc_cache_end = time.time()
-        logger.info(
-            "[TIMING] doc_cache_fetch: %.3fs (%s docs)",
-            t_doc_cache_end - t_doc_cache_start,
-            len(doc_cache),
+        filtered_results = _fetch_and_build_results(
+            pg, results, data_source, limit, min_chunk_size
         )
-        if not doc_cache:
+        if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})
-        t_chunk_cache_start = time.time()
-        chunk_cache = _build_chunk_cache(pg, results)
-        t_chunk_cache_end = time.time()
-        logger.info(
-            "[TIMING] chunk_cache_fetch: %.3fs (%s chunks)",
-            t_chunk_cache_end - t_chunk_cache_start,
-            len(chunk_cache),
-        )
-        t2b = time.time()
-        logger.info(
-            "[TIMING] batch_doc_fetch: %.3fs (%s docs)",
-            t2b - t2,
-            len(doc_cache),
-        )
 
-        t_build_results_start = time.time()
-        filtered_results = _build_search_results(
-            results,
-            doc_cache,
-            chunk_cache,
-            data_source,
-            limit,
-            min_chunk_size,
+        filtered_results = _apply_post_retrieval_boosts(
+            filtered_results,
+            q,
+            field_boost,
+            field_boost_fields,
+            auto_min_score,
+            deduplicate,
+            db,
+            source,
         )
-        t_build_results_end = time.time()
-        logger.info(
-            "[TIMING] build_results: %.3fs (%s results)",
-            t_build_results_end - t_build_results_start,
-            len(filtered_results),
-        )
-
-        # Apply auto min score filtering if enabled
-        if auto_min_score:
-            filtered_results = _apply_auto_min_score_filter(filtered_results)
-
-        # Deduplicate results with identical text across documents
-        if deduplicate:
-            filtered_results = _deduplicate_results(filtered_results)
 
         t3 = time.time()
-        logger.info(
-            "[TIMING] doc_fetch+filter: %.3fs (%s docs)",
-            t3 - t2,
-            len(doc_cache),
-        )
+        logger.info("[TIMING] post_build: %.3fs", t3 - t2)
         logger.info("[TIMING] TOTAL /search: %.3fs", t3 - t_start)
 
         filters_response = _build_filters_response(core_filters, title_filter)

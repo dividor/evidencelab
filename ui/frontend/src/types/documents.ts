@@ -13,4 +13,6 @@ export interface StatsData {
   language_indexed?: Record<string, number>;
   format_breakdown?: Record<string, number | Record<string, number>>;
   format_indexed?: Record<string, number>;
+  country_breakdown?: Record<string, number | Record<string, number>>;
+  country_indexed?: Record<string, number>;
 }

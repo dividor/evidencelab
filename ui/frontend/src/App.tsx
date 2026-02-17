@@ -32,7 +32,7 @@ import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent, getGaConsent } from './components/CookieConsent';
-import { DEFAULT_SECTION_TYPES, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
+import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
   highlightTextWithAPI,
@@ -294,6 +294,8 @@ const buildSearchParams = ({
   dataSource,
   autoMinScore,
   deduplicateEnabled,
+  fieldBoostEnabled,
+  fieldBoostFields,
 }: {
   query: string;
   filters: SearchFilters;
@@ -311,6 +313,8 @@ const buildSearchParams = ({
   dataSource: string;
   autoMinScore: boolean;
   deduplicateEnabled: boolean;
+  fieldBoostEnabled: boolean;
+  fieldBoostFields: Record<string, number>;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -343,6 +347,13 @@ const buildSearchParams = ({
     params.append('auto_min_score', 'true');
   }
   params.append('deduplicate', deduplicateEnabled.toString());
+  params.append('field_boost', fieldBoostEnabled.toString());
+  if (fieldBoostEnabled && Object.keys(fieldBoostFields).length > 0) {
+    const encoded = Object.entries(fieldBoostFields)
+      .map(([f, w]) => `${f}:${w}`)
+      .join(',');
+    params.append('field_boost_fields', encoded);
+  }
   params.append('data_source', dataSource);
   return params;
 };
@@ -694,6 +705,9 @@ function App() {
   const [minChunkSize, setMinChunkSize] = useState<number>(initialSearchState.minChunkSize);
   // Deduplicate cross-document results
   const [deduplicateEnabled, setDeduplicateEnabled] = useState<boolean>(initialSearchState.deduplicate);
+  // Field-level boosting (country, organization, etc.)
+  const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
+  const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -793,6 +807,8 @@ function App() {
       // Restore semantic highlighting
       setSemanticHighlighting(searchState.semanticHighlighting);
       setDeduplicateEnabled(searchState.deduplicate);
+      setFieldBoostEnabled(searchState.fieldBoost);
+      setFieldBoostFields(searchState.fieldBoostFields);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1314,7 +1330,9 @@ function App() {
         deduplicateEnabled,
         searchModel,
         selectedModelCombo,
-        selectedDomain
+        selectedDomain,
+        fieldBoostEnabled,
+        fieldBoostFields
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1355,6 +1373,8 @@ function App() {
     semanticHighlighting,
     autoMinScore,
     deduplicateEnabled,
+    fieldBoostEnabled,
+    fieldBoostFields,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1563,6 +1583,8 @@ function App() {
         dataSource,
         autoMinScore,
         deduplicateEnabled,
+        fieldBoostEnabled,
+        fieldBoostFields,
       });
 
       const searchStartTime = performance.now();
@@ -1682,7 +1704,9 @@ function App() {
         deduplicateEnabled,
         searchModel,
         selectedModelCombo,
-        selectedDomain
+        selectedDomain,
+        fieldBoostEnabled,
+        fieldBoostFields
       );
       const newURL = withBasePath(searchParams ? `/?${searchParams}` : '/');
       window.history.pushState(null, '', newURL);
@@ -1712,7 +1736,9 @@ function App() {
         deduplicateEnabled,
         searchModel,
         selectedModelCombo,
-        selectedDomain
+        selectedDomain,
+        fieldBoostEnabled,
+        fieldBoostFields
       );
       const newURL = withBasePath(searchParams ? `/?${searchParams}` : '/');
       window.history.replaceState(null, '', newURL);
@@ -2013,6 +2039,10 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      fieldBoostEnabled={fieldBoostEnabled}
+      onFieldBoostToggle={setFieldBoostEnabled}
+      fieldBoostFields={fieldBoostFields}
+      onFieldBoostFieldsChange={setFieldBoostFields}
       aiSummaryEnabled={AI_SUMMARY_ON}
       aiSummaryCollapsed={aiSummaryCollapsed}
       aiSummaryExpanded={aiSummaryExpanded}
@@ -2091,6 +2121,10 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      fieldBoostEnabled={fieldBoostEnabled}
+      onFieldBoostToggle={setFieldBoostEnabled}
+      fieldBoostFields={fieldBoostFields}
+      onFieldBoostFieldsChange={setFieldBoostFields}
       rerankModel={rerankModel}
       rerankModelPageSize={rerankModelPageSize}
       semanticHighlightModelConfig={semanticHighlightModelConfig}

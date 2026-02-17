@@ -22,12 +22,10 @@ Usage:
 import argparse
 import logging
 import os
-import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
-
-from pipeline.db import Database  # noqa: E402
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -266,7 +264,7 @@ def needs_splitting(value: str) -> bool:
     return len(countries) > 1
 
 
-def fix_qdrant_collection(db, collection_name, dry_run):
+def fix_qdrant_collection(client, collection_name, dry_run):
     """Fix map_country in a Qdrant collection."""
     logger.info("Scanning Qdrant collection: %s", collection_name)
 
@@ -275,7 +273,7 @@ def fix_qdrant_collection(db, collection_name, dry_run):
     offset = None
     scanned = 0
     while True:
-        results = db.qdrant.scroll(
+        results = client.scroll(
             collection_name,
             limit=500,
             with_payload=["map_country"],
@@ -314,7 +312,7 @@ def fix_qdrant_collection(db, collection_name, dry_run):
         for pid in batch:
             for attempt in range(5):
                 try:
-                    db.qdrant.set_payload(
+                    client.set_payload(
                         collection_name,
                         payload={"map_country": fixes[pid]},
                         points=[pid],
@@ -339,11 +337,11 @@ def fix_qdrant_collection(db, collection_name, dry_run):
     return len(fixes)
 
 
-def fix_postgres_table(db, table_name, dry_run):
+def fix_postgres_table(conn, table_name, dry_run):
     """Fix map_country in a PostgreSQL table."""
     logger.info("Scanning PostgreSQL table: %s", table_name)
 
-    cursor = db.pg.conn.cursor()
+    cursor = conn.cursor()
 
     # Find all distinct concatenated country values
     cursor.execute(
@@ -383,7 +381,7 @@ def fix_postgres_table(db, table_name, dry_run):
             new_val[:60],
         )
 
-    db.pg.conn.commit()
+    conn.commit()
     return len(mapping)
 
 
@@ -407,22 +405,56 @@ def main():
         default="all",
         help="Which collection(s) to fix (default: all)",
     )
+    parser.add_argument(
+        "--skip-postgres",
+        action="store_true",
+        help="Skip PostgreSQL (useful when psycopg2 not available)",
+    )
+    parser.add_argument(
+        "--qdrant-url",
+        default=None,
+        help="Qdrant URL override (default: from .env or localhost:6333)",
+    )
     args = parser.parse_args()
 
-    db = Database(data_source=args.data_source)
+    # Load .env from repo root
+    env_path = os.path.join(os.path.dirname(__file__), "../../.env")
+    load_dotenv(env_path)
+
+    ds = args.data_source
+    qdrant_host = args.qdrant_url or os.getenv("QDRANT_HOST", "http://localhost:6333")
+    qdrant_api_key = os.getenv("QDRANT_API_KEY")
+
+    client = QdrantClient(url=qdrant_host, api_key=qdrant_api_key)
 
     # Qdrant
+    chunks_collection = f"chunks_{ds}"
+    docs_collection = f"documents_{ds}"
+
     if args.collection in ("chunks", "all"):
-        fix_qdrant_collection(db, db.chunks_collection, args.dry_run)
+        fix_qdrant_collection(client, chunks_collection, args.dry_run)
     if args.collection in ("docs", "all"):
-        fix_qdrant_collection(db, db.docs_collection, args.dry_run)
+        fix_qdrant_collection(client, docs_collection, args.dry_run)
 
     # PostgreSQL
-    if hasattr(db, "pg") and db.pg:
-        if args.collection in ("docs", "all"):
-            fix_postgres_table(db, db.pg.docs_table, args.dry_run)
-        if args.collection in ("chunks", "all"):
-            fix_postgres_table(db, db.pg.chunks_table, args.dry_run)
+    if not args.skip_postgres:
+        try:
+            import psycopg2
+
+            pg_url = os.getenv("POSTGRES_URL")
+            if pg_url:
+                conn = psycopg2.connect(pg_url)
+                docs_table = f"docs_{ds}"
+                chunks_table = f"chunks_{ds}"
+                if args.collection in ("docs", "all"):
+                    fix_postgres_table(conn, docs_table, args.dry_run)
+                if args.collection in ("chunks", "all"):
+                    fix_postgres_table(conn, chunks_table, args.dry_run)
+                conn.close()
+            else:
+                logger.info("No POSTGRES_URL set, skipping PostgreSQL")
+        except ImportError:
+            logger.info("psycopg2 not available, skipping PostgreSQL")
 
     logger.info("Done!")
 

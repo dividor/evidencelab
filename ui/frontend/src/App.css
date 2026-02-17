@@ -3019,6 +3019,32 @@ h6,
   width: 100%;
 }
 
+/* Field boost controls */
+.field-boost-fields {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.field-boost-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: 2px;
+}
+
+.field-boost-row .section-type-checkbox {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.field-boost-input {
+  width: 48px;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--border-radius-sm);
+  text-align: center;
+}
+
 /* Filter search input */
 .filter-search-input {
   width: 100%;
