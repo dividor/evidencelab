@@ -17,26 +17,31 @@
 
 services:
   # Qdrant vector database
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant
-    # Prod: 127.0.0.1 only — host access for admin/scripts; not on public interface
-    ports:
-      - "127.0.0.1:6333:6333"
-    environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
-    volumes:
-      - ${DB_DATA_MOUNT:-/mnt/data/db}/qdrant:/qdrant/storage:z
-      - ${DB_DATA_MOUNT:-/mnt/data/db}/backups:/qdrant/snapshots:z
-    restart: unless-stopped
-    networks:
-      - app-network
-    deploy:
-      resources:
-        limits:
-          memory: 15G
-        reservations:
-          memory: 2G
+  # NOTE: Qdrant runs on HOST via systemd service (not in Docker)
+  # - Service: sudo systemctl status qdrant
+  # - Config: ~/qdrant/config.yaml
+  # - Storage: /home/azureuser/projects/evidencelab/db/qdrant
+  # - API connects via host.docker.internal:6333 (see api.extra_hosts below)
+  #qdrant:
+  #  image: qdrant/qdrant:latest
+  #  container_name: qdrant
+  #  # Prod: 127.0.0.1 only — host access for admin/scripts; not on public interface
+  #  ports:
+  #    - "127.0.0.1:6333:6333"
+  #  environment:
+  #    - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+  #  volumes:
+  #    - ${DB_DATA_MOUNT:-/mnt/data/db}/qdrant:/qdrant/storage:z
+  #    - ${DB_DATA_MOUNT:-/mnt/data/db}/backups:/qdrant/snapshots:z
+  #  restart: unless-stopped
+  #  networks:
+  #    - app-network
+  #  deploy:
+  #    resources:
+  #      limits:
+  #        memory: 15G
+  #       reservations:
+  #        memory: 2G
 
   # Postgres sidecar (pgvector)
   postgres:
@@ -44,6 +49,8 @@ services:
     container_name: postgres
     ports:
       - "5432:5432"
+    env_file:
+      - .env
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
@@ -141,7 +148,8 @@ services:
     env_file:
       - .env
     environment:
-      - QDRANT_HOST=http://qdrant:6333
+      #- QDRANT_HOST=http://qdrant:6333
+      - QDRANT_HOST=http://host.docker.internal:6333
       - QDRANT_API_KEY=${QDRANT_API_KEY}
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
@@ -155,8 +163,10 @@ services:
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - qdrant
+      #- qdrant
       - postgres
     networks:
       - app-network
@@ -227,7 +237,7 @@ services:
     depends_on:
       - api
       - ui
-      - qdrant
+      #- qdrant
       - postgres
     deploy:
       resources:
