@@ -3729,6 +3729,14 @@ h6,
   margin-bottom: 0.5rem;
 }
 
+.about-content code {
+  font-size: 0.9em;
+}
+
+.about-content pre {
+  font-size: 0.9em;
+}
+
 /* Section heading inside boxes */
 .filters-card .section-heading {
   margin-top: 0;

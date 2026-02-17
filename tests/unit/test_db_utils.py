@@ -6,7 +6,6 @@ from pipeline.db import (
     core_to_source_field,
     get_application_config,
     get_filter_fields,
-    load_datasources_config,
     source_to_core_field,
 )
 
@@ -58,11 +57,12 @@ def configured_datasources(monkeypatch):
         "application": {"search": {"default_dense_model": "e5_large"}},
     }
     monkeypatch.setattr(db, "_datasources_config", config, raising=False)
+    monkeypatch.setattr("pipeline.db.config.load_datasources_config", lambda: config)
     return config
 
 
 def test_field_mapping_for_configured_source(configured_datasources):
-    config = load_datasources_config()
+    config = configured_datasources
     data_subdir, mapping = _find_datasource_with_mapping(config, "organization")
     assert mapping["organization"]
 
@@ -71,7 +71,7 @@ def test_field_mapping_for_configured_source(configured_datasources):
 
 
 def test_core_and_source_field_translation(configured_datasources):
-    config = load_datasources_config()
+    config = configured_datasources
     data_subdir, mapping = _find_datasource_with_mapping(config, "organization")
     source_field = mapping["organization"]
 
@@ -83,7 +83,7 @@ def test_core_and_source_field_translation(configured_datasources):
 
 
 def test_application_config_exists(configured_datasources):
-    config = load_datasources_config()
+    config = configured_datasources
     assert isinstance(config, dict)
 
     app_config = get_application_config()

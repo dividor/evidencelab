@@ -125,3 +125,5 @@ For more detailed instructions refer to
              report_123.json
              report_124.error
    ```
+
+For more detailed information see the [Evidence Lab GihHub Repo](https://github.com/dividor/evidencelab).
