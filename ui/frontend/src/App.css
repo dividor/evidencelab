@@ -5252,6 +5252,36 @@ h6,
     font-size: 1.75rem;
   }
 
+  .chart-toggle-container {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .chart-toggle-button {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.8125rem;
+  }
+
+  .chart-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    padding-right: 0;
+  }
+
+  .chart-legend {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+  }
+
+  .legend-item {
+    font-size: 0.75rem;
+  }
+
+  .chart-x-axis {
+    margin-left: 0;
+  }
+
   .chart-section {
     padding: var(--spacing-md);
   }

@@ -1,9 +1,8 @@
 # Data
 
-In order to test a document ingestion pipeline and AI tools, and to confirm it's fast and runs on a desktop computer, some volume is needed. So online [evidencelab.ai](https://evidencelab.ai) includes ...
+In order to test a document ingestion pipeline and AI tools, and to confirm it's fast and runs on a desktop computer, some volume is needed. So online [evidencelab.ai](https://evidencelab.ai) includes about 20,000 United Nations humanitarian evaluation reports from 30+ agencies sourced from the [United Nations Evaluation Group (UNEG)](https://www.un.org/evaluations).
 
-- About 20,000 United Nations humanitarian evaluation reports from 30+ agencies sourced from the [United Nations Evaluation Group (UNEG)](https://www.un.org/evaluations).
-
+The UNEG site is evolving rapidly as it's developed and so data formats are changing. The snapshot in Evidence Lab was created in Dec 2025, and will be refreshed as the site evolves.
 
 ## No Affiliation or Endorsement
 
