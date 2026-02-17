@@ -5134,6 +5134,7 @@ h6,
     flex-wrap: wrap;
     overflow: visible;
     padding: 0 var(--spacing-md);
+    justify-content: center;
   }
 
   .nav-tab {
