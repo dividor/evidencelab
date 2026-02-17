@@ -87,6 +87,7 @@ async def _run_search_chunks(
     min_chunk_size: int,
     dense_model: Optional[str],
     rerank_model: Optional[str],
+    max_rerank_candidates: int = 0,
 ):
     t0 = time.time()
     async with search_semaphore:
@@ -106,6 +107,7 @@ async def _run_search_chunks(
             min_chunk_size=min_chunk_size,
             dense_model=dense_model,
             rerank_model=rerank_model,
+            max_rerank_candidates=max_rerank_candidates,
         )
     t1 = time.time()
     logger.info(
@@ -556,6 +558,9 @@ async def search(
     rerank_model: Optional[str] = Query(
         None, description="Name of reranker model to use"
     ),
+    rerank_model_page_size: Optional[int] = Query(
+        None, description="Max candidates to send to reranker (0 or None = all)"
+    ),
     auto_min_score: bool = Query(
         False, description="Automatically filter bottom 30% of results by score"
     ),
@@ -623,6 +628,7 @@ async def search(
                 min_chunk_size=min_chunk_size,
                 dense_model=model,
                 rerank_model=rerank_model,
+                max_rerank_candidates=rerank_model_page_size or 0,
             )
 
         t2 = time.time()

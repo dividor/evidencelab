@@ -20,7 +20,7 @@ Evidence Lab grew out of research work for the AstroBagel Blog. The core design 
 
 Some lofty, often conflicting, goals! Always a work in progress, and low-cost high-speed processing which runs on a desktop computer, does come with a few shortcuts. To run on a modest server, the user interface might not be the fastest out there (but can be if you add more processing power), and in not using expensive LLMs for parsing (only cheap ones!), the ingestion had to be tuned to the document data styles. That said, the design has tried to allow for future improvements.
 
-## Search Features
+## Features
 
 Evidence lab document processing pipeline includes the following features:
 
