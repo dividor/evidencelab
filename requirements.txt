@@ -30,7 +30,7 @@ rapidocr-onnxruntime==1.4.4
 rapidocr==3.4.2
 
 # ONNX runtime for model inference
-onnxruntime==1.23.2
+onnxruntime==1.24.1
 
 # Embeddings and vector DB
 sentence-transformers==2.7.0
