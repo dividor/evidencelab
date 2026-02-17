@@ -476,6 +476,29 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         )}
 
         <main className="results-section">
+          <AiSummaryPanel
+            enabled={aiSummaryEnabled}
+            aiSummaryCollapsed={aiSummaryCollapsed}
+            aiSummaryExpanded={aiSummaryExpanded}
+            aiSummaryLoading={aiSummaryLoading}
+            aiSummary={aiSummary}
+            minScore={hasActiveFilter ? 0 : minScore}
+            results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
+            aiPrompt={aiPrompt}
+            showPromptModal={showPromptModal}
+            translatedSummary={aiSummaryTranslatedText}
+            translatedLang={aiSummaryTranslatedLang}
+            isTranslating={!!aiSummaryTranslatingLang}
+            translatingLang={aiSummaryTranslatingLang}
+            onLanguageChange={onAiSummaryLanguageChange}
+            onToggleCollapsed={onToggleCollapsed}
+            onToggleExpanded={onToggleExpanded}
+            onResultClick={onResultClick}
+            onOpenPrompt={onOpenPrompt}
+            onClosePrompt={onClosePrompt}
+          />
+
+          {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           {showFilters && (
             <div className="search-result-filters">
               <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
@@ -576,30 +599,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               )}
             </div>
           )}
-
-          <AiSummaryPanel
-            enabled={aiSummaryEnabled}
-            aiSummaryCollapsed={aiSummaryCollapsed}
-            aiSummaryExpanded={aiSummaryExpanded}
-            aiSummaryLoading={aiSummaryLoading}
-            aiSummary={aiSummary}
-            minScore={hasActiveFilter ? 0 : minScore}
-            results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
-            aiPrompt={aiPrompt}
-            showPromptModal={showPromptModal}
-            translatedSummary={aiSummaryTranslatedText}
-            translatedLang={aiSummaryTranslatedLang}
-            isTranslating={!!aiSummaryTranslatingLang}
-            translatingLang={aiSummaryTranslatingLang}
-            onLanguageChange={onAiSummaryLanguageChange}
-            onToggleCollapsed={onToggleCollapsed}
-            onToggleExpanded={onToggleExpanded}
-            onResultClick={onResultClick}
-            onOpenPrompt={onOpenPrompt}
-            onClosePrompt={onClosePrompt}
-          />
-
-          {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           <SearchResultsList
             results={hasActiveFilter ? displayedResults : results}
             minScore={hasActiveFilter ? 0 : minScore}
