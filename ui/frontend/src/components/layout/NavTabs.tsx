@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'help' | 'tech' | 'data' | 'privacy' | 'stats';
+type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats';
 
 interface NavTabsProps {
   activeTab: TabName;

@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'help' | 'tech' | 'data' | 'privacy' | 'stats';
+type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats';
 
 interface TabContentProps {
   activeTab: TabName;
@@ -108,7 +108,7 @@ export const TabContent: React.FC<TabContentProps> = ({
       return <>{pipelineTab}</>;
     case 'processing':
       return <>{processingTab}</>;
-    case 'help':
+    case 'info':
       return <HelpTabContent content={aboutContent} />;
     case 'tech':
       return <HelpTabContent content={techContent} />;
