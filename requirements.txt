@@ -15,7 +15,7 @@ pdfplumber==0.11.9
 docling==2.58.0
 docling-core==2.49.0
 docling-hierarchical-pdf==0.1.2
-docling-ibm-models==3.10.1
+docling-ibm-models==3.11.0
 docling-parse==4.7.0
 pypdfium2==4.30.0
 
@@ -27,10 +27,10 @@ torchvision
 # OCR engines
 easyocr==1.7.2
 rapidocr-onnxruntime==1.4.4
-rapidocr==3.4.2
+rapidocr==3.6.0
 
 # ONNX runtime for model inference
-onnxruntime==1.23.2
+onnxruntime==1.24.1
 
 # Embeddings and vector DB
 sentence-transformers==2.7.0
@@ -63,7 +63,7 @@ slowapi==0.1.9
 
 # LangChain and LLM integration
 langchain==1.2.8
-langchain-core==1.2.8
+langchain-core==1.2.13
 langchain-community==0.4.1
 langchain-huggingface==1.2.0
 langchain-openai==1.1.6
@@ -98,6 +98,6 @@ playwright==1.40.0
 types-requests==2.32.4.20260107
 types-beautifulsoup4==4.12.0.7
 types-html5lib==1.1.11.20251014
-types-openpyxl==3.1.0.20240311
+types-openpyxl==3.1.5.20250919
 watchdog==4.0.0
 requests-toolbelt
