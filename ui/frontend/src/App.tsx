@@ -2155,6 +2155,7 @@ function App() {
         techContent={techContent}
         dataContent={dataContent}
         privacyContent={privacyContent}
+        onTabChange={handleTabChange}
       />
 
       <footer className="app-footer">

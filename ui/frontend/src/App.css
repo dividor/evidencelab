@@ -3737,6 +3737,44 @@ h6,
   font-size: 0.9em;
 }
 
+.info-footer-links {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.info-footer-heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-400);
+}
+
+.info-footer-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.info-footer-link {
+  background: none;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1.25rem;
+  color: var(--gray-600);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.info-footer-link:hover {
+  color: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+}
+
 /* Section heading inside boxes */
 .filters-card .section-heading {
   margin-top: 0;
@@ -6712,6 +6750,42 @@ h6,
   min-width: 228px;
   padding: 0.75rem 1.5rem;
   flex-shrink: 0;
+}
+
+/* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
+@media (max-width: 640px) {
+  .heatmap-controls-row {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .heatmap-control {
+    min-width: 0;
+    flex: 1 1 calc(50% - var(--spacing-sm));
+  }
+
+  .heatmap-action-buttons {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .heatmap-download-button {
+    min-width: 0;
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .heatmap-search-button {
+    min-width: 0;
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .heatmap-query-controls .heatmap-query-input {
+    min-width: 0;
+  }
 }
 
 .heatmap-cell {
