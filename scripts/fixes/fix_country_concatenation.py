@@ -17,6 +17,10 @@ Usage:
         --data-source uneg --dry-run
     python scripts/fixes/fix_country_concatenation.py \\
         --data-source uneg
+
+Connection settings are read from .env (QDRANT_HOST, POSTGRES_HOST, etc.)
+with sensible localhost defaults. Inside Docker, POSTGRES_HOST is
+automatically resolved to 'postgres'.
 """
 
 import argparse
@@ -41,6 +45,7 @@ KNOWN_COUNTRIES = sorted(
         "Afghanistan",
         "Albania",
         "Algeria",
+        "Andorra",
         "Angola",
         "Antigua and Barbuda",
         "Argentina",
@@ -85,6 +90,7 @@ KNOWN_COUNTRIES = sorted(
         "Cuba",
         "Curacao",
         "Cyprus",
+        "Czechia",
         "Denmark",
         "Djibouti",
         "Dominica",
@@ -95,8 +101,10 @@ KNOWN_COUNTRIES = sorted(
         "Equatorial Guinea",
         "Eritrea",
         "Eswatini",
+        "Estonia",
         "Ethiopia",
         "Fiji",
+        "Finland",
         "France",
         "Gabon",
         "Gambia",
@@ -112,6 +120,8 @@ KNOWN_COUNTRIES = sorted(
         "Guyana",
         "Haiti",
         "Honduras",
+        "Hungary",
+        "Iceland",
         "India",
         "Indonesia",
         "Iran, Islamic Rep.",
@@ -136,18 +146,22 @@ KNOWN_COUNTRIES = sorted(
         "Lesotho",
         "Liberia",
         "Libya",
+        "Liechtenstein",
         "Lithuania",
+        "Luxembourg",
         "Madagascar",
         "Malawi",
         "Malaysia",
         "Maldives",
         "Mali",
+        "Malta",
         "Marshall Islands",
         "Mauritania",
         "Mauritius",
         "Mexico",
         "Micronesia, Fed. Sts.",
         "Moldova",
+        "Monaco",
         "Mongolia",
         "Montenegro",
         "Morocco",
@@ -162,6 +176,7 @@ KNOWN_COUNTRIES = sorted(
         "Niger",
         "Nigeria",
         "North Macedonia",
+        "Norway",
         "Oman",
         "Pakistan",
         "Palau",
@@ -172,11 +187,13 @@ KNOWN_COUNTRIES = sorted(
         "Peru",
         "Philippines",
         "Poland",
+        "Portugal",
         "Qatar",
         "Romania",
         "Russian Federation",
         "Rwanda",
         "Samoa",
+        "San Marino",
         "Sao Tome and Principe",
         "Saudi Arabia",
         "Senegal",
@@ -198,6 +215,7 @@ KNOWN_COUNTRIES = sorted(
         "Sudan",
         "Suriname",
         "Swaziland",
+        "Sweden",
         "Switzerland",
         "Syrian Arab Republic",
         "Tajikistan",
@@ -215,6 +233,7 @@ KNOWN_COUNTRIES = sorted(
         "Uganda",
         "Ukraine",
         "United Arab Emirates",
+        "United Kingdom",
         "United States",
         "Uruguay",
         "Uzbekistan",
@@ -237,9 +256,17 @@ def split_countries(concatenated: str) -> list:
     Uses greedy longest-match against KNOWN_COUNTRIES.
     Returns a list of country names found, or [concatenated] if
     no match is possible (i.e. the string is already clean or unknown).
+
+    Values already containing "; " are considered pre-separated and
+    returned as-is (single-element list) so they are not re-processed.
     """
     if not concatenated:
         return []
+
+    # Already-separated values (from a previous fix run) should not be
+    # re-parsed — they would fail the greedy matcher on the "; " prefix.
+    if "; " in concatenated:
+        return [concatenated]
 
     remaining = concatenated
     result = []
@@ -343,6 +370,16 @@ def fix_postgres_table(conn, table_name, dry_run):
 
     cursor = conn.cursor()
 
+    # Check if column exists before querying
+    cursor.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = %s AND column_name = 'map_country'",
+        (table_name,),
+    )
+    if not cursor.fetchone():
+        logger.info("Table %s has no map_country column, skipping", table_name)
+        return 0
+
     # Find all distinct concatenated country values
     cursor.execute(
         f"SELECT DISTINCT map_country FROM {table_name} "
@@ -410,11 +447,6 @@ def main():
         action="store_true",
         help="Skip PostgreSQL (useful when psycopg2 not available)",
     )
-    parser.add_argument(
-        "--qdrant-url",
-        default=None,
-        help="Qdrant URL override (default: from .env or localhost:6333)",
-    )
     args = parser.parse_args()
 
     # Load .env from repo root
@@ -422,7 +454,7 @@ def main():
     load_dotenv(env_path)
 
     ds = args.data_source
-    qdrant_host = args.qdrant_url or os.getenv("QDRANT_HOST", "http://localhost:6333")
+    qdrant_host = os.getenv("QDRANT_HOST", "http://localhost:6333")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
 
     client = QdrantClient(url=qdrant_host, api_key=qdrant_api_key)
@@ -441,18 +473,17 @@ def main():
         try:
             import psycopg2
 
-            pg_url = os.getenv("POSTGRES_URL")
-            if pg_url:
-                conn = psycopg2.connect(pg_url)
-                docs_table = f"docs_{ds}"
-                chunks_table = f"chunks_{ds}"
-                if args.collection in ("docs", "all"):
-                    fix_postgres_table(conn, docs_table, args.dry_run)
-                if args.collection in ("chunks", "all"):
-                    fix_postgres_table(conn, chunks_table, args.dry_run)
-                conn.close()
-            else:
-                logger.info("No POSTGRES_URL set, skipping PostgreSQL")
+            from pipeline.db.postgres_client_base import build_postgres_dsn
+
+            dsn = build_postgres_dsn()
+            conn = psycopg2.connect(dsn)
+            docs_table = f"docs_{ds}"
+            chunks_table = f"chunks_{ds}"
+            if args.collection in ("docs", "all"):
+                fix_postgres_table(conn, docs_table, args.dry_run)
+            if args.collection in ("chunks", "all"):
+                fix_postgres_table(conn, chunks_table, args.dry_run)
+            conn.close()
         except ImportError:
             logger.info("psycopg2 not available, skipping PostgreSQL")
 

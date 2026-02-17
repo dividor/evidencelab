@@ -249,16 +249,10 @@ export const buildSearchURL = (
   setParamIfFalse(params, 'deduplicate', deduplicate);
   setParamIfFalse(params, 'field_boost', fieldBoost);
   if (fieldBoostFields && Object.keys(fieldBoostFields).length > 0) {
-    const defaultKeys = Object.keys(DEFAULT_FIELD_BOOST_FIELDS).sort();
-    const currentKeys = Object.keys(fieldBoostFields).sort();
-    const isDefault = currentKeys.length === defaultKeys.length
-      && currentKeys.every((k, i) => k === defaultKeys[i] && fieldBoostFields[k] === DEFAULT_FIELD_BOOST_FIELDS[k]);
-    if (!isDefault) {
-      const encoded = Object.entries(fieldBoostFields)
-        .map(([field, weight]) => `${field}:${weight}`)
-        .join(',');
-      params.set('field_boost_fields', encoded);
-    }
+    const encoded = Object.entries(fieldBoostFields)
+      .map(([field, weight]) => `${field}:${weight}`)
+      .join(',');
+    params.set('field_boost_fields', encoded);
   }
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
