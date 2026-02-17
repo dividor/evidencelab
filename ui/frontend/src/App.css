@@ -3711,7 +3711,7 @@ h6,
 }
 
 .about-content strong {
-  color: var(--brand-primary-dark);
+  color: var(--gray-800);
   font-weight: 600;
 }
 
@@ -3727,6 +3727,52 @@ h6,
 
 .about-content li {
   margin-bottom: 0.5rem;
+}
+
+.about-content code {
+  font-size: 0.9em;
+}
+
+.about-content pre {
+  font-size: 0.9em;
+}
+
+.info-footer-links {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.info-footer-heading {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-400);
+}
+
+.info-footer-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.info-footer-link {
+  background: none;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1.25rem;
+  color: var(--gray-600);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.info-footer-link:hover {
+  color: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
 }
 
 /* Section heading inside boxes */
@@ -5023,62 +5069,116 @@ h6,
 
 @media (max-width: 640px) {
 
-  .top-bar-content,
   .main-content {
     padding: var(--spacing-md);
   }
 
+  /* Top bar: 2-row grid layout — brand+info on row 1, dropdowns on row 2 */
   .top-bar-content {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--spacing-md);
-  }
-
-  .top-bar-left {
-    flex-direction: column;
-    justify-content: center;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: var(--spacing-xs) var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
     align-items: center;
   }
 
+  .top-bar-left {
+    display: contents;
+  }
+
+  .top-bar-brand {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
   .top-bar-controls {
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    gap: var(--spacing-xs);
+  }
+
+  .top-bar-controls .dropdown-container {
+    flex: 1;
+    min-width: 0;
   }
 
   .top-bar-right {
-    justify-content: center;
-    gap: var(--spacing-sm);
-  }
-
-  .dropdown-trigger {
-    min-width: auto;
-    flex: 1;
-  }
-
-  .dropdown-trigger-domain {
-    width: auto;
-    min-width: auto;
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
   }
 
   .app-title {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
   }
 
-  /* Navigation Tabs - Horizontal scroll on mobile */
-  .nav-tabs {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    /* Firefox */
-    -ms-overflow-style: none;
-    /* IE and Edge */
-    padding: 0 var(--spacing-md);
+  .app-logo {
+    height: 30px;
   }
 
-  .nav-tabs::-webkit-scrollbar {
+  .dropdown-trigger {
+    min-width: auto !important;
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.5rem;
+    gap: 0.375rem;
+    width: 100%;
+  }
+
+  .dropdown-trigger .dropdown-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  .dropdown-trigger-domain {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .dropdown-label {
+    font-size: 0.6875rem;
+  }
+
+  .dataset-total {
     display: none;
-    /* Chrome, Safari, Opera */
+  }
+
+  /* Dropdown menus — constrain to viewport */
+  .dropdown-menu {
+    max-width: calc(100vw - 2rem);
+  }
+
+  /* Info dropdown — anchor to right edge so it doesn't overflow */
+  .dropdown-menu-help {
+    right: 0;
+    left: auto;
+  }
+
+  /* Model combo panel — below instead of to the right */
+  .model-combo-panel {
+    position: static;
+    min-width: auto;
+    max-width: none;
+    border-top: 1px solid var(--gray-200);
+    margin-top: 0.25rem;
+    box-shadow: none;
+  }
+
+  .model-combo-panel-row {
+    grid-template-columns: 80px minmax(0, 1fr) 42px;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+  }
+
+  /* Navigation Tabs — wrap to allow Monitor dropdown to escape overflow */
+  .nav-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding: 0 var(--spacing-md);
+    justify-content: center;
   }
 
   .nav-tab {
@@ -5087,18 +5187,51 @@ h6,
     white-space: nowrap;
   }
 
-  .search-input,
-  .search-button {
+  /* Search form — stack input + button vertically */
+  .search-form {
+    flex-wrap: wrap;
+    padding: 0 var(--spacing-sm);
+  }
+
+  .search-input {
+    flex: 1 1 100%;
     padding: 0.75rem 1rem;
     font-size: 0.875rem;
   }
 
+  .search-button {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: auto;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+  }
+
+  .search-container.search-container-landing .search-form {
+    padding: 0 var(--spacing-sm);
+  }
+
+  .search-container.search-container-landing .search-button {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .search-container.search-container-landing .search-input {
+    font-size: 0.9375rem;
+  }
+
+  /* Results */
   .result-card {
     padding: var(--spacing-md);
   }
 
   .result-title {
     font-size: 1rem;
+  }
+
+  /* More Filters tab — hidden on mobile (MobileFiltersToggle used instead) */
+  .global-filters-tab {
+    display: none;
   }
 
   /* Statistics Mobile */
@@ -5117,6 +5250,36 @@ h6,
 
   .stat-value {
     font-size: 1.75rem;
+  }
+
+  .chart-toggle-container {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .chart-toggle-button {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 0.8125rem;
+  }
+
+  .chart-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-sm);
+    padding-right: 0;
+  }
+
+  .chart-legend {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+  }
+
+  .legend-item {
+    font-size: 0.75rem;
+  }
+
+  .chart-x-axis {
+    margin-left: 0;
   }
 
   .chart-section {
@@ -6008,6 +6171,14 @@ h6,
   color: var(--gray-800);
 }
 
+/* Hide the vertical "More Filters" side tab on mobile — MobileFiltersToggle is used instead.
+   This must appear AFTER the base .global-filters-tab definition to win specificity. */
+@media (max-width: 1024px) {
+  .global-filters-tab {
+    display: none;
+  }
+}
+
 .heatmap-info-link-row {
   display: flex;
   justify-content: flex-end;
@@ -6615,6 +6786,42 @@ h6,
   min-width: 228px;
   padding: 0.75rem 1.5rem;
   flex-shrink: 0;
+}
+
+/* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
+@media (max-width: 640px) {
+  .heatmap-controls-row {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .heatmap-control {
+    min-width: 0;
+    flex: 1 1 calc(50% - var(--spacing-sm));
+  }
+
+  .heatmap-action-buttons {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .heatmap-download-button {
+    min-width: 0;
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .heatmap-search-button {
+    min-width: 0;
+    flex: 1;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  .heatmap-query-controls .heatmap-query-input {
+    min-width: 0;
+  }
 }
 
 .heatmap-cell {

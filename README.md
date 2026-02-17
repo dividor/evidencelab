@@ -8,11 +8,11 @@
 
 ![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
 
-Evidence lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
+Evidence Lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
 
-You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations) and 8,000 reports related to Fraud and Program Integrity as sourced from [The World Bank](https://www.worldbank.org/ext/en/home). See [Data](/data) for more information on these amazing documents.
+You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with about 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations). See [Data](ui/frontend/public/docs/data.md) for more information on these amazing documents.
 
-If you would like to have your public documents added to Evidence Lab, or would like to contribute to the project, please reach out to [evidence-lab@astrobagel.com](mailto:evidence-lab@astrobagel.com).
+If you would like to have your public documents added to Evidence Lab, or would like to contribute to the project, please reach out to [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com).
 
 Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).
 
@@ -30,7 +30,7 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 ## Features
 
-Evidence lab document processing pipeline includes the following features:
+Evidence Lab document processing pipeline includes the following features:
 
 1. Processing pipeline
 
@@ -43,8 +43,12 @@ Evidence lab document processing pipeline includes the following features:
 
 2. User interface
 
+| Search | Heatmapper | Pipeline |
+|:---:|:---:|:---:|
+| <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200"> |
+
 - Hybrid search with AI summary and reranking
-- Experimental features such as heatmapper to tracking trends in content
+- Experimental features such as heatmapper for tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
 - Auto min score filtering using percentile-based thresholding (filters bottom 30% of results)
@@ -62,13 +66,12 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 ### Quick Start
 
 1. **Configure data sources**
-   - Edit `config.json` in the repo root to define `datasources`, `data_subdir`, `field_mapping`, and `taxonomies`.
+   - Edit [`config.json`](config.json) in the repo root to define `datasources`, `data_subdir`, `field_mapping`, and `taxonomies`.
    - The UI reads the same `config.json` via Docker Compose.
 
 2. **Set environment variables**
-   - Copy `.env.example` to `.env`.
+   - Copy [`.env.example`](.env.example) to `.env`.
    - Fill in the API keys and service URLs required by the pipeline and UI.
-   - Optionally set `REACT_APP_GA_MEASUREMENT_ID` (e.g. `G-XXXXXXXXXX`) to enable Google Analytics with EU-compliant cookie consent. A consent popup is shown on first visit; tracking only activates after the user accepts.
 
 3. **Add documents + metadata**
    - Save documents under `data/<data_subdir>/pdfs/<organization>/<year>/`.
@@ -88,7 +91,7 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
    ```
 
 4. **Run the pipeline (Docker)**
-```bash
+   ```bash
    # Start services
    docker compose up -d --build
 

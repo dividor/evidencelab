@@ -88,7 +88,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'help', 'tech', 'data', 'privacy', 'stats'] as const;
+const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -750,7 +750,7 @@ function App() {
   }, [selectedDomain, searchModel, selectedModelCombo]);
 
   const handleAboutClick = useCallback(() => {
-    handleTabChange('help');
+    handleTabChange('info');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
@@ -1193,7 +1193,7 @@ function App() {
 
   // Load about/tech/data/privacy content when help tabs are active
   useEffect(() => {
-    if (activeTab === 'help') {
+    if (activeTab === 'info') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/about.md')}?t=${Date.now()}`)
         .then(response => response.text())
@@ -2155,6 +2155,7 @@ function App() {
         techContent={techContent}
         dataContent={dataContent}
         privacyContent={privacyContent}
+        onTabChange={handleTabChange}
       />
 
       <footer className="app-footer">
@@ -2186,7 +2187,7 @@ function App() {
           GitHub
         </a>
         <span className="app-footer-divider">•</span>
-        <a href="mailto:evidence-lab@astrobagel.com">Contact</a>
+        <a href="mailto:evidencelab@astrobagel.com">Contact</a>
       </footer>
 
       <PdfPreviewOverlay
