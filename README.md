@@ -44,9 +44,9 @@ Evidence Lab document processing pipeline includes the following features:
 2. User interface
 
 <p>
-  <img src="ui/frontend/public/docs/images/search.png" alt="Search" width="32%">
-  <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" width="32%">
-  <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" width="32%">
+  <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200" style="border: 1px solid #ddd; border-radius: 4px;">
+  <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200" style="border: 1px solid #ddd; border-radius: 4px;">
+  <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200" style="border: 1px solid #ddd; border-radius: 4px;">
 </p>
 
 - Hybrid search with AI summary and reranking
