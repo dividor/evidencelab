@@ -3711,7 +3711,7 @@ h6,
 }
 
 .about-content strong {
-  color: var(--brand-primary-dark);
+  color: var(--gray-800);
   font-weight: 600;
 }
 

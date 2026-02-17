@@ -260,7 +260,7 @@ export const TopBar = ({
               onClick={onToggleHelpDropdown}
               onBlur={onHelpBlur}
             >
-              <span className="dropdown-value">Help</span>
+              <span className="dropdown-value">Info</span>
               <span className="dropdown-arrow">▾</span>
             </button>
             {helpDropdownOpen && (
