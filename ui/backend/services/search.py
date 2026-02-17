@@ -246,7 +246,7 @@ def rerank_results(
     query: str,
     results: List[Any],
     limit: Optional[int] = None,
-    max_rerank_candidates: int = 10,
+    max_rerank_candidates: int = 0,
     rerank_model: Optional[str] = None,
     chunk_cache: Optional[Dict[str, Any]] = None,
 ) -> List[Any]:
@@ -615,6 +615,7 @@ def _apply_post_search_adjustments(
     recency_weight: float,
     recency_scale_days: int,
     chunk_cache: Optional[Dict[str, Any]] = None,
+    max_rerank_candidates: int = 0,
 ) -> List[Any]:
     if recency_boost and search_result:
         search_result = apply_recency_boost(
@@ -627,6 +628,7 @@ def _apply_post_search_adjustments(
             limit=limit,
             rerank_model=rerank_model,
             chunk_cache=chunk_cache,
+            max_rerank_candidates=max_rerank_candidates,
         )
     if limit and len(search_result) > limit:
         return search_result[:limit]
@@ -673,6 +675,7 @@ def search_chunks(
     min_chunk_size: int = 0,
     dense_model: str = None,
     payload_fields: List[str] = None,
+    max_rerank_candidates: int = 0,
 ) -> List[Any]:
     """
     Hybrid search combining semantic (dense) and keyword (sparse) vectors.
@@ -808,6 +811,7 @@ def search_chunks(
         recency_weight,
         recency_scale_days,
         chunk_cache=chunk_cache,
+        max_rerank_candidates=max_rerank_candidates,
     )
     t_post_end = time.time()
     logger.info(

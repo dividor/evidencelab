@@ -2,6 +2,8 @@ import argparse
 import logging
 import os
 import subprocess
+import tempfile
+import zipfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -30,6 +32,20 @@ def _require_value(value: str | None, name: str) -> str:
 
 
 def _resolve_dump_path(source: Path) -> Path:
+    # Handle .zip files by extracting to temp directory
+    if source.is_file() and source.suffix == ".zip":
+        temp_dir = Path(tempfile.mkdtemp(prefix="postgres_restore_"))
+        logger.info("Extracting %s to %s...", source, temp_dir)
+        with zipfile.ZipFile(source, "r") as zip_ref:
+            zip_ref.extractall(temp_dir)
+        # Look for .dump file in extracted contents
+        candidates = list(temp_dir.rglob("*.dump"))
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            raise RuntimeError(f"Multiple .dump files found in {source}")
+        raise RuntimeError(f"No .dump file found in {source}")
+
     if source.is_file():
         return source
     if source.is_dir():
@@ -50,17 +66,60 @@ def restore_postgres(
     use_dev: bool,
     clean: bool,
 ) -> None:
-    root_dir = _load_env()
+    root_dir = Path(__file__).resolve().parents[3]
     dump_path = _resolve_dump_path(source.resolve())
     if not dump_path.exists():
         raise RuntimeError(f"Dump not found: {dump_path}")
 
+    # If clean flag is set, drop and recreate the database
+    if clean:
+        logger.info("Dropping and recreating database %s...", db_name)
+
+        # Terminate active connections first
+        logger.info("Terminating active connections to %s...", db_name)
+        terminate_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f'"SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
+            f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid()\""
+        )
+        subprocess.run(terminate_cmd, shell=True, cwd=root_dir)  # nosec B602
+
+        drop_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f"'DROP DATABASE IF EXISTS {db_name}'"
+        )
+        result = subprocess.run(drop_cmd, shell=True, cwd=root_dir)  # nosec B602
+        if result.returncode != 0:
+            raise RuntimeError("Failed to drop database.")
+
+        create_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d postgres -c "
+            f"'CREATE DATABASE {db_name} OWNER {db_user}'"
+        )
+        result = subprocess.run(create_cmd, shell=True, cwd=root_dir)  # nosec B602
+        if result.returncode != 0:
+            raise RuntimeError("Failed to create database.")
+
+        # Enable pgvector extension
+        ext_cmd = (
+            f"{_compose_base_command(use_dev)} exec -T "
+            f"-e PGPASSWORD={db_password} postgres "
+            f"psql -U {db_user} -d {db_name} -c "
+            f"'CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm'"
+        )
+        subprocess.run(ext_cmd, shell=True, cwd=root_dir)  # nosec B602
+
     logger.info("Restoring Postgres database from %s...", dump_path)
-    clean_flag = "--clean --if-exists" if clean else ""
     cmd = (
         f"{_compose_base_command(use_dev)} exec -T "
         f"-e PGPASSWORD={db_password} postgres "
-        f"pg_restore {clean_flag} -U {db_user} -d {db_name}"
+        f"pg_restore -U {db_user} -d {db_name}"
     )
     with open(dump_path, "rb") as handle:
         result = subprocess.run(
@@ -71,12 +130,15 @@ def restore_postgres(
 
 
 def main() -> int:
+    # Load .env before parsing args so defaults work
+    _load_env()
+
     parser = argparse.ArgumentParser(description="Restore Postgres from backup.")
     parser.add_argument(
         "--source",
         "-s",
         required=True,
-        help="Path to a .dump file or directory containing a single .dump file.",
+        help="Path to a .dump file, .zip archive, or directory containing a single .dump file.",
     )
     parser.add_argument(
         "--db-name",
