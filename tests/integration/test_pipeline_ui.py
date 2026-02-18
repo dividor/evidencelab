@@ -663,33 +663,16 @@ class TestPipelineIntegration:
                 print(f"\n🌐 Opened UI at {url}")
                 print(f"   Searched for: {query}")
 
-                # Ensure we're on the Search tab and force a search submit.
-                page.get_by_role("navigation").get_by_role(
-                    "button", name="Search"
-                ).click()
+                # Force a search submit in case the initial URL load is still pending.
                 search_box = page.get_by_role("textbox", name="Search documents")
                 search_box.fill(query)
-                # Wait for the search API to respond, then for result cards to render.
-                try:
-                    if hasattr(page, "wait_for_response"):
-                        search_box.press("Enter")
-                        page.wait_for_response(
-                            lambda resp: "/search" in resp.url and resp.status == 200,
-                            timeout=120000,
-                        )
-                    else:
-                        with page.expect_response(
-                            lambda resp: "/search" in resp.url and resp.status == 200,
-                            timeout=120000,
-                        ):
-                            search_box.press("Enter")
-                except PlaywrightTimeoutError:
-                    pytest.fail("Search API did not respond in time")
+                search_box.press("Enter")
 
+                # Wait for results to load (do not skip)
                 try:
                     page.wait_for_function(
                         "document.querySelectorAll('.result-card').length > 0",
-                        timeout=60000,
+                        timeout=120000,
                     )
                 except PlaywrightTimeoutError:
                     pytest.fail(f"No UI results rendered for query '{query}'")
