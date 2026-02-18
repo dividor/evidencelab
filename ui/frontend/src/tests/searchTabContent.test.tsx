@@ -276,7 +276,7 @@ describe('SearchTabContent result filters', () => {
     expect(document.querySelector('.search-result-filters')).not.toBeInTheDocument();
   });
 
-  test('documents are sorted by result frequency', () => {
+  test('documents are deduplicated in insertion order', () => {
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Rare Report', organization: 'UNICEF' }),
       buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Popular Report', organization: 'WFP' }),
@@ -287,8 +287,8 @@ describe('SearchTabContent result filters', () => {
     render(<SearchTabContent {...baseProps} results={results} />);
 
     const titles = document.querySelectorAll('.search-result-filters-thumbnail-title');
-    expect(titles[0].textContent).toBe('Popular Report');
-    expect(titles[1].textContent).toBe('Rare Report');
+    expect(titles[0].textContent).toBe('Rare Report');
+    expect(titles[1].textContent).toBe('Popular Report');
   });
 
   test('semantic highlight updates do not reset active filter', () => {

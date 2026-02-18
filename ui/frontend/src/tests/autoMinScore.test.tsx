@@ -74,17 +74,21 @@ const mockSearchResults = {
   facets: mockFacets,
 };
 
-/** Wait for search tab to load, then expand the collapsible More Filters panel. */
+/** Wait for search tab to load and ensure the filters sidebar is visible. */
 const expandFilters = async () => {
-  const filtersBtn = await screen.findByRole('button', { name: 'More Filters' });
-  fireEvent.click(filtersBtn);
-  await waitFor(() => {
-    expect(screen.getByRole('heading', { name: 'Filters' })).toBeInTheDocument();
-  });
+  // Filters sidebar shows by default when window.innerWidth > 1024.
+  // If mobile toggle is present, click it to expand.
+  const toggle = screen.queryByRole('button', { name: /Filters/i });
+  if (toggle) {
+    fireEvent.click(toggle);
+  }
+  await screen.findByText('Search Settings');
 };
 
 describe('Auto Min Score Feature', () => {
   beforeEach(() => {
+    // Ensure desktop width so filters sidebar renders by default
+    Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 1400 });
     // Set URL with a query so App auto-searches on load (renders search tab with Filters)
     window.history.pushState({}, '', '/?q=test');
     mockedAxios.get.mockImplementation((url) => {

@@ -2923,36 +2923,35 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             </div>
             <div className="heatmap-modal-content">
-              <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
-              {filteredUniqueDocuments.length > 0 && (
-                <ThumbnailCarousel
-                  documents={filteredUniqueDocuments}
-                  selectedDomain={selectedDomain}
-                  filteredDocId={filteredDocId}
-                  onSelectDoc={setFilteredDocId}
-                  containerClass="heatmap-modal-thumbnails"
-                  itemClass="heatmap-modal-thumbnail"
-                />
-            )}
-            <div className="heatmap-modal-body">
-              <div className="heatmap-modal-filter-indicator">
-                <span className="heatmap-modal-filter-text">
-                  {filterLabel ? (
-                    <>Showing results from: <strong>{filterLabel}</strong></>
-                  ) : (
-                    <>Showing all results. Click on a document above to filter.</>
-                  )}
-                </span>
+              <div className="heatmap-modal-doc-filters">
+                <span className="heatmap-modal-doc-filters-hint">Click on documents or organizations to refine results</span>
+                <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
+                {filteredUniqueDocuments.length > 0 && (
+                  <ThumbnailCarousel
+                    documents={filteredUniqueDocuments}
+                    selectedDomain={selectedDomain}
+                    filteredDocId={filteredDocId}
+                    onSelectDoc={setFilteredDocId}
+                    containerClass="heatmap-modal-thumbnails"
+                    itemClass="heatmap-modal-thumbnail"
+                  />
+                )}
                 {filterLabel && (
-                  <button
-                    className="heatmap-modal-filter-clear"
-                    onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
-                    title="Clear filter"
-                  >
-                    × Clear filter
-                  </button>
+                  <div className="heatmap-modal-filter-indicator">
+                    <span className="heatmap-modal-filter-text">
+                      Showing results from: <strong>{filterLabel}</strong>
+                    </span>
+                    <button
+                      className="heatmap-modal-filter-clear"
+                      onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
+                      title="Clear filter"
+                    >
+                      × Clear filter
+                    </button>
+                  </div>
                 )}
               </div>
+            <div className="heatmap-modal-body">
               <h2 className="heatmap-modal-results-title">
                 {activeCell.query ? 'Document Paragraphs' : 'Document Summaries'}
               </h2>
