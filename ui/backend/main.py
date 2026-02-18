@@ -137,13 +137,12 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 @app.on_event("startup")
 async def startup_event():
-    """Preload embedding models on API startup to avoid lazy loading delays"""
+    """Preload embedding models and pipeline data on API startup."""
     logger.info("API startup (pid=%s)", os.getpid())
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
-        return
-    if USE_EMBEDDING_SERVER:
+    elif USE_EMBEDDING_SERVER:
         logger.info("⏩ Skipping embedding model preload (USE_EMBEDDING_SERVER=true)")
     else:
         logger.info("🚀 API starting up - preloading embedding models...")
@@ -154,6 +153,12 @@ async def startup_event():
         logger.info("🔄 Preloading reranker model...")
         get_rerank_model()
         logger.info("✅ Reranker model preloaded and ready")
+    # Warm pipeline data cache in background thread
+    import threading
+
+    threading.Thread(
+        target=stats_routes.warm_pipeline_cache, args=("uneg",), daemon=True
+    ).start()
 
 
 @app.on_event("shutdown")

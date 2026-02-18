@@ -18,6 +18,9 @@ from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, log
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
 
+# Server-side cache for pipeline data, keyed by "endpoint:source"
+_pipeline_cache: Dict[str, Any] = {}
+
 
 def _split_multivalue_breakdown(
     breakdown: Dict[str, Dict[str, int]],
@@ -587,6 +590,43 @@ def _build_sankey_annotations(
     }
 
 
+def _compute_stats(data_source: Optional[str]) -> dict:
+    pg = get_pg_for_source(data_source)
+    (
+        status_counts,
+        agency_status_breakdown,
+        type_status_breakdown,
+        year_status_breakdown,
+        language_status_breakdown,
+        format_status_breakdown,
+        country_status_breakdown,
+    ) = _collect_stats_pg(pg)
+
+    total_docs = sum(status_counts.values())
+    indexed_docs = status_counts.get("indexed", 0)
+
+    return {
+        "total_documents": total_docs,
+        "indexed_documents": indexed_docs,
+        "total_agencies": len(agency_status_breakdown),
+        "status_breakdown": _sort_by_count(status_counts),
+        "agency_breakdown": _sort_breakdown(agency_status_breakdown, _sort_by_count),
+        "type_breakdown": _sort_breakdown(type_status_breakdown, _sort_by_count),
+        "year_breakdown": _sort_breakdown(year_status_breakdown, _sort_by_key_desc),
+        "language_breakdown": _sort_breakdown(
+            language_status_breakdown, _sort_by_count
+        ),
+        "agency_indexed": _indexed_counts(agency_status_breakdown),
+        "type_indexed": _indexed_counts(type_status_breakdown),
+        "year_indexed": _indexed_counts(year_status_breakdown),
+        "language_indexed": _indexed_counts(language_status_breakdown),
+        "format_breakdown": _sort_breakdown(format_status_breakdown, _sort_by_count),
+        "format_indexed": _indexed_counts(format_status_breakdown),
+        "country_breakdown": _sort_breakdown(country_status_breakdown, _sort_by_count),
+        "country_indexed": _indexed_counts(country_status_breakdown),
+    }
+
+
 @router.get("/stats")
 def get_stats(
     data_source: Optional[str] = Query(
@@ -598,51 +638,37 @@ def get_stats(
     Returns counts and breakdowns by organization, type, status.
     Uses Postgres sidecar fields for counting.
     """
+    source = data_source or "uneg"
+    cached = _pipeline_cache.get(f"stats:{source}")
+    if cached is not None:
+        return cached
     try:
-        pg = get_pg_for_source(data_source)
-        (
-            status_counts,
-            agency_status_breakdown,
-            type_status_breakdown,
-            year_status_breakdown,
-            language_status_breakdown,
-            format_status_breakdown,
-            country_status_breakdown,
-        ) = _collect_stats_pg(pg)
-
-        total_docs = sum(status_counts.values())
-        indexed_docs = status_counts.get("indexed", 0)
-
-        return {
-            "total_documents": total_docs,
-            "indexed_documents": indexed_docs,
-            "total_agencies": len(agency_status_breakdown),
-            "status_breakdown": _sort_by_count(status_counts),
-            "agency_breakdown": _sort_breakdown(
-                agency_status_breakdown, _sort_by_count
-            ),
-            "type_breakdown": _sort_breakdown(type_status_breakdown, _sort_by_count),
-            "year_breakdown": _sort_breakdown(year_status_breakdown, _sort_by_key_desc),
-            "language_breakdown": _sort_breakdown(
-                language_status_breakdown, _sort_by_count
-            ),
-            "agency_indexed": _indexed_counts(agency_status_breakdown),
-            "type_indexed": _indexed_counts(type_status_breakdown),
-            "year_indexed": _indexed_counts(year_status_breakdown),
-            "language_indexed": _indexed_counts(language_status_breakdown),
-            "format_breakdown": _sort_breakdown(
-                format_status_breakdown, _sort_by_count
-            ),
-            "format_indexed": _indexed_counts(format_status_breakdown),
-            "country_breakdown": _sort_breakdown(
-                country_status_breakdown, _sort_by_count
-            ),
-            "country_indexed": _indexed_counts(country_status_breakdown),
-        }
-
+        result = _compute_stats(data_source)
+        _pipeline_cache[f"stats:{source}"] = result
+        return result
     except Exception as e:
         logger.error(f"Stats error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _compute_sankey(data_source: Optional[str]) -> dict:
+    pg = get_pg_for_source(data_source)
+    overall_counts, agency_breakdown = _build_agency_breakdown(
+        pg, field_name="map_organization"
+    )
+    org_flows = _calculate_org_flows(agency_breakdown, overall_counts)
+    nodes, node_idx, node_colors, org_color_map, sorted_orgs = _build_sankey_nodes(
+        org_flows
+    )
+    links = _build_sankey_links(org_flows, node_idx, org_color_map, sorted_orgs)
+    annotations = _build_sankey_annotations(org_flows, sorted_orgs)
+
+    return {
+        "nodes": nodes,
+        "links": links,
+        "node_colors": node_colors,
+        "annotations": annotations,
+    }
 
 
 @router.get("/stats/sankey")
@@ -655,24 +681,14 @@ def get_sankey_data(
     Get Sankey diagram data for pipeline flow visualization.
     Based on the logic from scripts/stats.py
     """
+    source = data_source or "uneg"
+    cached = _pipeline_cache.get(f"sankey:{source}")
+    if cached is not None:
+        return cached
     try:
-        pg = get_pg_for_source(data_source)
-        overall_counts, agency_breakdown = _build_agency_breakdown(
-            pg, field_name="map_organization"
-        )
-        org_flows = _calculate_org_flows(agency_breakdown, overall_counts)
-        nodes, node_idx, node_colors, org_color_map, sorted_orgs = _build_sankey_nodes(
-            org_flows
-        )
-        links = _build_sankey_links(org_flows, node_idx, org_color_map, sorted_orgs)
-        annotations = _build_sankey_annotations(org_flows, sorted_orgs)
-
-        return {
-            "nodes": nodes,
-            "links": links,
-            "node_colors": node_colors,
-            "annotations": annotations,
-        }
+        result = _compute_sankey(data_source)
+        _pipeline_cache[f"sankey:{source}"] = result
+        return result
     except Exception as e:
         logger.error(f"Sankey error: {e}")
         if _is_missing_table_error(e):
@@ -697,6 +713,23 @@ def get_sankey_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _compute_timeline(data_source: Optional[str]) -> dict:
+    pg = get_pg_for_source(data_source)
+    docs = _timeline_collect_docs_from_pg(pg)
+    if not _timeline_has_stage_data(docs):
+        db = get_db_for_source(data_source)
+        docs = _timeline_collect_docs_from_qdrant(db)
+    phases = [
+        ("Parsing", "download", "parse"),
+        ("Summarizing", "parse", "summarize"),
+        ("Tagging", "summarize", "tag"),
+        ("Indexing", "tag", "index"),
+    ]
+    processed_docs = _timeline_collect_processed_docs(docs, phases)
+    errors_buckets = _timeline_build_error_buckets(docs)
+    return _timeline_build_histograms(processed_docs, errors_buckets)
+
+
 @router.get("/stats/timeline")
 def get_timeline_data(
     data_source: Optional[str] = Query(
@@ -707,23 +740,30 @@ def get_timeline_data(
     Get timeline data for pipeline processing visualization.
     Returns events for parsing, summarizing, tagging, and indexing phases.
     """
+    source = data_source or "uneg"
+    cached = _pipeline_cache.get(f"timeline:{source}")
+    if cached is not None:
+        return cached
     try:
-        pg = get_pg_for_source(data_source)
-        docs = _timeline_collect_docs_from_pg(pg)
-        if not _timeline_has_stage_data(docs):
-            db = get_db_for_source(data_source)
-            docs = _timeline_collect_docs_from_qdrant(db)
-        phases = [
-            ("Parsing", "download", "parse"),
-            ("Summarizing", "parse", "summarize"),
-            ("Tagging", "summarize", "tag"),
-            ("Indexing", "tag", "index"),
-        ]
-        processed_docs = _timeline_collect_processed_docs(docs, phases)
-        errors_buckets = _timeline_build_error_buckets(docs)
-        return _timeline_build_histograms(processed_docs, errors_buckets)
+        result = _compute_timeline(data_source)
+        _pipeline_cache[f"timeline:{source}"] = result
+        return result
     except Exception as e:
         logger.exception("Timeline error")
         if _is_missing_table_error(e):
             return _timeline_build_histograms([], {})
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def warm_pipeline_cache(data_source: str = "uneg") -> None:
+    """Pre-compute and cache all pipeline data at startup."""
+    for name, func in [
+        ("stats", _compute_stats),
+        ("sankey", _compute_sankey),
+        ("timeline", _compute_timeline),
+    ]:
+        try:
+            _pipeline_cache[f"{name}:{data_source}"] = func(data_source)
+            logger.info("Pipeline cache warmed: %s:%s", name, data_source)
+        except Exception as e:
+            logger.warning("Failed to warm %s cache: %s", name, e)
