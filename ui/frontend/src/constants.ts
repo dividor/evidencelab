@@ -19,4 +19,6 @@ export const LANGUAGES: Record<string, string> = {
     'tr': 'Turkish',
     'ja': 'Japanese',
     'ko': 'Korean',
+    'ro': 'Romanian',
+    'ca': 'Catalan',
 };

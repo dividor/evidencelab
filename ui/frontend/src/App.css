@@ -820,7 +820,8 @@ h6,
 /* Chart Legend */
 .chart-legend {
   display: flex;
-  gap: var(--spacing-lg);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-lg);
   padding: 0;
 }
 
@@ -862,8 +863,9 @@ h6,
 .chart-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-lg);
+  align-items: baseline;
+  gap: var(--spacing-xl);
+  margin-bottom: var(--spacing-xl);
   padding-right: 60px;
   /* Align legend with right edge of bars (accounting for 60px third column) */
 }
