@@ -846,6 +846,11 @@ function App() {
     setFiltersExpanded((prev) => !prev);
   }, []);
 
+  const [heatmapFiltersExpanded, setHeatmapFiltersExpanded] = useState(false);
+  const toggleHeatmapFiltersExpanded = useCallback(() => {
+    setHeatmapFiltersExpanded((prev) => !prev);
+  }, []);
+
   const buildEmptySelectedFilters = () => {
     const cleared: Record<string, string[]> = {};
     for (const field of CORE_FILTER_FIELDS) {
@@ -2081,9 +2086,9 @@ function App() {
       selectedDomain={selectedDomain}
       loadingConfig={loadingConfig}
       facetsDataSource={facetsDataSource}
-      filtersExpanded={filtersExpanded}
+      filtersExpanded={heatmapFiltersExpanded}
       activeFiltersCount={heatmapActiveFiltersCount}
-      onToggleFiltersExpanded={toggleFiltersExpanded}
+      onToggleFiltersExpanded={toggleHeatmapFiltersExpanded}
       onClearFilters={handleClearHeatmapFilters}
       facets={facets}
       filters={heatmapFilters}

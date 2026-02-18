@@ -456,7 +456,8 @@ def main():
     ds = args.data_source
     qdrant_host = os.getenv("QDRANT_HOST", "http://localhost:6333")
     qdrant_api_key = os.getenv("QDRANT_API_KEY")
-
+    # Auto-convert Docker hostname to localhost for host execution
+    qdrant_host = qdrant_host.replace("://qdrant:", "://localhost:")
     client = QdrantClient(url=qdrant_host, api_key=qdrant_api_key)
 
     # Qdrant
