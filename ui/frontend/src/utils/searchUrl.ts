@@ -22,7 +22,7 @@ export interface SearchStateFromURL {
   dataset: string | null;
 }
 
-export const DEFAULT_FIELD_BOOST_FIELDS: Record<string, number> = { country: 0.5, organization: 0.5 };
+export const DEFAULT_FIELD_BOOST_FIELDS: Record<string, number> = { country: 1, organization: 0.5 };
 
 export const DEFAULT_SECTION_TYPES = [
   'executive_summary',
