@@ -4,6 +4,7 @@ import { DocumentsPagination } from './DocumentsPagination';
 import { DocumentsTableControls } from './DocumentsTableControls';
 import { DocumentsTableRow } from './DocumentsTableRow';
 import { SortableHeader } from './SortableHeader';
+import { USER_FEEDBACK } from '../../config';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -243,19 +244,24 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
         onClearCategory={onClearCategory}
       />
 
+      {loadingTable ? (
+        <div className="statistics-loading">
+          <span className="generating-text">
+            {'Loading documents ...'.split('').map((char, index) => (
+              <span key={index} className="wave-char" style={{ animationDelay: `${index * 0.05}s` }}>
+                {char === ' ' ? '\u00A0' : char}
+              </span>
+            ))}
+          </span>
+        </div>
+      ) : (
+      <>
       {/* Top Scrollbar */}
       <TopScrollbar tableContainer={tableContainer} />
 
       <div className="documents-table-container" ref={setRef} style={{ position: 'relative' }}>
-        {loadingTable && (
-          <div className="table-loading-overlay">
-            <div className="table-loading-spinner">Loading...</div>
-          </div>
-        )}
-        <table
-          className="documents-table"
-          style={{ opacity: loadingTable ? 0.5 : 1, transition: 'opacity 0.15s' }}
-        >
+        <table className="documents-table">
+
           <colgroup>
             <col className="col-title" />
             <col className="col-links" />
@@ -275,7 +281,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
             <col className="col-error" />
             <col className="col-updated" />
             <col className="col-chunks" />
-            <col className="col-actions" />
+            {USER_FEEDBACK && <col className="col-actions" />}
           </colgroup>
           <thead>
             <tr>
@@ -309,7 +315,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 />
               ))}
               <th>Chunks</th>
-              <th>Actions</th>
+              {USER_FEEDBACK && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -350,8 +356,10 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
           dataSourceConfig={dataSourceConfig}
         />
       )}
-      {!loadingTable && totalPages > 1 && (
+      {totalPages > 1 && (
         <DocumentsPagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+      )}
+      </>
       )}
     </div>
   );

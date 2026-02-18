@@ -1046,6 +1046,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
               const pdfTextForMatching = spansInBox.map(span => span.textContent || '').join('');
               const normalizedPdfText = normalizePdfText(pdfTextForMatching);
 
+              // Track highlighted ranges to avoid stacking overlays for
+              // the same phrase appearing at multiple positions in chunk text
+              // but mapping to the same first occurrence in PDF text.
+              const highlightedRanges: { start: number; end: number }[] = [];
+
               semanticMatches.forEach((match, phraseIdx) => {
                 const phrase = match.matchedText;
                 const range = findPhraseRange(normalizedPdfText, pdfTextForMatching, phrase);
@@ -1053,6 +1058,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
                   console.log(`[Text Layer] ✗ Phrase ${phraseIdx + 1} NOT FOUND in PDF text`);
                   return;
                 }
+
+                // Skip if this PDF range was already highlighted by a previous match
+                const alreadyHighlighted = highlightedRanges.some(
+                  (prev) => range.start < prev.end && range.end > prev.start
+                );
+                if (alreadyHighlighted) {
+                  console.log(`[Text Layer] ⏭ Phrase ${phraseIdx + 1} overlaps existing highlight, skipping`);
+                  return;
+                }
+                highlightedRanges.push({ start: range.start, end: range.end });
 
                 console.log(
                   `[Text Layer] Phrase ${phraseIdx + 1} (${range.normalizedPhrase.length} chars): "${range.normalizedPhrase.substring(0, 80)}..."`

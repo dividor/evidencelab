@@ -6,6 +6,10 @@ Evidence Lab is a free open source platform that provides a document pipeline, s
 
 You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with about 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations). See [Data](/data) for more information on these amazing documents.
 
+We will be adding AI chat, research and Model Context Server (MCP) support so that Evidence Lab can be used in AI platforms including Claude and ChatGPT.
+
+So watch this space!
+
 ## Philosophy
 
 Evidence Lab grew out of research work for the AstroBagel Blog. The core design principles are:

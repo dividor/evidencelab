@@ -5,6 +5,10 @@ import axios from 'axios';
 import TocModal from '../components/TocModal';
 
 jest.mock('axios');
+jest.mock('../config', () => ({
+  ...jest.requireActual('../config'),
+  USER_FEEDBACK: true,
+}));
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 

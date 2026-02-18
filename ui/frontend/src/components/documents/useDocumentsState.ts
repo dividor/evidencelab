@@ -105,7 +105,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [pageSize] = useState<number>(20);
-  const [loadingTable, setLoadingTable] = useState<boolean>(false);
+  const [loadingTable, setLoadingTable] = useState<boolean>(true);
   const [titleFacets, setTitleFacets] = useState<Array<{ value: string; count: number }>>([]);
 
   const loadDocuments = useCallback(async () => {

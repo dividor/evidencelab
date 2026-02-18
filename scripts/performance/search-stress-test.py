@@ -1,12 +1,123 @@
 import argparse
+import gzip
 import json
 import random
 import statistics
+import threading
 import time
 import urllib.parse
 import urllib.request
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
+
+DEFAULT_QUERY_WORDS = [
+    "evaluation",
+    "food",
+    "security",
+    "health",
+    "education",
+    "nutrition",
+    "humanitarian",
+    "crisis",
+    "refugee",
+    "displacement",
+    "conflict",
+    "drought",
+    "resilience",
+    "gender",
+    "protection",
+    "shelter",
+    "water",
+    "sanitation",
+    "hygiene",
+    "livelihood",
+    "agriculture",
+    "climate",
+    "adaptation",
+    "emergency",
+    "response",
+    "recovery",
+    "preparedness",
+    "coordination",
+    "accountability",
+    "monitoring",
+    "assessment",
+    "survey",
+    "baseline",
+    "indicator",
+    "outcome",
+    "impact",
+    "sustainability",
+    "capacity",
+    "partnership",
+    "community",
+    "vulnerability",
+    "poverty",
+    "malnutrition",
+    "stunting",
+    "wasting",
+    "mortality",
+    "morbidity",
+    "access",
+    "coverage",
+    "quality",
+    "effectiveness",
+    "efficiency",
+    "relevance",
+    "coherence",
+    "inclusion",
+    "equity",
+    "rights",
+    "governance",
+    "policy",
+    "strategy",
+    "programme",
+    "intervention",
+    "targeting",
+    "distribution",
+    "supply",
+    "logistics",
+    "procurement",
+    "budget",
+    "funding",
+    "donor",
+    "beneficiary",
+    "household",
+    "child",
+    "women",
+    "youth",
+    "urban",
+    "rural",
+    "market",
+    "price",
+    "inflation",
+    "trade",
+    "cereal",
+    "grain",
+    "rice",
+    "maize",
+    "wheat",
+    "livestock",
+    "fisheries",
+    "forest",
+    "land",
+    "soil",
+    "irrigation",
+    "rainfall",
+    "flood",
+    "earthquake",
+    "cyclone",
+    "pandemic",
+    "disease",
+    "vaccination",
+    "migration",
+    "returnee",
+    "host",
+    "camp",
+    "settlement",
+    "integration",
+]
 
 DEFAULT_SECTION_TYPES = [
     "executive_summary",
@@ -30,6 +141,7 @@ def parse_bool(value: str) -> bool:
 
 def build_search_url(
     base_url: str,
+    search_path: str,
     query: str,
     data_source: str,
     rerank: bool,
@@ -42,6 +154,8 @@ def build_search_url(
     min_chunk_size: int,
     limit: int,
     model: str | None,
+    rerank_model: str | None,
+    rerank_model_page_size: int,
     document_type: str | None,
     published_year: str | None,
 ) -> str:
@@ -59,31 +173,86 @@ def build_search_url(
     }
     if min_chunk_size > 0:
         params["min_chunk_size"] = str(min_chunk_size)
+    if rerank_model_page_size > 0:
+        params["rerank_model_page_size"] = str(rerank_model_page_size)
     if model:
         params["model"] = model
+    if rerank_model:
+        params["rerank_model"] = rerank_model
     if document_type:
         params["document_type"] = document_type
     if published_year:
         params["published_year"] = published_year
 
     query_string = urllib.parse.urlencode(params)
-    return f"{base_url.rstrip('/')}/search?{query_string}"
+    return f"{base_url.rstrip('/')}/{search_path.strip('/')}?{query_string}"
 
 
-def execute_request(url: str, timeout: float) -> tuple[int, float, str | None]:
+def generate_unique_queries(
+    all_words: list[str], count: int, min_words: int = 2, max_words: int = 5
+) -> list[str]:
+    seen: set[str] = set()
+    queries: list[str] = []
+    max_attempts = count * 10
+    attempts = 0
+    while len(queries) < count and attempts < max_attempts:
+        n = random.randint(min_words, min(max_words, len(all_words)))
+        q = " ".join(random.sample(all_words, n))
+        if q not in seen:
+            seen.add(q)
+            queries.append(q)
+        attempts += 1
+    return queries
+
+
+def execute_request(
+    url: str, timeout: float, api_key: str | None = None
+) -> tuple[int, float, str | None, int]:
     start_time = time.perf_counter()
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
-            _ = response.read()
+        req = urllib.request.Request(url)
+        if api_key:
+            req.add_header("X-API-Key", api_key)
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            raw = response.read()
+            if response.headers.get("Content-Encoding") == "gzip":
+                raw = gzip.decompress(raw)
+            body = raw.decode("utf-8", errors="replace")
             duration = time.perf_counter() - start_time
-            return response.status, duration, None
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict) and "total" in data:
+                    num_results = data["total"]
+                elif isinstance(data, dict) and "results" in data:
+                    num_results = len(data["results"])
+                elif isinstance(data, list):
+                    num_results = len(data)
+                else:
+                    num_results = -1
+            except (json.JSONDecodeError, TypeError, ValueError):
+                num_results = -1
+            return response.status, duration, None, num_results
     except Exception as exc:
         duration = time.perf_counter() - start_time
-        return 0, duration, str(exc)
+        return 0, duration, str(exc), 0
+
+
+def load_model_combo(combo_name: str) -> dict:
+    config_path = Path(__file__).resolve().parent.parent.parent / "config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"config.json not found at {config_path}")
+    with open(config_path, encoding="utf-8") as fh:
+        config = json.load(fh)
+    combos = config.get("ui_model_combos", {})
+    if combo_name not in combos:
+        available = ", ".join(combos.keys())
+        raise ValueError(f"Unknown model combo '{combo_name}'. Available: {available}")
+    return combos[combo_name]
 
 
 def run_stress_test(
     base_url: str,
+    search_path: str,
     data_source: str,
     queries: list[str],
     document_types: list[str],
@@ -98,18 +267,27 @@ def run_stress_test(
     section_types: list[str],
     keyword_boost_short_queries: bool,
     min_chunk_size: int,
+    rerank_model_page_size: int,
     limit: int,
     model: str | None,
-    timeout: float,
+    rerank_model: str | None = None,
+    timeout: float = 120.0,
+    pause: float = 0.0,
+    api_key: str | None = None,
 ) -> dict:
+    all_words = list({w for q in queries for w in q.split()} | set(DEFAULT_QUERY_WORDS))
+    random.shuffle(all_words)
+    unique_queries = generate_unique_queries(all_words, total_requests)
+
     urls: list[str] = []
-    for _ in range(total_requests):
-        query = random.choice(queries)
+    query_texts: list[str] = []
+    for query in unique_queries:
         document_type = random.choice(document_types) if document_types else None
         published_year = random.choice(years) if years else None
         urls.append(
             build_search_url(
                 base_url=base_url,
+                search_path=search_path,
                 query=query,
                 data_source=data_source,
                 rerank=rerank,
@@ -120,26 +298,61 @@ def run_stress_test(
                 section_types=section_types,
                 keyword_boost_short_queries=keyword_boost_short_queries,
                 min_chunk_size=min_chunk_size,
+                rerank_model_page_size=rerank_model_page_size,
                 limit=limit,
                 model=model,
+                rerank_model=rerank_model,
                 document_type=document_type,
                 published_year=published_year,
             )
         )
+        query_texts.append(query)
 
     latencies: list[float] = []
     status_counts: Counter[int] = Counter()
     error_messages: Counter[str] = Counter()
 
-    start_time = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {executor.submit(execute_request, url, timeout): url for url in urls}
-        for future in as_completed(futures):
-            status, duration, error = future.result()
+    lock = threading.Lock()
+    received = 0
+
+    def _on_complete(
+        future: "Future[tuple[int, float, str | None, int]]",
+        idx: int,
+        q_text: str,
+    ) -> None:
+        nonlocal received
+        status, duration, error, num_results = future.result()
+        with lock:
             latencies.append(duration)
             status_counts[status] += 1
             if error:
                 error_messages[error] += 1
+            received += 1
+            results_str = f"{num_results} results" if num_results >= 0 else "error"
+            print(
+                f"     <- [{received}/{total_requests}] {status} {results_str} "
+                f'in {duration:.2f}s  q="{q_text}"',
+                flush=True,
+            )
+
+    start_time = time.perf_counter()
+    workers = concurrency if pause == 0 else total_requests
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = []
+        for i, (url, q_text) in enumerate(zip(urls, query_texts)):
+            print(
+                f'  -> [{i + 1}/{total_requests}] sending q="{q_text}"',
+                flush=True,
+            )
+            f = executor.submit(execute_request, url, timeout, api_key)
+            f.add_done_callback(
+                lambda fut, idx=i, qt=q_text: _on_complete(fut, idx, qt)  # type: ignore[misc]
+            )
+            futures.append(f)
+            if pause > 0 and i < len(urls) - 1:
+                time.sleep(pause)
+        for f in futures:
+            f.result()
     total_time = time.perf_counter() - start_time
 
     latency_sorted = sorted(latencies)
@@ -168,9 +381,17 @@ def run_stress_test(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stress test /search endpoint.")
     parser.add_argument("--base-url", default="http://localhost:8000")
+    parser.add_argument("--api-key", default=None, help="API key (X-API-Key header)")
+    parser.add_argument(
+        "--search-path",
+        default="/api/search",
+        help="API search path (default: /api/search)",
+    )
     parser.add_argument("--data-source", required=True)
     parser.add_argument(
-        "--queries", default="evaluation,food security,health,education"
+        "--queries",
+        default="",
+        help="Extra query phrases (comma-separated). Words are merged with defaults.",
     )
     parser.add_argument("--document-types", default="")
     parser.add_argument("--years", default="")
@@ -185,9 +406,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--section-types", default=",".join(DEFAULT_SECTION_TYPES))
     parser.add_argument("--keyword-boost-short-queries", type=parse_bool, default=True)
     parser.add_argument("--min-chunk-size", type=int, default=100)
+    parser.add_argument("--rerank-model-page-size", type=int, default=10)
     parser.add_argument("--limit", type=int, default=50)
-    parser.add_argument("--model", default=None)
+    parser.add_argument("--model", default=None, help="Embedding model name")
+    parser.add_argument("--rerank-model", default=None, help="Reranker model name")
+    parser.add_argument(
+        "--model-combo",
+        default=None,
+        help="Model combo from config.json (e.g. 'Azure Foundry', 'Huggingface')",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--pause",
+        type=float,
+        default=1.0,
+        help="Seconds to pause between requests (0 for concurrent mode)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-json", default="")
     return parser.parse_args()
@@ -202,6 +436,23 @@ def main() -> None:
     years = [y.strip() for y in args.years.split(",") if y.strip()]
     section_types = [s.strip() for s in args.section_types.split(",") if s.strip()]
 
+    model = args.model
+    rerank_model = args.rerank_model
+    rerank_model_page_size = args.rerank_model_page_size
+
+    if args.model_combo:
+        combo = load_model_combo(args.model_combo)
+        if not model:
+            model = combo.get("embedding_model")
+        if not rerank_model:
+            rerank_model = combo.get("reranker_model")
+        rerank_model_page_size = combo.get("rerank_model_page_size", 0)
+        print(
+            f"Model combo '{args.model_combo}': "
+            f"model={model}, rerank_model={rerank_model}, "
+            f"rerank_model_page_size={rerank_model_page_size}\n"
+        )
+
     runs = [args.rerank]
     if args.run_both:
         runs = [True, False]
@@ -210,6 +461,7 @@ def main() -> None:
     for rerank in runs:
         result = run_stress_test(
             base_url=args.base_url,
+            search_path=args.search_path,
             data_source=args.data_source,
             queries=queries,
             document_types=document_types,
@@ -224,9 +476,13 @@ def main() -> None:
             section_types=section_types,
             keyword_boost_short_queries=args.keyword_boost_short_queries,
             min_chunk_size=args.min_chunk_size,
+            rerank_model_page_size=rerank_model_page_size,
             limit=args.limit,
-            model=args.model,
+            model=model,
+            rerank_model=rerank_model,
             timeout=args.timeout,
+            pause=args.pause,
+            api_key=args.api_key,
         )
         results.append(result)
         print(

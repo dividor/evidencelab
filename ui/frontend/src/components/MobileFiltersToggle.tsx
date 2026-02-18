@@ -19,7 +19,7 @@ export const MobileFiltersToggle = ({
     aria-expanded={filtersExpanded}
   >
     <span className="mobile-filters-toggle-icon">
-      {filtersExpanded ? '▲' : '▼'}
+      {filtersExpanded ? '▼' : '▶'}
     </span>
     <span className="mobile-filters-toggle-text">
       {label} {activeFiltersCount > 0 && `(${activeFiltersCount} active)`}

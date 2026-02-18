@@ -52,17 +52,17 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
         </button>
         {monitorDropdownOpen && (
           <div className="dropdown-menu nav-dropdown-menu">
-            <button className="dropdown-item" onClick={() => handleMonitorSelect('documents')}>
-              Documents
+            <button className="dropdown-item" onClick={() => handleMonitorSelect('pipeline')}>
+              Pipeline
             </button>
             <button className="dropdown-item" onClick={() => handleMonitorSelect('stats')}>
               Stats
             </button>
-            <button className="dropdown-item" onClick={() => handleMonitorSelect('pipeline')}>
-              Pipeline
-            </button>
             <button className="dropdown-item" onClick={() => handleMonitorSelect('processing')}>
               Processing
+            </button>
+            <button className="dropdown-item" onClick={() => handleMonitorSelect('documents')}>
+              Documents
             </button>
           </div>
         )}
