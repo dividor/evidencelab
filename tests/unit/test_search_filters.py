@@ -129,6 +129,27 @@ def test_apply_recency_boost_prefers_recent_documents():
     )
 
 
+def test_apply_recency_boost_uses_map_published_year():
+    """Recency boost should work with map_published_year when published_date_unix is absent."""
+    now = datetime.datetime.now()
+
+    recent = SimpleNamespace(
+        id="recent",
+        score=0.5,
+        payload={"map_published_year": str(now.year)},
+    )
+    older = SimpleNamespace(
+        id="older",
+        score=0.5,
+        payload={"map_published_year": str(now.year - 5)},
+    )
+
+    results = apply_recency_boost([older, recent], recency_weight=0.5, scale_days=365)
+
+    assert results[0].id == "recent"
+    assert results[0].payload["_recency_factor"] > results[1].payload["_recency_factor"]
+
+
 # --- Field boost tests ---
 
 

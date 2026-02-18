@@ -344,6 +344,7 @@ def _build_search_results(
                     if normalized_doc.get("published_year") is not None
                     else None
                 ),
+                language=normalized_doc.get("language"),
                 metadata={
                     k: v for k, v in doc.items() if k not in ("abstractive_summary",)
                 },
@@ -882,6 +883,7 @@ def _format_document_result(
         title=normalized_doc.get("title", ""),
         organization=normalized_doc.get("organization"),
         year=normalized_doc.get("published_year"),
+        language=normalized_doc.get("language"),
         pdf_url=normalized_doc.get("pdf_url"),
         report_url=normalized_doc.get("report_url"),
         metadata=normalized_doc.get("metadata", {}),

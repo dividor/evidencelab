@@ -666,21 +666,23 @@ def apply_recency_boost(
     for result in results:
         original_score = result.score
         published_unix = result.payload.get("published_date_unix")
-
-        if published_unix is None:
-            # No publication date - use original score with no recency boost
-            recency_factor = 0.5  # Neutral factor for missing dates
-        else:
-            # Calculate age from end of publication year (Dec 31)
-            # This ensures current year and last year reports get high boost
+        pub_year = None
+        if published_unix is not None:
             pub_year = datetime.fromtimestamp(published_unix).year
+        else:
+            raw_year = result.payload.get("map_published_year")
+            if raw_year:
+                try:
+                    pub_year = int(str(raw_year)[:4])
+                except (ValueError, TypeError):
+                    pass
+
+        if pub_year is None:
+            # No publication date - use neutral factor
+            recency_factor = 0.5
+        else:
             pub_year_end_unix = int(datetime(pub_year, 12, 31).timestamp())
-
-            # Age is from the end of publication year to now
             age_seconds = max(0, now_unix - pub_year_end_unix)
-
-            # Gaussian decay: exp(-0.5 * (age / scale)^2)
-            # This gives ~1.0 for recent reports, decaying for older years
             recency_factor = math.exp(-0.5 * (age_seconds / scale_seconds) ** 2)
 
         # Combine original score with recency factor
