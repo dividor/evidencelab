@@ -2136,6 +2136,7 @@ function App() {
       rerankModel={rerankModel}
       rerankModelPageSize={rerankModelPageSize}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
+      selectedModelCombo={resolvedModelCombo}
       dataSource={dataSource}
       selectedDoc={selectedDoc}
       onResultClick={handleResultClick}

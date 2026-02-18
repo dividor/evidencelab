@@ -89,6 +89,7 @@ interface HeatmapTabContentProps {
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
   onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
+  selectedModelCombo: string | null;
   dataSource: string;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
@@ -712,9 +713,16 @@ const HeatmapTable = ({
   return (
     <div className="heatmap-table-wrapper">
       <div className="heatmap-table-scroll">
-        <table className="heatmap-table">
+        <table
+          className="heatmap-table"
+          style={
+            filteredColumnValues.length > 10
+              ? { minWidth: `${250 + filteredColumnValues.length * 55}px` }
+              : undefined
+          }
+        >
           <colgroup>
-            <col style={{ width: '40%' }} />
+            <col style={{ width: filteredColumnValues.length > 10 ? '250px' : '40%' }} />
             {filteredColumnValues.map((column) => (
               <col key={`col-${column}`} />
             ))}
@@ -1099,6 +1107,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onFieldBoostToggle,
   fieldBoostFields,
   onFieldBoostFieldsChange,
+  selectedModelCombo,
   dataSource,
   selectedDoc,
   onResultClick,
@@ -1141,6 +1150,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const processingHighlightsRef = useRef<Set<string>>(new Set());
   const userAdjustedCutoffRef = useRef(false);
   const heatmapUrlInitRef = useRef(false);
+  const heatmapUrlHadYearFilterRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
 
   // Heatmap filters are now completely isolated from global filters
@@ -1601,6 +1611,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         .map((field) => [field, (params.get(field) ?? '').split(',').map((v) => v.trim()).filter(Boolean)] as const)
         .filter(([, values]) => values.length > 0)
     );
+    if (urlFilters.published_year && urlFilters.published_year.length > 0) {
+      heatmapUrlHadYearFilterRef.current = true;
+    }
     if (Object.keys(urlFilters).length > 0) {
       setHeatmapSelectedFilters(urlFilters);
     }
@@ -1665,7 +1678,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   ]);
 
   // Apply default year filter for UNEG data source (years after 2020)
+  // Skip if URL already specified published_year values
   useEffect(() => {
+    if (heatmapUrlHadYearFilterRef.current) return;
     if (
       dataSource === 'uneg' &&
       columnDimension === 'published_year' &&
@@ -2630,6 +2645,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const hasGlobalQuery = gridQuery.trim() !== '';
   const metricEnabled = isQueryRow || hasGlobalQuery;
   const metricValue = metricEnabled ? heatmapMetric : 'documents';
+  const isModelSupported = selectedModelCombo === 'Azure Foundry';
 
   return (
     <div className="main-content">
@@ -2659,6 +2675,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 What is Heatmapper?
               </button>
             </div>
+            {!isModelSupported ? (
+              <div className="heatmap-model-warning">
+                Heatmapper currently only supports the <strong>Azure Foundry</strong> model.
+                Please switch to Azure Foundry using the Models dropdown above.
+              </div>
+            ) : (<>
             <div className="heatmap-controls">
               {/* First row: Rows, Columns, Metric, Download, Search */}
               <div className="heatmap-controls-row">
@@ -2762,6 +2784,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               gridLoading={gridLoading}
               openCellModal={openCellModal}
             />
+            </>)}
           </div>
         </main>
       </div>
