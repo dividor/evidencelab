@@ -98,29 +98,25 @@ export const DocumentsTableRow: React.FC<{
     return (
       <tr key={doc.id || index}>
         <td className="doc-title">
-          {hasParsedStatus ? (
-            <div className="doc-title-with-thumbnail">
-              <div className="doc-title-thumbnail-container">
-                {thumbnailUrl ? (
-                  <>
-                    <DocumentThumbnail doc={doc} thumbnailUrl={thumbnailUrl} />
-                    <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
-                      No preview
-                    </div>
-                  </>
-                ) : (
-                  <div className="doc-title-thumbnail-placeholder">
+          <div className="doc-title-with-thumbnail">
+            <div className="doc-title-thumbnail-container">
+              {thumbnailUrl ? (
+                <>
+                  <DocumentThumbnail doc={doc} thumbnailUrl={thumbnailUrl} />
+                  <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
                     No preview
                   </div>
-                )}
-              </div>
-              <div className="doc-title-text">
-                {doc.title || 'Untitled'}
-              </div>
+                </>
+              ) : (
+                <div className="doc-title-thumbnail-placeholder">
+                  No preview
+                </div>
+              )}
             </div>
-          ) : (
-            <div>{doc.title || 'Untitled'}</div>
-          )}
+            <div className="doc-title-text">
+              {doc.title || 'Untitled'}
+            </div>
+          </div>
         </td>
         <DocumentLinksCell doc={doc} dataSource={dataSource} />
         <td className="doc-summary">
