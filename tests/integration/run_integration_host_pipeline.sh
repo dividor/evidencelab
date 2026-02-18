@@ -11,6 +11,33 @@ API_BASE_URL="${API_BASE_URL:-http://api:8000}"
 UI_BASE_URL="${UI_BASE_URL:-http://ui:3000}"
 DATA_SOURCE="${DATA_SOURCE:-uneg}"
 
+# Resolve QDRANT_HOST reachable from the host (with retries).
+# Sets QDRANT_HOST to whichever URL responds first.
+resolve_host_qdrant() {
+  local qdrant_url="${QDRANT_HOST:-http://localhost:6333}"
+  local max=15 attempt=1
+  echo "Waiting for Qdrant on host at ${qdrant_url}..."
+  while [ "${attempt}" -le "${max}" ]; do
+    if curl -4 -fsS --max-time 2 "${qdrant_url}/collections" >/dev/null 2>&1; then
+      QDRANT_HOST="${qdrant_url}"
+      export QDRANT_HOST
+      return 0
+    fi
+    if curl -4 -fsS --max-time 2 "http://host.docker.internal:6333/collections" >/dev/null 2>&1; then
+      QDRANT_HOST="http://host.docker.internal:6333"
+      export QDRANT_HOST
+      return 0
+    fi
+    printf "."
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  echo ""
+  echo "❌ Host cannot reach Qdrant at ${qdrant_url} after ${max} attempts."
+  echo "   Ensure the qdrant container port 6333 is exposed or set QDRANT_HOST."
+  return 1
+}
+
 echo "Ensuring Qdrant and pipeline are up for integration workflow..."
 docker compose up -d --no-deps qdrant pipeline
 MAX_ATTEMPTS=60
@@ -109,17 +136,7 @@ if [ -z "${INTEGRATION_FILE_ID}" ]; then
   echo "Report path: ${INTEGRATION_FILE_PATH}"
 
   echo "Running host pipeline for integration report: ${INTEGRATION_FILE_PATH}"
-  QDRANT_HOST="${QDRANT_HOST:-http://localhost:6333}"
-  if ! curl -4 -fsS --max-time 2 "${QDRANT_HOST}/collections" >/dev/null 2>&1; then
-    if curl -4 -fsS --max-time 2 "http://host.docker.internal:6333/collections" >/dev/null 2>&1; then
-      QDRANT_HOST="http://host.docker.internal:6333"
-      export QDRANT_HOST
-    else
-    echo "❌ Host cannot reach Qdrant at ${QDRANT_HOST}."
-    echo "   Ensure the qdrant container port 6333 is exposed or set QDRANT_HOST."
-    exit 1
-    fi
-  fi
+  resolve_host_qdrant
   RUN_PIPELINE_ON_HOST=1 \
     QDRANT_HOST="${QDRANT_HOST}" \
     "${PROJECT_ROOT}/scripts/pipeline/run_pipeline_host.sh" \
@@ -165,17 +182,7 @@ db.update_document(
 PY
 
   echo "Running host pipeline for integration doc ID: ${INTEGRATION_FILE_ID}"
-  QDRANT_HOST="${QDRANT_HOST:-http://localhost:6333}"
-  if ! curl -4 -fsS --max-time 2 "${QDRANT_HOST}/collections" >/dev/null 2>&1; then
-    if curl -4 -fsS --max-time 2 "http://host.docker.internal:6333/collections" >/dev/null 2>&1; then
-      QDRANT_HOST="http://host.docker.internal:6333"
-      export QDRANT_HOST
-    else
-      echo "❌ Host cannot reach Qdrant at ${QDRANT_HOST}."
-      echo "   Ensure the qdrant container port 6333 is exposed or set QDRANT_HOST."
-      exit 1
-    fi
-  fi
+  resolve_host_qdrant
   RUN_PIPELINE_ON_HOST=1 \
   QDRANT_HOST="${QDRANT_HOST}" \
   INTEGRATION_FILE_ID="${INTEGRATION_FILE_ID}" \
