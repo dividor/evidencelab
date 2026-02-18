@@ -9,7 +9,7 @@ import { DocumentStatusCell } from './DocumentStatusCell';
 import { DocumentsSummaryCell } from './DocumentsSummaryCell';
 import { TaxonomyCell } from './TaxonomyCell';
 import { formatTimestamp, getLastUpdatedTimestamp } from './documentsModalUtils';
-import API_BASE_URL from '../../config';
+import API_BASE_URL, { USER_FEEDBACK } from '../../config';
 
 const getThumbnailUrl = (doc: any, dataSource: string): string | null => {
   const docId = doc.doc_id || doc.id;
@@ -150,12 +150,14 @@ export const DocumentsTableRow: React.FC<{
         <DocumentErrorCell doc={doc} />
         <td>{lastUpdated || '-'}</td>
         <DocumentChunksCell doc={doc} onViewChunks={onViewChunks} />
-        <DocumentActionsCell
-          doc={doc}
-          reprocessingDocId={reprocessingDocId}
-          onReprocess={onReprocess}
-          onOpenQueue={onOpenQueue}
-        />
+        {USER_FEEDBACK && (
+          <DocumentActionsCell
+            doc={doc}
+            reprocessingDocId={reprocessingDocId}
+            onReprocess={onReprocess}
+            onOpenQueue={onOpenQueue}
+          />
+        )}
       </tr>
     );
   };

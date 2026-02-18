@@ -35,6 +35,10 @@ export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_si
 // Heatmap per-cell result limit (defaults to 1000)
 export const HEATMAP_CELL_LIMIT = process.env.REACT_APP_HEATMAP_LIMIT || '1000';
 
+// User feedback mode — enables document reprocessing and TOC editing controls
+// Set REACT_APP_USER_FEEDBACK=1 in .env to enable (default: off)
+export const USER_FEEDBACK = process.env.REACT_APP_USER_FEEDBACK === '1';
+
 // Google Analytics Measurement ID (optional, set via REACT_APP_GA_MEASUREMENT_ID)
 export const GA_MEASUREMENT_ID: string | undefined =
   process.env.REACT_APP_GA_MEASUREMENT_ID || undefined;

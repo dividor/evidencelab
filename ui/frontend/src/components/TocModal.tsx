@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import API_BASE_URL from '../config';
+import API_BASE_URL, { USER_FEEDBACK } from '../config';
 
 type ParsedTocLine = {
   level: string;
@@ -390,23 +390,27 @@ const TocModal: React.FC<TocModalProps> = ({
             ) : null}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none', marginRight: '10px' }}>
-              <input
-                type="checkbox"
-                checked={tocApproved}
-                onChange={handleToggleApproved}
-              />
-              <span style={{ fontSize: '0.9em', fontWeight: 500 }}>Approved</span>
-            </label>
+            {USER_FEEDBACK && (
+              <>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none', marginRight: '10px' }}>
+                  <input
+                    type="checkbox"
+                    checked={tocApproved}
+                    onChange={handleToggleApproved}
+                  />
+                  <span style={{ fontSize: '0.9em', fontWeight: 500 }}>Approved</span>
+                </label>
 
-            <button
-              onClick={handleReprocessToc}
-              disabled={loading || reprocessingToc || reprocessSuccess}
-              className="toc-action-btn toc-reprocess-btn"
-              title="Reprocess content category classifications using AI"
-            >
-              {reprocessingToc ? 'Reprocessing...' : reprocessSuccess ? 'Processing...' : 'Reprocess'}
-            </button>
+                <button
+                  onClick={handleReprocessToc}
+                  disabled={loading || reprocessingToc || reprocessSuccess}
+                  className="toc-action-btn toc-reprocess-btn"
+                  title="Reprocess content category classifications using AI"
+                >
+                  {reprocessingToc ? 'Reprocessing...' : reprocessSuccess ? 'Processing...' : 'Reprocess'}
+                </button>
+              </>
+            )}
             <button onClick={handleClose} className="modal-close">×</button>
           </div>
         </div>
@@ -428,34 +432,42 @@ const TocModal: React.FC<TocModalProps> = ({
                         key={index}
                         className={`toc-item toc-level-${renderInfo.level} ${draggedOverIndices.has(index) ? 'toc-item-drag-over' : ''} ${renderInfo.isBeforeFrontMatterBoundary ? 'toc-item-before-boundary' : ''}`}
                         style={{ paddingLeft: `${renderInfo.indent}px` }}
-                        onDragOver={(e) => handleDragOver(e, index)}
-                        onDrop={(e) => handleDrop(e)}
+                        onDragOver={USER_FEEDBACK ? (e) => handleDragOver(e, index) : undefined}
+                        onDrop={USER_FEEDBACK ? (e) => handleDrop(e) : undefined}
                       >
                         <span className="toc-title">
                           {renderInfo.title}
                         </span>
                         <div className="toc-controls">
-                          <select
-                            value={renderInfo.sectionType}
-                            onChange={(e) => handleTocCategoryChange(index, e.target.value)}
-                            className={`toc-section-tag toc-section-tag-editable section-tag-${renderInfo.sectionType}`}
-                            disabled={savingIndex === index}
-                          >
-                            {categories.map(cat => (
-                              <option key={cat} value={cat}>
-                                {cat.replace(/_/g, ' ')}
-                              </option>
-                            ))}
-                          </select>
-                          <div
-                            className="toc-drag-handle"
-                            draggable={savingIndex === null}
-                            onDragStart={() => handleDragStart(index, renderInfo.sectionType)}
-                            onDragEnd={handleDragEnd}
-                            title="Drag down or up to fill multiple items with this category"
-                          >
-                            ⋮⋮
-                          </div>
+                          {USER_FEEDBACK ? (
+                            <>
+                              <select
+                                value={renderInfo.sectionType}
+                                onChange={(e) => handleTocCategoryChange(index, e.target.value)}
+                                className={`toc-section-tag toc-section-tag-editable section-tag-${renderInfo.sectionType}`}
+                                disabled={savingIndex === index}
+                              >
+                                {categories.map(cat => (
+                                  <option key={cat} value={cat}>
+                                    {cat.replace(/_/g, ' ')}
+                                  </option>
+                                ))}
+                              </select>
+                              <div
+                                className="toc-drag-handle"
+                                draggable={savingIndex === null}
+                                onDragStart={() => handleDragStart(index, renderInfo.sectionType)}
+                                onDragEnd={handleDragEnd}
+                                title="Drag down or up to fill multiple items with this category"
+                              >
+                                ⋮⋮
+                              </div>
+                            </>
+                          ) : (
+                            <span className={`toc-section-tag section-tag-${renderInfo.sectionType}`}>
+                              {renderInfo.sectionType.replace(/_/g, ' ')}
+                            </span>
+                          )}
                         </div>
                         {renderPageElement(renderInfo, onPageSelect, resolvedPdfUrl)}
                       </div>
