@@ -225,9 +225,11 @@ export const useDocumentsReload = (
   columnFilters: Record<string, string>,
   loadDocuments: () => void
 ): void => {
+  const loadRef = useRef(loadDocuments);
+  loadRef.current = loadDocuments;
   useEffect(() => {
-    loadDocuments();
-  }, [currentPage, selectedCategory, columnFilters, loadDocuments]);
+    loadRef.current();
+  }, [currentPage, selectedCategory, columnFilters]);
 };
 
 export const useFilterPopoverClose = (
