@@ -3,9 +3,9 @@ import { Facets } from '../../types/api';
 import { StatsData } from '../../types/documents';
 import { getLastUpdatedTimestamp } from './documentsModalUtils';
 
-export type ChartView = 'type' | 'agency' | 'year' | 'language' | 'status' | 'format';
+export type ChartView = 'type' | 'agency' | 'year' | 'language' | 'status' | 'format' | 'country';
 
-const CHART_VIEWS: ChartView[] = ['year', 'type', 'agency', 'language', 'status', 'format'];
+const CHART_VIEWS: ChartView[] = ['year', 'type', 'agency', 'language', 'status', 'format', 'country'];
 
 const CHART_VIEW_PARAM_MAP: Record<ChartView, string> = {
   type: 'document_type',
@@ -14,6 +14,7 @@ const CHART_VIEW_PARAM_MAP: Record<ChartView, string> = {
   language: 'language',
   status: 'status',
   format: 'file_format',
+  country: 'country',
 };
 
 const COLUMN_FILTER_PARAM_MAP: Record<string, string> = {

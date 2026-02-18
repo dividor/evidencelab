@@ -49,6 +49,10 @@ interface SearchTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   aiSummaryEnabled: boolean;
   aiSummaryCollapsed: boolean;
   aiSummaryExpanded: boolean;
@@ -239,6 +243,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
   aiSummaryEnabled,
   aiSummaryCollapsed,
   aiSummaryExpanded,
@@ -348,11 +356,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       const org = r.organization || r.metadata?.organization || '';
       return `${title}|${year}|${org}`;
     };
-    const docCounts = new Map<string, number>();
-    visibleResults.forEach((r) => {
-      const key = getDocKey(r);
-      if (key !== '||') docCounts.set(key, (docCounts.get(key) || 0) + 1);
-    });
     const seen = new Set<string>();
     const docs: SearchResult[] = [];
     visibleResults.forEach((r) => {
@@ -362,7 +365,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         docs.push(r);
       }
     });
-    docs.sort((a, b) => (docCounts.get(getDocKey(b)) || 0) - (docCounts.get(getDocKey(a)) || 0));
     return docs;
   }, [visibleResults]);
 
@@ -435,20 +437,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       />
 
       <div className={`${contentGridClass} search-panel-with-tab`}>
-        {!filtersExpanded ? (
-          <button className="global-filters-tab" onClick={onToggleFiltersExpanded}>
-            More Filters
-          </button>
-        ) : activeFiltersCount === 0 ? (
-          <button
-            className="global-filters-tab global-filters-tab-close"
-            onClick={onToggleFiltersExpanded}
-            aria-label="Hide filters"
-            title="Hide filters"
-          >
-            ‹
-          </button>
-        ) : null}
         {filtersExpanded && (
           <div className="global-filters-column">
             <FiltersPanel
@@ -491,13 +479,41 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               onSectionTypesChange={onSectionTypesChange}
               deduplicateEnabled={deduplicateEnabled}
               onDeduplicateToggle={onDeduplicateToggle}
+              fieldBoostEnabled={fieldBoostEnabled}
+              onFieldBoostToggle={onFieldBoostToggle}
+              fieldBoostFields={fieldBoostFields}
+              onFieldBoostFieldsChange={onFieldBoostFieldsChange}
             />
           </div>
         )}
 
         <main className="results-section">
+          <AiSummaryPanel
+            enabled={aiSummaryEnabled}
+            aiSummaryCollapsed={aiSummaryCollapsed}
+            aiSummaryExpanded={aiSummaryExpanded}
+            aiSummaryLoading={aiSummaryLoading}
+            aiSummary={aiSummary}
+            minScore={hasActiveFilter ? 0 : minScore}
+            results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
+            aiPrompt={aiPrompt}
+            showPromptModal={showPromptModal}
+            translatedSummary={aiSummaryTranslatedText}
+            translatedLang={aiSummaryTranslatedLang}
+            isTranslating={!!aiSummaryTranslatingLang}
+            translatingLang={aiSummaryTranslatingLang}
+            onLanguageChange={onAiSummaryLanguageChange}
+            onToggleCollapsed={onToggleCollapsed}
+            onToggleExpanded={onToggleExpanded}
+            onResultClick={onResultClick}
+            onOpenPrompt={onOpenPrompt}
+            onClosePrompt={onClosePrompt}
+          />
+
+          {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           {showFilters && (
             <div className="search-result-filters">
+              <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
               {uniqueOrgs.length > 0 && (
                 <div className="search-result-filters-orgs">
                   {uniqueOrgs.map(({ org, count }) => (
@@ -595,30 +611,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               )}
             </div>
           )}
-
-          <AiSummaryPanel
-            enabled={aiSummaryEnabled}
-            aiSummaryCollapsed={aiSummaryCollapsed}
-            aiSummaryExpanded={aiSummaryExpanded}
-            aiSummaryLoading={aiSummaryLoading}
-            aiSummary={aiSummary}
-            minScore={hasActiveFilter ? 0 : minScore}
-            results={aiSummaryResults.length > 0 ? aiSummaryResults : results}
-            aiPrompt={aiPrompt}
-            showPromptModal={showPromptModal}
-            translatedSummary={aiSummaryTranslatedText}
-            translatedLang={aiSummaryTranslatedLang}
-            isTranslating={!!aiSummaryTranslatingLang}
-            translatingLang={aiSummaryTranslatingLang}
-            onLanguageChange={onAiSummaryLanguageChange}
-            onToggleCollapsed={onToggleCollapsed}
-            onToggleExpanded={onToggleExpanded}
-            onResultClick={onResultClick}
-            onOpenPrompt={onOpenPrompt}
-            onClosePrompt={onClosePrompt}
-          />
-
-          {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           <SearchResultsList
             results={hasActiveFilter ? displayedResults : results}
             minScore={hasActiveFilter ? 0 : minScore}

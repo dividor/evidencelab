@@ -317,6 +317,11 @@ async def test_heatmap_chunks_mode_with_query_and_organization():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total >= 1
@@ -371,6 +376,11 @@ async def test_heatmap_chunks_mode_with_query_and_year():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total >= 1
@@ -429,6 +439,11 @@ async def test_heatmap_chunks_mode_with_query_and_taxonomy():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total >= 1
@@ -481,6 +496,11 @@ async def test_heatmap_chunks_mode_with_mixed_filters():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total >= 1
@@ -540,6 +560,11 @@ async def test_heatmap_chunks_mode_with_section_types():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total >= 1
@@ -618,6 +643,11 @@ async def test_heatmap_chunks_mode_returns_empty_with_no_matches():
                     min_chunk_size=0,
                     model=None,
                     rerank_model=None,
+                    rerank_model_page_size=None,
+                    auto_min_score=False,
+                    deduplicate=True,
+                    field_boost=True,
+                    field_boost_fields=None,
                 )
 
     assert result.total == 0

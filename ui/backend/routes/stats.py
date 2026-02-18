@@ -19,6 +19,24 @@ RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
 
 
+def _split_multivalue_breakdown(
+    breakdown: Dict[str, Dict[str, int]],
+    separator: str = "; ",
+) -> Dict[str, Dict[str, int]]:
+    """Split multi-value keys (e.g. 'Nepal; India') into individual entries."""
+    result: Dict[str, Dict[str, int]] = {}
+    for key, status_counts in breakdown.items():
+        parts = [p.strip() for p in key.split(separator)] if separator in key else [key]
+        for part in parts:
+            if not part:
+                continue
+            for status, count in status_counts.items():
+                result.setdefault(part, {})[status] = (
+                    result.get(part, {}).get(status, 0) + count
+                )
+    return result
+
+
 def _sort_by_count(values: Dict[str, int]) -> Dict[str, int]:
     return dict(sorted(values.items(), key=lambda x: x[1], reverse=True))
 
@@ -93,6 +111,7 @@ def _collect_stats_pg(pg) -> tuple[
     Dict[str, Dict[str, int]],
     Dict[str, Dict[str, int]],
     Dict[str, Dict[str, int]],
+    Dict[str, Dict[str, int]],
 ]:
     status_counts = pg.fetch_status_counts()
     agency_status_breakdown = _build_breakdown_from_pg(
@@ -125,6 +144,12 @@ def _collect_stats_pg(pg) -> tuple[
             pg.fetch_field_status_breakdown("sys_file_format", from_sys_data=True),
             skip_empty=True,
         )
+    country_status_breakdown = _split_multivalue_breakdown(
+        _build_breakdown_from_pg(
+            pg.fetch_field_status_breakdown("map_country"),
+            skip_empty=True,
+        )
+    )
     return (
         status_counts,
         agency_status_breakdown,
@@ -132,11 +157,13 @@ def _collect_stats_pg(pg) -> tuple[
         year_status_breakdown,
         language_status_breakdown,
         format_status_breakdown,
+        country_status_breakdown,
     )
 
 
 def _collect_stats_qdrant(db) -> tuple[
     Dict[str, int],
+    Dict[str, Dict[str, int]],
     Dict[str, Dict[str, int]],
     Dict[str, Dict[str, int]],
     Dict[str, Dict[str, int]],
@@ -164,6 +191,9 @@ def _collect_stats_qdrant(db) -> tuple[
     format_status_breakdown = _build_breakdown_from_qdrant(
         db, "sys_file_format", statuses
     )
+    country_status_breakdown = _split_multivalue_breakdown(
+        _build_breakdown_from_qdrant(db, "map_country", statuses)
+    )
     return (
         status_counts,
         agency_status_breakdown,
@@ -171,6 +201,7 @@ def _collect_stats_qdrant(db) -> tuple[
         year_status_breakdown,
         language_status_breakdown,
         format_status_breakdown,
+        country_status_breakdown,
     )
 
 
@@ -576,6 +607,7 @@ def get_stats(
             year_status_breakdown,
             language_status_breakdown,
             format_status_breakdown,
+            country_status_breakdown,
         ) = _collect_stats_pg(pg)
 
         total_docs = sum(status_counts.values())
@@ -602,6 +634,10 @@ def get_stats(
                 format_status_breakdown, _sort_by_count
             ),
             "format_indexed": _indexed_counts(format_status_breakdown),
+            "country_breakdown": _sort_breakdown(
+                country_status_breakdown, _sort_by_count
+            ),
+            "country_indexed": _indexed_counts(country_status_breakdown),
         }
 
     except Exception as e:

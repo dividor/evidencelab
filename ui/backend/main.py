@@ -323,6 +323,11 @@ async def search(
     min_chunk_size: int = 0,
     model: Optional[str] = None,
     rerank_model: Optional[str] = None,
+    rerank_model_page_size: Optional[int] = None,
+    auto_min_score: bool = False,
+    deduplicate: bool = True,
+    field_boost: bool = True,
+    field_boost_fields: Optional[str] = None,
 ):
     search_routes.get_db_for_source = get_db_for_source
     search_routes.get_pg_for_source = get_pg_for_source
@@ -348,6 +353,11 @@ async def search(
         min_chunk_size=min_chunk_size,
         model=model,
         rerank_model=rerank_model,
+        rerank_model_page_size=rerank_model_page_size,
+        auto_min_score=auto_min_score,
+        deduplicate=deduplicate,
+        field_boost=field_boost,
+        field_boost_fields=field_boost_fields,
     )
 
 

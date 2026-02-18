@@ -22,11 +22,12 @@ export const Stats: React.FC<StatsProps> = ({
             agency: state.stats.agency_breakdown || {},
             language: state.stats.language_breakdown || {},
             format: state.stats.format_breakdown || {},
+            country: state.stats.country_breakdown || {},
             status: state.stats.status_breakdown || {},
         };
         const current = breakdownMap[state.chartView];
         if (current && Object.keys(current).length > 0) return;
-        const views = ['status', 'year', 'type', 'agency', 'language', 'format'] as const;
+        const views = ['status', 'year', 'type', 'agency', 'language', 'format', 'country'] as const;
         for (const view of views) {
             if (Object.keys(breakdownMap[view] || {}).length > 0) {
                 state.setChartView(view);
@@ -56,6 +57,7 @@ export const Stats: React.FC<StatsProps> = ({
             case 'type': column = 'document_type'; break;
             case 'language': column = 'language'; break;
             case 'format': column = 'file_format'; break;
+            case 'country': column = 'country'; break;
             case 'status': column = 'status'; break;
         }
 

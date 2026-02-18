@@ -85,6 +85,10 @@ interface HeatmapTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   dataSource: string;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
@@ -320,6 +324,8 @@ const buildSearchParams = (options: {
   searchModel: string | null;
   autoMinScore: boolean;
   deduplicateEnabled: boolean;
+  fieldBoostEnabled: boolean;
+  fieldBoostFields: Record<string, number>;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
@@ -357,6 +363,13 @@ const buildSearchParams = (options: {
     params.append('auto_min_score', 'true');
   }
   params.append('deduplicate', options.deduplicateEnabled.toString());
+  params.append('field_boost', options.fieldBoostEnabled.toString());
+  if (options.fieldBoostEnabled && Object.keys(options.fieldBoostFields).length > 0) {
+    const encoded = Object.entries(options.fieldBoostFields)
+      .map(([f, w]) => `${f}:${w}`)
+      .join(',');
+    params.append('field_boost_fields', encoded);
+  }
   params.append('data_source', options.dataSource);
   return params;
 };
@@ -1082,6 +1095,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
   dataSource,
   selectedDoc,
   onResultClick,
@@ -1129,10 +1146,17 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // Heatmap filters are now completely isolated from global filters
   // No syncing needed
 
+  const MAX_HEATMAP_COLUMN_VALUES = 20;
+
   const columnOptions = useMemo(() => {
     if (!facets?.filter_fields) return [];
     return Object.entries(facets.filter_fields)
-      .filter(([value]) => value !== 'title')
+      .filter(([value]) => {
+        if (value === 'title') return false;
+        if (value === 'published_year') return true;
+        const values = facets.facets?.[value];
+        return !values || values.length <= MAX_HEATMAP_COLUMN_VALUES;
+      })
       .map(([value, label]) => ({
         value,
         label,
@@ -2194,6 +2218,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           searchModel,
           autoMinScore,
           deduplicateEnabled,
+          fieldBoostEnabled,
+          fieldBoostFields,
           dataSource,
         });
 
@@ -2594,6 +2620,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onSectionTypesChange,
     deduplicateEnabled,
     onDeduplicateToggle,
+    fieldBoostEnabled,
+    onFieldBoostToggle,
+    fieldBoostFields,
+    onFieldBoostFieldsChange,
   };
 
   const isQueryRow = rowDimension === 'queries';
@@ -2893,36 +2923,38 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               </div>
             </div>
             <div className="heatmap-modal-content">
-              <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
-              {filteredUniqueDocuments.length > 0 && (
-                <ThumbnailCarousel
-                  documents={filteredUniqueDocuments}
-                  selectedDomain={selectedDomain}
-                  filteredDocId={filteredDocId}
-                  onSelectDoc={setFilteredDocId}
-                  containerClass="heatmap-modal-thumbnails"
-                  itemClass="heatmap-modal-thumbnail"
-                />
-            )}
-            <div className="heatmap-modal-body">
-              <div className="heatmap-modal-filter-indicator">
-                <span className="heatmap-modal-filter-text">
-                  {filterLabel ? (
-                    <>Showing results from: <strong>{filterLabel}</strong></>
-                  ) : (
-                    <>Showing all results. Click on a document above to filter.</>
-                  )}
-                </span>
+              <div className="heatmap-modal-doc-filters">
+                <span className="heatmap-modal-doc-filters-hint">Click on documents or organizations to refine results</span>
+                <OrgFilterLabels orgs={uniqueOrgs} filteredOrg={filteredOrg} onToggle={setFilteredOrg} />
+                {filteredUniqueDocuments.length > 0 && (
+                  <ThumbnailCarousel
+                    documents={filteredUniqueDocuments}
+                    selectedDomain={selectedDomain}
+                    filteredDocId={filteredDocId}
+                    onSelectDoc={setFilteredDocId}
+                    containerClass="heatmap-modal-thumbnails"
+                    itemClass="heatmap-modal-thumbnail"
+                  />
+                )}
                 {filterLabel && (
-                  <button
-                    className="heatmap-modal-filter-clear"
-                    onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
-                    title="Clear filter"
-                  >
-                    × Clear filter
-                  </button>
+                  <div className="heatmap-modal-filter-indicator">
+                    <span className="heatmap-modal-filter-text">
+                      Showing results from: <strong>{filterLabel}</strong>
+                    </span>
+                    <button
+                      className="heatmap-modal-filter-clear"
+                      onClick={() => { setFilteredDocId(null); setFilteredOrg(null); }}
+                      title="Clear filter"
+                    >
+                      × Clear filter
+                    </button>
+                  </div>
                 )}
               </div>
+            <div className="heatmap-modal-body">
+              <h2 className="heatmap-modal-results-title">
+                {activeCell.query ? 'Document Paragraphs' : 'Document Summaries'}
+              </h2>
               <SearchResultsList
                 results={displayedCellResults}
                 minScore={0}
@@ -2933,6 +2965,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 onOpenMetadata={onOpenMetadata}
                 onLanguageChange={handleHeatmapLanguageChange}
                 onRequestHighlight={handleHeatmapHighlight}
+                hidePageNumber={!activeCell.query}
               />
             </div>
             </div>

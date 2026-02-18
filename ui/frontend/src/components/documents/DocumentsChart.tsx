@@ -2,7 +2,7 @@ import React from 'react';
 import { LANGUAGES } from '../../constants';
 import { StatsData } from '../../types/documents';
 
-type ChartView = 'type' | 'agency' | 'year' | 'language' | 'status' | 'format';
+type ChartView = 'type' | 'agency' | 'year' | 'language' | 'status' | 'format' | 'country';
 
 type BreakdownValue = number | Record<string, number>;
 
@@ -23,6 +23,7 @@ const CHART_VIEWS: Array<{ key: ChartView; label: string }> = [
   { key: 'agency', label: 'Organization' },
   { key: 'language', label: 'Language' },
   { key: 'format', label: 'Format' },
+  { key: 'country', label: 'Country' },
   { key: 'status', label: 'Status' },
 ];
 
@@ -67,6 +68,8 @@ const getChartData = (stats: StatsData, chartView: ChartView) => {
       return { breakdown: stats.language_breakdown || {}, title: 'Language' };
     case 'format':
       return { breakdown: stats.format_breakdown || {}, title: 'Format' };
+    case 'country':
+      return { breakdown: stats.country_breakdown || {}, title: 'Country' };
     case 'status':
       return { breakdown: stats.status_breakdown, title: '' };
     default:
@@ -127,6 +130,9 @@ const getChartEntries = (
   const entries = Object.entries(breakdown);
   if (chartView === 'year') {
     return [...entries].sort((a, b) => b[0].localeCompare(a[0]));
+  }
+  if (chartView === 'country') {
+    return entries;
   }
   return entries.slice(0, 10);
 };

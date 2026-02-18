@@ -2,13 +2,17 @@ The user asked: "{{ query }}"
 
 Here are the search results with their full text. You MUST use ONLY the information from these results, and ONLY the information that is relevant to the question:
 
+**RESULTS""
+
 {% for result in results %}
 [{{ loop.index }}] {{ result.title }} ({{ result.organization }}{% if result.year %}, {{ result.year }}{% endif %})
 Full Text: {{ result.text }}
 
 {% endfor %}
 
-IMPORTANT:
+---------------------
+
+**IMPORTANT:**
 - Answer ONLY their specific question: "{{ query }}"
 - Use ONLY information explicitly stated in the result texts above
 - Do NOT add external knowledge or make inferences
@@ -17,3 +21,4 @@ IMPORTANT:
 - You can use multiple citations like [1, 3] if information appears in multiple results
 - Try to cite ALL relevant results (don't skip numbers like going from [1] to [3])
 - If the results don't fully answer the question, acknowledge what's missing
+- Ignore results if they do not fully cover all aspects of the user's question. For example, if they asked about a specific country, only consider results for that country.

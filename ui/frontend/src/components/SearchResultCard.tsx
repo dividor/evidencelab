@@ -1,4 +1,4 @@
-import React, { memo, useRef, useEffect } from 'react';
+import React, { memo, useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { SearchResult } from '../types/api';
 import { LANGUAGES } from '../constants';
@@ -20,14 +20,17 @@ interface SearchResultCardProps {
     onOpenMetadata: (result: SearchResult) => void;
     onLanguageChange: (result: SearchResult, newLang: string) => void;
     onRequestHighlight?: (chunkId: string, text: string) => void;
+    hidePageNumber?: boolean;
 }
 
 const ResultTitleRow = ({
     result,
-    onClick
+    onClick,
+    hidePageNumber
 }: {
     result: SearchResult;
     onClick: (result: SearchResult) => void;
+    hidePageNumber?: boolean;
 }) => (
     <div className="result-title-row">
         <h3
@@ -43,26 +46,55 @@ const ResultTitleRow = ({
         >
             {result.translated_title || result.title}
         </h3>
-        {result.page_num && <span className="result-page-badge">Page {result.page_num}</span>}
+        {!hidePageNumber && result.page_num && <span className="result-page-badge">Page {result.page_num}</span>}
     </div>
 );
 
-const ResultSubtitleRow = ({ result }: { result: SearchResult }) => (
-    <div
-        className="result-subtitle"
-        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-    >
-        <div>
-            {(result.organization || result.year) && (
-                <>
-                    {result.organization && <span>{result.organization}</span>}
-                    {result.organization && result.year && <span> • </span>}
-                    {result.year && <span>{result.year}</span>}
-                </>
+const CountryDisplay = ({ raw }: { raw: string }) => {
+    const [expanded, setExpanded] = useState(false);
+    const countries = raw.includes('; ')
+        ? raw.split('; ').map(s => s.trim()).filter(Boolean)
+        : raw.includes(',')
+          ? raw.split(',').map(s => s.trim()).filter(Boolean)
+          : [raw];
+    if (countries.length <= 3) return <span>{countries.join(', ')}</span>;
+    const visible = expanded ? countries : countries.slice(0, 3);
+    return (
+        <span>
+            {visible.join(', ')}
+            {!expanded && (
+                <button className="see-more-link" onClick={e => { e.stopPropagation(); setExpanded(true); }}>
+                    +{countries.length - 3} more
+                </button>
             )}
+        </span>
+    );
+};
+
+const ResultSubtitleRow = ({ result }: { result: SearchResult }) => {
+    const country = result.metadata?.map_country || result.metadata?.country || '';
+    const hasOrg = !!result.organization;
+    const hasYear = !!result.year;
+    const hasCountry = !!country;
+    return (
+        <div
+            className="result-subtitle"
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        >
+            <div>
+                {(hasOrg || hasYear || hasCountry) && (
+                    <>
+                        {hasOrg && <span>{result.organization}</span>}
+                        {hasOrg && (hasYear || hasCountry) && <span> • </span>}
+                        {hasYear && <span>{result.year}</span>}
+                        {hasYear && hasCountry && <span> • </span>}
+                        {hasCountry && <CountryDisplay raw={country} />}
+                    </>
+                )}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 const ResultHeadings = ({ result }: { result: SearchResult }) => {
     if (!result.headings || result.headings.length === 0) {
@@ -183,7 +215,8 @@ const SearchResultCard = memo(({
     onClick,
     onOpenMetadata,
     onLanguageChange,
-    onRequestHighlight
+    onRequestHighlight,
+    hidePageNumber
 }: SearchResultCardProps) => {
     const cardRef = useRef<HTMLDivElement>(null);
 
@@ -224,7 +257,7 @@ const SearchResultCard = memo(({
             data-doc-id={result.doc_id}
             data-page={result.page_num}
         >
-            <ResultTitleRow result={result} onClick={onClick} />
+            <ResultTitleRow result={result} onClick={onClick} hidePageNumber={hidePageNumber} />
             <ResultSubtitleRow result={result} />
 
             <div className="result-snippet-container">

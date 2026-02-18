@@ -43,6 +43,10 @@ interface FiltersPanelProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  fieldBoostEnabled: boolean;
+  onFieldBoostToggle: (value: boolean) => void;
+  fieldBoostFields: Record<string, number>;
+  onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
 }
 
 export const FiltersPanel: React.FC<FiltersPanelProps> = ({
@@ -85,6 +89,10 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  fieldBoostEnabled,
+  onFieldBoostToggle,
+  fieldBoostFields,
+  onFieldBoostFieldsChange,
 }) => (
   <aside className={`filters-section ${filtersExpanded ? 'filters-section-expanded' : ''}`}>
     <div className="filters-card">
@@ -144,6 +152,11 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onSectionTypesChange={onSectionTypesChange}
             deduplicateEnabled={deduplicateEnabled}
             onDeduplicateToggle={onDeduplicateToggle}
+            fieldBoostEnabled={fieldBoostEnabled}
+            onFieldBoostToggle={onFieldBoostToggle}
+            fieldBoostFields={fieldBoostFields}
+            onFieldBoostFieldsChange={onFieldBoostFieldsChange}
+            availableBoostFields={facets ? Object.keys(facets.filter_fields) : []}
           />
         </>
       )}

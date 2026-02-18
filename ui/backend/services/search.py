@@ -96,7 +96,12 @@ SEARCH_FETCH_LIMIT = search_models.SEARCH_FETCH_LIMIT
 # Minimal payload fields to request from Qdrant during search.
 # Heavy fields (sys_text, sys_bbox, sys_tables, etc.) are fetched from
 # PostgreSQL instead, avoiding large payload transfers from Qdrant.
-SEARCH_PAYLOAD_FIELDS = ["doc_id", "sys_doc_id", "tag_section_type"]
+SEARCH_PAYLOAD_FIELDS = [
+    "doc_id",
+    "sys_doc_id",
+    "tag_section_type",
+    "map_published_year",
+]
 
 _resolved_embedding_api_url: Optional[str] = None
 
@@ -397,7 +402,11 @@ def _build_query_filter(
     filters = map_filters_to_storage(filters, data_source=data_source)
     if filters:
         text_match_fields = {"map_title"}
+        # Language is doc-level only (sys_language/map_language), not on chunks
+        doc_only_fields = {"map_language", "sys_language"}
         for field, value in filters.items():
+            if field in doc_only_fields:
+                continue
             if field == "doc_id":
                 # doc_id filter must be required, but we need to check both doc_id and sys_doc_id
                 # Create a nested filter: MUST(doc_id=X OR sys_doc_id=X)
@@ -617,10 +626,6 @@ def _apply_post_search_adjustments(
     chunk_cache: Optional[Dict[str, Any]] = None,
     max_rerank_candidates: int = 0,
 ) -> List[Any]:
-    if recency_boost and search_result:
-        search_result = apply_recency_boost(
-            search_result, recency_weight=recency_weight, scale_days=recency_scale_days
-        )
     if rerank and search_result:
         search_result = rerank_results(
             query,
@@ -629,6 +634,10 @@ def _apply_post_search_adjustments(
             rerank_model=rerank_model,
             chunk_cache=chunk_cache,
             max_rerank_candidates=max_rerank_candidates,
+        )
+    if recency_boost and search_result:
+        search_result = apply_recency_boost(
+            search_result, recency_weight=recency_weight, scale_days=recency_scale_days
         )
     if limit and len(search_result) > limit:
         return search_result[:limit]

@@ -72,6 +72,7 @@ Search powered by hybrid retrieval and AI.
 * **Hybrid Search (RRF)**: Uses Reciprocal Rank Fusion to mathematically combine results from Semantic Search (Dense) and Keyword Search (Sparse). This captures both "conceptual matches" and "exact phrase matches".
 * **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry) and Jina Reranker (via Huggingface).
 * **Recency Boosting**: Applies a Gaussian decay function to boost newer documents while retaining relevance for older, highly distinct matches.
+* **Field Boosting**: Configurable per data source, detects field values (e.g., country names, organizations) mentioned in the query and boosts matching results. At weight < 1.0, uses a multiplicative bonus (`score * (1 + weight)`) so non-matching results are never penalized. At weight = 1.0, acts as a hard filter — results whose metadata field does not match the detected value are excluded entirely.
 * **Faceted Navigation**: Filter by Organization, Year, Language, and Format.
 * **Cross-Lingual features**:
   * **Translation**: Translate search results (titles + snippets) into 10+ languages on request.

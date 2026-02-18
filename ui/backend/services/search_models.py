@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -665,21 +666,23 @@ def apply_recency_boost(
     for result in results:
         original_score = result.score
         published_unix = result.payload.get("published_date_unix")
-
-        if published_unix is None:
-            # No publication date - use original score with no recency boost
-            recency_factor = 0.5  # Neutral factor for missing dates
-        else:
-            # Calculate age from end of publication year (Dec 31)
-            # This ensures current year and last year reports get high boost
+        pub_year = None
+        if published_unix is not None:
             pub_year = datetime.fromtimestamp(published_unix).year
+        else:
+            raw_year = result.payload.get("map_published_year")
+            if raw_year:
+                try:
+                    pub_year = int(str(raw_year)[:4])
+                except (ValueError, TypeError):
+                    pass
+
+        if pub_year is None:
+            # No publication date - use neutral factor
+            recency_factor = 0.5
+        else:
             pub_year_end_unix = int(datetime(pub_year, 12, 31).timestamp())
-
-            # Age is from the end of publication year to now
             age_seconds = max(0, now_unix - pub_year_end_unix)
-
-            # Gaussian decay: exp(-0.5 * (age / scale)^2)
-            # This gives ~1.0 for recent reports, decaying for older years
             recency_factor = math.exp(-0.5 * (age_seconds / scale_seconds) ** 2)
 
         # Combine original score with recency factor
@@ -707,3 +710,171 @@ def apply_recency_boost(
         f"to {len(results)} results"
     )
     return reordered_results
+
+
+def _detect_field_values_in_query(
+    query: str, known_values: List[str], min_length: int = 3
+) -> List[str]:
+    """Detect which known field values appear in the query.
+
+    Uses case-insensitive word-boundary matching with longest-first ordering
+    to handle multi-word values like "South Sudan" before "Sudan".
+    Skips values shorter than min_length to avoid false positives.
+    """
+    query_lower = query.lower()
+    # Sort by length descending so "South Sudan" matches before "Sudan"
+    sorted_values = sorted(known_values, key=len, reverse=True)
+    matched = []
+    for value in sorted_values:
+        if len(value) < min_length:
+            continue
+        # Use word boundaries to avoid partial matches
+        pattern = r"\b" + re.escape(value.lower()) + r"\b"
+        if re.search(pattern, query_lower):
+            matched.append(value)
+            # Remove matched value from query to avoid double-matching
+            query_lower = re.sub(pattern, " ", query_lower)
+    return matched
+
+
+def _split_field_value(value: str) -> List[str]:
+    """Split a potentially comma-separated field value into individual values."""
+    if "," in value:
+        return [v.strip() for v in value.split(",") if v.strip()]
+    return [value.strip()] if value.strip() else []
+
+
+_FIELD_ACCESSORS = {
+    "organization": lambda r: r.organization or "",
+    "country": lambda r: r.metadata.get("map_country", "") or "",
+}
+
+
+def _build_text_patterns(
+    detected: Dict[str, List[str]],
+) -> Dict[str, List[re.Pattern]]:
+    """Pre-compile word-boundary regex patterns for text content matching."""
+    return {
+        field: [re.compile(r"\b" + re.escape(v) + r"\b", re.IGNORECASE) for v in vals]
+        for field, vals in detected.items()
+    }
+
+
+def _compute_boost_multiplier(
+    result: Any,
+    detected: Dict[str, List[str]],
+    boost_fields: Dict[str, float],
+    text_patterns: Dict[str, List[re.Pattern]],
+) -> float:
+    """Compute the boost multiplier for a single result."""
+    multiplier = 1.0
+    for field, matched_values in detected.items():
+        weight = boost_fields[field]
+        accessor = _FIELD_ACCESSORS.get(
+            field, lambda r, f=field: r.metadata.get(f"map_{f}", "") or ""
+        )
+        raw_value = accessor(result)
+        result_values = [v.lower() for v in _split_field_value(raw_value)]
+
+        if any(rv in matched_values for rv in result_values):
+            multiplier += weight
+        else:
+            text_to_check = (result.text or "") + " " + (result.title or "")
+            if any(p.search(text_to_check) for p in text_patterns[field]):
+                multiplier += weight
+    return multiplier
+
+
+def _detect_boost_fields(
+    query: str, boost_fields: Dict[str, float], known_values: Dict[str, List[str]]
+) -> Dict[str, List[str]]:
+    """Detect which known field values appear in the query."""
+    detected: Dict[str, List[str]] = {}
+    for field, weight in boost_fields.items():
+        if field not in known_values or weight <= 0:
+            continue
+        matches = _detect_field_values_in_query(query, known_values[field])
+        if matches:
+            detected[field] = [m.lower() for m in matches]
+    return detected
+
+
+def _result_matches_field(result, field, detected_vals, text_patterns):
+    """Check if a result matches detected values for a field (metadata or text)."""
+    accessor = _FIELD_ACCESSORS.get(
+        field, lambda r, f=field: r.metadata.get(f"map_{f}", "") or ""
+    )
+    raw_value = accessor(result)
+    result_vals = [v.lower() for v in _split_field_value(raw_value)]
+    if any(rv in detected_vals for rv in result_vals):
+        return True
+    text = (result.text or "") + " " + (result.title or "")
+    return any(p.search(text) for p in text_patterns.get(field, []))
+
+
+def _passes_exclusive_filter(result, exclusive_fields, detected, text_patterns):
+    """Return True if result matches ALL exclusive fields (metadata or text)."""
+    for field in exclusive_fields:
+        if not _result_matches_field(result, field, detected[field], text_patterns):
+            return False
+    return True
+
+
+def apply_field_boost(
+    results: List[Any],
+    query: str,
+    boost_fields: Dict[str, float],
+    known_values: Dict[str, List[str]],
+) -> List[Any]:
+    """Apply field-based boosting to search results.
+
+    Detects field values (e.g., country names, organizations) mentioned in the
+    query and boosts matching results. Fields with weight >= 1.0 act as hard
+    filters, excluding results that don't match in metadata or text content.
+
+    Score formula: score * (1 + sum_of_matching_weights)
+    e.g. with country=0.5 and org=0.5, a result matching both gets score * 2.0,
+    matching one gets score * 1.5, matching none stays at score * 1.0.
+    """
+    if not results or not boost_fields or not query.strip():
+        return results
+
+    detected = _detect_boost_fields(query, boost_fields, known_values)
+    if not detected:
+        return results
+
+    text_patterns = _build_text_patterns(detected)
+    exclusive_fields = {
+        f for f, w in boost_fields.items() if w >= 1.0 and f in detected
+    }
+
+    filtered_results = []
+    excluded_count = 0
+    for result in results:
+        multiplier = _compute_boost_multiplier(
+            result, detected, boost_fields, text_patterns
+        )
+        if exclusive_fields and not _passes_exclusive_filter(
+            result, exclusive_fields, detected, text_patterns
+        ):
+            excluded_count += 1
+            continue
+        if multiplier > 1.0:
+            result.metadata["_field_boost_multiplier"] = multiplier
+            result.metadata["_pre_field_boost_score"] = result.score
+            if result.score >= 0:
+                result.score = result.score * multiplier
+            else:
+                result.score = result.score + abs(result.score) * (multiplier - 1.0)
+        filtered_results.append(result)
+
+    filtered_results.sort(key=lambda r: r.score, reverse=True)
+
+    boosted_fields = ", ".join(f"{f}={boost_fields[f]}" for f in detected.keys())
+    detected_str = ", ".join(f"{f}={vals}" for f, vals in detected.items())
+    exc_msg = f", excluded={excluded_count}" if excluded_count else ""
+    logger.info(
+        f"✓ Applied field boost ({boosted_fields}) "
+        f"detected=[{detected_str}] to {len(filtered_results)} results{exc_msg}"
+    )
+    return filtered_results

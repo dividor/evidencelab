@@ -20,6 +20,60 @@ const getResponsiveScale = (): number => {
   return 1.5;
 };
 
+/**
+ * Merge vertically sequential/adjacent highlight bboxes on the same page
+ * into single larger bounding boxes. This prevents fragmented highlighting
+ * when a chunk spans multiple small bboxes.
+ */
+const mergeSequentialHighlights = (highlights: HighlightBox[]): HighlightBox[] => {
+  if (highlights.length <= 1) return highlights;
+
+  // Group by page
+  const byPage = new Map<number, HighlightBox[]>();
+  for (const h of highlights) {
+    const arr = byPage.get(h.page) || [];
+    arr.push(h);
+    byPage.set(h.page, arr);
+  }
+
+  const merged: HighlightBox[] = [];
+  for (const [, pageHighlights] of byPage) {
+    if (pageHighlights.length <= 1) {
+      merged.push(...pageHighlights);
+      continue;
+    }
+
+    // Sort top-to-bottom (highest t first in PDF coords)
+    const sorted = [...pageHighlights].sort((a, b) => b.bbox.t - a.bbox.t);
+
+    let current = { ...sorted[0], bbox: { ...sorted[0].bbox } };
+    for (let i = 1; i < sorted.length; i++) {
+      const next = sorted[i];
+      const lineHeight = current.bbox.t - current.bbox.b;
+      const gap = current.bbox.b - next.bbox.t;
+
+      // Merge if gap between bottom of current and top of next is small
+      // (less than one line height, or they overlap)
+      if (gap < lineHeight * 0.8) {
+        current.bbox.l = Math.min(current.bbox.l, next.bbox.l);
+        current.bbox.r = Math.max(current.bbox.r, next.bbox.r);
+        current.bbox.b = Math.min(current.bbox.b, next.bbox.b);
+        current.bbox.t = Math.max(current.bbox.t, next.bbox.t);
+        // Concatenate text
+        if (next.text && !current.text.includes(next.text)) {
+          current.text = current.text + ' ' + next.text;
+        }
+      } else {
+        merged.push(current);
+        current = { ...next, bbox: { ...next.bbox } };
+      }
+    }
+    merged.push(current);
+  }
+
+  return merged;
+};
+
 interface PDFViewerProps {
   docId: string;
   chunkId: string;
@@ -474,8 +528,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         bbox: item.bbox,
         text: item.text || '' // Pass chunk text for semantic matching
       }));
-      console.log(`[Highlights] Setting ${immediateHighlights.length} IMMEDIATE bbox highlights with text`);
-      setHighlights(immediateHighlights);
+      const merged = mergeSequentialHighlights(immediateHighlights);
+      console.log(`[Highlights] Setting ${merged.length} IMMEDIATE bbox highlights (merged from ${immediateHighlights.length}) with text`);
+      setHighlights(merged);
     }
 
     // Then load additional highlights asynchronously if needed (and we don't already have bbox highlights)
@@ -655,14 +710,14 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       const apiHighlights = data.highlights || [];
       console.log(`[Highlights] Received ${apiHighlights.length} highlights from API`);
 
-      // Merge with existing immediate highlights (avoid duplicates)
+      // Merge with existing immediate highlights (avoid duplicates), then merge sequential
       setHighlights(prevHighlights => {
         const existingPages = new Set(prevHighlights.map(h => `${h.page}-${h.bbox.l}-${h.bbox.t}`));
         const newHighlights = apiHighlights.filter(h =>
           !existingPages.has(`${h.page}-${h.bbox.l}-${h.bbox.t}`)
         );
         console.log(`[Highlights] Adding ${newHighlights.length} new highlights (${prevHighlights.length} already present)`);
-        return [...prevHighlights, ...newHighlights];
+        return mergeSequentialHighlights([...prevHighlights, ...newHighlights]);
       });
     } catch (err) {
       console.error('Error loading highlights:', err);
@@ -1185,7 +1240,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
       processedBBoxesRef.current.clear();
       setInPdfSearchResults(navPoints);
-      setHighlights(allHighlights);
+      setHighlights(mergeSequentialHighlights(allHighlights));
       setCurrentMatchIndex(0);
 
       if (navPoints.length > 0) {
