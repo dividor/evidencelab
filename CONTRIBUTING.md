@@ -334,15 +334,43 @@ to be running.
 docker compose exec pipeline \
   python scripts/performance/verify_search_performance.py
 
-# Stress test /search with concurrency
-docker compose exec pipeline \
-  python scripts/performance/search-stress-test.py \
-    --data-source uneg --base-url http://api:8000 --run-both
-
 # Qdrant hybrid query diagnostics
 docker compose exec -e QDRANT_HOST=http://qdrant:6333 pipeline \
   python scripts/performance/verify_qdrant_performance.py
 ```
+
+### Search stress test
+
+`scripts/performance/search-stress-test.py` fires randomised queries at the
+`/api/search` endpoint and prints results asynchronously as they arrive.
+
+```bash
+# Against a remote deployment (e.g. production)
+python scripts/performance/search-stress-test.py \
+  --base-url https://evidencelab.ai \
+  --api-key "$API_KEY" \
+  --data-source "UN Humanitarian Evaluation Reports" \
+  --model-combo "Huggingface" \
+  --total-requests 20 --pause 1
+
+# Against local Docker stack, compare rerank on/off
+docker compose exec pipeline \
+  python scripts/performance/search-stress-test.py \
+    --base-url http://api:8000 --search-path /search \
+    --data-source uneg --run-both
+```
+
+Key options:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--model-combo` | *(none)* | Load model + reranker from `config.json` (`Azure Foundry`, `Huggingface`) |
+| `--total-requests` | 300 | Number of queries to send |
+| `--pause` | 1.0 | Seconds between sends (0 = fully concurrent) |
+| `--concurrency` | 50 | Max parallel requests (used when `--pause 0`) |
+| `--run-both` | off | Run once with rerank, once without |
+| `--rerank-model-page-size` | 10 | Candidates per rerank batch (critical for HF reranker) |
+| `--output-json` | *(none)* | Write results to a JSON file |
 
 ## ✅ GitHub Actions (CI)
 

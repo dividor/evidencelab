@@ -9,6 +9,115 @@ import urllib.parse
 import urllib.request
 from collections import Counter
 from concurrent.futures import Future, ThreadPoolExecutor
+from pathlib import Path
+
+DEFAULT_QUERY_WORDS = [
+    "evaluation",
+    "food",
+    "security",
+    "health",
+    "education",
+    "nutrition",
+    "humanitarian",
+    "crisis",
+    "refugee",
+    "displacement",
+    "conflict",
+    "drought",
+    "resilience",
+    "gender",
+    "protection",
+    "shelter",
+    "water",
+    "sanitation",
+    "hygiene",
+    "livelihood",
+    "agriculture",
+    "climate",
+    "adaptation",
+    "emergency",
+    "response",
+    "recovery",
+    "preparedness",
+    "coordination",
+    "accountability",
+    "monitoring",
+    "assessment",
+    "survey",
+    "baseline",
+    "indicator",
+    "outcome",
+    "impact",
+    "sustainability",
+    "capacity",
+    "partnership",
+    "community",
+    "vulnerability",
+    "poverty",
+    "malnutrition",
+    "stunting",
+    "wasting",
+    "mortality",
+    "morbidity",
+    "access",
+    "coverage",
+    "quality",
+    "effectiveness",
+    "efficiency",
+    "relevance",
+    "coherence",
+    "inclusion",
+    "equity",
+    "rights",
+    "governance",
+    "policy",
+    "strategy",
+    "programme",
+    "intervention",
+    "targeting",
+    "distribution",
+    "supply",
+    "logistics",
+    "procurement",
+    "budget",
+    "funding",
+    "donor",
+    "beneficiary",
+    "household",
+    "child",
+    "women",
+    "youth",
+    "urban",
+    "rural",
+    "market",
+    "price",
+    "inflation",
+    "trade",
+    "cereal",
+    "grain",
+    "rice",
+    "maize",
+    "wheat",
+    "livestock",
+    "fisheries",
+    "forest",
+    "land",
+    "soil",
+    "irrigation",
+    "rainfall",
+    "flood",
+    "earthquake",
+    "cyclone",
+    "pandemic",
+    "disease",
+    "vaccination",
+    "migration",
+    "returnee",
+    "host",
+    "camp",
+    "settlement",
+    "integration",
+]
 
 DEFAULT_SECTION_TYPES = [
     "executive_summary",
@@ -45,6 +154,7 @@ def build_search_url(
     min_chunk_size: int,
     limit: int,
     model: str | None,
+    rerank_model: str | None,
     rerank_model_page_size: int,
     document_type: str | None,
     published_year: str | None,
@@ -67,6 +177,8 @@ def build_search_url(
         params["rerank_model_page_size"] = str(rerank_model_page_size)
     if model:
         params["model"] = model
+    if rerank_model:
+        params["rerank_model"] = rerank_model
     if document_type:
         params["document_type"] = document_type
     if published_year:
@@ -76,11 +188,21 @@ def build_search_url(
     return f"{base_url.rstrip('/')}/{search_path.strip('/')}?{query_string}"
 
 
-def generate_random_query(
-    all_words: list[str], min_words: int = 1, max_words: int = 4
-) -> str:
-    count = random.randint(min_words, min(max_words, len(all_words)))
-    return " ".join(random.sample(all_words, count))
+def generate_unique_queries(
+    all_words: list[str], count: int, min_words: int = 2, max_words: int = 5
+) -> list[str]:
+    seen: set[str] = set()
+    queries: list[str] = []
+    max_attempts = count * 10
+    attempts = 0
+    while len(queries) < count and attempts < max_attempts:
+        n = random.randint(min_words, min(max_words, len(all_words)))
+        q = " ".join(random.sample(all_words, n))
+        if q not in seen:
+            seen.add(q)
+            queries.append(q)
+        attempts += 1
+    return queries
 
 
 def execute_request(
@@ -115,6 +237,19 @@ def execute_request(
         return 0, duration, str(exc), 0
 
 
+def load_model_combo(combo_name: str) -> dict:
+    config_path = Path(__file__).resolve().parent.parent.parent / "config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"config.json not found at {config_path}")
+    with open(config_path, encoding="utf-8") as fh:
+        config = json.load(fh)
+    combos = config.get("ui_model_combos", {})
+    if combo_name not in combos:
+        available = ", ".join(combos.keys())
+        raise ValueError(f"Unknown model combo '{combo_name}'. Available: {available}")
+    return combos[combo_name]
+
+
 def run_stress_test(
     base_url: str,
     search_path: str,
@@ -135,16 +270,18 @@ def run_stress_test(
     rerank_model_page_size: int,
     limit: int,
     model: str | None,
-    timeout: float,
+    rerank_model: str | None = None,
+    timeout: float = 120.0,
     pause: float = 0.0,
     api_key: str | None = None,
 ) -> dict:
-    all_words = list({w for q in queries for w in q.split()})
+    all_words = list({w for q in queries for w in q.split()} | set(DEFAULT_QUERY_WORDS))
+    random.shuffle(all_words)
+    unique_queries = generate_unique_queries(all_words, total_requests)
 
     urls: list[str] = []
     query_texts: list[str] = []
-    for _ in range(total_requests):
-        query = generate_random_query(all_words)
+    for query in unique_queries:
         document_type = random.choice(document_types) if document_types else None
         published_year = random.choice(years) if years else None
         urls.append(
@@ -164,6 +301,7 @@ def run_stress_test(
                 rerank_model_page_size=rerank_model_page_size,
                 limit=limit,
                 model=model,
+                rerank_model=rerank_model,
                 document_type=document_type,
                 published_year=published_year,
             )
@@ -251,7 +389,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--data-source", required=True)
     parser.add_argument(
-        "--queries", default="evaluation,food security,health,education"
+        "--queries",
+        default="",
+        help="Extra query phrases (comma-separated). Words are merged with defaults.",
     )
     parser.add_argument("--document-types", default="")
     parser.add_argument("--years", default="")
@@ -268,7 +408,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-chunk-size", type=int, default=100)
     parser.add_argument("--rerank-model-page-size", type=int, default=10)
     parser.add_argument("--limit", type=int, default=50)
-    parser.add_argument("--model", default=None)
+    parser.add_argument("--model", default=None, help="Embedding model name")
+    parser.add_argument("--rerank-model", default=None, help="Reranker model name")
+    parser.add_argument(
+        "--model-combo",
+        default=None,
+        help="Model combo from config.json (e.g. 'Azure Foundry', 'Huggingface')",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument(
         "--pause",
@@ -289,6 +435,23 @@ def main() -> None:
     document_types = [d.strip() for d in args.document_types.split(",") if d.strip()]
     years = [y.strip() for y in args.years.split(",") if y.strip()]
     section_types = [s.strip() for s in args.section_types.split(",") if s.strip()]
+
+    model = args.model
+    rerank_model = args.rerank_model
+    rerank_model_page_size = args.rerank_model_page_size
+
+    if args.model_combo:
+        combo = load_model_combo(args.model_combo)
+        if not model:
+            model = combo.get("embedding_model")
+        if not rerank_model:
+            rerank_model = combo.get("reranker_model")
+        rerank_model_page_size = combo.get("rerank_model_page_size", 0)
+        print(
+            f"Model combo '{args.model_combo}': "
+            f"model={model}, rerank_model={rerank_model}, "
+            f"rerank_model_page_size={rerank_model_page_size}\n"
+        )
 
     runs = [args.rerank]
     if args.run_both:
@@ -313,9 +476,10 @@ def main() -> None:
             section_types=section_types,
             keyword_boost_short_queries=args.keyword_boost_short_queries,
             min_chunk_size=args.min_chunk_size,
-            rerank_model_page_size=args.rerank_model_page_size,
+            rerank_model_page_size=rerank_model_page_size,
             limit=args.limit,
-            model=args.model,
+            model=model,
+            rerank_model=rerank_model,
             timeout=args.timeout,
             pause=args.pause,
             api_key=args.api_key,
