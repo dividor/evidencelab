@@ -549,6 +549,7 @@ function App() {
   const [domainDropdownOpen, setDomainDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [helpDropdownOpen, setHelpDropdownOpen] = useState(false);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
   const [showDomainTooltip, setShowDomainTooltip] = useState(false);
   const [aboutContent, setAboutContent] = useState('');
   const [techContent, setTechContent] = useState('');
@@ -2230,8 +2231,28 @@ function App() {
           GitHub
         </a>
         <span className="app-footer-divider">•</span>
-        <a href="mailto:evidencelab@astrobagel.com">Contact</a>
+        <button type="button" className="app-footer-link" onClick={() => setContactModalOpen(true)}>
+          Contact
+        </button>
       </footer>
+
+      {contactModalOpen && (
+        <div className="preview-overlay" onClick={() => setContactModalOpen(false)}>
+          <div className="modal-panel contact-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Contact</h2>
+              <button onClick={() => setContactModalOpen(false)} className="modal-close">×</button>
+            </div>
+            <div className="modal-body">
+              <p>
+                If you would like to have your public documents added to Evidence Lab for research,
+                or would like to contribute to the project, or have general feedback and questions,
+                please reach out to <a href="mailto:evidencelab@astrobagel.com">evidencelab@astrobagel.com</a>.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PdfPreviewOverlay
         selectedDoc={selectedDoc}
