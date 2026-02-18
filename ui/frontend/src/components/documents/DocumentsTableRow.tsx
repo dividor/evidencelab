@@ -11,6 +11,9 @@ import { TaxonomyCell } from './TaxonomyCell';
 import { formatTimestamp, getLastUpdatedTimestamp } from './documentsModalUtils';
 import API_BASE_URL, { USER_FEEDBACK } from '../../config';
 
+const hasSuccessfulParse = (status: string | undefined): boolean =>
+  Boolean(status) && status !== 'downloaded' && !status!.includes('error') && !status!.includes('failed');
+
 const getThumbnailUrl = (doc: any, dataSource: string): string | null => {
   const docId = doc.doc_id || doc.id;
   if (!docId) return null;
@@ -87,9 +90,7 @@ export const DocumentsTableRow: React.FC<{
     // Get taxonomy configurations
     const taxonomies = dataSourceConfig?.pipeline?.tag?.taxonomies || {};
 
-    // Check if document has reached parsed status or later
-    // Show thumbnail for any document that has been successfully parsed (exclude 'downloaded' and error states)
-    const hasParsedStatus = doc.status && doc.status !== 'downloaded' && !doc.status.includes('error');
+    const hasParsedStatus = hasSuccessfulParse(doc.status);
 
     // Construct thumbnail URL (only for parsed or later documents)
     const thumbnailUrl = hasParsedStatus ? getThumbnailUrl(doc, dataSource) : null;
