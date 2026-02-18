@@ -111,8 +111,9 @@ describe('DocumentsTableRow - Thumbnail Functionality', () => {
     const img = container.querySelector('img.doc-title-thumbnail');
     expect(img).not.toBeInTheDocument();
 
-    const thumbnailContainer = container.querySelector('.doc-title-with-thumbnail');
-    expect(thumbnailContainer).not.toBeInTheDocument();
+    const placeholder = container.querySelector('.doc-title-thumbnail-placeholder');
+    expect(placeholder).toBeInTheDocument();
+    expect(placeholder).toHaveTextContent('No preview');
   });
 
   test('does NOT show thumbnail for error status', () => {
@@ -134,8 +135,9 @@ describe('DocumentsTableRow - Thumbnail Functionality', () => {
     const img = container.querySelector('img.doc-title-thumbnail');
     expect(img).not.toBeInTheDocument();
 
-    const thumbnailContainer = container.querySelector('.doc-title-with-thumbnail');
-    expect(thumbnailContainer).not.toBeInTheDocument();
+    const placeholder = container.querySelector('.doc-title-thumbnail-placeholder');
+    expect(placeholder).toBeInTheDocument();
+    expect(placeholder).toHaveTextContent('No preview');
   });
 
   test('shows "No preview" placeholder when thumbnail URL exists but fails to load', () => {
