@@ -92,6 +92,25 @@ Tools for managing the pipeline and data quality.
 * **Pipeline Controls**: Manually re-trigger the processing pipeline for specific documents directly from the UI.
 * **Traceability**: Full visibility into processing errors, including raw error logs and stack traces preserved in the database.
 
+## AI Models
+
+### Pipeline
+
+The pipeline utilizes AI models in a few places:
+
+- Vector embeddings, used for search
+- LLM document summarization
+- LLM tagging
+- LLM Document Structure analysis
+
+Above you can see a menu options for models. The demo data was processed using the specified Huggingface models, with an additional generation of vectors using Azure Foundry. The latter is so users can try two different embedding models in the user interface.
+
+### User Interface
+
+As shown in the above models drop-down, this user interface can use either open models found on Huggingface or Azure foundry (Azure open AI). Over time, more will be added.
+
+One thing to note, is that if using Huggingface models, the search reranker model runs locally on the application host. Since this project aims for low-cost, using such a model will result in slow search queries as the host isn't that powerful. With more work and engineering (and hosting cost) this could be addressed in future.
+
 ## Technical Foundation
 
 * **Containerized Architecture**: Fully dockerized.
