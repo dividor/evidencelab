@@ -2969,6 +2969,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               />
             </div>
             </div>
+            <button className="heatmap-modal-mobile-close" onClick={closeCellModal}>
+              Close Results
+            </button>
           </div>
         </div>
       )}

@@ -5097,13 +5097,16 @@ h6,
   }
 
   .preview-overlay {
-    padding: var(--spacing-md);
+    padding: 0;
   }
 
   .preview-panel {
     width: 100%;
-    height: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
     border-radius: 0;
+    box-shadow: none;
   }
 }
 
@@ -5191,26 +5194,21 @@ h6,
     max-width: calc(100vw - 2rem);
   }
 
+  /* Dataset dropdown — anchor to left edge so it doesn't bleed off-screen */
+  .dropdown-menu-domain {
+    right: auto;
+    left: 0;
+  }
+
   /* Info dropdown — anchor to right edge so it doesn't overflow */
   .dropdown-menu-help {
     right: 0;
     left: auto;
   }
 
-  /* Model combo panel — below instead of to the right */
+  /* Hide model info panel on mobile — just show the model list */
   .model-combo-panel {
-    position: static;
-    min-width: auto;
-    max-width: none;
-    border-top: 1px solid var(--gray-200);
-    margin-top: 0.25rem;
-    box-shadow: none;
-  }
-
-  .model-combo-panel-row {
-    grid-template-columns: 80px minmax(0, 1fr) 42px;
-    gap: 0.375rem;
-    font-size: 0.75rem;
+    display: none;
   }
 
   /* Navigation Tabs — wrap to allow Monitor dropdown to escape overflow */
@@ -5341,10 +5339,6 @@ h6,
 
   .search-result-filters-hint {
     display: none;
-  }
-
-  .preview-overlay {
-    padding: 0;
   }
 
   /* Mobile PDF Viewer Improvements */
@@ -7401,4 +7395,81 @@ h6,
 
 .search-result-filters-clear:hover {
   background: rgba(91, 143, 168, 0.15);
+}
+
+/* ── Modal mobile styles ── */
+
+@media (max-width: 640px) {
+  /* Hide thumbnail carousels on mobile */
+  .heatmap-modal-thumbnails,
+  .search-result-filters-thumbnails {
+    display: none;
+  }
+
+  .heatmap-modal-doc-filters-hint {
+    display: none;
+  }
+
+  /* Heatmap modal full-screen on mobile */
+  .heatmap-modal-overlay {
+    padding: 0;
+  }
+
+  .heatmap-modal {
+    width: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .heatmap-modal-doc-filters {
+    margin: 0.5rem 0.75rem;
+  }
+
+  .heatmap-modal-org-labels {
+    padding: 0.5rem 0.75rem 0.25rem;
+  }
+
+  .heatmap-modal-body {
+    padding: 0.75rem;
+  }
+
+  .heatmap-modal-header {
+    padding: 0.75rem;
+  }
+
+  /* Floating close button for heatmap modal */
+  .heatmap-modal-mobile-close {
+    display: block !important;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 0.75rem 1.5rem;
+    background: var(--accent-coral);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-family: 'Poppins', sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+    transition: all 0.2s;
+  }
+
+  .heatmap-modal-mobile-close:hover {
+    background: var(--accent-coral-dark);
+  }
+
+  .heatmap-modal-mobile-close:active {
+    transform: translateY(0);
+  }
+}
+
+/* Hide floating close button on desktop */
+.heatmap-modal-mobile-close {
+  display: none;
 }
