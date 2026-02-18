@@ -1146,10 +1146,16 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // Heatmap filters are now completely isolated from global filters
   // No syncing needed
 
+  const MAX_HEATMAP_COLUMN_VALUES = 20;
+
   const columnOptions = useMemo(() => {
     if (!facets?.filter_fields) return [];
     return Object.entries(facets.filter_fields)
-      .filter(([value]) => value !== 'title')
+      .filter(([value]) => {
+        if (value === 'title') return false;
+        const values = facets.facets?.[value];
+        return !values || values.length <= MAX_HEATMAP_COLUMN_VALUES;
+      })
       .map(([value, label]) => ({
         value,
         label,
