@@ -48,6 +48,7 @@ Evidence Lab document processing pipeline includes the following features:
 | <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200"> |
 
 - Hybrid search with AI summary and reranking
+- Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
 - Experimental features such as heatmapper for tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models

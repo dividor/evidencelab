@@ -1633,6 +1633,10 @@ function App() {
     rerankModel,
     searchModel,
     loadFacets,
+    autoMinScore,
+    deduplicateEnabled,
+    fieldBoostEnabled,
+    fieldBoostFields,
   ]);
 
   // Track if we've done initial search to avoid double-searching on load

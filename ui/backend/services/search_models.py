@@ -783,6 +783,41 @@ def _compute_boost_multiplier(
     return multiplier
 
 
+def _detect_boost_fields(
+    query: str, boost_fields: Dict[str, float], known_values: Dict[str, List[str]]
+) -> Dict[str, List[str]]:
+    """Detect which known field values appear in the query."""
+    detected: Dict[str, List[str]] = {}
+    for field, weight in boost_fields.items():
+        if field not in known_values or weight <= 0:
+            continue
+        matches = _detect_field_values_in_query(query, known_values[field])
+        if matches:
+            detected[field] = [m.lower() for m in matches]
+    return detected
+
+
+def _result_matches_field(result, field, detected_vals, text_patterns):
+    """Check if a result matches detected values for a field (metadata or text)."""
+    accessor = _FIELD_ACCESSORS.get(
+        field, lambda r, f=field: r.metadata.get(f"map_{f}", "") or ""
+    )
+    raw_value = accessor(result)
+    result_vals = [v.lower() for v in _split_field_value(raw_value)]
+    if any(rv in detected_vals for rv in result_vals):
+        return True
+    text = (result.text or "") + " " + (result.title or "")
+    return any(p.search(text) for p in text_patterns.get(field, []))
+
+
+def _passes_exclusive_filter(result, exclusive_fields, detected, text_patterns):
+    """Return True if result matches ALL exclusive fields (metadata or text)."""
+    for field in exclusive_fields:
+        if not _result_matches_field(result, field, detected[field], text_patterns):
+            return False
+    return True
+
+
 def apply_field_boost(
     results: List[Any],
     query: str,
@@ -792,61 +827,52 @@ def apply_field_boost(
     """Apply field-based boosting to search results.
 
     Detects field values (e.g., country names, organizations) mentioned in the
-    query and boosts matching results via a multiplicative bonus. Non-matching
-    results keep their original score — the boost can only promote, never demote.
+    query and boosts matching results. Fields with weight >= 1.0 act as hard
+    filters, excluding results that don't match in metadata or text content.
 
     Score formula: score * (1 + sum_of_matching_weights)
     e.g. with country=0.5 and org=0.5, a result matching both gets score * 2.0,
     matching one gets score * 1.5, matching none stays at score * 1.0.
-
-    Args:
-        results: List of SearchResult objects
-        query: The original search query
-        boost_fields: Mapping of core field name to weight (0.0-1.0),
-                      e.g. {"country": 0.5, "organization": 0.5}
-        known_values: Mapping of core field name to list of known values,
-                      e.g. {"country": ["Kenya", "South Sudan", ...]}
-
-    Returns:
-        Reordered list with adjusted scores
     """
     if not results or not boost_fields or not query.strip():
         return results
 
-    # Detect which values are mentioned in the query for each boost field
-    detected: Dict[str, List[str]] = {}
-    for field, weight in boost_fields.items():
-        if field not in known_values or weight <= 0:
-            continue
-        matches = _detect_field_values_in_query(query, known_values[field])
-        if matches:
-            detected[field] = [m.lower() for m in matches]
-
+    detected = _detect_boost_fields(query, boost_fields, known_values)
     if not detected:
         return results
 
     text_patterns = _build_text_patterns(detected)
+    exclusive_fields = {
+        f for f, w in boost_fields.items() if w >= 1.0 and f in detected
+    }
 
+    filtered_results = []
+    excluded_count = 0
     for result in results:
         multiplier = _compute_boost_multiplier(
             result, detected, boost_fields, text_patterns
         )
+        if exclusive_fields and not _passes_exclusive_filter(
+            result, exclusive_fields, detected, text_patterns
+        ):
+            excluded_count += 1
+            continue
         if multiplier > 1.0:
             result.metadata["_field_boost_multiplier"] = multiplier
             result.metadata["_pre_field_boost_score"] = result.score
-            # Use additive boost for negative scores to avoid making them worse
             if result.score >= 0:
                 result.score = result.score * multiplier
             else:
                 result.score = result.score + abs(result.score) * (multiplier - 1.0)
+        filtered_results.append(result)
 
-    # Re-sort by adjusted score
-    results.sort(key=lambda r: r.score, reverse=True)
+    filtered_results.sort(key=lambda r: r.score, reverse=True)
 
     boosted_fields = ", ".join(f"{f}={boost_fields[f]}" for f in detected.keys())
     detected_str = ", ".join(f"{f}={vals}" for f, vals in detected.items())
+    exc_msg = f", excluded={excluded_count}" if excluded_count else ""
     logger.info(
         f"✓ Applied field boost ({boosted_fields}) "
-        f"detected=[{detected_str}] to {len(results)} results"
+        f"detected=[{detected_str}] to {len(filtered_results)} results{exc_msg}"
     )
-    return results
+    return filtered_results
