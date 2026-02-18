@@ -397,7 +397,11 @@ def _build_query_filter(
     filters = map_filters_to_storage(filters, data_source=data_source)
     if filters:
         text_match_fields = {"map_title"}
+        # Language is doc-level only (sys_language/map_language), not on chunks
+        doc_only_fields = {"map_language", "sys_language"}
         for field, value in filters.items():
+            if field in doc_only_fields:
+                continue
             if field == "doc_id":
                 # doc_id filter must be required, but we need to check both doc_id and sys_doc_id
                 # Create a nested filter: MUST(doc_id=X OR sys_doc_id=X)

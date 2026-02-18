@@ -43,6 +43,19 @@ def _normalize_language_filter(language: Optional[str]) -> Optional[str]:
     return ",".join(mapped)
 
 
+def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
+    """Replace language filter with doc_id filter (language not on chunks)."""
+    lang = core_filters.pop("language", None)
+    if not lang:
+        return
+    lang_code = _normalize_language_filter(lang)
+    if not lang_code:
+        return
+    doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
+    if doc_ids:
+        core_filters["doc_id"] = ",".join(doc_ids)
+
+
 def _build_core_filters(
     organization: Optional[str],
     title: Optional[str],
@@ -120,6 +133,7 @@ async def _run_search_chunks(
 
 
 def _build_doc_cache(pg, results) -> Dict[str, Any]:
+    # Collect unique document IDs from Qdrant results, then fetch full payloads from PG.
     doc_ids = list(
         set(
             str(result.payload.get("doc_id") or result.payload.get("sys_doc_id"))
@@ -133,6 +147,7 @@ def _build_doc_cache(pg, results) -> Dict[str, Any]:
 
 
 def _build_chunk_cache(pg, results) -> Dict[str, Any]:
+    # Fetch chunk-level payloads (text, headings, bbox, elements) from PG.
     chunk_ids = list({str(result.id) for result in results if result.id is not None})
     if not chunk_ids:
         return {}
@@ -273,6 +288,8 @@ def _build_search_results(
     limit: int,
     min_chunk_size: int,
 ):
+    # Build SearchResult objects from Qdrant results joined with doc/chunk metadata.
+    # Skips results whose doc is missing from cache or whose text is too short.
     filtered_results = []
     for result in results:
         doc_id_raw = result.payload.get("doc_id") or result.payload.get("sys_doc_id")
@@ -387,6 +404,7 @@ def _split_filter_values(value: Any) -> Optional[List[str]]:
 
 
 def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
+    # Build a Qdrant filter from core filter fields for restricting facet counts.
     facet_conditions = []
     for core_field, value in core_filters.items():
         if not value:
@@ -604,7 +622,10 @@ def _split_facet_values(raw_counts) -> List[str]:
 def _gather_known_values(
     db, boost_fields: Dict[str, float], source: Optional[str]
 ) -> Dict[str, List[str]]:
-    """Fetch known facet values for each boost field from the DB."""
+    """Fetch known facet values for each boost field from the DB.
+
+    These are used by apply_field_boost to detect field values in the query.
+    """
     known: Dict[str, List[str]] = {}
     for core_field in boost_fields:
         storage_field = _resolve_storage_field(core_field, source)
@@ -709,6 +730,8 @@ async def search(
             language,
         )
         _add_taxonomy_filters(core_filters, request.query_params)
+        # Language is doc-level only; convert to doc_id filter for chunk search
+        _convert_language_to_doc_ids(core_filters, pg)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)

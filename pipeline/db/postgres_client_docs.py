@@ -306,7 +306,8 @@ class PostgresDocMixin:
                 map_pdf_url,
                 map_report_url,
                 sys_parsed_folder,
-                sys_filepath
+                sys_filepath,
+                sys_language
             FROM {self.docs_table}
             WHERE doc_id IN ({placeholders})
         """
@@ -337,6 +338,7 @@ class PostgresDocMixin:
                 map_report_url,
                 sys_parsed_folder,
                 sys_filepath,
+                sys_language,
             ) = row
             sys_toc = None
             sys_toc_classified = None
@@ -366,6 +368,7 @@ class PostgresDocMixin:
                 "map_report_url": map_report_url,
                 "sys_parsed_folder": sys_parsed_folder,
                 "sys_filepath": sys_filepath,
+                "sys_language": sys_language,
             }
             results[str(doc_id)] = payload
         return results
@@ -471,6 +474,26 @@ class PostgresDocMixin:
                 deleted_ids = [str(row[0]) for row in cur.fetchall()]
             conn.commit()
         return deleted_ids
+
+    def fetch_doc_ids_by_language(
+        self, lang_codes: List[str], limit: int = 5000
+    ) -> List[str]:
+        """Fetch doc_ids matching any of the given ISO 639-1 language codes."""
+        if not lang_codes:
+            return []
+        placeholders = ", ".join(["%s"] * len(lang_codes))
+        query = f"""
+            SELECT doc_id
+            FROM {self.docs_table}
+            WHERE sys_language IN ({placeholders})
+            LIMIT %s
+        """
+        rows: List[tuple] = []
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, list(lang_codes) + [limit])
+                rows = cur.fetchall()
+        return [str(row[0]) for row in rows]
 
     def fetch_doc_ids_by_title(self, title: str, limit: int = 5000) -> List[str]:
         query = f"""

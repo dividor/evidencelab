@@ -1642,7 +1642,6 @@ function App() {
   // Track if we've done initial search to avoid double-searching on load
   const hasSearchedRef = React.useRef(false);
 
-  // REMOVED: Auto-search on filter changes - user must explicitly click Search or press Enter
   // Search only triggers via:
   // 1. Form submit (handleSearch)
   // 2. Initial page load with URL query params (below)

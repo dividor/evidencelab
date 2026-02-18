@@ -264,10 +264,13 @@ def test_field_boost_non_matching_score_unchanged():
         boost_fields={"country": 0.5},
         known_values={"country": ["Kenya", "Somalia"]},
     )
-    # Kenya boosted: 0.5 * 1.5 = 0.75, now on top
-    assert results[0].id == "a"
-    # Somalia keeps its original score exactly
-    assert results[1].score == 0.9
+    # Somalia (0.9) still ahead of Kenya boosted (0.5 * 1.5 = 0.75)
+    assert results[0].id == "b"
+    # Somalia keeps its original score exactly (no penalty for non-match)
+    assert results[0].score == 0.9
+    # Kenya gets boosted
+    assert results[1].id == "a"
+    assert results[1].score == 0.5 * 1.5
 
 
 def test_field_boost_combined_country_and_org():
