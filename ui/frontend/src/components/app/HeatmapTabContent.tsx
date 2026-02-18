@@ -1153,6 +1153,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return Object.entries(facets.filter_fields)
       .filter(([value]) => {
         if (value === 'title') return false;
+        if (value === 'published_year') return true;
         const values = facets.facets?.[value];
         return !values || values.length <= MAX_HEATMAP_COLUMN_VALUES;
       })
