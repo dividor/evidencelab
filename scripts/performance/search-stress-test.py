@@ -1,12 +1,14 @@
 import argparse
+import gzip
 import json
 import random
 import statistics
+import threading
 import time
 import urllib.parse
 import urllib.request
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor
 
 DEFAULT_SECTION_TYPES = [
     "executive_summary",
@@ -30,6 +32,7 @@ def parse_bool(value: str) -> bool:
 
 def build_search_url(
     base_url: str,
+    search_path: str,
     query: str,
     data_source: str,
     rerank: bool,
@@ -42,6 +45,7 @@ def build_search_url(
     min_chunk_size: int,
     limit: int,
     model: str | None,
+    rerank_model_page_size: int,
     document_type: str | None,
     published_year: str | None,
 ) -> str:
@@ -59,6 +63,8 @@ def build_search_url(
     }
     if min_chunk_size > 0:
         params["min_chunk_size"] = str(min_chunk_size)
+    if rerank_model_page_size > 0:
+        params["rerank_model_page_size"] = str(rerank_model_page_size)
     if model:
         params["model"] = model
     if document_type:
@@ -67,28 +73,51 @@ def build_search_url(
         params["published_year"] = published_year
 
     query_string = urllib.parse.urlencode(params)
-    return f"{base_url.rstrip('/')}/search?{query_string}"
+    return f"{base_url.rstrip('/')}/{search_path.strip('/')}?{query_string}"
+
+
+def generate_random_query(
+    all_words: list[str], min_words: int = 1, max_words: int = 4
+) -> str:
+    count = random.randint(min_words, min(max_words, len(all_words)))
+    return " ".join(random.sample(all_words, count))
 
 
 def execute_request(
     url: str, timeout: float, api_key: str | None = None
-) -> tuple[int, float, str | None]:
+) -> tuple[int, float, str | None, int]:
     start_time = time.perf_counter()
     try:
         req = urllib.request.Request(url)
         if api_key:
             req.add_header("X-API-Key", api_key)
         with urllib.request.urlopen(req, timeout=timeout) as response:
-            _ = response.read()
+            raw = response.read()
+            if response.headers.get("Content-Encoding") == "gzip":
+                raw = gzip.decompress(raw)
+            body = raw.decode("utf-8", errors="replace")
             duration = time.perf_counter() - start_time
-            return response.status, duration, None
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict) and "total" in data:
+                    num_results = data["total"]
+                elif isinstance(data, dict) and "results" in data:
+                    num_results = len(data["results"])
+                elif isinstance(data, list):
+                    num_results = len(data)
+                else:
+                    num_results = -1
+            except (json.JSONDecodeError, TypeError, ValueError):
+                num_results = -1
+            return response.status, duration, None, num_results
     except Exception as exc:
         duration = time.perf_counter() - start_time
-        return 0, duration, str(exc)
+        return 0, duration, str(exc), 0
 
 
 def run_stress_test(
     base_url: str,
+    search_path: str,
     data_source: str,
     queries: list[str],
     document_types: list[str],
@@ -103,20 +132,25 @@ def run_stress_test(
     section_types: list[str],
     keyword_boost_short_queries: bool,
     min_chunk_size: int,
+    rerank_model_page_size: int,
     limit: int,
     model: str | None,
     timeout: float,
     pause: float = 0.0,
     api_key: str | None = None,
 ) -> dict:
+    all_words = list({w for q in queries for w in q.split()})
+
     urls: list[str] = []
+    query_texts: list[str] = []
     for _ in range(total_requests):
-        query = random.choice(queries)
+        query = generate_random_query(all_words)
         document_type = random.choice(document_types) if document_types else None
         published_year = random.choice(years) if years else None
         urls.append(
             build_search_url(
                 base_url=base_url,
+                search_path=search_path,
                 query=query,
                 data_source=data_source,
                 rerank=rerank,
@@ -127,42 +161,60 @@ def run_stress_test(
                 section_types=section_types,
                 keyword_boost_short_queries=keyword_boost_short_queries,
                 min_chunk_size=min_chunk_size,
+                rerank_model_page_size=rerank_model_page_size,
                 limit=limit,
                 model=model,
                 document_type=document_type,
                 published_year=published_year,
             )
         )
+        query_texts.append(query)
 
     latencies: list[float] = []
     status_counts: Counter[int] = Counter()
     error_messages: Counter[str] = Counter()
 
-    start_time = time.perf_counter()
-    if pause > 0:
-        for i, url in enumerate(urls):
-            status, duration, error = execute_request(url, timeout, api_key)
+    lock = threading.Lock()
+    received = 0
+
+    def _on_complete(
+        future: "Future[tuple[int, float, str | None, int]]",
+        idx: int,
+        q_text: str,
+    ) -> None:
+        nonlocal received
+        status, duration, error, num_results = future.result()
+        with lock:
             latencies.append(duration)
             status_counts[status] += 1
             if error:
                 error_messages[error] += 1
+            received += 1
+            results_str = f"{num_results} results" if num_results >= 0 else "error"
             print(
-                f"  [{i + 1}/{total_requests}] {status} in {duration:.2f}s", flush=True
+                f"     <- [{received}/{total_requests}] {status} {results_str} "
+                f'in {duration:.2f}s  q="{q_text}"',
+                flush=True,
             )
-            if i < len(urls) - 1:
+
+    start_time = time.perf_counter()
+    workers = concurrency if pause == 0 else total_requests
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = []
+        for i, (url, q_text) in enumerate(zip(urls, query_texts)):
+            print(
+                f'  -> [{i + 1}/{total_requests}] sending q="{q_text}"',
+                flush=True,
+            )
+            f = executor.submit(execute_request, url, timeout, api_key)
+            f.add_done_callback(
+                lambda fut, idx=i, qt=q_text: _on_complete(fut, idx, qt)  # type: ignore[misc]
+            )
+            futures.append(f)
+            if pause > 0 and i < len(urls) - 1:
                 time.sleep(pause)
-    else:
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = {
-                executor.submit(execute_request, url, timeout, api_key): url
-                for url in urls
-            }
-            for future in as_completed(futures):
-                status, duration, error = future.result()
-                latencies.append(duration)
-                status_counts[status] += 1
-                if error:
-                    error_messages[error] += 1
+        for f in futures:
+            f.result()
     total_time = time.perf_counter() - start_time
 
     latency_sorted = sorted(latencies)
@@ -192,6 +244,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stress test /search endpoint.")
     parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--api-key", default=None, help="API key (X-API-Key header)")
+    parser.add_argument(
+        "--search-path",
+        default="/api/search",
+        help="API search path (default: /api/search)",
+    )
     parser.add_argument("--data-source", required=True)
     parser.add_argument(
         "--queries", default="evaluation,food security,health,education"
@@ -209,6 +266,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--section-types", default=",".join(DEFAULT_SECTION_TYPES))
     parser.add_argument("--keyword-boost-short-queries", type=parse_bool, default=True)
     parser.add_argument("--min-chunk-size", type=int, default=100)
+    parser.add_argument("--rerank-model-page-size", type=int, default=10)
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--model", default=None)
     parser.add_argument("--timeout", type=float, default=120.0)
@@ -240,6 +298,7 @@ def main() -> None:
     for rerank in runs:
         result = run_stress_test(
             base_url=args.base_url,
+            search_path=args.search_path,
             data_source=args.data_source,
             queries=queries,
             document_types=document_types,
@@ -254,6 +313,7 @@ def main() -> None:
             section_types=section_types,
             keyword_boost_short_queries=args.keyword_boost_short_queries,
             min_chunk_size=args.min_chunk_size,
+            rerank_model_page_size=args.rerank_model_page_size,
             limit=args.limit,
             model=args.model,
             timeout=args.timeout,
