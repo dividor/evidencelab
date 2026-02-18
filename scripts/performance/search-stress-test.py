@@ -70,10 +70,15 @@ def build_search_url(
     return f"{base_url.rstrip('/')}/search?{query_string}"
 
 
-def execute_request(url: str, timeout: float) -> tuple[int, float, str | None]:
+def execute_request(
+    url: str, timeout: float, api_key: str | None = None
+) -> tuple[int, float, str | None]:
     start_time = time.perf_counter()
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        req = urllib.request.Request(url)
+        if api_key:
+            req.add_header("X-API-Key", api_key)
+        with urllib.request.urlopen(req, timeout=timeout) as response:
             _ = response.read()
             duration = time.perf_counter() - start_time
             return response.status, duration, None
@@ -101,6 +106,8 @@ def run_stress_test(
     limit: int,
     model: str | None,
     timeout: float,
+    pause: float = 0.0,
+    api_key: str | None = None,
 ) -> dict:
     urls: list[str] = []
     for _ in range(total_requests):
@@ -132,14 +139,30 @@ def run_stress_test(
     error_messages: Counter[str] = Counter()
 
     start_time = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {executor.submit(execute_request, url, timeout): url for url in urls}
-        for future in as_completed(futures):
-            status, duration, error = future.result()
+    if pause > 0:
+        for i, url in enumerate(urls):
+            status, duration, error = execute_request(url, timeout, api_key)
             latencies.append(duration)
             status_counts[status] += 1
             if error:
                 error_messages[error] += 1
+            print(
+                f"  [{i + 1}/{total_requests}] {status} in {duration:.2f}s", flush=True
+            )
+            if i < len(urls) - 1:
+                time.sleep(pause)
+    else:
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {
+                executor.submit(execute_request, url, timeout, api_key): url
+                for url in urls
+            }
+            for future in as_completed(futures):
+                status, duration, error = future.result()
+                latencies.append(duration)
+                status_counts[status] += 1
+                if error:
+                    error_messages[error] += 1
     total_time = time.perf_counter() - start_time
 
     latency_sorted = sorted(latencies)
@@ -168,6 +191,7 @@ def run_stress_test(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stress test /search endpoint.")
     parser.add_argument("--base-url", default="http://localhost:8000")
+    parser.add_argument("--api-key", default=None, help="API key (X-API-Key header)")
     parser.add_argument("--data-source", required=True)
     parser.add_argument(
         "--queries", default="evaluation,food security,health,education"
@@ -188,6 +212,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--model", default=None)
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--pause",
+        type=float,
+        default=1.0,
+        help="Seconds to pause between requests (0 for concurrent mode)",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-json", default="")
     return parser.parse_args()
@@ -227,6 +257,8 @@ def main() -> None:
             limit=args.limit,
             model=args.model,
             timeout=args.timeout,
+            pause=args.pause,
+            api_key=args.api_key,
         )
         results.append(result)
         print(
