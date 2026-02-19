@@ -11,7 +11,7 @@
 #
 # Memory limits prevent pipeline OOM from crashing UI/API:
 #   - Pipeline: NOT STARTED in production (disabled)
-#   - API: 6GB (1 worker)
+#   - API: 8GB (1 worker)
 #   - Qdrant: 15GB (vector DB)
 #   - UI/Caddy: minimal (static serving)
 
@@ -177,7 +177,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 6G
+          memory: 8G
         reservations:
           memory: 2G
 
