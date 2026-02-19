@@ -290,10 +290,23 @@ def main():
     if not args.skip_postgres:
         try:
             import psycopg2
+        except ImportError:
+            logger.info("psycopg2 not available, skipping PostgreSQL")
+            psycopg2 = None
 
-            from pipeline.db.postgres_client_base import build_postgres_dsn
+        if psycopg2:
+            try:
+                from pipeline.db.postgres_client_base import build_postgres_dsn
 
-            dsn = build_postgres_dsn()
+                dsn = build_postgres_dsn()
+            except ImportError:
+                dsn = (
+                    f"host={os.environ.get('POSTGRES_HOST', 'localhost')} "
+                    f"port={os.environ.get('POSTGRES_PORT', '5432')} "
+                    f"user={os.environ.get('POSTGRES_USER', 'evidencelab')} "
+                    f"password={os.environ.get('POSTGRES_PASSWORD', 'evidencelab')} "
+                    f"dbname={os.environ.get('POSTGRES_DB', 'evidencelab')}"
+                )
             conn = psycopg2.connect(dsn)
             docs_table = f"docs_{ds}"
             chunks_table = f"chunks_{ds}"
@@ -302,8 +315,6 @@ def main():
             if args.collection in ("chunks", "all"):
                 fix_postgres_table(conn, chunks_table, args.dry_run, args.file_id)
             conn.close()
-        except ImportError:
-            logger.info("psycopg2 not available, skipping PostgreSQL")
 
     logger.info("Done!")
 
