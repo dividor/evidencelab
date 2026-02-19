@@ -786,29 +786,73 @@ class ParseProcessor(BaseProcessor):
         except Exception:
             return False
 
+    @staticmethod
+    def _build_language_sample_ranges(
+        total_pages: int,
+    ) -> list[tuple[int, int]]:
+        """Return page ranges to sample for language detection."""
+        if total_pages <= 6:
+            return [(0, total_pages)]
+        ranges: list[tuple[int, int]] = []
+        # Body start: pages 3-12 (skip cover/TOC)
+        s = min(3, total_pages - 1)
+        ranges.append((s, min(s + 10, total_pages)))
+        # Middle
+        mid = total_pages // 2
+        m_s = max(mid - 4, ranges[-1][1])
+        m_e = min(mid + 4, total_pages)
+        if m_s < m_e:
+            ranges.append((m_s, m_e))
+        # End (skip last 2 pages - often references/appendices)
+        e_s = max(total_pages - 10, ranges[-1][1])
+        e_e = max(total_pages - 2, e_s + 1)
+        if e_s < e_e:
+            ranges.append((e_s, e_e))
+        return ranges
+
+    @staticmethod
+    def _extract_section_text(doc, start: int, end: int) -> str:
+        """Extract normalised text from a page range, capped at 5000 chars."""
+        parts: list[str] = []
+        length = 0
+        for i in range(start, end):
+            page_text = doc[i].get_text()
+            if page_text:
+                parts.append(page_text)
+                length += len(page_text)
+            if length > 5000:
+                break
+        return " ".join(" ".join(parts).split())
+
     def _detect_language(self, filepath: str) -> str:
-        """Detect document language from first few pages."""
+        """Detect document language using majority voting across sections.
+
+        Samples text from three sections (beginning, middle, end) and
+        detects the language of each independently.  The final language
+        is decided by majority vote so that bilingual cover pages or
+        appendices cannot override the body language.
+        """
         try:
             doc = fitz.open(filepath)
-            sample_text = ""
-            pages_to_check = min(10, len(doc))
-
-            for i in range(pages_to_check):
-                page_text = doc[i].get_text()
-                if page_text:
-                    sample_text += page_text + " "
-                    if len(sample_text) > 2000:
-                        break
-            doc.close()
-
-            sample_text = " ".join(sample_text.split())
-            if len(sample_text) < 200:
+            total_pages = len(doc)
+            if total_pages == 0:
+                doc.close()
                 return "Unknown"
 
-            lang_results = detect_langs(sample_text)
-            if lang_results:
-                return lang_results[0].lang
-            return "Unknown"
+            sample_ranges = self._build_language_sample_ranges(total_pages)
+            votes: dict[str, int] = {}
+            for start, end in sample_ranges:
+                text = self._extract_section_text(doc, start, end)
+                if len(text) < 200:
+                    continue
+                results = detect_langs(text)
+                if results and results[0].prob >= 0.4:
+                    votes[results[0].lang] = votes.get(results[0].lang, 0) + 1
+
+            doc.close()
+            if not votes:
+                return "Unknown"
+            return max(votes, key=votes.get)
         except Exception:
             return "Unknown"
 
