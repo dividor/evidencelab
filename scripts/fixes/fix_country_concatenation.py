@@ -7,10 +7,9 @@ multi-country values without a separator, producing entries like
 "NepalIndia" instead of "Nepal; India".
 
 This script:
-  1. Collects all unique map_country values from Qdrant chunks
-  2. Identifies single-country values to build a reference list
-  3. Uses greedy longest-match to split concatenated strings
-  4. Updates Qdrant chunks/docs and PostgreSQL docs/chunks
+  1. Identifies concatenated country values using regex boundary detection
+  2. Splits them using 3-pass regex (lowercase→uppercase, period→uppercase, PDR→uppercase)
+  3. Updates Qdrant chunks/docs and PostgreSQL docs/chunks
 
 Usage:
     python scripts/fixes/fix_country_concatenation.py \\
@@ -26,6 +25,7 @@ automatically resolved to 'postgres'.
 import argparse
 import logging
 import os
+import re
 import time
 
 from dotenv import load_dotenv
@@ -37,258 +37,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Comprehensive reference list of country/territory names that appear
-# in the UNEG dataset.  Built from the World Bank country list plus
-# common variants found in the data.
-KNOWN_COUNTRIES = sorted(
-    [
-        "Afghanistan",
-        "Albania",
-        "Algeria",
-        "Andorra",
-        "Angola",
-        "Antigua and Barbuda",
-        "Argentina",
-        "Armenia",
-        "Aruba",
-        "Australia",
-        "Austria",
-        "Azerbaijan",
-        "Bahamas, The",
-        "Bahrain",
-        "Bangladesh",
-        "Barbados",
-        "Belarus",
-        "Belgium",
-        "Belize",
-        "Benin",
-        "Bhutan",
-        "Bolivia",
-        "Bosnia and Herzegovina",
-        "Botswana",
-        "Brazil",
-        "Brunei Darussalam",
-        "Bulgaria",
-        "Burkina Faso",
-        "Burundi",
-        "Cabo Verde",
-        "Cambodia",
-        "Cameroon",
-        "Canada",
-        "Cayman Islands",
-        "Central African Republic",
-        "Chad",
-        "Chile",
-        "China",
-        "Colombia",
-        "Comoros",
-        "Congo, Dem. Rep.",
-        "Congo, Rep.",
-        "Costa Rica",
-        "Cote d'Ivoire",
-        "Croatia",
-        "Cuba",
-        "Curacao",
-        "Cyprus",
-        "Czechia",
-        "Denmark",
-        "Djibouti",
-        "Dominica",
-        "Dominican Republic",
-        "Ecuador",
-        "Egypt, Arab Rep.",
-        "El Salvador",
-        "Equatorial Guinea",
-        "Eritrea",
-        "Eswatini",
-        "Estonia",
-        "Ethiopia",
-        "Fiji",
-        "Finland",
-        "France",
-        "Gabon",
-        "Gambia",
-        "Gambia, The",
-        "Georgia",
-        "Germany",
-        "Ghana",
-        "Greece",
-        "Grenada",
-        "Guatemala",
-        "Guinea",
-        "Guinea-Bissau",
-        "Guyana",
-        "Haiti",
-        "Honduras",
-        "Hungary",
-        "Iceland",
-        "India",
-        "Indonesia",
-        "Iran, Islamic Rep.",
-        "Iraq",
-        "Ireland",
-        "Israel",
-        "Italy",
-        "Jamaica",
-        "Japan",
-        "Jordan",
-        "Kazakhstan",
-        "Kenya",
-        "Kiribati",
-        "Korea, Dem. People's Rep.",
-        "Korea, Rep.",
-        "Kosovo",
-        "Kuwait",
-        "Kyrgyzstan",
-        "Lao PDR",
-        "Latvia",
-        "Lebanon",
-        "Lesotho",
-        "Liberia",
-        "Libya",
-        "Liechtenstein",
-        "Lithuania",
-        "Luxembourg",
-        "Madagascar",
-        "Malawi",
-        "Malaysia",
-        "Maldives",
-        "Mali",
-        "Malta",
-        "Marshall Islands",
-        "Mauritania",
-        "Mauritius",
-        "Mexico",
-        "Micronesia, Fed. Sts.",
-        "Moldova",
-        "Monaco",
-        "Mongolia",
-        "Montenegro",
-        "Morocco",
-        "Mozambique",
-        "Myanmar",
-        "Namibia",
-        "Nauru",
-        "Nepal",
-        "Netherlands",
-        "New Zealand",
-        "Nicaragua",
-        "Niger",
-        "Nigeria",
-        "North Macedonia",
-        "Norway",
-        "Oman",
-        "Pakistan",
-        "Palau",
-        "Palestine",
-        "Panama",
-        "Papua New Guinea",
-        "Paraguay",
-        "Peru",
-        "Philippines",
-        "Poland",
-        "Portugal",
-        "Qatar",
-        "Romania",
-        "Russian Federation",
-        "Rwanda",
-        "Samoa",
-        "San Marino",
-        "Sao Tome and Principe",
-        "Saudi Arabia",
-        "Senegal",
-        "Serbia",
-        "Seychelles",
-        "Sierra Leone",
-        "Singapore",
-        "Slovak Republic",
-        "Slovenia",
-        "Solomon Islands",
-        "Somalia",
-        "South Africa",
-        "South Sudan",
-        "Spain",
-        "Sri Lanka",
-        "St. Kitts and Nevis",
-        "St. Lucia",
-        "St. Vincent and the Grenadines",
-        "Sudan",
-        "Suriname",
-        "Swaziland",
-        "Sweden",
-        "Switzerland",
-        "Syrian Arab Republic",
-        "Tajikistan",
-        "Tanzania",
-        "Thailand",
-        "Timor-Leste",
-        "Togo",
-        "Tonga",
-        "Trinidad and Tobago",
-        "Tunisia",
-        "Turkey",
-        "Turkiye",
-        "Turkmenistan",
-        "Tuvalu",
-        "Uganda",
-        "Ukraine",
-        "United Arab Emirates",
-        "United Kingdom",
-        "United States",
-        "Uruguay",
-        "Uzbekistan",
-        "Vanuatu",
-        "Venezuela, RB",
-        "Viet Nam",
-        "Virgin Islands (U.S.)",
-        "West Bank and Gaza",
-        "Yemen, Rep.",
-        "Zambia",
-        "Zimbabwe",
-    ],
-    key=lambda x: -len(x),  # longest first for greedy matching
-)
 
+def split_countries(concatenated: str) -> str:
+    """Split a concatenated country string into '; '-separated countries.
 
-def split_countries(concatenated: str) -> list:
-    """Split a concatenated country string into individual countries.
+    Uses 3-pass regex boundary detection:
+      1. lowercase→uppercase: 'FranceGermany' → 'France; Germany'
+      2. period→uppercase:    'Rep.Chad'      → 'Rep.; Chad'
+      3. PDR→uppercase:       'PDRMyanmar'    → 'PDR; Myanmar'
 
-    Uses greedy longest-match against KNOWN_COUNTRIES.
-    Returns a list of country names found, or [concatenated] if
-    no match is possible (i.e. the string is already clean or unknown).
-
-    Values already containing "; " are considered pre-separated and
-    returned as-is (single-element list) so they are not re-processed.
+    Values already containing '; ' are returned as-is.
     """
-    if not concatenated:
-        return []
+    if not concatenated or "; " in concatenated:
+        return concatenated
 
-    # Already-separated values (from a previous fix run) should not be
-    # re-parsed — they would fail the greedy matcher on the "; " prefix.
-    if "; " in concatenated:
-        return [concatenated]
-
-    remaining = concatenated
-    result = []
-    while remaining:
-        matched = False
-        for country in KNOWN_COUNTRIES:
-            if remaining.startswith(country):
-                result.append(country)
-                remaining = remaining[len(country) :]
-                matched = True
-                break
-        if not matched:
-            # Can't parse further — return original as-is
-            logger.warning("Cannot split: %r (stuck at %r)", concatenated, remaining)
-            return [concatenated]
+    result = re.sub(r"([a-z])([A-Z])", r"\1; \2", concatenated)
+    result = re.sub(r"(\.)([A-Z][a-z])", r"\1; \2", result)
+    result = re.sub(r"(PDR)([A-Z])", r"\1; \2", result)
     return result
 
 
 def needs_splitting(value: str) -> bool:
     """Check if a country value is a concatenated multi-country string."""
-    countries = split_countries(value)
-    return len(countries) > 1
+    return value != split_countries(value)
 
 
 def fix_qdrant_collection(client, collection_name, dry_run):
@@ -310,8 +81,7 @@ def fix_qdrant_collection(client, collection_name, dry_run):
         for point in points:
             country = point.payload.get("map_country", "")
             if country and needs_splitting(country):
-                new_val = "; ".join(split_countries(country))
-                fixes[point.id] = new_val
+                fixes[point.id] = split_countries(country)
         scanned += len(points)
         if scanned % 10000 == 0:
             logger.info("  Scanned %d points, %d need fixing...", scanned, len(fixes))
@@ -389,9 +159,8 @@ def fix_postgres_table(conn, table_name, dry_run):
 
     mapping = {}
     for val in all_values:
-        countries = split_countries(val)
-        if len(countries) > 1:
-            mapping[val] = "; ".join(countries)
+        if needs_splitting(val):
+            mapping[val] = split_countries(val)
 
     logger.info(
         "Table %s: %d/%d distinct values need fixing",
