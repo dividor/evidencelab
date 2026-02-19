@@ -29,7 +29,7 @@ import re
 import time
 
 from dotenv import load_dotenv
-from qdrant_client import QdrantClient
+from qdrant_client import QdrantClient, models
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,9 +62,28 @@ def needs_splitting(value: str) -> bool:
     return value != split_countries(value)
 
 
-def fix_qdrant_collection(client, collection_name, dry_run):
+def fix_qdrant_collection(client, collection_name, dry_run, file_id=None):
     """Fix map_country in a Qdrant collection."""
     logger.info("Scanning Qdrant collection: %s", collection_name)
+
+    scroll_filter = None
+    if file_id:
+        # For documents collection, the point id IS the doc_id.
+        # For chunks collection, doc_id is a payload field.
+        is_chunks = collection_name.startswith("chunks_")
+        if is_chunks:
+            scroll_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="doc_id",
+                        match=models.MatchValue(value=str(file_id)),
+                    )
+                ]
+            )
+        else:
+            scroll_filter = models.Filter(
+                must=[models.HasIdCondition(has_id=[str(file_id)])]
+            )
 
     # Collect all points with their country values
     fixes = {}  # point_id -> new_value
@@ -76,6 +95,7 @@ def fix_qdrant_collection(client, collection_name, dry_run):
             limit=500,
             with_payload=["map_country"],
             offset=offset,
+            scroll_filter=scroll_filter,
         )
         points, next_offset = results
         for point in points:
@@ -134,7 +154,7 @@ def fix_qdrant_collection(client, collection_name, dry_run):
     return len(fixes)
 
 
-def fix_postgres_table(conn, table_name, dry_run):
+def fix_postgres_table(conn, table_name, dry_run, file_id=None):
     """Fix map_country in a PostgreSQL table."""
     logger.info("Scanning PostgreSQL table: %s", table_name)
 
@@ -151,10 +171,18 @@ def fix_postgres_table(conn, table_name, dry_run):
         return 0
 
     # Find all distinct concatenated country values
-    cursor.execute(
-        f"SELECT DISTINCT map_country FROM {table_name} "
-        f"WHERE map_country IS NOT NULL AND map_country != ''"
-    )
+    if file_id:
+        cursor.execute(
+            f"SELECT DISTINCT map_country FROM {table_name} "
+            f"WHERE map_country IS NOT NULL AND map_country != '' "
+            f"AND doc_id = %s",
+            (str(file_id),),
+        )
+    else:
+        cursor.execute(
+            f"SELECT DISTINCT map_country FROM {table_name} "
+            f"WHERE map_country IS NOT NULL AND map_country != ''"
+        )
     all_values = [row[0] for row in cursor.fetchall()]
 
     mapping = {}
@@ -176,10 +204,17 @@ def fix_postgres_table(conn, table_name, dry_run):
 
     # Apply fixes
     for old_val, new_val in mapping.items():
-        cursor.execute(
-            f"UPDATE {table_name} SET map_country = %s " f"WHERE map_country = %s",
-            (new_val, old_val),
-        )
+        if file_id:
+            cursor.execute(
+                f"UPDATE {table_name} SET map_country = %s "
+                f"WHERE map_country = %s AND doc_id = %s",
+                (new_val, old_val, str(file_id)),
+            )
+        else:
+            cursor.execute(
+                f"UPDATE {table_name} SET map_country = %s " f"WHERE map_country = %s",
+                (new_val, old_val),
+            )
         logger.info(
             "  Updated %d rows: %r -> %r",
             cursor.rowcount,
@@ -212,6 +247,11 @@ def main():
         help="Which collection(s) to fix (default: all)",
     )
     parser.add_argument(
+        "--file-id",
+        default=None,
+        help="Only fix a specific document by its doc_id",
+    )
+    parser.add_argument(
         "--skip-postgres",
         action="store_true",
         help="Skip PostgreSQL (useful when psycopg2 not available)",
@@ -234,9 +274,9 @@ def main():
     docs_collection = f"documents_{ds}"
 
     if args.collection in ("chunks", "all"):
-        fix_qdrant_collection(client, chunks_collection, args.dry_run)
+        fix_qdrant_collection(client, chunks_collection, args.dry_run, args.file_id)
     if args.collection in ("docs", "all"):
-        fix_qdrant_collection(client, docs_collection, args.dry_run)
+        fix_qdrant_collection(client, docs_collection, args.dry_run, args.file_id)
 
     # PostgreSQL
     if not args.skip_postgres:
@@ -250,9 +290,9 @@ def main():
             docs_table = f"docs_{ds}"
             chunks_table = f"chunks_{ds}"
             if args.collection in ("docs", "all"):
-                fix_postgres_table(conn, docs_table, args.dry_run)
+                fix_postgres_table(conn, docs_table, args.dry_run, args.file_id)
             if args.collection in ("chunks", "all"):
-                fix_postgres_table(conn, chunks_table, args.dry_run)
+                fix_postgres_table(conn, chunks_table, args.dry_run, args.file_id)
             conn.close()
         except ImportError:
             logger.info("psycopg2 not available, skipping PostgreSQL")
