@@ -100,6 +100,10 @@ def fix_qdrant_collection(client, collection_name, dry_run, file_id=None):
         points, next_offset = results
         for point in points:
             country = point.payload.get("map_country", "")
+            if file_id:
+                logger.info(
+                    "  [Qdrant] %s point %s: %r", collection_name, point.id, country
+                )
             if country and needs_splitting(country):
                 fixes[point.id] = split_countries(country)
         scanned += len(points)
@@ -184,6 +188,10 @@ def fix_postgres_table(conn, table_name, dry_run, file_id=None):
             f"WHERE map_country IS NOT NULL AND map_country != ''"
         )
     all_values = [row[0] for row in cursor.fetchall()]
+
+    if file_id:
+        for val in all_values:
+            logger.info("  [PG] %s: %r", table_name, val)
 
     mapping = {}
     for val in all_values:
