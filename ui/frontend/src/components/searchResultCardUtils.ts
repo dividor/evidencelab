@@ -162,6 +162,15 @@ const filterChunkVisualsByTextOverlap = (elements: ChunkElement[], anchorPage?: 
       return false;
     }
 
+    // Filter out tiny images (icons, bullets, logos)
+    if (element.bbox && element.bbox.length >= 4) {
+      const imgWidth = element.bbox[2] - element.bbox[0];
+      const imgHeight = element.bbox[3] - element.bbox[1];
+      if (imgWidth * imgHeight < MIN_IMAGE_AREA) {
+        return false;
+      }
+    }
+
     if (!pagesWithText || !element.bbox || element.bbox.length < 4) {
       // If we are here, it means we are within page tolerance, but invalid bbox or no text pages.
       // Strict filter: if no text pages, remove visual? Or keep?
