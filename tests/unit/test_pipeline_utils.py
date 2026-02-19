@@ -15,7 +15,7 @@ from pipeline.utilities.embedding_server import EmbeddingServerManager
 from pipeline.utilities.id_utils import generate_doc_id
 from pipeline.utilities.logging_utils import ContextFilter, _log_context
 from pipeline.utilities.sanitization import sanitize_filename
-from pipeline.utilities.text_cleaning import clean_text
+from pipeline.utilities.text_cleaning import clean_text, fix_macroman_mojibake
 
 
 class DummyResponse:
@@ -57,6 +57,40 @@ def test_clean_text_repairs_replacement_character():
     assert clean_text("Na\ufffdonal") == "National"
     assert clean_text("Naonal") == "National"
     assert clean_text("mo\ufffdl") == "motil"
+
+
+def test_fix_macroman_mojibake_repairs_french_text():
+    assert (
+        fix_macroman_mojibake("parit\u017d et \u017dgalit\u00e9")
+        == "parit\u00e9 et \u00e9galit\u00e9"
+    )
+    assert fix_macroman_mojibake("l\u02c6 parit\u017d") == "l\u00e0 parit\u00e9"
+
+
+def test_fix_macroman_mojibake_skips_below_threshold():
+    assert fix_macroman_mojibake("\u017dilina city") == "\u017dilina city"
+    assert fix_macroman_mojibake("") == ""
+    assert fix_macroman_mojibake("plain text") == "plain text"
+
+
+def test_fix_macroman_mojibake_contextual_apostrophe():
+    # Õ between word chars -> right single quote; needs >=2 strong markers
+    assert (
+        fix_macroman_mojibake("l\u00d5\u017dconomie du d\u017dveloppement")
+        == "l\u2019\u00e9conomie du d\u00e9veloppement"
+    )
+    # Õ at start (not between word chars) stays as Õ
+    assert (
+        fix_macroman_mojibake("\u00d5 is \u017d and \u017d")
+        == "\u00d5 is \u00e9 and \u00e9"
+    )
+
+
+def test_clean_text_includes_macroman_fix():
+    assert (
+        clean_text("parit\u017d et \u017dgalit\u00e9")
+        == "parit\u00e9 et \u00e9galit\u00e9"
+    )
 
 
 def test_sanitize_filename_rules():

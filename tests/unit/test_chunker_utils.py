@@ -19,6 +19,15 @@ def test_clean_text_fixes_replacement_chars_and_spacing():
     assert chunker._clean_text("D a t a   s o u r c e s") == "Data sources"
 
 
+def test_clean_text_fixes_macroman_mojibake():
+    chunker = Chunker()
+
+    assert (
+        chunker._clean_text("parit\u017d et \u017dgalit\u00e9")
+        == "parit\u00e9 et \u00e9galit\u00e9"
+    )
+
+
 def test_should_include_image_with_tolerance():
     chunker = Chunker()
     text_range = {"min_y": 100, "max_y": 200}
