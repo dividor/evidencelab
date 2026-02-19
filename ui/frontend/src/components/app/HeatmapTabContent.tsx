@@ -634,6 +634,7 @@ type HeatmapTableProps = {
   openHeatmapFilterModal: (field: string, label: string) => void;
   isHeatmapFieldFiltered: (field: string) => boolean;
   filteredGridResults: Record<string, CellResult>;
+  cappedCells: Set<string>;
   maxCellCount: number;
   gridLoading: boolean;
   openCellModal: (rowIndex: number, columnValue: string) => void;
@@ -706,6 +707,7 @@ const HeatmapTable = ({
   openHeatmapFilterModal,
   isHeatmapFieldFiltered,
   filteredGridResults,
+  cappedCells,
   maxCellCount,
   gridLoading,
   openCellModal,
@@ -891,6 +893,8 @@ const HeatmapTable = ({
                     ? `rgba(37, 99, 235, ${0.15 + intensity * 0.65})`
                     : 'rgba(148, 163, 184, 0.08)';
                   const hasValue = cellResult !== undefined;
+                  const isCapped = cappedCells.has(cellKey);
+                  const displayCount = isCapped ? `${cellCount}+` : cellCount;
                   return (
                     <td
                       key={`${cellKey}-cell`}
@@ -899,7 +903,7 @@ const HeatmapTable = ({
                       onClick={hasValue ? () => openCellModal(rowIndex, column) : undefined}
                       aria-disabled={!hasValue}
                     >
-                      {gridLoading ? (hasValue ? cellCount : '…') : hasValue ? cellCount : '.'}
+                      {gridLoading ? (hasValue ? displayCount : '…') : hasValue ? displayCount : '.'}
                     </td>
                   );
                 })}
@@ -931,6 +935,7 @@ const HeatmapGridContent = ({
   openHeatmapFilterModal,
   isHeatmapFieldFiltered,
   filteredGridResults,
+  cappedCells,
   maxCellCount,
   gridLoading,
   openCellModal,
@@ -978,6 +983,7 @@ const HeatmapGridContent = ({
       openHeatmapFilterModal={openHeatmapFilterModal}
       isHeatmapFieldFiltered={isHeatmapFieldFiltered}
       filteredGridResults={filteredGridResults}
+      cappedCells={cappedCells}
       maxCellCount={maxCellCount}
       gridLoading={gridLoading}
       openCellModal={openCellModal}
@@ -1124,6 +1130,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [gridResults, setGridResults] = useState<RawCellResults>({});
   const [gridLoading, setGridLoading] = useState<boolean>(false);
   const [gridError, setGridError] = useState<string | null>(null);
+  const [cappedCells, setCappedCells] = useState<Set<string>>(new Set());
   const [queryTuningExpanded, setQueryTuningExpanded] = useState<boolean>(false);
   const [heatmapSelectedFilters, setHeatmapSelectedFilters] = useState<Record<string, string[]>>({});
   const [heatmapFilterModal, setHeatmapFilterModal] = useState<HeatmapFilterModalState | null>(null);
@@ -1977,8 +1984,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
       const cellCounts = filteredColumnValues.map((columnValue) => {
         const cellKey = buildCellKey(String(rowKey), columnValue);
-        const cellResults = filteredGridResults[cellKey]?.results || [];
-        return cellResults.length || '';
+        const cellResult = filteredGridResults[cellKey];
+        if (!cellResult) return '';
+        const count = cellResult.count || cellResult.results.length;
+        return cappedCells.has(cellKey) ? `${count}+` : (count || '');
       });
 
       return [label, ...cellCounts];
@@ -2194,6 +2203,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridLoading(true);
     setGridError(null);
     setGridResults({});
+    setCappedCells(new Set());
     userAdjustedCutoffRef.current = false;
     const tasks: Array<() => Promise<void>> = [];
     let failedRequests = 0;
@@ -2243,9 +2253,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             // Use /docsearch for document-level search when no query
             const useDocSearch = !cellQuery.trim() && rowDimension !== 'queries';
             const endpoint = useDocSearch ? 'docsearch' : 'search';
+            if (useDocSearch) {
+              params.delete('limit');  // no cap for document counts
+            }
             const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`);
             const data = response.data as SearchResponse;
             setGridResults((prev) => ({ ...prev, [cellKey]: data.results }));
+            if (!useDocSearch && data.results.length >= Number(HEATMAP_CELL_LIMIT)) {
+              setCappedCells((prev) => new Set(prev).add(cellKey));
+            }
           } catch (error) {
             failedRequests += 1;
             setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
@@ -2780,6 +2796,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               openHeatmapFilterModal={openHeatmapFilterModal}
               isHeatmapFieldFiltered={isHeatmapFieldFiltered}
               filteredGridResults={filteredGridResults}
+              cappedCells={cappedCells}
               maxCellCount={maxCellCount}
               gridLoading={gridLoading}
               openCellModal={openCellModal}
