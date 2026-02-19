@@ -902,7 +902,7 @@ async def docsearch(
         "",
         description="Search query for document title/summary (empty for filter-only)",
     ),
-    limit: int = Query(50, description="Maximum results"),
+    limit: int = Query(50000, description="Maximum results"),
     # Core field names (mapped to source fields internally)
     organization: Optional[str] = Query(None, description="Filter by organization"),
     title: Optional[str] = Query(None, description="Filter by title (partial match)"),
