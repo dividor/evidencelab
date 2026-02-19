@@ -146,8 +146,6 @@ def get_qdrant_client():
 
     host = os.getenv("QDRANT_HOST", "http://localhost:6333")
     api_key = os.getenv("QDRANT_API_KEY")
-    # Auto-convert Docker hostname to localhost for host execution
-    host = host.replace("://qdrant:", "://localhost:")
     return QdrantClient(url=host, api_key=api_key)
 
 
@@ -348,6 +346,35 @@ def apply_qdrant_docs(
 
 
 # ---------------------------------------------------------------------------
+# Qdrant-only sync
+# ---------------------------------------------------------------------------
+
+
+def sync_qdrant_from_postgres(data_source: str) -> None:
+    """Read all sys_language values from PostgreSQL and push to Qdrant."""
+    conn = get_pg_connection()
+    cur = conn.cursor()
+    docs_table = f"docs_{data_source}"
+    cur.execute(
+        f"SELECT doc_id, sys_language FROM {docs_table} "  # noqa: S608
+        "WHERE sys_language IS NOT NULL"
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    if not rows:
+        logger.info("No documents found in %s", docs_table)
+        return
+
+    # Build fake changes list: (doc_id, title, old_lang, new_lang, conf)
+    changes = [(doc_id, "", "", lang, 1.0) for doc_id, lang in rows]
+    logger.info("Syncing %d documents from PostgreSQL to Qdrant...", len(changes))
+    apply_qdrant_docs(data_source, changes)
+    logger.info("Done!")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -375,11 +402,21 @@ def main():
         metavar="PATH",
         help="Write change report to a CSV file",
     )
+    parser.add_argument(
+        "--qdrant-only",
+        action="store_true",
+        help="Sync sys_language from PostgreSQL to Qdrant (skip scan/detection)",
+    )
     args = parser.parse_args()
 
     # Load .env from repo root
     env_path = os.path.join(os.path.dirname(__file__), "../../.env")
     load_dotenv(env_path)
+
+    # Qdrant-only mode: read current values from PG and push to Qdrant
+    if args.qdrant_only:
+        sync_qdrant_from_postgres(args.data_source)
+        return
 
     # Scan
     changes = scan_documents(args.data_source, args.current_lang)
