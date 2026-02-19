@@ -11,6 +11,8 @@ interface PdfViewerOverlayProps {
   title: string;
   bbox: any[];
   metadata: any;
+  dataSource?: string;
+  onOpenMetadata?: (metadata: Record<string, any>) => void;
   semanticHighlightModelConfig?: SummaryModelConfig | null;
 }
 
@@ -23,6 +25,8 @@ export const PdfViewerOverlay: React.FC<PdfViewerOverlayProps> = ({
   title,
   bbox,
   metadata,
+  dataSource,
+  onOpenMetadata,
   semanticHighlightModelConfig,
 }) => {
   if (!isOpen) {
@@ -40,6 +44,8 @@ export const PdfViewerOverlay: React.FC<PdfViewerOverlayProps> = ({
           title={title}
           initialBBox={bbox}
           metadata={metadata}
+          dataSource={dataSource}
+          onOpenMetadata={onOpenMetadata}
           semanticHighlightModelConfig={semanticHighlightModelConfig}
         />
       </div>

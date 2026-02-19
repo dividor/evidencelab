@@ -24,6 +24,7 @@ interface DocumentsTableProps {
   onViewChunks: (doc: any) => void;
   onReprocess: (doc: any) => void;
   onOpenQueue: () => void;
+  onOpenPdfPreview: (doc: any) => void;
   reprocessingDocId: string | null;
   filterText: string;
   onFilterTextChange: (value: string) => void;
@@ -173,6 +174,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   onViewChunks,
   onReprocess,
   onOpenQueue,
+  onOpenPdfPreview,
   reprocessingDocId,
   filterText,
   onFilterTextChange,
@@ -329,6 +331,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 onViewChunks={onViewChunks}
                 onReprocess={onReprocess}
                 onOpenQueue={onOpenQueue}
+                onOpenPdfPreview={onOpenPdfPreview}
                 reprocessingDocId={reprocessingDocId}
                 dataSourceConfig={dataSourceConfig}
                 dataSource={dataSource}

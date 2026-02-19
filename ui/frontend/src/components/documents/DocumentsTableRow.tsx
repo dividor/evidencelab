@@ -66,6 +66,7 @@ export const DocumentsTableRow: React.FC<{
   onViewChunks: (doc: any) => void;
   onReprocess: (doc: any) => void;
   onOpenQueue: () => void;
+  onOpenPdfPreview: (doc: any) => void;
   reprocessingDocId: string | null;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
   dataSource?: string;
@@ -81,6 +82,7 @@ export const DocumentsTableRow: React.FC<{
   onViewChunks,
   onReprocess,
   onOpenQueue,
+  onOpenPdfPreview,
   reprocessingDocId,
   dataSourceConfig,
   dataSource = 'uneg',
@@ -118,7 +120,7 @@ export const DocumentsTableRow: React.FC<{
             </div>
           </div>
         </td>
-        <DocumentLinksCell doc={doc} dataSource={dataSource} />
+        <DocumentLinksCell doc={doc} dataSource={dataSource} onOpenPdfPreview={onOpenPdfPreview} />
         <td className="doc-summary">
           <DocumentsSummaryCell
             summary={doc.full_summary}

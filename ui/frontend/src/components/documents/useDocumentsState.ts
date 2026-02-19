@@ -241,6 +241,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   };
 
   const handleOpenPDFWithChunk = (chunk: any) => {
+    pdfOpenedFromChunksRef.current = true;
     openPdfViewerWithChunk({
       chunk,
       selectedDocId,
@@ -255,9 +256,27 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     });
   };
 
+  const pdfOpenedFromChunksRef = useRef(false);
+
   const handleClosePDFViewer = () => {
     setPdfViewerOpen(false);
-    setChunksModalOpen(true);
+    if (pdfOpenedFromChunksRef.current) {
+      setChunksModalOpen(true);
+    }
+    pdfOpenedFromChunksRef.current = false;
+  };
+
+  const handleOpenPdfPreview = (doc: any) => {
+    const docId = doc.doc_id || doc.id;
+    if (!docId) return;
+    pdfOpenedFromChunksRef.current = false;
+    setSelectedDocMetadata(doc);
+    setPdfViewerDocId(docId);
+    setPdfViewerChunkId('');
+    setPdfViewerPageNum(1);
+    setPdfViewerTitle(doc.title || 'Untitled');
+    setPdfViewerBBox([]);
+    setPdfViewerOpen(true);
   };
 
   const toggleChunk = (index: number) => {
@@ -472,6 +491,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     hasActiveFilter,
     handleViewChunks,
     handleOpenPDFWithChunk,
+    handleOpenPdfPreview,
     handleClosePDFViewer,
     toggleChunk,
     closeChunksModal,
