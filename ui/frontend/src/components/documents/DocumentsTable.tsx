@@ -24,6 +24,7 @@ interface DocumentsTableProps {
   onViewChunks: (doc: any) => void;
   onReprocess: (doc: any) => void;
   onOpenQueue: () => void;
+  onOpenPdfPreview: (doc: any) => void;
   reprocessingDocId: string | null;
   filterText: string;
   onFilterTextChange: (value: string) => void;
@@ -89,7 +90,7 @@ const generateSortableHeaders = (dataSourceConfig?: import('../../App').DataSour
   return [...baseHeaders, ...taxonomyHeaders, ...endHeaders];
 };
 
-const TopScrollbar: React.FC<{ tableContainer: HTMLDivElement | null }> = ({ tableContainer }) => {
+const TopScrollbar: React.FC<{ tableContainer: HTMLDivElement | null; visible: boolean }> = ({ tableContainer, visible }) => {
   const [topScrollEl, setTopScrollEl] = React.useState<HTMLDivElement | null>(null);
   const [tableScrollWidth, setTableScrollWidth] = React.useState(0);
   const [containerWidth, setContainerWidth] = React.useState(0);
@@ -137,8 +138,8 @@ const TopScrollbar: React.FC<{ tableContainer: HTMLDivElement | null }> = ({ tab
     };
   }, [tableContainer, topScrollEl]);
 
-  // Only show if there's overflow
-  if (tableScrollWidth <= containerWidth) return null;
+  // Only show if there's overflow and after initial delay
+  if (!visible || tableScrollWidth <= containerWidth) return null;
 
   return (
     <div
@@ -173,6 +174,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   onViewChunks,
   onReprocess,
   onOpenQueue,
+  onOpenPdfPreview,
   reprocessingDocId,
   filterText,
   onFilterTextChange,
@@ -200,7 +202,6 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   dataSource,
 }) => {
   const [tableContainer, setTableContainer] = React.useState<HTMLDivElement | null>(null);
-
   // Generate headers dynamically based on config
   const SORTABLE_HEADERS = React.useMemo(
     () => generateSortableHeaders(dataSourceConfig),
@@ -256,9 +257,6 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
         </div>
       ) : (
       <>
-      {/* Top Scrollbar */}
-      <TopScrollbar tableContainer={tableContainer} />
-
       <div className="documents-table-container" ref={setRef} style={{ position: 'relative' }}>
         <table className="documents-table">
 
@@ -333,6 +331,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 onViewChunks={onViewChunks}
                 onReprocess={onReprocess}
                 onOpenQueue={onOpenQueue}
+                onOpenPdfPreview={onOpenPdfPreview}
                 reprocessingDocId={reprocessingDocId}
                 dataSourceConfig={dataSourceConfig}
                 dataSource={dataSource}

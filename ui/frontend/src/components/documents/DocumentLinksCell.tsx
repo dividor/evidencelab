@@ -1,6 +1,10 @@
 import React from 'react';
 
-export const DocumentLinksCell: React.FC<{ doc: any; dataSource?: string }> = ({ doc, dataSource }) => {
+export const DocumentLinksCell: React.FC<{
+  doc: any;
+  dataSource?: string;
+  onOpenPdfPreview: (doc: any) => void;
+}> = ({ doc, dataSource, onOpenPdfPreview }) => {
   const webLink = doc.report_url;
   const pdfLink = doc.pdf_url;
   const source = (doc.data_source || dataSource || '').toUpperCase();
@@ -28,6 +32,19 @@ export const DocumentLinksCell: React.FC<{ doc: any; dataSource?: string }> = ({
           title="Source document"
         >
           {org ? `${org} Document` : 'Document'}
+        </a>
+      )}
+      {pdfLink && (
+        <a
+          href="#"
+          className="doc-link"
+          title="Open PDF preview"
+          onClick={(e) => {
+            e.preventDefault();
+            onOpenPdfPreview(doc);
+          }}
+        >
+          PDF Preview
         </a>
       )}
       {!webLink && !pdfLink && '-'}

@@ -92,6 +92,12 @@ Tools for managing the pipeline and data quality.
 * **Pipeline Controls**: Manually re-trigger the processing pipeline for specific documents directly from the UI.
 * **Traceability**: Full visibility into processing errors, including raw error logs and stack traces preserved in the database.
 
+## Optimization
+
+The platform has been designed to run in Docker, however some pipeline tasks benefit from hardware accepleration that Docker doesn't always provide. For example parsing can leverage GPUs and MPS acceleration. For the large volumes of data on [https://evidencelab.ai](https://evidencelab.ai), the pipeline was run on the host of a M4 Mac Mini with 7 parallel threads using [`/scripts/pipeline/run_pipeline_host.sh`]([`/scripts/pipeline/run_pipeline_host.sh`]).
+
+Another area for optimization is with the Qdrant vector database. Though it works perfectly well inside Docker, for best IO performance on [https://evidencelab.ai](https://evidencelab.ai) it is run on the host with int8 quantized vectors in-memory.
+
 ## AI Models
 
 ### Pipeline

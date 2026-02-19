@@ -37,6 +37,8 @@ load_dotenv()
 
 # Configuration
 DATA_SOURCE = "uneg"  # Use main data source
+DATASET_LABEL = "UN Humanitarian Evaluation Reports"
+MODEL_COMBO = "Azure Foundry"
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_SECRET_KEY")  # Get API key from environment
 RUN_PIPELINE_ON_HOST = os.getenv("RUN_PIPELINE_ON_HOST", "0") == "1"
@@ -648,7 +650,13 @@ class TestPipelineIntegration:
         query = "FIGURE 2. Expenditures by"
         quoted_query = urllib.parse.quote(query)
         quoted_title = urllib.parse.quote(TEST_DOCUMENT_TITLE)
-        url = f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}&highlight=true&rerank=true"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
+        url = (
+            f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}"
+            f"&highlight=true&rerank=true"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
+        )
 
         with sync_playwright() as p:
             ensure_ui_available_or_skip()
@@ -663,33 +671,25 @@ class TestPipelineIntegration:
                 print(f"\n🌐 Opened UI at {url}")
                 print(f"   Searched for: {query}")
 
-                # Ensure we're on the Search tab and force a search submit.
-                page.get_by_role("navigation").get_by_role(
-                    "button", name="Search"
-                ).click()
+                # Wait for model combo config to load before searching.
+                # The rerank=true test MUST have the correct rerank_model
+                # (Cohere cloud) to avoid OOM from the local jina reranker.
+                page.wait_for_function(
+                    "Array.from(document.querySelectorAll('.dropdown-value'))"
+                    f".some(el => el.textContent?.includes('{MODEL_COMBO}'))",
+                    timeout=15000,
+                )
+
+                # Force a search submit in case the initial URL load is still pending.
                 search_box = page.get_by_role("textbox", name="Search documents")
                 search_box.fill(query)
-                # Wait for the search API to respond, then for result cards to render.
-                try:
-                    if hasattr(page, "wait_for_response"):
-                        search_box.press("Enter")
-                        page.wait_for_response(
-                            lambda resp: "/search" in resp.url and resp.status == 200,
-                            timeout=120000,
-                        )
-                    else:
-                        with page.expect_response(
-                            lambda resp: "/search" in resp.url and resp.status == 200,
-                            timeout=120000,
-                        ):
-                            search_box.press("Enter")
-                except PlaywrightTimeoutError:
-                    pytest.fail("Search API did not respond in time")
+                search_box.press("Enter")
 
+                # Wait for results to load (do not skip)
                 try:
                     page.wait_for_function(
                         "document.querySelectorAll('.result-card').length > 0",
-                        timeout=60000,
+                        timeout=120000,
                     )
                 except PlaywrightTimeoutError:
                     pytest.fail(f"No UI results rendered for query '{query}'")
@@ -770,7 +770,13 @@ class TestPipelineIntegration:
         query = "Graph 2"
         quoted_query = urllib.parse.quote(query)
         quoted_title = urllib.parse.quote(TEST_DOCUMENT_TITLE)
-        url = f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}&highlight=true&rerank=false"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
+        url = (
+            f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}"
+            f"&highlight=true&rerank=false"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
+        )
 
         with sync_playwright() as p:
             ensure_ui_available_or_skip()
@@ -904,7 +910,13 @@ class TestPipelineIntegration:
         query = "Finding 9"
         quoted_query = urllib.parse.quote(query)
         quoted_title = urllib.parse.quote(TEST_DOCUMENT_TITLE)
-        url = f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}&highlight=true&rerank=false"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
+        url = (
+            f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}"
+            f"&highlight=true&rerank=false"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
+        )
 
         with sync_playwright() as p:
             ensure_ui_available_or_skip()
@@ -952,7 +964,13 @@ class TestPipelineIntegration:
         query = "To achieve positive peace, development, reconciliation, and prosperity"
         quoted_query = urllib.parse.quote(query)
         quoted_title = urllib.parse.quote(TEST_DOCUMENT_TITLE)
-        url = f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}&highlight=true&rerank=false"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
+        url = (
+            f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}"
+            f"&highlight=true&rerank=false"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
+        )
 
         with sync_playwright() as p:
             ensure_ui_available_or_skip()
@@ -1012,13 +1030,15 @@ class TestPipelineIntegration:
         Verifies that a known query produces a specific highlight in the top result.
         """
         query = "increasing government capacity"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
         url = (
             f"{UI_BASE_URL}/?q=increasing+government+capacity"
             "&title=Independent+Country+Programme+Evaluation%3A+Liberia+-+Main+Report"
             "&rerank=false"
             "&sections=executive_summary%2Ccontext%2Cmethodology%2Cfindings%2C"
             "conclusions%2Crecommendations%2Cannexes%2Cappendix%2Cother"
-            "&dataset=UN+Humanitarian+Evaluation+Reports"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
         )
 
         with sync_playwright() as p:
@@ -1145,7 +1165,13 @@ class TestPipelineIntegration:
         query = "Finding 9"
         quoted_query = urllib.parse.quote(query)
         quoted_title = urllib.parse.quote(TEST_DOCUMENT_TITLE)
-        url = f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}&rerank=false"
+        quoted_combo = urllib.parse.quote(MODEL_COMBO)
+        quoted_dataset = urllib.parse.quote(DATASET_LABEL)
+        url = (
+            f"{UI_BASE_URL}/?q={quoted_query}&title={quoted_title}"
+            f"&rerank=false"
+            f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
+        )
 
         with sync_playwright() as p:
             browser = launch_browser_or_skip(p)
@@ -1215,6 +1241,7 @@ class TestPipelineIntegration:
         url = (
             f"{API_BASE_URL}/search?q={quoted_query}&limit=10"
             f"&data_source={DATA_SOURCE}&rerank=true"
+            "&rerank_model=Cohere-rerank-v4.0-fast"
             "&section_types=executive_summary,context,methodology,findings,"
             "conclusions,recommendations,annexes,appendix,other"
         )

@@ -104,7 +104,7 @@ describe('Image Filtering Logic', () => {
                 chunk_elements: [
                     { element_type: 'text', text: 'text p10', page: 10, bbox: [0, 0, 100, 100], position_hint: 0 },
                     { element_type: 'text', text: 'text p11', page: 11, bbox: [0, 0, 100, 100], position_hint: 0 },
-                    { element_type: 'image', path: IMG_11_PATH, page: 11, bbox: [0, 0, 50, 50], position_hint: 0 }
+                    { element_type: 'image', path: IMG_11_PATH, page: 11, bbox: [0, 0, 200, 200], position_hint: 0 }
                 ]
             };
             const ordered = buildOrderedElements(result);

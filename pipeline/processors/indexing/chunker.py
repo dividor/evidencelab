@@ -37,6 +37,7 @@ from pipeline.processors.indexing.chunker_maps import (
     build_text_elements_map,
 )
 from pipeline.processors.indexing.chunker_post import post_process_chunks
+from pipeline.utilities.text_cleaning import fix_macroman_mojibake
 
 load_dotenv()
 
@@ -955,7 +956,7 @@ class Chunker:
         return cleaned
 
     def _fix_unicode_replacements(self, text: str) -> str:
-        cleaned = text
+        cleaned = fix_macroman_mojibake(text)
         if "\ufffd" in cleaned:
             cleaned = cleaned.replace("D\ufffdmo", "Démo")
             cleaned = cleaned.replace("R\ufffdpublique", "République")

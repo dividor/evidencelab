@@ -3,14 +3,67 @@
 import re
 import unicodedata
 
+# ---------------------------------------------------------------------------
+# MacRoman mojibake repair
+# ---------------------------------------------------------------------------
+# PDFs created on old Macs sometimes have MacRoman-encoded bytes that
+# Docling/PyMuPDF decodes as Windows-1252 (cp1252).  The characters below
+# are cp1252 interpretations that map to common French accented letters in
+# MacRoman.  They are extremely unlikely to appear in correctly-encoded
+# French/English/Spanish text (they are Czech/Slovak letters or typographic
+# modifiers), so substituting them is safe.
+
+_MACROMAN_SAFE_MAP: dict[str, str] = {
+    "\u02c6": "\u00e0",  # ˆ (modifier circumflex) -> à
+    "\u017d": "\u00e9",  # Ž (Z-caron) -> é
+    "\u017e": "\u00fb",  # ž (z-caron) -> û
+    "\u0160": "\u00e4",  # Š (S-caron) -> ä
+    "\u0161": "\u00f6",  # š (s-caron) -> ö
+}
+
+_MACROMAN_MARKERS = frozenset(_MACROMAN_SAFE_MAP.keys())
+
+# Õ (U+00D5) -> right single quote (U+2019) only between word characters.
+# In MacRoman 0xD5 is the right single quote used as an apostrophe.
+_CONTEXTUAL_APOSTROPHE = re.compile(r"(?<=\w)\u00d5(?=\w)")
+
+_MACROMAN_TRANSLATE = str.maketrans(_MACROMAN_SAFE_MAP)
+
+
+def fix_macroman_mojibake(text: str) -> str:
+    """Fix MacRoman bytes that were incorrectly decoded as cp1252.
+
+    Only applies when >=2 strong marker characters are detected,
+    preventing false positives on text that legitimately contains
+    Czech/Slovak letters or typographic modifiers.
+    """
+    if not text:
+        return text
+
+    marker_count = sum(1 for ch in text if ch in _MACROMAN_MARKERS)
+    if marker_count < 2:
+        return text
+
+    result = text.translate(_MACROMAN_TRANSLATE)
+    result = _CONTEXTUAL_APOSTROPHE.sub("\u2019", result)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Main cleaning function
+# ---------------------------------------------------------------------------
+
 
 def clean_text(text: str) -> str:
     """Do robust text cleaning to fix encoding issues."""
     if not text:
         return text
 
-    # 1. First, normalize unicode to ensure consistency
-    cleaned = unicodedata.normalize("NFKC", text)
+    # 0. Fix MacRoman mojibake (before NFKC normalisation)
+    cleaned = fix_macroman_mojibake(text)
+
+    # 1. Normalize unicode to ensure consistency
+    cleaned = unicodedata.normalize("NFKC", cleaned)
 
     # 2. Handle the specific Replacement Character (U+FFFD) ''
     # This often replaces 'ti', 'fi', 'fl', 'ff' in corrupted PDFs

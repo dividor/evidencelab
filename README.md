@@ -101,6 +101,14 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
      python -m pipeline.orchestrator --data-source uneg --skip-download --num-records 10
    ```
 
+   > **Tip:** To quickly ingest a single test document and verify the full stack,
+   > run the integration test script instead:
+   > ```bash
+   > ./tests/integration/run_integration_host_pipeline.sh
+   > ```
+   > This ingests a sample report, rebuilds the containers, and runs the
+   > integration test suite end-to-end.
+
 5. **Access the Evidence Lab UI**
    - Open http://localhost:3000
    - Select your data source and search the indexed documents
@@ -108,3 +116,5 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 6. **Next steps**
    - See the technical deep dive for pipeline commands, downloaders, and architecture details:
      [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)
+   - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, pre-commit hooks,
+     testing, and contribution guidelines

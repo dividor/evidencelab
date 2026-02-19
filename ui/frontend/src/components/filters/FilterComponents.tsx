@@ -108,7 +108,7 @@ const StandardFilterChip = ({
 }: StandardFilterChipProps) => (
   <div className="filter-chip">
     <span className="filter-chip-label">{displayLabel}:</span>
-    <span className="filter-chip-value">{value}</span>
+    <span className="filter-chip-value">{coreField.startsWith('tag_') ? value.replace(/^[a-z0-9_]+ - /, '') : value}</span>
     <button
       onClick={() => onRemove(coreField, value)}
       className="filter-chip-remove"
@@ -208,42 +208,50 @@ const FilterCheckboxList = ({
   coreField,
   stacked,
   onChange,
-}: FilterCheckboxListProps) => (
-  <React.Fragment>
-    {items.map((item) => (
-      <label
-        key={item.value}
-        className={`filter-checkbox-item${stacked ? ' filter-checkbox-item-stacked' : ''}`}
-      >
-        <div className="filter-checkbox-row">
-          <input
-            type="checkbox"
-            checked={selectedValues.includes(item.value)}
-            onChange={(event) => {
-              const nextValues = event.target.checked
-                ? [...selectedValues, item.value]
-                : selectedValues.filter((value) => value !== item.value);
-              onChange(coreField, nextValues);
-            }}
-          />
-          <div className="filter-checkbox-text">
-            <span className="filter-checkbox-label" title={stacked ? item.value : undefined}>
-              {item.value}
-            </span>
-            {stacked && (item.organization || item.published_year) && (
-              <span className="filter-checkbox-subtitle">
-                {item.organization}
-                {item.organization && item.published_year && ' • '}
-                {item.published_year}
-              </span>
-            )}
-          </div>
-          <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
-        </div>
-      </label>
-    ))}
-  </React.Fragment>
-);
+}: FilterCheckboxListProps) => {
+  const stripTagPrefix = (value: string) => value.replace(/^[a-z0-9_]+ - /, '');
+  const isTag = coreField.startsWith('tag_');
+
+  return (
+    <React.Fragment>
+      {items.map((item) => {
+        const displayValue = isTag ? stripTagPrefix(item.value) : item.value;
+        return (
+          <label
+            key={item.value}
+            className={`filter-checkbox-item${stacked ? ' filter-checkbox-item-stacked' : ''}`}
+          >
+            <div className="filter-checkbox-row">
+              <input
+                type="checkbox"
+                checked={selectedValues.includes(item.value)}
+                onChange={(event) => {
+                  const nextValues = event.target.checked
+                    ? [...selectedValues, item.value]
+                    : selectedValues.filter((value) => value !== item.value);
+                  onChange(coreField, nextValues);
+                }}
+              />
+              <div className="filter-checkbox-text">
+                <span className="filter-checkbox-label" title={isTag || stacked ? displayValue : undefined}>
+                  {displayValue}
+                </span>
+                {stacked && (item.organization || item.published_year) && (
+                  <span className="filter-checkbox-subtitle">
+                    {item.organization}
+                    {item.organization && item.published_year && ' • '}
+                    {item.published_year}
+                  </span>
+                )}
+              </div>
+              <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
+            </div>
+          </label>
+        );
+      })}
+    </React.Fragment>
+  );
+};
 
 export const FilterSections = ({
   facets,

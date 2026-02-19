@@ -26,6 +26,7 @@ interface DocumentsModalsProps {
   pdfViewerTitle: string;
   pdfViewerBBox: any[];
   selectedDocMetadata: any;
+  onOpenMetadata?: (metadata: Record<string, any>) => void;
   summaryModalOpen: boolean;
   onCloseSummaryModal: () => void;
   selectedSummary: string;
@@ -77,6 +78,7 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
   pdfViewerTitle,
   pdfViewerBBox,
   selectedDocMetadata,
+  onOpenMetadata,
   summaryModalOpen,
   onCloseSummaryModal,
   selectedSummary,
@@ -129,6 +131,8 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
       title={pdfViewerTitle}
       bbox={pdfViewerBBox}
       metadata={selectedDocMetadata || {}}
+      dataSource={dataSource}
+      onOpenMetadata={onOpenMetadata}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
     />
     <SummaryModal

@@ -190,6 +190,9 @@ PY
 fi
 
 echo "Restarting docker containers..."
+# Reset QDRANT_HOST so containers get the default (http://qdrant:6333)
+# instead of the host-resolved localhost URL from resolve_host_qdrant().
+unset QDRANT_HOST
 docker compose up -d --build
 docker compose up -d embedding-server
 

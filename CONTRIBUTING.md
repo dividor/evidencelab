@@ -46,7 +46,7 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing to ens
    git remote add upstream https://github.com/ORIGINAL-OWNER/evidencelab-ai.git
    ```
 
-## 💻 Development Setup
+### 💻 Development Setup
 
 See main README.
 
@@ -271,6 +271,9 @@ docker compose exec pipeline pytest tests/unit/ -v
 docker compose exec -e CI=true ui npm test -- --watchAll=false
 
 # Run integration tests (requires API + UI containers)
+# The ingest a document, and run a webbrowser to test end-to-end behavior
+# Note: This can be slow in docker, see also ./tests/integration/run_integration_host_pipeline.sh for
+# and example of running on host. You may need to tune this for your environment.
 API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 \
   docker compose exec pipeline pytest tests/integration/ -v -s
 
