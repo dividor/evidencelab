@@ -143,10 +143,10 @@ def _resolve_collection_name(snapshot_stem: str) -> str:
     suffix = snapshot_stem
     if snapshot_stem.startswith("documents_"):
         prefix = "documents_"
-        suffix = snapshot_stem[len(prefix):]
+        suffix = snapshot_stem[len(prefix) :]
     elif snapshot_stem.startswith("chunks_"):
         prefix = "chunks_"
-        suffix = snapshot_stem[len(prefix):]
+        suffix = snapshot_stem[len(prefix) :]
 
     if not prefix:
         return snapshot_stem
