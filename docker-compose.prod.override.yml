@@ -1,0 +1,30 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "127.0.0.1:6333:6333"
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+    volumes:
+      - ${DB_DATA_MOUNT:-/mnt/data/db}/qdrant:/qdrant/storage:z
+      - ${DB_DATA_MOUNT:-/mnt/data/db}/backups:/qdrant/snapshots:z
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          memory: 15G
+        reservations:
+          memory: 2G
+
+  api:
+    environment:
+      - QDRANT_HOST=http://qdrant:6333
+    depends_on:
+      - qdrant
+
+  reverse-proxy:
+    volumes:
+      - /etc/caddy/Caddyfile:/etc/caddy/Caddyfile
