@@ -163,7 +163,10 @@ async def startup_event():
         for v in _config.get("datasources", {}).values()
         if isinstance(v, dict) and v.get("data_subdir")
     ]
-    for _source in _data_subdirs or ["uneg"]:
+    if not _data_subdirs:
+        logger.error("No datasources found in config — skipping cache warm")
+        return
+    for _source in _data_subdirs:
         threading.Thread(
             target=stats_routes.warm_pipeline_cache, args=(_source,), daemon=True
         ).start()
