@@ -68,20 +68,22 @@ gsutil -m cp gs://your-bucket-name/db/backups/qdrant_dump_<data_source>_<timesta
 Then restore from the zip:
 
 ```bash
-python scripts/sync/db/deploy_backup_to_db.py --source /tmp/qdrant_dump_<data_source>_<timestamp>.zip
+python scripts/sync/db/restore_qdrant.py --source /tmp/qdrant_dump_<data_source>_<timestamp>.zip
 ```
 
 * Dumps local Qdrant collections.
 * Zips the dump directory.
 * Uploads the `.zip` to Azure File Share (`db/backups/`).
 
-### Step 2: Restore from Azure (Run on target machine)
+### Step 2: Restore on target machine
+
+Download the backup from your remote store, then:
 
 ```bash
-python scripts/sync/db/deploy_backup_to_db.py
+python scripts/sync/db/restore_qdrant.py --source /path/to/qdrant_dump_<data_source>_<timestamp>.zip
 ```
 
-Note: `deploy_backup_to_db.py` orchestrates `docker compose` and must run on a host
+Note: `restore_qdrant.py` orchestrates `docker compose` and must run on a host
 with Docker access (not inside a container).
 
 * Downloads the latest `.zip` backup from Azure.
@@ -135,7 +137,7 @@ docker compose exec api python scripts/sync/db/dump_qdrant.py --output db/backup
 ### Full Restore
 
 ```bash
-python scripts/sync/db/deploy_backup_to_db.py --source db/backups/qdrant_dump_<data_source>_<timestamp>
+python scripts/sync/db/restore_qdrant.py --source db/backups/qdrant_dump_<data_source>_<timestamp>
 ```
 
 * Restores snapshots by unpacking directly into the Qdrant storage volume.
@@ -163,9 +165,8 @@ docker compose exec api python scripts/sync/db/sync_backup_to_remote.py \
 Restore directly from a delta backup:
 
 ```bash
-python scripts/sync/db/deploy_backup_to_db.py \
-  --source db/backups/qdrant_delta_<data_source>_<timestamp> \
-  --delta
+python scripts/sync/db/restore_qdrant.py \
+  --source db/backups/qdrant_delta_<data_source>_<timestamp>
 ```
 
 ## 4. Postgres Full Dump/Restore (Local)
