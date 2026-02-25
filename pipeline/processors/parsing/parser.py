@@ -497,9 +497,18 @@ class ParseProcessor(BaseProcessor):
         filepath = self._resolve_data_filepath(filepath)
 
         if not os.path.exists(filepath):
-            return self._build_parse_failure(
-                doc, "File not found", error_detail=f"File not found: {filepath}"
+            stage_updates = self.build_stage_updates(
+                doc, success=False, error="File not found"
             )
+            return {
+                "success": False,
+                "updates": {
+                    "sys_status": "download_error",
+                    "sys_error_message": f"File not found: {filepath}",
+                    **stage_updates,
+                },
+                "error": f"File not found: {filepath}",
+            }
 
         # Convert DOC/DOCX to PDF (Linux) or proper DOCX (Mac) if needed
         original_filepath = filepath
