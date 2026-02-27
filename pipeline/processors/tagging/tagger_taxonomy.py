@@ -165,7 +165,7 @@ class TaxonomyTagger(BaseTagger):
 
     # -- context-window splitting helpers --
 
-    _CHARS_PER_TOKEN = 4  # rough estimate for multilingual models
+    _CHARS_PER_TOKEN = 2  # conservative estimate for structured/multilingual content
 
     def _estimate_prompt_overhead_chars(
         self, tax_key: str, tax_config: Dict[str, Any]
