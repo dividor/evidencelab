@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,11 +32,12 @@ def validate_llm_output(
         logger.warning("LLM output validation failed: Output is not a list.")
         return None
 
+    valid_indices = {e["index"] for e in toc_entries}
     seen_indices: set[int] = set()
     labels_by_index: Dict[int, str] = {}
 
     for i, item in enumerate(output_items):
-        parsed = _parse_llm_item(item, i, len(toc_entries))
+        parsed = _parse_llm_item(item, i, valid_indices)
         if not parsed:
             continue
         index_value, label_value = parsed
@@ -53,7 +55,7 @@ def validate_llm_output(
 
 
 def _parse_llm_item(
-    item: Any, item_index: int, max_entries: int
+    item: Any, item_index: int, valid_indices: set
 ) -> Optional[Tuple[int, str]]:
     """Parse and validate a single LLM output item."""
     if not isinstance(item, dict):
@@ -82,12 +84,11 @@ def _parse_llm_item(
             label_value,
         )
         return None
-    if index_value < 0 or index_value >= max_entries:
+    if index_value not in valid_indices:
         logger.warning(
-            "LLM output validation failed: Item %d index %d out of range (0..%d).",
+            "LLM output validation failed: Item %d index %d not in expected indices.",
             item_index,
             index_value,
-            max_entries - 1,
         )
         return None
     return index_value, label_value
@@ -246,6 +247,56 @@ def invoke_and_parse_toc(
     return validated
 
 
+_CHARS_PER_TOKEN = 2  # conservative estimate for structured/multilingual content
+
+
+def _estimate_toc_prompt_overhead(
+    document_title: str, total_pages: Optional[int]
+) -> int:
+    """Return character length of the TOC prompt with an empty TOC payload."""
+    system_prompt, user_prompt = build_toc_prompts(
+        document_title=document_title,
+        toc_items_payload=[],
+        total_pages=total_pages,
+    )
+    return len(system_prompt) + len(user_prompt)
+
+
+def _split_toc_entries(
+    toc_entries: List[Dict[str, Any]],
+    locked_labels_by_index: Dict[int, str],
+    max_payload_chars: int,
+) -> List[List[Dict[str, Any]]]:
+    """Split TOC entries into batches that fit within max_payload_chars.
+
+    Each batch is sized so that its JSON-serialized payload stays under the
+    character budget.  Splits are symmetric (equal-sized batches).
+    """
+    full_payload = build_toc_items_payload(toc_entries, locked_labels_by_index)
+    full_chars = len(json.dumps(full_payload, ensure_ascii=False))
+
+    if full_chars <= max_payload_chars:
+        return [toc_entries]
+
+    n_batches = math.ceil(full_chars / max_payload_chars)
+    batch_size = math.ceil(len(toc_entries) / n_batches)
+
+    batches = []
+    for i in range(0, len(toc_entries), batch_size):
+        batches.append(toc_entries[i : i + batch_size])
+
+    logger.info(
+        "TOC payload (%d chars) exceeds budget (%d chars); "
+        "splitting %d entries into %d batches of ~%d",
+        full_chars,
+        max_payload_chars,
+        len(toc_entries),
+        len(batches),
+        batch_size,
+    )
+    return batches
+
+
 def call_llm_for_toc(
     document_title: str,
     toc_entries: List[Dict[str, Any]],
@@ -259,31 +310,47 @@ def call_llm_for_toc(
     and must be preserved.
     If the LLM fails, returns a map that contains only locked labels
     (caller will fill by hierarchy).
+
+    When the TOC is too large for the context window, entries are split into
+    equal batches and each batch is classified independently.
     """
-    toc_items_payload = build_toc_items_payload(toc_entries, locked_labels_by_index)
-    system_prompt, user_prompt = build_toc_prompts(
-        document_title=document_title,
-        toc_items_payload=toc_items_payload,
-        total_pages=total_pages,
-    )
     model_key, provider, temperature, max_tokens, inference_provider = (
         resolve_llm_config(llm_config)
     )
 
     logger.info(
         "Tagger LLM config: model_key=%s, provider=%s (from supported_llms), "
-        "temperature=%s, max_tokens=%s, "
-        "inference_provider=%s, "
-        "full_config=%s",
+        "temperature=%s, max_tokens=%s, inference_provider=%s",
         model_key,
         provider,
         temperature,
         max_tokens,
         inference_provider,
-        llm_config,
     )
 
-    # get_llm will resolve the model key to actual model string and provider
+    context_window = llm_config.get("context_window", 29000)
+    available_input_tokens = context_window - max_tokens
+    max_total_chars = int(available_input_tokens * _CHARS_PER_TOKEN)
+
+    full_payload = build_toc_items_payload(toc_entries, locked_labels_by_index)
+    sys_prompt, usr_prompt = build_toc_prompts(
+        document_title=document_title,
+        toc_items_payload=full_payload,
+        total_pages=total_pages,
+    )
+    full_prompt_chars = len(sys_prompt) + len(usr_prompt)
+
+    if full_prompt_chars > max_total_chars:
+        payload_chars = len(json.dumps(full_payload, ensure_ascii=False))
+        overhead_chars = full_prompt_chars - payload_chars
+        max_payload_chars = max(max_total_chars - overhead_chars, 1)
+    else:
+        max_payload_chars = len(json.dumps(full_payload, ensure_ascii=False)) + 1
+
+    batches = _split_toc_entries(
+        toc_entries, locked_labels_by_index, max(max_payload_chars, 1)
+    )
+
     llm = get_llm(
         model=model_key,
         provider=provider,
@@ -292,33 +359,53 @@ def call_llm_for_toc(
         inference_provider=inference_provider,
     )
 
-    labels_by_index = invoke_and_parse_toc(
-        llm=llm,
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        toc_entries=toc_entries,
-        locked_labels_by_index=locked_labels_by_index,
-        additional_instruction=None,
-    )
-    if labels_by_index:
-        # Even partial success is better than nothing.
-        # Hierarchy propagation will fill gaps.
-        return labels_by_index
+    merged_labels: Dict[int, str] = {}
 
-    if retry_on_failure:
+    for batch in batches:
+        batch_payload = build_toc_items_payload(batch, locked_labels_by_index)
+        system_prompt, user_prompt = build_toc_prompts(
+            document_title=document_title,
+            toc_items_payload=batch_payload,
+            total_pages=total_pages,
+        )
+
         labels_by_index = invoke_and_parse_toc(
             llm=llm,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            toc_entries=toc_entries,
-            locked_labels_by_index=locked_labels_by_index,
-            additional_instruction=(
-                "Return valid JSON only. No prose. No markdown. "
-                "Output must be a JSON array."
-            ),
+            toc_entries=batch,
+            locked_labels_by_index={
+                k: v
+                for k, v in locked_labels_by_index.items()
+                if any(e["index"] == k for e in batch)
+            },
+            additional_instruction=None,
         )
         if labels_by_index:
-            return labels_by_index
+            merged_labels.update(labels_by_index)
+            continue
+
+        if retry_on_failure:
+            labels_by_index = invoke_and_parse_toc(
+                llm=llm,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                toc_entries=batch,
+                locked_labels_by_index={
+                    k: v
+                    for k, v in locked_labels_by_index.items()
+                    if any(e["index"] == k for e in batch)
+                },
+                additional_instruction=(
+                    "Return valid JSON only. No prose. No markdown. "
+                    "Output must be a JSON array."
+                ),
+            )
+            if labels_by_index:
+                merged_labels.update(labels_by_index)
+
+    if merged_labels:
+        return merged_labels
 
     logger.warning(
         "LLM TOC classification failed to return any valid labels; "
