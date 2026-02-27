@@ -247,7 +247,7 @@ def invoke_and_parse_toc(
     return validated
 
 
-_CHARS_PER_TOKEN = 4  # rough estimate
+_CHARS_PER_TOKEN = 2  # conservative estimate for structured/multilingual content
 
 
 def _estimate_toc_prompt_overhead(
@@ -329,9 +329,23 @@ def call_llm_for_toc(
     )
 
     context_window = llm_config.get("context_window", 29000)
-    overhead_chars = _estimate_toc_prompt_overhead(document_title, total_pages)
     available_input_tokens = context_window - max_tokens
-    max_payload_chars = int(available_input_tokens * _CHARS_PER_TOKEN) - overhead_chars
+    max_total_chars = int(available_input_tokens * _CHARS_PER_TOKEN)
+
+    full_payload = build_toc_items_payload(toc_entries, locked_labels_by_index)
+    sys_prompt, usr_prompt = build_toc_prompts(
+        document_title=document_title,
+        toc_items_payload=full_payload,
+        total_pages=total_pages,
+    )
+    full_prompt_chars = len(sys_prompt) + len(usr_prompt)
+
+    if full_prompt_chars > max_total_chars:
+        payload_chars = len(json.dumps(full_payload, ensure_ascii=False))
+        overhead_chars = full_prompt_chars - payload_chars
+        max_payload_chars = max(max_total_chars - overhead_chars, 1)
+    else:
+        max_payload_chars = len(json.dumps(full_payload, ensure_ascii=False)) + 1
 
     batches = _split_toc_entries(
         toc_entries, locked_labels_by_index, max(max_payload_chars, 1)
