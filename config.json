@@ -33,13 +33,15 @@
       "model_id": "text-embedding-3-large",
       "size": 3072,
       "source": "azure_foundry",
-      "type": "dense"
+      "type": "dense",
+      "max_tokens": 8192
     },
     "azure_small": {
       "model_id": "text-embedding-3-small",
       "size": 1536,
       "source": "azure_foundry",
-      "type": "dense"
+      "type": "dense",
+      "max_tokens": 8192
     },
     "google_gemini": {
       "model_id": "gemini-embedding-001",
