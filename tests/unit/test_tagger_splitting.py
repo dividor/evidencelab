@@ -15,6 +15,7 @@ from pipeline.processors.tagging.tagger_llm import (
     build_toc_items_payload,
     build_toc_prompts,
     call_llm_for_toc,
+    validate_llm_output,
 )
 
 
@@ -267,4 +268,52 @@ class TestCallLlmForTocSplitting:
 
         # Should have split (multiple invocations)
         assert mock_invoke.call_count > 1
+        assert len(result) == 10
+
+
+class TestValidateLlmOutputBatchIndices:
+    """Test validate_llm_output works correctly with batch subsets."""
+
+    def test_validates_high_indices_from_second_batch(self):
+        """Entries with high original indices (e.g. batch 2) must pass validation.
+
+        Regression test: previously validate_llm_output used len(toc_entries)
+        as the upper bound, which rejected indices >= batch size even though
+        those were valid original indices.
+        """
+        # Simulate batch 2: entries with indices 25-49
+        batch_entries = _make_toc_entries(50)[25:]
+        assert batch_entries[0]["index"] == 25
+        assert batch_entries[-1]["index"] == 49
+
+        # LLM returns labels matching the batch indices
+        llm_output = [
+            {"idx": e["index"], "label": "introduction"} for e in batch_entries
+        ]
+
+        result = validate_llm_output(
+            batch_entries, llm_output, locked_labels_by_index={}
+        )
+        assert result is not None
+        assert len(result) == 25
+        assert 25 in result
+        assert 49 in result
+
+    def test_rejects_index_not_in_batch(self):
+        """An index not present in the batch entries should be rejected."""
+        batch_entries = _make_toc_entries(50)[25:30]  # indices 25-29
+        llm_output = [{"idx": 999, "label": "introduction"}]
+
+        result = validate_llm_output(
+            batch_entries, llm_output, locked_labels_by_index={}
+        )
+        assert result == {}
+
+    def test_sequential_indices_still_work(self):
+        """Normal case: indices 0..N-1 in a non-split batch still validate."""
+        entries = _make_toc_entries(10)
+        llm_output = [{"idx": i, "label": "introduction"} for i in range(10)]
+
+        result = validate_llm_output(entries, llm_output, locked_labels_by_index={})
+        assert result is not None
         assert len(result) == 10
