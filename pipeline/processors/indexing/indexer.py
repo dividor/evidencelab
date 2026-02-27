@@ -77,6 +77,10 @@ def year_to_unix(year_str: Optional[str]) -> Optional[int]:
         return None
 
 
+_DEFAULT_MAX_EMBED_TOKENS = 8192
+_CHARS_PER_TOKEN = 2  # conservative for Azure/OpenAI tokenizers
+
+
 class IndexProcessor(BaseProcessor):
     """
     Document indexing processor for Qdrant.
@@ -145,6 +149,7 @@ class IndexProcessor(BaseProcessor):
         self._primary_dense_model = self._select_primary_dense_model()
         self._load_sparse_model()
         self._init_tokenizer_and_chunker()
+        self._max_embed_chars = self._compute_max_embed_chars(targets)
 
         logger.info("✓ %s Embedding models and chunker loaded", len(self._dense_models))
         super().setup()
@@ -229,6 +234,17 @@ class IndexProcessor(BaseProcessor):
         self._chunker_instance = Chunker(
             tokenizer=self._tokenizer, chunker=hybrid_chunker
         )
+
+    def _compute_max_embed_chars(self, targets: List[str]) -> int:
+        """Derive max chunk chars from the smallest embedding model token limit."""
+        limits = []
+        for vec_name in targets:
+            vec_config = DB_VECTORS.get(vec_name, {})
+            mt = vec_config.get("max_tokens")
+            if mt:
+                limits.append(int(mt))
+        min_tokens = min(limits) if limits else _DEFAULT_MAX_EMBED_TOKENS
+        return int(min_tokens * _CHARS_PER_TOKEN)
 
     def _chunk_document(self, json_path: str) -> List[Dict[str, Any]]:
         """
@@ -316,6 +332,19 @@ class IndexProcessor(BaseProcessor):
             logger.warning(
                 "Filtered out %s empty chunks.", len(chunks) - len(valid_chunks)
             )
+        max_chars = getattr(
+            self, "_max_embed_chars", _DEFAULT_MAX_EMBED_TOKENS * _CHARS_PER_TOKEN
+        )
+        for i, chunk in enumerate(valid_chunks):
+            text = chunk.get("text", "")
+            if len(text) > max_chars:
+                logger.warning(
+                    "Chunk %d truncated from %d to %d chars (embedding model limit)",
+                    i,
+                    len(text),
+                    max_chars,
+                )
+                chunk["text"] = text[:max_chars]
         return valid_chunks
 
     def _build_batches(
