@@ -97,12 +97,15 @@ def refresh_config() -> None:
     if "supported_embedding_models" in _config:
         for model_name, model_info in _config["supported_embedding_models"].items():
             if model_info.get("type") == "dense":
-                DB_VECTORS[model_name] = {
+                vec_entry: Dict[str, Any] = {
                     "size": model_info["size"],
                     "enabled": True,  # Default to enabled
                     "model_id": model_info["model_id"],
                     "source": model_info.get("source", "huggingface"),
                 }
+                if "max_tokens" in model_info:
+                    vec_entry["max_tokens"] = model_info["max_tokens"]
+                DB_VECTORS[model_name] = vec_entry
 
     SUPPORTED_LLMS = {}
     if "supported_llms" in _config:
