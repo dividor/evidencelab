@@ -32,11 +32,12 @@ def validate_llm_output(
         logger.warning("LLM output validation failed: Output is not a list.")
         return None
 
+    valid_indices = {e["index"] for e in toc_entries}
     seen_indices: set[int] = set()
     labels_by_index: Dict[int, str] = {}
 
     for i, item in enumerate(output_items):
-        parsed = _parse_llm_item(item, i, len(toc_entries))
+        parsed = _parse_llm_item(item, i, valid_indices)
         if not parsed:
             continue
         index_value, label_value = parsed
@@ -54,7 +55,7 @@ def validate_llm_output(
 
 
 def _parse_llm_item(
-    item: Any, item_index: int, max_entries: int
+    item: Any, item_index: int, valid_indices: set
 ) -> Optional[Tuple[int, str]]:
     """Parse and validate a single LLM output item."""
     if not isinstance(item, dict):
@@ -83,12 +84,11 @@ def _parse_llm_item(
             label_value,
         )
         return None
-    if index_value < 0 or index_value >= max_entries:
+    if index_value not in valid_indices:
         logger.warning(
-            "LLM output validation failed: Item %d index %d out of range (0..%d).",
+            "LLM output validation failed: Item %d index %d not in expected indices.",
             item_index,
             index_value,
-            max_entries - 1,
         )
         return None
     return index_value, label_value
