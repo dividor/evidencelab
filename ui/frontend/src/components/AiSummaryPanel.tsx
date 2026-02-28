@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { SearchResult } from '../types/api';
 import { LANGUAGES } from '../constants';
 import { RainbowText } from './RainbowText';
 import { AiSummaryWithCitations } from './AiSummaryWithCitations';
 import { AiSummaryReferences } from './AiSummaryReferences';
+import { DigDeeperPopover } from './DigDeeperPopover';
+import { DrilldownBreadcrumb } from './DrilldownBreadcrumb';
 
 interface AiSummaryPanelProps {
   enabled: boolean;
@@ -25,6 +27,10 @@ interface AiSummaryPanelProps {
   onResultClick: (result: SearchResult) => void;
   onOpenPrompt: () => void;
   onClosePrompt: () => void;
+  drilldownStackDepth?: number;
+  drilldownHighlight?: string;
+  onDrilldown?: (selectedText: string) => void;
+  onDrilldownBack?: () => void;
 }
 
 const GeneratingText = () => (
@@ -52,13 +58,23 @@ const AiSummaryBody = ({
   summary,
   filteredResults,
   onResultClick,
+  contentRef,
+  onDrilldown,
+  loading,
 }: {
   expanded: boolean;
   summary: string;
   filteredResults: SearchResult[];
   onResultClick: (result: SearchResult) => void;
+  contentRef?: React.RefObject<HTMLDivElement | null>;
+  onDrilldown?: (text: string) => void;
+  loading?: boolean;
 }) => (
-  <div className={`ai-summary-content ${expanded ? 'expanded' : ''}`}>
+  <div
+    className={`ai-summary-content ${expanded ? 'expanded' : ''}`}
+    ref={contentRef}
+    style={{ position: 'relative' }}
+  >
     <div className="ai-summary-markdown">
       <AiSummaryWithCitations
         summaryText={summary}
@@ -71,6 +87,12 @@ const AiSummaryBody = ({
       results={filteredResults}
       onResultClick={onResultClick}
     />
+    {onDrilldown && contentRef && !loading && (
+      <DigDeeperPopover
+        containerRef={contentRef}
+        onDrilldown={onDrilldown}
+      />
+    )}
   </div>
 );
 
@@ -81,6 +103,8 @@ const AiSummaryContent = ({
   summary,
   filteredResults,
   onResultClick,
+  contentRef,
+  onDrilldown,
 }: {
   collapsed: boolean;
   expanded: boolean;
@@ -88,6 +112,8 @@ const AiSummaryContent = ({
   summary: string;
   filteredResults: SearchResult[];
   onResultClick: (result: SearchResult) => void;
+  contentRef?: React.RefObject<HTMLDivElement | null>;
+  onDrilldown?: (text: string) => void;
 }) => {
   if (collapsed) {
     return null;
@@ -107,6 +133,9 @@ const AiSummaryContent = ({
       summary={summary}
       filteredResults={filteredResults}
       onResultClick={onResultClick}
+      contentRef={contentRef}
+      onDrilldown={onDrilldown}
+      loading={loading}
     />
   );
 };
@@ -199,7 +228,13 @@ export const AiSummaryPanel = ({
   onResultClick,
   onOpenPrompt,
   onClosePrompt,
+  drilldownStackDepth,
+  drilldownHighlight,
+  onDrilldown,
+  onDrilldownBack,
 }: AiSummaryPanelProps) => {
+  const summaryContentRef = useRef<HTMLDivElement>(null);
+
   if (!enabled) {
     return null;
   }
@@ -207,12 +242,15 @@ export const AiSummaryPanel = ({
   const filteredResults = results.filter((result) => result.score >= minScore);
   const displaySummary = translatedSummary || aiSummary;
   const selectedLang = translatedLang || 'en';
+  const isDrilldown = (drilldownStackDepth || 0) > 0;
 
   return (
     <>
       <div className={`ai-summary-box ${aiSummaryCollapsed ? 'collapsed' : ''}`}>
         <div className="ai-summary-header" onClick={onToggleCollapsed}>
-          <h3 className="ai-summary-title">AI Summary</h3>
+          <h3 className="ai-summary-title">
+            {isDrilldown ? 'AI Drilldown Summary' : 'AI Summary'}
+          </h3>
           {aiSummary && !aiSummaryLoading && onLanguageChange && (
             <div
               className="result-language-selector"
@@ -269,6 +307,13 @@ export const AiSummaryPanel = ({
             {aiSummaryCollapsed ? 'Expand' : 'Collapse'}
           </button>
         </div>
+        {!aiSummaryCollapsed && onDrilldownBack && (
+          <DrilldownBreadcrumb
+            stackDepth={drilldownStackDepth || 0}
+            onBack={onDrilldownBack}
+            currentHighlight={drilldownHighlight}
+          />
+        )}
         <AiSummaryContent
           collapsed={aiSummaryCollapsed}
           expanded={aiSummaryExpanded}
@@ -276,6 +321,8 @@ export const AiSummaryPanel = ({
           summary={displaySummary}
           filteredResults={filteredResults}
           onResultClick={onResultClick}
+          contentRef={summaryContentRef}
+          onDrilldown={onDrilldown}
         />
         <AiSummaryFooter
           collapsed={aiSummaryCollapsed}

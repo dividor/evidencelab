@@ -177,6 +177,18 @@ export interface HighlightResponse {
   total: number;
 }
 
+/** One level of the AI summary drilldown stack */
+export interface AiSummaryStackEntry {
+  summary: string;
+  prompt: string;
+  results: SearchResult[];
+  highlightedText: string;
+  drilldownQuery: string;
+  translatedText: string | null;
+  translatedLang: string | null;
+  expanded: boolean;
+}
+
 // Dynamic search filters using core field names
 export interface SearchFilters {
   [coreField: string]: string | undefined;
