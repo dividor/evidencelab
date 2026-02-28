@@ -80,6 +80,10 @@ interface SearchTabContentProps {
   aiSummaryTranslatedLang?: string | null;
   onAiSummaryLanguageChange?: (newLang: string) => void;
   searchId: number;
+  aiDrilldownStackDepth?: number;
+  aiDrilldownHighlight?: string;
+  onAiDrilldown?: (selectedText: string) => void;
+  onAiDrilldownBack?: () => void;
 }
 
 const DOT_SIZES = [12, 12, 12, 12, 12];
@@ -274,6 +278,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   aiSummaryTranslatedLang,
   onAiSummaryLanguageChange,
   searchId,
+  aiDrilldownStackDepth,
+  aiDrilldownHighlight,
+  onAiDrilldown,
+  onAiDrilldownBack,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -508,6 +516,10 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             onResultClick={onResultClick}
             onOpenPrompt={onOpenPrompt}
             onClosePrompt={onClosePrompt}
+            drilldownStackDepth={aiDrilldownStackDepth}
+            drilldownHighlight={aiDrilldownHighlight}
+            onDrilldown={onAiDrilldown}
+            onDrilldownBack={onAiDrilldownBack}
           />
 
           {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}

@@ -17,7 +17,8 @@ import {
   SearchFilters,
   SearchResult,
   ModelComboConfig,
-  SummaryModelConfig
+  SummaryModelConfig,
+  AiSummaryStackEntry
 } from './types/api';
 import { Documents } from './components/Documents';
 import { Stats } from './components/Stats';
@@ -41,6 +42,8 @@ import {
 } from './utils/textHighlighting';
 // datasource config is now fetched dynamically
 // import datasourcesConfig from './datasources.config.json';
+
+const AI_SUMMARY_ERROR = 'Uh oh. Something went wrong asking the AI.';
 
 // Configure API key header for all axios requests
 const API_KEY = process.env.REACT_APP_API_KEY;
@@ -722,6 +725,11 @@ function App() {
   const [aiSummaryTranslatedText, setAiSummaryTranslatedText] = useState<string | null>(null);
   const [aiSummaryTranslatingLang, setAiSummaryTranslatingLang] = useState<string | null>(null);
   const [aiSummaryTranslatedLang, setAiSummaryTranslatedLang] = useState<string | null>(null);
+
+  // AI Summary Drilldown state
+  const [aiSummaryStack, setAiSummaryStack] = useState<AiSummaryStackEntry[]>([]);
+  const [aiDrilldownQuery, setAiDrilldownQuery] = useState<string | null>(null);
+  const [aiDrilldownHighlight, setAiDrilldownHighlight] = useState<string | null>(null);
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {
@@ -1471,6 +1479,11 @@ function App() {
     const abortController = new AbortController();
     aiSummaryAbortRef.current = abortController;
 
+    // Reset drilldown stack when a fresh summary is generated
+    setAiSummaryStack([]);
+    setAiDrilldownQuery(null);
+    setAiDrilldownHighlight(null);
+
     const sliced = summaryResults.slice(0, 20);
     setAiSummaryResults(sliced);
     setAiSummaryLoading(true);
@@ -1509,14 +1522,14 @@ function App() {
         onDone: () => setAiSummaryLoading(false),
         onError: (message: string) => {
           console.error('AI summary streaming error:', message);
-          setAiSummary('Uh oh. Something went wrong asking the AI.');
+          setAiSummary(AI_SUMMARY_ERROR);
           setAiSummaryLoading(false);
         },
       },
     }).catch((error) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('AI summary streaming failed:', error);
-      setAiSummary('Uh oh. Something went wrong asking the AI.');
+      setAiSummary(AI_SUMMARY_ERROR);
       setAiSummaryLoading(false);
     });
   }, [dataSource, query, summaryModelConfig]);
@@ -1524,6 +1537,108 @@ function App() {
   const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
     startAiSummaryStream(data.results);
   }, [startAiSummaryStream]);
+
+  // Drilldown: push current summary onto stack and stream a focused summary
+  const startDrilldown = useCallback((highlightedText: string) => {
+    const currentEntry: AiSummaryStackEntry = {
+      summary: aiSummary,
+      prompt: aiPrompt,
+      results: aiSummaryResults,
+      highlightedText: aiDrilldownHighlight || '',
+      drilldownQuery: aiDrilldownQuery || query,
+      translatedText: aiSummaryTranslatedText,
+      translatedLang: aiSummaryTranslatedLang,
+      expanded: aiSummaryExpanded,
+    };
+    setAiSummaryStack((prev) => [...prev, currentEntry]);
+    setAiDrilldownHighlight(highlightedText);
+
+    const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of the original question: "${query}"`;
+    setAiDrilldownQuery(drilldownQuery);
+
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    aiSummaryAbortRef.current = abortController;
+
+    setAiSummaryLoading(true);
+    setAiSummary('');
+    setAiSummaryBuffer('');
+    setAiPrompt('');
+    setAiSummaryExpanded(false);
+    setAiSummaryTranslatedText(null);
+    setAiSummaryTranslatingLang(null);
+    setAiSummaryTranslatedLang(null);
+
+    const leanResults = aiSummaryResults.map((r) => ({
+      chunk_id: r.chunk_id,
+      doc_id: r.doc_id,
+      text: r.text,
+      title: r.title,
+      organization: r.organization,
+      year: r.year,
+      page_num: r.page_num,
+      headings: r.headings,
+      score: r.score,
+    })) as SearchResult[];
+
+    streamAiSummary({
+      apiBaseUrl: API_BASE_URL,
+      apiKey: API_KEY || undefined,
+      dataSource,
+      query: drilldownQuery,
+      results: leanResults,
+      summaryModelConfig,
+      signal: abortController.signal,
+      handlers: {
+        onPrompt: setAiPrompt,
+        onToken: setAiSummary,
+        onDone: () => setAiSummaryLoading(false),
+        onError: (message: string) => {
+          console.error('AI drilldown streaming error:', message);
+          setAiSummary(AI_SUMMARY_ERROR);
+          setAiSummaryLoading(false);
+        },
+      },
+    }).catch((error) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      console.error('AI drilldown streaming failed:', error);
+      setAiSummary(AI_SUMMARY_ERROR);
+      setAiSummaryLoading(false);
+    });
+  }, [aiSummary, aiPrompt, aiSummaryResults, aiDrilldownHighlight,
+      aiDrilldownQuery, query, dataSource, summaryModelConfig,
+      aiSummaryExpanded, aiSummaryTranslatedText, aiSummaryTranslatedLang]);
+
+  // Navigate back up the drilldown stack
+  const navigateBackDrilldown = useCallback(() => {
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+      aiSummaryAbortRef.current = null;
+    }
+
+    setAiSummaryStack((prev) => {
+      if (prev.length === 0) return prev;
+      const newStack = [...prev];
+      const restored = newStack.pop()!;
+
+      setAiSummary(restored.summary);
+      setAiPrompt(restored.prompt);
+      setAiSummaryResults(restored.results);
+      setAiSummaryExpanded(restored.expanded);
+      setAiSummaryTranslatedText(restored.translatedText);
+      setAiSummaryTranslatedLang(restored.translatedLang);
+      setAiSummaryTranslatingLang(null);
+      setAiSummaryLoading(false);
+      setAiDrilldownQuery(
+        newStack.length > 0 ? newStack[newStack.length - 1].drilldownQuery : null
+      );
+      setAiDrilldownHighlight(restored.highlightedText || null);
+
+      return newStack;
+    });
+  }, []);
 
   const handlePostSearchResults = useCallback((data: SearchResponse) => {
     if (data.results.length > 0) {
@@ -2079,6 +2194,10 @@ function App() {
       aiSummaryTranslatingLang={aiSummaryTranslatingLang}
       aiSummaryTranslatedLang={aiSummaryTranslatedLang}
       onAiSummaryLanguageChange={handleAiSummaryLanguageChange}
+      aiDrilldownStackDepth={aiSummaryStack.length}
+      aiDrilldownHighlight={aiDrilldownHighlight || undefined}
+      onAiDrilldown={startDrilldown}
+      onAiDrilldownBack={navigateBackDrilldown}
     />
   );
 
