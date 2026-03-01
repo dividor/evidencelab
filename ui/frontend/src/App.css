@@ -3739,28 +3739,23 @@ li.ai-fact-active::before {
 }
 
 .dig-deeper-popover {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--brand-primary);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: white;
+  border: 1px solid var(--gray-300);
   border-radius: var(--radius-sm);
-  padding: 7px 14px;
-  font-size: 0.8125rem;
-  font-weight: 600;
+  color: var(--brand-primary);
+  font-size: 0.75rem;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  white-space: nowrap;
   z-index: 10;
-  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: background 0.15s ease, border-color 0.15s ease;
   animation: digDeeperFadeIn 0.15s ease-out;
-  letter-spacing: 0.01em;
 }
 
 .dig-deeper-popover:hover {
-  background: var(--brand-primary-dark, #4a7a90);
-  transform: translateX(-50%) scale(1.03);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  background: var(--gray-50);
+  border-color: var(--brand-primary);
 }
 
 @keyframes digDeeperFadeIn {
