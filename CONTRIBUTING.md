@@ -56,6 +56,8 @@ We use pre-commit hooks to ensure code quality and consistency. **This is requir
 This mirrors the CI `code-quality` job. Code metrics run as part of pre-commit and
 fail if any file is rated **bad** (see [Code Complexity Checks](#code-complexity-checks)).
 
+As with most recent repositories, the code in the repo was developed with AI-assistance (mostly Claude in Cursor, with a sprinkling of GitHub Copilot). This is only possible with the use of comprehensive unit and integration tests, as well as code quality automated tests, very importantly to include code complexity validation as AI can tend to make things hard to follow and support. So please ensure pre-commit hooks are activated if using AI to code. Thanks!
+
 ### Install Pre-commit
 
 ```bash
@@ -534,13 +536,64 @@ New pipeline stages should:
 
 ## 🔄 Release Process
 
-For maintainers:
+We use **release candidate branches** (`rc/vX.Y.Z`) to stage and stabilise
+changes before they reach `main`.
 
-1. **Version Bump**: Update version in `pyproject.toml`
-2. **Changelog**: Update release notes
-3. **Tag Release**: Create git tag
-4. **GitHub Release**: Create release with notes
-5. **PyPI**: Automated via GitHub Actions
+### Branch Strategy
+
+```
+feature/fix branches ──► rc/vX.Y.Z ──► main
+                           (staging)     (stable)
+```
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable, production-ready code. Only receives merges from RC branches. |
+| `rc/vX.Y.Z` | Release candidate. All feature and fix PRs target this branch. |
+| `feat/*`, `fix/*`, etc. | Short-lived branches for individual changes. |
+
+### Workflow
+
+1. **Create an RC branch** from `main` when starting a new release cycle:
+   ```bash
+   git checkout main
+   git checkout -b rc/v1.2.0
+   git push -u origin rc/v1.2.0
+   ```
+
+2. **Target PRs to the RC branch.** All feature and fix PRs should set
+   `rc/vX.Y.Z` as their base branch, not `main`:
+   ```bash
+   gh pr create --base rc/v1.2.0
+   ```
+
+3. **Retarget existing PRs** if switching to a new RC branch:
+   ```bash
+   gh pr edit <PR_NUMBER> --base rc/v1.2.0
+   ```
+
+4. **Dependabot PRs** also target the RC branch (configured via
+   `target-branch` in `.github/dependabot.yml`). Update this value
+   when creating a new RC branch.
+
+5. **Merge RC to main** once all PRs are merged and the release is validated:
+   ```bash
+   git checkout main
+   git merge rc/v1.2.0
+   git tag v1.2.0
+   git push origin main --tags
+   ```
+
+6. **Create a GitHub Release** from the tag with release notes.
+
+### Release Checklist
+
+1. All PRs merged into `rc/vX.Y.Z`
+2. CI passing on the RC branch
+3. Manual verification on staging/Docker environment
+4. Version bump in `pyproject.toml`
+5. Merge RC branch to `main`
+6. Tag release and create GitHub Release with notes
 
 ## 📞 Getting Help
 
