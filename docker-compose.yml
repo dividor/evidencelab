@@ -105,7 +105,7 @@ services:
     environment:
       - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
@@ -162,7 +162,7 @@ services:
     environment:
       - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      - POSTGRES_HOST=postgres
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
@@ -181,6 +181,7 @@ services:
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-noreply@evidencelab.ai}
@@ -248,6 +249,21 @@ services:
       retries: 10
       start_period: 30s
     restart: unless-stopped
+
+  # Mailpit — development SMTP server with web UI for testing emails
+  # Web UI: http://localhost:8025  |  SMTP: mailpit:1025
+  # Only needed when testing email verification / password reset flows.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    restart: unless-stopped
+    networks:
+      - app-network
+    profiles:
+      - mail
 
 networks:
   app-network:

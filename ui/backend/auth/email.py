@@ -13,6 +13,8 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM = os.environ.get("SMTP_FROM", "noreply@evidencelab.ai")
+# Disable STARTTLS for local dev servers (e.g. Mailpit on port 1025)
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").lower() != "false"
 
 
 async def send_email(to: str, subject: str, body_html: str) -> None:
@@ -43,7 +45,7 @@ async def send_email(to: str, subject: str, body_html: str) -> None:
             port=SMTP_PORT,
             username=SMTP_USER or None,
             password=SMTP_PASSWORD or None,
-            start_tls=True,
+            start_tls=SMTP_USE_TLS,
         )
         logger.info("Sent email to %s: %s", to, subject)
     except Exception:
