@@ -89,6 +89,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose }) => {
           {error && <div className="auth-error">{error}</div>}
           {displaySuccess && <div className="auth-success">{displaySuccess}</div>}
 
+          {mode === 'register' && !displaySuccess && (
+            <p className="auth-callout">
+              Registering for a free account allows you to access more features.
+            </p>
+          )}
+
           <OAuthButtons action={mode === 'login' ? 'Sign in' : 'Sign up'} />
 
           <div className="auth-divider">

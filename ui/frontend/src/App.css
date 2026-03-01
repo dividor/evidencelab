@@ -7724,6 +7724,14 @@ h6,
   margin-bottom: 1rem;
 }
 
+.auth-callout {
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--gray-600);
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
 .auth-divider {
   display: flex;
   align-items: center;
