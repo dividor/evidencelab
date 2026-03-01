@@ -348,7 +348,7 @@ const AiSummaryHeader = ({
 }) => (
   <div className="ai-summary-header">
     <h3 className="ai-summary-title">
-      {isDrilldown ? 'AI Drilldown Summary' : 'AI Summary'}
+      {isDrilldown ? 'AI Summary Tree' : 'AI Summary'}
     </h3>
     {aiSummary && !loading && !showGraph && onLanguageChange && (
       <LanguageSelector

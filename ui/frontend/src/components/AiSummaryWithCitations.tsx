@@ -96,6 +96,72 @@ const buildCitationLinkTitle = (result: SearchResult): string => {
   return result.title + ' (' + (result.organization || 'Unknown') + yearSuffix + ')';
 };
 
+interface CitationEntry {
+  sequentialNumber: number;
+  result: SearchResult | null;
+  idx: number;
+}
+
+const buildCitationEntries = (
+  rawNumbers: string,
+  searchResults: SearchResult[],
+  citationMapping: Map<number, number>,
+): CitationEntry[] => {
+  const entries: CitationEntry[] = [];
+  for (const originalNumber of parseCitationNumbers(rawNumbers)) {
+    const sequentialNumber = citationMapping.get(originalNumber);
+    if (sequentialNumber === undefined) continue;
+    const citationIndex = originalNumber - 1;
+    const result = citationIndex >= 0 && citationIndex < searchResults.length
+      ? searchResults[citationIndex] : null;
+    entries.push({ sequentialNumber, result, idx: entries.length });
+  }
+  return entries;
+};
+
+const groupByDocument = (entries: CitationEntry[]): CitationEntry[][] => {
+  const groups: CitationEntry[][] = [];
+  for (const entry of entries) {
+    const docId = entry.result?.doc_id;
+    const prev = groups.length > 0 ? groups[groups.length - 1] : null;
+    const prevDocId = prev && prev[0].result?.doc_id;
+    if (prev && docId && docId === prevDocId) {
+      prev.push(entry);
+    } else {
+      groups.push([entry]);
+    }
+  }
+  return groups;
+};
+
+const renderCitationLink = (
+  entry: CitationEntry,
+  onResultClick: (result: SearchResult) => void,
+  keyPrefix: string,
+): React.ReactNode => {
+  if (entry.result) {
+    return (
+      <a
+        key={`${keyPrefix}-link-${entry.sequentialNumber}-${entry.idx}`}
+        href="#"
+        className="ai-summary-citation"
+        onClick={(event: React.MouseEvent) => {
+          event.preventDefault();
+          onResultClick(entry.result!);
+        }}
+        title={buildCitationLinkTitle(entry.result)}
+      >
+        {entry.sequentialNumber}
+      </a>
+    );
+  }
+  return (
+    <span key={`${keyPrefix}-missing-${entry.sequentialNumber}-${entry.idx}`}>
+      {entry.sequentialNumber}
+    </span>
+  );
+};
+
 const renderCitationLinks = (
   rawNumbers: string,
   searchResults: SearchResult[],
@@ -103,48 +169,31 @@ const renderCitationLinks = (
   onResultClick: (result: SearchResult) => void,
   keyPrefix: string
 ): React.ReactNode[] => {
-  const originalNumbers = parseCitationNumbers(rawNumbers);
-  const links: React.ReactNode[] = [];
+  const entries = buildCitationEntries(rawNumbers, searchResults, citationMapping);
+  const groups = groupByDocument(entries);
+  const nodes: React.ReactNode[] = [];
 
-  originalNumbers.forEach((originalNumber, idx) => {
-    const sequentialNumber = citationMapping.get(originalNumber);
-    if (sequentialNumber === undefined) return;
-
-    const citationIndex = originalNumber - 1;
-    const result =
-      citationIndex >= 0 && citationIndex < searchResults.length
-        ? searchResults[citationIndex]
-        : null;
-
-    if (result) {
-      links.push(
-        <a
-          key={`${keyPrefix}-link-${sequentialNumber}-${idx}`}
-          href="#"
-          className="ai-summary-citation"
-          onClick={(event: React.MouseEvent) => {
-            event.preventDefault();
-            onResultClick(result);
-          }}
-          title={buildCitationLinkTitle(result)}
-        >
-          {sequentialNumber}
-        </a>
-      );
-    } else {
-      links.push(
-        <span key={`${keyPrefix}-missing-${sequentialNumber}-${idx}`}>
-          {sequentialNumber}
+  groups.forEach((group, gi) => {
+    if (gi > 0) nodes.push(<span key={`${keyPrefix}-gsep-${gi}`}>, </span>);
+    const isGroup = group.length > 1;
+    const inner = group.map((entry, ei) => (
+      <React.Fragment key={`${keyPrefix}-e-${entry.idx}`}>
+        {ei > 0 && <span>, </span>}
+        {renderCitationLink(entry, onResultClick, keyPrefix)}
+      </React.Fragment>
+    ));
+    if (isGroup) {
+      nodes.push(
+        <span key={`${keyPrefix}-dg-${gi}`} className="citation-doc-group">
+          {inner}
         </span>
       );
-    }
-
-    if (idx < originalNumbers.length - 1) {
-      links.push(<span key={`${keyPrefix}-sep-${sequentialNumber}-${idx}`}>, </span>);
+    } else {
+      nodes.push(...inner);
     }
   });
 
-  return links;
+  return nodes;
 };
 
 const renderLineWithCitations = (

@@ -3461,6 +3461,13 @@ h6,
   text-decoration: underline;
 }
 
+.citation-doc-group {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
 .ai-summary-references {
   margin-top: var(--spacing-md);
   padding-top: var(--spacing-md);
