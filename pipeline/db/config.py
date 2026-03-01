@@ -80,67 +80,71 @@ DENSE_VECTOR_SIZE = 1024
 SPARSE_VECTOR_NAME = "bm25"  # Just in case
 
 
+def _parse_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Parse supported_embedding_models section into DB_VECTORS dict."""
+    vectors: Dict[str, Dict[str, Any]] = {}
+    for model_name, model_info in config.get("supported_embedding_models", {}).items():
+        if model_info.get("type") != "dense":
+            continue
+        vec_entry: Dict[str, Any] = {
+            "size": model_info["size"],
+            "enabled": True,
+            "model_id": model_info["model_id"],
+            "source": model_info.get("source", "huggingface"),
+        }
+        if "max_tokens" in model_info:
+            vec_entry["max_tokens"] = model_info["max_tokens"]
+        vectors[model_name] = vec_entry
+    return vectors
+
+
+def _parse_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Parse supported_llms section."""
+    llms: Dict[str, Dict[str, Any]] = {}
+    for model_name, model_info in config.get("supported_llms", {}).items():
+        llm_entry: Dict[str, Any] = {
+            "model": model_info.get("model"),
+            "provider": model_info.get("provider", "huggingface"),
+        }
+        if "inference_provider" in model_info:
+            llm_entry["inference_provider"] = model_info["inference_provider"]
+        llms[model_name] = llm_entry
+    return llms
+
+
+def _parse_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Parse supported_rerank_models section."""
+    rerankers: Dict[str, Dict[str, Any]] = {}
+    for model_name, model_info in config.get("supported_rerank_models", {}).items():
+        rerankers[model_name] = {
+            "api_version": model_info.get("api_version"),
+            "endpoint": model_info.get("endpoint"),
+            "endpoint_url": model_info.get("endpoint_url"),
+            "model_id": model_info.get("model_id", model_name),
+            "source": model_info.get("source", "huggingface"),
+            "provider": model_info.get("provider"),
+        }
+    return rerankers
+
+
 def refresh_config() -> None:
     """Reload config-driven settings for vectors and LLMs."""
     global _config, _app_config, _search_config, _datasources_config
-    global DB_VECTORS
-    global SUPPORTED_LLMS
-    global SUPPORTED_RERANK_MODELS
-    global UI_MODEL_COMBOS
-    global DENSE_VECTOR_NAME
-    global DENSE_VECTOR_SIZE
+    global DB_VECTORS, SUPPORTED_LLMS, SUPPORTED_RERANK_MODELS, UI_MODEL_COMBOS
+    global DENSE_VECTOR_NAME, DENSE_VECTOR_SIZE
 
     _datasources_config = {}
     _config = load_datasources_config()
 
-    DB_VECTORS = {}
-    if "supported_embedding_models" in _config:
-        for model_name, model_info in _config["supported_embedding_models"].items():
-            if model_info.get("type") == "dense":
-                vec_entry: Dict[str, Any] = {
-                    "size": model_info["size"],
-                    "enabled": True,  # Default to enabled
-                    "model_id": model_info["model_id"],
-                    "source": model_info.get("source", "huggingface"),
-                }
-                if "max_tokens" in model_info:
-                    vec_entry["max_tokens"] = model_info["max_tokens"]
-                DB_VECTORS[model_name] = vec_entry
-
-    SUPPORTED_LLMS = {}
-    if "supported_llms" in _config:
-        for model_name, model_info in _config["supported_llms"].items():
-            llm_config: Dict[str, Any] = {
-                "model": model_info.get("model"),
-                "provider": model_info.get("provider", "huggingface"),
-            }
-            # Add inference_provider if present
-            if "inference_provider" in model_info:
-                llm_config["inference_provider"] = model_info.get("inference_provider")
-            SUPPORTED_LLMS[model_name] = llm_config
-
-    SUPPORTED_RERANK_MODELS = {}
-    if "supported_rerank_models" in _config:
-        for model_name, model_info in _config["supported_rerank_models"].items():
-            SUPPORTED_RERANK_MODELS[model_name] = {
-                "api_version": model_info.get("api_version"),
-                "endpoint": model_info.get("endpoint"),
-                "endpoint_url": model_info.get("endpoint_url"),
-                "model_id": model_info.get("model_id", model_name),
-                "source": model_info.get("source", "huggingface"),
-                "provider": model_info.get("provider"),
-            }
-
-    UI_MODEL_COMBOS = {}
-    if "ui_model_combos" in _config:
-        UI_MODEL_COMBOS = _config.get("ui_model_combos", {})
+    DB_VECTORS = _parse_embedding_models(_config)
+    SUPPORTED_LLMS = _parse_llms(_config)
+    SUPPORTED_RERANK_MODELS = _parse_rerank_models(_config)
+    UI_MODEL_COMBOS = _config.get("ui_model_combos", {})
 
     _app_config = _config.get("application", {})
     _search_config = _app_config.get("search", {})
     DENSE_VECTOR_NAME = _search_config.get("default_dense_model", "e5_large")
-    DENSE_VECTOR_SIZE = 1024
-    if DENSE_VECTOR_NAME in DB_VECTORS:
-        DENSE_VECTOR_SIZE = DB_VECTORS[DENSE_VECTOR_NAME]["size"]
+    DENSE_VECTOR_SIZE = DB_VECTORS.get(DENSE_VECTOR_NAME, {}).get("size", 1024)
 
     if "ui_model_combos" in _config:
         from utils.config_validator import validate_ui_model_combos  # noqa: PLC0415

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop, copilot/** ]
+    branches: [ main, master, develop, rc/**, copilot/** ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, rc/** ]
 
 jobs:
   code-quality:
