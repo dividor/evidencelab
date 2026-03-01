@@ -6,19 +6,12 @@ interface DrilldownBreadcrumbProps {
   currentHighlight?: string;
 }
 
-const MAX_CONTEXT_LENGTH = 60;
-
 export const DrilldownBreadcrumb: React.FC<DrilldownBreadcrumbProps> = ({
   stackDepth,
   onBack,
   currentHighlight,
 }) => {
   if (stackDepth === 0) return null;
-
-  const truncated =
-    currentHighlight && currentHighlight.length > MAX_CONTEXT_LENGTH
-      ? currentHighlight.substring(0, MAX_CONTEXT_LENGTH) + '...'
-      : currentHighlight;
 
   return (
     <div className="ai-drilldown-breadcrumb">
@@ -37,9 +30,9 @@ export const DrilldownBreadcrumb: React.FC<DrilldownBreadcrumbProps> = ({
         </svg>
         Back to previous summary
       </button>
-      {truncated && (
+      {currentHighlight && (
         <span className="ai-drilldown-context">
-          Exploring: &ldquo;{truncated}&rdquo;
+          Exploring: &ldquo;{currentHighlight}&rdquo;
         </span>
       )}
       <span className="ai-drilldown-depth">Depth: {stackDepth}</span>

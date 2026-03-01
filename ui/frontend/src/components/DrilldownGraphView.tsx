@@ -21,12 +21,6 @@ const NODE_GAP_Y = 56;
 const DEPTH_INDENT = 28;
 const PADDING_TOP = 20;
 const PADDING_LEFT = 16;
-const LABEL_MAX_CHARS = 80;
-
-const truncate = (text: string): string =>
-  text.length > LABEL_MAX_CHARS
-    ? text.substring(0, LABEL_MAX_CHARS) + '...'
-    : text;
 
 /** Flatten tree into a list with depth info using DFS */
 const flattenTree = (
@@ -100,14 +94,13 @@ export const DrilldownGraphView: React.FC<DrilldownGraphViewProps> = ({
                 x={nodeX + NODE_RADIUS + 10}
                 y={y - 12}
                 width="calc(100% - 80px)"
-                height="24"
+                height={NODE_GAP_Y}
               >
                 <div
                   className={`drilldown-graph-label ${node.isActive ? 'active' : ''} ${node.isRoot ? 'root' : ''}`}
                   onClick={() => onNodeClick(node.id)}
-                  title={node.label}
                 >
-                  {node.isRoot ? node.label : truncate(node.label)}
+                  {node.label}
                 </div>
               </foreignObject>
             </g>

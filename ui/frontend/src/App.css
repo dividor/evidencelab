@@ -3341,11 +3341,13 @@ h6,
 
 .ai-summary-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
   user-select: none;
   margin-bottom: var(--spacing-md);
+  gap: var(--spacing-xs);
 }
 
 .ai-summary-title {
@@ -3620,7 +3622,8 @@ h6,
 
 .ai-drilldown-breadcrumb {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: baseline;
   gap: var(--spacing-sm);
   padding: var(--spacing-xs) 0;
   margin-bottom: var(--spacing-sm);
@@ -3651,9 +3654,6 @@ h6,
 .ai-drilldown-context {
   color: var(--gray-500);
   font-style: italic;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   flex: 1;
   min-width: 0;
 }
@@ -3776,12 +3776,10 @@ h6,
   font-size: 0.8125rem;
   font-family: 'Open Sans', sans-serif;
   color: var(--gray-500);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   cursor: pointer;
-  line-height: 24px;
+  line-height: 1.4;
   transition: color 0.15s ease;
+  word-break: break-word;
 }
 
 .drilldown-graph-label.root {
