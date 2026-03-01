@@ -335,16 +335,16 @@ class IndexProcessor(BaseProcessor):
         max_chars = getattr(
             self, "_max_embed_chars", _DEFAULT_MAX_EMBED_TOKENS * _CHARS_PER_TOKEN
         )
+        oversized = []
         for i, chunk in enumerate(valid_chunks):
             text = chunk.get("text", "")
             if len(text) > max_chars:
-                logger.warning(
-                    "Chunk %d truncated from %d to %d chars (embedding model limit)",
-                    i,
-                    len(text),
-                    max_chars,
-                )
-                chunk["text"] = text[:max_chars]
+                oversized.append(f"Chunk {i}: {len(text)} chars (limit {max_chars})")
+        if oversized:
+            details = "; ".join(oversized)
+            raise ValueError(
+                f"{len(oversized)} chunk(s) exceed embedding model limit: {details}"
+            )
         return valid_chunks
 
     def _build_batches(
