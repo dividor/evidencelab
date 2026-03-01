@@ -35,7 +35,6 @@ export const DrilldownBreadcrumb: React.FC<DrilldownBreadcrumbProps> = ({
           Exploring: &ldquo;{currentHighlight}&rdquo;
         </span>
       )}
-      <span className="ai-drilldown-depth">Depth: {stackDepth}</span>
     </div>
   );
 };

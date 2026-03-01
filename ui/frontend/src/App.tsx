@@ -1575,10 +1575,11 @@ function App() {
     const snapshot = getSnapshot();
     startDrilldownInTree(highlightedText, snapshot, query);
 
-    setAiSummaryExpanded(false);
+    setAiSummaryExpanded(true);
     setAiSummaryLoading(true);
     setAiSummary('');
     setAiPrompt('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     // Perform a fresh search using the highlighted text as the query
     const params = buildSearchParams({

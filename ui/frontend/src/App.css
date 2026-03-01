@@ -3738,12 +3738,6 @@ li.ai-fact-active::before {
   min-width: 0;
 }
 
-.ai-drilldown-depth {
-  color: var(--gray-400);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-
 .dig-deeper-popover {
   display: inline-flex;
   align-items: center;
