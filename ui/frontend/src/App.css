@@ -3783,14 +3783,15 @@ li.ai-fact-active::before {
 .drilldown-graph-toggle {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
   background: none;
-  border: 1px solid transparent;
+  border: 1px solid var(--gray-300);
   border-radius: var(--radius-sm);
-  color: var(--gray-400);
+  color: var(--brand-primary);
   cursor: pointer;
-  padding: 4px;
-  margin-left: var(--spacing-sm);
+  padding: 3px 10px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
