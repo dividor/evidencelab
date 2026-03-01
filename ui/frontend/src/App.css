@@ -3504,6 +3504,26 @@ h6,
   font-weight: 600;
 }
 
+.ai-summary-ref-group {
+  margin-bottom: var(--spacing-sm);
+}
+
+.ai-summary-ref-group-title {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--gray-700);
+  margin-bottom: 2px;
+}
+
+.ai-summary-ref-group-meta {
+  font-weight: 400;
+  color: var(--gray-500);
+}
+
+.ai-summary-ref-group ul {
+  padding-left: var(--spacing-md);
+}
+
 .ai-summary-expand-button {
   background: none;
   border: none;

@@ -24,24 +24,50 @@ const extractCitationNumbers = (summaryText: string): number[] => {
   return Array.from(citedNumbers).sort((a, b) => a - b);
 };
 
-const buildCitedResults = (
+interface CitedRef {
+  sequential: number;
+  result: SearchResult;
+}
+
+interface DocumentGroup {
+  title: string;
+  organization?: string;
+  year?: string;
+  refs: CitedRef[];
+}
+
+const buildGroupedReferences = (
   summaryText: string,
   results: SearchResult[]
-): Array<{ sequential: number; result: SearchResult }> => {
+): DocumentGroup[] => {
   const sortedCitations = extractCitationNumbers(summaryText);
-  const citedResultsList: Array<{ sequential: number; result: SearchResult }> = [];
+  const groupMap = new Map<string, DocumentGroup>();
+  const groupOrder: string[] = [];
 
   sortedCitations.forEach((origNum, seqIdx) => {
     const resultIndex = origNum - 1;
-    if (resultIndex >= 0 && resultIndex < results.length) {
-      citedResultsList.push({
-        sequential: seqIdx + 1,
-        result: results[resultIndex],
+    if (resultIndex < 0 || resultIndex >= results.length) return;
+
+    const result = results[resultIndex];
+    const key = result.title;
+
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        title: result.title,
+        organization: result.organization,
+        year: result.year,
+        refs: [],
       });
+      groupOrder.push(key);
     }
+
+    groupMap.get(key)!.refs.push({
+      sequential: seqIdx + 1,
+      result,
+    });
   });
 
-  return citedResultsList;
+  return groupOrder.map((key) => groupMap.get(key)!);
 };
 
 export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
@@ -49,34 +75,44 @@ export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
   results,
   onResultClick,
 }) => {
-  const citedResultsList = buildCitedResults(summaryText, results);
+  const groups = buildGroupedReferences(summaryText, results);
 
-  if (citedResultsList.length === 0) {
+  if (groups.length === 0) {
     return null;
   }
 
   return (
     <div className="ai-summary-references">
       <h4>References:</h4>
-      <ul>
-        {citedResultsList.map(({ sequential, result }) => (
-          <li key={sequential}>
-            <a
-              href="#"
-              onClick={(event: React.MouseEvent) => {
-                event.preventDefault();
-                onResultClick(result);
-              }}
-            >
-              <span className="ai-summary-ref-number">[{sequential}]</span> {result.title}
-              {result.page_num && `, page ${result.page_num}`}
-              {result.organization && ` (${result.organization}`}
-              {result.year && `${result.organization ? ', ' : '('}${result.year}`}
-              {(result.organization || result.year) && ')'}
-            </a>
-          </li>
-        ))}
-      </ul>
+      {groups.map((group) => (
+        <div key={group.title} className="ai-summary-ref-group">
+          <div className="ai-summary-ref-group-title">
+            {group.title}
+            {(group.organization || group.year) && (
+              <span className="ai-summary-ref-group-meta">
+                {group.organization && `, ${group.organization}`}
+                {group.year && `, ${group.year}`}
+              </span>
+            )}
+          </div>
+          <ul>
+            {group.refs.map(({ sequential, result }) => (
+              <li key={sequential}>
+                <a
+                  href="#"
+                  onClick={(event: React.MouseEvent) => {
+                    event.preventDefault();
+                    onResultClick(result);
+                  }}
+                >
+                  <span className="ai-summary-ref-number">[{sequential}]</span>
+                  {result.page_num ? ` Page ${result.page_num}` : ' (full document)'}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 };
