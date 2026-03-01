@@ -164,9 +164,11 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
 
         logger.info("Submitted %s tasks to pool...", len(pending_results))
 
+        worker_timeout = orchestrator.pipeline_config.get("processing_timeout", 7200)
+
         for doc_id, (res, doc) in pending_results.items():
             try:
-                result = res.get(timeout=600)
+                result = res.get(timeout=worker_timeout)
 
                 stats["processed"] += 1
 

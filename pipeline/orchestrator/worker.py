@@ -42,7 +42,7 @@ def _wait_for_available_memory() -> Optional[str]:
         mem = psutil.virtual_memory()
         if mem.available > 2 * 1024 * 1024 * 1024:  # 2GB
             return None
-        if time.time() - start_wait > 600:  # 10 min timeout
+        if time.time() - start_wait > 3600:  # 1 hour timeout
             return "OOM Protection: Timeout waiting for memory"
         time.sleep(random.uniform(5, 15))
 
