@@ -1557,6 +1557,7 @@ function App() {
   const restoreFromNode = useCallback((node: { summary: string; prompt: string; results: SearchResult[]; expanded: boolean; translatedText: string | null; translatedLang: string | null }) => {
     setAiSummary(node.summary);
     setAiPrompt(node.prompt);
+    setResults(node.results);
     setAiSummaryResults(node.results);
     setAiSummaryExpanded(node.expanded);
     setAiSummaryTranslatedText(node.translatedText);
@@ -1565,15 +1566,56 @@ function App() {
     setAiSummaryLoading(false);
   }, []);
 
-  // Drilldown: save current state, add child node, stream focused summary
-  const startDrilldown = useCallback((highlightedText: string) => {
+  // Drilldown: save current state, search for fresh results, stream focused summary
+  const startDrilldown = useCallback(async (highlightedText: string) => {
     const snapshot = getSnapshot();
     startDrilldownInTree(highlightedText, snapshot, query);
 
-    const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of the original question: "${query}"`;
     setAiSummaryExpanded(false);
-    launchSummaryStream(drilldownQuery, aiSummaryResults);
-  }, [getSnapshot, startDrilldownInTree, aiSummaryResults, query, launchSummaryStream]);
+    setAiSummaryLoading(true);
+    setAiSummary('');
+    setAiPrompt('');
+
+    // Perform a fresh search using the highlighted text as the query
+    const params = buildSearchParams({
+      query: highlightedText,
+      filters,
+      searchDenseWeight,
+      rerankEnabled,
+      recencyBoostEnabled,
+      recencyWeight,
+      recencyScaleDays,
+      sectionTypes,
+      keywordBoostShortQueries,
+      minChunkSize,
+      rerankModel,
+      rerankModelPageSize,
+      searchModel,
+      dataSource,
+      autoMinScore,
+      deduplicateEnabled,
+      fieldBoostEnabled,
+      fieldBoostFields,
+    });
+
+    try {
+      const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
+      const freshResults = response.data.results.slice(0, 20);
+      setResults(freshResults);
+      setAiSummaryResults(freshResults);
+
+      const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of the original question: "${query}"`;
+      launchSummaryStream(drilldownQuery, freshResults);
+    } catch (error) {
+      console.error('Drilldown search failed:', error);
+      setAiSummary(AI_SUMMARY_ERROR);
+      setAiSummaryLoading(false);
+    }
+  }, [getSnapshot, startDrilldownInTree, query, launchSummaryStream,
+      filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
+      recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
+      minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
 
   // Navigate back to parent node in the drilldown tree
   const navigateBackDrilldown = useCallback(() => {

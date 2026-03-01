@@ -332,10 +332,10 @@ const AiSummaryHeader = ({
   <div className="ai-summary-header" onClick={onToggleCollapsed}>
     <h3 className="ai-summary-title">
       {isDrilldown ? 'AI Drilldown Summary' : 'AI Summary'}
+      {hasGraph && !collapsed && (
+        <GraphToggleButton showGraph={showGraph} onToggle={onToggleGraph} />
+      )}
     </h3>
-    {hasGraph && !collapsed && (
-      <GraphToggleButton showGraph={showGraph} onToggle={onToggleGraph} />
-    )}
     {aiSummary && !loading && onLanguageChange && (
       <LanguageSelector
         selectedLang={selectedLang}

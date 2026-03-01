@@ -3349,6 +3349,9 @@ h6,
 }
 
 .ai-summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 1.375rem;
   font-weight: 600;
   font-family: 'Poppins', sans-serif;
@@ -3664,24 +3667,26 @@ h6,
 .dig-deeper-popover {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   background: var(--brand-primary);
   color: white;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: var(--radius-sm);
-  padding: 6px 12px;
+  padding: 7px 14px;
   font-size: 0.8125rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   z-index: 10;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
   animation: digDeeperFadeIn 0.15s ease-out;
+  letter-spacing: 0.01em;
 }
 
 .dig-deeper-popover:hover {
   background: var(--brand-primary-dark, #4a7a90);
   transform: translateX(-50%) scale(1.03);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 @keyframes digDeeperFadeIn {
