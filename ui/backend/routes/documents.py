@@ -550,7 +550,9 @@ async def get_document_chunks(
                 {
                     "chunk_id": str(point.id),
                     "doc_id": payload.get("doc_id"),
-                    "text": clean_text(payload.get("sys_text", "")),
+                    "text": clean_text(
+                        chunk_payload.get("sys_text") or payload.get("sys_text", "")
+                    ),
                     "page_num": chunk_payload.get("sys_page_num"),
                     "headings": chunk_payload.get("sys_headings", []),
                     "bbox": chunk_payload.get("sys_bbox", []),

@@ -1,8 +1,10 @@
 version: 2
 updates:
+  # NOTE: Update target-branch when creating a new release candidate branch
   # Python dependencies
   - package-ecosystem: "pip"
     directory: "/"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
@@ -19,6 +21,7 @@ updates:
   # NPM dependencies for frontend
   - package-ecosystem: "npm"
     directory: "/ui/frontend"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
@@ -33,6 +36,7 @@ updates:
   # Docker dependencies - root directory
   - package-ecosystem: "docker"
     directory: "/"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     labels:
@@ -45,6 +49,7 @@ updates:
   # Docker dependencies - backend
   - package-ecosystem: "docker"
     directory: "/ui/backend"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     labels:
@@ -57,6 +62,7 @@ updates:
   # Docker dependencies - frontend
   - package-ecosystem: "docker"
     directory: "/ui/frontend"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     labels:
@@ -69,6 +75,7 @@ updates:
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "rc/v1.1.0"
     schedule:
       interval: "monthly"
     labels:

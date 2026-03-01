@@ -73,3 +73,5 @@ public/
 logs/
 db/
 .cache/
+caddy_data/
+caddy_config/

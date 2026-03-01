@@ -80,9 +80,9 @@ DENSE_VECTOR_SIZE = 1024
 SPARSE_VECTOR_NAME = "bm25"  # Just in case
 
 
-def _parse_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Parse supported_embedding_models section into DB_VECTORS dict."""
-    vectors: Dict[str, Dict[str, Any]] = {}
+def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Build DB_VECTORS dict from supported_embedding_models config."""
+    result: Dict[str, Dict[str, Any]] = {}
     for model_name, model_info in config.get("supported_embedding_models", {}).items():
         if model_info.get("type") != "dense":
             continue
@@ -94,29 +94,29 @@ def _parse_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
         }
         if "max_tokens" in model_info:
             vec_entry["max_tokens"] = model_info["max_tokens"]
-        vectors[model_name] = vec_entry
-    return vectors
+        result[model_name] = vec_entry
+    return result
 
 
-def _parse_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Parse supported_llms section."""
-    llms: Dict[str, Dict[str, Any]] = {}
+def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Build SUPPORTED_LLMS dict from supported_llms config."""
+    result: Dict[str, Dict[str, Any]] = {}
     for model_name, model_info in config.get("supported_llms", {}).items():
-        llm_entry: Dict[str, Any] = {
+        llm_config: Dict[str, Any] = {
             "model": model_info.get("model"),
             "provider": model_info.get("provider", "huggingface"),
         }
         if "inference_provider" in model_info:
-            llm_entry["inference_provider"] = model_info["inference_provider"]
-        llms[model_name] = llm_entry
-    return llms
+            llm_config["inference_provider"] = model_info.get("inference_provider")
+        result[model_name] = llm_config
+    return result
 
 
-def _parse_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Parse supported_rerank_models section."""
-    rerankers: Dict[str, Dict[str, Any]] = {}
+def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Build SUPPORTED_RERANK_MODELS dict from supported_rerank_models config."""
+    result: Dict[str, Dict[str, Any]] = {}
     for model_name, model_info in config.get("supported_rerank_models", {}).items():
-        rerankers[model_name] = {
+        result[model_name] = {
             "api_version": model_info.get("api_version"),
             "endpoint": model_info.get("endpoint"),
             "endpoint_url": model_info.get("endpoint_url"),
@@ -124,7 +124,7 @@ def _parse_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "source": model_info.get("source", "huggingface"),
             "provider": model_info.get("provider"),
         }
-    return rerankers
+    return result
 
 
 def refresh_config() -> None:
@@ -136,9 +136,9 @@ def refresh_config() -> None:
     _datasources_config = {}
     _config = load_datasources_config()
 
-    DB_VECTORS = _parse_embedding_models(_config)
-    SUPPORTED_LLMS = _parse_llms(_config)
-    SUPPORTED_RERANK_MODELS = _parse_rerank_models(_config)
+    DB_VECTORS = _load_embedding_models(_config)
+    SUPPORTED_LLMS = _load_llms(_config)
+    SUPPORTED_RERANK_MODELS = _load_rerank_models(_config)
     UI_MODEL_COMBOS = _config.get("ui_model_combos", {})
 
     _app_config = _config.get("application", {})

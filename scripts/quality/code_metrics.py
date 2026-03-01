@@ -673,24 +673,30 @@ def main() -> int:
 
     if js_files:
         eslint_root = Path("ui/frontend")
-        if not eslint_root.exists():
-            raise RuntimeError(
-                "ui/frontend directory not found for JS/TS complexity metrics."
-            )
-        require_sonarjs = not args.skip_js_cognitive
-        ensure_js_cognitive_requirements(eslint_root, require_sonarjs)
-        js_cognitive, js_cyclomatic = compute_js_metrics_by_file(
-            js_files,
-            eslint_root,
-            Path.cwd(),
-            include_cognitive=not args.skip_js_cognitive,
-        )
-        if args.skip_js_cognitive:
+        if args.skip_js_cognitive and which("node") is None:
             for path in js_files:
                 cognitive_map[str(path)] = None
+                cyclomatic_map[str(path)] = []
         else:
-            cognitive_map.update(js_cognitive)
-        cyclomatic_map.update(js_cyclomatic)
+            if not eslint_root.exists():
+                raise RuntimeError(
+                    "ui/frontend directory not found for JS/TS complexity metrics."
+                )
+            ensure_js_cognitive_requirements(
+                eslint_root, require_sonarjs=not args.skip_js_cognitive
+            )
+            js_cognitive, js_cyclomatic = compute_js_metrics_by_file(
+                js_files,
+                eslint_root,
+                Path.cwd(),
+                include_cognitive=not args.skip_js_cognitive,
+            )
+            if args.skip_js_cognitive:
+                for path in js_files:
+                    cognitive_map[str(path)] = None
+            else:
+                cognitive_map.update(js_cognitive)
+            cyclomatic_map.update(js_cyclomatic)
 
     metrics = [
         build_file_metrics(path, cognitive_map, cyclomatic_map) for path in files

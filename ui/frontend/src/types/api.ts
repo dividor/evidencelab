@@ -177,6 +177,19 @@ export interface HighlightResponse {
   total: number;
 }
 
+/** A node in the drilldown exploration tree */
+export interface DrilldownNode {
+  id: string;
+  label: string;
+  summary: string;
+  prompt: string;
+  results: SearchResult[];
+  translatedText: string | null;
+  translatedLang: string | null;
+  expanded: boolean;
+  children: DrilldownNode[];
+}
+
 // Dynamic search filters using core field names
 export interface SearchFilters {
   [coreField: string]: string | undefined;

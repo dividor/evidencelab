@@ -177,30 +177,8 @@ async def generate_ai_summary(
         ]
         response = await llm.ainvoke(messages)
 
-        # Extract the generated text and clean up any quotes or formatting
+        # Return raw content, matching the streaming endpoint behaviour
         summary = response.content.strip()
-
-        # Remove surrounding quotes if present
-        if summary.startswith('"') and summary.endswith('"'):
-            summary = summary[1:-1]
-        elif summary.startswith("'") and summary.endswith("'"):
-            summary = summary[1:-1]
-
-        # Remove any "User:" or "Assistant:" prefixes that might have been added
-        lines = summary.split("\n")
-        cleaned_lines = []
-        for line in lines:
-            line = line.strip()
-            # Skip lines that are just "User:" or "Assistant:" patterns
-            if line.startswith("User:") or line.startswith("Assistant:"):
-                # Extract text after the colon if there is any
-                parts = line.split(":", 1)
-                if len(parts) > 1 and parts[1].strip():
-                    cleaned_lines.append(parts[1].strip())
-            elif line:  # Only add non-empty lines
-                cleaned_lines.append(line)
-
-        summary = " ".join(cleaned_lines)
 
         # Log the response
         logger.info("AI SUMMARY RESPONSE:")

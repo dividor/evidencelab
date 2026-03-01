@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Facets, FacetValue, SearchResult } from '../../types/api';
+import { Facets, FacetValue, SearchResult, DrilldownNode } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
@@ -80,6 +80,17 @@ interface SearchTabContentProps {
   aiSummaryTranslatedLang?: string | null;
   onAiSummaryLanguageChange?: (newLang: string) => void;
   searchId: number;
+  aiDrilldownStackDepth?: number;
+  aiDrilldownHighlight?: string;
+  onAiDrilldown?: (selectedText: string) => void;
+  onAiDrilldownBack?: () => void;
+  aiDrilldownTree?: DrilldownNode | null;
+  aiDrilldownCurrentNodeId?: string | null;
+  onAiDrilldownNavigate?: (nodeId: string) => void;
+  onFindOutMore?: (keyFacts: string[]) => void;
+  findOutMoreLoading?: boolean;
+  findOutMoreActiveFact?: string | null;
+  requestShowGraph?: boolean;
 }
 
 const DOT_SIZES = [12, 12, 12, 12, 12];
@@ -274,6 +285,17 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   aiSummaryTranslatedLang,
   onAiSummaryLanguageChange,
   searchId,
+  aiDrilldownStackDepth,
+  aiDrilldownHighlight,
+  onAiDrilldown,
+  onAiDrilldownBack,
+  aiDrilldownTree,
+  aiDrilldownCurrentNodeId,
+  onAiDrilldownNavigate,
+  onFindOutMore,
+  findOutMoreLoading,
+  findOutMoreActiveFact,
+  requestShowGraph,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -508,6 +530,17 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             onResultClick={onResultClick}
             onOpenPrompt={onOpenPrompt}
             onClosePrompt={onClosePrompt}
+            drilldownStackDepth={aiDrilldownStackDepth}
+            drilldownHighlight={aiDrilldownHighlight}
+            onDrilldown={onAiDrilldown}
+            onDrilldownBack={onAiDrilldownBack}
+            drilldownTree={aiDrilldownTree}
+            drilldownCurrentNodeId={aiDrilldownCurrentNodeId}
+            onDrilldownNavigate={onAiDrilldownNavigate}
+            onFindOutMore={onFindOutMore}
+            findOutMoreLoading={findOutMoreLoading}
+            findOutMoreActiveFact={findOutMoreActiveFact}
+            requestShowGraph={requestShowGraph}
           />
 
           {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
