@@ -92,16 +92,19 @@ export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
           {' : '}
           {group.refs.map(({ sequential, result }, idx) => (
             <React.Fragment key={sequential}>
-              {idx > 0 && '; '}
+              {idx > 0 && ' '}
               <a
                 href="#"
+                className="ai-summary-ref-link"
                 onClick={(event: React.MouseEvent) => {
                   event.preventDefault();
                   onResultClick(result);
                 }}
               >
-                <span className="ai-summary-ref-number">[{sequential}]</span>
-                {result.page_num ? ` Page ${result.page_num}` : ' (full document)'}
+                <span className="citation-doc-group">
+                  <span className="ai-summary-citation">{sequential}</span>
+                </span>
+                {result.page_num ? ` p.${result.page_num}` : ''}
               </a>
             </React.Fragment>
           ))}
