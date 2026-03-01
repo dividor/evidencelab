@@ -190,15 +190,16 @@ async def generate_ai_summary(
         lines = summary.split("\n")
         cleaned_lines = []
         for line in lines:
-            line = line.strip()
+            stripped = line.strip()
             # Skip lines that are just "User:" or "Assistant:" patterns
-            if line.startswith("User:") or line.startswith("Assistant:"):
+            if stripped.startswith("User:") or stripped.startswith("Assistant:"):
                 # Extract text after the colon if there is any
-                parts = line.split(":", 1)
+                parts = stripped.split(":", 1)
                 if len(parts) > 1 and parts[1].strip():
                     cleaned_lines.append(parts[1].strip())
-            elif line:  # Only add non-empty lines
-                cleaned_lines.append(line)
+            else:
+                # Preserve empty lines for paragraph breaks (markdown needs \n\n)
+                cleaned_lines.append(stripped)
 
         summary = "\n".join(cleaned_lines)
 
