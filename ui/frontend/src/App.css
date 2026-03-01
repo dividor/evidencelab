@@ -3772,6 +3772,33 @@ h6,
   font-size: 0.9em;
 }
 
+.about-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.about-content th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--gray-800);
+  background: var(--gray-50);
+  padding: 0.6rem 0.75rem;
+  border-bottom: 2px solid var(--gray-200);
+}
+
+.about-content td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--gray-100);
+  vertical-align: top;
+}
+
+.about-content tr:last-child td {
+  border-bottom: none;
+}
+
 .info-footer-links {
   margin-top: 2.5rem;
   padding-top: 1.5rem;

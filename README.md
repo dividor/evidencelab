@@ -60,11 +60,13 @@ Evidence Lab document processing pipeline includes the following features:
 
 3. User authentication & permissions (opt-in)
 
-- Email/password registration with email verification
-- OAuth login with Google and Microsoft
-- User profiles and role management
+- Email/password registration with email verification, or OAuth single sign-on (Google, Microsoft)
+- Cookie-based sessions with CSRF protection — no tokens in localStorage
+- Account lockout, rate limiting, and audit logging for security
 - Group-based data-source access control — restrict which datasets users can see
 - Admin panel for managing users, groups, and permissions
+- Self-service profile management and account deletion
+- Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) with future MFA support in mind
 - Enabled via `USER_MODULE=true` in `.env` (disabled by default)
 
 More features will be added soon, focused on document evidence analysis.

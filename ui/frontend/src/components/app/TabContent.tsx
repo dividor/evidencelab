@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 
@@ -109,7 +110,7 @@ const PrivacyTabContent = ({ content, onTabChange }: { content: string; onTabCha
   <div className="main-content">
     <div className="about-page-container">
       <div className="about-content">
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
         {GA_MEASUREMENT_ID && <TrackingToggle />}
         <InfoFooterLinks currentTab="privacy" onTabChange={onTabChange} />
       </div>

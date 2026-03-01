@@ -117,6 +117,36 @@ As shown in the above models drop-down, this user interface can use either open 
 
 One thing to note, is that if using Huggingface models, the search reranker model runs locally on the application host. Since this project aims for low-cost, using such a model will result in slow search queries as the host isn't that powerful. With more work and engineering (and hosting cost) this could be addressed in future.
 
+## User Authentication & Permissions
+
+The authentication module is opt-in (`USER_MODULE=true`) and built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns. It is designed with future MFA support in mind.
+
+### Authentication
+
+* **Email/password registration** with mandatory email verification before first sign-in. Passwords are hashed with bcrypt and must meet configurable complexity rules (minimum length, at least one letter and one digit).
+* **OAuth single sign-on** with Google and Microsoft — users are auto-linked by email so an OAuth user who later sets a password (or vice versa) shares a single account.
+* **Cookie-based sessions** using httpOnly, secure, SameSite cookies. No tokens are stored in localStorage, eliminating XSS token-theft risk.
+* **CSRF protection** via the double-submit cookie pattern — a non-httpOnly `evidencelab_csrf` cookie is read by the frontend and echoed as the `X-CSRF-Token` header on every state-changing request.
+
+### Security
+
+* **Account lockout** — after a configurable number of consecutive failed login attempts (default 5), the account is locked for a configurable period (default 15 minutes).
+* **Rate limiting** — login, registration, and password-reset endpoints are rate-limited per IP address to mitigate brute-force and credential-stuffing attacks.
+* **Audit logging** — all security-relevant events (login success/failure, registration, password reset, account deletion) are recorded in an append-only audit log with timestamp, user, and IP address.
+* **Domain restriction** — registration can optionally be restricted to approved email domains via `AUTH_ALLOWED_EMAIL_DOMAINS`.
+
+### Permissions
+
+* **Group-based access control** — users belong to one or more groups, each of which is granted access to specific data-source keys. Searches and document views are filtered so users only see data sources their groups allow.
+* **Default group** — new users are automatically added to a configurable default group so they have baseline access without admin intervention.
+* **Admin panel** — superusers can manage users (activate, verify, promote), create and edit groups, and assign data-source access from the UI.
+
+### User self-service
+
+* **Profile management** — users can update their display name from the Profile modal.
+* **Account deletion** — users can permanently delete their account, which removes group memberships, OAuth links, and anonymises audit log entries (user_id set to NULL while preserving the security record).
+* **Privacy policy** — linked from the registration form; covers data collected, cookies, user rights, and retention periods.
+
 ## Technical Foundation
 
 * **Containerized Architecture**: Fully dockerized.
