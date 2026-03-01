@@ -3526,6 +3526,14 @@ h6,
   color: var(--gray-600);
 }
 
+.ai-summary-ref-group .ai-summary-citation {
+  font-size: 1em;
+}
+
+.ai-summary-ref-group .citation-doc-group {
+  font-size: 1em;
+}
+
 .ai-summary-expand-button {
   background: none;
   border: none;
