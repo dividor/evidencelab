@@ -524,6 +524,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security response headers (always active — defence-in-depth)
+from ui.backend.auth.security_headers import SecurityHeadersMiddleware  # noqa: E402
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CSRF protection (only when user module / cookie auth is active)
+if USER_MODULE:
+    from ui.backend.auth.csrf import CSRFMiddleware  # noqa: E402
+
+    app.add_middleware(CSRFMiddleware)
+
 
 # Models
 class SearchResult(BaseModel):

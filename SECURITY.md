@@ -177,12 +177,15 @@ When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
 | **Token storage** | httpOnly cookies only; no localStorage (XSS mitigation) |
 | **Token lifetime** | 1 hour JWTs; refresh via cookie re-auth |
 | **Cookie flags** | `httponly`, `secure`, `samesite=lax` |
+| **CSRF protection** | Double-submit cookie (`evidencelab_csrf` + `X-CSRF-Token` header) |
 | **Secret validation** | `AUTH_SECRET_KEY` must be 32+ chars; insecure defaults rejected |
 | **Password policy** | Minimum length + digit + letter (configurable via `AUTH_MIN_PASSWORD_LENGTH`) |
+| **Account lockout** | Lock after N consecutive failures for M minutes (`AUTH_LOCKOUT_THRESHOLD`, `AUTH_LOCKOUT_DURATION_MINUTES`) |
 | **Registration control** | Email domain whitelist via `AUTH_ALLOWED_EMAIL_DOMAINS` |
 | **Rate limiting** | Per-IP sliding window on `/auth/*` (default 10 req/60s) |
 | **Permission model** | Deny-by-default; unauthenticated users see no datasources |
 | **Error handling** | Permission failures logged and return empty data (no leak) |
+| **Audit logging** | All auth events (login, failure, lockout, register, password reset) logged to `audit_log` table |
 | **OAuth** | Google and Microsoft SSO (optional, credential-gated) |
 | **Email verification** | Required after registration; token sent via SMTP |
 
@@ -194,7 +197,15 @@ When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
 
 ### Security Headers
 
-Production deployments via Caddy include:
+Application-level security headers middleware provides defence-in-depth:
+
+- `X-Content-Type-Options: nosniff` — prevents MIME-sniffing
+- `X-Frame-Options: DENY` — prevents clickjacking
+- `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
+- `Permissions-Policy` — restricts camera, microphone, geolocation
+- `Strict-Transport-Security` — HSTS when HTTPS is configured
+
+Production deployments via Caddy additionally include:
 
 - Automatic HTTPS with Let's Encrypt
 - API key validation for protected endpoints

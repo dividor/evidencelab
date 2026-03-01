@@ -7,8 +7,8 @@ from fastapi_users.db import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
 )
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -32,6 +32,14 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    # Account lockout (brute-force protection)
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(
@@ -103,3 +111,26 @@ class GroupDatasourceAccess(Base):
     group: Mapped["UserGroup"] = relationship(
         "UserGroup", back_populates="datasource_grants"
     )
+
+
+class AuditLog(Base):
+    """Immutable, append-only log of security-relevant events."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

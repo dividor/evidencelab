@@ -9,6 +9,7 @@ Configuration (environment variables):
     AUTH_RATE_LIMIT_WINDOW  Window size in seconds  (default: 60)
 """
 
+import contextvars
 import logging
 import os
 import time
@@ -17,6 +18,12 @@ from collections import defaultdict
 from fastapi import HTTPException, Request
 
 logger = logging.getLogger(__name__)
+
+# Context variable to share the client IP with downstream code (e.g. audit
+# logging inside UserManager.authenticate which has no access to Request).
+current_request_ip: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "current_request_ip", default="unknown"
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -67,6 +74,7 @@ async def check_auth_rate_limit(request: Request) -> None:
 
     client = request.client
     ip = client.host if client else "unknown"
+    current_request_ip.set(ip)
     now = time.monotonic()
     window_start = now - AUTH_RATE_LIMIT_WINDOW
 

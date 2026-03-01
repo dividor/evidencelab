@@ -4,6 +4,7 @@ import logging
 import os
 import secrets
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, Request
@@ -18,9 +19,11 @@ from fastapi_users.authentication import (
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.email import send_email
 from ui.backend.auth.models import OAuthAccount, User
+from ui.backend.auth.rate_limit import current_request_ip
 from ui.backend.services.permissions import add_user_to_default_group
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,10 @@ ALLOWED_EMAIL_DOMAINS: frozenset[str] = frozenset(
 # Minimum password length enforced at the backend (defence-in-depth).
 MIN_PASSWORD_LENGTH = int(os.environ.get("AUTH_MIN_PASSWORD_LENGTH", "8"))
 
+# Account lockout — lock after N consecutive failures for M minutes.
+LOCKOUT_THRESHOLD = int(os.environ.get("AUTH_LOCKOUT_THRESHOLD", "5"))
+LOCKOUT_DURATION_MINUTES = int(os.environ.get("AUTH_LOCKOUT_DURATION_MINUTES", "15"))
+
 
 # ---------------------------------------------------------------------------
 # User database adapter
@@ -84,6 +91,92 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
     reset_password_token_secret = AUTH_SECRET
     verification_token_secret = AUTH_SECRET
+
+    # ------------------------------------------------------------------
+    # Account lockout — override authenticate to track failures
+    # ------------------------------------------------------------------
+
+    async def authenticate(  # type: ignore[override]
+        self, credentials
+    ) -> Optional[User]:
+        """Authenticate with account lockout and audit logging."""
+        ip = current_request_ip.get("unknown")
+
+        try:
+            user = await self.get_by_email(credentials.username)
+        except fu_exceptions.UserNotExists:
+            # Timing-attack mitigation: still run the hasher
+            self.password_helper.hash(credentials.password)
+            await write_audit_event(
+                "login_failure",
+                user_email=credentials.username,
+                ip_address=ip,
+                details={"reason": "user_not_found"},
+            )
+            return None
+
+        # Check lockout
+        if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+            self.password_helper.hash(credentials.password)
+            logger.warning("Login blocked — account locked: %s", user.email)
+            await write_audit_event(
+                "login_locked",
+                user_id=user.id,
+                user_email=user.email,
+                ip_address=ip,
+            )
+            return None
+
+        verified, updated_password_hash = self.password_helper.verify_and_update(
+            credentials.password, user.hashed_password
+        )
+
+        if not verified:
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+            update_dict: dict = {
+                "failed_login_attempts": user.failed_login_attempts,
+            }
+            if user.failed_login_attempts >= LOCKOUT_THRESHOLD:
+                lock_until = datetime.now(timezone.utc) + timedelta(
+                    minutes=LOCKOUT_DURATION_MINUTES
+                )
+                update_dict["locked_until"] = lock_until
+                logger.warning(
+                    "Account locked (%d failures): %s",
+                    user.failed_login_attempts,
+                    user.email,
+                )
+            await self.user_db.update(user, update_dict)
+            await write_audit_event(
+                "login_failure",
+                user_id=user.id,
+                user_email=user.email,
+                ip_address=ip,
+                details={"attempt": user.failed_login_attempts},
+            )
+            return None
+
+        # Success — reset lockout counters
+        update_dict = {}
+        if user.failed_login_attempts:
+            update_dict["failed_login_attempts"] = 0
+            update_dict["locked_until"] = None
+        if updated_password_hash is not None:
+            update_dict["hashed_password"] = updated_password_hash
+        if update_dict:
+            await self.user_db.update(user, update_dict)
+
+        await write_audit_event(
+            "login_success",
+            user_id=user.id,
+            user_email=user.email,
+            ip_address=ip,
+        )
+        return user
+
+    # ------------------------------------------------------------------
+    # Password validation
+    # ------------------------------------------------------------------
 
     async def validate_password(
         self, password: str, user: User  # type: ignore[override]
@@ -121,6 +214,10 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         # Add to default group so new users have baseline access
         async for session in get_async_session():
             await add_user_to_default_group(session, user.id)
+        ip = request.client.host if request and request.client else "unknown"
+        await write_audit_event(
+            "register", user_id=user.id, user_email=user.email, ip_address=ip
+        )
         await self.request_verify(user, request)
 
     async def on_after_request_verify(
@@ -143,6 +240,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self, user: User, token: str, request: Optional[Request] = None
     ) -> None:
         """Send a password reset link by email."""
+        ip = request.client.host if request and request.client else "unknown"
+        await write_audit_event(
+            "password_reset_request",
+            user_id=user.id,
+            user_email=user.email,
+            ip_address=ip,
+        )
         base_url = os.environ.get("APP_BASE_URL", "http://localhost:3000")
         reset_url = f"{base_url}?reset-password={token}"
         await send_email(

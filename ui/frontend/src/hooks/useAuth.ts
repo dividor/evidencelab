@@ -13,6 +13,23 @@ import type { AuthContextValue, AuthState, AuthUser, LoginCredentials, RegisterD
  */
 axios.defaults.withCredentials = true;
 
+/**
+ * CSRF protection — double-submit cookie pattern.
+ * The backend sets a non-httpOnly `evidencelab_csrf` cookie.  We read it
+ * and echo it back as the `X-CSRF-Token` header on every state-changing
+ * request so the backend can verify the two match.
+ */
+axios.interceptors.request.use((config) => {
+  const method = (config.method ?? '').toLowerCase();
+  if (method !== 'get' && method !== 'head' && method !== 'options') {
+    const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+    if (match) {
+      config.headers['X-CSRF-Token'] = decodeURIComponent(match[1]);
+    }
+  }
+  return config;
+});
+
 const initialState: AuthState = {
   user: null,
   token: null,
