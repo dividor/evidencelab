@@ -519,7 +519,7 @@ class SummarizeProcessor(BaseProcessor):
         # prevent infinite recursion if we can't split it further meaningfuly.
         # But here _split_chunks uses strict sizing, so it should always split.
 
-        if len(chunks) > 50:  # Increased safety limit
+        if len(chunks) > 200:  # Safety limit for extremely large documents
             logger.warning("  Too many chunks (%s) - will use centroid", len(chunks))
             return "USE_CENTROID", None
 
