@@ -29,7 +29,7 @@ def test_process_document_wrapper_times_out_on_low_memory(monkeypatch):
     monkeypatch.setattr(orchestrator.random, "uniform", lambda *_: 0)
     monkeypatch.setattr(orchestrator.time, "sleep", lambda *_: None)
 
-    times = iter([0, 601])
+    times = iter([0, 3601])
     monkeypatch.setattr(orchestrator.time, "time", lambda: next(times))
 
     result = orchestrator.process_document_wrapper({"id": "doc-2", "title": "Title"})
