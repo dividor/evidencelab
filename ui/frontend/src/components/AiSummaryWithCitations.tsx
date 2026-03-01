@@ -17,6 +17,7 @@ const NUMBERED_LIST_REGEX = /^\d+[\.)]\s/;
 const BULLET_LIST_REGEX = /^[-*]\s/;
 const HEADING_REGEX = /^(#{1,4})\s+(.+)$/;
 const BOLD_HEADING_REGEX = /^\*\*(.+?)\*\*:?\s*$/;
+const PLAIN_HEADING_REGEX = /^([A-Z][A-Za-z\s]+):?\s*$/;
 
 const parseCitationNumbers = (rawNumbers: string): number[] =>
   rawNumbers.split(',').map((item) => parseInt(item.trim(), 10));
@@ -67,6 +68,8 @@ const parseHeading = (trimmed: string): { text: string; level: number } | null =
   if (mdMatch) return { text: mdMatch[2], level: Math.min(mdMatch[1].length + 2, 6) };
   const boldMatch = trimmed.match(BOLD_HEADING_REGEX);
   if (boldMatch) return { text: boldMatch[1], level: 4 };
+  const plainMatch = trimmed.match(PLAIN_HEADING_REGEX);
+  if (plainMatch) return { text: plainMatch[1], level: 4 };
   return null;
 };
 
