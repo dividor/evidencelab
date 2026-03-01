@@ -58,6 +58,15 @@ Evidence Lab document processing pipeline includes the following features:
 - PDF preview with in-document search
 - Administration views to track pipeline, documents, performance and errors
 
+3. User authentication & permissions (opt-in)
+
+- Email/password registration with email verification
+- OAuth login with Google and Microsoft
+- User profiles and role management
+- Group-based data-source access control — restrict which datasets users can see
+- Admin panel for managing users, groups, and permissions
+- Enabled via `USER_MODULE=true` in `.env` (disabled by default)
+
 More features will be added soon, focused on document evidence analysis.
 
 ## Getting started
@@ -73,6 +82,7 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 2. **Set environment variables**
    - Copy [`.env.example`](.env.example) to `.env`.
    - Fill in the API keys and service URLs required by the pipeline and UI.
+   - To enable user authentication, set `USER_MODULE=true` and `REACT_APP_USER_MODULE=true`, then configure `AUTH_SECRET_KEY`, SMTP settings, and optionally OAuth credentials (see `.env.example`).
 
 3. **Add documents + metadata**
    - Save documents under `data/<data_subdir>/pdfs/<organization>/<year>/`.

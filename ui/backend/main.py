@@ -91,6 +91,11 @@ USE_EMBEDDING_SERVER = os.environ.get("USE_EMBEDDING_SERVER", "false").lower() i
     "true",
     "yes",
 )
+USER_MODULE = os.environ.get("USER_MODULE", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")
@@ -656,6 +661,22 @@ app.include_router(highlight_routes.router)
 app.include_router(stats_routes.router)
 app.include_router(search_routes.router)
 app.include_router(documents_routes.router)
+
+# User authentication & permissions module (opt-in via USER_MODULE env var)
+if USER_MODULE:
+    from ui.backend.routes import auth as auth_routes
+    from ui.backend.routes import groups as groups_routes
+    from ui.backend.routes import users as users_routes
+
+    app.include_router(auth_routes.router, prefix="/auth", tags=["auth"])
+    app.include_router(users_routes.router, prefix="/users", tags=["users"])
+    app.include_router(groups_routes.router, prefix="/groups", tags=["groups"])
+    logger.info("User module enabled (USER_MODULE=true)")
+
+    # Expose USER_MODULE flag so config route can read it
+    app.state.user_module_enabled = True
+else:
+    app.state.user_module_enabled = False
 
 if __name__ == "__main__":
     # Host configurable for security - 0.0.0.0 for Docker, 127.0.0.1 for local dev

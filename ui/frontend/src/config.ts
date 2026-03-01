@@ -43,4 +43,8 @@ export const USER_FEEDBACK = process.env.REACT_APP_USER_FEEDBACK === '1';
 export const GA_MEASUREMENT_ID: string | undefined =
   process.env.REACT_APP_GA_MEASUREMENT_ID || undefined;
 
+// User module — enables authentication, user profiles, and permissions
+// Set REACT_APP_USER_MODULE=true in .env to enable (default: off)
+export const USER_MODULE = process.env.REACT_APP_USER_MODULE === 'true';
+
 export default API_BASE_URL;

@@ -1,6 +1,7 @@
+import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 import pipeline.db as pipeline_db
 from pipeline.db import (
@@ -13,6 +14,8 @@ from pipeline.db import (
 from ui.backend.schemas import LLMConfig, ModelComboConfig, ModelConfig
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.app_state import get_pg_for_source
+
+_USER_MODULE = os.environ.get("USER_MODULE", "false").lower() in ("1", "true", "yes")
 
 _RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, _RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
@@ -170,8 +173,12 @@ def get_config_model_combos():
 
 
 @router.get("/config/datasources")
-async def get_datasources_config():
-    """Get datasources configuration for UI, enriched with document totals."""
+async def get_datasources_config(request: Request):
+    """Get datasources configuration for UI, enriched with document totals.
+
+    When the user module is enabled, the response is filtered to only include
+    datasources the authenticated user has permission to access.
+    """
     config = pipeline_db.load_datasources_config()
     datasources = config.get("datasources", {})
     for name, ds_config in datasources.items():
@@ -184,7 +191,33 @@ async def get_datasources_config():
             ds_config["total_documents"] = sum(status_counts.values())
         except Exception:
             pass
+
+    # Filter datasources by user permissions when user module is active
+    if _USER_MODULE:
+        try:
+            from ui.backend.auth.db import get_async_session
+            from ui.backend.auth.users import optional_current_user
+            from ui.backend.services.permissions import (
+                filter_datasources,
+                get_user_datasource_keys,
+            )
+
+            # Resolve the current user via the bearer/cookie auth backends
+            user = await optional_current_user(request)
+            if user is not None and not user.is_superuser:
+                async for session in get_async_session():
+                    allowed = await get_user_datasource_keys(session, user.id)
+                    datasources = filter_datasources(datasources, allowed)
+        except Exception:
+            pass  # If auth fails, return all datasources (graceful degradation)
+
     return datasources
+
+
+@router.get("/config/auth-status")
+def get_auth_status():
+    """Return whether the user module is enabled (for frontend feature flag)."""
+    return {"user_module_enabled": _USER_MODULE}
 
 
 @router.get("/health")

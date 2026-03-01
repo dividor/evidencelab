@@ -10,3 +10,10 @@ aiohttp>=3.9.0
 slowapi>=0.1.9
 deep-translator>=1.11.4
 cohere>=5.14.0
+
+# User module (auth & permissions) — only needed when USER_MODULE=true
+fastapi-users[sqlalchemy,oauth]>=15.0.0
+httpx-oauth>=0.15.0
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.29.0
+aiosmtplib>=3.0.0

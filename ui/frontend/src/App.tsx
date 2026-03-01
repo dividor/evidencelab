@@ -7,7 +7,8 @@ import API_BASE_URL, {
   SEMANTIC_HIGHLIGHT_THRESHOLD,
   SEARCH_RESULTS_PAGE_SIZE,
   APP_BASE_PATH,
-  GA_MEASUREMENT_ID
+  GA_MEASUREMENT_ID,
+  USER_MODULE
 } from './config';
 
 import {
@@ -32,6 +33,9 @@ import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent, getGaConsent } from './components/CookieConsent';
+import { AuthContext, useAuthState } from './hooks/useAuth';
+import GroupManager from './components/admin/GroupManager';
+import UserManager from './components/admin/UserManager';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
@@ -88,7 +92,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats'] as const;
+const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats', 'admin'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -403,6 +407,9 @@ const CORE_FILTER_FIELDS = ['organization', 'title', 'published_year', 'document
 const DEFAULT_PUBLISHED_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
 
 function App() {
+  // Auth state (only active when USER_MODULE is enabled)
+  const authState = useAuthState();
+
   // Initialize search state from URL parameters
   const initialSearchState = getSearchStateFromURL(
     CORE_FILTER_FIELDS,
@@ -2147,7 +2154,7 @@ function App() {
     />
   );
 
-  return (
+  const appContent = (
     <div className="app">
       <TopBar
         selectedDomain={selectedDomain}
@@ -2173,6 +2180,7 @@ function App() {
         onAboutClick={handleAboutClick}
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
+        onAdminClick={() => handleTabChange('admin')}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />}
       />
 
@@ -2201,6 +2209,14 @@ function App() {
         privacyContent={privacyContent}
         onTabChange={handleTabChange}
       />
+
+      {USER_MODULE && activeTab === 'admin' && authState.user?.is_superuser && (
+        <div className="admin-panel">
+          <h2>Administration</h2>
+          <UserManager />
+          <GroupManager availableDatasources={availableDomains} />
+        </div>
+      )}
 
       <footer className="app-footer">
         <button
@@ -2297,6 +2313,16 @@ function App() {
       <CookieConsent />
     </div >
   );
+
+  if (USER_MODULE) {
+    return (
+      <AuthContext.Provider value={authState}>
+        {appContent}
+      </AuthContext.Provider>
+    );
+  }
+
+  return appContent;
 }
 
 export default App;
