@@ -3451,26 +3451,27 @@ h6,
 .ai-summary-citation {
   color: var(--primary-blue);
   text-decoration: none;
-  font-size: 0.8em;
+  font-size: 0.85em;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.15s ease;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
-  border-radius: 3px;
-  padding: 0 3px;
 }
 
 .ai-summary-citation:hover {
-  color: var(--primary-blue-dark);
-  background: var(--gray-100);
-  text-decoration: none;
+  text-decoration: underline;
 }
 
 .citation-doc-group {
-  background: var(--gray-100);
+  display: inline-block;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
   border-radius: 3px;
-  padding: 0 1px;
+  padding: 0 3px;
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+
+.citation-doc-group:hover {
+  background: rgba(59, 130, 246, 0.15);
 }
 
 .ai-summary-references {

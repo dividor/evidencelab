@@ -174,23 +174,18 @@ const renderCitationLinks = (
   const nodes: React.ReactNode[] = [];
 
   groups.forEach((group, gi) => {
-    if (gi > 0) nodes.push(<span key={`${keyPrefix}-gsep-${gi}`}>, </span>);
-    const isGroup = group.length > 1;
+    if (gi > 0) nodes.push(<span key={`${keyPrefix}-gsep-${gi}`}> </span>);
     const inner = group.map((entry, ei) => (
       <React.Fragment key={`${keyPrefix}-e-${entry.idx}`}>
         {ei > 0 && <span>, </span>}
         {renderCitationLink(entry, onResultClick, keyPrefix)}
       </React.Fragment>
     ));
-    if (isGroup) {
-      nodes.push(
-        <span key={`${keyPrefix}-dg-${gi}`} className="citation-doc-group">
-          {inner}
-        </span>
-      );
-    } else {
-      nodes.push(...inner);
-    }
+    nodes.push(
+      <span key={`${keyPrefix}-dg-${gi}`} className="citation-doc-group">
+        {inner}
+      </span>
+    );
   });
 
   return nodes;
@@ -219,7 +214,7 @@ const renderLineWithCitations = (
       );
       return (
         <span key={`${keyPrefix}-group-${idx}`}>
-          [{citationLinks}]
+          {citationLinks}
         </span>
       );
     }
