@@ -114,6 +114,12 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
     # exempt them so unauthenticated users can register / login.
     if request.url.path.startswith("/auth/"):
         return None
+    # User and group management routes use cookie-based JWT auth
+    # (current_active_user / current_superuser); exempt from API key.
+    if request.url.path.startswith("/users/") or request.url.path.startswith(
+        "/groups/"
+    ):
+        return None
     if not API_KEY:
         # If no API key configured, allow all requests (development mode)
         return None
@@ -693,6 +699,49 @@ if USER_MODULE:
     app.include_router(users_routes.router, prefix="/users", tags=["users"])
     app.include_router(groups_routes.router, prefix="/groups", tags=["groups"])
     logger.info("User module enabled (USER_MODULE=true)")
+
+    # Auto-promote first superuser on startup (if configured)
+    _FIRST_SUPERUSER_EMAIL = os.environ.get("FIRST_SUPERUSER_EMAIL", "").strip()
+
+    @app.on_event("startup")
+    async def promote_first_superuser():
+        """Auto-promote a user to superuser based on FIRST_SUPERUSER_EMAIL."""
+        if not _FIRST_SUPERUSER_EMAIL:
+            return
+        from sqlalchemy import select
+        from sqlalchemy import update as sa_update
+
+        from ui.backend.auth.db import async_session_factory
+        from ui.backend.auth.models import User
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(User).where(User.email == _FIRST_SUPERUSER_EMAIL)
+            )
+            user = result.scalars().first()
+            if user is None:
+                logger.info(
+                    "FIRST_SUPERUSER_EMAIL=%s — user not registered yet; "
+                    "will be promoted on next restart after registration.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            if user.is_superuser:
+                logger.debug(
+                    "FIRST_SUPERUSER_EMAIL=%s — already a superuser.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            await session.execute(
+                sa_update(User)
+                .where(User.id == user.id)
+                .values(is_superuser=True, is_verified=True)
+            )
+            await session.commit()
+            logger.info(
+                "Promoted %s to superuser (FIRST_SUPERUSER_EMAIL).",
+                _FIRST_SUPERUSER_EMAIL,
+            )
 
     # Expose USER_MODULE flag so config route can read it
     app.state.user_module_enabled = True

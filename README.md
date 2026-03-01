@@ -207,19 +207,16 @@ Leave these blank to disable OAuth and use email/password registration only.
 
 There is no default admin account. To bootstrap the first administrator:
 
-1. Register a new account through the UI (or via OAuth)
-2. Verify the email (check Mailpit in development)
-3. Promote the user to superuser via the database:
+1. Add the admin email to `.env`:
 
-   ```bash
-   docker compose exec postgres psql \
-     -U "$POSTGRES_USER" -d "$POSTGRES_DBNAME" \
-     -c "UPDATE users SET is_superuser = true WHERE email = 'you@example.com';"
+   ```env
+   FIRST_SUPERUSER_EMAIL=you@example.com
    ```
 
-   `POSTGRES_USER` and `POSTGRES_DBNAME` come from your `.env` file.
+2. Register that account through the UI (or via OAuth) and verify the email
+3. Restart the API — the user is automatically promoted to superuser on startup
 
-Once you have an admin account, you can promote other users from the **Admin → Users** panel in the UI without touching the database again.
+Once you have an admin account, you can promote other users from the **Admin → Users** tab in the UI.
 
 ### 5. Configure groups and data-source access
 
@@ -235,6 +232,7 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `FIRST_SUPERUSER_EMAIL` | *(empty)* | Email of the account to auto-promote to admin on startup |
 | `AUTH_ALLOWED_EMAIL_DOMAINS` | *(empty — open)* | Comma-separated whitelist of allowed email domains |
 | `AUTH_MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
 | `AUTH_COOKIE_SECURE` | `true` | Set to `false` for non-HTTPS local dev |

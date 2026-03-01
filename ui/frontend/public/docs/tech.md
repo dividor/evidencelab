@@ -139,7 +139,7 @@ The authentication module is opt-in (`USER_MODULE=true`) and built on [fastapi-u
 
 * **Group-based access control** — users belong to one or more groups, each of which is granted access to specific data-source keys. Searches and document views are filtered so users only see data sources their groups allow.
 * **Default group** — new users are automatically added to a configurable default group so they have baseline access without admin intervention.
-* **Admin panel** — superusers can manage users (activate, verify, promote), create and edit groups, and assign data-source access from the UI.
+* **Admin panel** — superusers can manage users (activate, verify, promote), create and edit groups, and assign data-source access from the UI. The first admin is bootstrapped via the `FIRST_SUPERUSER_EMAIL` environment variable.
 
 ### User self-service
 
