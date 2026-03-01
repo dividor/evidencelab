@@ -123,7 +123,37 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
    - Open http://localhost:3000
    - Select your data source and search the indexed documents
 
-6. **Next steps**
+6. **Email testing (development)**
+
+   Evidence Lab uses email for account verification and password resets.
+   For local development, use [Mailpit](https://mailpit.axllent.org/) — a
+   lightweight SMTP server that catches all outgoing emails:
+
+   ```bash
+   # Start Mailpit alongside the other services
+   docker compose --profile mail up -d mailpit
+
+   # Open the Mailpit web UI to view caught emails
+   open http://localhost:8025
+   ```
+
+   Then set these values in your `.env`:
+   ```
+   SMTP_HOST=mailpit
+   SMTP_PORT=1025
+   SMTP_USE_TLS=false
+   ```
+
+   Restart the API container to pick up the new settings:
+   ```bash
+   docker compose up -d api
+   ```
+
+   All verification and password-reset emails will now appear in the
+   Mailpit inbox at http://localhost:8025 instead of being sent to real
+   addresses.
+
+7. **Next steps**
    - See the technical deep dive for pipeline commands, downloaders, and architecture details:
      [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)
    - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, pre-commit hooks,

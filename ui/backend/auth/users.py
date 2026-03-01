@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import AsyncGenerator, Optional
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.authentication import (
@@ -21,7 +21,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
-from ui.backend.auth.email import send_email
+from ui.backend.auth.email import (
+    password_reset_email_html,
+    send_email,
+    verification_email_html,
+)
 from ui.backend.auth.models import OAuthAccount, User
 from ui.backend.auth.rate_limit import current_request_ip
 from ui.backend.services.permissions import add_user_to_default_group
@@ -166,6 +170,23 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if update_dict:
             await self.user_db.update(user, update_dict)
 
+        # Block email-registered users who haven't verified their address.
+        # OAuth users bypass this method entirely (they use the OAuth flow).
+        if not user.is_verified:
+            logger.info("Login denied — email not verified: %s", user.email)
+            await write_audit_event(
+                "login_failure",
+                user_id=user.id,
+                user_email=user.email,
+                ip_address=ip,
+                details={"reason": "email_not_verified"},
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Please verify your email address before signing in. "
+                "Check your inbox for the verification link.",
+            )
+
         await write_audit_event(
             "login_success",
             user_id=user.id,
@@ -229,11 +250,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         await send_email(
             to=user.email,
             subject="Verify your Evidence Lab account",
-            body_html=(
-                f"<p>Welcome to Evidence Lab!</p>"
-                f'<p>Please <a href="{verify_url}">click here to verify your email</a>.</p>'
-                f"<p>Or paste this link in your browser: {verify_url}</p>"
-            ),
+            body_html=verification_email_html(verify_url),
         )
 
     async def on_after_forgot_password(
@@ -252,12 +269,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         await send_email(
             to=user.email,
             subject="Reset your Evidence Lab password",
-            body_html=(
-                f"<p>You requested a password reset.</p>"
-                f'<p><a href="{reset_url}">Click here to reset your password</a>.</p>'
-                f"<p>Or paste this link in your browser: {reset_url}</p>"
-                f"<p>If you didn't request this, ignore this email.</p>"
-            ),
+            body_html=password_reset_email_html(reset_url),
         )
 
 
