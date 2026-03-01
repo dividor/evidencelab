@@ -212,9 +212,12 @@ There is no default admin account. To bootstrap the first administrator:
 3. Promote the user to superuser via the database:
 
    ```bash
-   docker compose exec postgres psql -U evidencelab -d evidencelab \
+   docker compose exec postgres psql \
+     -U "$POSTGRES_USER" -d "$POSTGRES_DBNAME" \
      -c "UPDATE users SET is_superuser = true WHERE email = 'you@example.com';"
    ```
+
+   `POSTGRES_USER` and `POSTGRES_DBNAME` come from your `.env` file.
 
 Once you have an admin account, you can promote other users from the **Admin → Users** panel in the UI without touching the database again.
 
