@@ -23,7 +23,7 @@ axios.interceptors.request.use((config) => {
   const method = (config.method ?? '').toLowerCase();
   if (method !== 'get' && method !== 'head' && method !== 'options') {
     const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
-    if (match) {
+    if (match && config.headers) {
       config.headers['X-CSRF-Token'] = decodeURIComponent(match[1]);
     }
   }
@@ -41,7 +41,7 @@ export const AuthContext = createContext<AuthContextValue>({
   ...initialState,
   login: async () => {},
   register: async () => {},
-  logout: () => {},
+  logout: async () => {},
   refreshUser: async () => {},
 });
 
@@ -76,7 +76,7 @@ export function useAuthState(): AuthContextValue {
 
     // Cookie-based login — the backend sets an httpOnly cookie in the response
     await axios.post(
-      `${API_BASE_URL}/auth/cookie-login`,
+      `${API_BASE_URL}/auth/cookie-login/login`,
       form,
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );

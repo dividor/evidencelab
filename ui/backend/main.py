@@ -110,6 +110,10 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
         return None
     if "/thumbnail" in request.url.path:
         return None
+    # Auth routes are protected by their own rate-limiting and CSRF;
+    # exempt them so unauthenticated users can register / login.
+    if request.url.path.startswith("/auth/"):
+        return None
     if not API_KEY:
         # If no API key configured, allow all requests (development mode)
         return None

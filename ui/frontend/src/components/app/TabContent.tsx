@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats';
+type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
 
 interface TabContentProps {
   activeTab: TabName;

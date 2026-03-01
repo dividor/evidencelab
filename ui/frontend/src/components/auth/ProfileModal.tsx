@@ -19,7 +19,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
 
   useEffect(() => {
     if (tab === 'groups') {
-      axios.get(`${API_BASE_URL}/users/me/groups`).then((resp) => {
+      axios.get<Array<{ id: string; name: string; description: string | null }>>(`${API_BASE_URL}/users/me/groups`).then((resp) => {
         setGroups(resp.data);
       }).catch(() => {});
     }

@@ -164,8 +164,9 @@ Trivy scans Docker images for:
 
 ### API Key Authentication
 
-- API key required for all endpoints except `/health`
+- API key required for all endpoints except `/health`, `/auth/*`, file serving
 - API key validated using timing-safe comparison
+- Auth routes exempt from API key — protected by their own rate-limiting and CSRF
 - Development mode allows unauthenticated access (no `API_SECRET_KEY` set)
 
 ### User Authentication Module
@@ -181,6 +182,7 @@ When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
 | **Secret validation** | `AUTH_SECRET_KEY` must be 32+ chars; insecure defaults rejected |
 | **Password policy** | Minimum length + digit + letter (configurable via `AUTH_MIN_PASSWORD_LENGTH`) |
 | **Account lockout** | Lock after N consecutive failures for M minutes (`AUTH_LOCKOUT_THRESHOLD`, `AUTH_LOCKOUT_DURATION_MINUTES`) |
+| **Timing-attack mitigation** | Password hash always computed even for non-existent users |
 | **Registration control** | Email domain whitelist via `AUTH_ALLOWED_EMAIL_DOMAINS` |
 | **Rate limiting** | Per-IP sliding window on `/auth/*` (default 10 req/60s) |
 | **Permission model** | Deny-by-default; unauthenticated users see no datasources |
@@ -260,6 +262,18 @@ Before submitting a PR, ensure:
 
 ## Changelog
 
+- **2026-03-01**: User authentication & permissions module
+  - Added cookie-based JWT auth with httpOnly, secure, samesite=lax flags
+  - Added CSRF double-submit cookie middleware (`evidencelab_csrf`)
+  - Added security response headers middleware (X-Content-Type-Options, X-Frame-Options, etc.)
+  - Added per-IP rate limiting on auth endpoints (sliding window)
+  - Added account lockout with timing-attack mitigation
+  - Added password complexity validation (length + digit + letter)
+  - Added email domain whitelisting for registration
+  - Added immutable audit log table for all auth events
+  - Added group-based RBAC with deny-by-default datasource permissions
+  - Added Google and Microsoft OAuth2 SSO support
+  - Exempted `/auth/*` routes from API key requirement
 - **2026-02-05**: Comprehensive security policy
   - Added Bandit for Python SAST
   - Added Hadolint for Dockerfile linting

@@ -1,8 +1,8 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic>=2.9.0
+pydantic==2.9.2
 pydantic-settings>=2.6.0
-python-multipart==0.0.6
+python-multipart==0.0.22
 langchain>=0.1.0
 langchain-huggingface>=0.0.1
 jinja2>=3.1.0
@@ -12,8 +12,8 @@ deep-translator>=1.11.4
 cohere>=5.14.0
 
 # User module (auth & permissions) — only needed when USER_MODULE=true
-fastapi-users[sqlalchemy,oauth]>=15.0.0
-httpx-oauth>=0.15.0
-sqlalchemy[asyncio]>=2.0.0
-asyncpg>=0.29.0
-aiosmtplib>=3.0.0
+fastapi-users[sqlalchemy,oauth]==15.0.4
+httpx-oauth==0.16.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.31.0
+aiosmtplib==5.1.0

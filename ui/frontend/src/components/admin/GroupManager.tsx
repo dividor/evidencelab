@@ -108,8 +108,8 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
     if (!selectedGroup || !addMemberEmail.trim()) return;
     // We need the user ID — fetch all users and find by email
     try {
-      const resp = await axios.get(`${API_BASE_URL}/users/all`);
-      const found = resp.data.find((u: any) => u.email === addMemberEmail.trim());
+      const resp = await axios.get<Array<{ id: string; email: string }>>(`${API_BASE_URL}/users/all`);
+      const found = resp.data.find((u) => u.email === addMemberEmail.trim());
       if (!found) {
         setError(`User not found: ${addMemberEmail}`);
         return;

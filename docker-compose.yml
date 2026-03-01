@@ -105,7 +105,7 @@ services:
     environment:
       - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_HOST=postgres
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
@@ -162,7 +162,7 @@ services:
     environment:
       - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
       - QDRANT_API_KEY=${QDRANT_API_KEY:-}
-      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_HOST=postgres
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}

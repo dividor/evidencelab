@@ -7,6 +7,7 @@ from fastapi_users.db import (
     SQLAlchemyBaseOAuthAccountTableUUID,
     SQLAlchemyBaseUserTableUUID,
 )
+from fastapi_users_db_sqlalchemy.generics import GUID
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -19,9 +20,18 @@ class Base(DeclarativeBase):
 class OAuthAccount(SQLAlchemyBaseOAuthAccountTableUUID, Base):
     """OAuth account linked to a user (Google, Microsoft, etc.)."""
 
+    __tablename__ = "oauth_accounts"
+
+    # Override user_id FK to point to "users" table (not default "user")
+    user_id: Mapped[GUID] = mapped_column(
+        GUID, ForeignKey("users.id", ondelete="cascade"), nullable=False
+    )
+
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
     """Application user with authentication and profile fields."""
+
+    __tablename__ = "users"
 
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -81,7 +91,7 @@ class UserGroupMember(Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("user.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
     group_id: Mapped[uuid.UUID] = mapped_column(
@@ -128,7 +138,7 @@ class AuditLog(Base):
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("user.id", ondelete="SET NULL"),
+        ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
     user_email: Mapped[str | None] = mapped_column(String(320), nullable=True)

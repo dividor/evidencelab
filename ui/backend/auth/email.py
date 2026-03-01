@@ -25,6 +25,9 @@ async def send_email(to: str, subject: str, body_html: str) -> None:
     """
     if not SMTP_HOST:
         logger.warning("SMTP_HOST not configured — skipping email to %s", to)
+        logger.info(
+            "Email content for %s:\n  Subject: %s\n  Body: %s", to, subject, body_html
+        )
         return
 
     msg = EmailMessage()
