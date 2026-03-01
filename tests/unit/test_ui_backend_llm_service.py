@@ -25,10 +25,10 @@ def test_render_prompt_includes_query_and_results():
 
 
 @pytest.mark.asyncio
-async def test_generate_ai_summary_cleans_prefixes(monkeypatch):
+async def test_generate_ai_summary_returns_stripped_content(monkeypatch):
     class FakeLLM:
         async def ainvoke(self, _messages):
-            return SimpleNamespace(content='"User: Hello\nAssistant: World"')
+            return SimpleNamespace(content="  Hello World  ")
 
     monkeypatch.setattr(
         llm_service,
