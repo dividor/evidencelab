@@ -89,7 +89,7 @@ export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
           {group.title}
           {group.organization && `, ${group.organization}`}
           {group.year && `, ${group.year}`}
-          {' : '}
+          {' | '}
           {group.refs.map(({ sequential, result }, idx) => (
             <React.Fragment key={sequential}>
               {idx > 0 && ' '}
