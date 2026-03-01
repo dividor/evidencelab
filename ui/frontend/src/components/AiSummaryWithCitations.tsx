@@ -44,6 +44,16 @@ const stripListPrefix = (line: string, listType: 'numbered' | 'bullet'): string 
   return line.trim().replace(/^[-*]\s/, '');
 };
 
+const countCitations = (text: string): number => {
+  let count = 0;
+  const re = new RegExp(CITATION_REGEX.source, 'g');
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    count += parseCitationNumbers(m[1]).length;
+  }
+  return count;
+};
+
 const buildCitationLinkTitle = (result: SearchResult): string => {
   const yearSuffix = result.year ? ', ' + result.year : '';
   return result.title + ' (' + (result.organization || 'Unknown') + yearSuffix + ')';
@@ -153,6 +163,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
         let pendingParagraphLines: string[] = [];
         let pendingListItems: string[] = [];
         let pendingListType: 'numbered' | 'bullet' | null = null;
+        let afterKeyFacts = false;
 
         const flushParagraph = () => {
           if (pendingParagraphLines.length === 0) return;
@@ -173,9 +184,12 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
           if (pendingListItems.length === 0 || !pendingListType) return;
           const ListTag: React.ElementType = pendingListType === 'numbered' ? 'ol' : 'ul';
           const lt = pendingListType;
+          const items = afterKeyFacts
+            ? [...pendingListItems].sort((a, b) => countCitations(b) - countCitations(a))
+            : pendingListItems;
           elements.push(
             <ListTag key={`${blockIndex}-list-${elements.length}`}>
-              {pendingListItems.map((item, li) => (
+              {items.map((item, li) => (
                 <li key={li}>
                   {renderLineWithCitations(stripListPrefix(item, lt), searchResults, citationMapping, onResultClick, `${blockIndex}-${elements.length}-${li}`)}
                 </li>
@@ -184,6 +198,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
           );
           pendingListItems = [];
           pendingListType = null;
+          afterKeyFacts = false;
         };
 
         lines.forEach((line) => {
@@ -197,6 +212,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
             const content = renderLineWithCitations(headingMatch[2], searchResults, citationMapping, onResultClick, `${blockIndex}-h-${elements.length}`);
             const level = Math.min(headingMatch[1].length + 2, 6);
             elements.push(React.createElement(`h${level}`, { key: `${blockIndex}-h-${elements.length}` }, content));
+            afterKeyFacts = /key\s*facts/i.test(headingMatch[2]);
             return;
           }
 
