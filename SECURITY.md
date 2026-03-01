@@ -162,16 +162,35 @@ Trivy scans Docker images for:
 
 ## API Security
 
-### Authentication
+### API Key Authentication
 
 - API key required for all endpoints except `/health`
 - API key validated using timing-safe comparison
 - Development mode allows unauthenticated access (no `API_SECRET_KEY` set)
 
+### User Authentication Module
+
+When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
+
+| Control | Implementation |
+|---------|---------------|
+| **Token storage** | httpOnly cookies only; no localStorage (XSS mitigation) |
+| **Token lifetime** | 1 hour JWTs; refresh via cookie re-auth |
+| **Cookie flags** | `httponly`, `secure`, `samesite=lax` |
+| **Secret validation** | `AUTH_SECRET_KEY` must be 32+ chars; insecure defaults rejected |
+| **Password policy** | Minimum length + digit + letter (configurable via `AUTH_MIN_PASSWORD_LENGTH`) |
+| **Registration control** | Email domain whitelist via `AUTH_ALLOWED_EMAIL_DOMAINS` |
+| **Rate limiting** | Per-IP sliding window on `/auth/*` (default 10 req/60s) |
+| **Permission model** | Deny-by-default; unauthenticated users see no datasources |
+| **Error handling** | Permission failures logged and return empty data (no leak) |
+| **OAuth** | Google and Microsoft SSO (optional, credential-gated) |
+| **Email verification** | Required after registration; token sent via SMTP |
+
 ### Authorization
 
-- Data source access controlled via whitelist validation
+- Data source access controlled via whitelist validation and group-based RBAC
 - File serving restricted to specific directories and file types
+- Superusers bypass datasource filtering; regular users see only granted sources
 
 ### Security Headers
 
