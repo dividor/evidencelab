@@ -18,12 +18,21 @@ interface AiSummaryStreamOptions {
   signal?: AbortSignal;
 }
 
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 const buildHeaders = (apiKey?: string): Record<string, string> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
   if (apiKey) {
     headers['X-API-Key'] = apiKey;
+  }
+  const csrfToken = getCsrfToken();
+  if (csrfToken) {
+    headers['X-CSRF-Token'] = csrfToken;
   }
   return headers;
 };

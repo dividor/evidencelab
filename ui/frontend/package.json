@@ -13,8 +13,10 @@
     "react-markdown": "^9.1.0",
     "react-plotly.js": "^2.6.0",
     "react-scripts": "^5.0.1",
+    "remark-gfm": "^4.0.1",
     "typescript": "^4.9.5",
-    "xlsx-js-style": "^1.2.0"
+    "xlsx-js-style": "^1.2.0",
+    "yaml": "^2.8.2"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -36,7 +38,10 @@
       "security/detect-object-injection": "warn",
       "security/detect-non-literal-fs-filename": "warn",
       "security/detect-eval-with-expression": "error",
-      "sonarjs/cognitive-complexity": ["error", 20]
+      "sonarjs/cognitive-complexity": [
+        "error",
+        20
+      ]
     }
   },
   "browserslist": {

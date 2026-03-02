@@ -120,7 +120,17 @@ async def test_datasources_config(monkeypatch):
         return {"datasources": {"Source": {"data_subdir": "src"}}}
 
     monkeypatch.setattr("pipeline.db.load_datasources_config", fake_load)
-    result = await main_module.get_datasources_config()
+
+    from ui.backend.routes import config as config_routes
+
+    # Disable user-module permission filtering so the test exercises the
+    # basic datasource-config code path without auth.
+    monkeypatch.setattr(config_routes, "_USER_MODULE", False)
+
+    request = _make_request(method="GET", path="/config/datasources")
+    result = await config_routes.get_datasources_config(
+        request=request, current_user=None, session=None
+    )
     assert "Source" in result
 
 

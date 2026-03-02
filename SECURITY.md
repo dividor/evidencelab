@@ -122,9 +122,9 @@ API endpoints validate `data_source` parameters against a whitelist loaded from 
 
 CORS is configured securely:
 
-- Origins read from `CORS_ALLOWED_ORIGINS` environment variable
-- Defaults to localhost for development (not `*`)
-- Explicit HTTP method whitelist
+- **Origins**: Read from `CORS_ALLOWED_ORIGINS` environment variable; defaults to localhost for development (never `*`)
+- **Headers**: Read from `CORS_ALLOWED_HEADERS` environment variable; defaults to `Content-Type, Authorization, X-API-Key, X-CSRF-Token, Accept, Accept-Language` (never `*`)
+- Explicit HTTP method whitelist (`GET, POST, PUT, PATCH, DELETE, OPTIONS`)
 - Credentials supported only for allowed origins
 
 ### Rate Limiting
@@ -162,20 +162,54 @@ Trivy scans Docker images for:
 
 ## API Security
 
-### Authentication
+### API Key Authentication
 
-- API key required for all endpoints except `/health`
+- API key required for all endpoints except `/health`, `/auth/*`, file serving
 - API key validated using timing-safe comparison
+- Auth routes exempt from API key — protected by their own rate-limiting and CSRF
 - Development mode allows unauthenticated access (no `API_SECRET_KEY` set)
+
+### User Authentication Module
+
+When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
+
+| Control | Implementation |
+|---------|---------------|
+| **Token storage** | httpOnly cookies only; no localStorage (XSS mitigation) |
+| **Token lifetime** | 1-hour JWTs for access; separate configurable lifetimes for reset (24h) and verify (7d) tokens |
+| **Cookie flags** | `httponly`, `secure`, `samesite=lax` |
+| **CSRF protection** | Double-submit cookie (`evidencelab_csrf` + `X-CSRF-Token` header); cookie cleared on logout/account deletion |
+| **Secret validation** | `AUTH_SECRET_KEY` must be 32+ chars; insecure defaults rejected |
+| **Input validation** | `display_name` max 255 chars, whitespace-stripped, blank-to-None |
+| **Password policy** | Minimum length + digit + letter (configurable via `AUTH_MIN_PASSWORD_LENGTH`) |
+| **Account lockout** | Lock after N consecutive failures for M minutes; counters reset on password reset (`AUTH_LOCKOUT_THRESHOLD`, `AUTH_LOCKOUT_DURATION_MINUTES`) |
+| **Timing-attack mitigation** | Password hash always computed even for non-existent users |
+| **Registration control** | Email domain whitelist via `AUTH_ALLOWED_EMAIL_DOMAINS` (registration only; not enforced on password change) |
+| **Rate limiting** | Per-IP sliding window on `/auth/*` (default 10 req/60s) |
+| **Permission model** | Deny-by-default; unauthenticated users see no datasources |
+| **Error handling** | Permission failures logged and return empty data (no leak) |
+| **Audit logging** | All auth events (login, failure, lockout, register, password reset) logged to `audit_log` table |
+| **OAuth** | Google and Microsoft SSO with explicit minimal scopes (`openid, email, profile`) |
+| **Email verification** | Required after registration; token sent via SMTP |
 
 ### Authorization
 
-- Data source access controlled via whitelist validation
+- Data source access controlled via whitelist validation and group-based RBAC
 - File serving restricted to specific directories and file types
+- Superusers bypass datasource filtering; regular users see only granted sources
 
 ### Security Headers
 
-Production deployments via Caddy include:
+Application-level security headers middleware provides defence-in-depth:
+
+- `Content-Security-Policy` — configurable via `CSP_POLICY` env var; defaults to strict self-only policy with `frame-ancestors 'none'`
+- `X-Content-Type-Options: nosniff` — prevents MIME-sniffing
+- `X-Frame-Options: DENY` — prevents clickjacking
+- `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
+- `Permissions-Policy` — restricts camera, microphone, geolocation
+- `Strict-Transport-Security` — HSTS with `preload` directive when HTTPS is configured; warning logged when `AUTH_COOKIE_SECURE=false`
+
+Production deployments via Caddy additionally include:
 
 - Automatic HTTPS with Let's Encrypt
 - API key validation for protected endpoints
@@ -230,6 +264,30 @@ Before submitting a PR, ensure:
 
 ## Changelog
 
+- **2026-03-01**: Security hardening for enterprise pen testing
+  - Added Content-Security-Policy header (env-configurable via `CSP_POLICY`)
+  - Changed CORS `allow_headers` from `*` to env-configurable whitelist (`CORS_ALLOWED_HEADERS`)
+  - Added `display_name` input validation (max 255 chars, whitespace stripping)
+  - Moved email domain whitelist check to registration only (no longer triggers on password change)
+  - Added lockout counter reset on successful password reset
+  - Separated token lifetimes: reset tokens (24h) and verification tokens (7d) independently configurable
+  - Added warning log when no default group is configured for new users
+  - Added CSRF cookie clearing on account deletion
+  - Added explicit minimal OAuth scopes (`openid, email, profile`) for Google and Microsoft
+  - Added HSTS `preload` directive for HSTS preload list eligibility
+  - Added warning log when `AUTH_COOKIE_SECURE` is disabled (HTTP-only development)
+- **2026-03-01**: User authentication & permissions module
+  - Added cookie-based JWT auth with httpOnly, secure, samesite=lax flags
+  - Added CSRF double-submit cookie middleware (`evidencelab_csrf`)
+  - Added security response headers middleware (X-Content-Type-Options, X-Frame-Options, etc.)
+  - Added per-IP rate limiting on auth endpoints (sliding window)
+  - Added account lockout with timing-attack mitigation
+  - Added password complexity validation (length + digit + letter)
+  - Added email domain whitelisting for registration
+  - Added immutable audit log table for all auth events
+  - Added group-based RBAC with deny-by-default datasource permissions
+  - Added Google and Microsoft OAuth2 SSO support
+  - Exempted `/auth/*` routes from API key requirement
 - **2026-02-05**: Comprehensive security policy
   - Added Bandit for Python SAST
   - Added Hadolint for Dockerfile linting

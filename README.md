@@ -58,6 +58,17 @@ Evidence Lab document processing pipeline includes the following features:
 - PDF preview with in-document search
 - Administration views to track pipeline, documents, performance and errors
 
+3. User authentication & permissions (opt-in)
+
+- Email/password registration with email verification, or OAuth single sign-on (Google, Microsoft)
+- Cookie-based sessions with CSRF protection — no tokens in localStorage
+- Account lockout, rate limiting, and audit logging for security
+- Group-based data-source access control — restrict which datasets users can see
+- Admin panel for managing users, groups, and permissions
+- Self-service profile management and account deletion
+- Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) with future MFA support in mind
+- Enabled via `USER_MODULE=true` in `.env` (disabled by default)
+
 More features will be added soon, focused on document evidence analysis.
 
 ## Getting started
@@ -114,7 +125,118 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
    - Select your data source and search the indexed documents
 
 6. **Next steps**
+   - To add user authentication see [User authentication](#user-authentication) below
    - See the technical deep dive for pipeline commands, downloaders, and architecture details:
      [`ui/frontend/public/docs/tech.md`](ui/frontend/public/docs/tech.md)
    - See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, pre-commit hooks,
      testing, and contribution guidelines
+
+## User authentication
+
+User authentication is **opt-in** and disabled by default. When enabled it adds email/password registration, OAuth single sign-on, group-based data-source access control, and an admin panel.
+
+### 1. Enable the module
+
+Set these in your `.env`:
+
+```env
+USER_MODULE=true
+REACT_APP_USER_MODULE=true
+AUTH_SECRET_KEY=<generate-a-random-secret-at-least-32-characters>
+```
+
+> **Tip:** Generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+
+### 2. Configure email (SMTP)
+
+Email is used for account verification and password resets. For **production**, configure a real SMTP provider (SendGrid, AWS SES, Gmail, etc.):
+
+```env
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM=noreply@yourdomain.com
+SMTP_USE_TLS=true
+```
+
+For **local development**, use [Mailpit](https://mailpit.axllent.org/) — a lightweight SMTP server that catches all outgoing emails:
+
+```bash
+# Start Mailpit alongside the other services
+docker compose --profile mail up -d mailpit
+
+# Open the Mailpit web UI to view caught emails
+open http://localhost:8025
+```
+
+Then set these values in your `.env`:
+
+```env
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USE_TLS=false
+```
+
+Restart the API container to pick up the new settings:
+
+```bash
+docker compose up -d api
+```
+
+All verification and password-reset emails will now appear in the Mailpit inbox at http://localhost:8025.
+
+### 3. Configure OAuth (optional)
+
+To enable Google and/or Microsoft single sign-on, add the relevant credentials to `.env`:
+
+```env
+# Google OAuth
+OAUTH_GOOGLE_CLIENT_ID=your-client-id
+OAUTH_GOOGLE_CLIENT_SECRET=your-client-secret
+
+# Microsoft OAuth
+OAUTH_MICROSOFT_CLIENT_ID=your-client-id
+OAUTH_MICROSOFT_CLIENT_SECRET=your-client-secret
+OAUTH_MICROSOFT_TENANT_ID=common
+```
+
+Leave these blank to disable OAuth and use email/password registration only.
+
+### 4. Create the first admin user
+
+There is no default admin account. To bootstrap the first administrator:
+
+1. Add the admin email to `.env`:
+
+   ```env
+   FIRST_SUPERUSER_EMAIL=you@example.com
+   ```
+
+2. Register that account through the UI (or via OAuth) and verify the email
+3. Restart the API — the user is automatically promoted to superuser on startup
+
+Once you have an admin account, you can promote other users from the **Admin → Users** tab in the UI.
+
+### 5. Configure groups and data-source access
+
+Evidence Lab uses groups to control which data sources users can see:
+
+- A **Default** group is created automatically and grants access to **all** data sources. New users are added to this group on registration.
+- To **restrict access**, create additional groups from the **Admin → Groups** panel, assign specific data-source keys to each group, and move users into the appropriate groups.
+- Users who are only in non-default groups will see only the data sources assigned to their groups.
+
+### Additional settings
+
+See [`.env.example`](.env.example) for the full list of auth-related settings including:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `FIRST_SUPERUSER_EMAIL` | *(empty)* | Email of the account to auto-promote to admin on startup |
+| `AUTH_ALLOWED_EMAIL_DOMAINS` | *(empty — open)* | Comma-separated whitelist of allowed email domains |
+| `AUTH_MIN_PASSWORD_LENGTH` | `8` | Minimum password length |
+| `AUTH_COOKIE_SECURE` | `true` | Set to `false` for non-HTTPS local dev |
+| `AUTH_RATE_LIMIT_MAX` | `10` | Max login attempts per IP per window |
+| `AUTH_RATE_LIMIT_WINDOW` | `60` | Rate limit window in seconds |
+| `AUTH_LOCKOUT_THRESHOLD` | `5` | Failed logins before account lockout |
+| `AUTH_LOCKOUT_DURATION_MINUTES` | `15` | Lockout duration |

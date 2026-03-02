@@ -92,6 +92,11 @@ USE_EMBEDDING_SERVER = os.environ.get("USE_EMBEDDING_SERVER", "false").lower() i
     "true",
     "yes",
 )
+USER_MODULE = os.environ.get("USER_MODULE", "false").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")
@@ -105,6 +110,16 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
     if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
         return None
     if "/thumbnail" in request.url.path:
+        return None
+    # Auth routes are protected by their own rate-limiting and CSRF;
+    # exempt them so unauthenticated users can register / login.
+    if request.url.path.startswith("/auth/"):
+        return None
+    # User and group management routes use cookie-based JWT auth
+    # (current_active_user / current_superuser); exempt from API key.
+    if request.url.path.startswith("/users/") or request.url.path.startswith(
+        "/groups/"
+    ):
         return None
     if not API_KEY:
         # If no API key configured, allow all requests (development mode)
@@ -522,13 +537,37 @@ if not CORS_ORIGINS or CORS_ORIGINS == [""]:
         "http://127.0.0.1:8000",
     ]
 
+# CORS allowed headers - explicit whitelist instead of "*"
+_CORS_HEADERS_RAW = os.environ.get("CORS_ALLOWED_HEADERS", "")
+CORS_HEADERS = [h.strip() for h in _CORS_HEADERS_RAW.split(",") if h.strip()]
+if not CORS_HEADERS:
+    CORS_HEADERS = [
+        "Content-Type",
+        "Authorization",
+        "X-API-Key",
+        "X-CSRF-Token",
+        "Accept",
+        "Accept-Language",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_headers=CORS_HEADERS,
 )
+
+# Security response headers (always active — defence-in-depth)
+from ui.backend.auth.security_headers import SecurityHeadersMiddleware  # noqa: E402
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CSRF protection (only when user module / cookie auth is active)
+if USER_MODULE:
+    from ui.backend.auth.csrf import CSRFMiddleware  # noqa: E402
+
+    app.add_middleware(CSRFMiddleware)
 
 
 # Models
@@ -667,6 +706,71 @@ app.include_router(highlight_routes.router)
 app.include_router(stats_routes.router)
 app.include_router(search_routes.router)
 app.include_router(documents_routes.router)
+
+# User authentication & permissions module (opt-in via USER_MODULE env var)
+if USER_MODULE:
+    from ui.backend.auth.rate_limit import check_auth_rate_limit
+    from ui.backend.routes import auth as auth_routes
+    from ui.backend.routes import groups as groups_routes
+    from ui.backend.routes import users as users_routes
+
+    app.include_router(
+        auth_routes.router,
+        prefix="/auth",
+        tags=["auth"],
+        dependencies=[Depends(check_auth_rate_limit)],
+    )
+    app.include_router(users_routes.router, prefix="/users", tags=["users"])
+    app.include_router(groups_routes.router, prefix="/groups", tags=["groups"])
+    logger.info("User module enabled (USER_MODULE=true)")
+
+    # Auto-promote first superuser on startup (if configured)
+    _FIRST_SUPERUSER_EMAIL = os.environ.get("FIRST_SUPERUSER_EMAIL", "").strip()
+
+    @app.on_event("startup")
+    async def promote_first_superuser():
+        """Auto-promote a user to superuser based on FIRST_SUPERUSER_EMAIL."""
+        if not _FIRST_SUPERUSER_EMAIL:
+            return
+        from sqlalchemy import select
+        from sqlalchemy import update as sa_update
+
+        from ui.backend.auth.db import async_session_factory
+        from ui.backend.auth.models import User
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(User).where(User.email == _FIRST_SUPERUSER_EMAIL)
+            )
+            user = result.scalars().first()
+            if user is None:
+                logger.info(
+                    "FIRST_SUPERUSER_EMAIL=%s — user not registered yet; "
+                    "will be promoted on next restart after registration.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            if user.is_superuser:
+                logger.debug(
+                    "FIRST_SUPERUSER_EMAIL=%s — already a superuser.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            await session.execute(
+                sa_update(User)
+                .where(User.id == user.id)
+                .values(is_superuser=True, is_verified=True)
+            )
+            await session.commit()
+            logger.info(
+                "Promoted %s to superuser (FIRST_SUPERUSER_EMAIL).",
+                _FIRST_SUPERUSER_EMAIL,
+            )
+
+    # Expose USER_MODULE flag so config route can read it
+    app.state.user_module_enabled = True
+else:
+    app.state.user_module_enabled = False
 
 if __name__ == "__main__":
     # Host configurable for security - 0.0.0.0 for Docker, 127.0.0.1 for local dev
