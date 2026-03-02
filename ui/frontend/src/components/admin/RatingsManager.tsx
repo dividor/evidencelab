@@ -101,7 +101,7 @@ const AutoLink: React.FC<{ value: string; style?: React.CSSProperties }> = ({ va
 const RESULT_CARD_FIELDS = new Set([
   'title', 'doc_id', 'chunk_id', 'page_num', 'chunk_text', 'score',
   'relevance_score', 'link', 'ai_summary', 'results_snapshot', 'summary',
-  'cellCounts',
+  'cellCounts', 'timing', 'drilldown_tree',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -423,6 +423,43 @@ const ContextFields: React.FC<{ context: Record<string, any>; exclude?: string[]
 };
 
 /** Full context panel for a rating row */
+/** Render timing information from the context.timing sub-object */
+const TimingBar: React.FC<{ timing: Record<string, number> }> = ({ timing }) => {
+  if (!timing || typeof timing !== 'object') return null;
+  const entries = Object.entries(timing).filter(([, v]) => v != null && typeof v === 'number');
+  if (entries.length === 0) return null;
+
+  const labelMap: Record<string, string> = {
+    search_duration_ms: 'Search',
+    summary_duration_ms: 'Summary',
+    heatmap_duration_ms: 'Heatmap',
+  };
+
+  return (
+    <div className="activity-timing-bar">
+      {entries.map(([key, ms]) => (
+        <span key={key}>{labelMap[key] || key}: {(ms / 1000).toFixed(2)}s</span>
+      ))}
+    </div>
+  );
+};
+
+/** Recursive display of a serialized drilldown tree */
+const DrilldownTreeDisplay: React.FC<{ node: any; depth?: number }> = ({ node, depth = 0 }) => {
+  if (!node || typeof node !== 'object') return null;
+  const label = node.label || node.id || '(root)';
+  const children = Array.isArray(node.children) ? node.children : [];
+
+  return (
+    <ul className="drilldown-tree-list" style={depth === 0 ? { paddingLeft: 0 } : undefined}>
+      <li>{label}</li>
+      {children.map((child: any, i: number) => (
+        <DrilldownTreeDisplay key={child.id || i} node={child} depth={depth + 1} />
+      ))}
+    </ul>
+  );
+};
+
 const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
   const ctx = rating.context;
   if (!ctx || Object.keys(ctx).length === 0) {
@@ -436,10 +473,19 @@ const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
 
   return (
     <div>
+      {/* Timing */}
+      {ctx.timing && <TimingBar timing={ctx.timing} />}
       <ContextFields context={ctx} />
       {aiSummary && (
         <AiSummaryBlock summary={aiSummary}
           results={Array.isArray(resultsSnapshot) ? resultsSnapshot : []} />
+      )}
+      {/* Drilldown Tree */}
+      {ctx.drilldown_tree && (
+        <div style={{ marginTop: 8 }}>
+          <div className="admin-context-label">AI Summary Tree</div>
+          <DrilldownTreeDisplay node={ctx.drilldown_tree} />
+        </div>
       )}
       {resultsSnapshot && Array.isArray(resultsSnapshot) && (
         <ResultsSnapshotList results={resultsSnapshot} />

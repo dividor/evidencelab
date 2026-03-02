@@ -9,6 +9,7 @@ import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
+import { serializeDrilldownTree } from '../../utils/drilldownUtils';
 
 interface SearchTabContentProps {
   filtersExpanded: boolean;
@@ -498,10 +499,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         ...params.context,
         ai_summary: aiSummary || '',
         results_snapshot: buildResultsSnapshot(),
+        ...(aiDrilldownTree ? { drilldown_tree: serializeDrilldownTree(aiDrilldownTree) } : {}),
       };
       return submitRating({ ...params, context: enrichedContext });
     },
-    [submitRating, aiSummary, buildResultsSnapshot]
+    [submitRating, aiSummary, buildResultsSnapshot, aiDrilldownTree]
   );
 
   // Handlers for SearchResultFilters sub-component
@@ -771,6 +773,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
                     ai_summary: aiSummary || '',
                     results_snapshot: buildResultsSnapshot(),
                     link: window.location.href,
+                    ...(aiDrilldownTree ? { drilldown_tree: serializeDrilldownTree(aiDrilldownTree) } : {}),
                   },
                 });
               }}

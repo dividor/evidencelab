@@ -184,9 +184,16 @@ class ActivityCreate(BaseModel):
 
 
 class ActivitySummaryUpdate(BaseModel):
-    """Payload for appending AI summary to an existing activity record."""
+    """Payload for updating an existing activity record.
 
-    ai_summary: str
+    All fields optional: send ai_summary to update the summary text,
+    summary_duration_ms to record how long the summary took,
+    drilldown_tree to capture the AI Summary Tree structure.
+    """
+
+    ai_summary: Optional[str] = None
+    summary_duration_ms: Optional[float] = None
+    drilldown_tree: Optional[dict] = None
 
 
 class ActivityRead(BaseModel):

@@ -68,10 +68,19 @@ class TestActivitySummaryUpdate:
         u = ActivitySummaryUpdate(ai_summary="Updated summary text.")
         assert u.ai_summary == "Updated summary text."
 
-    def test_missing_summary(self):
-        """Missing ai_summary should raise ValidationError."""
-        with pytest.raises(ValidationError, match="ai_summary"):
-            ActivitySummaryUpdate()
+    def test_optional_summary(self):
+        """ai_summary is optional — an empty update is valid (tree-only PATCH)."""
+        u = ActivitySummaryUpdate()
+        assert u.ai_summary is None
+        assert u.summary_duration_ms is None
+        assert u.drilldown_tree is None
+
+    def test_tree_only_update(self):
+        """Can send drilldown_tree without ai_summary."""
+        tree = {"id": "root", "label": "Root", "children": []}
+        u = ActivitySummaryUpdate(drilldown_tree=tree)
+        assert u.ai_summary is None
+        assert u.drilldown_tree == tree
 
 
 class TestActivityRead:

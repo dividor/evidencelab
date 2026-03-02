@@ -370,10 +370,14 @@ const AiSummaryBlock: React.FC<{ summary: string; results?: any[] }> = ({ summar
 };
 
 /** Display filters as key-value pairs */
+/** Keys stored in filters JSONB that have dedicated display components */
+const FILTERS_EXCLUDE_KEYS = new Set(['timing', 'drilldown_tree']);
+
 const FiltersBlock: React.FC<{ filters: Record<string, any> }> = ({ filters }) => {
   if (!filters || Object.keys(filters).length === 0) return null;
   const entries = Object.entries(filters).filter(
-    ([, val]) => val != null && val !== '' && !(Array.isArray(val) && val.length === 0)
+    ([key, val]) => val != null && val !== '' && !(Array.isArray(val) && val.length === 0)
+      && !FILTERS_EXCLUDE_KEYS.has(key)
   );
   if (entries.length === 0) return null;
 
@@ -399,6 +403,43 @@ const FiltersBlock: React.FC<{ filters: Record<string, any> }> = ({ filters }) =
         ))}
       </div>
     </div>
+  );
+};
+
+/** Render timing information from the filters.timing sub-object */
+const TimingBar: React.FC<{ timing: Record<string, number> }> = ({ timing }) => {
+  if (!timing || typeof timing !== 'object') return null;
+  const entries = Object.entries(timing).filter(([, v]) => v != null && typeof v === 'number');
+  if (entries.length === 0) return null;
+
+  const labelMap: Record<string, string> = {
+    search_duration_ms: 'Search',
+    summary_duration_ms: 'Summary',
+    heatmap_duration_ms: 'Heatmap',
+  };
+
+  return (
+    <div className="activity-timing-bar">
+      {entries.map(([key, ms]) => (
+        <span key={key}>{labelMap[key] || key}: {(ms / 1000).toFixed(2)}s</span>
+      ))}
+    </div>
+  );
+};
+
+/** Recursive display of a serialized drilldown tree */
+const DrilldownTreeDisplay: React.FC<{ node: any; depth?: number }> = ({ node, depth = 0 }) => {
+  if (!node || typeof node !== 'object') return null;
+  const label = node.label || node.id || '(root)';
+  const children = Array.isArray(node.children) ? node.children : [];
+
+  return (
+    <ul className="drilldown-tree-list" style={depth === 0 ? { paddingLeft: 0 } : undefined}>
+      <li>{label}</li>
+      {children.map((child: any, i: number) => (
+        <DrilldownTreeDisplay key={child.id || i} node={child} depth={depth + 1} />
+      ))}
+    </ul>
   );
 };
 
@@ -430,6 +471,13 @@ const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
       {row.ai_summary && (
         <AiSummaryBlock summary={row.ai_summary}
           results={Array.isArray(row.search_results) ? row.search_results : []} />
+      )}
+      {/* Drilldown Tree */}
+      {row.filters?.drilldown_tree && (
+        <div style={{ marginTop: 8 }}>
+          <div className="admin-context-label">AI Summary Tree</div>
+          <DrilldownTreeDisplay node={row.filters.drilldown_tree} />
+        </div>
       )}
       {/* Search Results — heatmap activities store cell counts as [{key:count}] */}
       {row.search_results && Array.isArray(row.search_results) && row.search_results.length > 0 && (
@@ -686,11 +734,17 @@ const ActivityManager: React.FC = () => {
                     onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
                   <SortableHeader columnKey="results" label="# Results" sortField={sortBy} sortDirection={order}
                     onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
+                  <SortableHeader columnKey="search_time" label="Search" sortField={sortBy} sortDirection={order}
+                    onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
+                  <SortableHeader columnKey="summary_time" label="Summary" sortField={sortBy} sortDirection={order}
+                    onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
+                  <SortableHeader columnKey="heatmap_time" label="Heatmap" sortField={sortBy} sortDirection={order}
+                    onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
                 </tr>
               </thead>
               <tbody>
                 {filteredRows.length === 0 ? (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>No activity found</td></tr>
+                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>No activity found</td></tr>
                 ) : (
                   filteredRows.map((r) => {
                     const isExpanded = expandedRows.has(r.id);
@@ -709,10 +763,22 @@ const ActivityManager: React.FC = () => {
                           <td style={{ fontSize: '0.82rem' }}>{r.user_email || r.user_display_name || '-'}</td>
                           <td style={{ fontSize: '0.82rem', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.query}>{r.query}</td>
                           <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{getResultCount(r)}</td>
+                          <td style={{ textAlign: 'right', fontSize: '0.82rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                            {r.filters?.timing?.search_duration_ms != null
+                              ? (r.filters.timing.search_duration_ms / 1000).toFixed(2) + 's' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '0.82rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                            {r.filters?.timing?.summary_duration_ms != null
+                              ? (r.filters.timing.summary_duration_ms / 1000).toFixed(2) + 's' : '-'}
+                          </td>
+                          <td style={{ textAlign: 'right', fontSize: '0.82rem', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                            {r.filters?.timing?.heatmap_duration_ms != null
+                              ? (r.filters.timing.heatmap_duration_ms / 1000).toFixed(2) + 's' : '-'}
+                          </td>
                         </tr>
                         {isExpanded && (
                           <tr className="admin-expanded-detail">
-                            <td colSpan={5} className="admin-expanded-cell">
+                            <td colSpan={8} className="admin-expanded-cell">
                               <ActivityContextPanel row={r} />
                             </td>
                           </tr>

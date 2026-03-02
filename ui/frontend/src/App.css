@@ -7863,6 +7863,38 @@ li.ai-fact-active::before {
   color: #cbd5e0;
 }
 
+/* Timing bar for activity/rating detail panels */
+.activity-timing-bar {
+  display: flex;
+  gap: 1rem;
+  padding: 0.35rem 0 0.45rem;
+  font-size: 0.82rem;
+  color: #555;
+}
+.activity-timing-bar span {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  background: #f0f4f8;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+}
+
+/* Drilldown tree nested list */
+.drilldown-tree-list {
+  list-style: none;
+  padding-left: 1.2rem;
+  margin: 0.25rem 0 0;
+}
+.drilldown-tree-list li {
+  font-size: 0.82rem;
+  color: #444;
+  padding: 0.1rem 0;
+}
+.drilldown-tree-list li::before {
+  content: '↳ ';
+  color: #999;
+}
+
 /* ======================================================================
    User Module — Auth, Profile, Admin
    ====================================================================== */

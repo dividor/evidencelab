@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import Float, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
@@ -42,6 +42,89 @@ def _activity_to_read(activity: UserActivity, user: User | None = None) -> Activ
         has_ratings=activity.has_ratings,
         created_at=activity.created_at,
     )
+
+
+# JSONB sort keys that need nullslast() handling
+_JSONB_SORT_KEYS = {"search_time", "summary_time", "heatmap_time"}
+
+# Mapping of sort_by parameter values → SQLAlchemy column expressions
+_SORT_COL_MAP = {
+    "created_at": lambda: UserActivity.created_at,
+    "query": lambda: UserActivity.query,
+    "user_email": lambda: User.email,
+    "has_ratings": lambda: UserActivity.has_ratings,
+    "search_time": lambda: UserActivity.filters["timing"][
+        "search_duration_ms"
+    ].astext.cast(Float),
+    "summary_time": lambda: UserActivity.filters["timing"][
+        "summary_duration_ms"
+    ].astext.cast(Float),
+    "heatmap_time": lambda: UserActivity.filters["timing"][
+        "heatmap_duration_ms"
+    ].astext.cast(Float),
+}
+
+
+def _apply_activity_sorting(stmt, sort_by: str, order: str):
+    """Apply sorting to an activity list query."""
+    col_factory = _SORT_COL_MAP.get(sort_by)
+    sort_col = col_factory() if col_factory else UserActivity.created_at
+    expr = sort_col.asc() if order == "asc" else sort_col.desc()
+    if sort_by in _JSONB_SORT_KEYS:
+        expr = expr.nullslast()
+    return stmt.order_by(expr)
+
+
+def _build_activity_items(rows: list, rated_ids: set[str]) -> list[dict]:
+    """Build activity response dicts with live has_ratings enrichment."""
+    items = []
+    for activity, user in rows:
+        item = _activity_to_read(activity, user)
+        if str(activity.search_id) in rated_ids:
+            item.has_ratings = True
+        items.append(item.model_dump(mode="json"))
+    return items
+
+
+def _ms_to_seconds(ms: float | None) -> float | None:
+    """Convert milliseconds to seconds rounded to 2 decimals, or None."""
+    return round(ms / 1000, 2) if ms else None
+
+
+def _count_search_results(activity: UserActivity) -> int:
+    """Count search results from either list or dict format."""
+    sr = activity.search_results
+    if sr and isinstance(sr, list):
+        return len(sr)
+    if sr and isinstance(sr, dict):
+        return len(sr.get("results", []))
+    return 0
+
+
+def _build_export_row(activity: UserActivity, user: User | None) -> list:
+    """Build a single XLSX export row from an activity + user pair."""
+    summary_text = activity.ai_summary or ""
+    if len(summary_text) > 1000:
+        summary_text = summary_text[:997] + "..."
+
+    timing = (activity.filters or {}).get("timing", {})
+    created = (
+        activity.created_at.strftime("%Y-%m-%d %H:%M") if activity.created_at else ""
+    )
+    return [
+        created,
+        user.email if user else "",
+        user.display_name if user else "",
+        activity.query,
+        _count_search_results(activity),
+        _ms_to_seconds(timing.get("search_duration_ms")),
+        _ms_to_seconds(timing.get("summary_duration_ms")),
+        _ms_to_seconds(timing.get("heatmap_duration_ms")),
+        summary_text,
+        activity.url or "",
+        "Yes" if activity.has_ratings else "No",
+        str(activity.search_id),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +180,20 @@ async def update_activity_summary(
     activity = result.scalars().first()
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity record not found")
-    activity.ai_summary = body.ai_summary
+    if body.ai_summary is not None:
+        activity.ai_summary = body.ai_summary
+
+    # Merge timing & drilldown tree into existing filters JSONB
+    if body.summary_duration_ms is not None or body.drilldown_tree is not None:
+        merged = dict(activity.filters or {})
+        if body.summary_duration_ms is not None:
+            timing = merged.get("timing", {})
+            timing["summary_duration_ms"] = body.summary_duration_ms
+            merged["timing"] = timing
+        if body.drilldown_tree is not None:
+            merged["drilldown_tree"] = body.drilldown_tree
+        activity.filters = merged
+
     await session.commit()
     await session.refresh(activity)
     return _activity_to_read(activity, user)
@@ -134,17 +230,7 @@ async def list_all_activity(
     total = (await session.execute(count_stmt)).scalar() or 0
 
     # Sorting
-    sort_col_map = {
-        "created_at": UserActivity.created_at,
-        "query": UserActivity.query,
-        "user_email": User.email,
-        "has_ratings": UserActivity.has_ratings,
-    }
-    sort_col = sort_col_map.get(sort_by, UserActivity.created_at)
-    if order == "asc":
-        base = base.order_by(sort_col.asc())
-    else:
-        base = base.order_by(sort_col.desc())
+    base = _apply_activity_sorting(base, sort_by, order)
 
     # Pagination
     offset = (page - 1) * page_size
@@ -156,15 +242,9 @@ async def list_all_activity(
     # Dynamically compute has_ratings from the ratings table
     # (fixes stale flags from the old searchId mismatch bug)
     rated_ids = await _get_rated_search_ids(session, rows)
-    items = []
-    for activity, user in rows:
-        item = _activity_to_read(activity, user)
-        if str(activity.search_id) in rated_ids:
-            item.has_ratings = True
-        items.append(item)
 
     return {
-        "items": [item.model_dump(mode="json") for item in items],
+        "items": _build_activity_items(rows, rated_ids),
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -216,6 +296,9 @@ async def export_activity(
         "User Name",
         "Query",
         "# Results",
+        "Search Time (s)",
+        "Summary Time (s)",
+        "Heatmap Time (s)",
         "AI Summary",
         "URL",
         "Has Ratings",
@@ -224,34 +307,7 @@ async def export_activity(
     ws.append(headers)
 
     for activity, user in rows:
-        num_results = 0
-        if activity.search_results and isinstance(activity.search_results, list):
-            num_results = len(activity.search_results)
-        elif activity.search_results and isinstance(activity.search_results, dict):
-            num_results = len(activity.search_results.get("results", []))
-
-        summary_text = activity.ai_summary or ""
-        # Truncate for Excel readability (max 1000 chars)
-        if len(summary_text) > 1000:
-            summary_text = summary_text[:997] + "..."
-
-        ws.append(
-            [
-                (
-                    activity.created_at.strftime("%Y-%m-%d %H:%M")
-                    if activity.created_at
-                    else ""
-                ),
-                user.email if user else "",
-                user.display_name if user else "",
-                activity.query,
-                num_results,
-                summary_text,
-                activity.url or "",
-                "Yes" if activity.has_ratings else "No",
-                str(activity.search_id),
-            ]
-        )
+        ws.append(_build_export_row(activity, user))
 
     buf = io.BytesIO()
     wb.save(buf)

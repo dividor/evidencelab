@@ -1241,6 +1241,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // --- Heatmap rating & activity logging ---
   const { isAuthenticated } = useAuth();
   const heatmapIdRef = useRef<string>('');
+  const heatmapDurationRef = useRef<number>(0);
 
   // Heatmap filters are now completely isolated from global filters
   // No syncing needed
@@ -1899,6 +1900,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     cellCounts: Object.fromEntries(
       Object.entries(filteredGridResults).map(([k, cell]) => [k, cell?.count ?? 0])
     ),
+    timing: { heatmap_duration_ms: heatmapDurationRef.current },
   }), [
     rowDimension, columnDimension, heatmapMetric, similarityCutoff,
     rowQueries, gridQuery, heatmapSelectedFilters,
@@ -2296,7 +2298,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
   /** Fire-and-forget activity log for a completed heatmap run.
    *  Accepts rawResults so it can capture the grid snapshot immediately. */
-  const logHeatmapActivity = useCallback((rawResults: RawCellResults) => {
+  const logHeatmapActivity = useCallback((rawResults: RawCellResults, durationMs: number) => {
     const queries = rowDimension === 'queries' ? rowQueries : [gridQuery];
     const queryLabel = rowDimension === 'queries'
       ? rowQueries.filter((q) => q.trim()).join(' | ')
@@ -2313,6 +2315,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         filters: {
           type: 'heatmap', rowDimension, columnDimension, heatmapMetric,
           similarityCutoff, queries, heatmapFilters: heatmapSelectedFilters,
+          timing: { heatmap_duration_ms: durationMs },
         },
         search_results: [cellCounts],
         url: window.location.href,
@@ -2328,6 +2331,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       setGridResults({});
       return;
     }
+    const heatmapStartTime = performance.now();
     // Generate a new heatmap ID for this grid search run
     heatmapIdRef.current = crypto.randomUUID();
     updateHeatmapURL({ run: true });
@@ -2413,8 +2417,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       console.error('Heatmap grid search failed:', error);
       setGridError('Grid search failed. Please try again.');
     } finally {
+      const heatmapDurationMs = Math.round(performance.now() - heatmapStartTime);
+      heatmapDurationRef.current = heatmapDurationMs;
       setGridLoading(false);
-      logHeatmapActivity(accumulatedResults);
+      logHeatmapActivity(accumulatedResults, heatmapDurationMs);
     }
   }, [
     columnDimension,

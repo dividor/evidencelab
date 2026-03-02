@@ -19,6 +19,8 @@ module.exports = function (app) {
             target: apiTarget,
             changeOrigin: true,
             pathRewrite: { '^/api': '' },
+            proxyTimeout: 120000, // 120s timeout for slow API responses
+            timeout: 120000, // 120s incoming socket timeout
         }),
     );
 };
