@@ -48,6 +48,11 @@ import {
 
 const AI_SUMMARY_ERROR = 'Uh oh. Something went wrong asking the AI.';
 
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 // Configure API key header for all axios requests
 const API_KEY = process.env.REACT_APP_API_KEY;
 if (API_KEY) {
@@ -135,9 +140,10 @@ const buildSearchErrorMessage = (error: any): string => {
 
 const translateViaApi = async (text: string, targetLanguage: string, sourceLanguage?: string): Promise<string | null> => {
   try {
+    const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {

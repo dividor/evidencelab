@@ -26,6 +26,11 @@ import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 
 const API_KEY = process.env.REACT_APP_API_KEY;
 
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
 // Top N% of score range to display (0.2 = show only top 20%)
 const HEATMAP_SCORE_PERCENTILE = 0.2;
 
@@ -993,9 +998,10 @@ const HeatmapGridContent = ({
 
 const translateWithFallback = async (text: string, newLang: string, label: string) => {
   try {
+    const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: newLang }),
     });
     if (resp.ok) {
