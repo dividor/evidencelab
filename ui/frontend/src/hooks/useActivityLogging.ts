@@ -19,7 +19,7 @@ export function useActivityLogging() {
 
   /**
    * Log a search event. Called once after each search completes.
-   * Sends a lean version of results (chunk_id, doc_id, title, score only).
+   * Sends rich result data (chunk_id, doc_id, title, score, page_num, chunk_text, link).
    */
   const logSearch = useCallback(
     (
@@ -31,12 +31,15 @@ export function useActivityLogging() {
       if (loggedSearchIds.current.has(searchId)) return;
       loggedSearchIds.current.add(searchId);
 
-      // Trim the results to a lean payload (first page, key fields only)
-      const leanResults = results.slice(0, 50).map((r) => ({
+      // Include rich result data (same fields as rating context) for admin visibility
+      const richResults = results.slice(0, 50).map((r) => ({
         chunk_id: r.chunk_id,
         doc_id: r.doc_id,
         title: r.title,
         score: r.score,
+        page_num: r.page_num || null,
+        chunk_text: r.text || '',
+        link: r.link || '',
       }));
 
       // Fire-and-forget — don't await, don't block
@@ -45,7 +48,7 @@ export function useActivityLogging() {
           search_id: searchId,
           query,
           filters: filters && Object.keys(filters).length > 0 ? filters : null,
-          search_results: leanResults,
+          search_results: richResults,
           url: window.location.href,
         })
         .catch((err) => {

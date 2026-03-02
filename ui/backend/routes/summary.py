@@ -84,6 +84,7 @@ async def stream_summary(request: Request, body: AISummaryRequest):
 
             # Stream the summary tokens
             full_summary = ""
+            stream_metadata = {}
             summary_config = body.summary_model_config
             model_key = summary_config.model if summary_config else body.summary_model
             temperature = summary_config.temperature if summary_config else None
@@ -94,7 +95,7 @@ async def stream_summary(request: Request, body: AISummaryRequest):
                 temperature,
                 max_tokens,
             )
-            async for token in llm_service.stream_ai_summary(
+            async for item in llm_service.stream_ai_summary(
                 query=body.query,
                 results=results_dicts,
                 max_results=body.max_results,
@@ -102,8 +103,12 @@ async def stream_summary(request: Request, body: AISummaryRequest):
                 temperature=temperature,
                 max_tokens=max_tokens,
             ):
-                full_summary += token
-                yield f"data: {json.dumps({'type': 'token', 'token': token})}\n\n"
+                if isinstance(item, dict):
+                    # Metadata dict yielded at the end of the stream
+                    stream_metadata = item
+                else:
+                    full_summary += item
+                    yield f"data: {json.dumps({'type': 'token', 'token': item})}\n\n"
 
             # Send completion event with metadata
             completion_data = {
@@ -112,6 +117,11 @@ async def stream_summary(request: Request, body: AISummaryRequest):
                 "results_count": len(body.results),
                 "summary": full_summary,
             }
+            # Include LangSmith trace URL if available
+            if stream_metadata.get("langsmith_trace_url"):
+                completion_data["langsmith_trace_url"] = stream_metadata[
+                    "langsmith_trace_url"
+                ]
             yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:

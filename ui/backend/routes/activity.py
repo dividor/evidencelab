@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
-from ui.backend.auth.models import User, UserActivity
+from ui.backend.auth.models import User, UserActivity, UserRating
 from ui.backend.auth.schemas import ActivityCreate, ActivityRead, ActivitySummaryUpdate
 from ui.backend.auth.users import current_active_user, current_superuser
 
@@ -113,6 +113,7 @@ async def list_all_activity(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     search: Optional[str] = Query(None),
+    user_email: Optional[str] = Query(None),
     sort_by: str = Query("created_at"),
     order: str = Query("desc"),
     admin: User = Depends(current_superuser),
@@ -124,6 +125,9 @@ async def list_all_activity(
     if search:
         pattern = f"%{search}%"
         base = base.where(User.email.ilike(pattern) | UserActivity.query.ilike(pattern))
+
+    if user_email:
+        base = base.where(User.email == user_email)
 
     # Count total
     count_stmt = select(func.count()).select_from(base.subquery())
@@ -148,7 +152,16 @@ async def list_all_activity(
 
     result = await session.execute(base)
     rows = result.unique().all()
-    items = [_activity_to_read(activity, user) for activity, user in rows]
+
+    # Dynamically compute has_ratings from the ratings table
+    # (fixes stale flags from the old searchId mismatch bug)
+    rated_ids = await _get_rated_search_ids(session, rows)
+    items = []
+    for activity, user in rows:
+        item = _activity_to_read(activity, user)
+        if str(activity.search_id) in rated_ids:
+            item.has_ratings = True
+        items.append(item)
 
     return {
         "items": [item.model_dump(mode="json") for item in items],
@@ -156,6 +169,25 @@ async def list_all_activity(
         "page": page,
         "page_size": page_size,
     }
+
+
+async def _get_rated_search_ids(
+    session: AsyncSession,
+    rows: list,
+) -> set[str]:
+    """Return set of search_id strings that have at least one rating."""
+    search_ids = [str(a.search_id) for a, _u in rows]
+    if not search_ids:
+        return set()
+    rated_result = await session.execute(
+        select(UserRating.reference_id)
+        .where(
+            UserRating.reference_id.in_(search_ids),
+            UserRating.rating_type.in_(["search_result", "ai_summary"]),
+        )
+        .distinct()
+    )
+    return {r[0] for r in rated_result}
 
 
 @router.get("/export", tags=["activity"])

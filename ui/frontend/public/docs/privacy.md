@@ -64,14 +64,6 @@ You have the right to:
 - **Export** your data — contact us to request a copy of your data.
 - **Withdraw consent** — decline or revoke analytics cookies at any time.
 
-## Data security
-
-- Passwords are hashed using a strong one-way algorithm (bcrypt).
-- Authentication cookies are httpOnly and secure, preventing JavaScript access.
-- CSRF tokens protect against cross-site request forgery.
-- Accounts are locked after repeated failed login attempts.
-- All data is transmitted over HTTPS in production.
-
 ## Contact
 
 If you have questions about privacy or data handling, contact us at [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com).

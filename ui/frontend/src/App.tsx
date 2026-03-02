@@ -1541,7 +1541,9 @@ function App() {
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
-        onDone: () => setAiSummaryLoading(false),
+        onDone: () => {
+          setAiSummaryLoading(false);
+        },
         onError: (message: string) => {
           console.error('AI summary streaming error:', message);
           setAiSummary(AI_SUMMARY_ERROR);
@@ -1828,6 +1830,7 @@ function App() {
       // Log search activity (fire-and-forget, only when authenticated)
       if (USER_MODULE && authState.user) {
         logSearch(searchId, query, filters, data.results);
+        activitySearchIdRef.current = searchId;
       }
 
       // Reload facets to reflect search result distribution (with query)
@@ -1898,6 +1901,9 @@ function App() {
   ]);
 
   // Activity logging: update summary when AI summary stream finishes
+  // Track the searchId that was used for the activity POST, so the PATCH
+  // uses the same value (searchId state changes after setSearchId in performSearch).
+  const activitySearchIdRef = useRef<string>('');
   const prevAiSummaryLoadingRef = useRef(false);
   useEffect(() => {
     // Detect transition from loading → done and log the completed summary
@@ -1908,12 +1914,13 @@ function App() {
       authState.user &&
       aiSummary &&
       aiSummary !== AI_SUMMARY_ERROR &&
-      !isDrilldown
+      !isDrilldown &&
+      activitySearchIdRef.current
     ) {
-      updateActivitySummary(searchId, aiSummary);
+      updateActivitySummary(activitySearchIdRef.current, aiSummary);
     }
     prevAiSummaryLoadingRef.current = aiSummaryLoading;
-  }, [aiSummaryLoading, aiSummary, searchId, isDrilldown, authState.user, updateActivitySummary]);
+  }, [aiSummaryLoading, aiSummary, isDrilldown, authState.user, updateActivitySummary]);
 
   // Handler for toggling auto min score mode
   const handleAutoMinScoreToggle = useCallback((enabled: boolean) => {

@@ -205,6 +205,7 @@ class UserActivity(Base):
     search_results: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    langsmith_trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     has_ratings: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )

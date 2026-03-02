@@ -38,7 +38,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, sum
         doc_id: docId,
         title,
         link: window.location.href,
-        summary: summary.slice(0, 3000),
+        summary: summary || '',
       },
     });
   }, [docId, title, summary, submitRating]);

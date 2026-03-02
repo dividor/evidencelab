@@ -163,6 +163,7 @@ async def list_all_ratings(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     search: Optional[str] = Query(None),
+    user_email: Optional[str] = Query(None),
     sort_by: str = Query("created_at"),
     order: str = Query("desc"),
     rating_type: Optional[str] = Query(None),
@@ -174,6 +175,9 @@ async def list_all_ratings(
 
     if rating_type and rating_type in VALID_RATING_TYPES:
         base = base.where(UserRating.rating_type == rating_type)
+
+    if user_email:
+        base = base.where(User.email == user_email)
 
     if search:
         pattern = f"%{search}%"

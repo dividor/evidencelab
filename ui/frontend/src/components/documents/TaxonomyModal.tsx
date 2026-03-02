@@ -58,7 +58,7 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
         doc_id: docId,
         title: docTitle || '',
         link: window.location.href,
-        summary: (docSummary || '').slice(0, 3000),
+        summary: docSummary || '',
         taxonomy_type: taxonomyName,
         taxonomy_value: `${taxonomyValue.code} - ${taxonomyValue.name || ''}`.trim(),
         code: taxonomyValue.code,

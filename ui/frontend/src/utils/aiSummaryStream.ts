@@ -1,9 +1,13 @@
 import { SearchResult, SummaryModelConfig } from '../types/api';
 
+interface AiSummaryDoneData {
+  langsmith_trace_url?: string;
+}
+
 interface AiSummaryStreamHandlers {
   onPrompt: (prompt: string) => void;
   onToken: (fullText: string) => void;
-  onDone: () => void;
+  onDone: (data?: AiSummaryDoneData) => void;
   onError: (message: string) => void;
 }
 
@@ -75,7 +79,9 @@ const handleStreamedData = (
     return nextText;
   }
   if (streamedData.type === 'done') {
-    handlers.onDone();
+    handlers.onDone({
+      langsmith_trace_url: streamedData.langsmith_trace_url,
+    });
     return fullText;
   }
   if (streamedData.type === 'error') {

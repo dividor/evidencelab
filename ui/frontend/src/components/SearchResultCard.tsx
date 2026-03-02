@@ -94,6 +94,26 @@ const CountryDisplay = ({ raw }: { raw: string }) => {
     );
 };
 
+/** Renders organization, year, and country parts separated by bullets */
+const MetadataSubtitle = ({ result }: { result: SearchResult }) => {
+    const country = result.metadata?.map_country || result.metadata?.country || '';
+    const parts: React.ReactNode[] = [];
+    if (result.organization) parts.push(<span key="org">{result.organization}</span>);
+    if (result.year) parts.push(<span key="year">{result.year}</span>);
+    if (country) parts.push(<CountryDisplay key="country" raw={country} />);
+    if (parts.length === 0) return null;
+    return (
+        <>
+            {parts.map((part, i) => (
+                <React.Fragment key={i}>
+                    {i > 0 && <span> • </span>}
+                    {part}
+                </React.Fragment>
+            ))}
+        </>
+    );
+};
+
 const ResultSubtitleRow = ({
     result,
     onLanguageChange
@@ -101,25 +121,13 @@ const ResultSubtitleRow = ({
     result: SearchResult;
     onLanguageChange: (result: SearchResult, newLang: string) => void;
 }) => {
-    const country = result.metadata?.map_country || result.metadata?.country || '';
-    const hasOrg = !!result.organization;
-    const hasYear = !!result.year;
-    const hasCountry = !!country;
     return (
         <div
             className="result-subtitle"
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
         >
             <div>
-                {(hasOrg || hasYear || hasCountry) && (
-                    <>
-                        {hasOrg && <span>{result.organization}</span>}
-                        {hasOrg && (hasYear || hasCountry) && <span> • </span>}
-                        {hasYear && <span>{result.year}</span>}
-                        {hasYear && hasCountry && <span> • </span>}
-                        {hasCountry && <CountryDisplay raw={country} />}
-                    </>
-                )}
+                <MetadataSubtitle result={result} />
             </div>
             <div
                 className="result-language-selector"
@@ -295,7 +303,7 @@ const SearchResultCard = memo(({
                 chunk_id: result.chunk_id,
                 page_num: result.page_num || null,
                 relevance_score: result.score,
-                chunk_text: (result.text || '').slice(0, 500),
+                chunk_text: result.text || '',
                 link: window.location.href,
             },
         });

@@ -57,7 +57,7 @@ async def test_generate_ai_summary_raises_on_error(monkeypatch):
 @pytest.mark.asyncio
 async def test_stream_ai_summary_yields_tokens(monkeypatch):
     class FakeLLM:
-        async def astream(self, _messages):
+        async def astream(self, _messages, config=None):
             for token in ["Hello ", "world"]:
                 yield SimpleNamespace(content=token)
 
@@ -69,7 +69,8 @@ async def test_stream_ai_summary_yields_tokens(monkeypatch):
 
     chunks = []
     async for token in llm_service.stream_ai_summary("query", [{"text": "a"}]):
-        chunks.append(token)
+        if isinstance(token, str):
+            chunks.append(token)
 
     assert "".join(chunks) == "Hello world"
 
