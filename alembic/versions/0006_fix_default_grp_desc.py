@@ -1,4 +1,4 @@
-"""Fix default group description.
+"""Fix default group description (shortened revision ID for varchar(32) compat).
 
 Revision ID: 0006_fix_default_grp_desc
 Revises: 0005_add_lockout_and_audit
