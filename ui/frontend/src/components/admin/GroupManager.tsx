@@ -1,17 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
-import type { GroupMember, UserGroup } from '../../types/auth';
+import type { AuthUser, GroupMember, UserGroup } from '../../types/auth';
+import ConfirmModal from './ConfirmModal';
 
-interface GroupManagerProps {
-  /** All datasource keys from config (to populate checkboxes). */
-  availableDatasources: string[];
-}
-
-const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => {
+const GroupManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<UserGroup | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
+  const [allUsers, setAllUsers] = useState<AuthUser[]>([]);
+  const [availableDatasources, setAvailableDatasources] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -19,8 +17,11 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
 
-  // Add member form
-  const [addMemberEmail, setAddMemberEmail] = useState('');
+  // Add member picker
+  const [selectedUserId, setSelectedUserId] = useState('');
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -33,12 +34,33 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
     }
   }, []);
 
+  const fetchAllUsers = useCallback(async () => {
+    try {
+      const resp = await axios.get<AuthUser[]>(`${API_BASE_URL}/users/all`);
+      setAllUsers(resp.data);
+    } catch {
+      // Non-critical — picker will be empty
+    }
+  }, []);
+
+  const fetchDatasources = useCallback(async () => {
+    try {
+      const resp = await axios.get<string[]>(`${API_BASE_URL}/groups/datasource-keys`);
+      setAvailableDatasources(resp.data);
+    } catch {
+      // Non-critical — datasource picker will be empty
+    }
+  }, []);
+
   useEffect(() => {
     fetchGroups();
-  }, [fetchGroups]);
+    fetchAllUsers();
+    fetchDatasources();
+  }, [fetchGroups, fetchAllUsers, fetchDatasources]);
 
   const selectGroup = async (group: UserGroup) => {
     setSelectedGroup(group);
+    setSelectedUserId('');
     try {
       const resp = await axios.get<GroupMember[]>(`${API_BASE_URL}/groups/${group.id}/members`);
       setMembers(resp.data);
@@ -63,16 +85,18 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
     }
   };
 
-  const deleteGroup = async (groupId: string) => {
-    if (!window.confirm('Delete this group?')) return;
+  const confirmDeleteGroup = async () => {
+    if (!deleteTarget) return;
     try {
-      await axios.delete(`${API_BASE_URL}/groups/${groupId}`);
-      if (selectedGroup?.id === groupId) {
+      await axios.delete(`${API_BASE_URL}/groups/${deleteTarget.id}`);
+      if (selectedGroup?.id === deleteTarget.id) {
         setSelectedGroup(null);
         setMembers([]);
       }
+      setDeleteTarget(null);
       await fetchGroups();
     } catch (err: any) {
+      setDeleteTarget(null);
       setError(err.response?.data?.detail || 'Failed to delete group');
     }
   };
@@ -105,19 +129,12 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
 
   const addMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedGroup || !addMemberEmail.trim()) return;
-    // We need the user ID — fetch all users and find by email
+    if (!selectedGroup || !selectedUserId) return;
     try {
-      const resp = await axios.get<Array<{ id: string; email: string }>>(`${API_BASE_URL}/users/all`);
-      const found = resp.data.find((u) => u.email === addMemberEmail.trim());
-      if (!found) {
-        setError(`User not found: ${addMemberEmail}`);
-        return;
-      }
       await axios.post(`${API_BASE_URL}/groups/${selectedGroup.id}/members`, {
-        user_id: found.id,
+        user_id: selectedUserId,
       });
-      setAddMemberEmail('');
+      setSelectedUserId('');
       await selectGroup(selectedGroup);
       await fetchGroups();
     } catch (err: any) {
@@ -125,16 +142,24 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
     }
   };
 
+  // Users not already in the selected group (for the picker dropdown)
+  const memberIds = new Set(members.map((m) => m.id));
+  const availableUsers = allUsers.filter((u) => !memberIds.has(u.id));
+
   if (loading) return <div className="admin-loading">Loading groups...</div>;
 
   return (
     <div className="admin-section">
-      <h3>Groups</h3>
-      {error && <div className="auth-error">{error}<button className="auth-error-dismiss" onClick={() => setError('')}>&times;</button></div>}
+      {error && (
+        <div className="auth-error">
+          {error}
+          <button className="auth-error-dismiss" onClick={() => setError('')}>&times;</button>
+        </div>
+      )}
 
-      <div className="admin-two-col">
+      <div className="admin-groups-layout">
         {/* Left: group list */}
-        <div className="admin-col">
+        <div className="admin-groups-list">
           <form onSubmit={createGroup} className="admin-inline-form">
             <input
               type="text"
@@ -167,6 +192,7 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
                   key={g.id}
                   className={selectedGroup?.id === g.id ? 'admin-row-selected' : ''}
                   onClick={() => selectGroup(g)}
+                  style={{ cursor: 'pointer' }}
                 >
                   <td>
                     {g.name}
@@ -178,7 +204,7 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
                     {!g.is_default && (
                       <button
                         className="btn-sm btn-danger"
-                        onClick={(e) => { e.stopPropagation(); deleteGroup(g.id); }}
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: g.id, name: g.name }); }}
                       >
                         Delete
                       </button>
@@ -192,14 +218,13 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
 
         {/* Right: selected group detail */}
         {selectedGroup && (
-          <div className="admin-col">
-            <h4>{selectedGroup.name} — Datasource Access</h4>
-            <p className="text-muted">
-              {selectedGroup.is_default
-                ? 'Default group has access to all datasources.'
-                : 'Check the datasources this group can access.'}
-            </p>
-            {!selectedGroup.is_default && (
+          <div className="admin-group-detail">
+            <h4>Datasource Access</h4>
+            {selectedGroup.is_default ? (
+              <p className="text-muted">Default group has access to all datasources.</p>
+            ) : availableDatasources.length === 0 ? (
+              <p className="text-muted">No datasources configured.</p>
+            ) : (
               <div className="admin-checkbox-list">
                 {availableDatasources.map((ds) => (
                   <label key={ds} className="admin-checkbox">
@@ -214,16 +239,21 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
               </div>
             )}
 
-            <h4>Members</h4>
+            <h4>Members ({members.length})</h4>
             <form onSubmit={addMember} className="admin-inline-form">
-              <input
-                type="email"
-                value={addMemberEmail}
-                onChange={(e) => setAddMemberEmail(e.target.value)}
-                placeholder="user@example.com"
-                required
-              />
-              <button type="submit" className="btn-sm">Add</button>
+              <select
+                value={selectedUserId}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="admin-select"
+              >
+                <option value="">Select a user to add...</option>
+                {availableUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.email}{u.display_name ? ` (${u.display_name})` : ''}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="btn-sm" disabled={!selectedUserId}>Add</button>
             </form>
             <table className="admin-table">
               <thead>
@@ -253,6 +283,16 @@ const GroupManager: React.FC<GroupManagerProps> = ({ availableDatasources }) => 
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete Group"
+          message={`Delete the group "${deleteTarget.name}"? Members will lose access granted through this group.`}
+          confirmLabel="Delete Group"
+          onConfirm={confirmDeleteGroup}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 };

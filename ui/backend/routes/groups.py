@@ -84,6 +84,24 @@ async def create_group(
     return await _group_to_read(session, group)
 
 
+# NOTE: concrete paths MUST come before the catch-all /{group_id} routes.
+
+
+@router.get("/datasource-keys", tags=["groups"])
+async def list_datasource_keys(
+    admin: User = Depends(current_superuser),
+):
+    """List all configured datasource keys (superuser only).
+
+    Used by the admin UI to populate the datasource access checkboxes
+    when editing group permissions.
+    """
+    import pipeline.db as pipeline_db
+
+    config = pipeline_db.load_datasources_config()
+    return list(config.get("datasources", {}).keys())
+
+
 @router.get("/{group_id}", response_model=GroupRead, tags=["groups"])
 async def get_group(
     group_id: uuid.UUID,
@@ -155,7 +173,7 @@ async def list_group_members(
         .order_by(User.email)
     )
     result = await session.execute(stmt)
-    users = result.scalars().all()
+    users = result.unique().scalars().all()
     return [
         {
             "id": str(u.id),

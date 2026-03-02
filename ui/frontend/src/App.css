@@ -7950,8 +7950,17 @@ h6,
 /* Admin panel */
 .admin-panel {
   max-width: 1400px;
+  width: 100%;
   margin: 0 auto;
   padding: var(--spacing-xl);
+}
+
+.admin-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--brand-background);
+  padding-bottom: 0;
 }
 
 .admin-panel h2 {
@@ -7989,6 +7998,10 @@ h6,
   border-bottom-color: var(--brand-primary);
 }
 
+.admin-tab-content {
+  min-height: 400px;
+}
+
 .admin-section {
   margin-bottom: var(--spacing-2xl);
 }
@@ -8003,6 +8016,10 @@ h6,
   margin: var(--spacing-lg) 0 var(--spacing-sm);
   font-size: 0.95rem;
   color: var(--gray-600);
+}
+
+.admin-section h4:first-child {
+  margin-top: 0;
 }
 
 .admin-table {
@@ -8032,10 +8049,24 @@ h6,
   background: #eff6ff !important;
 }
 
-.admin-two-col {
+/* Groups layout — two-column grid */
+.admin-groups-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-xl);
+  align-items: start;
+}
+
+.admin-groups-list,
+.admin-group-detail {
+  min-width: 0; /* prevent grid blowout */
+}
+
+.admin-group-detail {
+  padding: var(--spacing-lg);
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--gray-200);
 }
 
 .admin-inline-form {
@@ -8044,15 +8075,33 @@ h6,
   margin-bottom: var(--spacing-lg);
 }
 
-.admin-inline-form input {
+.admin-inline-form input,
+.admin-inline-form select {
   flex: 1;
   padding: 0.45rem 0.65rem;
   border: 1px solid var(--gray-300);
   border-radius: var(--radius-md);
   font-size: 0.85rem;
+  background: var(--white);
 }
 
-.admin-inline-form input:focus {
+.admin-inline-form input:focus,
+.admin-inline-form select:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.admin-select {
+  flex: 1;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--white);
+  cursor: pointer;
+}
+
+.admin-select:focus {
   outline: none;
   border-color: var(--brand-primary);
 }
@@ -8076,6 +8125,21 @@ h6,
   padding: 2rem;
   text-align: center;
   color: var(--gray-500);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.badge-default {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 .btn-sm {
@@ -8107,4 +8171,46 @@ h6,
 .text-muted {
   color: var(--gray-500);
   font-size: 0.85rem;
+}
+
+/* Confirmation modal */
+.confirm-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirm-modal {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem 2rem;
+  max-width: 440px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.confirm-modal h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: var(--gray-800);
+}
+
+.confirm-modal p {
+  margin: 0 0 1.25rem;
+  font-size: 0.9rem;
+  color: var(--gray-600);
+  line-height: 1.5;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }

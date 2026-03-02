@@ -2209,7 +2209,7 @@ function App() {
         onTabChange={handleTabChange}
       />
 
-      <AdminPanel isActive={activeTab === 'admin'} availableDatasources={availableDomains} />
+      <AdminPanel isActive={activeTab === 'admin'} />
 
       <footer className="app-footer">
         <button

@@ -25,11 +25,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# fastapi-users provides GET /me, PATCH /me, DELETE /me
-router.include_router(
-    fastapi_users.get_users_router(UserRead, UserUpdate),
-    tags=["users"],
-)
+
+# ---------------------------------------------------------------------------
+# Custom routes MUST be registered before the fastapi-users router so that
+# concrete paths like /all and /me/groups are matched before the catch-all
+# /{id} route that fastapi-users adds.
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ async def list_users(
 ):
     """List all users (superuser only)."""
     result = await session.execute(select(User).order_by(User.email))
-    users = result.scalars().all()
+    users = result.unique().scalars().all()
     return users
 
 
@@ -76,6 +77,45 @@ async def update_user_flags(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+# ---------------------------------------------------------------------------
+# Admin: delete a user (cascade)
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{user_id}", tags=["users"])
+async def admin_delete_user(
+    user_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete a user and all associated data (superuser only)."""
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalars().first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_email = user.email
+
+    # Remove group memberships
+    await session.execute(
+        delete(UserGroupMember).where(UserGroupMember.user_id == user_id)
+    )
+    # Remove OAuth links
+    await session.execute(delete(OAuthAccount).where(OAuthAccount.user_id == user_id))
+    # Anonymise audit log entries
+    await session.execute(
+        update(AuditLog).where(AuditLog.user_id == user_id).values(user_id=None)
+    )
+    # Delete the user record
+    await session.execute(delete(User).where(User.id == user_id))
+    await session.commit()
+
+    logger.info("Admin deleted user: %s (%s)", user_email, user_id)
+    return {"detail": f"User {user_email} deleted."}
 
 
 # ---------------------------------------------------------------------------
@@ -163,3 +203,14 @@ async def delete_my_account(
     )
 
     return {"detail": "Account deleted successfully."}
+
+
+# ---------------------------------------------------------------------------
+# fastapi-users built-in routes (GET /me, PATCH /me, DELETE /{id}, etc.)
+# MUST come last so the catch-all /{id} doesn't shadow our custom routes.
+# ---------------------------------------------------------------------------
+
+router.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    tags=["users"],
+)

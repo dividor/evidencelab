@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 import pipeline.db as pipeline_db
 from pipeline.db import (
@@ -19,6 +19,26 @@ from ui.backend.utils.app_state import get_pg_for_source
 logger = logging.getLogger(__name__)
 
 _USER_MODULE = os.environ.get("USER_MODULE", "false").lower() in ("1", "true", "yes")
+
+# Conditional imports for user module — resolved at module load time so
+# FastAPI can wire up Depends() correctly.
+if _USER_MODULE:
+    from ui.backend.auth.db import get_async_session as _get_session_dep
+    from ui.backend.auth.users import optional_current_user as _resolve_user_dep
+    from ui.backend.services.permissions import (
+        filter_datasources,
+        get_user_datasource_keys,
+    )
+else:
+
+    async def _noop_user():  # type: ignore[misc]
+        return None
+
+    async def _noop_session():  # type: ignore[misc]
+        return None
+
+    _resolve_user_dep = _noop_user  # type: ignore[assignment]
+    _get_session_dep = _noop_session  # type: ignore[assignment]
 
 _RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, _RATE_LIMIT_AI = get_rate_limits()
 router = APIRouter()
@@ -176,7 +196,11 @@ def get_config_model_combos():
 
 
 @router.get("/config/datasources")
-async def get_datasources_config(request: Request):
+async def get_datasources_config(
+    request: Request,
+    current_user=Depends(_resolve_user_dep),
+    session=Depends(_get_session_dep),
+):
     """Get datasources configuration for UI, enriched with document totals.
 
     When the user module is enabled, the response is filtered to only include
@@ -200,22 +224,12 @@ async def get_datasources_config(request: Request):
     # rather than leaking all datasources to an unauthenticated request.
     if _USER_MODULE:
         try:
-            from ui.backend.auth.db import get_async_session
-            from ui.backend.auth.users import optional_current_user
-            from ui.backend.services.permissions import (
-                filter_datasources,
-                get_user_datasource_keys,
-            )
-
-            # Resolve the current user via the bearer/cookie auth backends
-            user = await optional_current_user(request)
-            if user is None:
+            if current_user is None:
                 # Not authenticated — return empty datasources
                 datasources = {}
-            elif not user.is_superuser:
-                async for session in get_async_session():
-                    allowed = await get_user_datasource_keys(session, user.id)
-                    datasources = filter_datasources(datasources, allowed)
+            elif not current_user.is_superuser:
+                allowed = await get_user_datasource_keys(session, current_user.id)
+                datasources = filter_datasources(datasources, allowed)
         except Exception:
             logger.exception("Permission check failed — denying datasource access")
             datasources = {}  # Deny by default on error

@@ -6,12 +6,11 @@ import UserManager from './UserManager';
 
 interface AdminPanelProps {
   isActive: boolean;
-  availableDatasources: string[];
 }
 
 type AdminTab = 'users' | 'groups';
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ isActive, availableDatasources }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState<AdminTab>('users');
 
@@ -19,23 +18,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive, availableDatasources 
 
   return (
     <div className="admin-panel">
-      <h2>Administration</h2>
-      <div className="admin-tabs">
-        <button
-          className={`admin-tab ${tab === 'users' ? 'admin-tab-active' : ''}`}
-          onClick={() => setTab('users')}
-        >
-          Users
-        </button>
-        <button
-          className={`admin-tab ${tab === 'groups' ? 'admin-tab-active' : ''}`}
-          onClick={() => setTab('groups')}
-        >
-          Groups
-        </button>
+      <div className="admin-header">
+        <h2>Administration</h2>
+        <div className="admin-tabs">
+          <button
+            className={`admin-tab ${tab === 'users' ? 'admin-tab-active' : ''}`}
+            onClick={() => setTab('users')}
+          >
+            Users
+          </button>
+          <button
+            className={`admin-tab ${tab === 'groups' ? 'admin-tab-active' : ''}`}
+            onClick={() => setTab('groups')}
+          >
+            Groups
+          </button>
+        </div>
       </div>
-      {tab === 'users' && <UserManager />}
-      {tab === 'groups' && <GroupManager availableDatasources={availableDatasources} />}
+      <div className="admin-tab-content">
+        {tab === 'users' && <UserManager />}
+        {tab === 'groups' && <GroupManager />}
+      </div>
     </div>
   );
 };
