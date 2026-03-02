@@ -261,18 +261,24 @@ const GroupManager: React.FC = () => {
         {selectedGroup && (
           <div className="admin-group-detail">
             <div className="admin-inline-form" style={{ marginBottom: '1rem' }}>
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Group name"
-              />
-              <input
-                type="text"
-                value={editDesc}
-                onChange={(e) => setEditDesc(e.target.value)}
-                placeholder="Group description"
-              />
+              <label>
+                Name
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Group name"
+                />
+              </label>
+              <label>
+                Description
+                <input
+                  type="text"
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  placeholder="Group description"
+                />
+              </label>
               <button
                 className="btn-sm"
                 onClick={updateGroup}
