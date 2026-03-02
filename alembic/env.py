@@ -4,7 +4,7 @@ import os
 from logging.config import fileConfig
 
 from dotenv import load_dotenv
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import String, engine_from_config, pool, text
 
 from alembic import context  # type: ignore[attr-defined]
 
@@ -27,6 +27,31 @@ def _build_postgres_url() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 
+VERSION_NUM_TYPE = String(128)
+
+
+def _widen_version_column(connection) -> None:  # type: ignore[no-untyped-def]
+    """Ensure alembic_version.version_num can hold 128-char revision IDs.
+
+    Older installations may have the default varchar(32) which is too short
+    for descriptive revision IDs such as ``0006_fix_default_group_description``.
+    """
+    result = connection.execute(
+        text(
+            "SELECT character_maximum_length FROM information_schema.columns "
+            "WHERE table_name = 'alembic_version' AND column_name = 'version_num'"
+        )
+    )
+    row = result.fetchone()
+    if row and row[0] is not None and row[0] < 128:
+        connection.execute(
+            text(
+                "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE varchar(128)"
+            )
+        )
+        connection.commit()
+
+
 def run_migrations_offline() -> None:
     url = _build_postgres_url()
     context.configure(
@@ -34,6 +59,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_num_type=VERSION_NUM_TYPE,
     )
 
     with context.begin_transaction():
@@ -50,7 +76,12 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        _widen_version_column(connection)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_num_type=VERSION_NUM_TYPE,
+        )
 
         with context.begin_transaction():
             context.run_migrations()

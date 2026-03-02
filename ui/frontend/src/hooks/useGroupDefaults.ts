@@ -4,11 +4,18 @@
  * When a user is authenticated and belongs to groups with custom search_settings,
  * this hook fetches the merged effective settings from the backend and applies
  * any overrides that aren't already set via URL parameters.
+ *
+ * Listens for 'groupSettingsUpdated' custom events (dispatched by the admin
+ * GroupSettingsManager on save) so that changes are picked up without a full
+ * page reload.
  */
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../config';
 import type { SearchSettings } from '../types/auth';
+
+/** Custom event name dispatched when admin saves group settings. */
+export const GROUP_SETTINGS_UPDATED_EVENT = 'groupSettingsUpdated';
 
 /** URL parameter name → SearchSettings key mapping */
 const SETTING_PARAM_MAP: Array<{ param: string; key: keyof SearchSettings }> = [
@@ -54,38 +61,50 @@ export function useGroupDefaults(
   setters: Setters,
 ): SearchSettings | undefined {
   const [groupDefaults, setGroupDefaults] = useState<SearchSettings | undefined>(undefined);
-  const loadedRef = useRef(false);
+  /** Bumped to trigger a re-fetch (e.g. after admin saves group settings). */
+  const [refreshKey, setRefreshKey] = useState(0);
+  /** Fingerprint of the last applied defaults to avoid re-applying identical data. */
+  const appliedRef = useRef<string>('');
 
-  // Fetch effective settings when user logs in
+  // Re-fetch when admin saves group settings
   useEffect(() => {
+    const handler = () => setRefreshKey((k) => k + 1);
+    window.addEventListener(GROUP_SETTINGS_UPDATED_EVENT, handler);
+    return () => window.removeEventListener(GROUP_SETTINGS_UPDATED_EVENT, handler);
+  }, []);
+
+  // Fetch effective settings on login or when refreshKey bumps
+  const fetchSettings = useCallback(async () => {
     if (!userModuleEnabled || authState.isLoading) return;
     if (!authState.isAuthenticated || !authState.user) {
-      if (loadedRef.current) {
-        setGroupDefaults(undefined);
-        loadedRef.current = false;
-      }
+      setGroupDefaults(undefined);
+      appliedRef.current = '';
       return;
     }
-    if (loadedRef.current) return;
-
-    (async () => {
-      try {
-        const resp = await axios.get<SearchSettings>(`${API_BASE_URL}/users/me/effective-settings`);
-        const settings = resp.data;
-        if (settings && Object.keys(settings).length > 0) {
-          setGroupDefaults(settings);
-        }
-      } catch {
-        // Non-critical — system defaults apply
+    try {
+      const resp = await axios.get<SearchSettings>(`${API_BASE_URL}/users/me/effective-settings`);
+      const settings = resp.data;
+      if (settings && Object.keys(settings).length > 0) {
+        setGroupDefaults(settings);
+      } else {
+        setGroupDefaults(undefined);
       }
-      loadedRef.current = true;
-    })();
+    } catch {
+      // Non-critical — system defaults apply
+    }
   }, [userModuleEnabled, authState.isLoading, authState.isAuthenticated, authState.user]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings, refreshKey]);
 
   // Apply defaults when they arrive (only for settings not in URL)
   useEffect(() => {
     if (!groupDefaults || Object.keys(groupDefaults).length === 0) return;
+    const fingerprint = JSON.stringify(groupDefaults);
+    if (appliedRef.current === fingerprint) return;
     applyGroupDefaults(groupDefaults, setters);
+    appliedRef.current = fingerprint;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDefaults]);
 

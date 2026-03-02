@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
+import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
 import type { SearchSettings, UserGroup } from '../../types/auth';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
@@ -139,6 +140,7 @@ const GroupSettingsManager: React.FC = () => {
         search_settings: Object.keys(payload).length > 0 ? payload : {},
       });
       setSuccess('Settings saved.');
+      window.dispatchEvent(new Event(GROUP_SETTINGS_UPDATED_EVENT));
       await fetchGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to save settings');
