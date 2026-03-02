@@ -254,6 +254,21 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         await write_audit_event(
             "register", user_id=user.id, user_email=user.email, ip_address=ip
         )
+
+        # When email confirmation is disabled, auto-verify the account so the
+        # user can log in immediately without an SMTP server.
+        if os.environ.get("DISABLE_EMAIL_CONFIRMATION", "").lower() == "true":
+            logger.warning(
+                "DISABLE_EMAIL_CONFIRMATION=true — auto-verifying %s",
+                user.email,
+            )
+            async for session in get_async_session():
+                await session.execute(
+                    update(User).where(User.id == user.id).values(is_verified=True)
+                )
+                await session.commit()
+            return
+
         await self.request_verify(user, request)
 
     async def on_after_request_verify(
