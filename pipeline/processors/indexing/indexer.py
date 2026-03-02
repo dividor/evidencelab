@@ -128,6 +128,14 @@ class IndexProcessor(BaseProcessor):
 
         self.batch_size = self.index_config.get("batch_size", 10)
         self.embedding_workers = self.index_config.get("embedding_workers", 4)
+        # "stop" = raise on oversized chunks; "truncate" = trim to fit.
+        # Truncation mainly affects small-context models (e.g. e5_large 512
+        # tokens) where post-processing (heading prefix, footnotes) pushes
+        # chunks past the embedding limit.  Longer-context models are
+        # generally unaffected.
+        self.oversize_chunks_strategy = self.index_config.get(
+            "oversize_chunks_strategy", "truncate"
+        )
 
         self._dense_model = None
         self._sparse_model = None
@@ -343,17 +351,51 @@ class IndexProcessor(BaseProcessor):
                 "Ensure all embedding models have 'max_tokens' in config.json."
             )
         tokenizer = getattr(self, "_tokenizer", None)
+        strategy = self.oversize_chunks_strategy
         oversized = []
+        truncated_count = 0
         for i, chunk in enumerate(valid_chunks):
             text = chunk.get("text", "")
             if tokenizer is not None:
-                n_tokens = len(tokenizer.encode(text, add_special_tokens=False))
+                token_ids = tokenizer.encode(text, add_special_tokens=False)
+                n_tokens = len(token_ids)
             else:
                 n_tokens = len(text) // 4  # rough fallback
+                token_ids = None
             if n_tokens > max_tokens:
-                oversized.append(f"Chunk {i}: {n_tokens} tokens (limit {max_tokens})")
+                if strategy == "truncate":
+                    if tokenizer is not None and token_ids is not None:
+                        chunk["text"] = tokenizer.decode(
+                            token_ids[:max_tokens], skip_special_tokens=True
+                        )
+                    else:
+                        chunk["text"] = text[: max_tokens * 4]
+                    truncated_count += 1
+                    logger.warning(
+                        "Chunk %d truncated from %d to %d tokens.",
+                        i,
+                        n_tokens,
+                        max_tokens,
+                    )
+                else:
+                    oversized.append(
+                        f"Chunk {i}: {n_tokens} tokens (limit {max_tokens})"
+                    )
+        if truncated_count:
+            logger.warning(
+                "oversize_chunks_strategy=truncate: truncated %d chunk(s) "
+                "to fit embedding model limit (%d tokens).",
+                truncated_count,
+                max_tokens,
+            )
         if oversized:
             details = "; ".join(oversized)
+            logger.error(
+                "oversize_chunks_strategy=stop: %d chunk(s) exceed "
+                "embedding model limit (%d tokens).",
+                len(oversized),
+                max_tokens,
+            )
             raise ValueError(
                 f"{len(oversized)} chunk(s) exceed embedding model limit: {details}"
             )

@@ -154,6 +154,14 @@ if [[ "$QDRANT_HOST" == *"//qdrant"* ]] || [[ "$QDRANT_HOST" == "qdrant" ]]; the
 fi
 
 export QDRANT_HOST=${QDRANT_HOST:-localhost}
+
+# Override Postgres host for local execution if it points to the docker service name
+if [[ "${POSTGRES_HOST:-}" == "postgres" ]]; then
+    echo "⚠️  Detected Docker service name 'postgres' in POSTGRES_HOST. Switching to 'localhost' for host execution."
+    export POSTGRES_HOST="localhost"
+fi
+export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
+
 QDRANT_CURL_AUTH=()
 if [ -n "${QDRANT_API_KEY:-}" ]; then
     QDRANT_CURL_AUTH=(-H "api-key: ${QDRANT_API_KEY}")
