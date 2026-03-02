@@ -27,6 +27,12 @@ jest.mock('../components/admin/GroupManager', () => {
   };
 });
 
+jest.mock('../components/admin/GroupSettingsManager', () => {
+  return function MockGroupSettingsManager() {
+    return <div data-testid="group-settings-manager">GroupSettingsManager</div>;
+  };
+});
+
 import AdminPanel from '../components/admin/AdminPanel';
 
 describe('AdminPanel', () => {
@@ -79,6 +85,14 @@ describe('AdminPanel', () => {
     fireEvent.click(screen.getByText('Groups'));
     fireEvent.click(screen.getByText('Users'));
     expect(screen.getByTestId('user-manager')).toBeInTheDocument();
+    expect(screen.queryByTestId('group-manager')).not.toBeInTheDocument();
+  });
+
+  test('switches to Group Settings tab on click', () => {
+    render(<AdminPanel isActive={true} />);
+    fireEvent.click(screen.getByText('Group Settings'));
+    expect(screen.getByTestId('group-settings-manager')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
     expect(screen.queryByTestId('group-manager')).not.toBeInTheDocument();
   });
 

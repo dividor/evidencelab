@@ -75,6 +75,7 @@ class UserGroup(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
     )
+    search_settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     members: Mapped[list["UserGroupMember"]] = relationship(
         "UserGroupMember", back_populates="group", lazy="selectin"

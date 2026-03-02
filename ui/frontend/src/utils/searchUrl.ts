@@ -1,4 +1,5 @@
 import { SearchFilters } from '../types/api';
+import type { SearchSettings } from '../types/auth';
 
 export interface SearchStateFromURL {
   query: string;
@@ -33,6 +34,43 @@ export const DEFAULT_SECTION_TYPES = [
   'recommendations',
   'other',
 ];
+
+/** Hardcoded system defaults for all search/content settings. */
+export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
+  denseWeight: 0.8,
+  rerank: true,
+  recencyBoost: false,
+  recencyWeight: 0.15,
+  recencyScaleDays: 365,
+  sectionTypes: DEFAULT_SECTION_TYPES,
+  keywordBoostShortQueries: true,
+  minChunkSize: 100,
+  semanticHighlighting: true,
+  autoMinScore: false,
+  deduplicate: true,
+  fieldBoost: true,
+  fieldBoostFields: { ...DEFAULT_FIELD_BOOST_FIELDS },
+};
+
+/**
+ * Merge search_settings from multiple groups (first non-null per key wins).
+ * Returns a partial SearchSettings with only the overridden keys.
+ */
+export const mergeGroupSettings = (
+  groups: Array<{ search_settings?: SearchSettings | null }>
+): SearchSettings => {
+  const merged: Record<string, unknown> = {};
+  for (const group of groups) {
+    const settings = group.search_settings;
+    if (!settings) continue;
+    for (const [key, value] of Object.entries(settings)) {
+      if (value !== undefined && value !== null && !(key in merged)) {
+        merged[key] = value;
+      }
+    }
+  }
+  return merged as SearchSettings;
+};
 
 const parseFilterParam = (params: URLSearchParams, key: string): string[] => {
   const value = params.get(key);
@@ -124,27 +162,31 @@ const parseFieldBoostFields = (params: URLSearchParams): Record<string, number> 
 
 export const getSearchStateFromURL = (
   coreFields: string[],
-  defaultSectionTypes: string[]
+  defaultSectionTypes: string[],
+  groupDefaults?: SearchSettings
 ): SearchStateFromURL => {
   const params = new URLSearchParams(window.location.search);
   const { filters, selectedFilters } = parseFilters(params, coreFields);
+
+  // For each setting: URL param wins, then group default, then system default.
+  const d = { ...SYSTEM_DEFAULTS, ...groupDefaults };
 
   return {
     query: params.get('q') || '',
     filters,
     selectedFilters,
-    denseWeight: parseFloatParam(params, 'weight', 0.8),
-    rerank: parseBooleanParam(params, 'rerank', true),
-    recencyBoost: parseBooleanParam(params, 'recency', false),
-    recencyWeight: parseFloatParam(params, 'recency_weight', 0.15),
-    recencyScaleDays: parseIntParam(params, 'recency_scale', 365),
-    sectionTypes: parseSectionTypes(params, defaultSectionTypes),
-    keywordBoostShortQueries: parseBooleanParam(params, 'keyword_boost', true),
-    minChunkSize: parseIntParam(params, 'min_chunk_size', 100),
-    semanticHighlighting: parseBooleanParam(params, 'highlight', true),
-    autoMinScore: parseBooleanParam(params, 'auto_min_score', false),
-    deduplicate: parseBooleanParam(params, 'deduplicate', true),
-    fieldBoost: parseBooleanParam(params, 'field_boost', true),
+    denseWeight: parseFloatParam(params, 'weight', d.denseWeight ?? SYSTEM_DEFAULTS.denseWeight),
+    rerank: parseBooleanParam(params, 'rerank', d.rerank ?? SYSTEM_DEFAULTS.rerank),
+    recencyBoost: parseBooleanParam(params, 'recency', d.recencyBoost ?? SYSTEM_DEFAULTS.recencyBoost),
+    recencyWeight: parseFloatParam(params, 'recency_weight', d.recencyWeight ?? SYSTEM_DEFAULTS.recencyWeight),
+    recencyScaleDays: parseIntParam(params, 'recency_scale', d.recencyScaleDays ?? SYSTEM_DEFAULTS.recencyScaleDays),
+    sectionTypes: parseSectionTypes(params, d.sectionTypes ?? defaultSectionTypes),
+    keywordBoostShortQueries: parseBooleanParam(params, 'keyword_boost', d.keywordBoostShortQueries ?? SYSTEM_DEFAULTS.keywordBoostShortQueries),
+    minChunkSize: parseIntParam(params, 'min_chunk_size', d.minChunkSize ?? SYSTEM_DEFAULTS.minChunkSize),
+    semanticHighlighting: parseBooleanParam(params, 'highlight', d.semanticHighlighting ?? SYSTEM_DEFAULTS.semanticHighlighting),
+    autoMinScore: parseBooleanParam(params, 'auto_min_score', d.autoMinScore ?? SYSTEM_DEFAULTS.autoMinScore),
+    deduplicate: parseBooleanParam(params, 'deduplicate', d.deduplicate ?? SYSTEM_DEFAULTS.deduplicate),
+    fieldBoost: parseBooleanParam(params, 'field_boost', d.fieldBoost ?? SYSTEM_DEFAULTS.fieldBoost),
     fieldBoostFields: parseFieldBoostFields(params),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),

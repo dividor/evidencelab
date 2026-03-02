@@ -67,11 +67,30 @@ class GroupCreate(GroupBase):
     """Fields for creating a new group."""
 
 
+class SearchSettings(BaseModel):
+    """Per-group search/content setting overrides (partial — only set keys override)."""
+
+    denseWeight: Optional[float] = None
+    rerank: Optional[bool] = None
+    recencyBoost: Optional[bool] = None
+    recencyWeight: Optional[float] = None
+    recencyScaleDays: Optional[int] = None
+    sectionTypes: Optional[list[str]] = None
+    keywordBoostShortQueries: Optional[bool] = None
+    minChunkSize: Optional[int] = None
+    semanticHighlighting: Optional[bool] = None
+    autoMinScore: Optional[bool] = None
+    deduplicate: Optional[bool] = None
+    fieldBoost: Optional[bool] = None
+    fieldBoostFields: Optional[dict[str, float]] = None
+
+
 class GroupUpdate(BaseModel):
     """Fields for updating an existing group."""
 
     name: Optional[str] = None
     description: Optional[str] = None
+    search_settings: Optional[dict] = None
 
 
 class GroupRead(GroupBase):
@@ -82,6 +101,7 @@ class GroupRead(GroupBase):
     created_at: datetime
     datasource_keys: list[str] = []
     member_count: int = 0
+    search_settings: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 

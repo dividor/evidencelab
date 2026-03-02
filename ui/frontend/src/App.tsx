@@ -35,6 +35,7 @@ import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent, getGaConsent } from './components/CookieConsent';
 import { AuthContext, useAuthState } from './hooks/useAuth';
+import { useGroupDefaults } from './hooks/useGroupDefaults';
 import AdminPanel from './components/admin/AdminPanel';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
@@ -751,6 +752,23 @@ function App() {
   const [findOutMoreLoading, setFindOutMoreLoading] = useState(false);
   const [findOutMoreActiveFact, setFindOutMoreActiveFact] = useState<string | null>(null);
   const [findOutMoreDone, setFindOutMoreDone] = useState(false);
+
+  // Apply per-group search defaults (fetched when user is authenticated)
+  useGroupDefaults(USER_MODULE, authState, {
+    denseWeight: setSearchDenseWeight,
+    rerank: setRerankEnabled,
+    recencyBoost: setRecencyBoostEnabled,
+    recencyWeight: setRecencyWeight,
+    recencyScaleDays: setRecencyScaleDays,
+    sectionTypes: setSectionTypes,
+    keywordBoostShortQueries: setKeywordBoostShortQueries,
+    minChunkSize: setMinChunkSize,
+    semanticHighlighting: setSemanticHighlighting,
+    autoMinScore: setAutoMinScore,
+    deduplicate: setDeduplicateEnabled,
+    fieldBoost: setFieldBoostEnabled,
+    fieldBoostFields: setFieldBoostFields,
+  });
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {

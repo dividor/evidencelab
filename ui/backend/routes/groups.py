@@ -51,6 +51,7 @@ async def _group_to_read(session: AsyncSession, group: UserGroup) -> GroupRead:
         created_at=group.created_at,
         datasource_keys=datasource_keys,
         member_count=member_count,
+        search_settings=group.search_settings,
     )
 
 
@@ -132,6 +133,8 @@ async def update_group(
         group.name = body.name
     if body.description is not None:
         group.description = body.description
+    if body.search_settings is not None:
+        group.search_settings = body.search_settings if body.search_settings else None
     await session.commit()
     await session.refresh(group)
     return await _group_to_read(session, group)

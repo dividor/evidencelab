@@ -139,8 +139,53 @@ async def get_my_groups(
     result = await session.execute(stmt)
     groups = result.scalars().all()
     return [
-        {"id": str(g.id), "name": g.name, "description": g.description} for g in groups
+        {
+            "id": str(g.id),
+            "name": g.name,
+            "description": g.description,
+            "search_settings": g.search_settings,
+        }
+        for g in groups
     ]
+
+
+def _merge_group_settings(groups: list) -> dict:
+    """Merge search_settings from multiple groups (first non-null per key wins).
+
+    Groups are expected to be ordered by name ASC so that the "Default" group
+    has lowest priority (comes first alphabetically for most custom group names).
+    """
+    merged: dict = {}
+    for group in groups:
+        settings = group.search_settings
+        if not settings:
+            continue
+        for key, value in settings.items():
+            if key not in merged:
+                merged[key] = value
+    return merged
+
+
+@router.get("/me/effective-settings", tags=["users"])
+async def get_effective_settings(
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Return merged search settings from all of the current user's groups.
+
+    Settings are merged across groups — first non-null value per key wins,
+    ordered by group name ASC (so "Default" group is lowest priority).
+    Returns only the overridden keys; empty dict means no overrides.
+    """
+    stmt = (
+        select(UserGroup)
+        .join(UserGroupMember, UserGroupMember.group_id == UserGroup.id)
+        .where(UserGroupMember.user_id == user.id)
+        .order_by(UserGroup.name)
+    )
+    result = await session.execute(stmt)
+    groups = result.scalars().all()
+    return _merge_group_settings(groups)
 
 
 # ---------------------------------------------------------------------------

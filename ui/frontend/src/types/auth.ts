@@ -11,6 +11,22 @@ export interface AuthUser {
   updated_at: string | null;
 }
 
+export interface SearchSettings {
+  denseWeight?: number;
+  rerank?: boolean;
+  recencyBoost?: boolean;
+  recencyWeight?: number;
+  recencyScaleDays?: number;
+  sectionTypes?: string[];
+  keywordBoostShortQueries?: boolean;
+  minChunkSize?: number;
+  semanticHighlighting?: boolean;
+  autoMinScore?: boolean;
+  deduplicate?: boolean;
+  fieldBoost?: boolean;
+  fieldBoostFields?: Record<string, number>;
+}
+
 export interface UserGroup {
   id: string;
   name: string;
@@ -19,6 +35,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
+  search_settings?: SearchSettings | null;
 }
 
 export interface GroupMember {
