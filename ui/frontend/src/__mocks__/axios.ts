@@ -54,6 +54,17 @@ const axiosMock = {
   put: makeFn(),
   post: makeFn(),
   patch: makeFn(),
+  delete: makeFn(),
+  defaults: {
+    withCredentials: false,
+    headers: { common: {}, get: {}, post: {}, put: {}, patch: {}, delete: {} },
+  },
+  interceptors: {
+    request: { use: makeFn(), eject: makeFn() },
+    response: { use: makeFn(), eject: makeFn() },
+  },
+  create: () => axiosMock,
+  isAxiosError: () => false,
 };
 
 export default axiosMock;

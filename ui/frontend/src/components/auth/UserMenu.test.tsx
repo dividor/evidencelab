@@ -1,5 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+jest.mock('axios');
+
 import UserMenu from './UserMenu';
 import { AuthContext } from '../../hooks/useAuth';
 import type { AuthContextValue } from '../../types/auth';
@@ -13,6 +16,8 @@ const mockAuthValue = (overrides: Partial<AuthContextValue> = {}): AuthContextVa
   register: jest.fn(),
   logout: jest.fn(),
   refreshUser: jest.fn(),
+  verificationMessage: null,
+  clearVerificationMessage: jest.fn(),
   ...overrides,
 });
 
@@ -84,7 +89,7 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'admin@example.com',
-          display_name: 'Admin',
+          display_name: 'Super User',
           is_active: true,
           is_verified: true,
           is_superuser: true,
@@ -94,8 +99,8 @@ describe('UserMenu', () => {
       }),
       { onAdminClick }
     );
-    fireEvent.click(screen.getByText('A'));
-    expect(screen.getByText('Admin')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('SU'));
+    expect(screen.getByRole('button', { name: 'Admin' })).toBeInTheDocument();
   });
 
   it('does not show Admin for non-superusers', () => {

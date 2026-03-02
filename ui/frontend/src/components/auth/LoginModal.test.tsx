@@ -1,5 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+
+jest.mock('axios');
+
 import LoginModal from './LoginModal';
 import { AuthContext } from '../../hooks/useAuth';
 import type { AuthContextValue } from '../../types/auth';
@@ -13,6 +16,8 @@ const mockAuthValue = (overrides: Partial<AuthContextValue> = {}): AuthContextVa
   register: jest.fn(),
   logout: jest.fn(),
   refreshUser: jest.fn(),
+  verificationMessage: null,
+  clearVerificationMessage: jest.fn(),
   ...overrides,
 });
 
