@@ -147,13 +147,18 @@ echo "DEBUG: INFINITY_BETTERTRANSFORMER=$INFINITY_BETTERTRANSFORMER"
 export PYTHONUNBUFFERED=1
 export EMBEDDING_WORKERS=1
 
-# Override Qdrant host for local execution if it points to the docker service name
+# Override Docker service names for local execution
 if [[ "$QDRANT_HOST" == *"//qdrant"* ]] || [[ "$QDRANT_HOST" == "qdrant" ]]; then
     echo "⚠️  Detected Docker service name 'qdrant' in QDRANT_HOST. Switching to 'localhost' for host execution."
     export QDRANT_HOST="localhost"
 fi
 
 export QDRANT_HOST=${QDRANT_HOST:-localhost}
+
+if [[ "${POSTGRES_HOST:-}" == "postgres" ]]; then
+    echo "⚠️  Detected Docker service name 'postgres' in POSTGRES_HOST. Switching to 'localhost' for host execution."
+    export POSTGRES_HOST="localhost"
+fi
 QDRANT_CURL_AUTH=()
 if [ -n "${QDRANT_API_KEY:-}" ]; then
     QDRANT_CURL_AUTH=(-H "api-key: ${QDRANT_API_KEY}")

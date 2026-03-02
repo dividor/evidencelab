@@ -329,6 +329,7 @@ const GroupSettingsManager: React.FC = () => {
                 </label>
 
                 {/* Boost Recent Reports + sub-sliders */}
+                <div className={values.recencyBoost ? 'settings-subsettings-group' : undefined}>
                 <label className="rerank-checkbox-label">
                   <input
                     type="checkbox"
@@ -382,6 +383,7 @@ const GroupSettingsManager: React.FC = () => {
                     </div>
                   </>
                 )}
+                </div>
 
                 {/* Deduplicate */}
                 <label className="rerank-checkbox-label">
@@ -401,6 +403,7 @@ const GroupSettingsManager: React.FC = () => {
                 </label>
 
                 {/* Field Level Boosting */}
+                <div className={values.fieldBoost ? 'settings-subsettings-group' : undefined}>
                 <label className="rerank-checkbox-label">
                   <input
                     type="checkbox"
@@ -463,6 +466,7 @@ const GroupSettingsManager: React.FC = () => {
                     })}
                   </div>
                 )}
+                </div>
               </div>
                 )}
               </div>

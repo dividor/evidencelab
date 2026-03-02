@@ -3028,6 +3028,14 @@ h6,
   width: 100%;
 }
 
+/* Grouped setting with sub-settings border */
+.settings-subsettings-group {
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
 /* Field boost controls */
 .field-boost-fields {
   padding: var(--spacing-xs) var(--spacing-sm);
