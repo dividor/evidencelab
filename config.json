@@ -388,6 +388,7 @@
         "index": {
           "batch_size": 10,
           "embedding_workers": 1,
+          "oversize_chunks_strategy": "truncate",
           "dense_models": [
             "azure_small",
             "e5_large"

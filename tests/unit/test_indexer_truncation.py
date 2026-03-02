@@ -3,7 +3,9 @@ Unit tests for IndexProcessor chunk validation and max_embed_tokens computation.
 
 Tests cover:
 - _compute_max_embed_tokens: config-driven token limit derivation
-- _filter_valid_chunks: empty-chunk filtering and oversized-chunk rejection
+- _filter_valid_chunks: empty-chunk filtering, oversized-chunk rejection (stop)
+  and truncation (truncate)
+- oversize_chunks_strategy config setting
 """
 
 from unittest.mock import MagicMock, patch
@@ -67,20 +69,22 @@ class TestComputeMaxEmbedTokens:
 
 
 class TestFilterValidChunks:
-    """Test _filter_valid_chunks removes empty chunks and rejects oversized ones."""
+    """Test _filter_valid_chunks removes empty chunks and handles oversized ones."""
 
-    def _make_processor(self, max_embed_tokens=None):
+    def _make_processor(self, max_embed_tokens=None, strategy="truncate"):
         chunk_config = {
             "dense_model": "intfloat/multilingual-e5-large",
             "max_tokens": 450,
         }
+        index_config = {"oversize_chunks_strategy": strategy}
         with patch("pipeline.processors.indexing.indexer.get_db"), patch(
             "pipeline.processors.indexing.indexer.PostgresClient"
         ):
-            proc = IndexProcessor(chunk_config=chunk_config)
+            proc = IndexProcessor(chunk_config=chunk_config, index_config=index_config)
         # Mock tokenizer: each word = 1 token (split on whitespace)
         mock_tok = MagicMock()
         mock_tok.encode.side_effect = lambda text, **kw: text.split()
+        mock_tok.decode.side_effect = lambda ids, **kw: " ".join(ids)
         proc._tokenizer = mock_tok
         if max_embed_tokens is not None:
             proc._max_embed_tokens = max_embed_tokens
@@ -100,47 +104,105 @@ class TestFilterValidChunks:
         assert result[0]["text"] == "valid text"
         assert result[1]["text"] == "also valid"
 
-    def test_rejects_oversized_chunks(self):
-        """Chunks exceeding max_embed_tokens raise ValueError."""
-        proc = self._make_processor(max_embed_tokens=5)
-        # 10 words = 10 tokens (mock tokenizer splits on whitespace)
+    # --- strategy=stop tests ---
+
+    def test_stop_rejects_oversized_chunks(self):
+        """strategy=stop raises ValueError on oversized chunks."""
+        proc = self._make_processor(max_embed_tokens=5, strategy="stop")
         long_text = " ".join(["word"] * 10)
         chunks = [{"text": long_text}]
         with pytest.raises(ValueError, match="exceed embedding model limit"):
             proc._filter_valid_chunks(chunks)
 
-    def test_does_not_reject_short_chunks(self):
-        """Chunks within the limit are left unchanged."""
-        proc = self._make_processor(max_embed_tokens=100)
+    def test_stop_does_not_reject_short_chunks(self):
+        """strategy=stop leaves chunks within the limit unchanged."""
+        proc = self._make_processor(max_embed_tokens=100, strategy="stop")
         text = "short chunk"
         chunks = [{"text": text}]
         result = proc._filter_valid_chunks(chunks)
         assert result[0]["text"] == text
 
-    def test_exact_boundary_passes(self):
+    def test_stop_exact_boundary_passes(self):
         """A chunk exactly at the limit is not rejected."""
-        proc = self._make_processor(max_embed_tokens=5)
-        text = " ".join(["word"] * 5)  # 5 tokens
+        proc = self._make_processor(max_embed_tokens=5, strategy="stop")
+        text = " ".join(["word"] * 5)
         chunks = [{"text": text}]
         result = proc._filter_valid_chunks(chunks)
         assert result[0]["text"] == text
 
-    def test_mixed_chunks_oversized_causes_failure(self):
-        """Any oversized chunk causes the entire batch to fail."""
-        proc = self._make_processor(max_embed_tokens=5)
+    def test_stop_mixed_chunks_oversized_causes_failure(self):
+        """Any oversized chunk causes the entire batch to fail with stop."""
+        proc = self._make_processor(max_embed_tokens=5, strategy="stop")
         chunks = [
             {"text": "short"},
-            {"text": " ".join(["word"] * 10)},  # 10 tokens > 5
+            {"text": " ".join(["word"] * 10)},
             {"text": "normal length text here"},
-            {"text": " ".join(["word"] * 8)},  # 8 tokens > 5
+            {"text": " ".join(["word"] * 8)},
         ]
         with pytest.raises(ValueError, match="2 chunk\\(s\\) exceed"):
             proc._filter_valid_chunks(chunks)
 
+    # --- strategy=truncate tests ---
+
+    def test_truncate_trims_oversized_chunks(self):
+        """strategy=truncate trims oversized chunks to max_tokens."""
+        proc = self._make_processor(max_embed_tokens=5, strategy="truncate")
+        long_text = " ".join(["word"] * 10)
+        chunks = [{"text": long_text}]
+        result = proc._filter_valid_chunks(chunks)
+        assert len(result) == 1
+        # Mock decode joins the first 5 token IDs (words)
+        assert result[0]["text"] == " ".join(["word"] * 5)
+
+    def test_truncate_leaves_short_chunks_unchanged(self):
+        """strategy=truncate does not modify chunks within the limit."""
+        proc = self._make_processor(max_embed_tokens=100, strategy="truncate")
+        text = "short chunk"
+        chunks = [{"text": text}]
+        result = proc._filter_valid_chunks(chunks)
+        assert result[0]["text"] == text
+
+    def test_truncate_mixed_chunks(self):
+        """strategy=truncate only trims oversized chunks, leaves others intact."""
+        proc = self._make_processor(max_embed_tokens=5, strategy="truncate")
+        chunks = [
+            {"text": "ok"},
+            {"text": " ".join(["word"] * 10)},
+            {"text": "fine"},
+        ]
+        result = proc._filter_valid_chunks(chunks)
+        assert len(result) == 3
+        assert result[0]["text"] == "ok"
+        assert result[1]["text"] == " ".join(["word"] * 5)
+        assert result[2]["text"] == "fine"
+
+    def test_truncate_exact_boundary_untouched(self):
+        """A chunk exactly at the limit is not truncated."""
+        proc = self._make_processor(max_embed_tokens=5, strategy="truncate")
+        text = " ".join(["word"] * 5)
+        chunks = [{"text": text}]
+        result = proc._filter_valid_chunks(chunks)
+        assert result[0]["text"] == text
+
+    # --- default strategy ---
+
+    def test_default_strategy_is_truncate(self):
+        """When index_config omits oversize_chunks_strategy, defaults to truncate."""
+        chunk_config = {
+            "dense_model": "intfloat/multilingual-e5-large",
+            "max_tokens": 450,
+        }
+        with patch("pipeline.processors.indexing.indexer.get_db"), patch(
+            "pipeline.processors.indexing.indexer.PostgresClient"
+        ):
+            proc = IndexProcessor(chunk_config=chunk_config)
+        assert proc.oversize_chunks_strategy == "truncate"
+
+    # --- guard: _max_embed_tokens not set ---
+
     def test_aborts_when_max_embed_tokens_not_set(self):
         """Raises ValueError when _max_embed_tokens is not set."""
         proc = self._make_processor()
-        # Remove _max_embed_tokens to test abort
         if hasattr(proc, "_max_embed_tokens"):
             delattr(proc, "_max_embed_tokens")
         chunks = [{"text": "any text"}]
