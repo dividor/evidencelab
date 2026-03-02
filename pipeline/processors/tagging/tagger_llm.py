@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -210,7 +211,27 @@ def invoke_and_parse_toc(
         messages.append(SystemMessage(content=additional_instruction))
     messages.append(HumanMessage(content=user_prompt))
 
-    response = llm.invoke(messages)
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = llm.invoke(messages)
+            break
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if attempt < max_retries - 1:
+                wait = 2**attempt
+                logger.warning(
+                    "LLM invoke failed (attempt %d/%d), retrying in %ds: %s",
+                    attempt + 1,
+                    max_retries,
+                    wait,
+                    exc,
+                )
+                time.sleep(wait)
+            else:
+                logger.error(
+                    "LLM invoke failed after %d attempts: %s", max_retries, exc
+                )
+                return None
     response_text = str(response.content).strip()
 
     try:
