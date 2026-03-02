@@ -93,6 +93,16 @@ const GroupSettingsManager: React.FC = () => {
     fetchGroups();
   }, [fetchGroups]);
 
+  // Auto-select the default group on initial load
+  useEffect(() => {
+    if (groups.length > 0 && !selectedGroupId) {
+      const defaultGroup = groups.find((g) => g.is_default);
+      if (defaultGroup) {
+        setSelectedGroupId(defaultGroup.id);
+      }
+    }
+  }, [groups, selectedGroupId]);
+
   // When a group is selected, load its search_settings
   useEffect(() => {
     if (!selectedGroupId) {
@@ -188,26 +198,41 @@ const GroupSettingsManager: React.FC = () => {
         </div>
       )}
 
-      <div className="admin-inline-form" style={{ marginBottom: '16px' }}>
-        <select
-          value={selectedGroupId}
-          onChange={(e) => { setSelectedGroupId(e.target.value); setSuccess(''); }}
-          className="admin-select"
-        >
-          <option value="">Select a group...</option>
+      <div style={{ marginBottom: '16px' }}>
+        <h4>Group</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}{g.is_default ? ' (Default)' : ''}
-            </option>
+            <label
+              key={g.id}
+              className="rerank-checkbox-label"
+              style={{
+                padding: '6px 12px',
+                borderRadius: '6px',
+                border: `1px solid ${selectedGroupId === g.id ? '#0066cc' : '#d1d5db'}`,
+                background: selectedGroupId === g.id ? '#e0f2fe' : '#fff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="group-select"
+                value={g.id}
+                checked={selectedGroupId === g.id}
+                onChange={() => { setSelectedGroupId(g.id); setSuccess(''); }}
+                style={{ display: 'none' }}
+              />
+              <span>{g.name}{g.is_default ? ' (Default)' : ''}</span>
+            </label>
           ))}
-        </select>
+        </div>
       </div>
 
       {selectedGroup && (
         <div className="admin-group-settings">
+          <h4>Settings</h4>
           <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '16px' }}>
             Configure default search and content settings for <strong>{selectedGroup.name}</strong> members.
-            Changed settings are saved per-group; users can still override via URL parameters.
+            Changed settings are saved per-group; users can still override.
           </p>
 
           {/* Search Settings — matches SearchSettingsPanel layout */}
