@@ -47,23 +47,6 @@ const BOOST_FIELD_OPTIONS = [
   { value: 'language', label: 'Language' },
 ];
 
-/** Human-readable labels for each setting key. */
-const SETTING_LABELS: Record<keyof SearchSettings, string> = {
-  denseWeight: 'Search Mode (Dense Weight)',
-  rerank: 'Enable Reranker',
-  recencyBoost: 'Boost Recent Reports',
-  recencyWeight: 'Recency Weight',
-  recencyScaleDays: 'Recency Decay Scale (days)',
-  sectionTypes: 'Section Types',
-  keywordBoostShortQueries: 'Keyword Boost Short Queries',
-  minChunkSize: 'Min Chunk Size',
-  semanticHighlighting: 'Semantic Highlighting',
-  autoMinScore: 'Auto Min Score',
-  deduplicate: 'Deduplicate',
-  fieldBoost: 'Field Level Boosting',
-  fieldBoostFields: 'Field Boost Fields',
-};
-
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -72,10 +55,27 @@ const GroupSettingsManager: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Which keys are overridden (checked) vs using system default
+  // Which keys are overridden vs using system default
   const [overrides, setOverrides] = useState<Set<keyof SearchSettings>>(new Set());
   // Current values for all settings (overridden or system default)
   const [values, setValues] = useState<Required<SearchSettings>>({ ...SYSTEM_DEFAULTS });
+
+  // Collapsible sections — both open by default
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    new Set(['search_settings', 'content_settings'])
+  );
+
+  const toggleSection = (key: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -117,22 +117,10 @@ const GroupSettingsManager: React.FC = () => {
     setValues(newValues);
   }, [selectedGroupId, groups]);
 
-  const toggleOverride = (key: keyof SearchSettings) => {
-    setOverrides((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-        // Reset to system default
-        setValues((v) => ({ ...v, [key]: SYSTEM_DEFAULTS[key] }));
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const updateValue = <K extends keyof SearchSettings>(key: K, val: SearchSettings[K]) => {
+  /** Update a value and mark it as overridden. */
+  const update = <K extends keyof SearchSettings>(key: K, val: SearchSettings[K]) => {
     setValues((prev) => ({ ...prev, [key]: val }));
+    setOverrides((prev) => new Set(prev).add(key));
   };
 
   const handleSave = async () => {
@@ -141,7 +129,6 @@ const GroupSettingsManager: React.FC = () => {
     setError('');
     setSuccess('');
     try {
-      // Build payload with only overridden keys
       const payload: Record<string, unknown> = {};
       for (const key of SETTING_KEYS) {
         if (overrides.has(key)) {
@@ -217,259 +204,351 @@ const GroupSettingsManager: React.FC = () => {
       {selectedGroup && (
         <div className="admin-group-settings">
           <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '16px' }}>
-            Override search and content settings for members of <strong>{selectedGroup.name}</strong>.
-            Unchecked settings use system defaults.
+            Configure default search and content settings for <strong>{selectedGroup.name}</strong> members.
+            Changed settings are saved per-group; users can still override via URL parameters.
           </p>
 
-          {/* Search Settings */}
-          <h4>Search Settings</h4>
-          <div className="admin-settings-grid">
-            {/* Dense Weight */}
-            <SettingRow
-              label={SETTING_LABELS.denseWeight}
-              overridden={overrides.has('denseWeight')}
-              onToggle={() => toggleOverride('denseWeight')}
-            >
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.1}
-                value={values.denseWeight}
-                onChange={(e) => updateValue('denseWeight', parseFloat(e.target.value))}
-                disabled={!overrides.has('denseWeight')}
-                className="score-slider"
-              />
-              <div className="score-range-labels">
-                <span>Keyword</span>
-                <span>Semantic</span>
-              </div>
-            </SettingRow>
+          {/* Search Settings — matches SearchSettingsPanel layout */}
+          <div className="filter-section">
+            <div className="filter-section-header" onClick={() => toggleSection('search_settings')}>
+              <span className="filter-section-toggle">
+                {collapsedSections.has('search_settings') ? '▼' : '▶'}
+              </span>
+              <span className="filter-section-title">Search Settings</span>
+            </div>
+            {collapsedSections.has('search_settings') && (
+              <div className="filter-section-content">
+                {/* Search Mode (denseWeight) */}
+                <div className="search-settings-group">
+                  <label className="search-settings-label">Search Mode</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.1}
+                    value={values.denseWeight}
+                    onChange={(e) => update('denseWeight', parseFloat(e.target.value))}
+                    className="score-slider"
+                    style={{
+                      background: `linear-gradient(to right,
+                        #93c5fd ${values.denseWeight * 100}%,
+                        #0066cc ${values.denseWeight * 100}%)`,
+                    }}
+                  />
+                  <div className="score-range-labels">
+                    <span>Keyword</span>
+                    <span>Semantic</span>
+                  </div>
+                </div>
 
-            {/* Rerank */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.rerank}
-              settingKey="rerank"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
+                {/* Keyword Boost Short Queries */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.keywordBoostShortQueries}
+                    onChange={(e) => update('keywordBoostShortQueries', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Keyword Boost Short Queries</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="When enabled, queries with 2 words or less automatically use lower semantic weight for better keyword matching."
+                  >
+                    ⓘ
+                  </span>
+                </label>
 
-            {/* Recency Boost */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.recencyBoost}
-              settingKey="recencyBoost"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
+                {/* Semantic Highlighting */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.semanticHighlighting}
+                    onChange={(e) => update('semanticHighlighting', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Semantic Highlighting</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Use advanced AI to highlight semantically relevant phrases in search results."
+                  >
+                    ⓘ
+                  </span>
+                </label>
 
-            {/* Recency Weight */}
-            <SettingRow
-              label={SETTING_LABELS.recencyWeight}
-              overridden={overrides.has('recencyWeight')}
-              onToggle={() => toggleOverride('recencyWeight')}
-            >
-              <input
-                type="range"
-                min={0.05}
-                max={0.5}
-                step={0.05}
-                value={values.recencyWeight}
-                onChange={(e) => updateValue('recencyWeight', parseFloat(e.target.value))}
-                disabled={!overrides.has('recencyWeight')}
-                className="score-slider"
-              />
-              <div className="score-range-labels">
-                <span>Subtle ({values.recencyWeight})</span>
-                <span>Strong</span>
-              </div>
-            </SettingRow>
+                {/* Auto Min Score */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.autoMinScore}
+                    onChange={(e) => update('autoMinScore', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Auto Min Score</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Automatically determine the minimum relevance score threshold."
+                  >
+                    ⓘ
+                  </span>
+                </label>
 
-            {/* Recency Scale Days */}
-            <SettingRow
-              label={SETTING_LABELS.recencyScaleDays}
-              overridden={overrides.has('recencyScaleDays')}
-              onToggle={() => toggleOverride('recencyScaleDays')}
-            >
-              <input
-                type="range"
-                min={180}
-                max={1825}
-                step={30}
-                value={values.recencyScaleDays}
-                onChange={(e) => updateValue('recencyScaleDays', parseInt(e.target.value, 10))}
-                disabled={!overrides.has('recencyScaleDays')}
-                className="score-slider"
-              />
-              <div className="score-range-labels">
-                <span>6 months</span>
-                <span>5 years ({values.recencyScaleDays}d)</span>
-              </div>
-            </SettingRow>
+                {/* Enable Reranker */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.rerank}
+                    onChange={(e) => update('rerank', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Enable Reranker</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Use a cross-encoder model to rerank results for better relevance. May be slower."
+                  >
+                    ⓘ
+                  </span>
+                </label>
 
-            {/* Keyword Boost */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.keywordBoostShortQueries}
-              settingKey="keywordBoostShortQueries"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
+                {/* Boost Recent Reports + sub-sliders */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.recencyBoost}
+                    onChange={(e) => update('recencyBoost', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Boost Recent Reports</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Prioritize recently published reports in search results. Current year reports get maximum boost."
+                  >
+                    ⓘ
+                  </span>
+                </label>
 
-            {/* Semantic Highlighting */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.semanticHighlighting}
-              settingKey="semanticHighlighting"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
-
-            {/* Auto Min Score */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.autoMinScore}
-              settingKey="autoMinScore"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
-
-            {/* Deduplicate */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.deduplicate}
-              settingKey="deduplicate"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
-
-            {/* Field Boost */}
-            <BooleanSettingRow
-              label={SETTING_LABELS.fieldBoost}
-              settingKey="fieldBoost"
-              overrides={overrides}
-              values={values}
-              onToggle={toggleOverride}
-              onUpdate={updateValue}
-            />
-
-            {/* Field Boost Fields */}
-            <SettingRow
-              label={SETTING_LABELS.fieldBoostFields}
-              overridden={overrides.has('fieldBoostFields')}
-              onToggle={() => toggleOverride('fieldBoostFields')}
-            >
-              <div className="field-boost-fields">
-                {BOOST_FIELD_OPTIONS.map(({ value, label }) => {
-                  const isChecked = value in values.fieldBoostFields;
-                  const weight = values.fieldBoostFields[value] ?? 0.5;
-                  return (
-                    <div key={value} className="field-boost-row">
-                      <label className="section-type-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          disabled={!overrides.has('fieldBoostFields')}
-                          onChange={(e) => {
-                            const next = { ...values.fieldBoostFields };
-                            if (e.target.checked) {
-                              next[value] = 0.5;
-                            } else {
-                              delete next[value];
-                            }
-                            updateValue('fieldBoostFields', next);
-                          }}
-                        />
-                        <span>{label}</span>
-                      </label>
-                      {isChecked && (
-                        <input
-                          type="number"
-                          min="0.1"
-                          max="2.0"
-                          step="0.1"
-                          value={weight}
-                          disabled={!overrides.has('fieldBoostFields')}
-                          onChange={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!isNaN(v)) {
-                              updateValue('fieldBoostFields', {
-                                ...values.fieldBoostFields,
-                                [value]: v,
-                              });
-                            }
-                          }}
-                          className="field-boost-input"
-                        />
-                      )}
+                {values.recencyBoost && (
+                  <>
+                    <div className="recency-slider-group">
+                      <label className="recency-slider-label">Recency Weight</label>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="0.5"
+                        step="0.05"
+                        value={values.recencyWeight}
+                        onChange={(e) => update('recencyWeight', parseFloat(e.target.value))}
+                        className="score-slider recency-weight-slider"
+                      />
+                      <div className="score-range-labels">
+                        <span>Subtle</span>
+                        <span>Strong</span>
+                      </div>
                     </div>
-                  );
-                })}
+
+                    <div className="recency-slider-group">
+                      <label className="recency-slider-label">Decay Scale</label>
+                      <input
+                        type="range"
+                        min="180"
+                        max="1825"
+                        step="30"
+                        value={values.recencyScaleDays}
+                        onChange={(e) => update('recencyScaleDays', parseInt(e.target.value, 10))}
+                        className="score-slider recency-scale-slider"
+                      />
+                      <div className="score-range-labels">
+                        <span>6 months</span>
+                        <span>5 years</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Deduplicate */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.deduplicate}
+                    onChange={(e) => update('deduplicate', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Deduplicate</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Deduplicate content found in multiple reports"
+                  >
+                    ⓘ
+                  </span>
+                </label>
+
+                {/* Field Level Boosting */}
+                <label className="rerank-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={values.fieldBoost}
+                    onChange={(e) => update('fieldBoost', e.target.checked)}
+                    className="rerank-checkbox"
+                  />
+                  <span>Field Level Boosting</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Boost fields such as organization and country if configured for this data source"
+                  >
+                    ⓘ
+                  </span>
+                </label>
+                {values.fieldBoost && (
+                  <div className="field-boost-fields">
+                    {BOOST_FIELD_OPTIONS.map(({ value, label }) => {
+                      const isChecked = value in values.fieldBoostFields;
+                      const weight = values.fieldBoostFields[value] ?? 0.5;
+                      return (
+                        <div key={value} className="field-boost-row">
+                          <label className="section-type-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const next = { ...values.fieldBoostFields };
+                                if (e.target.checked) {
+                                  next[value] = 0.5;
+                                } else {
+                                  delete next[value];
+                                }
+                                update('fieldBoostFields', next);
+                              }}
+                            />
+                            <span>{label}</span>
+                          </label>
+                          {isChecked && (
+                            <input
+                              type="number"
+                              min="0.1"
+                              max="2.0"
+                              step="0.1"
+                              value={weight}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (!isNaN(v)) {
+                                  update('fieldBoostFields', {
+                                    ...values.fieldBoostFields,
+                                    [value]: v,
+                                  });
+                                }
+                              }}
+                              className="field-boost-input"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </SettingRow>
+            )}
           </div>
 
-          {/* Content Settings */}
-          <h4>Content Settings</h4>
-          <div className="admin-settings-grid">
-            {/* Min Chunk Size */}
-            <SettingRow
-              label={SETTING_LABELS.minChunkSize}
-              overridden={overrides.has('minChunkSize')}
-              onToggle={() => toggleOverride('minChunkSize')}
-            >
-              <input
-                type="range"
-                min={0}
-                max={1000}
-                step={50}
-                value={values.minChunkSize}
-                onChange={(e) => updateValue('minChunkSize', parseInt(e.target.value, 10))}
-                disabled={!overrides.has('minChunkSize')}
-                className="score-slider"
-              />
-              <div className="score-range-labels">
-                <span>0 (All)</span>
-                <span>{values.minChunkSize} chars</span>
-              </div>
-            </SettingRow>
-
-            {/* Section Types */}
-            <SettingRow
-              label={SETTING_LABELS.sectionTypes}
-              overridden={overrides.has('sectionTypes')}
-              onToggle={() => toggleOverride('sectionTypes')}
-            >
-              <div className="section-type-options">
-                {SECTION_TYPE_OPTIONS.map(({ value, label }) => (
-                  <label key={value} className="section-type-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={values.sectionTypes.includes(value)}
-                      disabled={!overrides.has('sectionTypes')}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          updateValue('sectionTypes', [...values.sectionTypes, value]);
-                        } else {
-                          updateValue(
-                            'sectionTypes',
-                            values.sectionTypes.filter((s) => s !== value)
-                          );
-                        }
-                      }}
-                    />
-                    <span>{label}</span>
+          {/* Content Settings — matches SearchSettingsPanel layout */}
+          <div className="filter-section">
+            <div className="filter-section-header" onClick={() => toggleSection('content_settings')}>
+              <span className="filter-section-toggle">
+                {collapsedSections.has('content_settings') ? '▼' : '▶'}
+              </span>
+              <span className="filter-section-title">Content Settings</span>
+            </div>
+            {collapsedSections.has('content_settings') && (
+              <div className="filter-section-content">
+                {/* Min Chunk Size */}
+                <div
+                  className="search-settings-group"
+                  style={{ marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #e5e7eb' }}
+                >
+                  <label
+                    className="search-settings-label"
+                    title="Filter out chunks with fewer characters than this value. Default is 100 chars."
+                  >
+                    Min Chunk Size: {values.minChunkSize} chars
+                    <span
+                      className="rerank-tooltip"
+                      title="Filter out chunks with fewer characters than this value. Helps remove noise like headers, footers, and fragmented sentences."
+                    >
+                      ⓘ
+                    </span>
                   </label>
-                ))}
+                  <input
+                    type="range"
+                    min="0"
+                    max="1000"
+                    step="50"
+                    value={values.minChunkSize}
+                    onChange={(e) => update('minChunkSize', parseInt(e.target.value, 10))}
+                    className="score-slider"
+                    style={{
+                      background: `linear-gradient(to right,
+                        #93c5fd ${(values.minChunkSize / 1000) * 100}%,
+                        #e5e7eb ${(values.minChunkSize / 1000) * 100}%)`,
+                    }}
+                  />
+                  <div className="score-range-labels">
+                    <span>0 (All)</span>
+                    <span>1000</span>
+                  </div>
+                </div>
+
+                {/* Section Types with Select All */}
+                <div className="content-type-label">
+                  <span>Section Type</span>
+                  <span
+                    className="rerank-tooltip"
+                    title="Filter by document section type. Leave all unchecked to include all sections."
+                  >
+                    ⓘ
+                  </span>
+                </div>
+                <label className="section-type-checkbox" style={{ marginBottom: '0.5em', fontWeight: '600' }}>
+                  <input
+                    type="checkbox"
+                    checked={values.sectionTypes.length === SECTION_TYPE_OPTIONS.length}
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          values.sectionTypes.length > 0 &&
+                          values.sectionTypes.length < SECTION_TYPE_OPTIONS.length;
+                      }
+                    }}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        update('sectionTypes', SECTION_TYPE_OPTIONS.map((item) => item.value));
+                      } else {
+                        update('sectionTypes', []);
+                      }
+                    }}
+                  />
+                  <span>Select All</span>
+                </label>
+                <div className="section-type-options">
+                  {SECTION_TYPE_OPTIONS.map(({ value, label }) => (
+                    <label key={value} className="section-type-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={values.sectionTypes.includes(value)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            update('sectionTypes', [...values.sectionTypes, value]);
+                          } else {
+                            update(
+                              'sectionTypes',
+                              values.sectionTypes.filter((s) => s !== value)
+                            );
+                          }
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </SettingRow>
+            )}
           </div>
 
           {/* Actions */}
@@ -486,48 +565,5 @@ const GroupSettingsManager: React.FC = () => {
     </div>
   );
 };
-
-/** A single setting row with an override checkbox. */
-const SettingRow: React.FC<{
-  label: string;
-  overridden: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}> = ({ label, overridden, onToggle, children }) => (
-  <div className={`admin-setting-row ${overridden ? '' : 'admin-setting-disabled'}`}>
-    <label className="admin-setting-override">
-      <input type="checkbox" checked={overridden} onChange={onToggle} />
-      <span>{label}</span>
-    </label>
-    <div className="admin-setting-control">{children}</div>
-  </div>
-);
-
-/** Shorthand for boolean toggle settings. */
-const BooleanSettingRow: React.FC<{
-  label: string;
-  settingKey: keyof SearchSettings;
-  overrides: Set<keyof SearchSettings>;
-  values: Required<SearchSettings>;
-  onToggle: (key: keyof SearchSettings) => void;
-  onUpdate: <K extends keyof SearchSettings>(key: K, val: SearchSettings[K]) => void;
-}> = ({ label, settingKey, overrides, values, onToggle, onUpdate }) => (
-  <SettingRow
-    label={label}
-    overridden={overrides.has(settingKey)}
-    onToggle={() => onToggle(settingKey)}
-  >
-    <label className="rerank-checkbox-label">
-      <input
-        type="checkbox"
-        checked={values[settingKey] as boolean}
-        onChange={(e) => onUpdate(settingKey, e.target.checked as any)}
-        disabled={!overrides.has(settingKey)}
-        className="rerank-checkbox"
-      />
-      <span>{(values[settingKey] as boolean) ? 'Enabled' : 'Disabled'}</span>
-    </label>
-  </SettingRow>
-);
 
 export default GroupSettingsManager;

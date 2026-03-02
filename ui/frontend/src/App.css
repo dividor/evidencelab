@@ -8401,41 +8401,9 @@ li.ai-fact-active::before {
 
 .admin-group-settings {
   padding: var(--spacing-lg);
-  background: var(--gray-50);
+  background: var(--white);
   border-radius: var(--radius-lg);
   border: 1px solid var(--gray-200);
-}
-
-.admin-settings-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: var(--spacing-lg);
-}
-
-.admin-setting-row {
-  padding: 0.75rem;
-  border: 1px solid var(--gray-200);
-  border-radius: var(--radius-md);
-  background: var(--white);
-}
-
-.admin-setting-disabled {
-  opacity: 0.5;
-}
-
-.admin-setting-override {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-bottom: 0.5rem;
-}
-
-.admin-setting-control {
-  padding-left: 1.5rem;
 }
 
 .badge {

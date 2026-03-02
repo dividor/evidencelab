@@ -64,7 +64,7 @@ describe('GroupSettingsManager', () => {
     });
   });
 
-  test('loads overrides from group search_settings', async () => {
+  test('loads group search_settings values into controls', async () => {
     render(<GroupSettingsManager />);
     await waitFor(() => {
       expect(screen.getByText('Select a group...')).toBeInTheDocument();
@@ -76,12 +76,10 @@ describe('GroupSettingsManager', () => {
       expect(screen.getByText('Search Settings')).toBeInTheDocument();
     });
 
-    // Analysts group has denseWeight=0.5 and rerank=false overridden
-    // The override checkboxes for these should be checked
-    const overrideCheckboxes = screen.getAllByRole('checkbox');
-    // Find the "Search Mode" override checkbox (first one in the list)
-    const denseWeightOverride = overrideCheckboxes[0];
-    expect(denseWeightOverride).toBeChecked();
+    // Analysts group has rerank=false, so the Enable Reranker checkbox should be unchecked
+    const rerankLabel = screen.getByText('Enable Reranker');
+    const rerankCheckbox = rerankLabel.parentElement!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(rerankCheckbox.checked).toBe(false);
   });
 
   test('save button calls PATCH with only overridden keys', async () => {
@@ -134,5 +132,34 @@ describe('GroupSettingsManager', () => {
     mockedAxios.get.mockReturnValue(new Promise(() => {})); // Never resolves
     render(<GroupSettingsManager />);
     expect(screen.getByText('Loading groups...')).toBeInTheDocument();
+  });
+
+  test('changing a setting marks it as overridden in save payload', async () => {
+    // Start with group g2 which has no overrides (search_settings: null)
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+
+    render(<GroupSettingsManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Select a group...')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'g2' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+    });
+
+    // Toggle the Deduplicate checkbox (currently true by default)
+    const deduplicateLabel = screen.getByText('Deduplicate');
+    const deduplicateCheckbox = deduplicateLabel.parentElement!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    fireEvent.click(deduplicateCheckbox);
+
+    fireEvent.click(screen.getByText('Save Settings'));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
+        search_settings: { deduplicate: false },
+      });
+    });
   });
 });
