@@ -2379,6 +2379,8 @@ function App() {
       findOutMoreLoading={findOutMoreLoading}
       findOutMoreActiveFact={findOutMoreActiveFact}
       requestShowGraph={findOutMoreDone}
+      dataSource={dataSource}
+      summaryModelConfig={summaryModelConfig}
     />
   );
 
