@@ -1,3 +1,4 @@
+import html2pdf from 'html2pdf.js';
 import { DrilldownNode, SearchResult } from '../types/api';
 import { buildGroupedReferences, DocumentGroup } from '../components/AiSummaryReferences';
 
@@ -216,10 +217,6 @@ export const exportResearchToPdf = async (
   globalSummary?: string,
   globalSummaryResults?: SearchResult[]
 ): Promise<void> => {
-  // Dynamic import — html2pdf.js is a UMD bundle
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const html2pdf = (await import(/* webpackChunkName: "html2pdf" */ 'html2pdf.js')).default;
-
   const htmlContent = buildExportHtml(tree, globalSummary, globalSummaryResults);
   const title = tree.label || 'Research Export';
   const filename = `Evidence Lab - AI Summary Tree - ${title.replace(/[^a-zA-Z0-9 ]+/g, '').trim()}.pdf`;
