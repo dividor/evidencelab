@@ -74,6 +74,19 @@ class UserCreate(schemas.BaseUserCreate):
         return _clean_display_name(v)
 
 
+class AdminUserCreate(BaseModel):
+    """Payload for admin-initiated user creation (no email verification)."""
+
+    email: str = Field(..., max_length=320)
+    password: str = Field(..., max_length=128)
+    display_name: Optional[str] = Field(None, max_length=255)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_display_name(v)
+
+
 class UserUpdate(schemas.BaseUserUpdate):
     """Fields accepted when updating the current user's profile."""
 
