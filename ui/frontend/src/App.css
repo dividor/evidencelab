@@ -8171,6 +8171,33 @@ li.ai-fact-active::before {
   background: var(--gray-50);
 }
 
+/* Forgot / Reset password */
+.auth-forgot-link {
+  text-align: right;
+  margin: -0.5rem 0 0.25rem;
+  font-size: 0.82rem;
+}
+
+.auth-link-button {
+  background: none;
+  border: none;
+  color: var(--primary-blue);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.auth-link-button:hover {
+  color: var(--brand-primary-dark);
+}
+
+.auth-forgot-back {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
 /* Profile modal */
 .profile-modal {
   max-width: 500px;

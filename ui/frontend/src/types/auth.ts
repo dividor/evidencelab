@@ -71,4 +71,7 @@ export interface AuthContextValue extends AuthState {
   /** Set after a successful email verification via ?verify= URL param. */
   verificationMessage: string | null;
   clearVerificationMessage: () => void;
+  /** Token from ?reset-password= URL param; opens modal in reset mode. */
+  resetPasswordToken: string | null;
+  clearResetPasswordToken: () => void;
 }

@@ -8,7 +8,10 @@ interface UserMenuProps {
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
-  const { user, isAuthenticated, isLoading, logout, verificationMessage } = useAuth();
+  const {
+    user, isAuthenticated, isLoading, logout,
+    verificationMessage, resetPasswordToken, clearResetPasswordToken,
+  } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -19,6 +22,13 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
       setShowLogin(true);
     }
   }, [verificationMessage, isAuthenticated]);
+
+  // Auto-open the login modal in reset-password mode
+  useEffect(() => {
+    if (resetPasswordToken) {
+      setShowLogin(true);
+    }
+  }, [resetPasswordToken]);
 
   if (isLoading) return null;
 
@@ -49,7 +59,12 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
             <circle cx="12" cy="7" r="4" />
           </svg>
         </button>
-        {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
+        {showLogin && (
+          <LoginModal
+            onClose={() => { setShowLogin(false); clearResetPasswordToken(); }}
+            resetToken={resetPasswordToken}
+          />
+        )}
       </>
     );
   }

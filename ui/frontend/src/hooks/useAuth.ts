@@ -45,6 +45,8 @@ export const AuthContext = createContext<AuthContextValue>({
   refreshUser: async () => {},
   verificationMessage: null,
   clearVerificationMessage: () => {},
+  resetPasswordToken: null,
+  clearResetPasswordToken: () => {},
 });
 
 /** Hook to access the auth context. */
@@ -56,9 +58,14 @@ export function useAuth(): AuthContextValue {
 export function useAuthState(): AuthContextValue {
   const [state, setState] = useState<AuthState>(initialState);
   const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [resetPasswordToken, setResetPasswordToken] = useState<string | null>(null);
 
   const clearVerificationMessage = useCallback(() => {
     setVerificationMessage(null);
+  }, []);
+
+  const clearResetPasswordToken = useCallback(() => {
+    setResetPasswordToken(null);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -112,6 +119,21 @@ export function useAuthState(): AuthContextValue {
     })();
   }, []);
 
+  // Handle ?reset-password=TOKEN from password reset email links
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('reset-password');
+    if (!token) return;
+
+    // Clean the URL so a refresh won't re-trigger
+    params.delete('reset-password');
+    const clean = params.toString();
+    const newUrl = window.location.pathname + (clean ? `?${clean}` : '');
+    window.history.replaceState({}, '', newUrl);
+
+    setResetPasswordToken(token);
+  }, []);
+
   const login = useCallback(async (credentials: LoginCredentials) => {
     const form = new URLSearchParams();
     form.append('username', credentials.username);
@@ -151,6 +173,8 @@ export function useAuthState(): AuthContextValue {
     refreshUser,
     verificationMessage,
     clearVerificationMessage,
+    resetPasswordToken,
+    clearResetPasswordToken,
   };
 }
 
