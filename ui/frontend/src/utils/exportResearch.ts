@@ -218,7 +218,7 @@ export const exportResearchToPdf = async (
 ): Promise<void> => {
   // Dynamic import — html2pdf.js is a UMD bundle
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const html2pdf = (await import('html2pdf.js' as string)).default;
+  const html2pdf = (await import(/* webpackChunkName: "html2pdf" */ 'html2pdf.js')).default;
 
   const htmlContent = buildExportHtml(tree, globalSummary, globalSummaryResults);
   const title = tree.label || 'Research Export';
@@ -241,7 +241,7 @@ export const exportResearchToPdf = async (
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-      })
+      } as Record<string, unknown>)
       .from(container)
       .save();
   } finally {
