@@ -29,14 +29,14 @@ interface CitedRef {
   result: SearchResult;
 }
 
-interface DocumentGroup {
+export interface DocumentGroup {
   title: string;
   organization?: string;
   year?: string;
   refs: CitedRef[];
 }
 
-const buildGroupedReferences = (
+export const buildGroupedReferences = (
   summaryText: string,
   results: SearchResult[]
 ): DocumentGroup[] => {

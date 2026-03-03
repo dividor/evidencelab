@@ -3905,6 +3905,20 @@ li.ai-fact-active::before {
   color: var(--brand-primary);
 }
 
+/* ---- Global Summary ---- */
+
+.global-summary-loading {
+  font-size: 0.8125rem;
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+.global-summary-content {
+  border-top: 1px solid var(--gray-200);
+  padding-top: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;
