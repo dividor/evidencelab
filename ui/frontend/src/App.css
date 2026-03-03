@@ -8621,6 +8621,23 @@ li.ai-fact-active::before {
   border-color: var(--color-error);
 }
 
+.btn-primary {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+}
+
+.btn-primary:hover {
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+  color: #fff;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .text-muted {
   color: var(--gray-500);
   font-size: 0.85rem;

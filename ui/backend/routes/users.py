@@ -19,8 +19,15 @@ from ui.backend.auth.models import (
     UserGroupMember,
 )
 from ui.backend.auth.rate_limit import current_request_ip
-from ui.backend.auth.schemas import UserRead, UserUpdate
-from ui.backend.auth.users import current_active_user, current_superuser, fastapi_users
+from ui.backend.auth.schemas import AdminUserCreate, UserCreate, UserRead, UserUpdate
+from ui.backend.auth.users import (
+    UserManager,
+    current_active_user,
+    current_superuser,
+    fastapi_users,
+    get_user_manager,
+)
+from ui.backend.services.permissions import add_user_to_default_group
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +55,86 @@ async def list_users(
     result = await session.execute(select(User).order_by(User.email))
     users = result.unique().scalars().all()
     return users
+
+
+# ---------------------------------------------------------------------------
+# Admin: create a new user (no email verification required)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/create", response_model=UserRead, tags=["users"])
+async def admin_create_user(
+    body: AdminUserCreate,
+    admin: User = Depends(current_superuser),
+    user_manager: UserManager = Depends(get_user_manager),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Create a new user account (superuser only).
+
+    The account is created with ``is_verified=True`` so the user can log
+    in immediately without email confirmation.  The user is automatically
+    added to the default group.
+
+    Unlike self-registration, this bypasses ``on_after_register`` so it
+    does **not** send a verification email or depend on SMTP.
+    """
+    from fastapi_users import exceptions as fu_exceptions
+
+    # Normalise email (lowercase, strip)
+    email = body.email.strip().lower()
+
+    # Build a UserCreate schema so validate_password runs (min length, etc.)
+    user_schema = UserCreate(
+        email=email,
+        password=body.password,
+        display_name=body.display_name,
+        is_verified=True,
+    )
+
+    # Validate password (reuses the same rules as self-registration)
+    try:
+        await user_manager.validate_password(body.password, user_schema)
+    except fu_exceptions.InvalidPasswordException as exc:
+        raise HTTPException(status_code=400, detail=exc.reason)
+
+    # Check for duplicate email
+    try:
+        await user_manager.get_by_email(email)
+        raise HTTPException(
+            status_code=400, detail="A user with that email already exists."
+        )
+    except fu_exceptions.UserNotExists:
+        pass  # Good — email is available
+
+    # Hash password and create the user directly (skips on_after_register)
+    hashed = user_manager.password_helper.hash(body.password)
+    new_user = User(
+        email=email,
+        hashed_password=hashed,
+        display_name=body.display_name,
+        is_active=True,
+        is_verified=True,
+        is_superuser=False,
+    )
+    session.add(new_user)
+    await session.flush()  # assigns new_user.id
+
+    # Add to default group so the user has baseline datasource access
+    await add_user_to_default_group(session, new_user.id)
+
+    await session.commit()
+    await session.refresh(new_user)
+
+    ip = current_request_ip.get("unknown")
+    await write_audit_event(
+        "admin_create_user",
+        user_id=admin.id,
+        user_email=admin.email,
+        ip_address=ip,
+        details={"created_user_email": email, "created_user_id": str(new_user.id)},
+    )
+    logger.info("Admin %s created user: %s", admin.email, email)
+    return new_user
 
 
 # ---------------------------------------------------------------------------

@@ -73,7 +73,7 @@ describe('UserManager', () => {
   test('displays user count', async () => {
     render(<UserManager />);
     await waitFor(() => {
-      expect(screen.getByText('2 registered users')).toBeInTheDocument();
+      expect(screen.getByText('2 users')).toBeInTheDocument();
     });
   });
 
