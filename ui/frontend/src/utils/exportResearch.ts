@@ -1,4 +1,3 @@
-import html2pdf from 'html2pdf.js';
 import { DrilldownNode, SearchResult } from '../types/api';
 import { buildGroupedReferences, DocumentGroup } from '../components/AiSummaryReferences';
 
@@ -157,9 +156,9 @@ const buildTocHtml = (entries: TocEntry[]): string => {
   return `<nav class="toc"><h2>Table of Contents</h2><ul>${items.join('\n')}</ul></nav>`;
 };
 
-const PDF_CSS = `
+const PRINT_CSS = `
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1a1a1a; line-height: 1.6; padding: 0; margin: 0; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 30px; color: #1a1a1a; line-height: 1.6; }
   h1 { font-size: 1.6rem; border-bottom: 2px solid #5B8FA8; padding-bottom: 6px; margin-top: 0; }
   h2 { font-size: 1.3rem; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin-top: 28px; }
   h3 { font-size: 1.1rem; margin-top: 20px; }
@@ -177,18 +176,26 @@ const PDF_CSS = `
   .toc ul { list-style: none; padding-left: 0; }
   .toc li { margin: 3px 0; font-size: 0.95rem; }
   .toc a { color: #5B8FA8; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  @media print {
+    body { padding: 20px; max-width: none; }
+    .toc a { color: #333; }
+    .references { break-inside: avoid; }
+    h2, h3, h4 { break-after: avoid; }
+  }
 `;
 
-/** Build the full HTML string for the export */
-const buildExportHtml = (
+/** Export the drilldown tree as a print-ready PDF document */
+export const exportResearchToPdf = (
   tree: DrilldownNode,
   globalSummary?: string,
   globalSummaryResults?: SearchResult[]
-): string => {
+): void => {
   const toc: TocEntry[] = [];
   const counter = { value: 0 };
   let bodyHtml = '';
 
+  // Global summary section
   if (globalSummary) {
     const globalId = toAnchorId('Global Summary', counter.value++);
     toc.push({ id: globalId, label: 'Global Summary', depth: 0 });
@@ -199,49 +206,31 @@ const buildExportHtml = (
     );
   }
 
+  // Tree sections
   bodyHtml += buildTreeSections(tree, 0, toc, counter);
+
   const tocHtml = buildTocHtml(toc);
   const title = tree.label || 'Research Export';
 
-  return `<div>
+  const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Evidence Lab - AI Summary Tree - ${esc(title)}</title>
+<style>${PRINT_CSS}</style>
+</head>
+<body>
 <h1>Evidence Lab - AI Summary Tree</h1>
 <h2>${esc(title)}</h2>
 ${tocHtml}
 ${bodyHtml}
-</div>`;
-};
+<script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`;
 
-/** Export the drilldown tree as a directly-downloaded PDF */
-export const exportResearchToPdf = async (
-  tree: DrilldownNode,
-  globalSummary?: string,
-  globalSummaryResults?: SearchResult[]
-): Promise<void> => {
-  const htmlContent = buildExportHtml(tree, globalSummary, globalSummaryResults);
-  const title = tree.label || 'Research Export';
-  const filename = `Evidence Lab - AI Summary Tree - ${title.replace(/[^a-zA-Z0-9 ]+/g, '').trim()}.pdf`;
-
-  // Create an offscreen container for rendering
-  const container = document.createElement('div');
-  container.innerHTML = `<style>${PDF_CSS}</style>${htmlContent}`;
-  container.style.position = 'absolute';
-  container.style.left = '-9999px';
-  container.style.width = '210mm'; // A4 width
-  document.body.appendChild(container);
-
-  try {
-    await html2pdf()
-      .set({
-        margin: [15, 15, 15, 15],
-        filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
-      } as Record<string, unknown>)
-      .from(container)
-      .save();
-  } finally {
-    document.body.removeChild(container);
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(fullHtml);
+    printWindow.document.close();
   }
 };
