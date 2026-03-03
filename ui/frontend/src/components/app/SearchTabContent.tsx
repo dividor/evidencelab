@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-import { Facets, FacetValue, SearchResult, DrilldownNode } from '../../types/api';
+import { Facets, FacetValue, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
@@ -95,6 +95,8 @@ interface SearchTabContentProps {
   findOutMoreLoading?: boolean;
   findOutMoreActiveFact?: string | null;
   requestShowGraph?: boolean;
+  dataSource?: string;
+  summaryModelConfig?: SummaryModelConfig | null;
 }
 
 const DOT_SIZES = [12, 12, 12, 12, 12];
@@ -429,6 +431,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   findOutMoreLoading,
   findOutMoreActiveFact,
   requestShowGraph,
+  dataSource,
+  summaryModelConfig,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -748,6 +752,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             findOutMoreLoading={findOutMoreLoading}
             findOutMoreActiveFact={findOutMoreActiveFact}
             requestShowGraph={requestShowGraph}
+            dataSource={dataSource}
+            summaryModelConfig={summaryModelConfig}
             isAuthenticated={isAuthenticated}
             ratingScore={aiRating?.score || 0}
             onRequestRatingModal={(selectedScore) => {
