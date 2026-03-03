@@ -163,8 +163,8 @@ services:
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
-      # User module (auth & permissions)
-      - USER_MODULE=${USER_MODULE:-false}
+      # User module (auth & permissions): off | on_passive | on_active
+      - USER_MODULE=${USER_MODULE:-off}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-changeme-generate-a-real-secret}
       - APP_BASE_URL=${APP_BASE_URL:-https://evidencelab.ai}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -208,7 +208,7 @@ services:
         - REACT_APP_API_KEY=${REACT_APP_API_KEY}
         - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-/api}
         - REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH:-}
-        - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-false}
+        - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
     container_name: ui
     # Only visible inside Docker; Caddy reverse-proxies to this
     expose:

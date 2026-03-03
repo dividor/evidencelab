@@ -69,7 +69,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Activity logging — automatic search activity capture with admin views and XLSX export
 - Self-service profile management and account deletion
 - Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) with future MFA support in mind
-- Enabled via `USER_MODULE=true` in `.env` (disabled by default)
+- Three modes via `USER_MODULE` in `.env`: `off` (default), `on_passive` (optional login), `on_active` (login required)
 
 More features will be added soon, focused on document evidence analysis.
 
@@ -139,13 +139,23 @@ User authentication is **opt-in** and disabled by default. When enabled it adds 
 
 ### 1. Enable the module
 
+`USER_MODULE` supports three modes:
+
+| Mode | Description |
+|------|-------------|
+| `off` | No authentication (default) |
+| `on_passive` | Auth UI available but optional — anonymous users can browse freely, registered users get profiles and permissions |
+| `on_active` | All access requires login — unauthenticated users cannot see datasources |
+
 Set these in your `.env`:
 
 ```env
-USER_MODULE=true
-REACT_APP_USER_MODULE=true
+USER_MODULE=on_active
+REACT_APP_USER_MODULE=on_active
 AUTH_SECRET_KEY=<generate-a-random-secret-at-least-32-characters>
 ```
+
+> Legacy values `true`/`false` are still supported (`true` → `on_active`, `false` → `off`).
 
 > **Tip:** Generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 

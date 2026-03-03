@@ -175,8 +175,8 @@ services:
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
       - MAX_CONCURRENT_SEARCHES=${MAX_CONCURRENT_SEARCHES:-2}
       - MAX_CONCURRENT_RERANKS=${MAX_CONCURRENT_RERANKS:-1}
-      # User module (auth & permissions)
-      - USER_MODULE=${USER_MODULE:-false}
+      # User module (auth & permissions): off | on_passive | on_active
+      - USER_MODULE=${USER_MODULE:-off}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-changeme-generate-a-real-secret}
       - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
       - SMTP_HOST=${SMTP_HOST:-}
@@ -224,7 +224,7 @@ services:
       - REACT_APP_API_KEY=${API_SECRET_KEY:-}
       - REACT_APP_GA_MEASUREMENT_ID=${REACT_APP_GA_MEASUREMENT_ID:-}
       - REACT_APP_HEATMAP_LIMIT=${REACT_APP_HEATMAP_LIMIT:-1000}
-      - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-false}
+      - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
       - CHOKIDAR_USEPOLLING=true
     extra_hosts:
       - "host.docker.internal:host-gateway" # Required for Linux Docker

@@ -171,7 +171,7 @@ Trivy scans Docker images for:
 
 ### User Authentication Module
 
-When `USER_MODULE=true`, fastapi-users provides full user lifecycle management:
+When `USER_MODULE` is set to `on_passive` or `on_active`, fastapi-users provides full user lifecycle management. In `on_passive` mode, authentication is optional and anonymous users can browse freely. In `on_active` mode, all access requires login:
 
 | Control | Implementation |
 |---------|---------------|

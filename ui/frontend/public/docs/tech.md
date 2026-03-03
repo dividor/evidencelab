@@ -119,7 +119,7 @@ One thing to note, is that if using Huggingface models, the search reranker mode
 
 ## User Authentication & Permissions
 
-The authentication module is opt-in (`USER_MODULE=true`) and built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns. It is designed with future MFA support in mind.
+The authentication module is opt-in and built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns. It supports three modes via the `USER_MODULE` environment variable: `off` (default, no auth), `on_passive` (auth available but optional — anonymous users can browse freely), and `on_active` (all access requires login). It is designed with future MFA support in mind.
 
 ### Authentication
 

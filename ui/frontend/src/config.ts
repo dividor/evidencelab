@@ -44,7 +44,20 @@ export const GA_MEASUREMENT_ID: string | undefined =
   process.env.REACT_APP_GA_MEASUREMENT_ID || undefined;
 
 // User module — enables authentication, user profiles, and permissions
-// Set REACT_APP_USER_MODULE=true in .env to enable (default: off)
-export const USER_MODULE = process.env.REACT_APP_USER_MODULE === 'true';
+// Modes: off | on_passive | on_active
+//   off        — no auth UI
+//   on_passive — auth UI available, login optional (anonymous access allowed)
+//   on_active  — auth UI required, all access requires login
+// Backwards compatible: 'true' → on_active, 'false'/unset → off
+const _USER_MODULE_RAW = (process.env.REACT_APP_USER_MODULE || 'off').toLowerCase();
+export type UserModuleMode = 'off' | 'on_passive' | 'on_active';
+export const USER_MODULE_MODE: UserModuleMode =
+  _USER_MODULE_RAW === 'true' || _USER_MODULE_RAW === 'on_active'
+    ? 'on_active'
+    : _USER_MODULE_RAW === 'on_passive'
+      ? 'on_passive'
+      : 'off';
+// Auth module is enabled (true for both on_passive and on_active)
+export const USER_MODULE = USER_MODULE_MODE !== 'off';
 
 export default API_BASE_URL;
