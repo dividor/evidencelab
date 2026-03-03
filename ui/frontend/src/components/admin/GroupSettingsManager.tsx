@@ -73,9 +73,9 @@ const GroupSettingsManager: React.FC = () => {
     Record<string, Record<string, string>> | undefined
   >(undefined);
 
-  // Collapsible sections — both open by default
+  // Collapsible sections — all open by default
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['search_settings', 'content_settings'])
+    new Set(['retrieval', 'display'])
   );
 
   const toggleSection = (key: string) => {
@@ -264,15 +264,15 @@ const GroupSettingsManager: React.FC = () => {
             </p>
 
             <div className="admin-group-settings-columns">
-              {/* Search Settings */}
+              {/* Retrieval */}
               <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('search_settings')}>
+                <div className="filter-section-header" onClick={() => toggleSection('retrieval')}>
                   <span className="filter-section-toggle">
-                    {collapsedSections.has('search_settings') ? '▼' : '▶'}
+                    {collapsedSections.has('retrieval') ? '▼' : '▶'}
                   </span>
-                  <span className="filter-section-title">Search Settings</span>
+                  <span className="filter-section-title">Retrieval</span>
                 </div>
-                {collapsedSections.has('search_settings') && (
+                {collapsedSections.has('retrieval') && (
                   <div className="filter-section-content">
                 {/* Search Mode (denseWeight) */}
                 <div className="search-settings-group">
@@ -504,20 +504,7 @@ const GroupSettingsManager: React.FC = () => {
                   </div>
                 )}
                 </div>
-              </div>
-                )}
-              </div>
 
-              {/* Content Settings */}
-              <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('content_settings')}>
-                  <span className="filter-section-toggle">
-                    {collapsedSections.has('content_settings') ? '▼' : '▶'}
-                  </span>
-                  <span className="filter-section-title">Content Settings</span>
-                </div>
-                {collapsedSections.has('content_settings') && (
-                  <div className="filter-section-content">
                 {/* Min Chunk Size */}
                 <div
                   className="search-settings-group"
@@ -611,15 +598,15 @@ const GroupSettingsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* Filter Fields */}
+              {/* Display */}
               <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('filter_fields')}>
+                <div className="filter-section-header" onClick={() => toggleSection('display')}>
                   <span className="filter-section-toggle">
-                    {collapsedSections.has('filter_fields') ? '▼' : '▶'}
+                    {collapsedSections.has('display') ? '▼' : '▶'}
                   </span>
-                  <span className="filter-section-title">Filter Fields</span>
+                  <span className="filter-section-title">Display</span>
                 </div>
-                {collapsedSections.has('filter_fields') && (
+                {collapsedSections.has('display') && (
                   <div className="filter-section-content">
                     <FilterFieldsEditor
                       datasourceKeys={selectedGroup.datasource_keys}

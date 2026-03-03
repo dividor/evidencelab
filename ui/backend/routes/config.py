@@ -14,7 +14,7 @@ from pipeline.db import (
 )
 from ui.backend.schemas import LLMConfig, ModelComboConfig, ModelConfig
 from ui.backend.utils.app_limits import get_rate_limits, limiter
-from ui.backend.utils.app_state import get_pg_for_source
+from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,59 @@ async def get_datasources_config(
             datasources = {}  # Deny by default on error
 
     return datasources
+
+
+@router.get("/config/datasources/{key}/payload-fields")
+async def get_datasource_payload_fields(
+    key: str,
+    request: Request,
+    current_user=Depends(_resolve_user_dep),
+    session=Depends(_get_session_dep),
+):
+    """Return all payload field names found on chunk records for a datasource.
+
+    Queries both the Qdrant payload index schema *and* an actual point record
+    so that unindexed ``src_*`` / ``tag_*`` fields are included too.
+    """
+    config = pipeline_db.load_datasources_config()
+    datasources = config.get("datasources", {})
+    ds_config = datasources.get(key)
+    if not ds_config:
+        raise HTTPException(status_code=404, detail=f"Datasource '{key}' not found")
+
+    data_subdir = ds_config.get("data_subdir", key)
+
+    # Permission check when user module is active
+    if _USER_MODULE:
+        if current_user is None and _USER_MODULE_MODE == "on_active":
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if current_user and not current_user.is_superuser:
+            allowed = await get_user_datasource_keys(session, current_user.id)
+            if key not in allowed:
+                raise HTTPException(status_code=403, detail="Access denied")
+
+    field_set: set[str] = set()
+    try:
+        db = get_db_for_source(data_subdir)
+
+        # 1. Indexed fields from schema
+        collection_info = db.client.get_collection(db.chunks_collection)
+        if collection_info.payload_schema:
+            field_set.update(collection_info.payload_schema.keys())
+
+        # 2. Sample one actual point to capture unindexed payload keys
+        points, _ = db.client.scroll(
+            collection_name=db.chunks_collection,
+            limit=1,
+            with_payload=True,
+            with_vectors=False,
+        )
+        if points:
+            field_set.update(points[0].payload.keys())
+    except Exception:
+        logger.exception("Failed to fetch payload fields for '%s'", key)
+
+    return {"fields": sorted(field_set)}
 
 
 @router.get("/config/auth-status")

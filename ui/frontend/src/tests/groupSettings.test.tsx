@@ -52,8 +52,8 @@ describe('GroupSettingsManager', () => {
   test('auto-selects default group and shows settings panel', async () => {
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
-      expect(screen.getByText('Content Settings')).toBeInTheDocument();
+      expect(screen.getByText('Retrieval')).toBeInTheDocument();
+      expect(screen.getByText('Display')).toBeInTheDocument();
     });
   });
 
@@ -67,7 +67,7 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByText('Analysts'));
 
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+      expect(screen.getByText('Retrieval')).toBeInTheDocument();
     });
 
     // Analysts group has rerank=false, so the Enable Reranker checkbox should be unchecked
@@ -134,7 +134,7 @@ describe('GroupSettingsManager', () => {
 
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+      expect(screen.getByText('Retrieval')).toBeInTheDocument();
     });
 
     // Toggle the Deduplicate checkbox (currently true by default)

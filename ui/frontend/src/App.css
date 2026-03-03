@@ -8678,7 +8678,7 @@ li.ai-fact-active::before {
 .filter-field-active {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   padding: 6px 8px;
   background: var(--blue-50, #eff6ff);
   border: 1px solid var(--gray-200);
@@ -8692,10 +8692,35 @@ li.ai-fact-active::before {
   user-select: none;
   font-size: 1rem;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .filter-field-active .drag-handle:active {
   cursor: grabbing;
+}
+
+.filter-field-key {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--gray-500);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.filter-field-label-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-sm, 3px);
+  font-size: 0.82rem;
+  background: var(--white);
+}
+
+.filter-field-label-input:focus {
+  border-color: var(--primary, #4a90d9);
+  outline: none;
 }
 
 .filter-field-label {
@@ -8714,6 +8739,7 @@ li.ai-fact-active::before {
   font-size: 1.1rem;
   line-height: 1;
   padding: 0 2px;
+  flex-shrink: 0;
   transition: color 0.15s ease;
 }
 
@@ -8733,10 +8759,21 @@ li.ai-fact-active::before {
   color: var(--gray-500);
 }
 
+.filter-field-key-available {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--gray-600);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
 .filter-field-add {
   padding: 2px 8px !important;
   font-size: 0.75rem !important;
   white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .filter-fields-default-notice {
