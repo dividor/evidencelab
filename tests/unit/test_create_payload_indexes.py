@@ -22,7 +22,7 @@ class TestCreatePayloadIndexesSrcFields:
     def test_src_field_from_config_is_indexed(self):
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {"src_geographic_scope": "Geographic Scope"},
+            "default_filter_fields": {"src_geographic_scope": "Geographic Scope"},
             "pipeline": {},
         }
         with patch.object(db, "_load_datasource_config", return_value=ds_config):
@@ -39,7 +39,7 @@ class TestCreatePayloadIndexesSrcFields:
     def test_multiple_src_fields_indexed(self):
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {
+            "default_filter_fields": {
                 "src_geographic_scope": "Geographic Scope",
                 "src_budget": "Budget",
                 "organization": "Organization",  # non-src, should be skipped
@@ -60,7 +60,7 @@ class TestCreatePayloadIndexesSrcFields:
     def test_non_src_filter_fields_not_added(self):
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {
+            "default_filter_fields": {
                 "organization": "Organization",
                 "country": "Country",
             },
@@ -81,7 +81,7 @@ class TestCreatePayloadIndexesSrcFields:
 
     def test_hardcoded_map_fields_always_present(self):
         db = _make_db_instance()
-        ds_config = {"filter_fields": {}, "pipeline": {}}
+        ds_config = {"default_filter_fields": {}, "pipeline": {}}
         with patch.object(db, "_load_datasource_config", return_value=ds_config):
             db.create_payload_indexes()
 
@@ -98,7 +98,7 @@ class TestCreatePayloadIndexesSrcFields:
         """If a src_* field were somehow in the hardcoded list, don't double-index."""
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {"src_geographic_scope": "Geographic Scope"},
+            "default_filter_fields": {"src_geographic_scope": "Geographic Scope"},
             "pipeline": {},
         }
         with patch.object(db, "_load_datasource_config", return_value=ds_config):
@@ -116,7 +116,7 @@ class TestCreatePayloadIndexesSrcFields:
     def test_taxonomy_tag_fields_still_indexed(self):
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {"src_geographic_scope": "Geographic Scope"},
+            "default_filter_fields": {"src_geographic_scope": "Geographic Scope"},
             "pipeline": {"tag": {"taxonomies": {"sdg": {"labels": []}}}},
         }
         with patch.object(db, "_load_datasource_config", return_value=ds_config):
@@ -148,7 +148,7 @@ class TestCreatePayloadIndexesSrcFields:
         """src_* fields should be indexed on both documents and chunks."""
         db = _make_db_instance()
         ds_config = {
-            "filter_fields": {"src_geographic_scope": "Geographic Scope"},
+            "default_filter_fields": {"src_geographic_scope": "Geographic Scope"},
             "pipeline": {},
         }
         with patch.object(db, "_load_datasource_config", return_value=ds_config):

@@ -453,7 +453,7 @@ async def test_get_facets(monkeypatch):
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
     monkeypatch.setattr(
         main_module,
-        "get_filter_fields",
+        "get_default_filter_fields",
         lambda *_: {"organization": "Organization", "published_year": "Year"},
     )
     result = await main_module.get_facets(

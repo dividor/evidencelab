@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from qdrant_client.http import models as qmodels
 
-from pipeline.db import get_filter_fields
+from pipeline.db import get_default_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
@@ -979,7 +979,7 @@ async def get_facets(
         source = data_source or "uneg"
         db = get_db_for_source(source)
         pg = get_pg_for_source(source)
-        filter_fields_config = get_filter_fields(source)
+        filter_fields_config = get_default_filter_fields(source)
 
         core_filters = build_core_filters_from_params(
             organization,

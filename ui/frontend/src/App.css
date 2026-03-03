@@ -8647,6 +8647,107 @@ li.ai-fact-active::before {
   font-weight: 600;
 }
 
+/* Filter Fields Editor (Group Settings) */
+.filter-fields-editor {
+  padding: 4px 0;
+}
+
+.filter-fields-datasource-select {
+  margin-bottom: 12px;
+}
+
+.filter-fields-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  background: var(--white);
+}
+
+.filter-fields-section {
+  margin-bottom: 12px;
+}
+
+.filter-fields-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-field-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--blue-50, #eff6ff);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+.filter-field-active .drag-handle {
+  cursor: grab;
+  color: var(--gray-400);
+  user-select: none;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.filter-field-active .drag-handle:active {
+  cursor: grabbing;
+}
+
+.filter-field-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-field-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--gray-400);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 2px;
+  transition: color 0.15s ease;
+}
+
+.filter-field-remove:hover {
+  color: var(--danger, #dc3545);
+}
+
+.filter-field-available {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--white);
+  border: 1px dashed var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--gray-500);
+}
+
+.filter-field-add {
+  padding: 2px 8px !important;
+  font-size: 0.75rem !important;
+  white-space: nowrap;
+}
+
+.filter-fields-default-notice {
+  font-size: 0.85rem;
+  color: var(--gray-500);
+}
+
+.filter-fields-default-notice p {
+  margin-bottom: 8px;
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.45rem;

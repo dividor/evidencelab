@@ -466,7 +466,7 @@ class Database:
 
         # Add src_* filter fields from config (e.g. src_geographic_scope)
         ds_cfg = self._load_datasource_config()
-        filter_fields = ds_cfg.get("filter_fields", {})
+        filter_fields = ds_cfg.get("default_filter_fields", {})
         indexed = {f for f, _ in facet_fields}
         for field_name in filter_fields:
             if field_name.startswith("src_") and field_name not in indexed:

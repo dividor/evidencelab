@@ -179,8 +179,8 @@ def get_field_mapping(data_source: str) -> Dict[str, str]:
     return {}
 
 
-def get_filter_fields(data_source: str) -> Dict[str, str]:
-    """Get filter fields for a data source (core field -> display label)."""
+def get_default_filter_fields(data_source: str) -> Dict[str, str]:
+    """Get default filter fields for a data source (core field -> display label)."""
     config = load_datasources_config()
     # Handle new config structure (datasources key) or legacy structure
     datasources = config.get("datasources", config)
@@ -193,7 +193,7 @@ def get_filter_fields(data_source: str) -> Dict[str, str]:
             isinstance(domain_config, dict)
             and domain_config.get("data_subdir") == data_source
         ):
-            return domain_config.get("filter_fields", {})
+            return domain_config.get("default_filter_fields", {})
     return {}
 
 

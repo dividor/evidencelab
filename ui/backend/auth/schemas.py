@@ -130,6 +130,7 @@ class SearchSettings(BaseModel):
     deduplicate: Optional[bool] = None
     fieldBoost: Optional[bool] = None
     fieldBoostFields: Optional[dict[str, float]] = None
+    filterFields: Optional[dict[str, dict[str, str]]] = None
 
 
 class GroupUpdate(BaseModel):

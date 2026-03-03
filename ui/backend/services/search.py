@@ -19,8 +19,8 @@ from pipeline.db import (  # noqa: E402
     Database,
     PostgresClient,
     get_db,
+    get_default_filter_fields,
     get_field_mapping,
-    get_filter_fields,
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
@@ -924,7 +924,7 @@ def get_search_facets(
 
     source = data_source or "uneg"
     db = _get_search_db(None, source)
-    filter_fields_config = get_filter_fields(source)
+    filter_fields_config = get_default_filter_fields(source)
 
     # 1. Determine which fields we need to fetch
     needed_fields = ["doc_id", "sys_doc_id"]  # Include sys_doc_id for deduplication

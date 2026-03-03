@@ -3,13 +3,15 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
 import type { SearchSettings, UserGroup } from '../../types/auth';
+import type { DataSourceConfigItem } from '../../App';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
   DEFAULT_SECTION_TYPES,
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
+import FilterFieldsEditor from './FilterFieldsEditor';
 
-/** Keys that can be overridden per group. */
+/** Keys that can be overridden per group (excludes filterFields which is handled separately). */
 const SETTING_KEYS: (keyof SearchSettings)[] = [
   'denseWeight',
   'rerank',
@@ -56,10 +58,20 @@ const GroupSettingsManager: React.FC = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // Datasource config for filter fields editor
+  const [datasourcesConfig, setDatasourcesConfig] = useState<
+    Record<string, DataSourceConfigItem>
+  >({});
+
   // Which keys are overridden vs using system default
   const [overrides, setOverrides] = useState<Set<keyof SearchSettings>>(new Set());
   // Current values for all settings (overridden or system default)
   const [values, setValues] = useState<Required<SearchSettings>>({ ...SYSTEM_DEFAULTS });
+
+  // Per-group filter field overrides (separate from SETTING_KEYS flow)
+  const [filterFieldsOverride, setFilterFieldsOverride] = useState<
+    Record<string, Record<string, string>> | undefined
+  >(undefined);
 
   // Collapsible sections — both open by default
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
@@ -89,9 +101,21 @@ const GroupSettingsManager: React.FC = () => {
     }
   }, []);
 
+  const fetchDatasourcesConfig = useCallback(async () => {
+    try {
+      const resp = await axios.get<Record<string, DataSourceConfigItem>>(
+        `${API_BASE_URL}/config/datasources`
+      );
+      setDatasourcesConfig(resp.data);
+    } catch {
+      // Non-critical — filter fields editor will show empty
+    }
+  }, []);
+
   useEffect(() => {
     fetchGroups();
-  }, [fetchGroups]);
+    fetchDatasourcesConfig();
+  }, [fetchGroups, fetchDatasourcesConfig]);
 
   // Auto-select the default group on initial load
   useEffect(() => {
@@ -108,6 +132,7 @@ const GroupSettingsManager: React.FC = () => {
     if (!selectedGroupId) {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
+      setFilterFieldsOverride(undefined);
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -126,6 +151,13 @@ const GroupSettingsManager: React.FC = () => {
 
     setOverrides(newOverrides);
     setValues(newValues);
+
+    // Load filter fields override (separate from SETTING_KEYS)
+    if (settings.filterFields && Object.keys(settings.filterFields).length > 0) {
+      setFilterFieldsOverride(settings.filterFields);
+    } else {
+      setFilterFieldsOverride(undefined);
+    }
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -145,6 +177,10 @@ const GroupSettingsManager: React.FC = () => {
         if (overrides.has(key)) {
           payload[key] = values[key];
         }
+      }
+      // Include filterFields if there's an override
+      if (filterFieldsOverride && Object.keys(filterFieldsOverride).length > 0) {
+        payload.filterFields = filterFieldsOverride;
       }
       await axios.patch(`${API_BASE_URL}/groups/${selectedGroupId}`, {
         search_settings: Object.keys(payload).length > 0 ? payload : {},
@@ -170,6 +206,7 @@ const GroupSettingsManager: React.FC = () => {
       });
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
+      setFilterFieldsOverride(undefined);
       setSuccess('Settings reset to system defaults.');
       await fetchGroups();
     } catch (err: any) {
@@ -570,6 +607,26 @@ const GroupSettingsManager: React.FC = () => {
                     </label>
                   ))}
                 </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Filter Fields */}
+              <div className="filter-section">
+                <div className="filter-section-header" onClick={() => toggleSection('filter_fields')}>
+                  <span className="filter-section-toggle">
+                    {collapsedSections.has('filter_fields') ? '▼' : '▶'}
+                  </span>
+                  <span className="filter-section-title">Filter Fields</span>
+                </div>
+                {collapsedSections.has('filter_fields') && (
+                  <div className="filter-section-content">
+                    <FilterFieldsEditor
+                      datasourceKeys={selectedGroup.datasource_keys}
+                      datasourcesConfig={datasourcesConfig}
+                      currentFilterFields={filterFieldsOverride}
+                      onChange={setFilterFieldsOverride}
+                    />
                   </div>
                 )}
               </div>

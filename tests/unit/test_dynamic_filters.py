@@ -23,7 +23,7 @@ def _make_query_params(params: dict):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_picks_up_src_fields(mock_get):
@@ -37,7 +37,7 @@ def test_picks_up_src_fields(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_picks_up_tag_fields(mock_get):
@@ -51,7 +51,7 @@ def test_picks_up_tag_fields(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_picks_up_multiple_dynamic_fields(mock_get):
@@ -73,7 +73,7 @@ def test_picks_up_multiple_dynamic_fields(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_ignores_params_not_in_config(mock_get):
@@ -87,7 +87,7 @@ def test_ignores_params_not_in_config(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_does_not_duplicate_hardcoded_core_fields(mock_get):
@@ -108,7 +108,7 @@ def test_does_not_duplicate_hardcoded_core_fields(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_ignores_empty_values(mock_get):
@@ -122,7 +122,7 @@ def test_ignores_empty_values(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_defaults_to_uneg_when_no_data_source(mock_get):
@@ -136,7 +136,7 @@ def test_defaults_to_uneg_when_no_data_source(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
 def test_preserves_existing_core_filters(mock_get):
@@ -163,7 +163,7 @@ MOCK_FILTER_FIELDS_WITH_NUMERIC = {
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_picks_up_range_min_param(mock_get):
@@ -177,7 +177,7 @@ def test_picks_up_range_min_param(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_picks_up_range_max_param(mock_get):
@@ -191,7 +191,7 @@ def test_picks_up_range_max_param(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_picks_up_both_min_and_max(mock_get):
@@ -205,7 +205,7 @@ def test_picks_up_both_min_and_max(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_range_and_checkbox_together(mock_get):
@@ -227,7 +227,7 @@ def test_range_and_checkbox_together(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_range_ignores_empty_min_max(mock_get):
@@ -241,7 +241,7 @@ def test_range_ignores_empty_min_max(mock_get):
 
 
 @patch(
-    "ui.backend.utils.filter_helpers.get_filter_fields",
+    "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS_WITH_NUMERIC,
 )
 def test_range_ignores_unknown_field_min_max(mock_get):

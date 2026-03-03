@@ -94,7 +94,7 @@ export type DataSourceConfig = {
 export interface DataSourceConfigItem {
   data_subdir: string;
   field_mapping: FieldMapping;
-  filter_fields: FilterFields;
+  default_filter_fields: FilterFields;
   pipeline?: any; // Add pipeline to access taxonomies
   total_documents?: number;
 }
@@ -663,7 +663,7 @@ function App() {
   }, [loadingConfig, selectedDomain, datasourcesConfig, currentDataSourceConfig]);
 
   const fieldMapping = currentDataSourceConfig?.field_mapping || {};
-  const filterFields = currentDataSourceConfig?.filter_fields || {};
+  const filterFields = currentDataSourceConfig?.default_filter_fields || {};
 
 
   // Initialize search state from URL parameters - MOVED TO TOP
@@ -760,7 +760,7 @@ function App() {
   const [findOutMoreDone, setFindOutMoreDone] = useState(false);
 
   // Apply per-group search defaults (fetched when user is authenticated)
-  useGroupDefaults(USER_MODULE, authState, {
+  const groupDefaults = useGroupDefaults(USER_MODULE, authState, {
     denseWeight: setSearchDenseWeight,
     rerank: setRerankEnabled,
     recencyBoost: setRecencyBoostEnabled,
@@ -2335,8 +2335,36 @@ function App() {
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
   const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
-  const displayFacets =
+  const rawDisplayFacets =
     allFacetsDataSource === dataSource && allFacets ? allFacets : facets;
+
+  // Apply per-group filter field overrides to facets
+  const groupFilterFields = groupDefaults?.filterFields?.[dataSource];
+  const displayFacets = React.useMemo(() => {
+    if (!rawDisplayFacets) return null;
+    if (!groupFilterFields) return rawDisplayFacets;
+    // Only include fields that exist in both the group override and the facet data
+    const effectiveFields: Record<string, string> = {};
+    for (const [key, label] of Object.entries(groupFilterFields)) {
+      if (key in rawDisplayFacets.filter_fields || key in (rawDisplayFacets.facets || {})) {
+        effectiveFields[key] = label;
+      }
+    }
+    return { ...rawDisplayFacets, filter_fields: effectiveFields };
+  }, [rawDisplayFacets, groupFilterFields]);
+
+  // Also apply to heatmap facets
+  const effectiveHeatmapFacets = React.useMemo(() => {
+    if (!facets) return null;
+    if (!groupFilterFields) return facets;
+    const effectiveFields: Record<string, string> = {};
+    for (const [key, label] of Object.entries(groupFilterFields)) {
+      if (key in facets.filter_fields || key in (facets.facets || {})) {
+        effectiveFields[key] = label;
+      }
+    }
+    return { ...facets, filter_fields: effectiveFields };
+  }, [facets, groupFilterFields]);
 
   const requestHighlightHandler = resolveRequestHighlightHandler(
     SEARCH_SEMANTIC_HIGHLIGHTS,
@@ -2445,7 +2473,7 @@ function App() {
       activeFiltersCount={heatmapActiveFiltersCount}
       onToggleFiltersExpanded={toggleHeatmapFiltersExpanded}
       onClearFilters={handleClearHeatmapFilters}
-      facets={facets}
+      facets={effectiveHeatmapFacets}
       filters={heatmapFilters}
       selectedFilters={heatmapSelectedFilters}
       collapsedFilters={heatmapCollapsedFilters}

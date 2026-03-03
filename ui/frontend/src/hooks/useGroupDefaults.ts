@@ -40,7 +40,7 @@ interface AuthState {
   user: unknown;
 }
 
-type Setters = Record<keyof SearchSettings, (value: any) => void>;
+type Setters = Partial<Record<keyof SearchSettings, (value: any) => void>>;
 
 /**
  * Apply group defaults to state setters for keys not present in URL params.
@@ -49,8 +49,8 @@ function applyGroupDefaults(defaults: SearchSettings, setters: Setters): void {
   const params = new URLSearchParams(window.location.search);
   for (const { param, key } of SETTING_PARAM_MAP) {
     const value = defaults[key];
-    if (!params.has(param) && value !== undefined) {
-      setters[key](value);
+    if (!params.has(param) && value !== undefined && setters[key]) {
+      setters[key]!(value);
     }
   }
 }

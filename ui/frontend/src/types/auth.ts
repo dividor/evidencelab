@@ -25,6 +25,7 @@ export interface SearchSettings {
   deduplicate?: boolean;
   fieldBoost?: boolean;
   fieldBoostFields?: Record<string, number>;
+  filterFields?: Record<string, Record<string, string>>;
 }
 
 export interface UserGroup {

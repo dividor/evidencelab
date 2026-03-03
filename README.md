@@ -240,12 +240,12 @@ Maps logical field names used by the application to actual field names in the so
 | `sys_` | System-generated field (e.g. detected language) | Qdrant `sys_*` payload, PostgreSQL | `"language": "sys_language"` |
 | `tag_` | AI-generated taxonomy tag — stored per chunk | Qdrant chunks collection | `tag_sdg`, `tag_cross_cutting_theme` |
 
-#### `filter_fields`
+#### `default_filter_fields`
 
-Defines which fields appear in the UI filter panel and their display labels. The **key order controls UI display order**. This is the single source of truth for the filter panel.
+Defines the default fields that appear in the UI filter panel and their display labels. The **key order controls UI display order**. Per-group overrides can be configured in the admin panel (see [Group settings](#5-configure-groups-and-data-source-access)).
 
 ```jsonc
-"filter_fields": {
+"default_filter_fields": {
   "organization": "Organization",                    // Core mapped field
   "title": "Document Title",
   "published_year": "Year Published",
@@ -299,7 +299,7 @@ Defines taxonomy classifications applied to documents by the AI tagger. Each tax
 }
 ```
 
-To make a taxonomy filterable in the UI, add `tag_<key>` to `filter_fields` (see above).
+To make a taxonomy filterable in the UI, add `tag_<key>` to `default_filter_fields` (see above).
 
 ## User authentication
 

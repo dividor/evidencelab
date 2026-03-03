@@ -23,7 +23,7 @@ from pipeline.db import (
     SUPPORTED_LLMS,
     SUPPORTED_RERANK_MODELS,
     UI_MODEL_COMBOS,
-    get_filter_fields,
+    get_default_filter_fields,
     load_datasources_config,
 )
 from pipeline.utilities.tasks import app as celery_app
@@ -435,7 +435,7 @@ async def get_facets(
     q: Optional[str] = None,
 ):
     search_routes.get_db_for_source = get_db_for_source
-    search_routes.get_filter_fields = get_filter_fields
+    search_routes.get_default_filter_fields = get_default_filter_fields
     return await _get_facets(
         request=request,
         organization=organization,

@@ -51,6 +51,7 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   deduplicate: true,
   fieldBoost: true,
   fieldBoostFields: { ...DEFAULT_FIELD_BOOST_FIELDS },
+  filterFields: {},
 };
 
 /**
