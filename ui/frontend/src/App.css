@@ -8198,6 +8198,16 @@ li.ai-fact-active::before {
   margin-bottom: 1rem;
 }
 
+.auth-info {
+  padding: 0.6rem 0.75rem;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
 .auth-callout {
   text-align: center;
   font-size: 0.88rem;

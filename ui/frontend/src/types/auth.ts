@@ -68,6 +68,8 @@ export interface AuthContextValue extends AuthState {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** True when a previously authenticated session has expired (401 or inactivity). */
+  sessionExpired: boolean;
   /** Set after a successful email verification via ?verify= URL param. */
   verificationMessage: string | null;
   clearVerificationMessage: () => void;

@@ -10,6 +10,8 @@ interface LoginModalProps {
   resetToken?: string | null;
   /** When true, the modal cannot be dismissed (no close button, no overlay click). */
   required?: boolean;
+  /** When true, show an info banner indicating the session has expired. */
+  sessionExpired?: boolean;
 }
 
 type TabMode = 'login' | 'register' | 'forgot' | 'reset';
@@ -219,7 +221,7 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
 /*  Main modal                                                        */
 /* ------------------------------------------------------------------ */
 
-const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required }) => {
+const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, sessionExpired }) => {
   const { login, register, verificationMessage, clearVerificationMessage } = useAuth();
   const [mode, setMode] = useState<TabMode>(resetToken ? 'reset' : 'login');
   const [email, setEmail] = useState('');
@@ -342,6 +344,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required }
         </div>
 
         <div className="modal-body">
+          {sessionExpired && !error && !displaySuccess && (
+            <div className="auth-info">Your session has expired. Please sign in again to continue.</div>
+          )}
           {error && <div className="auth-error">{error}</div>}
           {displaySuccess && <div className="auth-success">{displaySuccess}</div>}
 
