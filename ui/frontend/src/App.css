@@ -1647,6 +1647,35 @@ h6,
   border-bottom: none;
 }
 
+.metadata-table tr.metadata-section-toggle {
+  cursor: pointer;
+  user-select: none;
+  border-bottom: none;
+}
+
+.metadata-table tr.metadata-section-toggle td {
+  background: transparent;
+  color: var(--gray-600);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 10px 16px;
+  border-top: none;
+  border-bottom: none;
+}
+
+.metadata-table tr.metadata-section-toggle:hover td {
+  color: var(--gray-800);
+}
+
+.metadata-section-icon {
+  display: inline-block;
+  font-size: 0.65em;
+  color: var(--gray-500);
+  margin-right: 4px;
+}
+
 .metadata-divider td {
   padding: 6px 0;
 }

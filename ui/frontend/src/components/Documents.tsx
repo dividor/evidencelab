@@ -16,6 +16,9 @@ export const Documents: React.FC<DocumentsProps> = ({
   dataSourceConfig,
 }) => {
   const state = useDocumentsState(dataSource, dataSourceConfig);
+  const metadataPanelFields = dataSourceConfig?.metadata_panel_fields
+    || dataSourceConfig?.filter_fields
+    || {};
 
   return (
     <div className="statistics-container">
@@ -120,6 +123,9 @@ export const Documents: React.FC<DocumentsProps> = ({
         onTocApprovedChange={state.handleTocApprovedChange}
         selectedTocPageCount={state.selectedTocPageCount}
         semanticHighlightModelConfig={semanticHighlightModelConfig}
+        metadataPanelFields={metadataPanelFields}
+        onOpenSummaryFromMetadata={state.handleOpenSummary}
+        onOpenTocFromMetadata={state.handleOpenToc}
       />
     </div >
   );

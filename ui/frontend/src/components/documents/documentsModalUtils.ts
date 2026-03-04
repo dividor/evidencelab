@@ -230,3 +230,73 @@ export const formatTimestamp = (isoString: string): string => {
   }
   return new Date(isoString).toLocaleString();
 };
+
+/**
+ * For a given core field name (e.g. "organization"), find the actual metadata key
+ * by trying exact match, then map_, src_, sys_, tag_ prefixes.
+ * For already-prefixed keys (e.g. "src_geographic_scope"), exact match hits first.
+ */
+const resolveMetadataKey = (
+  metadata: Record<string, any>,
+  coreField: string,
+): string | null => {
+  // Exact match first (handles already-prefixed keys like src_geographic_scope)
+  if (Object.prototype.hasOwnProperty.call(metadata, coreField)) {
+    return coreField;
+  }
+  // Try standard prefixes
+  const prefixes = ['map_', 'src_', 'sys_', 'tag_'];
+  for (const prefix of prefixes) {
+    const prefixed = `${prefix}${coreField}`;
+    if (Object.prototype.hasOwnProperty.call(metadata, prefixed)) {
+      return prefixed;
+    }
+  }
+  return null;
+};
+
+/**
+ * Resolve configured panel fields from doc metadata.
+ * Returns items in config order with display labels from panelFields.
+ * `configKey` is the original key from panelFields (e.g. "full_summary"),
+ * `key` is the resolved metadata key (e.g. "sys_full_summary").
+ */
+export const resolveConfiguredFields = (
+  metadata: Record<string, any>,
+  panelFields: Record<string, string>,
+): Array<{ key: string; configKey: string; displayKey: string; value: any }> => {
+  const items: Array<{ key: string; configKey: string; displayKey: string; value: any }> = [];
+  for (const [coreField, displayLabel] of Object.entries(panelFields)) {
+    const resolvedKey = resolveMetadataKey(metadata, coreField);
+    if (resolvedKey !== null) {
+      const value = metadata[resolvedKey];
+      if (value !== null && value !== undefined && value !== '') {
+        items.push({
+          key: resolvedKey,
+          configKey: coreField,
+          displayKey: displayLabel,
+          value,
+        });
+      }
+    }
+  }
+  return items;
+};
+
+/**
+ * Get the set of all raw metadata keys that are covered by configured panel fields.
+ * Used to filter these keys out of the "System Information" section.
+ */
+export const getConfiguredFieldKeys = (
+  metadata: Record<string, any>,
+  panelFields: Record<string, string>,
+): Set<string> => {
+  const keys = new Set<string>();
+  for (const coreField of Object.keys(panelFields)) {
+    const resolvedKey = resolveMetadataKey(metadata, coreField);
+    if (resolvedKey !== null) {
+      keys.add(resolvedKey);
+    }
+  }
+  return keys;
+};

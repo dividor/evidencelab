@@ -1,10 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SearchResult } from '../types/api';
+import {
+  resolveConfiguredFields,
+  getConfiguredFieldKeys,
+} from './documents/documentsModalUtils';
 
 interface SearchResultMetadataProps {
   result: SearchResult;
   onClose: (e: React.MouseEvent) => void;
   onOpenToc: (docId: string, toc: string, pdfUrl?: string, pageCount?: number | null) => void;
+  metadataPanelFields?: Record<string, string>;
 }
 
 const EXCLUDE_FIELDS = new Set([
@@ -137,12 +142,28 @@ const MetadataFieldRow = ({
 export const SearchResultMetadata = ({
   result,
   onClose,
-  onOpenToc
+  onOpenToc,
+  metadataPanelFields,
 }: SearchResultMetadataProps) => {
+  const [systemInfoExpanded, setSystemInfoExpanded] = useState(false);
   const metadataFields = buildMetadataFields(result);
   const docId = result.doc_id || result.metadata?.doc_id;
 
-  if (metadataFields.length === 0) {
+  const allFields = { ...result, ...result.metadata };
+  const hasConfiguredFields = metadataPanelFields && Object.keys(metadataPanelFields).length > 0;
+  const configuredItems = hasConfiguredFields
+    ? resolveConfiguredFields(allFields, metadataPanelFields)
+    : [];
+  const configuredFieldKeys = hasConfiguredFields
+    ? getConfiguredFieldKeys(allFields, metadataPanelFields)
+    : new Set<string>();
+
+  // Filter out configured field keys from remaining fields
+  const remainingFields = hasConfiguredFields
+    ? metadataFields.filter(([key]) => !configuredFieldKeys.has(key))
+    : metadataFields;
+
+  if (metadataFields.length === 0 && configuredItems.length === 0) {
     return (
       <div className="metadata-content">
         <div className="metadata-header">
@@ -171,7 +192,43 @@ export const SearchResultMetadata = ({
           onOpenToc={onOpenToc}
         />
       )}
-      {metadataFields.map(([key, value]) => (
+      {/* Configured fields at top */}
+      {hasConfiguredFields && configuredItems.map((item) => (
+        <MetadataFieldRow
+          key={item.key}
+          fieldKey={item.displayKey}
+          value={item.value}
+          result={result}
+          onOpenToc={onOpenToc}
+        />
+      ))}
+      {/* Remaining fields: collapsible when configured fields present */}
+      {hasConfiguredFields && remainingFields.length > 0 && (
+        <>
+          <div
+            className="metadata-section-toggle"
+            onClick={() => setSystemInfoExpanded(!systemInfoExpanded)}
+            style={{ cursor: 'pointer', padding: '4px 0', marginTop: '8px' }}
+          >
+            <span className="metadata-section-icon">
+              {systemInfoExpanded ? '▼' : '▶'}
+            </span>
+            {' '}
+            <strong>System Information</strong>
+          </div>
+          {systemInfoExpanded && remainingFields.map(([key, value]) => (
+            <MetadataFieldRow
+              key={key}
+              fieldKey={key}
+              value={value}
+              result={result}
+              onOpenToc={onOpenToc}
+            />
+          ))}
+        </>
+      )}
+      {/* Fallback: no configured fields */}
+      {!hasConfiguredFields && metadataFields.map(([key, value]) => (
         <MetadataFieldRow
           key={key}
           fieldKey={key}

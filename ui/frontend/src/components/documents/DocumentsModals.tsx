@@ -63,6 +63,9 @@ interface DocumentsModalsProps {
   onTocApprovedChange: (approved: boolean) => void;
   selectedTocPageCount?: number | null;
   semanticHighlightModelConfig?: SummaryModelConfig | null;
+  metadataPanelFields?: Record<string, string>;
+  onOpenSummaryFromMetadata?: (summary: string, title: string, docId?: string) => void;
+  onOpenTocFromMetadata?: (doc: any) => void;
 }
 
 
@@ -119,6 +122,9 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
   onTocApprovedChange,
   selectedTocPageCount,
   semanticHighlightModelConfig,
+  metadataPanelFields,
+  onOpenSummaryFromMetadata,
+  onOpenTocFromMetadata,
 }) => (
   <>
     <ChunksModal
@@ -143,13 +149,6 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
       onOpenMetadata={onOpenMetadata}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
     />
-    <SummaryModal
-      isOpen={summaryModalOpen}
-      onClose={onCloseSummaryModal}
-      summary={selectedSummary}
-      title={selectedSummaryTitle}
-      docId={selectedSummaryDocId}
-    />
     <TaxonomyModal
       isOpen={taxonomyModalOpen}
       onClose={onCloseTaxonomyModal}
@@ -160,23 +159,21 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
       docTitle={selectedTaxonomyDocTitle}
       docSummary={selectedTaxonomyDocSummary}
     />
+    {/* MetadataModal rendered before Summary/Toc so they stack above it */}
     <MetadataModal
       isOpen={metadataModalOpen}
       onClose={onCloseMetadataModal}
       metadataDoc={selectedMetadataDoc}
+      metadataPanelFields={metadataPanelFields}
+      onOpenSummary={onOpenSummaryFromMetadata}
+      onOpenToc={onOpenTocFromMetadata}
     />
-    <TimelineModal
-      isOpen={timelineModalOpen}
-      onClose={onCloseTimelineModal}
-      timelineDoc={selectedTimelineDoc}
-    />
-    <QueueModal isOpen={queueModalOpen} onClose={onCloseQueueModal} dataSource={dataSource} />
-    <LogsModal
-      isOpen={logsModalOpen}
-      onClose={onCloseLogsModal}
-      docId={selectedLogsDocId}
-      docTitle={selectedLogsDocTitle}
-      dataSource={dataSource}
+    <SummaryModal
+      isOpen={summaryModalOpen}
+      onClose={onCloseSummaryModal}
+      summary={selectedSummary}
+      title={selectedSummaryTitle}
+      docId={selectedSummaryDocId}
     />
     <TocModal
       isOpen={tocModalOpen}
@@ -190,6 +187,19 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
       tocApproved={selectedTocApproved}
       onTocApprovedChange={onTocApprovedChange}
       pageCount={selectedTocPageCount}
+    />
+    <TimelineModal
+      isOpen={timelineModalOpen}
+      onClose={onCloseTimelineModal}
+      timelineDoc={selectedTimelineDoc}
+    />
+    <QueueModal isOpen={queueModalOpen} onClose={onCloseQueueModal} dataSource={dataSource} />
+    <LogsModal
+      isOpen={logsModalOpen}
+      onClose={onCloseLogsModal}
+      docId={selectedLogsDocId}
+      docTitle={selectedLogsDocTitle}
+      dataSource={dataSource}
     />
   </>
 );

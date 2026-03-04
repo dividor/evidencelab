@@ -34,7 +34,7 @@ export const DocumentMetadataCell: React.FC<DocumentMetadataCellProps> = ({
         onOpenMetadata(doc);
       }}
     >
-      JSON
+      Metadata
     </a>
   </td>
 );

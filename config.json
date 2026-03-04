@@ -202,6 +202,19 @@
         "tag_cross_cutting_theme": "Cross-cutting Themes",
         "language": "Language"
       },
+      "metadata_panel_fields": {
+        "organization": "Organization",
+        "title": "Document Title",
+        "published_year": "Year Published",
+        "document_type": "Document Type",
+        "country": "Country",
+        "src_geographic_scope": "Geographic Scope",
+        "tag_sdg": "Sustainable Development Goals",
+        "tag_cross_cutting_theme": "Cross-cutting Themes",
+        "language": "Language",
+        "full_summary": "Summary",
+        "toc_classified": "Table of Contents"
+      },
       "pipeline": {
         "processing_timeout": 3600,
         "download": {

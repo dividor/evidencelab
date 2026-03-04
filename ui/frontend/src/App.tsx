@@ -26,6 +26,7 @@ import { Stats } from './components/Stats';
 import { Pipeline, Processing } from './components/Pipeline';
 import TocModal from './components/TocModal';
 import { MetadataModal } from './components/documents/MetadataModal';
+import { SummaryModal } from './components/documents/SummaryModal';
 import { TopBar } from './components/layout/TopBar';
 import { NavTabs } from './components/layout/NavTabs';
 import { SearchBox } from './components/SearchBox';
@@ -95,6 +96,7 @@ export interface DataSourceConfigItem {
   data_subdir: string;
   field_mapping: FieldMapping;
   filter_fields: FilterFields;
+  metadata_panel_fields?: FilterFields;
   pipeline?: any; // Add pipeline to access taxonomies
   total_documents?: number;
 }
@@ -664,6 +666,12 @@ function App() {
 
   const fieldMapping = currentDataSourceConfig?.field_mapping || {};
   const filterFields = currentDataSourceConfig?.filter_fields || {};
+  const metadataPanelFields = React.useMemo(
+    () => currentDataSourceConfig?.metadata_panel_fields
+      || currentDataSourceConfig?.filter_fields
+      || {},
+    [currentDataSourceConfig],
+  );
 
 
   // Initialize search state from URL parameters - MOVED TO TOP
@@ -689,6 +697,11 @@ function App() {
   const [loadingToc, setLoadingToc] = useState(false);
   const [metadataModalOpen, setMetadataModalOpen] = useState(false);
   const [metadataModalDoc, setMetadataModalDoc] = useState<Record<string, any> | null>(null);
+  // Summary modal state for metadata panel
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [selectedSummary, setSelectedSummary] = useState('');
+  const [selectedSummaryTitle, setSelectedSummaryTitle] = useState('');
+  const [selectedSummaryDocId, setSelectedSummaryDocId] = useState('');
   const fetchTocPdfUrl = useCallback(async (docId: string) => {
     try {
       const response = await axios.get(
@@ -2147,6 +2160,28 @@ function App() {
     setMetadataModalOpen(false);
   };
 
+  const handleOpenSummaryFromMetadata = useCallback((summary: string, title: string, docId?: string) => {
+    setSelectedSummary(summary);
+    setSelectedSummaryTitle(title);
+    setSelectedSummaryDocId(docId || '');
+    setSummaryModalOpen(true);
+  }, []);
+
+  const handleOpenTocFromMetadata = useCallback((doc: any) => {
+    const tocValue = doc.toc_classified || doc.sys_toc_classified || '';
+    const docId = doc.doc_id || doc.id || '';
+    const pdfUrl = doc.pdf_url || doc.map_pdf_url || '';
+    const pageCount = doc.page_count ?? doc.sys_page_count ?? null;
+    setSelectedTocDocId(docId);
+    setSelectedToc(tocValue);
+    setSelectedTocPdfUrl(pdfUrl);
+    setSelectedTocPageCount(pageCount);
+    if (!pdfUrl && docId) {
+      fetchTocPdfUrl(docId);
+    }
+    setTocModalOpen(true);
+  }, [fetchTocPdfUrl]);
+
   const handleResultLanguageChange = async (result: SearchResult, newLang: string) => {
     const originalLanguage = result.language || result.metadata?.language || 'en';
     if (newLang === originalLanguage) {
@@ -2631,8 +2666,17 @@ function App() {
         searchModel={searchModel}
       />
 
-      {/* TOC Modal for Search Results */}
-      {/* TOC Modal */}
+      {/* MetadataModal rendered first so TocModal/SummaryModal stack above it */}
+      <MetadataModal
+        isOpen={metadataModalOpen}
+        onClose={handleCloseMetadataModal}
+        metadataDoc={metadataModalDoc}
+        metadataPanelFields={metadataPanelFields}
+        onOpenSummary={handleOpenSummaryFromMetadata}
+        onOpenToc={handleOpenTocFromMetadata}
+      />
+
+      {/* TOC Modal — rendered after MetadataModal so it appears on top */}
       <TocModal
         isOpen={tocModalOpen}
         onClose={() => setTocModalOpen(false)}
@@ -2645,10 +2689,12 @@ function App() {
         pageCount={selectedTocPageCount}
       />
 
-      <MetadataModal
-        isOpen={metadataModalOpen}
-        onClose={handleCloseMetadataModal}
-        metadataDoc={metadataModalDoc}
+      <SummaryModal
+        isOpen={summaryModalOpen}
+        onClose={() => setSummaryModalOpen(false)}
+        summary={selectedSummary}
+        title={selectedSummaryTitle}
+        docId={selectedSummaryDocId}
       />
 
       <CookieConsent />
