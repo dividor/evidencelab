@@ -29,8 +29,6 @@ import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
 import { generateUUID } from '../../utils/uuid';
 
-const API_KEY = process.env.REACT_APP_API_KEY;
-
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -1006,7 +1004,7 @@ const translateWithFallback = async (text: string, newLang: string, label: strin
     const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: newLang }),
     });
     if (resp.ok) {

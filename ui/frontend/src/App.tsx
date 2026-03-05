@@ -60,26 +60,6 @@ const getCsrfToken = (): string | null => {
   return match ? decodeURIComponent(match[1]) : null;
 };
 
-// Configure API key header for all axios requests
-const API_KEY = process.env.REACT_APP_API_KEY;
-if (API_KEY) {
-  if (!axios.defaults) {
-    axios.defaults = {} as typeof axios.defaults;
-  }
-  if (!axios.defaults.headers) {
-    axios.defaults.headers = {
-      common: {},
-      post: {},
-      put: {},
-      patch: {}
-    };
-  }
-  if (!axios.defaults.headers.common) {
-    axios.defaults.headers.common = {};
-  }
-  axios.defaults.headers.common['X-API-Key'] = API_KEY;
-}
-
 // Type for datasource configuration
 interface FieldMapping {
   [coreField: string]: string; // core field name -> source field name
@@ -152,7 +132,7 @@ const translateViaApi = async (text: string, targetLanguage: string, sourceLangu
     const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {
@@ -1606,7 +1586,6 @@ function App() {
 
     streamAiSummary({
       apiBaseUrl: API_BASE_URL,
-      apiKey: API_KEY || undefined,
       dataSource,
       query: streamQuery,
       results: leanResults,
