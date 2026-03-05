@@ -36,10 +36,15 @@ def _make_user(**overrides):
     defaults = {
         "id": uuid.uuid4(),
         "email": "user@example.com",
-        "display_name": "Test User",
+        "first_name": "Test",
+        "last_name": "User",
     }
     defaults.update(overrides)
-    return SimpleNamespace(**defaults)
+    ns = SimpleNamespace(**defaults)
+    # Add full_name property to mimic the ORM model
+    parts = [p for p in (ns.first_name, ns.last_name) if p]
+    ns.full_name = " ".join(parts) if parts else None
+    return ns
 
 
 # ---------------------------------------------------------------------------
