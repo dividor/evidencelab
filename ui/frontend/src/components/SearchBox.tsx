@@ -43,11 +43,6 @@ export const SearchBox = ({
     >
       {isLanding ? (
         <div className="search-landing-content">
-          {datasetName && (
-            <p className="search-tagline">
-              Search {documentCount?.toLocaleString()} {datasetName}
-            </p>
-          )}
           <form onSubmit={onSubmit} className="search-form">
             <div className="search-input-column">
               <div className="search-input-wrapper">

@@ -668,7 +668,7 @@ h6,
   align-items: center;
 }
 
-/* Landing search button: outlined style to match clean aesthetic */
+/* Landing search button: solid style */
 .search-container.search-container-landing .search-button {
   font-size: 1.125rem;
   padding: 0;
@@ -678,14 +678,6 @@ h6,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--white);
-  color: var(--brand-primary);
-  border: 2px solid var(--brand-primary);
-}
-
-.search-container.search-container-landing .search-button:hover:not(:disabled) {
-  background: var(--brand-primary);
-  color: var(--white);
 }
 
 /* Example query chips — centered under the search input */
@@ -693,7 +685,7 @@ h6,
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-lg);
+  margin-top: var(--spacing-sm);
   flex-wrap: wrap;
   justify-content: center;
 }
