@@ -123,29 +123,25 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
 
     def _load_existing_checksums(self) -> Dict[str, Dict[str, Any]]:
         """
-        Pre-fetch all document checksums from Qdrant in batch.
+        Pre-fetch all document checksums from Postgres.
 
         Returns:
             Dict mapping doc_id to checksum fields
         """
         logger.info("Loading existing document checksums from Postgres...")
-        checksums = {}
-        count = 0
         if not self.pg:
             logger.info("Skipping Postgres checksum preload (no Postgres client).")
             return {}
         sys_fields_by_doc = self.pg.fetch_doc_sys_fields()
-        for doc_id, _doc in self.db.get_all_documents_with_ids():
-            sys_fields = sys_fields_by_doc.get(str(doc_id), {})
+        checksums = {}
+        for doc_id, sys_fields in sys_fields_by_doc.items():
             checksums[str(doc_id)] = {
                 "sys_file_checksum": sys_fields.get("sys_file_checksum"),
                 "sys_metadata_checksum": sys_fields.get("sys_metadata_checksum"),
                 "sys_error_checksum": sys_fields.get("sys_error_checksum"),
-                # Track status to avoid resetting progressed docs to downloaded.
                 "sys_status": sys_fields.get("sys_status"),
             }
-            count += 1
-        logger.info("  Loaded checksums for %s documents", count)
+        logger.info("  Loaded checksums for %s documents", len(checksums))
         return checksums
 
     def scan_and_sync(self) -> Dict[str, Any]:
