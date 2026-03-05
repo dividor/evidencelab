@@ -41,7 +41,15 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
 
     __tablename__ = "users"
 
-    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @property
+    def full_name(self) -> str | None:
+        """Concatenate first + last name, returning None if both are empty."""
+        parts = [p for p in (self.first_name, self.last_name) if p]
+        return " ".join(parts) if parts else None
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

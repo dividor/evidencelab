@@ -3,6 +3,9 @@
 export interface AuthUser {
   id: string;
   email: string;
+  first_name: string | null;
+  last_name: string | null;
+  /** Computed by backend (first_name + last_name). Read-only. */
   display_name: string | null;
   is_active: boolean;
   is_verified: boolean;
@@ -53,7 +56,8 @@ export interface LoginCredentials {
 export interface RegisterData {
   email: string;
   password: string;
-  display_name?: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 export interface AuthState {

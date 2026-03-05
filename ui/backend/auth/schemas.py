@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from fastapi_users import schemas
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 # ---------------------------------------------------------------------------
 # JSONB safety helpers
@@ -46,8 +46,8 @@ def _validate_jsonb(v: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _clean_display_name(v: Optional[str]) -> Optional[str]:
-    """Strip whitespace from display names; treat blank as None."""
+def _clean_name_field(v: Optional[str]) -> Optional[str]:
+    """Strip whitespace from name fields; treat blank as None."""
     if v is not None:
         v = v.strip()
         if len(v) == 0:
@@ -58,20 +58,29 @@ def _clean_display_name(v: Optional[str]) -> Optional[str]:
 class UserRead(schemas.BaseUser[uuid.UUID]):
     """Public user representation returned by read endpoints."""
 
-    display_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def display_name(self) -> Optional[str]:
+        """Backward-compatible computed full name."""
+        parts = [p for p in (self.first_name, self.last_name) if p]
+        return " ".join(parts) if parts else None
 
 
 class UserCreate(schemas.BaseUserCreate):
     """Fields accepted when registering a new user."""
 
-    display_name: Optional[str] = Field(None, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=255)
+    last_name: Optional[str] = Field(None, max_length=255)
 
-    @field_validator("display_name")
+    @field_validator("first_name", "last_name")
     @classmethod
-    def validate_display_name(cls, v: Optional[str]) -> Optional[str]:
-        return _clean_display_name(v)
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_name_field(v)
 
 
 class AdminUserCreate(BaseModel):
@@ -79,23 +88,25 @@ class AdminUserCreate(BaseModel):
 
     email: str = Field(..., max_length=320)
     password: str = Field(..., max_length=128)
-    display_name: Optional[str] = Field(None, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=255)
+    last_name: Optional[str] = Field(None, max_length=255)
 
-    @field_validator("display_name")
+    @field_validator("first_name", "last_name")
     @classmethod
-    def validate_display_name(cls, v: Optional[str]) -> Optional[str]:
-        return _clean_display_name(v)
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_name_field(v)
 
 
 class UserUpdate(schemas.BaseUserUpdate):
     """Fields accepted when updating the current user's profile."""
 
-    display_name: Optional[str] = Field(None, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=255)
+    last_name: Optional[str] = Field(None, max_length=255)
 
-    @field_validator("display_name")
+    @field_validator("first_name", "last_name")
     @classmethod
-    def validate_display_name(cls, v: Optional[str]) -> Optional[str]:
-        return _clean_display_name(v)
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        return _clean_name_field(v)
 
 
 # ---------------------------------------------------------------------------

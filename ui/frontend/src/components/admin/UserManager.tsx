@@ -17,7 +17,8 @@ interface CreateUserModalProps {
 const CreateUserModal: React.FC<CreateUserModalProps> = ({ onCreated, onCancel }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,7 +30,8 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onCreated, onCancel }
       await axios.post(`${API_BASE_URL}/users/create`, {
         email,
         password,
-        display_name: displayName || undefined,
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
       });
       onCreated();
     } catch (err: any) {
@@ -73,15 +75,29 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ onCreated, onCancel }
                 placeholder="Min 8 chars, 1 letter, 1 digit"
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="create-name">Display name (optional)</label>
-              <input
-                id="create-name"
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Jane Doe"
-              />
+            <div className="form-group-row">
+              <div className="form-group">
+                <label htmlFor="create-first-name">First name (optional)</label>
+                <input
+                  id="create-first-name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Jane"
+                  autoComplete="given-name"
+                />
+              </div>
+              <div className="form-group">
+                <label htmlFor="create-last-name">Last name (optional)</label>
+                <input
+                  id="create-last-name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Doe"
+                  autoComplete="family-name"
+                />
+              </div>
             </div>
             <button type="submit" className="auth-submit" disabled={creating}>
               {creating ? 'Creating...' : 'Create User'}

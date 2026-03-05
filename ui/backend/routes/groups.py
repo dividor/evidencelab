@@ -183,7 +183,7 @@ async def list_group_members(
         {
             "id": str(u.id),
             "email": u.email,
-            "display_name": u.display_name,
+            "display_name": u.full_name,
             "is_active": u.is_active,
         }
         for u in users

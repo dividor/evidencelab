@@ -12,7 +12,8 @@ type ProfileTab = 'profile' | 'groups';
 const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
   const { user, refreshUser, logout } = useAuth();
   const [tab, setTab] = useState<ProfileTab>('profile');
-  const [displayName, setDisplayName] = useState(user?.display_name || '');
+  const [firstName, setFirstName] = useState(user?.first_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [groups, setGroups] = useState<Array<{ id: string; name: string; description: string | null }>>([]);
@@ -33,7 +34,10 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
     setSaving(true);
     setMessage('');
     try {
-      await axios.patch(`${API_BASE_URL}/users/me`, { display_name: displayName });
+      await axios.patch(`${API_BASE_URL}/users/me`, {
+        first_name: firstName,
+        last_name: lastName,
+      });
       await refreshUser();
       setMessage('Profile updated');
     } catch {
@@ -92,15 +96,29 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
                   <label htmlFor="profile-email">Email</label>
                   <input id="profile-email" type="email" value={user.email} disabled />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="profile-name">Display Name</label>
-                  <input
-                    id="profile-name"
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Your name"
-                  />
+                <div className="form-group-row">
+                  <div className="form-group">
+                    <label htmlFor="profile-first-name">First Name</label>
+                    <input
+                      id="profile-first-name"
+                      type="text"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="First name"
+                      autoComplete="given-name"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="profile-last-name">Last Name</label>
+                    <input
+                      id="profile-last-name"
+                      type="text"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="Last name"
+                      autoComplete="family-name"
+                    />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label>Status</label>

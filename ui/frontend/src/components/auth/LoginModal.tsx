@@ -132,8 +132,10 @@ interface MainAuthFormProps {
   setEmail: (v: string) => void;
   password: string;
   setPassword: (v: string) => void;
-  displayName: string;
-  setDisplayName: (v: string) => void;
+  firstName: string;
+  setFirstName: (v: string) => void;
+  lastName: string;
+  setLastName: (v: string) => void;
   loading: boolean;
   displaySuccess: string | null;
   onSubmit: (e: React.FormEvent) => void;
@@ -142,7 +144,8 @@ interface MainAuthFormProps {
 
 const MainAuthForm: React.FC<MainAuthFormProps> = ({
   mode, email, setEmail, password, setPassword,
-  displayName, setDisplayName, loading, displaySuccess,
+  firstName, setFirstName, lastName, setLastName,
+  loading, displaySuccess,
   onSubmit, onForgot,
 }) => (
   <>
@@ -158,16 +161,29 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
 
     <form onSubmit={onSubmit}>
       {mode === 'register' && (
-        <div className="form-group">
-          <label htmlFor="auth-display-name">Name</label>
-          <input
-            id="auth-display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name (optional)"
-            autoComplete="name"
-          />
+        <div className="form-group-row">
+          <div className="form-group">
+            <label htmlFor="auth-first-name">First name</label>
+            <input
+              id="auth-first-name"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="First name (optional)"
+              autoComplete="given-name"
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="auth-last-name">Last name</label>
+            <input
+              id="auth-last-name"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Last name (optional)"
+              autoComplete="family-name"
+            />
+          </div>
         </div>
       )}
       <div className="form-group">
@@ -227,7 +243,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -264,7 +281,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
     setSuccess('');
     setLoading(true);
     try {
-      await register({ email, password, display_name: displayName || undefined });
+      await register({
+        email,
+        password,
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+      });
       setSuccess('Registration successful! Please check your email to verify your account.');
       setMode('login');
     } catch (err: any) {
@@ -378,8 +400,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
               setEmail={setEmail}
               password={password}
               setPassword={setPassword}
-              displayName={displayName}
-              setDisplayName={setDisplayName}
+              firstName={firstName}
+              setFirstName={setFirstName}
+              lastName={lastName}
+              setLastName={setLastName}
               loading={loading}
               displaySuccess={displaySuccess}
               onSubmit={mode === 'login' ? handleLogin : handleRegister}

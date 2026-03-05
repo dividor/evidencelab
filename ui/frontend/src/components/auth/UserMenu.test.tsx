@@ -16,8 +16,11 @@ const mockAuthValue = (overrides: Partial<AuthContextValue> = {}): AuthContextVa
   register: jest.fn(),
   logout: jest.fn(),
   refreshUser: jest.fn(),
+  sessionExpired: false,
   verificationMessage: null,
   clearVerificationMessage: jest.fn(),
+  resetPasswordToken: null,
+  clearResetPasswordToken: jest.fn(),
   ...overrides,
 });
 
@@ -47,6 +50,8 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'alice@example.com',
+          first_name: 'Alice',
+          last_name: 'Baker',
           display_name: 'Alice Baker',
           is_active: true,
           is_verified: true,
@@ -67,6 +72,8 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'alice@example.com',
+          first_name: 'Alice',
+          last_name: 'Baker',
           display_name: 'Alice Baker',
           is_active: true,
           is_verified: true,
@@ -89,6 +96,8 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'admin@example.com',
+          first_name: 'Super',
+          last_name: 'User',
           display_name: 'Super User',
           is_active: true,
           is_verified: true,
@@ -110,6 +119,8 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'user@example.com',
+          first_name: 'User',
+          last_name: null,
           display_name: 'User',
           is_active: true,
           is_verified: true,
@@ -133,6 +144,8 @@ describe('UserMenu', () => {
         user: {
           id: '1',
           email: 'alice@example.com',
+          first_name: 'Alice',
+          last_name: null,
           display_name: 'Alice',
           is_active: true,
           is_verified: true,

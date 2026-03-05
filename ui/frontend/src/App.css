@@ -8143,6 +8143,17 @@ li.ai-fact-active::before {
   color: var(--gray-500);
 }
 
+.form-group-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.form-group-row > .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
 .auth-submit {
   width: 100%;
   padding: 0.65rem;

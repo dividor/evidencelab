@@ -42,6 +42,8 @@ const mockUsers = [
   {
     id: 'user-1',
     email: 'alice@test.com',
+    first_name: 'Alice',
+    last_name: null,
     display_name: 'Alice',
     is_active: true,
     is_verified: true,
@@ -50,6 +52,8 @@ const mockUsers = [
   {
     id: 'user-2',
     email: 'bob@test.com',
+    first_name: 'Bob',
+    last_name: null,
     display_name: 'Bob',
     is_active: true,
     is_verified: true,
@@ -58,7 +62,7 @@ const mockUsers = [
 ];
 
 const mockMembers = [
-  { id: 'user-1', email: 'alice@test.com', display_name: 'Alice', is_active: true },
+  { id: 'user-1', email: 'alice@test.com', first_name: 'Alice', last_name: null, display_name: 'Alice', is_active: true },
 ];
 
 const mockDatasources = ['UNEG', 'ACLED', 'OCHA'];

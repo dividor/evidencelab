@@ -32,10 +32,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
 
   if (isLoading) return null;
 
-  const initials = user?.display_name
-    ? user.display_name
-        .split(' ')
-        .map((n) => n[0])
+  const initials = (user?.first_name || user?.last_name)
+    ? [user?.first_name?.[0], user?.last_name?.[0]]
+        .filter(Boolean)
         .join('')
         .toUpperCase()
         .slice(0, 2)

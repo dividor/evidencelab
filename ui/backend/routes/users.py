@@ -87,7 +87,8 @@ async def admin_create_user(
     user_schema = UserCreate(
         email=email,
         password=body.password,
-        display_name=body.display_name,
+        first_name=body.first_name,
+        last_name=body.last_name,
         is_verified=True,
     )
 
@@ -111,7 +112,8 @@ async def admin_create_user(
     new_user = User(
         email=email,
         hashed_password=hashed,
-        display_name=body.display_name,
+        first_name=body.first_name,
+        last_name=body.last_name,
         is_active=True,
         is_verified=True,
         is_superuser=False,

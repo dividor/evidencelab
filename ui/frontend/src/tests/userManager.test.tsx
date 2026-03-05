@@ -30,6 +30,8 @@ const mockUsers = [
   {
     id: 'user-1',
     email: 'alice@test.com',
+    first_name: 'Alice',
+    last_name: null,
     display_name: 'Alice',
     is_active: true,
     is_verified: true,
@@ -40,6 +42,8 @@ const mockUsers = [
   {
     id: 'admin-1',
     email: 'admin@test.com',
+    first_name: 'Admin',
+    last_name: null,
     display_name: 'Admin',
     is_active: true,
     is_verified: true,

@@ -32,7 +32,7 @@ def _rating_to_read(rating: UserRating, user: User | None = None) -> RatingRead:
         id=rating.id,
         user_id=rating.user_id,
         user_email=user.email if user else None,
-        user_display_name=user.display_name if user else None,
+        user_display_name=user.full_name if user else None,
         rating_type=rating.rating_type,
         reference_id=rating.reference_id,
         item_id=rating.item_id,
@@ -265,7 +265,7 @@ async def export_ratings(
                     else ""
                 ),
                 user.email if user else "",
-                user.display_name if user else "",
+                user.full_name if user else "",
                 rating.rating_type,
                 rating.score,
                 rating.reference_id,

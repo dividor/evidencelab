@@ -33,7 +33,7 @@ def _activity_to_read(activity: UserActivity, user: User | None = None) -> Activ
         id=activity.id,
         user_id=activity.user_id,
         user_email=user.email if user else None,
-        user_display_name=user.display_name if user else None,
+        user_display_name=user.full_name if user else None,
         search_id=activity.search_id,
         query=activity.query,
         filters=activity.filters,
@@ -115,7 +115,7 @@ def _build_export_row(activity: UserActivity, user: User | None) -> list:
     return [
         created,
         user.email if user else "",
-        user.display_name if user else "",
+        user.full_name if user else "",
         activity.query,
         _count_search_results(activity),
         _ms_to_seconds(timing.get("search_duration_ms")),
