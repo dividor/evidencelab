@@ -333,13 +333,13 @@ class TestListGroupMembers:
         user1 = MagicMock()
         user1.id = uuid.uuid4()
         user1.email = "user1@test.com"
-        user1.display_name = "User One"
+        user1.full_name = "User One"
         user1.is_active = True
 
         user2 = MagicMock()
         user2.id = uuid.uuid4()
         user2.email = "user2@test.com"
-        user2.display_name = None
+        user2.full_name = None
         user2.is_active = False
 
         session.execute = AsyncMock(return_value=_scalars_result([user1, user2]))

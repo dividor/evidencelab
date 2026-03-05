@@ -19,34 +19,37 @@ class TestAdminUserCreateSchema:
         data = AdminUserCreate(email="new@example.com", password=test_pw)
         assert data.email == "new@example.com"
         assert data.password == test_pw  # pragma: allowlist secret
-        assert data.display_name is None
+        assert data.first_name is None
+        assert data.last_name is None
 
-    def test_with_display_name(self):
-        """Optional display_name is accepted and preserved."""
+    def test_with_name(self):
+        """Optional first_name/last_name are accepted and preserved."""
         data = AdminUserCreate(
             email="user@test.org",
             password="Passw0rd!",  # pragma: allowlist secret
-            display_name="Jane Doe",
+            first_name="Jane",
+            last_name="Doe",
         )
-        assert data.display_name == "Jane Doe"
+        assert data.first_name == "Jane"
+        assert data.last_name == "Doe"
 
-    def test_display_name_stripped(self):
-        """Leading/trailing whitespace is stripped from display_name."""
+    def test_first_name_stripped(self):
+        """Leading/trailing whitespace is stripped from first_name."""
         data = AdminUserCreate(
             email="a@b.com",
             password="Test1234",  # pragma: allowlist secret
-            display_name="  Alice  ",
+            first_name="  Alice  ",
         )
-        assert data.display_name == "Alice"
+        assert data.first_name == "Alice"
 
-    def test_blank_display_name_becomes_none(self):
-        """A blank display_name is normalised to None."""
+    def test_blank_first_name_becomes_none(self):
+        """A blank first_name is normalised to None."""
         data = AdminUserCreate(
             email="a@b.com",
             password="Test1234",  # pragma: allowlist secret
-            display_name="   ",
+            first_name="   ",
         )
-        assert data.display_name is None
+        assert data.first_name is None
 
     def test_email_required(self):
         """Email is required."""
@@ -73,12 +76,12 @@ class TestAdminUserCreateSchema:
         with pytest.raises(ValidationError, match="128"):
             AdminUserCreate(email="a@b.com", password=long_pw)
 
-    def test_display_name_max_length(self):
-        """Display name exceeding 255 chars is rejected."""
+    def test_first_name_max_length(self):
+        """first_name exceeding 255 chars is rejected."""
         long_name = "A" * 256
         with pytest.raises(ValidationError, match="255"):
             AdminUserCreate(
                 email="a@b.com",
                 password="Secret123",  # pragma: allowlist secret
-                display_name=long_name,
+                first_name=long_name,
             )

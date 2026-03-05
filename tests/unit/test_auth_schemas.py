@@ -24,15 +24,18 @@ class TestUserSchemas:
         pw = "securepass"  # pragma: allowlist secret
         user = UserCreate(email="test@example.com", password=pw)
         assert user.email == "test@example.com"
-        assert user.display_name is None
+        assert user.first_name is None
+        assert user.last_name is None
 
-    def test_user_create_with_display_name(self):
+    def test_user_create_with_name(self):
         user = UserCreate(
             email="test@example.com",
             password="securepass",  # pragma: allowlist secret
-            display_name="Test User",
+            first_name="Test",
+            last_name="User",
         )
-        assert user.display_name == "Test User"
+        assert user.first_name == "Test"
+        assert user.last_name == "User"
 
     def test_user_create_missing_email_fails(self):
         with pytest.raises(ValidationError):
@@ -44,11 +47,13 @@ class TestUserSchemas:
 
     def test_user_update_all_optional(self):
         update = UserUpdate()
-        assert update.display_name is None
+        assert update.first_name is None
+        assert update.last_name is None
 
     def test_user_update_with_name(self):
-        update = UserUpdate(display_name="New Name")
-        assert update.display_name == "New Name"
+        update = UserUpdate(first_name="New", last_name="Name")
+        assert update.first_name == "New"
+        assert update.last_name == "Name"
 
     def test_user_read_includes_timestamps(self):
         user_id = uuid.uuid4()
@@ -58,12 +63,38 @@ class TestUserSchemas:
             is_active=True,
             is_verified=False,
             is_superuser=False,
-            display_name="Test",
+            first_name="Test",
+            last_name="User",
             created_at=None,
             updated_at=None,
         )
-        assert user.display_name == "Test"
+        assert user.display_name == "Test User"
+        assert user.first_name == "Test"
         assert user.id == user_id
+
+    def test_user_read_display_name_computed(self):
+        """display_name is computed from first_name + last_name."""
+        user = UserRead(
+            id=uuid.uuid4(),
+            email="a@b.com",
+            is_active=True,
+            is_verified=False,
+            is_superuser=False,
+            first_name="Alice",
+            last_name=None,
+        )
+        assert user.display_name == "Alice"
+
+    def test_user_read_display_name_none_when_no_names(self):
+        """display_name is None when both first_name and last_name are None."""
+        user = UserRead(
+            id=uuid.uuid4(),
+            email="a@b.com",
+            is_active=True,
+            is_verified=False,
+            is_superuser=False,
+        )
+        assert user.display_name is None
 
 
 class TestGroupSchemas:
@@ -112,75 +143,75 @@ class TestGroupSchemas:
         assert body.datasource_keys == []
 
 
-class TestDisplayNameValidation:
-    """Tests for display_name field validation on UserCreate and UserUpdate."""
+class TestNameFieldValidation:
+    """Tests for first_name / last_name field validation on UserCreate and UserUpdate."""
 
-    def test_display_name_max_length_enforced_on_create(self):
-        """display_name longer than 255 chars should be rejected."""
+    def test_first_name_max_length_enforced_on_create(self):
+        """first_name longer than 255 chars should be rejected."""
         long_name = "A" * 256
         with pytest.raises(ValidationError) as exc:
             UserCreate(
                 email="test@example.com",
                 password="Secure1Pass",  # pragma: allowlist secret
-                display_name=long_name,
+                first_name=long_name,
             )
-        assert "display_name" in str(exc.value)
+        assert "first_name" in str(exc.value)
 
-    def test_display_name_max_length_enforced_on_update(self):
-        """display_name longer than 255 chars should be rejected on update."""
+    def test_last_name_max_length_enforced_on_update(self):
+        """last_name longer than 255 chars should be rejected on update."""
         long_name = "A" * 256
         with pytest.raises(ValidationError) as exc:
-            UserUpdate(display_name=long_name)
-        assert "display_name" in str(exc.value)
+            UserUpdate(last_name=long_name)
+        assert "last_name" in str(exc.value)
 
-    def test_display_name_255_chars_accepted(self):
-        """display_name exactly at the 255-char limit should be accepted."""
+    def test_first_name_255_chars_accepted(self):
+        """first_name exactly at the 255-char limit should be accepted."""
         name = "A" * 255
         user = UserCreate(
             email="test@example.com",
             password="Secure1Pass",  # pragma: allowlist secret
-            display_name=name,
+            first_name=name,
         )
-        assert user.display_name == name
+        assert user.first_name == name
 
-    def test_display_name_whitespace_stripped_on_create(self):
+    def test_first_name_whitespace_stripped_on_create(self):
         """Leading/trailing whitespace should be stripped."""
         user = UserCreate(
             email="test@example.com",
             password="Secure1Pass",  # pragma: allowlist secret
-            display_name="  Alice Baker  ",
+            first_name="  Alice  ",
         )
-        assert user.display_name == "Alice Baker"
+        assert user.first_name == "Alice"
 
-    def test_display_name_whitespace_stripped_on_update(self):
+    def test_last_name_whitespace_stripped_on_update(self):
         """Leading/trailing whitespace should be stripped on update."""
-        update = UserUpdate(display_name="  Bob  ")
-        assert update.display_name == "Bob"
+        update = UserUpdate(last_name="  Baker  ")
+        assert update.last_name == "Baker"
 
-    def test_display_name_blank_becomes_none_on_create(self):
-        """A whitespace-only display_name should become None."""
+    def test_first_name_blank_becomes_none_on_create(self):
+        """A whitespace-only first_name should become None."""
         user = UserCreate(
             email="test@example.com",
             password="Secure1Pass",  # pragma: allowlist secret
-            display_name="   ",
+            first_name="   ",
         )
-        assert user.display_name is None
+        assert user.first_name is None
 
-    def test_display_name_blank_becomes_none_on_update(self):
-        """A whitespace-only display_name should become None on update."""
-        update = UserUpdate(display_name="  ")
-        assert update.display_name is None
+    def test_last_name_blank_becomes_none_on_update(self):
+        """A whitespace-only last_name should become None on update."""
+        update = UserUpdate(last_name="  ")
+        assert update.last_name is None
 
-    def test_display_name_none_stays_none(self):
+    def test_first_name_none_stays_none(self):
         """Explicitly passing None should remain None."""
         user = UserCreate(
             email="test@example.com",
             password="Secure1Pass",  # pragma: allowlist secret
-            display_name=None,
+            first_name=None,
         )
-        assert user.display_name is None
+        assert user.first_name is None
 
-    def test_display_name_empty_string_becomes_none(self):
-        """Empty string display_name should become None after strip."""
-        update = UserUpdate(display_name="")
-        assert update.display_name is None
+    def test_last_name_empty_string_becomes_none(self):
+        """Empty string last_name should become None after strip."""
+        update = UserUpdate(last_name="")
+        assert update.last_name is None
