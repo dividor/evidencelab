@@ -13,7 +13,6 @@ interface SearchBoxProps {
   documentCount?: number;
   exampleQueries?: string[];
   onExampleQueryClick?: (query: string) => void;
-  filterLabels?: Record<string, string>;
 }
 
 export const SearchBox = ({
@@ -29,7 +28,6 @@ export const SearchBox = ({
   documentCount,
   exampleQueries,
   onExampleQueryClick,
-  filterLabels,
 }: SearchBoxProps) => {
   if (!isActive) {
     return null;
@@ -65,6 +63,14 @@ export const SearchBox = ({
                 </span>
               )}
             </div>
+            {onShowFilters && (
+              <button type="button" className="search-filters-btn" onClick={onShowFilters}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M1 3h14M4 8h8M6 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+                Filters
+              </button>
+            )}
             <button type="submit" disabled={loading} className="search-button">
               {loading ? (
                 <>
@@ -96,23 +102,6 @@ export const SearchBox = ({
                   {q}
                 </button>
               ))}
-            </div>
-          )}
-          {onShowFilters && filterLabels && (
-            <div className="search-landing-filters">
-              <span className="search-landing-filters-label">Filter by:</span>
-              {['published_year', 'country', 'organization']
-                .filter((k) => filterLabels[k])
-                .map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className="search-filter-chip"
-                    onClick={onShowFilters}
-                  >
-                    {filterLabels[key]}
-                  </button>
-                ))}
             </div>
           )}
         </div>

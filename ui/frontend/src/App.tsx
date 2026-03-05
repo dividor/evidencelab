@@ -2620,7 +2620,6 @@ function App() {
         documentCount={datasetTotals[selectedDomain]}
         exampleQueries={currentDataSourceConfig?.example_queries}
         onExampleQueryClick={handleExampleQueryClick}
-        filterLabels={filterFields}
       />
 
       <TabContent

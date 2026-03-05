@@ -713,35 +713,27 @@ h6,
   color: var(--brand-primary);
 }
 
-/* Filter chips on landing page */
-.search-landing-filters {
+/* Subtle Filters button on landing page */
+.search-filters-btn {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
   justify-content: center;
-}
-
-.search-landing-filters-label {
-  color: var(--gray-400);
-  font-size: 0.8125rem;
-}
-
-.search-filter-chip {
+  gap: 0.375rem;
   background: none;
-  border: 1px dashed var(--gray-300);
-  border-radius: 999px;
-  color: var(--gray-500);
-  font-size: 0.8125rem;
-  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  color: var(--gray-400);
+  font-size: 0.875rem;
+  font-family: inherit;
+  padding: 0 1.25rem;
+  height: 56px;
   cursor: pointer;
   transition: all 0.15s ease;
-  font-family: inherit;
+  white-space: nowrap;
 }
 
-.search-filter-chip:hover {
+.search-filters-btn:hover {
   border-color: var(--brand-primary);
-  border-style: solid;
   color: var(--brand-primary);
 }
 
@@ -2772,7 +2764,7 @@ h6,
   flex: 1;
   padding: 1rem 1.25rem;
   font-size: 1.125rem;
-  border: 1px solid var(--gray-300);
+  border: 2px solid var(--gray-300);
   border-radius: var(--radius-md);
   outline: none;
   background: var(--white);
