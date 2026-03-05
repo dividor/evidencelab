@@ -49,18 +49,35 @@ export const SearchBox = ({
             </p>
           )}
           <form onSubmit={onSubmit} className="search-form">
-            <div className="search-input-wrapper">
-              <input
-                type="text"
-                value={query}
-                onChange={(event) => onQueryChange(event.target.value)}
-                placeholder="Search documents"
-                className="search-input"
-              />
-              {!query && (
-                <span className="search-enter-hint">
-                  Press Enter <kbd>↵</kbd>
-                </span>
+            <div className="search-input-column">
+              <div className="search-input-wrapper">
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(event) => onQueryChange(event.target.value)}
+                  placeholder="Search documents"
+                  className="search-input"
+                />
+                {!query && (
+                  <span className="search-enter-hint">
+                    Press Enter <kbd>↵</kbd>
+                  </span>
+                )}
+              </div>
+              {exampleQueries && exampleQueries.length > 0 && (
+                <div className="search-examples">
+                  <span className="search-examples-label">Try:</span>
+                  {exampleQueries.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      className="search-example-chip"
+                      onClick={() => onExampleQueryClick?.(q)}
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
             {onShowFilters && (
@@ -89,21 +106,6 @@ export const SearchBox = ({
               )}
             </button>
           </form>
-          {exampleQueries && exampleQueries.length > 0 && (
-            <div className="search-examples">
-              <span className="search-examples-label">Try:</span>
-              {exampleQueries.map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className="search-example-chip"
-                  onClick={() => onExampleQueryClick?.(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       ) : (
         <form onSubmit={onSubmit} className="search-form">

@@ -610,22 +610,29 @@ h6,
 
 /* Tagline above the search box */
 .search-tagline {
-  color: var(--gray-500);
-  font-size: 1rem;
-  margin: 0 0 var(--spacing-lg) 0;
+  color: var(--brand-primary);
+  font-size: 1.375rem;
+  margin: 0 0 var(--spacing-xl) 0;
   text-align: center;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 .search-container.search-container-landing .search-form {
   max-width: 1400px;
   width: 100%;
   gap: var(--spacing-md);
+  align-items: flex-start;
+}
+
+/* Column wrapper: input + example chips aligned together */
+.search-input-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Input wrapper for relative positioning of enter hint */
 .search-input-wrapper {
-  flex: 1;
   position: relative;
   display: flex;
 }
@@ -681,12 +688,12 @@ h6,
   color: var(--white);
 }
 
-/* Example query chips */
+/* Example query chips — centered under the search input */
 .search-examples {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-md);
+  margin-top: var(--spacing-sm);
   flex-wrap: wrap;
   justify-content: center;
 }
