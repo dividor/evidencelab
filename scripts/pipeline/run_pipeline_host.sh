@@ -135,6 +135,7 @@ if [[ "$(uname)" == "Linux" ]]; then
         "click==8.1.7" \
         "typer==0.12.3" \
         "prometheus-fastapi-instrumentator==6.0.0" \
+        "sentence-transformers>=3.0" \
         "infinity-emb==0.0.77"
     echo "   ✅ Linux host dependencies prepared."
 fi
