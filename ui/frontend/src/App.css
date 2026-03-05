@@ -612,7 +612,7 @@ h6,
 .search-tagline {
   color: var(--brand-primary);
   font-size: 1.375rem;
-  margin: 0 0 var(--spacing-xl) 0;
+  margin: 0 0 2.5rem 0;
   text-align: center;
   font-weight: 500;
 }
@@ -693,7 +693,7 @@ h6,
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-sm);
+  margin-top: var(--spacing-lg);
   flex-wrap: wrap;
   justify-content: center;
 }
