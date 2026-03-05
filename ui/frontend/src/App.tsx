@@ -98,6 +98,7 @@ export interface DataSourceConfigItem {
   field_mapping: FieldMapping;
   filter_fields: FilterFields;
   metadata_panel_fields?: FilterFields;
+  example_queries?: string[];
   pipeline?: any; // Add pipeline to access taxonomies
   total_documents?: number;
 }
@@ -1952,6 +1953,8 @@ function App() {
 
   // Track if we've done initial search to avoid double-searching on load
   const hasSearchedRef = React.useRef(false);
+  // Track pending example query search (set query state, then search on next render)
+  const pendingExampleSearchRef = React.useRef(false);
 
   // Search only triggers via:
   // 1. Form submit (handleSearch)
@@ -1976,6 +1979,23 @@ function App() {
     query,
     searchModel,
   ]);
+
+  // Trigger search after example query click (query state must update first)
+  useEffect(() => {
+    if (pendingExampleSearchRef.current && query.trim()) {
+      pendingExampleSearchRef.current = false;
+      performSearch();
+      const searchParams = buildSearchURL(
+        query, filters, searchDenseWeight, rerankEnabled,
+        recencyBoostEnabled, recencyWeight, recencyScaleDays,
+        sectionTypes, keywordBoostShortQueries, minChunkSize,
+        semanticHighlighting, autoMinScore, deduplicateEnabled,
+        searchModel, selectedModelCombo, selectedDomain,
+        fieldBoostEnabled, fieldBoostFields
+      );
+      window.history.pushState(null, '', withBasePath(searchParams ? `/?${searchParams}` : '/'));
+    }
+  }, [query, performSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Activity logging: update summary when AI summary stream finishes
   // Track the searchId that was used for the activity POST, so the PATCH
@@ -2086,6 +2106,12 @@ function App() {
     hasSearchedRef.current = true;
     setFiltersExpanded(true);
     setInitialSearchDone(true);
+  }, []);
+
+  const handleExampleQueryClick = useCallback((q: string) => {
+    setQuery(q);
+    hasSearchedRef.current = true;
+    pendingExampleSearchRef.current = true;
   }, []);
 
   const handleClearFilters = () => {
@@ -2590,6 +2616,11 @@ function App() {
         onQueryChange={setQuery}
         onSubmit={handleSearch}
         onShowFilters={handleShowFilters}
+        datasetName={selectedDomain}
+        documentCount={datasetTotals[selectedDomain]}
+        exampleQueries={currentDataSourceConfig?.example_queries}
+        onExampleQueryClick={handleExampleQueryClick}
+        filterLabels={filterFields}
       />
 
       <TabContent

@@ -598,11 +598,59 @@ h6,
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Landing content wrapper: holds tagline, form, examples, and filter chips */
+.search-landing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1400px;
+  width: 100%;
+  padding: 0 var(--spacing-xl);
+}
+
+/* Tagline above the search box */
+.search-tagline {
+  color: var(--gray-500);
+  font-size: 1rem;
+  margin: 0 0 var(--spacing-lg) 0;
+  text-align: center;
+  font-weight: 400;
+}
+
 .search-container.search-container-landing .search-form {
   max-width: 1400px;
   width: 100%;
   gap: var(--spacing-md);
-  padding: 0 var(--spacing-xl);
+}
+
+/* Input wrapper for relative positioning of enter hint */
+.search-input-wrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+}
+
+.search-input-wrapper .search-input {
+  width: 100%;
+}
+
+/* Enter key hint floating inside empty input */
+.search-enter-hint {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-300);
+  font-size: 0.75rem;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.search-enter-hint kbd {
+  font-family: inherit;
+  font-size: 0.875rem;
 }
 
 .search-container.search-container-landing .search-input {
@@ -613,6 +661,7 @@ h6,
   align-items: center;
 }
 
+/* Landing search button: outlined style to match clean aesthetic */
 .search-container.search-container-landing .search-button {
   font-size: 1.125rem;
   padding: 0;
@@ -622,6 +671,78 @@ h6,
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--white);
+  color: var(--brand-primary);
+  border: 2px solid var(--brand-primary);
+}
+
+.search-container.search-container-landing .search-button:hover:not(:disabled) {
+  background: var(--brand-primary);
+  color: var(--white);
+}
+
+/* Example query chips */
+.search-examples {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.search-examples-label {
+  color: var(--gray-400);
+  font-size: 0.8125rem;
+}
+
+.search-example-chip {
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  color: var(--gray-500);
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.search-example-chip:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+/* Filter chips on landing page */
+.search-landing-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  justify-content: center;
+}
+
+.search-landing-filters-label {
+  color: var(--gray-400);
+  font-size: 0.8125rem;
+}
+
+.search-filter-chip {
+  background: none;
+  border: 1px dashed var(--gray-300);
+  border-radius: 999px;
+  color: var(--gray-500);
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.search-filter-chip:hover {
+  border-color: var(--brand-primary);
+  border-style: solid;
+  color: var(--brand-primary);
 }
 
 /* Results page: normal top search box */
@@ -637,34 +758,6 @@ h6,
   height: 56px;
   min-width: 180px;
   width: 180px;
-}
-
-/* "Filters" button inside landing search form */
-.search-filters-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--gray-100);
-  border: 1px solid var(--gray-300);
-  border-radius: var(--radius-md);
-  color: var(--gray-600);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 0 1rem;
-  height: 56px;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-}
-
-.search-filters-btn:hover {
-  background: var(--gray-200);
-  color: var(--gray-800);
-  border-color: var(--gray-400);
-}
-
-.search-filters-btn svg {
-  flex-shrink: 0;
 }
 
 /* Tab Placeholder Content */
