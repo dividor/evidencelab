@@ -115,7 +115,7 @@ class TestProcessorDataSourceIntegration:
         from pipeline.processors.indexing.indexer import IndexProcessor
 
         chunk_config = {
-            "dense_model": "intfloat/multilingual-e5-large",
+            "tokenizer": "intfloat/multilingual-e5-large",
             "max_tokens": 450,
         }
         with patch("pipeline.db.QdrantClient") as mock_qdrant, patch(

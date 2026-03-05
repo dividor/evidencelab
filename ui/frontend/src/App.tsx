@@ -8,7 +8,8 @@ import API_BASE_URL, {
   SEARCH_RESULTS_PAGE_SIZE,
   APP_BASE_PATH,
   GA_MEASUREMENT_ID,
-  USER_MODULE
+  USER_MODULE,
+  USER_MODULE_MODE,
 } from './config';
 
 import {
@@ -468,7 +469,7 @@ function App() {
   // isn't rejected with 401 by ActiveAuthMiddleware.  When USER_MODULE is
   // off (or on_passive), fetch immediately on mount.
   useEffect(() => {
-    if (USER_MODULE && !authState.isAuthenticated) return;
+    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
     const fetchConfig = async () => {
       try {
         const response = await axios.get<DataSourcesConfig>(`${API_BASE_URL}/config/datasources`);
@@ -495,7 +496,7 @@ function App() {
 
   // Fetch model combos config (same auth-aware guard as datasources above)
   useEffect(() => {
-    if (USER_MODULE && !authState.isAuthenticated) return;
+    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
     fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading);
   }, [authState.isAuthenticated]);
 

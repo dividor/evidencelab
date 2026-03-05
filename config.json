@@ -244,10 +244,11 @@
         "chunk": {
           "max_tokens": 450,
           "min_substantive_size": 50,
-          "dense_model": "intfloat/multilingual-e5-large"
+          "tokenizer": "intfloat/multilingual-e5-large"
         },
         "summarize": {
           "enabled": true,
+          "dense_model": "e5_large",
           "llm_model": {
             "model": "Qwen/Qwen2.5-7B-Instruct",
             "provider": "huggingface",
@@ -259,7 +260,7 @@
         },
         "tag": {
           "enabled": true,
-          "dense_model": "intfloat/multilingual-e5-large",
+          "dense_model": "e5_large",
           "llm_model": {
             "model": "Qwen/Qwen2.5-7B-Instruct",
             "provider": "huggingface",

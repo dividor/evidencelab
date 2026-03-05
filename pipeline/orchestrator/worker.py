@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional, Tuple, cast
 
 import psutil
 import setproctitle
-from fastembed import TextEmbedding
 
 from pipeline.db import Database, get_db
 from pipeline.orchestrator import env
@@ -21,7 +20,7 @@ from pipeline.processors import (
     SummarizeProcessor,
     TaggerProcessor,
 )
-from pipeline.utilities.embedding_client import RemoteEmbeddingClient
+from pipeline.utilities.embedding_service import EmbeddingService
 from pipeline.utilities.logging_utils import _log_context
 
 logger = setup_logging()
@@ -327,17 +326,17 @@ def init_worker(
 
     setproctitle.setproctitle(f"EvLab-Pipeline-{os.getpid()}")
 
-    shared_dense_model = _init_shared_model(skip_index, skip_tag, skip_summarize)
-    _worker_context["shared_model"] = shared_dense_model
+    embedding_service = _init_embedding_service(skip_index, skip_tag, skip_summarize)
+    _worker_context["embedding_service"] = embedding_service
 
     if not skip_parse:
         _init_parser(data_source, pipeline_config)
     if not skip_summarize:
-        _init_summarizer(pipeline_config, shared_dense_model)
+        _init_summarizer(pipeline_config, embedding_service)
     if not skip_index:
-        _init_indexer(pipeline_config, shared_dense_model)
+        _init_indexer(pipeline_config, embedding_service)
     if not skip_tag:
-        _init_tagger(data_source, pipeline_config, shared_dense_model)
+        _init_tagger(data_source, pipeline_config, embedding_service)
 
     logger.info("[Worker %s] Ready.", os.getpid())
 
@@ -346,34 +345,18 @@ def _set_worker_env() -> None:
     env.configure_thread_env()
 
 
-def _init_shared_model(
+def _init_embedding_service(
     skip_index: bool, skip_tag: bool, skip_summarize: bool
-) -> Any | None:
+) -> Optional[EmbeddingService]:
     if skip_index and skip_tag and skip_summarize:
         return None
-    try:
-        model_name = os.getenv(
-            "DENSE_EMBEDDING_MODEL", "intfloat/multilingual-e5-large"
-        )
-        embedding_api_url = os.getenv("EMBEDDING_API_URL")
-        if embedding_api_url:
-            logger.info(
-                "[Worker %s] Connecting to embedding server at %s",
-                os.getpid(),
-                embedding_api_url,
-            )
-            return RemoteEmbeddingClient(
-                base_url=embedding_api_url, model_name=model_name
-            )
-        logger.info(
-            "[Worker %s] Loading local embedding model: %s",
-            os.getpid(),
-            model_name,
-        )
-        return TextEmbedding(model_name=model_name)
-    except (RuntimeError, OSError, ValueError) as exc:
-        logger.error("Failed to load embedding model: %s", exc)
-        raise RuntimeError("Failed to load embedding model") from exc
+    embedding_api_url = os.getenv("EMBEDDING_API_URL")
+    logger.info(
+        "[Worker %s] Creating EmbeddingService (api_url=%s)",
+        os.getpid(),
+        embedding_api_url or "none",
+    )
+    return EmbeddingService(embedding_api_url=embedding_api_url)
 
 
 def _init_parser(
@@ -391,38 +374,40 @@ def _init_parser(
 
 
 def _init_summarizer(
-    pipeline_config: Dict[str, Any], shared_dense_model: Any | None
+    pipeline_config: Dict[str, Any],
+    embedding_service: Optional[EmbeddingService],
 ) -> None:
     sum_config = pipeline_config.get("summarize", {}) if pipeline_config else {}
     if not sum_config.get("enabled", True):
         return
     summarizer = SummarizeProcessor(config=sum_config)
-    summarizer.setup(embedding_model=shared_dense_model)
+    summarizer.setup(embedding_service=embedding_service)
     _worker_context["summarizer"] = summarizer
 
 
 def _init_indexer(
-    pipeline_config: Dict[str, Any], shared_dense_model: Any | None
+    pipeline_config: Dict[str, Any],
+    embedding_service: Optional[EmbeddingService],
 ) -> None:
     idx_config = pipeline_config.get("index", {}) if pipeline_config else {}
     chunk_config = pipeline_config.get("chunk", {}) if pipeline_config else {}
     indexer = IndexProcessor(
         db=_worker_context["db"], index_config=idx_config, chunk_config=chunk_config
     )
-    indexer.setup(dense_model=shared_dense_model)
+    indexer.setup(embedding_service=embedding_service)
     _worker_context["indexer"] = indexer
 
 
 def _init_tagger(
     data_source: str,
     pipeline_config: Dict[str, Any],
-    shared_dense_model: Any | None,
+    embedding_service: Optional[EmbeddingService],
 ) -> None:
     tag_config = pipeline_config.get("tag", {}) if pipeline_config else {}
     if not tag_config.get("enabled", True):
         return
     tagger = TaggerProcessor(data_source=data_source, config=tag_config)
-    tagger.setup(embedding_model=shared_dense_model)
+    tagger.setup(embedding_service=embedding_service)
     if hasattr(tagger, "set_db"):
         tagger.set_db(_worker_context["db"])
     _worker_context["tagger"] = tagger

@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from docling.chunking import HybridChunker
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
-from fastembed import SparseTextEmbedding, TextEmbedding
+from fastembed import SparseTextEmbedding
 from qdrant_client.http import models
 from transformers import AutoTokenizer
 
@@ -35,7 +35,7 @@ from pipeline.db import (
 )
 from pipeline.processors.base import BaseProcessor
 from pipeline.processors.indexing.chunker import Chunker
-from pipeline.utilities.azure_client import AzureEmbeddingClient
+from pipeline.utilities.embedding_service import EmbeddingService
 
 load_dotenv()
 
@@ -112,9 +112,9 @@ class IndexProcessor(BaseProcessor):
         self.chunk_config = chunk_config or {}
 
         # Strict Config Parsing — fail fast on missing required settings
-        if "dense_model" not in self.chunk_config:
+        if "tokenizer" not in self.chunk_config:
             raise ValueError(
-                "Indexer: 'dense_model' is required in chunk config. "
+                "Indexer: 'tokenizer' is required in chunk config. "
                 "Add it to datasources.<name>.pipeline.chunk in config.json."
             )
         if "max_tokens" not in self.chunk_config:
@@ -124,7 +124,7 @@ class IndexProcessor(BaseProcessor):
             )
         self.max_chunk_tokens = self.chunk_config["max_tokens"]
         self.min_sub_size = self.chunk_config.get("min_substantive_size", 100)
-        self.dense_model_id = self.chunk_config["dense_model"]
+        self.tokenizer_model_id = self.chunk_config["tokenizer"]
 
         self.batch_size = self.index_config.get("batch_size", 10)
         self.embedding_workers = self.index_config.get("embedding_workers", 4)
@@ -142,9 +142,23 @@ class IndexProcessor(BaseProcessor):
         self._tokenizer = None
         self._chunker_instance: Optional[Chunker] = None
 
-    def setup(self, dense_model=None) -> None:
-        """Load configuration and embedding models (slow - done once)."""
+    def setup(
+        self,
+        dense_model=None,
+        embedding_service: EmbeddingService = None,
+    ) -> None:
+        """Load configuration and embedding models (slow - done once).
+
+        Args:
+            dense_model: Deprecated shared model instance (ignored when
+                *embedding_service* is provided).
+            embedding_service: Central service for obtaining embedding
+                clients.  When provided, all dense models listed in
+                ``index_config.dense_models`` are resolved through it.
+        """
         logger.info("Initializing %s...", self.name)
+
+        self._embedding_service = embedding_service
 
         # Initialize dictionary to hold all dense models
         self._dense_models: Dict[str, Any] = {}
@@ -186,22 +200,16 @@ class IndexProcessor(BaseProcessor):
             model_id,
         )
         try:
-            if source == "azure_foundry":
-                api_key = os.getenv("AZURE_FOUNDRY_KEY")
-                endpoint = os.getenv("AZURE_FOUNDRY_ENDPOINT")
-                if not api_key or not endpoint:
-                    raise ValueError(
-                        f"Missing AZURE_FOUNDRY_KEY or AZURE_FOUNDRY_ENDPOINT for {vec_name}"
-                    )
-                return AzureEmbeddingClient(
-                    api_key=api_key,
-                    endpoint=endpoint,
-                    deployment_name=str(model_id),
-                )
-            if dense_model and self.dense_model_id == model_id:
+            if self._embedding_service is not None:
+                return self._embedding_service.get_model(vec_name)
+            # Legacy fallback: use shared model if provided
+            if dense_model is not None:
                 logger.info("Using shared dense model instance for %s", vec_name)
                 return dense_model
-            return TextEmbedding(model_name=model_id)
+            raise ValueError(
+                f"No embedding_service or shared dense_model for '{vec_name}'. "
+                "Ensure the embedding service is configured."
+            )
         except Exception as exc:
             logger.error("Failed to load model %s: %s", vec_name, exc)
             raise
@@ -231,11 +239,11 @@ class IndexProcessor(BaseProcessor):
         self._sparse_model = SparseTextEmbedding(model_name=s_id)
 
     def _init_tokenizer_and_chunker(self) -> None:
-        if not self.dense_model_id:
-            raise ValueError("Indexer: 'dense_model' missing in chunk config")
-        self._tokenizer = AutoTokenizer.from_pretrained(self.dense_model_id)
+        if not self.tokenizer_model_id:
+            raise ValueError("Indexer: 'tokenizer' missing in chunk config")
+        self._tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_model_id)
         hybrid_chunker = HybridChunker(
-            tokenizer=self.dense_model_id,
+            tokenizer=self.tokenizer_model_id,
             max_tokens=self.max_chunk_tokens,
             merge_peers=True,
         )
@@ -401,21 +409,18 @@ class IndexProcessor(BaseProcessor):
             )
         return valid_chunks
 
-    def _build_batches(
-        self, texts: List[str], dense_texts: List[str]
-    ) -> List[Tuple[int, List[str], List[str], int]]:
+    def _build_batches(self, texts: List[str]) -> List[Tuple[int, List[str], int]]:
         batches = []
         for i in range(0, len(texts), self.batch_size):
             batch_text = texts[i : i + self.batch_size]
-            batch_dense = dense_texts[i : i + self.batch_size]
             batch_num = (i // self.batch_size) + 1
-            batches.append((batch_num, batch_text, batch_dense, i))
+            batches.append((batch_num, batch_text, i))
         return batches
 
     def _embed_batch(
-        self, batch_info: Tuple[int, List[str], List[str], int], total_batches: int
+        self, batch_info: Tuple[int, List[str], int], total_batches: int
     ) -> Tuple[int, Dict[str, List[Any]], List[Any], int]:
-        b_num, b_text, b_dense, start_idx = batch_info
+        b_num, b_text, start_idx = batch_info
         logger.info(
             "    Indexing Batch %s/%s (%s chunks)", b_num, total_batches, len(b_text)
         )
@@ -423,10 +428,9 @@ class IndexProcessor(BaseProcessor):
 
         embeddings_by_model: Dict[str, List[Any]] = {}
         for name, model in self._dense_models.items():
-            if b_num == 1 and hasattr(model, "base_url"):
-                logger.info("    🚀 Sending batch 1 to Azure for vector '%s'", name)
-            is_azure = hasattr(model, "base_url")
-            input_batch = b_text if is_azure else b_dense
+            vec_config = DB_VECTORS.get(name, {})
+            model_id = vec_config.get("model_id", name)
+            input_batch = [add_passage_prefix(t, model_id) for t in b_text]
             embeddings_by_model[name] = list(model.embed(input_batch))
 
         sparse_res = list(self._sparse_model.embed(b_text))
@@ -551,7 +555,7 @@ class IndexProcessor(BaseProcessor):
 
     def _process_batches(
         self,
-        batches: List[Tuple[int, List[str], List[str], int]],
+        batches: List[Tuple[int, List[str], int]],
         chunks: List[Dict[str, Any]],
         doc_id: str,
         doc: Dict[str, Any],
@@ -616,12 +620,8 @@ class IndexProcessor(BaseProcessor):
                         name,
                     )
                     continue
-                is_azure = hasattr(model, "base_url")
-                doc_input = (
-                    doc_text
-                    if is_azure
-                    else add_passage_prefix(doc_text, vec_config["model_id"])
-                )
+                model_id = vec_config.get("model_id", name)
+                doc_input = add_passage_prefix(doc_text, model_id)
                 doc_embeddings[name] = list(model.embed([doc_input]))[0].tolist()
             except Exception as e:
                 logger.warning("Failed to generate doc embedding for %s: %s", name, e)
@@ -768,16 +768,9 @@ class IndexProcessor(BaseProcessor):
             chunks = self._filter_valid_chunks(chunks)
             texts = [chunk.get("text", "") for chunk in chunks]
 
-            # Prepare texts for E5 if needed (not perfect if models mixed,
-            # but handles the default/primary case)
-            dense_texts = [add_passage_prefix(t, self.dense_model_id) for t in texts]
-
-            if is_e5_model(self.dense_model_id):
-                logger.info("  Using E5 prefix for default model indexing")
-
             logger.info("  Generating embeddings for %s chunks...", len(texts))
 
-            batches = self._build_batches(texts, dense_texts)
+            batches = self._build_batches(texts)
             chunks_indexed_count = self._process_batches(
                 batches, chunks, doc_id, doc, db, backup_points
             )

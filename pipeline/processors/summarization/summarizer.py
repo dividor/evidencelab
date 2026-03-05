@@ -24,10 +24,11 @@ from jinja2 import Environment, FileSystemLoader
 from langchain_core.messages import HumanMessage
 from langsmith import traceable
 from nltk.tokenize import sent_tokenize
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
 
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.base import BaseProcessor
+from pipeline.utilities.embedding_service import EmbeddingService
 from pipeline.utilities.logging_utils import _log_context
 from utils import llm_factory
 from utils.langsmith_util import setup_langsmith_tracing
@@ -174,27 +175,34 @@ class SummarizeProcessor(BaseProcessor):
             return "llama"
         return "chat"
 
-    def setup(self, embedding_model=None) -> None:
+    def setup(self, embedding_service: EmbeddingService = None) -> None:
         """
-        Load embedding model and get LLM token.
+        Load embedding model via EmbeddingService and get LLM token.
 
         Args:
-            embedding_model: Optional shared embedding model
-                             (SentenceTransformer, fastembed, or RemoteEmbeddingClient)
+            embedding_service: Central embedding service for obtaining
+                model clients.
         """
         logger.info("Initializing %s...", self.name)
 
-        # Load embedding model
-        if embedding_model:
-            logger.info("Using shared embedding model")
-            self._embedding_model = embedding_model
+        # Resolve dense_model from config
+        dense_model_name = self.config.get("dense_model")
+        if not dense_model_name:
+            raise ValueError(
+                "SummarizeProcessor: 'dense_model' missing in summarize config. "
+                "Add it to datasources.<name>.pipeline.summarize in config.json."
+            )
+
+        if embedding_service is not None:
+            logger.info(
+                "Loading embedding model '%s' via EmbeddingService", dense_model_name
+            )
+            self._embedding_model = embedding_service.get_model(dense_model_name)
         else:
-            # Fallback to local loading
-            model_name = os.getenv("DENSE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-            logger.info("Loading local embedding model (%s)...", model_name)
-            # We use SentenceTransformer for local fallback to maintain compatibility
-            # unless we decided to switch to fastembed entirely, but for now this is safest.
-            self._embedding_model = SentenceTransformer(model_name)
+            raise ValueError(
+                "SummarizeProcessor: embedding_service is required. "
+                "Ensure the worker provides an EmbeddingService instance."
+            )
 
         # Get HuggingFace token
         self._hf_token = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
@@ -385,22 +393,17 @@ class SummarizeProcessor(BaseProcessor):
             if self._embedding_model is None:
                 raise ValueError("Embedding model not initialized")
 
-            if hasattr(self._embedding_model, "embed"):
-                gen = self._embedding_model.embed(inputs, batch_size=32)
-                return np.array(list(gen))
-
-            return self._embedding_model.encode(inputs, show_progress_bar=False)
+            gen = self._embedding_model.embed(inputs, batch_size=32)
+            return np.array(list(gen))
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Failed to generate embeddings: %s", e)
             return None
 
     def _prepare_embedding_inputs(self, sentences: List[str]) -> List[str]:
-        is_e5 = (
-            "e5" in os.getenv("DENSE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).lower()
-        )
-        if not is_e5:
-            return sentences
-        return [f"passage: {sentence}" for sentence in sentences]
+        dense_model_name = self.config.get("dense_model", "")
+        if "e5" in dense_model_name.lower():
+            return [f"passage: {sentence}" for sentence in sentences]
+        return sentences
 
     def _tokenize_sentences(self, text: str) -> List[str]:
         """Tokenize text into sentences."""

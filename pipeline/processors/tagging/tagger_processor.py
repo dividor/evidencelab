@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastembed import TextEmbedding
 from qdrant_client import models
 
 from pipeline.db import Database, PostgresClient, make_stage, update_stages
@@ -11,6 +10,7 @@ from pipeline.processors.base import BaseProcessor
 from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_section_type import SectionTypeTagger
 from pipeline.processors.tagging.tagger_taxonomy import TaxonomyTagger
+from pipeline.utilities.embedding_service import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -34,27 +34,28 @@ class TaggerProcessor(BaseProcessor):
         self.config = config or {}
         self._database: Optional[Database] = None
         self._pg: Optional[PostgresClient] = None
-        self._embedding_model: Optional[TextEmbedding] = None
+        self._embedding_model = None
         self._taggers: List[BaseTagger] = []
 
         # Strict Config for Model
         self.dense_model_name = self.config.get("dense_model")
-        # If not provided, we might fail or default if user allows fallback?
-        # User said "NO Fallback... process should fail".
-        # But if Tagger is used CLI-style, config might be absent?
-        # For now, we enforce config usage in pipeline.
 
-    def setup(self, embedding_model: Optional[TextEmbedding] = None) -> None:
-        """Load embedding model and initialize taggers."""
-        if embedding_model is not None:
-            logger.info("Using shared embedding model")
-            self._embedding_model = embedding_model
+    def setup(self, embedding_service: Optional[EmbeddingService] = None) -> None:
+        """Load embedding model via EmbeddingService and initialize taggers."""
+        if not self.dense_model_name:
+            raise ValueError("TaggerProcessor: 'dense_model' missing in config")
+
+        if embedding_service is not None:
+            logger.info(
+                "Loading embedding model '%s' via EmbeddingService",
+                self.dense_model_name,
+            )
+            self._embedding_model = embedding_service.get_model(self.dense_model_name)
         else:
-            if not self.dense_model_name:
-                raise ValueError("TaggerProcessor: 'dense_model' missing in config")
-
-            logger.info("Loading embedding model: %s", self.dense_model_name)
-            self._embedding_model = TextEmbedding(model_name=self.dense_model_name)
+            raise ValueError(
+                "TaggerProcessor: embedding_service is required. "
+                "Ensure the worker provides an EmbeddingService instance."
+            )
 
         self._database = Database(data_source=self.data_source)
         self._pg = PostgresClient(self.data_source)

@@ -21,7 +21,7 @@ class TestComputeMaxEmbedTokens:
     def _make_processor(self):
         """Create an IndexProcessor without triggering DB or model loading."""
         chunk_config = {
-            "dense_model": "intfloat/multilingual-e5-large",
+            "tokenizer": "intfloat/multilingual-e5-large",
             "max_tokens": 450,
         }
         with patch("pipeline.processors.indexing.indexer.get_db"), patch(
@@ -73,7 +73,7 @@ class TestFilterValidChunks:
 
     def _make_processor(self, max_embed_tokens=None, strategy="truncate"):
         chunk_config = {
-            "dense_model": "intfloat/multilingual-e5-large",
+            "tokenizer": "intfloat/multilingual-e5-large",
             "max_tokens": 450,
         }
         index_config = {"oversize_chunks_strategy": strategy}
@@ -189,7 +189,7 @@ class TestFilterValidChunks:
     def test_default_strategy_is_truncate(self):
         """When index_config omits oversize_chunks_strategy, defaults to truncate."""
         chunk_config = {
-            "dense_model": "intfloat/multilingual-e5-large",
+            "tokenizer": "intfloat/multilingual-e5-large",
             "max_tokens": 450,
         }
         with patch("pipeline.processors.indexing.indexer.get_db"), patch(

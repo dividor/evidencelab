@@ -230,30 +230,23 @@ class Database:
         Returns (vector_name, vector_size).
         """
         config = self._load_pipeline_config()
-        # Try to find the primary model active for chunking/queries
-        # Use chunking config as the source of truth for "active" model
-        primary_model_id = config.get("chunk", {}).get("dense_model")
-        if not primary_model_id:
-            raise ValueError("No dense_model found in chunk config")
-
-        clean_name = clean_model_name(primary_model_id)
-
-        # Verify it exists in our vectors list
         dense_vectors, _ = self._get_vector_config()
 
-        if clean_name in dense_vectors:
-            return clean_name, dense_vectors[clean_name]["size"]
+        # Primary source: first model in index.dense_models
+        index_models = config.get("index", {}).get("dense_models", [])
+        if index_models:
+            primary = index_models[0]
+            clean_name = clean_model_name(primary)
+            if clean_name in dense_vectors:
+                return clean_name, dense_vectors[clean_name]["size"]
+            for name, v_cfg in dense_vectors.items():
+                if v_cfg["model_id"] == primary:
+                    return name, v_cfg["size"]
 
-        # Fallback logic if name mismatch or not found in list
-        for name, v_cfg in dense_vectors.items():
-            if v_cfg["model_id"] == primary_model_id:
-                return name, v_cfg["size"]
-
-        # If we are here, the configured chunk model is not in the enabled models list.
-        # This is invalid config, but we might default to first enabled dense vector?
-        raise ValueError(
-            f"Active model {primary_model_id} not found/enabled in models list."
-        )
+        # Fallback: first enabled dense vector
+        if dense_vectors:
+            name = next(iter(dense_vectors))
+            return name, dense_vectors[name]["size"]
 
         raise ValueError("No enabled dense vectors found in configuration")
 

@@ -146,7 +146,10 @@ class PipelineOrchestrator:
                     default_docker_url,
                 )
             else:
-                if not self.skip_index:
+                needs_embeddings = (
+                    not self.skip_index or not self.skip_summarize or not self.skip_tag
+                )
+                if needs_embeddings:
                     self.embedding_manager.start()
                     self.server_started = True
                     os.environ["EMBEDDING_API_URL"] = (
@@ -158,7 +161,8 @@ class PipelineOrchestrator:
                     )
                 else:
                     logger.info(
-                        "Skipping embedding server start (--skip-index is enabled)"
+                        "Skipping embedding server start "
+                        "(no stages require embeddings)"
                     )
 
     def teardown(self) -> None:

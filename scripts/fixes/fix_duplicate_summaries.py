@@ -8,13 +8,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Add repo root to path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 
-from fastembed import TextEmbedding  # noqa: E402
-
 from pipeline.db import get_db  # noqa: E402
 from pipeline.db.config import load_datasources_config  # noqa: E402
 from pipeline.processors.summarization.summarizer import (  # noqa: E402
     SummarizeProcessor,
 )
+from pipeline.utilities.embedding_service import EmbeddingService  # noqa: E402
 
 # Configure logging
 log_dir = os.path.join(os.path.dirname(__file__), "../../logs")
@@ -237,11 +236,10 @@ def fix_duplicate_summaries(
     global global_summarizer
     global_summarizer = SummarizeProcessor(config=sum_config)
 
-    logger.info("Initializing embedding model...")
-    model_name = os.getenv("DENSE_EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
-    embedding_model = TextEmbedding(model_name=model_name)
-
-    global_summarizer.setup(embedding_model=embedding_model)
+    logger.info("Initializing embedding service...")
+    embedding_api_url = os.getenv("EMBEDDING_API_URL")
+    embedding_service = EmbeddingService(embedding_api_url=embedding_api_url)
+    global_summarizer.setup(embedding_service=embedding_service)
 
     # 3. Process with workers
     success_count = 0

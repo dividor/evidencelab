@@ -78,6 +78,17 @@ def launch_browser_or_skip(playwright):
         pytest.skip(f"Playwright browser not available: {exc}")
 
 
+def dismiss_cookie_consent(page):
+    """Pre-set cookie consent in localStorage so the consent banner doesn't block UI tests.
+
+    The CookieConsent component checks ``localStorage.getItem('ga-consent')`` on
+    mount and only renders the banner when the value is ``null``.  By injecting the
+    key via ``add_init_script`` (which runs before any page JS), the banner never
+    appears and Playwright can interact with the UI immediately.
+    """
+    page.add_init_script("localStorage.setItem('ga-consent', 'denied');")
+
+
 def ensure_ui_available_or_skip():
     """Skip UI tests if the UI base URL is not reachable."""
     try:
@@ -664,6 +675,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 # Navigate to UI with query and title filter
@@ -784,6 +796,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 # Navigate to UI with query and title filter
@@ -923,6 +936,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 page.goto(url, wait_until="networkidle")
@@ -977,6 +991,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 page.goto(url, wait_until="networkidle")
@@ -1046,6 +1061,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 page.goto(url, wait_until="networkidle")
@@ -1177,6 +1193,7 @@ class TestPipelineIntegration:
             browser = launch_browser_or_skip(p)
             page = browser.new_page()
             setup_api_route_interception(page)
+            dismiss_cookie_consent(page)
 
             try:
                 page.goto(url, wait_until="networkidle")
