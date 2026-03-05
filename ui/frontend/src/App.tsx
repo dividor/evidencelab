@@ -691,6 +691,7 @@ function App() {
   const [filters, setFilters] = useState<SearchFilters>(initialSearchState.filters);
   const [initialSearchDone, setInitialSearchDone] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hasSearchRun, setHasSearchRun] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<SearchResult | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -1857,6 +1858,7 @@ function App() {
     }
 
     setLoading(true);
+    setHasSearchRun(true);
     setSearchError(null);
     processingHighlightsRef.current.clear(); // Clear highlight locks
     isSearchingRef.current = true;
@@ -2079,6 +2081,12 @@ function App() {
       window.history.pushState(null, '', newURL);
     }
   };
+
+  const handleShowFilters = useCallback(() => {
+    hasSearchedRef.current = true;
+    setFiltersExpanded(true);
+    setInitialSearchDone(true);
+  }, []);
 
   const handleClearFilters = () => {
     setFilters({});
@@ -2474,6 +2482,7 @@ function App() {
       requestShowGraph={findOutMoreDone}
       dataSource={dataSource}
       summaryModelConfig={summaryModelConfig}
+      hasSearchRun={hasSearchRun}
     />
   );
 
@@ -2580,6 +2589,7 @@ function App() {
         searchError={searchError}
         onQueryChange={setQuery}
         onSubmit={handleSearch}
+        onShowFilters={handleShowFilters}
       />
 
       <TabContent
