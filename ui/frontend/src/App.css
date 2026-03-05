@@ -585,44 +585,143 @@ h6,
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Landing page: position search box 3/4 up the page with same width as results page */
+/* Landing page: position search box roughly 3/4 up the available space */
 .search-container.search-container-landing {
   border-bottom: none;
-  min-height: calc(75vh - 150px);
+  flex: 1;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: calc(20vh);
+  padding-bottom: 25vh;
   padding-left: var(--spacing-xl);
   padding-right: var(--spacing-xl);
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Landing content wrapper: holds tagline, form, examples, and filter chips */
+.search-landing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 1400px;
+  width: 100%;
+  padding: 0 var(--spacing-xl);
+}
+
+/* Tagline above the search box */
+.search-tagline {
+  color: var(--brand-primary);
+  font-size: 1.375rem;
+  margin: 0 0 2.5rem 0;
+  text-align: center;
+  font-weight: 500;
 }
 
 .search-container.search-container-landing .search-form {
   max-width: 1400px;
   width: 100%;
   gap: var(--spacing-md);
-  padding: 0 var(--spacing-xl);
+  align-items: flex-start;
+}
+
+/* Column wrapper: input + example chips aligned together */
+.search-input-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Input wrapper for relative positioning of enter hint */
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+}
+
+.search-input-wrapper .search-input {
+  width: 100%;
+}
+
+/* Filters button floating inside the search input */
+.search-input-filters {
+  position: absolute;
+  right: 1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-400);
+  font-size: 1.3rem;
+  font-family: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.search-input-filters:hover {
+  color: var(--brand-primary);
+}
+
+/* Pad input right so text doesn't overlap the filters button */
+.search-input-wrapper .search-input {
+  padding-right: 9rem;
 }
 
 .search-container.search-container-landing .search-input {
-  font-size: 1.125rem;
-  padding: 0 1.5rem;
-  height: 56px;
+  font-size: 1.25rem;
+  padding: 0 1.75rem;
+  height: 64px;
   display: flex;
   align-items: center;
 }
 
+/* Landing search button: solid style */
 .search-container.search-container-landing .search-button {
-  font-size: 1.125rem;
+  font-size: 1.25rem;
   padding: 0;
-  height: 56px;
-  min-width: 180px;
-  width: 180px;
+  height: 64px;
+  min-width: 200px;
+  width: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+
+/* Example query chips — centered under the search input */
+.search-examples {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: 2rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.search-examples-label {
+  color: var(--gray-400);
+  font-size: 0.8125rem;
+}
+
+.search-example-chip {
+  background: none;
+  border: 1px solid var(--gray-200);
+  border-radius: 999px;
+  color: var(--gray-500);
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.search-example-chip:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
 
 /* Results page: normal top search box */
 .search-container.search-container-results .search-input {
@@ -2651,7 +2750,7 @@ h6,
   flex: 1;
   padding: 1rem 1.25rem;
   font-size: 1.125rem;
-  border: 1px solid var(--gray-300);
+  border: 3px solid var(--gray-300);
   border-radius: var(--radius-md);
   outline: none;
   background: var(--white);
@@ -4044,10 +4143,10 @@ li.ai-fact-active::before {
   display: flex;
   justify-content: center;
   gap: 0.5rem;
-  padding: 1.5rem 1rem 2rem;
-  margin-top: auto;
-  color: var(--gray-600);
-  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+  background: var(--white);
+  color: var(--gray-500);
+  font-size: 0.8125rem;
 }
 
 .app-footer a,
@@ -4859,6 +4958,16 @@ li.ai-fact-active::before {
 .no-results-message p {
   margin: 0;
   font-size: 0.95rem;
+}
+
+.no-results-message.welcome-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 300px;
+  padding: var(--spacing-3xl) var(--spacing-xl);
 }
 
 /* Preview Overlay - Full Screen with Darkened Background */

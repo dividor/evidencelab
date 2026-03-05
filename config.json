@@ -191,6 +191,11 @@
         "pdf_url": "pdf_url",
         "report_url": "report_url"
       },
+      "example_queries": [
+        "impact of climate change on food security",
+        "gender equality in humanitarian response",
+        "WASH programme effectiveness"
+      ],
       "filter_fields": {
         "organization": "Organization",
         "title": "Document Title",

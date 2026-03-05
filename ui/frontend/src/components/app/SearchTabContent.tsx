@@ -99,6 +99,7 @@ interface SearchTabContentProps {
   requestShowGraph?: boolean;
   dataSource?: string;
   summaryModelConfig?: SummaryModelConfig | null;
+  hasSearchRun?: boolean;
 }
 
 const DOT_SIZES = [12, 12, 12, 12, 12];
@@ -349,6 +350,15 @@ const SearchResultFilters: React.FC<{
   </div>
 );
 
+/** Whether AI summary panel should be visible (has content or is loading) */
+const isAiSummaryVisible = (
+  configEnabled: boolean, results: SearchResult[],
+  loading: boolean, summary: string,
+): boolean => {
+  if (!configEnabled) return false;
+  return results.length > 0 || loading || Boolean(summary);
+};
+
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   filtersExpanded,
   activeFiltersCount,
@@ -437,6 +447,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   requestShowGraph,
   dataSource,
   summaryModelConfig,
+  hasSearchRun,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -652,11 +663,70 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
   const contentGridClass = `content-grid ${filtersExpanded ? '' : 'content-grid-no-filters'}`;
   const isInitialLoading = loading && results.length === 0;
+  const aiSummaryVisible = isAiSummaryVisible(aiSummaryEnabled, results, aiSummaryLoading, aiSummary);
+
+  const filtersPanelNode = filtersExpanded ? (
+    <div className="global-filters-column">
+      <FiltersPanel
+        filtersExpanded={filtersExpanded}
+        onClearFilters={onClearFilters}
+        facets={facets}
+        selectedFilters={selectedFilters}
+        rangeFilters={rangeFilters}
+        collapsedFilters={collapsedFilters}
+        expandedFilterLists={expandedFilterLists}
+        filterSearchTerms={filterSearchTerms}
+        titleSearchResults={titleSearchResults}
+        facetSearchResults={facetSearchResults}
+        onRemoveFilter={onRemoveFilter}
+        onToggleFilter={onToggleFilter}
+        onFilterSearchTermChange={onFilterSearchTermChange}
+        onToggleFilterListExpansion={onToggleFilterListExpansion}
+        onFilterValuesChange={onFilterValuesChange}
+        onRangeChange={onRangeChange}
+        searchDenseWeight={searchDenseWeight}
+        onSearchDenseWeightChange={onSearchDenseWeightChange}
+        keywordBoostShortQueries={keywordBoostShortQueries}
+        onKeywordBoostChange={onKeywordBoostChange}
+        semanticHighlighting={semanticHighlighting}
+        onSemanticHighlightingChange={onSemanticHighlightingChange}
+        minScore={minScore}
+        maxScore={maxScore}
+        onMinScoreChange={onMinScoreChange}
+        autoMinScore={autoMinScore}
+        onAutoMinScoreToggle={onAutoMinScoreToggle}
+        rerankEnabled={rerankEnabled}
+        onRerankToggle={onRerankToggle}
+        recencyBoostEnabled={recencyBoostEnabled}
+        onRecencyBoostToggle={onRecencyBoostToggle}
+        recencyWeight={recencyWeight}
+        onRecencyWeightChange={onRecencyWeightChange}
+        recencyScaleDays={recencyScaleDays}
+        onRecencyScaleDaysChange={onRecencyScaleDaysChange}
+        minChunkSize={minChunkSize}
+        onMinChunkSizeChange={onMinChunkSizeChange}
+        sectionTypes={sectionTypes}
+        onSectionTypesChange={onSectionTypesChange}
+        deduplicateEnabled={deduplicateEnabled}
+        onDeduplicateToggle={onDeduplicateToggle}
+        fieldBoostEnabled={fieldBoostEnabled}
+        onFieldBoostToggle={onFieldBoostToggle}
+        fieldBoostFields={fieldBoostFields}
+        onFieldBoostFieldsChange={onFieldBoostFieldsChange}
+      />
+    </div>
+  ) : null;
 
   if (isInitialLoading) {
     return (
       <div className="main-content">
-        <div className="content-grid content-grid-no-filters search-panel-with-tab">
+        <MobileFiltersToggle
+          filtersExpanded={filtersExpanded}
+          activeFiltersCount={activeFiltersCount}
+          onToggle={onToggleFiltersExpanded}
+        />
+        <div className={`${contentGridClass} search-panel-with-tab`}>
+          {filtersPanelNode}
           <main className="results-section">
             <WanderingSpinner />
           </main>
@@ -674,61 +744,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       />
 
       <div className={`${contentGridClass} search-panel-with-tab`}>
-        {filtersExpanded && (
-          <div className="global-filters-column">
-            <FiltersPanel
-              filtersExpanded={filtersExpanded}
-              onClearFilters={onClearFilters}
-              facets={facets}
-              selectedFilters={selectedFilters}
-              rangeFilters={rangeFilters}
-              collapsedFilters={collapsedFilters}
-              expandedFilterLists={expandedFilterLists}
-              filterSearchTerms={filterSearchTerms}
-              titleSearchResults={titleSearchResults}
-              facetSearchResults={facetSearchResults}
-              onRemoveFilter={onRemoveFilter}
-              onToggleFilter={onToggleFilter}
-              onFilterSearchTermChange={onFilterSearchTermChange}
-              onToggleFilterListExpansion={onToggleFilterListExpansion}
-              onFilterValuesChange={onFilterValuesChange}
-              onRangeChange={onRangeChange}
-              searchDenseWeight={searchDenseWeight}
-              onSearchDenseWeightChange={onSearchDenseWeightChange}
-              keywordBoostShortQueries={keywordBoostShortQueries}
-              onKeywordBoostChange={onKeywordBoostChange}
-              semanticHighlighting={semanticHighlighting}
-              onSemanticHighlightingChange={onSemanticHighlightingChange}
-              minScore={minScore}
-              maxScore={maxScore}
-              onMinScoreChange={onMinScoreChange}
-              autoMinScore={autoMinScore}
-              onAutoMinScoreToggle={onAutoMinScoreToggle}
-              rerankEnabled={rerankEnabled}
-              onRerankToggle={onRerankToggle}
-              recencyBoostEnabled={recencyBoostEnabled}
-              onRecencyBoostToggle={onRecencyBoostToggle}
-              recencyWeight={recencyWeight}
-              onRecencyWeightChange={onRecencyWeightChange}
-              recencyScaleDays={recencyScaleDays}
-              onRecencyScaleDaysChange={onRecencyScaleDaysChange}
-              minChunkSize={minChunkSize}
-              onMinChunkSizeChange={onMinChunkSizeChange}
-              sectionTypes={sectionTypes}
-              onSectionTypesChange={onSectionTypesChange}
-              deduplicateEnabled={deduplicateEnabled}
-              onDeduplicateToggle={onDeduplicateToggle}
-              fieldBoostEnabled={fieldBoostEnabled}
-              onFieldBoostToggle={onFieldBoostToggle}
-              fieldBoostFields={fieldBoostFields}
-              onFieldBoostFieldsChange={onFieldBoostFieldsChange}
-            />
-          </div>
-        )}
+        {filtersPanelNode}
 
         <main className="results-section">
           <AiSummaryPanel
-            enabled={aiSummaryEnabled}
+            enabled={aiSummaryVisible}
             aiSummaryCollapsed={aiSummaryCollapsed}
             aiSummaryExpanded={aiSummaryExpanded}
             aiSummaryLoading={aiSummaryLoading}
@@ -817,6 +837,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             minScore={hasActiveFilter ? 0 : minScore}
             loading={loading}
             query={query}
+            hasSearchRun={hasSearchRun}
             selectedDoc={selectedDoc}
             onResultClick={onResultClick}
             onOpenMetadata={onOpenMetadata}

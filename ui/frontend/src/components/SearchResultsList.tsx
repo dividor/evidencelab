@@ -8,6 +8,7 @@ interface SearchResultsListProps {
   minScore: number;
   loading: boolean;
   query: string;
+  hasSearchRun?: boolean;
   selectedDoc: SearchResult | null;
   onResultClick: (result: SearchResult) => void;
   onOpenMetadata: (result: SearchResult) => void;
@@ -38,6 +39,7 @@ export const SearchResultsList = ({
   minScore,
   loading,
   query,
+  hasSearchRun,
   selectedDoc,
   onResultClick,
   onOpenMetadata,
@@ -54,7 +56,13 @@ export const SearchResultsList = ({
 
   return (
     <div className="results-list">
-      {results.length === 0 && !loading && (
+      {results.length === 0 && !loading && !hasSearchRun && (
+        <div className="no-results-message welcome-message">
+          <h3>Ready to explore</h3>
+          <p>Enter a search query above to start discovering insights across your documents.</p>
+        </div>
+      )}
+      {results.length === 0 && !loading && hasSearchRun && (
         <div className="no-results-message">
           <h3>No results found</h3>
           <p>Try adjusting your search terms or filters.</p>
