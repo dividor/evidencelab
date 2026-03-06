@@ -264,12 +264,13 @@ const renderHeadingElement = (
   const headingText = heading.text.replace(CITATION_REGEX, '').trim();
   const isActiveHeading = !isKeyFacts && findOutMoreActiveFact && headingText === findOutMoreActiveFact;
   const btnLabel = findOutMoreLoading ? 'Researching...' : 'Find out more';
+  const btnTooltip = 'Click this to have the system automatically drill-down into the topics mentioned below';
 
   if (isKeyFacts && onFindOutMore) {
     return (
       <div key={key} className="ai-key-facts-header">
         {React.createElement(`h${level}`, null, content)}
-        <button className="ai-find-out-more-btn" disabled={findOutMoreLoading}
+        <button className="ai-find-out-more-btn" disabled={findOutMoreLoading} data-tooltip={btnTooltip}
           onClick={(e) => { e.preventDefault(); onFindOutMore(extractKeyFacts(text)); }}>
           {btnLabel}
         </button>
@@ -282,7 +283,7 @@ const renderHeadingElement = (
       <div key={key} className="ai-key-facts-header">
         {React.createElement(`h${level}`, null, content)}
         {subHeadings.length > 0 && (
-          <button className="ai-find-out-more-btn" disabled={findOutMoreLoading}
+          <button className="ai-find-out-more-btn" disabled={findOutMoreLoading} data-tooltip={btnTooltip}
             onClick={(e) => { e.preventDefault(); onFindOutMore(subHeadings); }}>
             {btnLabel}
           </button>
