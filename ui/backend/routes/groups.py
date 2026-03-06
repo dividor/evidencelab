@@ -53,6 +53,7 @@ async def _group_to_read(session: AsyncSession, group: UserGroup) -> GroupRead:
         datasource_keys=datasource_keys,
         member_count=member_count,
         search_settings=group.search_settings,
+        summary_prompt=group.summary_prompt,
     )
 
 
