@@ -293,3 +293,93 @@ class ActivityRead(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Saved research schemas
+# ---------------------------------------------------------------------------
+
+_MAX_RESEARCH_JSONB_SIZE = 10_000_000  # 10 MB limit for full research trees
+
+
+def _validate_research_jsonb(v: Any) -> Any:
+    """Validate a research JSONB payload (larger limit than standard)."""
+    if v is None:
+        return v
+    _check_jsonb_depth(v)
+    import json
+
+    if len(json.dumps(v, default=str)) > _MAX_RESEARCH_JSONB_SIZE:
+        raise ValueError(
+            f"Research tree exceeds maximum size of "
+            f"{_MAX_RESEARCH_JSONB_SIZE} characters"
+        )
+    return v
+
+
+class SavedResearchCreate(BaseModel):
+    """Payload for saving a research tree."""
+
+    title: str = Field(..., max_length=500)
+    query: str = Field(..., max_length=5000)
+    filters: Optional[dict] = None
+    data_source: Optional[str] = Field(None, max_length=255)
+    drilldown_tree: dict
+
+    @field_validator("filters")
+    @classmethod
+    def validate_filters(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_jsonb(v)
+
+    @field_validator("drilldown_tree")
+    @classmethod
+    def validate_tree(cls, v: dict) -> dict:
+        return _validate_research_jsonb(v)
+
+
+class SavedResearchUpdate(BaseModel):
+    """Payload for updating saved research."""
+
+    title: Optional[str] = Field(None, max_length=500)
+    drilldown_tree: Optional[dict] = None
+    filters: Optional[dict] = None
+
+    @field_validator("filters")
+    @classmethod
+    def validate_filters(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_jsonb(v)
+
+    @field_validator("drilldown_tree")
+    @classmethod
+    def validate_tree(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_research_jsonb(v)
+
+
+class SavedResearchRead(BaseModel):
+    """Full saved research returned by read endpoints."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    title: str
+    query: str
+    filters: Optional[dict] = None
+    data_source: Optional[str] = None
+    drilldown_tree: dict
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SavedResearchListItem(BaseModel):
+    """Compact saved research for list/table views (omits large tree)."""
+
+    id: uuid.UUID
+    title: str
+    query: str
+    data_source: Optional[str] = None
+    node_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

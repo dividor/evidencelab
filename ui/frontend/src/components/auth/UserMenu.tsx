@@ -5,9 +5,10 @@ import ProfileModal from './ProfileModal';
 
 interface UserMenuProps {
   onAdminClick?: () => void;
+  onLoadResearch?: (id: string) => void;
 }
 
-const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
+const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => {
   const {
     user, isAuthenticated, isLoading, logout,
     verificationMessage, resetPasswordToken, clearResetPasswordToken,
@@ -110,7 +111,15 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick }) => {
           </div>
         )}
       </div>
-      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
+      {showProfile && (
+        <ProfileModal
+          onClose={() => setShowProfile(false)}
+          onLoadResearch={onLoadResearch ? (id: string) => {
+            setShowProfile(false);
+            onLoadResearch(id);
+          } : undefined}
+        />
+      )}
     </>
   );
 };

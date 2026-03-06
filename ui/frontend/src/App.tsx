@@ -20,6 +20,7 @@ import {
   SearchResult,
   ModelComboConfig,
   SummaryModelConfig,
+  DrilldownNode,
 } from './types/api';
 import { useDrilldownTree, AiSummarySnapshot } from './hooks/useDrilldownTree';
 import { Documents } from './components/Documents';
@@ -39,7 +40,7 @@ import { CookieConsent, getGaConsent } from './components/CookieConsent';
 import { AuthContext, useAuthState } from './hooks/useAuth';
 import { useGroupDefaults } from './hooks/useGroupDefaults';
 import { useActivityLogging } from './hooks/useActivityLogging';
-import { serializeDrilldownTree } from './utils/drilldownUtils';
+import { serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
 import { generateUUID } from './utils/uuid';
 import AdminPanel from './components/admin/AdminPanel';
 import { AuthGate } from './components/auth/AuthGate';
@@ -750,6 +751,7 @@ function App() {
   const {
     drilldownTree, currentNodeId, isDrilldown, currentHighlight: drilldownHighlight,
     resetTree: resetDrilldownTree,
+    loadTree: loadDrilldownTree,
     startDrilldown: startDrilldownInTree,
     addChildNode: addChildNodeInTree,
     updateNodeData: updateNodeDataInTree,
@@ -759,6 +761,8 @@ function App() {
   const [findOutMoreLoading, setFindOutMoreLoading] = useState(false);
   const [findOutMoreActiveFact, setFindOutMoreActiveFact] = useState<string | null>(null);
   const [findOutMoreDone, setFindOutMoreDone] = useState(false);
+  const [savedResearchId, setSavedResearchId] = useState<string | null>(null);
+  const [saveResearchLoading, setSaveResearchLoading] = useState(false);
 
   // Apply per-group search defaults (fetched when user is authenticated)
   useGroupDefaults(USER_MODULE, authState, {
@@ -1625,6 +1629,7 @@ function App() {
     }
 
     resetDrilldownTree();
+    setSavedResearchId(null);
 
     const sliced = summaryResults.slice(0, 20);
     setAiSummaryResults(sliced);
@@ -1809,6 +1814,66 @@ function App() {
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
       autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+
+  // Save research tree to backend
+  const handleSaveResearch = useCallback(async () => {
+    if (!drilldownTree || !authState.user) return;
+    setSaveResearchLoading(true);
+
+    try {
+      const currentId = currentNodeId || drilldownTree.id;
+      const patchedTree = patchNodeInTree(drilldownTree, currentId, aiSummary, aiSummaryResults);
+      const fullTree = serializeFullDrilldownTree(patchedTree);
+
+      if (savedResearchId) {
+        await axios.put(`${API_BASE_URL}/research/${savedResearchId}`, {
+          title: drilldownTree.label || query,
+          drilldown_tree: fullTree,
+          filters,
+        });
+      } else {
+        const resp = await axios.post<{ id: string }>(`${API_BASE_URL}/research`, {
+          title: drilldownTree.label || query,
+          query,
+          filters,
+          data_source: dataSource,
+          drilldown_tree: fullTree,
+        });
+        setSavedResearchId(resp.data.id);
+      }
+    } catch (error) {
+      console.error('Failed to save research:', error);
+    } finally {
+      setSaveResearchLoading(false);
+    }
+  }, [drilldownTree, currentNodeId, savedResearchId, query, filters, dataSource,
+      authState.user, aiSummary, aiSummaryResults]);
+
+  // Load research tree from backend
+  const handleLoadResearch = useCallback(async (researchId: string) => {
+    try {
+      interface SavedResearchData {
+        id: string;
+        query: string;
+        filters: SearchFilters | null;
+        data_source: string | null;
+        drilldown_tree: DrilldownNode;
+      }
+      const resp = await axios.get<SavedResearchData>(`${API_BASE_URL}/research/${researchId}`);
+      const data = resp.data;
+
+      setQuery(data.query);
+      if (data.filters) setFilters(data.filters);
+
+      const tree = data.drilldown_tree;
+      loadDrilldownTree(tree);
+      restoreFromNode(tree);
+      setSavedResearchId(data.id);
+      handleTabChange('search');
+    } catch (error) {
+      console.error('Failed to load research:', error);
+    }
+  }, [loadDrilldownTree, restoreFromNode, handleTabChange]);
 
   const handlePostSearchResults = useCallback((data: SearchResponse) => {
     if (data.results.length > 0) {
@@ -2501,6 +2566,8 @@ function App() {
       dataSource={dataSource}
       summaryModelConfig={summaryModelConfig}
       hasSearchRun={hasSearchRun}
+      onSaveResearch={handleSaveResearch}
+      saveResearchLoading={saveResearchLoading}
     />
   );
 
@@ -2596,6 +2663,7 @@ function App() {
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
         onAdminClick={() => handleTabChange('admin')}
+        onLoadResearch={handleLoadResearch}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />}
       />
 

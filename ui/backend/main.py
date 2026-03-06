@@ -743,9 +743,11 @@ if USER_MODULE:
 
     from ui.backend.routes import activity as activity_routes
     from ui.backend.routes import ratings as ratings_routes
+    from ui.backend.routes import research as research_routes
 
     app.include_router(ratings_routes.router, prefix="/ratings", tags=["ratings"])
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
+    app.include_router(research_routes.router, prefix="/research", tags=["research"])
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 
     # Auto-promote first superuser on startup (if configured)

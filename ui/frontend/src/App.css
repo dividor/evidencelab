@@ -8680,6 +8680,49 @@ li.ai-fact-active::before {
   background: var(--gray-50);
 }
 
+/* Saved Research */
+.profile-research {
+  margin-top: 0.25rem;
+}
+
+.saved-research-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.saved-research-row:hover {
+  background: var(--gray-50);
+}
+
+.saved-research-row td {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-danger-sm {
+  background: transparent;
+  color: #dc2626;
+  border: 1px solid #dc2626;
+  border-radius: var(--radius-sm);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-danger-sm:hover:not(:disabled) {
+  background: #dc2626;
+  color: #fff;
+}
+
+.btn-danger-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Admin panel */
 .admin-panel {
   max-width: 1400px;

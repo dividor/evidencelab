@@ -28,6 +28,7 @@ interface TopBarProps {
   onTechClick: () => void;
   onDataClick: () => void;
   onAdminClick?: () => void;
+  onLoadResearch?: (id: string) => void;
   navTabs?: React.ReactNode;
 }
 
@@ -56,6 +57,7 @@ export const TopBar = ({
   onTechClick,
   onDataClick,
   onAdminClick,
+  onLoadResearch,
   navTabs,
 }: TopBarProps) => {
   const [hoveredModelCombo, setHoveredModelCombo] = useState<string | null>(null);
@@ -281,7 +283,7 @@ export const TopBar = ({
               </div>
             )}
           </div>
-          {USER_MODULE && <UserMenu onAdminClick={onAdminClick} />}
+          {USER_MODULE && <UserMenu onAdminClick={onAdminClick} onLoadResearch={onLoadResearch} />}
         </div>
       </div>
       {navTabs}

@@ -17,6 +17,7 @@ interface UseDrilldownTreeResult {
   isDrilldown: boolean;
   currentHighlight: string | undefined;
   resetTree: () => void;
+  loadTree: (tree: DrilldownNode) => void;
   startDrilldown: (highlightedText: string, snapshot: AiSummarySnapshot, rootLabel?: string) => string;
   addChildNode: (label: string, snapshot: AiSummarySnapshot, rootLabel?: string) => string;
   updateNodeData: (nodeId: string, data: Partial<AiSummarySnapshot>) => void;
@@ -75,6 +76,17 @@ const saveSnapshot = (
     translatedLang: snapshot.translatedLang,
   }));
 
+/** Extract the maximum numeric ID from the tree to reset the counter after load */
+const getMaxIdCounter = (node: DrilldownNode): number => {
+  let max = 0;
+  const match = node.id.match(/^dd-(\d+)$/);
+  if (match) max = parseInt(match[1], 10);
+  for (const child of node.children) {
+    max = Math.max(max, getMaxIdCounter(child));
+  }
+  return max;
+};
+
 export const useDrilldownTree = (): UseDrilldownTreeResult => {
   const [drilldownTree, setDrilldownTree] = useState<DrilldownNode | null>(null);
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
@@ -88,6 +100,13 @@ export const useDrilldownTree = (): UseDrilldownTreeResult => {
   const resetTree = useCallback(() => {
     setDrilldownTree(null);
     setCurrentNodeId(null);
+  }, []);
+
+  /** Load a complete drilldown tree (e.g., from saved research) */
+  const loadTree = useCallback((tree: DrilldownNode) => {
+    setDrilldownTree(tree);
+    setCurrentNodeId(null); // Start at root
+    idCounter.current = getMaxIdCounter(tree);
   }, []);
 
   /**
@@ -240,6 +259,7 @@ export const useDrilldownTree = (): UseDrilldownTreeResult => {
     isDrilldown,
     currentHighlight,
     resetTree,
+    loadTree,
     startDrilldown,
     addChildNode,
     updateNodeData,
