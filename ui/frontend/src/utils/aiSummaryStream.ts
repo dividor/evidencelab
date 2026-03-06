@@ -13,7 +13,6 @@ interface AiSummaryStreamHandlers {
 
 interface AiSummaryStreamOptions {
   apiBaseUrl: string;
-  apiKey?: string;
   dataSource: string;
   query: string;
   results: SearchResult[];
@@ -27,13 +26,10 @@ const getCsrfToken = (): string | null => {
   return match ? decodeURIComponent(match[1]) : null;
 };
 
-const buildHeaders = (apiKey?: string): Record<string, string> => {
+const buildHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
-  if (apiKey) {
-    headers['X-API-Key'] = apiKey;
-  }
   const csrfToken = getCsrfToken();
   if (csrfToken) {
     headers['X-CSRF-Token'] = csrfToken;
@@ -133,7 +129,6 @@ const readStream = async (
 
 export const streamAiSummary = async ({
   apiBaseUrl,
-  apiKey,
   dataSource,
   query,
   results,
@@ -143,7 +138,7 @@ export const streamAiSummary = async ({
 }: AiSummaryStreamOptions): Promise<void> => {
   const response = await fetch(`${apiBaseUrl}/ai-summary/stream?data_source=${dataSource}`, {
     method: 'POST',
-    headers: buildHeaders(apiKey),
+    headers: buildHeaders(),
     body: JSON.stringify({
       query,
       results,
