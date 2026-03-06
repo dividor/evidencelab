@@ -169,8 +169,11 @@ const GroupSettingsManager: React.FC = () => {
       const patchBody: Record<string, unknown> = {
         search_settings: Object.keys(payload).length > 0 ? payload : {},
       };
-      // Include summary prompt: empty string clears the override on the server
-      patchBody.summary_prompt = summaryPromptValue.trim() || '';
+      // Include summary prompt: empty string clears the override on the server.
+      // If the prompt matches the built-in default, treat it as "no override".
+      const trimmedPrompt = summaryPromptValue.trim();
+      patchBody.summary_prompt =
+        trimmedPrompt && trimmedPrompt !== DEFAULT_SUMMARY_PROMPT.trim() ? trimmedPrompt : '';
       await axios.patch(`${API_BASE_URL}/groups/${selectedGroupId}`, patchBody);
       setSuccess('Settings saved.');
       window.dispatchEvent(new Event(GROUP_SETTINGS_UPDATED_EVENT));
