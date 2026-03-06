@@ -48,6 +48,18 @@ const BOOST_FIELD_OPTIONS = [
   { value: 'language', label: 'Language' },
 ];
 
+/** Default system prompt — used as starting point when enabling override for the first time. */
+const DEFAULT_SUMMARY_PROMPT = `You are a helpful assistant. Answer ONLY the user's specific question using ONLY the information in the search results provided. Do NOT add any information not explicitly stated in the results. Do NOT make assumptions or inferences. Do NOT provide general knowledge. If the search results don't contain enough information to answer the question, say so. Use inline citations [1], [2], [3] to reference which result each piece of information comes from.
+
+Given the conversation between a user and a helpful assistant and some search results, create a final answer for the assistant. The answer should use all relevant information from the search results, not introduce any additional information, and use **exactly** the same words as the search results. The assistant's answer should be no more than 20 sentences. The assistant's answer should be formatted as a summary paragraph, followed bulleted list under the h2 title 'Key Facts'. Each list item should start with the "-" symbol. You must provide a citation for every list item.
+
+Do not include 'Key Facts' if the results don't contain information about the user's query.
+
+If the query asks about a specific country, only consider results for that refer explicitly to that country.
+
+
+IMPORTANT: You NEVER provide an answer unless it is supported by the content you have been provided.`;
+
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -81,6 +93,7 @@ const GroupSettingsManager: React.FC = () => {
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptEnabled, setSummaryPromptEnabled] = useState(false);
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
+  const [showPromptModal, setShowPromptModal] = useState(false);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -609,9 +622,14 @@ const GroupSettingsManager: React.FC = () => {
                         type="checkbox"
                         checked={summaryPromptEnabled}
                         onChange={(e) => {
-                          setSummaryPromptEnabled(e.target.checked);
-                          if (!e.target.checked) {
-                            setSummaryPromptValue('');
+                          const enabling = e.target.checked;
+                          setSummaryPromptEnabled(enabling);
+                          if (enabling) {
+                            // Pre-fill with default prompt if not already set
+                            if (!summaryPromptValue.trim()) {
+                              setSummaryPromptValue(DEFAULT_SUMMARY_PROMPT);
+                            }
+                            setShowPromptModal(true);
                           }
                         }}
                         className="rerank-checkbox"
@@ -626,24 +644,14 @@ const GroupSettingsManager: React.FC = () => {
                     </label>
                     {summaryPromptEnabled && (
                       <div style={{ marginTop: '8px' }}>
-                        <textarea
-                          value={summaryPromptValue}
-                          onChange={(e) => setSummaryPromptValue(e.target.value)}
-                          placeholder="Enter a custom system prompt for AI summaries..."
-                          rows={8}
-                          style={{
-                            width: '100%',
-                            fontFamily: 'monospace',
-                            fontSize: '12px',
-                            padding: '8px',
-                            borderRadius: '4px',
-                            border: '1px solid #d1d5db',
-                            resize: 'vertical',
-                          }}
-                        />
-                        <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
-                          This prompt replaces the default system prompt used when generating AI summaries
-                          for members of this group.
+                        <button
+                          className="btn-sm"
+                          onClick={() => setShowPromptModal(true)}
+                        >
+                          Edit Prompt
+                        </button>
+                        <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px' }}>
+                          Custom system prompt is active for this group.
                         </p>
                       </div>
                     )}
@@ -664,6 +672,62 @@ const GroupSettingsManager: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Summary Prompt Modal */}
+      {showPromptModal && (
+        <div className="modal-overlay" onClick={() => setShowPromptModal(false)}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '900px', height: '80vh', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>AI Summary System Prompt</h3>
+              <button className="modal-close-btn" onClick={() => setShowPromptModal(false)}>
+                &times;
+              </button>
+            </div>
+            <div className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px', flexShrink: 0 }}>
+                This prompt replaces the default system prompt used when generating AI summaries
+                for members of <strong>{selectedGroup?.name}</strong>.
+              </p>
+              <textarea
+                value={summaryPromptValue}
+                onChange={(e) => setSummaryPromptValue(e.target.value)}
+                placeholder="Enter a custom system prompt for AI summaries..."
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  resize: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb' }}>
+              <button
+                className="btn-sm"
+                style={{ color: '#6b7280' }}
+                onClick={() => setSummaryPromptValue(DEFAULT_SUMMARY_PROMPT)}
+              >
+                Reset to Default Prompt
+              </button>
+              <button
+                className="btn-sm"
+                onClick={() => setShowPromptModal(false)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
