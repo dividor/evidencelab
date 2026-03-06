@@ -693,7 +693,7 @@ class TestPipelineIntegration:
                 )
 
                 # Force a search submit in case the initial URL load is still pending.
-                search_box = page.get_by_role("textbox", name="Search documents")
+                search_box = page.get_by_role("textbox", name=re.compile(r"^Search"))
                 search_box.fill(query)
                 search_box.press("Enter")
 
@@ -805,7 +805,7 @@ class TestPipelineIntegration:
                 print(f"   Searched for: {query}")
 
                 # Force a search submit in case the initial URL load is still pending.
-                search_box = page.get_by_role("textbox", name="Search documents")
+                search_box = page.get_by_role("textbox", name=re.compile(r"^Search"))
                 search_box.fill(query)
                 search_box.press("Enter")
 
@@ -1069,7 +1069,7 @@ class TestPipelineIntegration:
                 print(f"   Searched for: {query}")
 
                 # Force a search submit in case the initial URL load is still pending.
-                search_box = page.get_by_role("textbox", name="Search documents")
+                search_box = page.get_by_role("textbox", name=re.compile(r"^Search"))
                 search_box.fill(query)
                 search_box.press("Enter")
 
