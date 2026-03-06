@@ -310,6 +310,8 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
 }) => {
   const citationMapping = buildCitationMapping(summaryText);
   const blocks = splitSummaryBlocks(summaryText);
+  // Track across all blocks so only the very first heading gets the button
+  let isFirstHeadingGlobal = true;
 
   return (
     <>
@@ -322,7 +324,6 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
         let pendingListItems: string[] = [];
         let pendingListType: 'numbered' | 'bullet' | null = null;
         let afterKeyFacts = false;
-        let isFirstHeading = true;
 
         const flushParagraph = () => {
           if (pendingParagraphLines.length === 0) return;
@@ -377,9 +378,9 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
             afterKeyFacts = isKeyFacts;
             const content = renderLineWithCitations(heading.text, searchResults, citationMapping, onResultClick, `${blockIndex}-h-${elements.length}`);
             elements.push(renderHeadingElement(heading, `${blockIndex}-h-${elements.length}`, content, {
-              isKeyFacts, isFirstHeading, summaryText, onFindOutMore, findOutMoreLoading, findOutMoreActiveFact,
+              isKeyFacts, isFirstHeading: isFirstHeadingGlobal, summaryText, onFindOutMore, findOutMoreLoading, findOutMoreActiveFact,
             }));
-            if (isFirstHeading) isFirstHeading = false;
+            if (isFirstHeadingGlobal) isFirstHeadingGlobal = false;
             return;
           }
 

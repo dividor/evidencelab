@@ -3837,9 +3837,9 @@ li.ai-fact-active::before {
 
 .ai-heading-active {
   position: relative;
+  display: inline-block;
   border-radius: var(--radius-md);
   padding: 2px 6px;
-  margin-left: -6px;
 }
 
 .ai-heading-active::before {
