@@ -690,7 +690,7 @@ export const AiSummaryPanel = ({
           onToggleCollapsed={onToggleCollapsed}
         />
         {!aiSummaryCollapsed && aiSummary && !aiSummaryLoading && viewMode === 'summary' && (
-          <p className="ai-summary-hint">Highlight text below to find out more.</p>
+          <p className="ai-summary-hint">You can highlight text below or click the &apos;Find out more&apos; button to research sub-topics.</p>
         )}
         {!aiSummaryCollapsed && onDrilldownBack && (
           <DrilldownNavRow

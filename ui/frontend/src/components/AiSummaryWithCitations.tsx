@@ -264,7 +264,7 @@ const renderHeadingElement = (
   const headingText = heading.text.replace(CITATION_REGEX, '').trim();
   const isActiveHeading = !isKeyFacts && findOutMoreActiveFact && headingText === findOutMoreActiveFact;
   const btnLabel = findOutMoreLoading ? 'Researching...' : 'Find out more';
-  const btnTooltip = 'Click this to have the system automatically drill-down into the topics mentioned below';
+  const btnTooltip = 'Click this to have the system automatically drill-down into the topics mentioned below. You can save your research to your profile to pick up where you left off.';
 
   if (isKeyFacts && onFindOutMore) {
     return (

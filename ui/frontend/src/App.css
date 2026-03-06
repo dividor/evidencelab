@@ -3771,6 +3771,7 @@ h6,
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  overflow: visible;
 }
 
 .ai-key-facts-header h3,
@@ -3809,24 +3810,25 @@ h6,
 .ai-find-out-more-btn[data-tooltip]::before {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: 100%;
+  top: 100%;
   left: 50%;
-  transform: translateX(-50%) translateY(-8px);
-  background: var(--gray-900);
-  color: var(--white);
+  transform: translateX(-50%) translateY(8px);
+  background: var(--white);
+  color: var(--gray-600);
+  border: 1px solid var(--gray-200);
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-md);
   font-size: 0.8125rem;
-  min-width: 200px;
-  max-width: 300px;
+  min-width: 220px;
+  max-width: 320px;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.15s ease, visibility 0.15s ease;
   z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  line-height: 1.4;
-  text-align: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  line-height: 1.5;
+  text-align: left;
   white-space: normal;
   font-weight: 400;
 }
@@ -3834,11 +3836,11 @@ h6,
 .ai-find-out-more-btn[data-tooltip]::after {
   content: '';
   position: absolute;
-  bottom: 100%;
+  top: 100%;
   left: 50%;
-  transform: translateX(-50%) translateY(-2px);
+  transform: translateX(-50%) translateY(2px);
   border: 5px solid transparent;
-  border-top-color: var(--gray-900);
+  border-bottom-color: var(--gray-200);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
