@@ -3773,6 +3773,7 @@ h6,
   gap: var(--spacing-sm);
 }
 
+.ai-key-facts-header h3,
 .ai-key-facts-header h4,
 .ai-key-facts-header h5,
 .ai-key-facts-header h6 {
@@ -3832,6 +3833,40 @@ li.ai-fact-active::before {
 @keyframes rainbow-border {
   0% { background-position: 0% 50%; }
   100% { background-position: 300% 50%; }
+}
+
+.ai-heading-active {
+  position: relative;
+  border-radius: var(--radius-md);
+  padding: 2px 6px;
+  margin-left: -6px;
+}
+
+.ai-heading-active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  padding: 2px;
+  background: linear-gradient(
+    90deg,
+    #ff0000, #ff7700, #ffdd00, #00ff00, #0077ff, #8800ff, #ff0000
+  );
+  background-size: 300% 100%;
+  animation: rainbow-border 3s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.ai-heading-active h3,
+.ai-heading-active h4,
+.ai-heading-active h5,
+.ai-heading-active h6 {
+  margin: 0;
 }
 
 .ai-summary-expand-button:hover {
