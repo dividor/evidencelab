@@ -56,7 +56,7 @@ async def _resolve_summary_prompt(user, session) -> str | None:
     if not _USER_MODULE or user is None or session is None:
         return None
     stmt = (
-        select(UserGroup.summary_prompt)
+        select(UserGroup.summary_prompt, UserGroup.name, UserGroup.is_default)
         .join(UserGroupMember, UserGroupMember.group_id == UserGroup.id)
         .where(
             UserGroupMember.user_id == user.id,
@@ -67,7 +67,22 @@ async def _resolve_summary_prompt(user, session) -> str | None:
         .limit(1)
     )
     result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    row = result.first()
+    if row:
+        prompt, group_name, is_default = row
+        user_email = getattr(user, "email", "unknown")
+        logger.info(
+            "Resolved summary prompt for user=%s from group=%s (default=%s), len=%d",
+            user_email,
+            group_name,
+            is_default,
+            len(prompt),
+        )
+        return prompt
+    logger.info(
+        "No group summary prompt found for user=%s", getattr(user, "email", "unknown")
+    )
+    return None
 
 
 @router.post("/translate")
