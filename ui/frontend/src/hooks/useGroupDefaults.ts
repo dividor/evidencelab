@@ -53,6 +53,10 @@ function applyGroupDefaults(defaults: SearchSettings, setters: Setters): void {
       setters[key](value);
     }
   }
+  // greetingMessage has no URL param — apply directly if present
+  if (defaults.greetingMessage !== undefined && setters.greetingMessage) {
+    setters.greetingMessage(defaults.greetingMessage);
+  }
 }
 
 export function useGroupDefaults(

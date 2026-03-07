@@ -13,6 +13,7 @@ interface SearchBoxProps {
   documentCount?: number;
   exampleQueries?: string[];
   onExampleQueryClick?: (query: string) => void;
+  greetingMessage?: string;
 }
 
 export const SearchBox = ({
@@ -28,15 +29,19 @@ export const SearchBox = ({
   documentCount,
   exampleQueries,
   onExampleQueryClick,
+  greetingMessage,
 }: SearchBoxProps) => {
   if (!isActive) {
     return null;
   }
 
   const isLanding = !hasSearched;
-  const placeholder = datasetName && documentCount
+  const defaultPlaceholder = datasetName && documentCount
     ? `Search ${documentCount.toLocaleString()} ${datasetName}`
     : 'Search documents';
+  const placeholder = isLanding && greetingMessage?.trim()
+    ? greetingMessage.trim()
+    : defaultPlaceholder;
 
   return (
     <div

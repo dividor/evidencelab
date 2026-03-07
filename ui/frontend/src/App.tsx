@@ -744,6 +744,8 @@ function App() {
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
+  // Group greeting message (overrides search placeholder on landing page)
+  const [greetingMessage, setGreetingMessage] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -796,6 +798,7 @@ function App() {
     deduplicate: setDeduplicateEnabled,
     fieldBoost: setFieldBoostEnabled,
     fieldBoostFields: setFieldBoostFields,
+    greetingMessage: setGreetingMessage,
   });
 
   // Debug: Log semantic threshold on startup
@@ -2801,6 +2804,7 @@ function App() {
         documentCount={datasetTotals[selectedDomain]}
         exampleQueries={currentDataSourceConfig?.example_queries}
         onExampleQueryClick={handleExampleQueryClick}
+        greetingMessage={greetingMessage}
       />
 
       <TabContent
