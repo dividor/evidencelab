@@ -39,6 +39,7 @@ export interface UserGroup {
   datasource_keys: string[];
   member_count: number;
   search_settings?: SearchSettings | null;
+  summary_prompt?: string | null;
 }
 
 export interface GroupMember {

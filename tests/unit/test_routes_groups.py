@@ -44,7 +44,12 @@ def _make_admin():
 
 
 def _make_group(
-    *, name="Test Group", description=None, is_default=False, search_settings=None
+    *,
+    name="Test Group",
+    description=None,
+    is_default=False,
+    search_settings=None,
+    summary_prompt=None,
 ):
     """Create a mock UserGroup."""
     group = MagicMock()
@@ -54,6 +59,7 @@ def _make_group(
     group.is_default = is_default
     group.created_at = "2024-01-01T00:00:00Z"
     group.search_settings = search_settings
+    group.summary_prompt = summary_prompt
     return group
 
 

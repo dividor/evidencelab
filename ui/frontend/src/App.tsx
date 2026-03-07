@@ -1699,14 +1699,21 @@ function App() {
       setResults(freshResults);
       setAiSummaryResults(freshResults);
 
-      const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of the original question: "${query}"`;
+      // Query inheritance: always include root query for broad context,
+      // plus the immediate parent node label for specificity (avoids noisy
+      // full-chain at deep levels). drilldownHighlight is the current node's
+      // label before drilling deeper.
+      const parentContext = drilldownHighlight && drilldownHighlight !== query
+        ? `, specifically "${drilldownHighlight}"`
+        : '';
+      const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of: "${query}"${parentContext}`;
       launchSummaryStream(drilldownQuery, freshResults);
     } catch (error) {
       console.error('Drilldown search failed:', error);
       setAiSummary(AI_SUMMARY_ERROR);
       setAiSummaryLoading(false);
     }
-  }, [getSnapshot, startDrilldownInTree, query, launchSummaryStream,
+  }, [getSnapshot, startDrilldownInTree, query, drilldownHighlight, launchSummaryStream,
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
@@ -1764,7 +1771,13 @@ function App() {
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
         const freshResults = searchResp.data.results.slice(0, 20);
 
-        const summaryQuery = `Regarding: "${fact}"\n\nProvide detail about this, in the context of: "${query}"`;
+        // Query inheritance (root + parent): same approach as startDrilldown above.
+        // At root level parentContext is empty; deeper levels add the immediate
+        // parent's label so the LLM stays focused without a long ancestor chain.
+        const parentContext = drilldownHighlight && drilldownHighlight !== query
+          ? `, specifically "${drilldownHighlight}"`
+          : '';
+        const summaryQuery = `Regarding: "${fact}"\n\nProvide detail about this, in the context of: "${query}"${parentContext}`;
         const leanResults = freshResults.map((r) => ({
           chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
           title: r.title, organization: r.organization, year: r.year,
@@ -1791,7 +1804,7 @@ function App() {
     setFindOutMoreActiveFact(null);
     setFindOutMoreDone(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [getSnapshot, addChildNodeInTree, updateNodeDataInTree, query, summaryModelConfig,
+  }, [getSnapshot, addChildNodeInTree, updateNodeDataInTree, query, drilldownHighlight, summaryModelConfig,
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,

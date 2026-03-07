@@ -78,6 +78,7 @@ Search powered by hybrid retrieval and AI.
   * **Translation**: Translate search results (titles + snippets) into 10+ languages on request.
   * **Semantic Highlighting**: Highlights relevant phrases in the result snippet effectively, even when the search terms are in a different language from the result.
 * **AI Search Summary**: Generates a direct answer to the user's query by synthesizing the top search results.
+* **Drilldown Research**: Highlight text in an AI summary or click "Find out more" on the top heading to automatically drill into sub-topics. Each sub-query inherits the root search query plus the immediate parent topic for context, building an explorable tree of research. The tree view lets you navigate back to any previous node to review its results and summary. Sub-queries also inherit all active filters (data source, date range, etc.) from the parent search.
 * **Preview & Deep-Linking**: Integrated PDF viewer that opens directly to the specific page and highlights the relevant paragraph.
 
 ## Administration & Observability

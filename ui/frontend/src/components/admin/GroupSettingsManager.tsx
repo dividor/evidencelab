@@ -48,6 +48,18 @@ const BOOST_FIELD_OPTIONS = [
   { value: 'language', label: 'Language' },
 ];
 
+/** Default system prompt — used as starting point when enabling override for the first time. */
+const DEFAULT_SUMMARY_PROMPT = `You are a helpful assistant. Answer ONLY the user's specific question using ONLY the information in the search results provided. Do NOT add any information not explicitly stated in the results. Do NOT make assumptions or inferences. Do NOT provide general knowledge. If the search results don't contain enough information to answer the question, say so. Use inline citations [1], [2], [3] to reference which result each piece of information comes from.
+Given the conversation between a user and a helpful assistant and some search results, create a final answer for the assistant. The answer should use all relevant information from the search results, not introduce any additional information, and use **exactly** the same words as the search results. The assistant's answer should be formatted as several structured paragraphs with headings, using markdown heading levels to indicate sub-headings etc. Heading MUST use markdown tags, eg # Heading 1, ## Heading 2, etc.
+Do not include a 'References' section.
+Do not include any '---' separators.
+Do not include a summary section, all information should be in structured sections.
+Do NOT include a conclusion.
+You must provide a citation for every factual claim, the more citations per fact, the better.
+NEVER provide inline citations as ranges, eg [1-20] as the post-processor code cannot use these. Explict citations for explicit facts only.
+If the query asks about a specific country, only consider results for that refer explicitly to that country.
+IMPORTANT: You NEVER provide an answer unless it is supported by the content you have been provided.`;
+
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -63,7 +75,7 @@ const GroupSettingsManager: React.FC = () => {
 
   // Collapsible sections — both open by default
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['search_settings', 'content_settings'])
+    new Set(['search_settings', 'content_settings', 'ai_summary'])
   );
 
   const toggleSection = (key: string) => {
@@ -77,6 +89,10 @@ const GroupSettingsManager: React.FC = () => {
       return next;
     });
   };
+
+  // Summary prompt override (top-level group field, not part of search_settings)
+  const [summaryPromptValue, setSummaryPromptValue] = useState('');
+  const [showPromptModal, setShowPromptModal] = useState(false);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -108,6 +124,7 @@ const GroupSettingsManager: React.FC = () => {
     if (!selectedGroupId) {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
+      setSummaryPromptValue('');
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -126,6 +143,9 @@ const GroupSettingsManager: React.FC = () => {
 
     setOverrides(newOverrides);
     setValues(newValues);
+
+    // Load summary prompt override
+    setSummaryPromptValue(group.summary_prompt || '');
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -146,9 +166,15 @@ const GroupSettingsManager: React.FC = () => {
           payload[key] = values[key];
         }
       }
-      await axios.patch(`${API_BASE_URL}/groups/${selectedGroupId}`, {
+      const patchBody: Record<string, unknown> = {
         search_settings: Object.keys(payload).length > 0 ? payload : {},
-      });
+      };
+      // Include summary prompt: empty string clears the override on the server.
+      // If the prompt matches the built-in default, treat it as "no override".
+      const trimmedPrompt = summaryPromptValue.trim();
+      patchBody.summary_prompt =
+        trimmedPrompt && trimmedPrompt !== DEFAULT_SUMMARY_PROMPT.trim() ? trimmedPrompt : '';
+      await axios.patch(`${API_BASE_URL}/groups/${selectedGroupId}`, patchBody);
       setSuccess('Settings saved.');
       window.dispatchEvent(new Event(GROUP_SETTINGS_UPDATED_EVENT));
       await fetchGroups();
@@ -167,9 +193,11 @@ const GroupSettingsManager: React.FC = () => {
     try {
       await axios.patch(`${API_BASE_URL}/groups/${selectedGroupId}`, {
         search_settings: {},
+        summary_prompt: '',
       });
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
+      setSummaryPromptValue('');
       setSuccess('Settings reset to system defaults.');
       await fetchGroups();
     } catch (err: any) {
@@ -573,6 +601,39 @@ const GroupSettingsManager: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* AI Summary Settings */}
+              <div className="filter-section">
+                <div className="filter-section-header" onClick={() => toggleSection('ai_summary')}>
+                  <span className="filter-section-toggle">
+                    {collapsedSections.has('ai_summary') ? '▼' : '▶'}
+                  </span>
+                  <span className="filter-section-title">AI Summary</span>
+                </div>
+                {collapsedSections.has('ai_summary') && (
+                  <div className="filter-section-content">
+                    <div style={{ marginTop: '4px' }}>
+                      <button
+                        className="btn-sm"
+                        onClick={() => {
+                          // Pre-fill with default prompt if empty
+                          if (!summaryPromptValue.trim()) {
+                            setSummaryPromptValue(DEFAULT_SUMMARY_PROMPT);
+                          }
+                          setShowPromptModal(true);
+                        }}
+                      >
+                        Edit Prompt
+                      </button>
+                      <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px' }}>
+                        {summaryPromptValue.trim()
+                          ? 'Custom system prompt is active for this group.'
+                          : 'Using default system prompt. Click Edit to customize.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Actions */}
@@ -587,6 +648,64 @@ const GroupSettingsManager: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Summary Prompt Modal */}
+      {showPromptModal && (
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPromptModal(false); }}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '900px', height: '80vh', display: 'flex', flexDirection: 'column' }}
+          >
+            <div className="modal-header">
+              <h3>AI Summary System Prompt</h3>
+              <button className="modal-close-btn" onClick={() => setShowPromptModal(false)}>
+                &times;
+              </button>
+            </div>
+            <div className="modal-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px', flexShrink: 0 }}>
+                This prompt replaces the default system prompt used when generating AI summaries
+                for members of <strong>{selectedGroup?.name}</strong>.
+              </p>
+              <textarea
+                value={summaryPromptValue}
+                onChange={(e) => setSummaryPromptValue(e.target.value)}
+                placeholder="Enter a custom system prompt for AI summaries..."
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  fontFamily: 'monospace',
+                  fontSize: '13px',
+                  lineHeight: '1.5',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  border: '1px solid #d1d5db',
+                  resize: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+            <div className="modal-footer" style={{ padding: '16px 24px', borderTop: '1px solid #e5e7eb' }}>
+              <button
+                className="btn-sm"
+                style={{ color: '#6b7280' }}
+                onClick={() => setSummaryPromptValue(DEFAULT_SUMMARY_PROMPT)}
+              >
+                Reset to Default Prompt
+              </button>
+              <button
+                className="btn-sm"
+                onClick={() => {
+                  setShowPromptModal(false);
+                  handleSave();
+                }}
+              >
+                Save &amp; Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

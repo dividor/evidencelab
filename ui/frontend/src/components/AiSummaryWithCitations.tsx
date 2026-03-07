@@ -43,6 +43,28 @@ const extractKeyFacts = (summary: string): string[] => {
   return items.map((i) => i.fact);
 };
 
+const extractSubHeadings = (summary: string): string[] => {
+  const lines = summary.split('\n');
+  let firstLevel: number | null = null;
+  const subHeadings: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const heading = parseHeading(trimmed);
+    if (!heading) continue;
+    if (/key\s*facts/i.test(heading.text)) continue;
+    if (firstLevel === null) {
+      firstLevel = heading.level;
+      continue;
+    }
+    // Collect headings at a deeper level than the first
+    if (heading.level >= firstLevel) {
+      const text = heading.text.replace(CITATION_REGEX, '').trim();
+      if (text) subHeadings.push(text);
+    }
+  }
+  return subHeadings;
+};
+
 const buildCitationMapping = (summaryText: string): Map<number, number> => {
   const citedNumbers = new Set<number>();
   let match;
@@ -58,6 +80,23 @@ const buildCitationMapping = (summaryText: string): Map<number, number> => {
     citationMapping.set(origNum, seqIdx + 1);
   });
   return citationMapping;
+};
+
+/** Strip trailing Conclusion / Summary sections the LLM sometimes adds despite prompt instructions. */
+const stripTrailingBoilerplate = (text: string): string => {
+  const lines = text.split('\n');
+  let cutIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const heading = parseHeading(lines[i].trim());
+    if (heading && /^(summary|conclusion|in\s+summary|final\s+summary)$/i.test(heading.text)) {
+      cutIndex = i;
+      break;
+    }
+    // Stop searching once we hit a non-empty, non-heading line above the last heading
+    if (cutIndex === -1 && lines[i].trim() && !parseHeading(lines[i].trim())) continue;
+  }
+  if (cutIndex > 0) return lines.slice(0, cutIndex).join('\n').trimEnd();
+  return text;
 };
 
 const splitSummaryBlocks = (summaryText: string): string[] =>
@@ -224,6 +263,61 @@ const renderLineWithCitations = (
   return <>{parts}</>;
 };
 
+const renderHeadingElement = (
+  heading: { text: string; level: number },
+  key: string,
+  content: React.ReactNode,
+  opts: {
+    isKeyFacts: boolean;
+    isFirstHeading: boolean;
+    summaryText: string;
+    onFindOutMore?: (items: string[]) => void;
+    findOutMoreLoading?: boolean;
+    findOutMoreActiveFact?: string | null;
+  },
+): React.ReactNode => {
+  const { level } = heading;
+  const { isKeyFacts, isFirstHeading, summaryText: text, onFindOutMore, findOutMoreLoading, findOutMoreActiveFact } = opts;
+  const headingText = heading.text.replace(CITATION_REGEX, '').trim();
+  const isActiveHeading = !isKeyFacts && findOutMoreActiveFact && headingText === findOutMoreActiveFact;
+  const btnLabel = findOutMoreLoading ? 'Researching...' : 'Find out more';
+  const btnTooltip = 'Click this to have the system automatically drill-down into the topics mentioned below. You can save your research to your profile to pick up where you left off.';
+
+  if (isKeyFacts && onFindOutMore) {
+    return (
+      <div key={key} className="ai-key-facts-header">
+        {React.createElement(`h${level}`, null, content)}
+        <button className="ai-find-out-more-btn" disabled={findOutMoreLoading} data-tooltip={btnTooltip}
+          onClick={(e) => { e.preventDefault(); onFindOutMore(extractKeyFacts(text)); }}>
+          {btnLabel}
+        </button>
+      </div>
+    );
+  }
+  if (isFirstHeading && onFindOutMore && !isKeyFacts) {
+    const subHeadings = extractSubHeadings(text);
+    return (
+      <div key={key} className="ai-key-facts-header">
+        {React.createElement(`h${level}`, null, content)}
+        {subHeadings.length > 0 && (
+          <button className="ai-find-out-more-btn" disabled={findOutMoreLoading} data-tooltip={btnTooltip}
+            onClick={(e) => { e.preventDefault(); onFindOutMore(subHeadings); }}>
+            {btnLabel}
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (isActiveHeading) {
+    return (
+      <div key={key} className="ai-heading-active">
+        {React.createElement(`h${level}`, null, content)}
+      </div>
+    );
+  }
+  return React.createElement(`h${level}`, { key }, content);
+};
+
 export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
   summaryText,
   searchResults,
@@ -232,8 +326,11 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
   findOutMoreLoading,
   findOutMoreActiveFact,
 }) => {
-  const citationMapping = buildCitationMapping(summaryText);
-  const blocks = splitSummaryBlocks(summaryText);
+  const cleanedText = stripTrailingBoilerplate(summaryText);
+  const citationMapping = buildCitationMapping(cleanedText);
+  const blocks = splitSummaryBlocks(cleanedText);
+  // Track across all blocks so only the very first heading gets the button
+  let isFirstHeadingGlobal = true;
 
   return (
     <>
@@ -241,8 +338,6 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
         if (!block.trim()) return null;
         const lines = block.split(/\n/);
 
-        // Render each line according to its type, grouping consecutive
-        // lines of the same kind into a single element.
         const elements: React.ReactNode[] = [];
         let pendingParagraphLines: string[] = [];
         let pendingListItems: string[] = [];
@@ -292,8 +387,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
 
         lines.forEach((line) => {
           const trimmed = line.trim();
-          if (!trimmed) return;
-          if (CITATION_ONLY_LINE.test(trimmed)) return;
+          if (!trimmed || CITATION_ONLY_LINE.test(trimmed) || /^-{3,}$/.test(trimmed)) return;
 
           const heading = parseHeading(trimmed);
           if (heading) {
@@ -302,27 +396,10 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
             const isKeyFacts = /key\s*facts/i.test(heading.text);
             afterKeyFacts = isKeyFacts;
             const content = renderLineWithCitations(heading.text, searchResults, citationMapping, onResultClick, `${blockIndex}-h-${elements.length}`);
-            const level = heading.level;
-            if (isKeyFacts && onFindOutMore) {
-              elements.push(
-                <div key={`${blockIndex}-h-${elements.length}`} className="ai-key-facts-header">
-                  {React.createElement(`h${level}`, null, content)}
-                  <button
-                    className="ai-find-out-more-btn"
-                    disabled={findOutMoreLoading}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      const facts = extractKeyFacts(summaryText);
-                      onFindOutMore(facts);
-                    }}
-                  >
-                    {findOutMoreLoading ? 'Researching...' : 'Find out more'}
-                  </button>
-                </div>
-              );
-            } else {
-              elements.push(React.createElement(`h${level}`, { key: `${blockIndex}-h-${elements.length}` }, content));
-            }
+            elements.push(renderHeadingElement(heading, `${blockIndex}-h-${elements.length}`, content, {
+              isKeyFacts, isFirstHeading: isFirstHeadingGlobal, summaryText: cleanedText, onFindOutMore, findOutMoreLoading, findOutMoreActiveFact,
+            }));
+            if (isFirstHeadingGlobal) isFirstHeadingGlobal = false;
             return;
           }
 

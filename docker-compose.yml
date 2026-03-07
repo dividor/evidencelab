@@ -205,7 +205,7 @@ services:
       - app-network
     working_dir: /app
     # Development: single worker with hot reload
-    command: uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log #--reload
+    command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log" #--reload
     restart: unless-stopped
 
   # React frontend (development server with hot reload)

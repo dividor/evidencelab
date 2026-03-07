@@ -92,6 +92,7 @@ class UserGroup(Base):
         default=lambda: datetime.now(timezone.utc),
     )
     search_settings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    summary_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     members: Mapped[list["UserGroupMember"]] = relationship(
         "UserGroupMember", back_populates="group", lazy="selectin"

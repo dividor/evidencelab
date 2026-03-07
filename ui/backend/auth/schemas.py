@@ -149,6 +149,7 @@ class GroupUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     search_settings: Optional[dict] = None
+    summary_prompt: Optional[str] = None
 
 
 class GroupRead(GroupBase):
@@ -160,6 +161,7 @@ class GroupRead(GroupBase):
     datasource_keys: list[str] = []
     member_count: int = 0
     search_settings: Optional[dict] = None
+    summary_prompt: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
