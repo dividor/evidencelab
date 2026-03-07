@@ -5,7 +5,7 @@
   "dependencies": {
     "ajv": "^8.18.0",
     "ajv-keywords": "^5.1.0",
-    "axios": "^1.6.0",
+    "axios": "^1.13.6",
     "pdfjs-dist": "^3.11.174",
     "plotly.js": "^2.27.0",
     "react": "^18.2.0",
@@ -73,7 +73,7 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile.*|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities.*|character-reference-invalid|property-information|hast-util-.*|space-separated-tokens|comma-separated-tokens|ccount|escape-string-regexp|markdown-table|devlop|trim-lines|estree-util-.*|html-url-attributes|is-alphabetical|is-alphanumerical|is-decimal|is-hexadecimal|longest-streak|parse-entities|stringify-entities|zwitch|@ungap)/)"
+      "node_modules/(?!(axios|react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile.*|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities.*|character-reference-invalid|property-information|hast-util-.*|space-separated-tokens|comma-separated-tokens|ccount|escape-string-regexp|markdown-table|devlop|trim-lines|estree-util-.*|html-url-attributes|is-alphabetical|is-alphanumerical|is-decimal|is-hexadecimal|longest-streak|parse-entities|stringify-entities|zwitch|@ungap)/)"
     ],
     "moduleNameMapper": {
       "^unist-util-visit-parents/do-not-use-color$": "unist-util-visit-parents/lib/color.node.js",
