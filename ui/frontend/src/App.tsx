@@ -1875,6 +1875,8 @@ function App() {
       loadDrilldownTree(tree);
       restoreFromNode(tree);
       setSavedResearchId(data.id);
+      setFindOutMoreDone(true);
+      setAiSummaryExpanded(true);
       handleTabChange('search');
     } catch (error) {
       console.error('Failed to load research:', error);
