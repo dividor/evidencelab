@@ -3549,6 +3549,13 @@ h6,
   margin: 0 0 var(--spacing-xs) 0;
 }
 
+.ai-summary-hint-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: 0 0 var(--spacing-xs) 0;
+}
+
 .ai-summary-toggle {
   display: none;
   /* Hidden - removed from UI */

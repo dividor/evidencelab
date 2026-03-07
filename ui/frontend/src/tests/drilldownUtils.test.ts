@@ -10,7 +10,11 @@ const makeSampleTree = (): DrilldownNode => ({
   label: 'Climate adaptation',
   summary: 'Root summary about climate',
   prompt: 'Summarize climate adaptation',
-  results: [{ chunk_id: 'r1', doc_id: 'd1', text: 'result text', title: 'Doc 1', score: 0.9 } as any],
+  results: [{
+    chunk_id: 'r1', doc_id: 'd1', text: 'result text', title: 'Doc 1', score: 0.9,
+    headings: ['H1'], page_num: 1, organization: 'UN', year: '2024',
+    metadata: { heavy_field: 'x'.repeat(1000) },
+  } as any],
   translatedText: null,
   translatedLang: null,
   expanded: false,
@@ -78,17 +82,39 @@ describe('serializeDrilldownTree (lightweight)', () => {
 });
 
 describe('serializeFullDrilldownTree', () => {
-  test('preserves all fields including summary, prompt, results', () => {
+  test('preserves summary, translations, and slim results but strips prompt', () => {
     const tree = makeSampleTree();
     const serialized = serializeFullDrilldownTree(tree);
 
     expect(serialized.id).toBe('root');
     expect(serialized.summary).toBe('Root summary about climate');
-    expect(serialized.prompt).toBe('Summarize climate adaptation');
+    // Prompt is stripped to empty string to save space
+    expect(serialized.prompt).toBe('');
     expect(serialized.results).toHaveLength(1);
     expect(serialized.expanded).toBe(false);
     expect(serialized.translatedText).toBeNull();
     expect(serialized.translatedLang).toBeNull();
+  });
+
+  test('strips heavy metadata from results, keeps display fields', () => {
+    const tree = makeSampleTree();
+    const serialized = serializeFullDrilldownTree(tree);
+    const result = serialized.results[0];
+
+    // Display fields preserved
+    expect(result.chunk_id).toBe('r1');
+    expect(result.doc_id).toBe('d1');
+    expect(result.text).toBe('result text');
+    expect(result.title).toBe('Doc 1');
+    expect(result.score).toBe(0.9);
+    expect(result.headings).toEqual(['H1']);
+    expect(result.organization).toBe('UN');
+    expect(result.year).toBe('2024');
+    // Heavy metadata is stripped
+    expect(result.metadata).toBeUndefined();
+    expect(result.chunk_elements).toBeUndefined();
+    expect(result.tables).toBeUndefined();
+    expect(result.images).toBeUndefined();
   });
 
   test('preserves translation data on children', () => {

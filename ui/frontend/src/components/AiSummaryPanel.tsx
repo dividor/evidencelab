@@ -486,12 +486,23 @@ const GlobalSummaryInTree: React.FC<{
 /** Hint text shown above summary — extracted to isolate CC from main component */
 const SummaryHintText: React.FC<{
   collapsed: boolean; summary: string; loading: boolean; viewMode: string;
-}> = ({ collapsed, summary, loading, viewMode }) => {
+  isAuthenticated?: boolean; onLoadPreviousResearch?: () => void;
+  hasDrilldownTree?: boolean;
+}> = ({ collapsed, summary, loading, viewMode, isAuthenticated, onLoadPreviousResearch, hasDrilldownTree }) => {
   if (collapsed || !summary || loading || viewMode !== 'summary') return null;
+  const showLoad = isAuthenticated && onLoadPreviousResearch && !hasDrilldownTree;
   return (
-    <p className="ai-summary-hint">
-      You can highlight text below or click the &apos;Find out more&apos; button to research sub-topics.
-    </p>
+    <div className="ai-summary-hint-row">
+      <p className="ai-summary-hint" style={{ margin: 0 }}>
+        You can highlight text below or click the &apos;Find out more&apos; button to research sub-topics.
+      </p>
+      {showLoad && (
+        <button className="drilldown-graph-toggle" onClick={onLoadPreviousResearch} type="button"
+          style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>
+          <FolderOpenIcon /> Load Previous Research
+        </button>
+      )}
+    </div>
   );
 };
 
@@ -829,6 +840,9 @@ export const AiSummaryPanel = ({
           summary={aiSummary}
           loading={aiSummaryLoading}
           viewMode={viewMode}
+          isAuthenticated={isAuthenticated}
+          onLoadPreviousResearch={onLoadPreviousResearch}
+          hasDrilldownTree={!!drilldownTree}
         />
         {!aiSummaryCollapsed && onDrilldownBack && (
           <DrilldownNavRow
@@ -857,6 +871,7 @@ export const AiSummaryPanel = ({
         />
         {showGraphView ? (
           <>
+            <p className="ai-summary-hint" style={{ fontStyle: 'italic' }}>Click on nodes below to see their results and summaries.</p>
             <GlobalSummaryInTree
               summary={globalSummary}
               onClick={() => {
@@ -864,7 +879,6 @@ export const AiSummaryPanel = ({
                 setViewMode('summary');
               }}
             />
-            <p className="ai-summary-hint" style={{ fontStyle: 'italic' }}>Click on nodes below to see their results and summaries.</p>
             <DrilldownGraphView
               tree={drilldownTree!}
               activeNodeId={drilldownCurrentNodeId || 'root'}

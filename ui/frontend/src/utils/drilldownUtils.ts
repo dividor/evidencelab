@@ -15,8 +15,32 @@ export const serializeDrilldownTree = (
 });
 
 /**
+ * Strip heavy fields from a search result for storage.
+ * Keeps display-relevant fields (title, text snippet, headings, score, etc.)
+ * but drops metadata (~90KB each), chunk_elements, tables, images, etc.
+ */
+const slimResult = (r: SearchResult): Record<string, any> => ({
+  chunk_id: r.chunk_id,
+  doc_id: r.doc_id,
+  text: r.text,
+  title: r.title,
+  document_title: (r as any).document_title,
+  headings: r.headings,
+  score: r.score,
+  page_num: r.page_num,
+  section_type: (r as any).section_type,
+  organization: r.organization,
+  year: r.year,
+  data_source: (r as any).data_source,
+  item_types: r.item_types,
+  bbox: r.bbox,
+});
+
+/**
  * Serialize the full drilldown tree for saving research.
- * Preserves all data: summaries, results, prompts, translations.
+ * Preserves summaries, translations, and slim results (no heavy metadata).
+ * Strips prompts (regenerated on drilldown) and large result fields
+ * (metadata, chunk_elements, tables, images) to keep payload under 10 MB.
  */
 export const serializeFullDrilldownTree = (
   node: DrilldownNode,
@@ -24,8 +48,8 @@ export const serializeFullDrilldownTree = (
   id: node.id,
   label: node.label,
   summary: node.summary,
-  prompt: node.prompt,
-  results: node.results,
+  prompt: '',
+  results: node.results.map(slimResult),
   translatedText: node.translatedText,
   translatedLang: node.translatedLang,
   expanded: node.expanded,
