@@ -28,6 +28,7 @@ export interface SearchSettings {
   deduplicate?: boolean;
   fieldBoost?: boolean;
   fieldBoostFields?: Record<string, number>;
+  greetingMessage?: string;
 }
 
 export interface UserGroup {

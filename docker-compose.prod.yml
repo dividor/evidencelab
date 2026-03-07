@@ -60,6 +60,12 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evidencelab}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -180,13 +186,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      #- qdrant
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - app-network
     working_dir: /app
-    # Run migrations then start multi-worker Uvicorn for production concurrency
-    command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
+    # Run migrations, wait for Qdrant (runs on host, not in Docker), then start Uvicorn
+    command: bash -c "alembic upgrade head && echo 'Waiting for Qdrant...' && until python3 -c 'import urllib.request; urllib.request.urlopen(\"${QDRANT_HOST:-http://host.docker.internal:6333}/healthz\")' 2>/dev/null; do sleep 2; done && echo 'Qdrant ready' && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
     restart: unless-stopped
     deploy:
       resources:

@@ -24,6 +24,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'deduplicate',
   'fieldBoost',
   'fieldBoostFields',
+  'greetingMessage',
 ];
 
 const SECTION_TYPE_OPTIONS = [
@@ -60,6 +61,76 @@ NEVER provide inline citations as ranges, eg [1-20] as the post-processor code c
 If the query asks about a specific country, only consider results for that refer explicitly to that country.
 IMPORTANT: You NEVER provide an answer unless it is supported by the content you have been provided.`;
 
+/** Extracted sub-component for appearance settings to reduce component complexity. */
+const AppearanceSection: React.FC<{
+  collapsed: boolean;
+  onToggle: () => void;
+  overrides: Set<keyof SearchSettings>;
+  values: Required<SearchSettings>;
+  setOverrides: React.Dispatch<React.SetStateAction<Set<keyof SearchSettings>>>;
+  setValues: React.Dispatch<React.SetStateAction<Required<SearchSettings>>>;
+}> = ({ collapsed, onToggle, overrides, values, setOverrides, setValues }) => {
+  const isOverridden = overrides.has('greetingMessage');
+
+  const toggleGreetingOverride = (enabled: boolean) => {
+    const next = new Set(overrides);
+    if (enabled) {
+      next.add('greetingMessage');
+    } else {
+      next.delete('greetingMessage');
+      setValues((prev) => ({ ...prev, greetingMessage: SYSTEM_DEFAULTS.greetingMessage }));
+    }
+    setOverrides(next);
+  };
+
+  return (
+    <div className="filter-section">
+      <div className="filter-section-header" onClick={onToggle}>
+        <span className="filter-section-toggle">{collapsed ? '▼' : '▶'}</span>
+        <span className="filter-section-title">Appearance</span>
+      </div>
+      {collapsed && (
+        <div className="filter-section-content">
+          <div style={{ marginTop: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+              <input
+                type="checkbox"
+                checked={isOverridden}
+                onChange={(e) => toggleGreetingOverride(e.target.checked)}
+              />
+              Override greeting message
+            </label>
+            {isOverridden && (
+              <div style={{ marginTop: '6px' }}>
+                <input
+                  type="text"
+                  value={values.greetingMessage}
+                  onChange={(e) => {
+                    setValues((prev) => ({ ...prev, greetingMessage: e.target.value }));
+                    setOverrides((prev) => new Set(prev).add('greetingMessage'));
+                  }}
+                  placeholder="e.g. What are you looking for today?"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    fontSize: '13px',
+                    borderRadius: '4px',
+                    border: '1px solid #d1d5db',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                  Replaces the default search placeholder on the landing page.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -75,7 +146,7 @@ const GroupSettingsManager: React.FC = () => {
 
   // Collapsible sections — both open by default
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['search_settings', 'content_settings', 'ai_summary'])
+    new Set(['search_settings', 'content_settings', 'ai_summary', 'appearance'])
   );
 
   const toggleSection = (key: string) => {
@@ -601,6 +672,16 @@ const GroupSettingsManager: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {/* Appearance Settings */}
+              <AppearanceSection
+                collapsed={collapsedSections.has('appearance')}
+                onToggle={() => toggleSection('appearance')}
+                overrides={overrides}
+                values={values}
+                setOverrides={setOverrides}
+                setValues={setValues}
+              />
 
               {/* AI Summary Settings */}
               <div className="filter-section">
