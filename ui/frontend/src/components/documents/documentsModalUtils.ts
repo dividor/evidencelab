@@ -31,11 +31,17 @@ const processSrcItems = (items: any[], coreKeys: string[]) => {
       typeof rawMetaItem.value === 'object' &&
       !Array.isArray(rawMetaItem.value)
     ) {
-      const flattened = Object.entries(rawMetaItem.value).map(([k, v]) => ({
-        key: `raw_${k}`,
-        displayKey: k.replace(/^src_/, ''),
-        value: v,
-      }));
+      // Collect existing displayKeys to avoid duplicates when flattening raw metadata.
+      // The backend may already unpack src_doc_raw_metadata into individual src_* fields,
+      // so we skip raw metadata keys that are already present.
+      const existingDisplayKeys = new Set(processedItems.map((item) => item.displayKey));
+      const flattened = Object.entries(rawMetaItem.value)
+        .filter(([k]) => !existingDisplayKeys.has(k.replace(/^src_/, '')))
+        .map(([k, v]) => ({
+          key: `raw_${k}`,
+          displayKey: k.replace(/^src_/, ''),
+          value: v,
+        }));
       processedItems = [...processedItems, ...flattened];
     }
   }
