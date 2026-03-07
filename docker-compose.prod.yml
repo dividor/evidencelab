@@ -185,8 +185,8 @@ services:
     networks:
       - app-network
     working_dir: /app
-    # Multi-worker Uvicorn for production concurrency
-    command: uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+    # Run migrations then start multi-worker Uvicorn for production concurrency
+    command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
     restart: unless-stopped
     deploy:
       resources:
