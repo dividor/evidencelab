@@ -3,7 +3,7 @@
 import logging
 import multiprocessing
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from pipeline.orchestrator.core_docs import (
     apply_filters,
@@ -115,6 +115,38 @@ def _build_processing_steps(orchestrator) -> list[str]:
     return steps
 
 
+def _resolve_metadata_id(db, metadata_id: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """Look up a document by source metadata ID in Postgres.
+
+    When ``--file-id`` is a source metadata ID (e.g. "34364658") rather than
+    a database UUID, search ``src_doc_raw_metadata`` for a matching ``id``,
+    ``node_id``, or ``doc_id`` field and return the resolved UUID + payload.
+    """
+    if not hasattr(db, "pg") or not db.pg:
+        return None
+    try:
+        query = (
+            f"SELECT doc_id FROM {db.pg.docs_table} "  # noqa: S608
+            f"WHERE src_doc_raw_metadata->>'id' = %s "
+            f"   OR src_doc_raw_metadata->>'node_id' = %s "
+            f"   OR src_doc_raw_metadata->>'doc_id' = %s "
+            f"LIMIT 1"
+        )
+        with db.pg._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (metadata_id, metadata_id, metadata_id))
+                row = cur.fetchone()
+        if not row:
+            return None
+        doc_uuid = str(row[0])
+        doc = db.get_document(doc_uuid)
+        if doc:
+            return doc_uuid, doc
+    except Exception as exc:
+        logger.warning("Failed to resolve metadata ID %s: %s", metadata_id, exc)
+    return None
+
+
 def _collect_documents(orchestrator) -> list:
     if orchestrator.doc_id:
         logger.info("Targeting specific document ID: %s", orchestrator.doc_id)
@@ -122,6 +154,16 @@ def _collect_documents(orchestrator) -> list:
         if doc:
             doc["id"] = orchestrator.doc_id
             return [doc]
+
+        # Fallback: if doc_id is a source metadata ID (not a UUID),
+        # try to resolve it via Postgres src_doc_raw_metadata
+        resolved = _resolve_metadata_id(orchestrator.db, orchestrator.doc_id)
+        if resolved:
+            doc_uuid, doc_payload = resolved
+            logger.info("Resolved metadata ID %s → %s", orchestrator.doc_id, doc_uuid)
+            orchestrator.doc_id = doc_uuid
+            doc_payload["id"] = doc_uuid
+            return [doc_payload]
 
         logger.error("Document %s not found in DB", orchestrator.doc_id)
         return []

@@ -270,9 +270,13 @@ class PipelineOrchestrator:
                 self._scanner = ScanProcessor(base_dir=pdfs_dir, db=self.db)
                 self._scanner.setup()
             logger.info("\n⏭️  Skipping full scan (targeted scan for single document)")
-            return self._scanner.scan_and_sync_single(
+            resolved_uuid = self._scanner.scan_and_sync_single(
                 report_path=self.report, doc_id=self.doc_id
             )
+            if resolved_uuid and self.doc_id and resolved_uuid != self.doc_id:
+                logger.info("Resolved file-id %s → %s", self.doc_id, resolved_uuid)
+                self.doc_id = resolved_uuid
+            return bool(resolved_uuid)
 
         logger.info("\n" + "=" * 60)
         logger.info("STEP: Scan files and sync to Qdrant")

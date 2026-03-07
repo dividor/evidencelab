@@ -215,27 +215,30 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
 
     def scan_and_sync_single(
         self, report_path: Optional[str] = None, doc_id: Optional[str] = None
-    ) -> bool:
+    ) -> Optional[str]:
         """
         Scan a single metadata file and sync the matching document to Qdrant.
 
         Used when orchestrator is invoked with --file or --file-id to avoid a full scan.
+
+        Returns:
+            The resolved document UUID if found, None otherwise.
         """
         self.ensure_setup()
 
         if not report_path and not doc_id:
             logger.warning("scan_and_sync_single called without report_path or doc_id")
-            return False
+            return None
 
         report_resolved = self._resolve_report_path(report_path)
         if report_path and not report_resolved:
-            return False
+            return None
 
         json_files = self._collect_metadata_json_files(report_resolved)
 
         if not json_files:
             logger.warning("No metadata files found for targeted scan.")
-            return False
+            return None
 
         existing_checksums = self._load_existing_checksums()
         stats = {
@@ -251,7 +254,7 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
             "duplicates": 0,
         }
 
-        matched = self._scan_single_json_files(
+        resolved_uuid = self._scan_single_json_files(
             json_files,
             report_resolved,
             doc_id,
@@ -259,11 +262,11 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
             existing_checksums,
         )
 
-        if not matched:
+        if not resolved_uuid:
             logger.warning("Target document not found in metadata.")
-            return False
+            return None
 
-        return True
+        return resolved_uuid
 
     def _resolve_report_path(self, report_path: Optional[str]) -> Optional[Path]:
         if not report_path:
@@ -313,6 +316,20 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
         doc_id_value, payload = result
         self.db.upsert_document(doc_id_value, payload)
 
+    def _resolve_doc_uuid(
+        self, json_path: Path, metadata: Dict[str, Any]
+    ) -> Optional[str]:
+        """Compute the deterministic UUID for a metadata file without upserting."""
+        content_file = self._resolve_content_file(json_path, metadata)
+        error_file = json_path.with_suffix(".error")
+        current_status, _, file_path_display = self._resolve_status_and_path(
+            content_file, error_file
+        )
+        if not current_status or not file_path_display:
+            return None
+        normalized_path = _make_relative_path(file_path_display)
+        return self._build_doc_id(metadata, normalized_path, current_status)
+
     def _scan_single_json_files(
         self,
         json_files: List[Path],
@@ -320,7 +337,8 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
         doc_id: Optional[str],
         stats: Dict[str, int],
         existing_checksums: Dict[str, Dict[str, Any]],
-    ) -> bool:
+    ) -> Optional[str]:
+        """Return the resolved document UUID if matched, None otherwise."""
         for json_path in json_files:
             metadata = self._load_metadata_from_json(str(json_path))
             if not metadata:
@@ -331,8 +349,11 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
                 continue
             result = self._process_metadata_file(json_path, stats, existing_checksums)
             self._upsert_single_result(result)
-            return True
-        return False
+            if result:
+                return str(result[0])
+            # Doc matched but unchanged — still resolve and return UUID
+            return self._resolve_doc_uuid(json_path, metadata)
+        return None
 
     def _flush_batch(self, batch: List[Any]) -> None:
         """Helper to upsert a batch of documents."""
