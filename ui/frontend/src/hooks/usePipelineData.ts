@@ -111,7 +111,11 @@ export const usePipelineData = (dataSource: string) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (bustCache = false) => {
+    if (bustCache) {
+      pipelineDataCache = null;
+      pipelineDataPromise = null;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -127,6 +131,8 @@ export const usePipelineData = (dataSource: string) => {
     }
   }, [dataSource]);
 
+  const refresh = useCallback(() => loadData(true), [loadData]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -137,6 +143,7 @@ export const usePipelineData = (dataSource: string) => {
     timelineData,
     loading,
     error,
-    reload: loadData
+    reload: loadData,
+    refresh,
   };
 };
