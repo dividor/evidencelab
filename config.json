@@ -426,13 +426,14 @@
       "field_mapping": {
         "organization": "fixed_value:World Bank",
         "title": "display_title",
-        "published_year": "year",
+        "published_year": "YEAR(docdt)",
         "document_type": "majdocty",
         "country": "count",
+        "region": "admreg",
+        "theme": "teratopic",
         "language": "available_in",
-        "abstract": "abstract",
-        "pdf_url": "pdf_url",
-        "report_url": "report_url"
+        "pdf_url": "pdfurl",
+        "report_url": "url"
       },
       "example_queries": [],
       "default_filter_fields": {
@@ -441,6 +442,8 @@
         "published_year": "Year Published",
         "document_type": "Document Type",
         "country": "Country",
+        "region": "Region",
+        "theme": "Theme",
         "language": "Language",
         "tag_sdg": "United Nations Sustainable Development Goals"
       },
@@ -450,6 +453,8 @@
         "published_year": "Year Published",
         "document_type": "Document Type",
         "country": "Country",
+        "region": "Region",
+        "theme": "Theme",
         "language": "Language",
         "tag_sdg": "Sustainable Development Goals",
         "full_summary": "Summary",
