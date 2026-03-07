@@ -38,6 +38,11 @@ class ScannerMappingMixin:
         logger.info("Final mapped organization: %s", org_value)
         return src_fields, map_fields
 
+    # Fields that should never be split into lists (URLs, titles, years).
+    _SCALAR_FIELDS = frozenset(
+        {"title", "published_year", "year", "pdf_url", "report_url", "organization"}
+    )
+
     def _apply_mapped_core_values(
         self,
         raw_metadata: Dict[str, Any],
@@ -58,8 +63,20 @@ class ScannerMappingMixin:
             if core_field in ("published_year", "year"):
                 mapped_core[core_field] = str(source_value)
             else:
-                mapped_core[core_field] = source_value
+                mapped_core[core_field] = self._split_if_multival(
+                    core_field, source_value
+                )
         return mapped_core
+
+    @classmethod
+    def _split_if_multival(cls, core_field: str, value: Any) -> Any:
+        """Split semicolon-separated strings into lists for multi-value fields."""
+        if core_field in cls._SCALAR_FIELDS:
+            return value
+        if isinstance(value, str) and ";" in value:
+            parts = [v.strip() for v in value.split(";") if v.strip()]
+            return parts if len(parts) > 1 else (parts[0] if parts else value)
+        return value
 
     def _build_src_fields(self, raw_metadata: Dict[str, Any]) -> Dict[str, Any]:
         src_fields: Dict[str, Any] = {}
