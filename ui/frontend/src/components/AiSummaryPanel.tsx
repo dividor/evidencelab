@@ -617,7 +617,7 @@ const LanguageSelector = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'white',
+          background: '#fefce8',
           pointerEvents: 'none',
           fontSize: '0.8rem',
           borderRadius: '4px',
