@@ -430,7 +430,7 @@
         "document_type": "majdocty",
         "country": "count",
         "region": "admreg",
-        "theme": "teratopic",
+        "theme": "theme",
         "language": "available_in",
         "topic": "subtopic",
         "abstract": "abstracts",
