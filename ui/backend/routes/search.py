@@ -7,11 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from qdrant_client.http import models as qmodels
 
-from pipeline.db import (
-    get_default_filter_fields,
-    get_field_mapping,
-    get_taxonomy_filter_fields,
-)
+from pipeline.db import get_default_filter_fields, get_taxonomy_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
