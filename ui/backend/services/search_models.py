@@ -12,20 +12,14 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
-from pipeline.db import (  # noqa: E402
-    DB_VECTORS,
-    DENSE_VECTOR_NAME,
-    SUPPORTED_RERANK_MODELS,
-    get_application_config,
-)
+from pipeline.db import DENSE_VECTOR_NAME  # noqa: E402
+from pipeline.db import DB_VECTORS, SUPPORTED_RERANK_MODELS, get_application_config
 from pipeline.utilities.azure_client import AzureEmbeddingClient  # noqa: E402
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from pipeline.utilities.google_vertex_client import (  # noqa: E402
     GoogleVertexEmbeddingClient,
 )
-from ui.backend.services.azure_foundry_reranker import (  # noqa: E402
-    rerank_with_azure_foundry,
-)
+from ui.backend.services.azure_foundry_reranker import rerank_with_azure_foundry
 from ui.backend.services.google_vertex_reranker import (  # noqa: E402
     rerank_with_google_vertex,
 )

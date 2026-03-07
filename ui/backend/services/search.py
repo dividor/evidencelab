@@ -10,9 +10,9 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client.http import models
 
-from pipeline.db import (  # noqa: E402
+from pipeline.db import DEFAULT_DATA_SOURCE  # noqa: E402
+from pipeline.db import (
     DB_VECTORS,
-    DEFAULT_DATA_SOURCE,
     DENSE_VECTOR_NAME,
     SPARSE_VECTOR_NAME,
     SUPPORTED_RERANK_MODELS,
@@ -24,10 +24,8 @@ from pipeline.db import (  # noqa: E402
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
-from ui.backend.utils.filter_helpers import (  # noqa: E402
-    build_doc_id_filter,
-    collect_range_conditions,
-)
+from ui.backend.utils.filter_helpers import build_doc_id_filter  # noqa: E402
+from ui.backend.utils.filter_helpers import collect_range_conditions
 from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
 
 # Add parent directory to path
@@ -206,48 +204,6 @@ def _get_rerank_model_config(model_key: Optional[str]) -> Dict[str, Any]:
 
 def _is_azure_foundry_reranker(config: Dict[str, Any]) -> bool:
     return search_models._is_azure_foundry_reranker(config)
-
-
-def _get_azure_foundry_rerank_endpoint(
-    deployment: str, config: Optional[Dict[str, Any]] = None
-) -> str:
-    return search_models._get_azure_foundry_rerank_endpoint(config, deployment)
-
-
-def _get_azure_foundry_api_key() -> str:
-    return search_models._get_azure_foundry_api_key()
-
-
-def _scores_from_results(results: Any, doc_count: int) -> Optional[List[float]]:
-    return search_models._scores_from_results(results, doc_count)
-
-
-def _scores_from_list(scores: Any) -> Optional[List[float]]:
-    return search_models._scores_from_list(scores)
-
-
-def _scores_from_data(data: Any, doc_count: int) -> Optional[List[float]]:
-    return search_models._scores_from_data(data, doc_count)
-
-
-def _parse_azure_rerank_response(
-    response_json: Dict[str, Any], doc_count: int
-) -> List[float]:
-    return search_models._parse_azure_rerank_response(response_json, doc_count)
-
-
-def _rerank_with_azure_foundry(
-    query: str,
-    documents: List[str],
-    deployment: str,
-    config: Dict[str, Any],
-) -> List[float]:
-    return search_models._rerank_with_azure_foundry(
-        query=query,
-        documents=documents,
-        deployment=deployment,
-        config=config,
-    )
 
 
 def get_rerank_model(model_key: Optional[str] = None):
