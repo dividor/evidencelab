@@ -568,5 +568,6 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     loadingTable,
     tableContainerRef,
     setCurrentPage,
+    refreshStats: loadData,
   };
 };
