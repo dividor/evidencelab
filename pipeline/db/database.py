@@ -1036,7 +1036,7 @@ class Database:
                     value = value.isoformat()
                 sys_fields[key] = value
                 continue
-            if key.startswith(("src_", "map_")) or key == "is_duplicate":
+            if key.startswith(("src_", "map_", "tag_")) or key == "is_duplicate":
                 qdrant_payload[key] = value
         return qdrant_payload, sys_fields
 

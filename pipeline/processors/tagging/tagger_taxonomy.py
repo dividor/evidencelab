@@ -283,14 +283,20 @@ class TaxonomyTagger(BaseTagger):
         """Compute all taxonomy tags for a document. Returns cached if available."""
         doc_id = self._get_document_identifier(document)
         if not doc_id:
+            logger.warning("compute_document_tags: no doc_id found")
             return {}
 
         if doc_id in self._document_cache:
+            logger.debug("compute_document_tags: returning cached for %s", doc_id)
             return self._document_cache[doc_id]
 
-        # Check existing tags in document if we want to skip re-processing?
-        # For now, we assume if pipeline runs, we re-process.
-        # But we could check existing sys_taxonomies.
+        logger.info(
+            "compute_document_tags: doc=%s, taxonomies_config_keys=%s, "
+            "has_summary=%s",
+            doc_id,
+            list(self.taxonomies_config.keys()) if self.taxonomies_config else "EMPTY",
+            bool(document.get("sys_full_summary")),
+        )
 
         sys_taxonomies = {}
         tags_updates = {}
@@ -298,6 +304,12 @@ class TaxonomyTagger(BaseTagger):
         summary = document.get("sys_full_summary")
         if not summary:
             # Cannot tag without full summary for document-level taxonomies
+            logger.warning(
+                "compute_document_tags: no sys_full_summary for doc %s. "
+                "Doc keys: %s",
+                doc_id,
+                [k for k in document.keys() if k.startswith("sys_")],
+            )
             self._document_cache[doc_id] = {}
             return {}
 
