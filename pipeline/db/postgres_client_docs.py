@@ -132,6 +132,9 @@ class PostgresDocMixin:
     def ensure_sys_doc_columns(self, sys_fields: Dict[str, Any]) -> None:
         raise NotImplementedError
 
+    def ensure_map_doc_columns(self, map_fields: Dict[str, Any]) -> None:
+        raise NotImplementedError
+
     def ensure_sys_doc_taxonomies_column(self) -> None:
         raise NotImplementedError
 
@@ -151,6 +154,8 @@ class PostgresDocMixin:
         sys_status: Optional[str] = None,
         sys_status_timestamp: Optional[datetime | str] = None,
     ) -> None:
+        if map_fields:
+            self.ensure_map_doc_columns(map_fields)
         if sys_fields:
             self.ensure_sys_doc_columns(sys_fields)
         if sys_qdrant_legacy is not None:

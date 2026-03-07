@@ -439,7 +439,7 @@ def process_document_wrapper(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc_id = doc.get("id")
     _log_context.doc_id = doc_id
 
-    title = (doc.get("map_title") or "Unknown")[:200]
+    title = doc.get("map_title", "Unknown")[:200]
     result = {"doc_id": doc_id, "title": title, "stages": {}}
     pipeline_start = time.time()
 
