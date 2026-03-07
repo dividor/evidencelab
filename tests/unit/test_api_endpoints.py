@@ -143,10 +143,16 @@ async def test_generate_summary(monkeypatch):
         model_key: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
     ):
         return "summary"
 
-    def fake_render(query: str, results: list, max_results: int):
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
@@ -154,9 +160,13 @@ async def test_generate_summary(monkeypatch):
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
+    from ui.backend.routes import summary as summary_routes
+
     request = _make_request(method="POST", path="/ai-summary")
     body = main_module.AISummaryRequest(query="q", results=[_make_search_result()])
-    response = await main_module.generate_summary(request, body)
+    response = await summary_routes.generate_summary(
+        request, body, user=None, session=None
+    )
 
     assert response.summary == "summary"
     assert response.prompt == "prompt"
@@ -172,11 +182,17 @@ async def test_stream_summary(monkeypatch):
         model_key: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
     ):
         for token in ["a", "b"]:
             yield token
 
-    def fake_render(query: str, results: list, max_results: int):
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
@@ -184,9 +200,13 @@ async def test_stream_summary(monkeypatch):
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
+    from ui.backend.routes import summary as summary_routes
+
     request = _make_request(method="POST", path="/ai-summary/stream")
     body = main_module.AISummaryRequest(query="q", results=[_make_search_result()])
-    response = await main_module.stream_summary(request, body)
+    response = await summary_routes.stream_summary(
+        request, body, user=None, session=None
+    )
 
     chunks = []
     async for chunk in response.body_iterator:

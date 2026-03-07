@@ -95,6 +95,7 @@ describe('GroupSettingsManager', () => {
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g1', {
         search_settings: expect.objectContaining({ denseWeight: 0.5, rerank: false }),
+        summary_prompt: '',
       });
     });
   });
@@ -118,6 +119,7 @@ describe('GroupSettingsManager', () => {
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g1', {
         search_settings: {},
+        summary_prompt: '',
       });
     });
   });
@@ -147,6 +149,7 @@ describe('GroupSettingsManager', () => {
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
         search_settings: { deduplicate: false },
+        summary_prompt: '',
       });
     });
   });
