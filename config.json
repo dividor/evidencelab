@@ -432,6 +432,7 @@
         "region": "admreg",
         "theme": "teratopic",
         "language": "available_in",
+        "abstract": "abstracts",
         "pdf_url": "pdfurl",
         "report_url": "url"
       },
