@@ -1712,7 +1712,7 @@ function App() {
       const parentContext = drilldownHighlight && drilldownHighlight !== query
         ? `, specifically "${drilldownHighlight}"`
         : '';
-      const drilldownQuery = `Regarding the following excerpt from a previous summary:\n\n"${highlightedText}"\n\nProvide more detail about this, in the context of: "${query}"${parentContext}`;
+      const drilldownQuery = `Regarding: "${highlightedText}"\n\nProvide detail about this, in the context of: "${query}"${parentContext}`;
       launchSummaryStream(drilldownQuery, freshResults);
     } catch (error) {
       console.error('Drilldown search failed:', error);
@@ -1834,7 +1834,7 @@ function App() {
           filters,
         });
       } else {
-        const resp = await axios.post<{ id: string }>(`${API_BASE_URL}/research`, {
+        const resp = await axios.post<{ id: string }>(`${API_BASE_URL}/research/`, {
           title: drilldownTree.label || query,
           query,
           filters,

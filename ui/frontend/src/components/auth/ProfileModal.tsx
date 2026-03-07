@@ -22,7 +22,7 @@ const SavedResearchTab: React.FC<{
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    axios.get<SavedResearchItem[]>(`${API_BASE_URL}/research`).then((resp) => {
+    axios.get<SavedResearchItem[]>(`${API_BASE_URL}/research/`).then((resp) => {
       setResearch(resp.data);
     }).catch(() => {}).then(() => setLoading(false));
   }, []);
