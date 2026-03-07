@@ -54,8 +54,8 @@ interface AiSummaryPanelProps {
   dataSource?: string;
   /** Summary model config for the global summary API call */
   summaryModelConfig?: SummaryModelConfig | null;
-  /** Callback to save current research tree */
-  onSaveResearch?: () => void;
+  /** Callback to save current research tree with user-provided title */
+  onSaveResearch?: (title: string) => void;
   /** Whether save is in progress */
   saveResearchLoading?: boolean;
   /** Save status for user feedback */
@@ -428,6 +428,70 @@ const TreeViewActions = ({
   );
 };
 
+/** Small modal prompting user for a research name before saving */
+const SaveNameModal: React.FC<{
+  defaultName: string;
+  onSave: (name: string) => void;
+  onClose: () => void;
+  saving: boolean;
+}> = ({ defaultName, onSave, onClose, saving }) => {
+  const [name, setName] = useState(defaultName);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+        <div className="modal-header">
+          <h3 style={{ margin: 0 }}>Save Research</h3>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-group">
+            <label htmlFor="research-name">Research name</label>
+            <input
+              id="research-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter a name for this research"
+              autoFocus
+            />
+          </div>
+          <button
+            className="auth-submit"
+            onClick={() => onSave(name)}
+            disabled={saving || !name.trim()}
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Hint text shown above summary — extracted to isolate CC from main component */
+const SummaryHintText: React.FC<{
+  collapsed: boolean; summary: string; loading: boolean; viewMode: string;
+}> = ({ collapsed, summary, loading, viewMode }) => {
+  if (collapsed || !summary || loading || viewMode !== 'summary') return null;
+  return (
+    <p className="ai-summary-hint">
+      You can highlight text below or click the &apos;Find out more&apos; button to research sub-topics.
+    </p>
+  );
+};
+
+/** Wrapper to isolate conditional render from main component CC */
+const SaveModalWrapper: React.FC<{
+  show: boolean;
+  treeName: string;
+  onSave: (title: string) => void;
+  onClose: () => void;
+  saving: boolean;
+}> = ({ show, treeName, onSave, onClose, saving }) => {
+  if (!show) return null;
+  return <SaveNameModal defaultName={treeName} onSave={onSave} onClose={onClose} saving={saving} />;
+};
+
 interface DrilldownNavRowProps {
   viewMode: 'summary' | 'tree' | 'global';
   hasGraph: boolean;
@@ -641,6 +705,7 @@ export const AiSummaryPanel = ({
   const [globalSummary, setGlobalSummary] = useState('');
   const [globalSummaryResults, setGlobalSummaryResults] = useState<SearchResult[]>([]);
   const [globalSummaryLoading, setGlobalSummaryLoading] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   useEffect(() => {
     if (requestShowGraph) setViewMode('tree');
@@ -690,6 +755,7 @@ export const AiSummaryPanel = ({
       setGlobalSummaryResults(allResults);
       if (onGlobalSummaryGenerated) {
         onGlobalSummaryGenerated(resp.data.summary, allResults);
+        setViewMode('summary');
       } else {
         setViewMode('global');
       }
@@ -699,6 +765,22 @@ export const AiSummaryPanel = ({
       setGlobalSummaryLoading(false);
     }
   }, [drilldownTree, globalSummaryLoading, dataSource, summaryModelConfig, onGlobalSummaryGenerated]);
+
+  const handleExportResearch = useCallback(() => {
+    if (!drilldownTree) return;
+    const currentId = drilldownCurrentNodeId || drilldownTree.id;
+    const patchedTree = patchNodeInTree(drilldownTree, currentId, aiSummary, results);
+    exportResearchToPdf(patchedTree, globalSummary || undefined, globalSummaryResults);
+  }, [drilldownTree, drilldownCurrentNodeId, aiSummary, results, globalSummary, globalSummaryResults]);
+
+  const handleSaveClick = useCallback(() => setShowSaveModal(true), []);
+
+  const handleSaveConfirm = useCallback((title: string) => {
+    if (onSaveResearch) onSaveResearch(title);
+    setShowSaveModal(false);
+  }, [onSaveResearch]);
+
+  const handleCloseSaveModal = useCallback(() => setShowSaveModal(false), []);
 
   if (!enabled) return null;
 
@@ -725,9 +807,12 @@ export const AiSummaryPanel = ({
           onLanguageChange={onLanguageChange}
           onToggleCollapsed={onToggleCollapsed}
         />
-        {!aiSummaryCollapsed && aiSummary && !aiSummaryLoading && viewMode === 'summary' && (
-          <p className="ai-summary-hint">You can highlight text below or click the &apos;Find out more&apos; button to research sub-topics.</p>
-        )}
+        <SummaryHintText
+          collapsed={aiSummaryCollapsed}
+          summary={aiSummary}
+          loading={aiSummaryLoading}
+          viewMode={viewMode}
+        />
         {!aiSummaryCollapsed && onDrilldownBack && (
           <DrilldownNavRow
             viewMode={viewMode}
@@ -737,19 +822,8 @@ export const AiSummaryPanel = ({
             drilldownHighlight={drilldownHighlight}
             onSetViewMode={setViewMode}
             onGenerateGlobalSummary={handleGenerateGlobalSummary}
-            onExportResearch={() => {
-              if (drilldownTree) {
-                // Patch the currently-viewed node's live state into the tree before exporting
-                const currentId = drilldownCurrentNodeId || drilldownTree.id;
-                const patchedTree = patchNodeInTree(drilldownTree, currentId, aiSummary, results);
-                exportResearchToPdf(
-                  patchedTree,
-                  globalSummary || undefined,
-                  globalSummaryResults
-                );
-              }
-            }}
-            onSaveResearch={onSaveResearch}
+            onExportResearch={handleExportResearch}
+            onSaveResearch={onSaveResearch ? handleSaveClick : undefined}
             saveResearchLoading={saveResearchLoading}
             saveResearchStatus={saveResearchStatus}
             isAuthenticated={isAuthenticated}
@@ -757,6 +831,13 @@ export const AiSummaryPanel = ({
             onLoadPreviousResearch={onLoadPreviousResearch}
           />
         )}
+        <SaveModalWrapper
+          show={showSaveModal && !!onSaveResearch}
+          treeName={drilldownTree?.label || ''}
+          onSave={handleSaveConfirm}
+          onClose={handleCloseSaveModal}
+          saving={!!saveResearchLoading}
+        />
         {showGraphView ? (
           <>
             <p className="ai-summary-hint" style={{ fontStyle: 'italic' }}>Click on nodes below to see their results and summaries.</p>

@@ -100,7 +100,7 @@ interface SearchTabContentProps {
   dataSource?: string;
   summaryModelConfig?: SummaryModelConfig | null;
   hasSearchRun?: boolean;
-  onSaveResearch?: () => void;
+  onSaveResearch?: (title: string) => void;
   saveResearchLoading?: boolean;
   saveResearchStatus?: 'idle' | 'saved' | 'error';
   onLoadPreviousResearch?: () => void;

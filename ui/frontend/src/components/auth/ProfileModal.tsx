@@ -3,106 +3,15 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 
-interface SavedResearchItem {
-  id: string;
-  title: string;
-  query: string;
-  data_source: string | null;
-  node_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Saved Research tab content — extracted to reduce ProfileModal complexity */
-const SavedResearchTab: React.FC<{
-  onLoadResearch: (id: string) => void;
-}> = ({ onLoadResearch }) => {
-  const [research, setResearch] = useState<SavedResearchItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    axios.get<SavedResearchItem[]>(`${API_BASE_URL}/research/`).then((resp) => {
-      setResearch(resp.data);
-    }).catch(() => {}).then(() => setLoading(false));
-  }, []);
-
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setDeletingId(id);
-    try {
-      await axios.delete(`${API_BASE_URL}/research/${id}`);
-      setResearch((prev) => prev.filter((r) => r.id !== id));
-    } catch {
-      // Silently fail
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  if (loading) {
-    return <p className="text-muted">Loading saved research...</p>;
-  }
-
-  if (research.length === 0) {
-    return <p className="text-muted">No saved research yet. Use the AI Summary Tree view to save your research.</p>;
-  }
-
-  return (
-    <table className="admin-table">
-      <thead>
-        <tr>
-          <th>Title</th>
-          <th>Query</th>
-          <th>Nodes</th>
-          <th>Saved</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {research.map((r) => (
-          <tr
-            key={r.id}
-            className="saved-research-row"
-            onClick={() => onLoadResearch(r.id)}
-            title="Click to load this research"
-          >
-            <td>{r.title}</td>
-            <td>{r.query}</td>
-            <td>{r.node_count}</td>
-            <td>{formatDate(r.updated_at)}</td>
-            <td>
-              <button
-                className="btn-danger-sm"
-                onClick={(e) => handleDelete(r.id, e)}
-                disabled={deletingId === r.id}
-                title="Delete this saved research"
-              >
-                {deletingId === r.id ? '...' : 'Delete'}
-              </button>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-};
-
 interface ProfileModalProps {
   onClose: () => void;
-  onLoadResearch?: (id: string) => void;
 }
 
-type ProfileTab = 'profile' | 'groups' | 'research';
+type ProfileTab = 'profile' | 'groups';
 
 const ACTIVE_TAB_CLASS = 'login-tab-active';
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ onClose, onLoadResearch }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ onClose }) => {
   const { user, refreshUser, logout } = useAuth();
   const [tab, setTab] = useState<ProfileTab>('profile');
   const [firstName, setFirstName] = useState(user?.first_name || '');
@@ -175,14 +84,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose, onLoadResearch }) 
             >
               Groups
             </button>
-            {onLoadResearch && (
-              <button
-                className={`login-tab ${tab === 'research' ? ACTIVE_TAB_CLASS : ''}`}
-                onClick={() => setTab('research')}
-              >
-                Saved Research
-              </button>
-            )}
           </div>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
@@ -307,11 +208,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ onClose, onLoadResearch }) 
             </div>
           )}
 
-          {tab === 'research' && onLoadResearch && (
-            <div className="profile-research">
-              <SavedResearchTab onLoadResearch={onLoadResearch} />
-            </div>
-          )}
         </div>
       </div>
     </div>

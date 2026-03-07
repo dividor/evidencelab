@@ -1829,7 +1829,7 @@ function App() {
       autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
 
   // Save research tree to backend
-  const handleSaveResearch = useCallback(async () => {
+  const handleSaveResearch = useCallback(async (title: string) => {
     if (!drilldownTree || !authState.user) return;
     setSaveResearchLoading(true);
     setSaveResearchStatus('idle');
@@ -1841,13 +1841,13 @@ function App() {
 
       if (savedResearchId) {
         await axios.put(`${API_BASE_URL}/research/${savedResearchId}`, {
-          title: drilldownTree.label || query,
+          title,
           drilldown_tree: fullTree,
           filters,
         });
       } else {
         const resp = await axios.post<{ id: string }>(`${API_BASE_URL}/research/`, {
-          title: drilldownTree.label || query,
+          title,
           query,
           filters,
           data_source: dataSource,
@@ -1895,9 +1895,12 @@ function App() {
     }
   }, [loadDrilldownTree, restoreFromNode, handleTabChange]);
 
-  // Update root node when global summary is generated
+  // Update root node when global summary is generated and display it
   const handleGlobalSummaryGenerated = useCallback((summary: string, globalResults: SearchResult[]) => {
     updateNodeDataInTree('root', { summary, results: globalResults });
+    // Also update displayed state so the summary view renders it immediately
+    setAiSummary(summary);
+    setAiSummaryResults(globalResults);
   }, [updateNodeDataInTree]);
 
   const closeLoadResearchModal = useCallback(() => setShowLoadResearchModal(false), []);

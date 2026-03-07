@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import LoginModal from './LoginModal';
 import ProfileModal from './ProfileModal';
+import SavedResearchModal from '../SavedResearchModal';
 
 interface UserMenuProps {
   onAdminClick?: () => void;
@@ -16,6 +17,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showSavedResearch, setShowSavedResearch] = useState(false);
 
   // Auto-open the login modal when a verification message arrives
   useEffect(() => {
@@ -94,6 +96,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
             >
               Profile
             </button>
+            {onLoadResearch && (
+              <button
+                className="dropdown-item"
+                onClick={() => { setShowSavedResearch(true); setMenuOpen(false); }}
+              >
+                Saved Research
+              </button>
+            )}
             {user?.is_superuser && onAdminClick && (
               <button
                 className="dropdown-item"
@@ -112,12 +122,15 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
         )}
       </div>
       {showProfile && (
-        <ProfileModal
-          onClose={() => setShowProfile(false)}
-          onLoadResearch={onLoadResearch ? (id: string) => {
-            setShowProfile(false);
+        <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
+      {showSavedResearch && onLoadResearch && (
+        <SavedResearchModal
+          onClose={() => setShowSavedResearch(false)}
+          onLoadResearch={(id: string) => {
+            setShowSavedResearch(false);
             onLoadResearch(id);
-          } : undefined}
+          }}
         />
       )}
     </>
