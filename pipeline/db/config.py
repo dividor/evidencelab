@@ -94,6 +94,8 @@ def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         }
         if "max_tokens" in model_info:
             vec_entry["max_tokens"] = model_info["max_tokens"]
+        if "output_dimensionality" in model_info:
+            vec_entry["output_dimensionality"] = model_info["output_dimensionality"]
         result[model_name] = vec_entry
     return result
 
