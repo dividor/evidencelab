@@ -3,7 +3,6 @@
 import json
 import logging
 import math
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -12,6 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.tagging.tagger_constants import SECTION_TYPES
+from pipeline.utilities.llm_retry import invoke_with_retry
 from utils.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
@@ -211,27 +211,10 @@ def invoke_and_parse_toc(
         messages.append(SystemMessage(content=additional_instruction))
     messages.append(HumanMessage(content=user_prompt))
 
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            response = llm.invoke(messages)
-            break
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            if attempt < max_retries - 1:
-                wait = 2**attempt
-                logger.warning(
-                    "LLM invoke failed (attempt %d/%d), retrying in %ds: %s",
-                    attempt + 1,
-                    max_retries,
-                    wait,
-                    exc,
-                )
-                time.sleep(wait)
-            else:
-                logger.error(
-                    "LLM invoke failed after %d attempts: %s", max_retries, exc
-                )
-                return None
+    try:
+        response = invoke_with_retry(llm, messages)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
     response_text = str(response.content).strip()
 
     try:
