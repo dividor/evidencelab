@@ -3638,28 +3638,28 @@ h6,
 .ai-summary-markdown h3 {
   font-size: 1.15em;
   font-weight: 700;
-  color: var(--gray-600);
+  color: var(--gray-500);
   margin: 1em 0 0.4em 0;
 }
 
 .ai-summary-markdown h4 {
   font-size: 1.05em;
   font-weight: 700;
-  color: var(--gray-600);
+  color: var(--gray-500);
   margin: 0.8em 0 0.3em 0;
 }
 
 .ai-summary-markdown h5 {
   font-size: 1em;
   font-weight: 700;
-  color: var(--gray-600);
+  color: var(--gray-500);
   margin: 0.6em 0 0.25em 0;
 }
 
 .ai-summary-markdown h6 {
   font-size: 0.95em;
   font-weight: 700;
-  color: var(--gray-600);
+  color: var(--gray-500);
   margin: 0.5em 0 0.2em 0;
 }
 
