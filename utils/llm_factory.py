@@ -17,6 +17,7 @@ Provider-specific keys:
 - OPENAI_API_BASE: For OpenAI-compatible (e.g., Groq, Together)
 """
 
+import json
 import logging
 import os
 from typing import Any, Dict, Optional, Tuple
@@ -436,8 +437,6 @@ def _create_google_vertex_llm(
     if not project:
         creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if creds_path and os.path.exists(creds_path):
-            import json
-
             with open(creds_path, encoding="utf-8") as f:
                 creds_data = json.load(f)
                 project = creds_data.get("project_id")
