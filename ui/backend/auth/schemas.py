@@ -249,6 +249,7 @@ class ActivityCreate(BaseModel):
     search_results: Optional[list] = None
     ai_summary: Optional[str] = Field(None, max_length=100_000)
     url: Optional[str] = Field(None, max_length=2000)
+    session_id: Optional[str] = Field(None, max_length=64)
 
     @field_validator("filters")
     @classmethod
@@ -279,11 +280,26 @@ class ActivitySummaryUpdate(BaseModel):
         return _validate_jsonb(v)
 
 
+class ActivitySummaryUpdateAnonymous(BaseModel):
+    """Payload for updating an activity record (authenticated or anonymous)."""
+
+    ai_summary: Optional[str] = Field(None, max_length=100_000)
+    summary_duration_ms: Optional[float] = Field(None, ge=0, le=600_000)
+    drilldown_tree: Optional[dict] = None
+    session_id: Optional[str] = Field(None, max_length=64)
+
+    @field_validator("drilldown_tree")
+    @classmethod
+    def validate_drilldown_tree(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_jsonb(v)
+
+
 class ActivityRead(BaseModel):
     """Activity representation returned by admin endpoints."""
 
     id: uuid.UUID
-    user_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
+    session_id: Optional[str] = None
     user_email: Optional[str] = None
     user_display_name: Optional[str] = None
     search_id: uuid.UUID

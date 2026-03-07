@@ -14,8 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User, UserActivity, UserRating
-from ui.backend.auth.schemas import ActivityCreate, ActivityRead, ActivitySummaryUpdate
-from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.auth.schemas import (
+    ActivityCreate,
+    ActivityRead,
+    ActivitySummaryUpdateAnonymous,
+)
+from ui.backend.auth.users import current_superuser, optional_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +33,18 @@ router = APIRouter()
 
 def _activity_to_read(activity: UserActivity, user: User | None = None) -> ActivityRead:
     """Convert a UserActivity ORM object to an ActivityRead response."""
+    display_name = None
+    if user:
+        display_name = user.full_name
+    elif not activity.user_id:
+        display_name = "Anonymous"
+
     return ActivityRead(
         id=activity.id,
         user_id=activity.user_id,
+        session_id=activity.session_id,
         user_email=user.email if user else None,
-        user_display_name=user.full_name if user else None,
+        user_display_name=display_name,
         search_id=activity.search_id,
         query=activity.query,
         filters=activity.filters,
@@ -114,8 +125,8 @@ def _build_export_row(activity: UserActivity, user: User | None) -> list:
     )
     return [
         created,
-        user.email if user else "",
-        user.full_name if user else "",
+        user.email if user else "(anonymous)",
+        user.full_name if user else "Anonymous",
         activity.query,
         _count_search_results(activity),
         _ms_to_seconds(timing.get("search_duration_ms")),
@@ -136,17 +147,22 @@ def _build_export_row(activity: UserActivity, user: User | None) -> list:
 @router.post("/", response_model=ActivityRead, tags=["activity"])
 async def log_activity(
     body: ActivityCreate,
-    user: User = Depends(current_active_user),
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Log a search activity event (fire-and-forget from the frontend)."""
+    """Log a search activity event (fire-and-forget from the frontend).
+
+    Works for both authenticated users (user_id stored) and anonymous
+    visitors (session_id stored).
+    """
     try:
         search_uuid = uuid.UUID(body.search_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="search_id must be a valid UUID")
 
     activity = UserActivity(
-        user_id=user.id,
+        user_id=user.id if user else None,
+        session_id=body.session_id if not user else None,
         search_id=search_uuid,
         query=body.query,
         filters=body.filters,
@@ -163,21 +179,31 @@ async def log_activity(
 @router.patch("/{search_id}/summary", response_model=ActivityRead, tags=["activity"])
 async def update_activity_summary(
     search_id: uuid.UUID,
-    body: ActivitySummaryUpdate,
-    user: User = Depends(current_active_user),
+    body: ActivitySummaryUpdateAnonymous,
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Append / replace the AI summary on an existing activity record.
 
     Called after the AI summary stream finishes so we can capture the
-    full summary text.
+    full summary text.  Works for both authenticated and anonymous users.
     """
-    result = await session.execute(
-        select(UserActivity).where(
+    if user:
+        stmt = select(UserActivity).where(
             UserActivity.user_id == user.id,
             UserActivity.search_id == search_id,
         )
-    )
+    elif body.session_id:
+        stmt = select(UserActivity).where(
+            UserActivity.session_id == body.session_id,
+            UserActivity.search_id == search_id,
+        )
+    else:
+        raise HTTPException(
+            status_code=401, detail="Authentication or session_id required"
+        )
+
+    result = await session.execute(stmt)
     activity = result.scalars().first()
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity record not found")

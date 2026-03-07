@@ -6,7 +6,7 @@ Evidence Lab is committed to protecting your privacy. This policy explains what 
 
 ## Browsing without an account
 
-You can browse documents and search results without creating an account. In this case, no personal data is collected beyond standard server logs (IP address, browser user-agent) and optional analytics cookies (see **Cookies** below).
+You can browse documents and search results without creating an account. To help us improve the platform, anonymous usage data (search queries, result counts, and timing) is collected locally and associated with a random session identifier stored in your browser. This data is not linked to any personal information and is used solely for system improvements. Standard server logs (IP address, browser user-agent) and optional analytics cookies (see **Cookies** below) may also be captured.
 
 ## Account registration
 
@@ -29,6 +29,7 @@ If you sign in via a third-party provider (Google or Microsoft), we receive your
 | Audit log (login events, IP address) | Security monitoring and abuse prevention | 90 days, then automatically purged |
 | Failed login attempts and lockout timestamp | Brute-force protection | Reset on successful login or account deletion |
 | Search activity (queries, result summaries) | Platform improvement and usage analytics | Until you delete your account |
+| Anonymous search activity (queries, result counts, timing) | System improvements (non-logged-in visitors only) | Retained locally; not linked to any personal data |
 | Ratings and comments on content | Quality feedback to help improve search and content | Until you delete your account |
 
 ## Cookies

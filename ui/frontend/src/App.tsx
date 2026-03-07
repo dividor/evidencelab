@@ -2076,8 +2076,8 @@ function App() {
       // Initialize all headings as collapsed by default
       setCollapsedHeadings(new Set(data.results.map((_, index) => index)));
 
-      // Log search activity (fire-and-forget, only when authenticated)
-      if (USER_MODULE && authState.user) {
+      // Log search activity (fire-and-forget, works for all users)
+      if (USER_MODULE) {
         logSearch(searchId, query, filters, data.results, {
           timing: { search_duration_ms: searchDurationMsRef.current },
         });
@@ -2121,7 +2121,6 @@ function App() {
     fieldBoostFields,
     logSearch,
     searchId,
-    authState.user,
   ]);
 
   // Track if we've done initial search to avoid double-searching on load
@@ -2183,7 +2182,6 @@ function App() {
       prevAiSummaryLoadingRef.current &&
       !aiSummaryLoading &&
       USER_MODULE &&
-      authState.user &&
       aiSummary &&
       aiSummary !== AI_SUMMARY_ERROR &&
       !isDrilldown &&
@@ -2201,7 +2199,7 @@ function App() {
       );
     }
     prevAiSummaryLoadingRef.current = aiSummaryLoading;
-  }, [aiSummaryLoading, aiSummary, isDrilldown, authState.user, updateActivitySummary, drilldownTree]);
+  }, [aiSummaryLoading, aiSummary, isDrilldown, updateActivitySummary, drilldownTree]);
 
   // Send drilldown tree updates to the activity record when the user
   // navigates the AI Summary Tree (i.e. when children are added).
@@ -2212,7 +2210,6 @@ function App() {
       childCount > prevDrilldownChildCountRef.current &&
       activitySearchIdRef.current &&
       USER_MODULE &&
-      authState.user &&
       drilldownTree
     ) {
       updateActivitySummary(
@@ -2223,7 +2220,7 @@ function App() {
       );
     }
     prevDrilldownChildCountRef.current = childCount;
-  }, [drilldownTree, authState.user, updateActivitySummary]);
+  }, [drilldownTree, updateActivitySummary]);
 
   // Handler for toggling auto min score mode
   const handleAutoMinScoreToggle = useCallback((enabled: boolean) => {

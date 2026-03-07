@@ -4,7 +4,25 @@ import API_BASE_URL from '../config';
 import type { SearchResult } from '../types/api';
 
 /**
+ * Return a stable anonymous session ID (persisted in localStorage).
+ * Used to correlate activity records for non-authenticated visitors.
+ */
+function getSessionId(): string {
+  const KEY = 'evidencelab_session_id';
+  let id = localStorage.getItem(KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(KEY, id);
+  }
+  return id;
+}
+
+/**
  * Hook for fire-and-forget logging of search activity.
+ *
+ * Works for both authenticated and anonymous users. Authenticated users
+ * are identified by their JWT cookie; anonymous visitors are identified
+ * by a random session_id stored in localStorage.
  *
  * Usage:
  *   const { logSearch, updateSummary } = useActivityLogging();
@@ -57,9 +75,10 @@ export function useActivityLogging() {
           filters: Object.keys(mergedFilters).length > 0 ? mergedFilters : null,
           search_results: richResults,
           url: window.location.href,
+          session_id: getSessionId(),
         })
         .catch((err) => {
-          // Silently fail — user may not be authenticated or activity logging may be unavailable
+          // Silently fail — activity logging may be unavailable
           console.debug('Activity logging failed (non-critical):', err?.message);
         });
     },
@@ -87,6 +106,7 @@ export function useActivityLogging() {
           ...(summaryText ? { ai_summary: summaryText } : {}),
           ...(summaryDurationMs != null ? { summary_duration_ms: summaryDurationMs } : {}),
           ...(drilldownTree ? { drilldown_tree: drilldownTree } : {}),
+          session_id: getSessionId(),
         })
         .catch((err) => {
           console.debug('Activity summary update failed (non-critical):', err?.message);
