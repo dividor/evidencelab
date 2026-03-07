@@ -121,7 +121,7 @@ def get_config_llms():
 def _location_from_source(source: Optional[str]) -> str:
     if not source:
         return "Local"
-    if source in {"azure_foundry", "openai", "api"}:
+    if source in {"azure_foundry", "google_vertex", "openai", "api"}:
         return "API"
     return "Local"
 

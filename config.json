@@ -12,8 +12,7 @@
       "short_query_dense_weight": 0.25,
       "highlight_threshold": 0.6,
       "page_size": 50,
-      "rerank_model": "jinaai/jina-reranker-v2-base-multilingual",
-      "default_dense_model": "e5_large"
+      "rerank_model": "jinaai/jina-reranker-v2-base-multilingual"
     }
   },
   "supported_embedding_models": {
@@ -212,7 +211,7 @@
       "rerank_model_page_size": 10
     },
     "Google Vertex": {
-      "embedding_model": "google_gemini",
+      "embedding_model": "google_gemini_1536",
       "sparse_model": "bm25",
       "summarization_model": {
         "model": "gemini-2.5-flash",
@@ -422,7 +421,6 @@
                   "llm_prompt": "Assign SDG 17 if the document discusses: (1) Global partnerships and cooperation (international cooperation, North-South cooperation, South-South cooperation, triangular cooperation); (2) Development finance (ODA, official development assistance, development aid, public finance mobilization, foreign direct investment); (3) Technology transfer and cooperation (technology sharing, innovation cooperation, access to technology); (4) Capacity building and technical assistance (skills development for SDGs, knowledge sharing, institutional strengthening); (5) International trade (trade agreements, trade facilitation, market access for developing countries, fair trade); (6) Multi-stakeholder partnerships (public-private partnerships, civil society collaboration); (7) Data, monitoring and accountability for SDGs. Keywords: partnership, international cooperation, development assistance, ODA, technology transfer, capacity building, global cooperation, multi-stakeholder, SDG implementation, development finance."
                 }
               }
-
             },
             "cross_cutting_theme": {
               "name": "Cross-cutting Themes",
