@@ -29,6 +29,7 @@ from sentence_transformers import util
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.base import BaseProcessor
 from pipeline.utilities.embedding_service import EmbeddingService
+from pipeline.utilities.llm_retry import invoke_with_retry
 from pipeline.utilities.logging_utils import _log_context
 from utils import llm_factory
 from utils.langsmith_util import setup_langsmith_tracing
@@ -462,7 +463,7 @@ class SummarizeProcessor(BaseProcessor):
             max_tokens=self.max_tokens,
             inference_provider=self.inference_provider if include_inference else None,
         )
-        response = llm.invoke([HumanMessage(content=prompt)])
+        response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
         if hasattr(response, "content"):
             return response.content.strip()
         return str(response).strip()
