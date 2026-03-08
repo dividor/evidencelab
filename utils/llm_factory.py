@@ -17,6 +17,7 @@ Provider-specific keys:
 - OPENAI_API_BASE: For OpenAI-compatible (e.g., Groq, Together)
 """
 
+import json
 import logging
 import os
 from typing import Any, Dict, Optional, Tuple
@@ -24,6 +25,7 @@ from typing import Any, Dict, Optional, Tuple
 from huggingface_hub import InferenceClient
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_google_vertexai import ChatVertexAI
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_openai import ChatOpenAI
 
@@ -287,11 +289,14 @@ def _create_llm_for_provider(
         return _create_azure_foundry_llm(model, temperature, max_tokens)
     if provider == "anthropic":
         return _create_anthropic_llm(model, temperature, max_tokens)
+    if provider == "google_vertex":
+        return _create_google_vertex_llm(model, temperature, max_tokens)
     if provider == "openai-compatible":
         return _create_openai_compatible_llm(model, temperature, max_tokens)
     raise ValueError(
         f"Unsupported LLM_PROVIDER: {provider}. "
-        f"Supported: huggingface, openai, azure_foundry, anthropic, openai-compatible"
+        f"Supported: huggingface, openai, azure_foundry, anthropic, "
+        f"google_vertex, openai-compatible"
     )
 
 
@@ -421,6 +426,39 @@ def _create_anthropic_llm(
         temperature=temperature,
         max_tokens=max_tokens,
         api_key=api_key,
+    )
+
+
+def _create_google_vertex_llm(
+    model: str, temperature: float, max_tokens: int
+) -> BaseChatModel:
+    """Create Google Vertex AI LLM instance."""
+    project = os.getenv("GOOGLE_CLOUD_PROJECT")
+    if not project:
+        creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if creds_path and os.path.exists(creds_path):
+            with open(creds_path, encoding="utf-8") as f:
+                creds_data = json.load(f)
+                project = creds_data.get("project_id")
+    if not project:
+        raise ValueError(
+            "Google Cloud project not found. Set GOOGLE_CLOUD_PROJECT or "
+            "GOOGLE_APPLICATION_CREDENTIALS pointing to a service account JSON."
+        )
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    # Gemini 2.5 models enable "thinking" by default, which consumes output
+    # tokens from max_output_tokens and truncates the visible response.
+    # Disable thinking so all output tokens are used for the actual response.
+    kwargs: dict[str, Any] = {}
+    if "2.5" in model:
+        kwargs["thinking_budget"] = 0
+    return ChatVertexAI(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        project=project,
+        location=location,
+        **kwargs,
     )
 
 

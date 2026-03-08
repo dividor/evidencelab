@@ -1,5 +1,4 @@
 import importlib
-import json
 import logging
 import math
 import os
@@ -13,14 +12,17 @@ from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
 
-from pipeline.db import (  # noqa: E402
-    DB_VECTORS,
-    DENSE_VECTOR_NAME,
-    SUPPORTED_RERANK_MODELS,
-    get_application_config,
-)
+from pipeline.db import DENSE_VECTOR_NAME  # noqa: E402
+from pipeline.db import DB_VECTORS, SUPPORTED_RERANK_MODELS, get_application_config
 from pipeline.utilities.azure_client import AzureEmbeddingClient  # noqa: E402
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
+from pipeline.utilities.google_vertex_client import (  # noqa: E402
+    GoogleVertexEmbeddingClient,
+)
+from ui.backend.services.azure_foundry_reranker import rerank_with_azure_foundry
+from ui.backend.services.google_vertex_reranker import (  # noqa: E402
+    rerank_with_google_vertex,
+)
 
 load_dotenv()
 
@@ -233,6 +235,13 @@ def _init_dense_model(vector_name: str, vec_config: Dict[str, Any]) -> Any:
             deployment_name=str(model_id),
         )
 
+    if source == "google_vertex":
+        output_dimensionality = vec_config.get("output_dimensionality")
+        return GoogleVertexEmbeddingClient(
+            model_id=str(model_id),
+            output_dimensionality=output_dimensionality,
+        )
+
     if USE_EMBEDDING_SERVER:
         if source not in {"huggingface", "fastembed"}:
             raise ValueError(
@@ -353,126 +362,11 @@ def _is_azure_foundry_reranker(config: Dict[str, Any]) -> bool:
     )
 
 
-def _get_azure_foundry_rerank_endpoint(config: Dict[str, Any], deployment: str) -> str:
-    endpoint = (
-        config.get("endpoint_url")
-        or config.get("endpoint")
-        or os.getenv("AZURE_FOUNDRY_ENDPOINT")
+def _is_google_vertex_reranker(config: Dict[str, Any]) -> bool:
+    return (
+        config.get("provider") == "google_vertex"
+        or config.get("source") == "google_vertex"
     )
-    if not endpoint:
-        raise ValueError("Azure Foundry rerank endpoint not configured.")
-    azure_base = endpoint.rstrip("/")
-    if "/providers/cohere/" in azure_base:
-        return azure_base
-    if "/openai/deployments/" in azure_base:
-        azure_base = azure_base.split("/openai/deployments/")[0]
-    if azure_base.endswith(".openai.azure.com"):
-        azure_base = azure_base.replace(".openai.azure.com", ".services.ai.azure.com")
-    return f"{azure_base}/providers/cohere/v2/rerank"
-
-
-def _get_azure_foundry_api_key() -> str:
-    api_key = os.getenv("AZURE_FOUNDRY_KEY")
-    if not api_key:
-        raise ValueError("AZURE_FOUNDRY_KEY is required for Azure Foundry reranking.")
-    return api_key
-
-
-def _scores_from_results(results: Any, doc_count: int) -> Optional[List[float]]:
-    if not results:
-        return None
-    # Check if results include an "index" field (e.g. Cohere rerank API returns
-    # results sorted by relevance, with "index" mapping back to original doc order).
-    has_index = all(isinstance(r, dict) and "index" in r for r in results)
-    if has_index:
-        scores: List[Optional[float]] = [None] * doc_count
-        for result in results:
-            idx = result["index"]
-            score = (
-                result.get("relevance_score")
-                or result.get("score")
-                or result.get("relevanceScore")
-            )
-            if score is None or not isinstance(idx, int) or idx < 0 or idx >= doc_count:
-                return None
-            scores[idx] = score
-        if any(s is None for s in scores):
-            return None
-        return [float(s) for s in scores]  # type: ignore[arg-type]
-    # Fallback: scores in iteration order (no index field)
-    scores_list = []
-    for result in results:
-        score = result.get("score")
-        if score is None:
-            score = result.get("relevance_score")
-        if score is None:
-            score = result.get("relevanceScore")
-        if score is None:
-            return None
-        scores_list.append(score)
-    if len(scores_list) != doc_count:
-        return None
-    return scores_list
-
-
-def _scores_from_list(scores: Any) -> Optional[List[float]]:
-    if not isinstance(scores, list):
-        return None
-    if not all(isinstance(score, (float, int)) for score in scores):
-        return None
-    return [float(score) for score in scores]
-
-
-def _scores_from_data(data: Any, doc_count: int) -> Optional[List[float]]:
-    if not isinstance(data, dict):
-        return None
-    scores = data.get("scores") or data.get("results") or data.get("data")
-    if scores is None:
-        return None
-    if isinstance(scores, list) and all(isinstance(item, dict) for item in scores):
-        return _scores_from_results(scores, doc_count)
-    if isinstance(scores, list):
-        parsed_scores = _scores_from_list(scores)
-        if parsed_scores and len(parsed_scores) == doc_count:
-            return parsed_scores
-    return None
-
-
-def _parse_azure_rerank_response(response_text: Any, doc_count: int) -> List[float]:
-    if isinstance(response_text, str):
-        try:
-            data = json.loads(response_text)
-        except json.JSONDecodeError:
-            raise ValueError("Azure rerank response is not valid JSON.")
-    else:
-        data = response_text
-
-    scores = _scores_from_data(data, doc_count)
-    if scores is None:
-        raise ValueError("Azure rerank response missing scores.")
-    return scores
-
-
-def _rerank_with_azure_foundry(
-    query: str, documents: List[str], deployment: str, config: Dict[str, Any]
-) -> List[float]:
-    payload = {
-        "model": deployment,
-        "query": query,
-        "documents": documents,
-        "top_n": len(documents),
-    }
-    endpoint = _get_azure_foundry_rerank_endpoint(config, deployment)
-    api_key = _get_azure_foundry_api_key()
-    request = Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"api-key": api_key, "Content-Type": "application/json"},
-        method="POST",
-    )
-    with urlopen(request, timeout=10) as response:
-        response_text = response.read().decode("utf-8")
-    return _parse_azure_rerank_response(response_text, len(documents))
 
 
 def get_rerank_model(
@@ -503,6 +397,8 @@ def get_rerank_model(
             raise ValueError(f"Unknown rerank model: {model_name}")
         if _is_azure_foundry_reranker(rerank_config):
             model = {"type": "azure_foundry", "config": rerank_config}
+        elif _is_google_vertex_reranker(rerank_config):
+            model = {"type": "google_vertex", "config": rerank_config}
         else:
             cross_encoder_module = importlib.import_module(
                 "fastembed.rerank.cross_encoder"
@@ -572,11 +468,19 @@ def rerank_results(
     if _is_azure_foundry_reranker(rerank_config):
         deployment = rerank_config.get("model_id", model_name)
         with _rerank_semaphore:
-            rerank_scores = _rerank_with_azure_foundry(
+            rerank_scores = rerank_with_azure_foundry(
                 query=query,
                 documents=documents,
                 deployment=deployment,
                 config=rerank_config,
+            )
+    elif _is_google_vertex_reranker(rerank_config):
+        vertex_model_id = rerank_config.get("model_id", model_name)
+        with _rerank_semaphore:
+            rerank_scores = rerank_with_google_vertex(
+                query=query,
+                documents=documents,
+                model_id=vertex_model_id,
             )
     else:
         if rerank_model_loader is not None:

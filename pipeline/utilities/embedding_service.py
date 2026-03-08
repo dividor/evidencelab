@@ -17,6 +17,7 @@ from typing import Any, Dict, Optional
 from pipeline.db import DB_VECTORS
 from pipeline.utilities.azure_client import AzureEmbeddingClient
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient
+from pipeline.utilities.google_vertex_client import GoogleVertexEmbeddingClient
 
 logger = logging.getLogger(__name__)
 
@@ -69,12 +70,14 @@ class EmbeddingService:
 
         if source == "azure_foundry":
             return self._create_azure_client(name, model_id)
+        if source == "google_vertex":
+            return self._create_google_vertex_client(name, model_id, vec_config)
         if source == "huggingface":
             return self._create_huggingface_client(name, model_id)
 
         raise ValueError(
             f"Unsupported embedding model source '{source}' for model '{name}'. "
-            "Supported sources: 'huggingface', 'azure_foundry'."
+            "Supported sources: 'huggingface', 'azure_foundry', 'google_vertex'."
         )
 
     def _create_azure_client(self, name: str, model_id: str) -> AzureEmbeddingClient:
@@ -92,6 +95,22 @@ class EmbeddingService:
             api_key=api_key,
             endpoint=endpoint,
             deployment_name=model_id,
+        )
+
+    def _create_google_vertex_client(
+        self, name: str, model_id: str, vec_config: Dict[str, Any]
+    ) -> GoogleVertexEmbeddingClient:
+        output_dimensionality = vec_config.get("output_dimensionality")
+        logger.info(
+            "EmbeddingService: created Google Vertex client for '%s' (%s), "
+            "output_dimensionality=%s",
+            name,
+            model_id,
+            output_dimensionality,
+        )
+        return GoogleVertexEmbeddingClient(
+            model_id=model_id,
+            output_dimensionality=output_dimensionality,
         )
 
     def _create_huggingface_client(

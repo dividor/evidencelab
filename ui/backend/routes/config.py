@@ -121,7 +121,7 @@ def get_config_llms():
 def _location_from_source(source: Optional[str]) -> str:
     if not source:
         return "Local"
-    if source in {"azure_foundry", "openai", "api"}:
+    if source in {"azure_foundry", "google_vertex", "openai", "api"}:
         return "API"
     return "Local"
 
@@ -196,12 +196,35 @@ def _build_model_combo(combo_name: str, combo: Dict[str, Any]) -> Dict[str, Any]
 
 
 @router.get("/config/model-combos", response_model=Dict[str, ModelComboConfig])
-def get_config_model_combos():
-    """Get list of available model combos for the UI."""
+def get_config_model_combos(data_source: Optional[str] = None):
+    """Get list of available model combos for the UI.
+
+    If data_source is provided, only return combos whose embedding_model
+    is in the datasource's pipeline.index.dense_models.
+    """
+    indexed_models = _get_indexed_models(data_source) if data_source else None
     combos_with_ids: Dict[str, Dict[str, Any]] = {}
     for combo_name, combo in UI_MODEL_COMBOS.items():
+        if indexed_models is not None:
+            embedding = combo.get("embedding_model", "")
+            if embedding not in indexed_models:
+                continue
         combos_with_ids[combo_name] = _build_model_combo(combo_name, combo)
     return combos_with_ids
+
+
+def _get_indexed_models(data_source: str) -> set:
+    """Return the set of dense model names indexed for a datasource."""
+    config = pipeline_db.load_datasources_config()
+    datasources = config.get("datasources", {})
+    for key, ds_cfg in datasources.items():
+        if not isinstance(ds_cfg, dict):
+            continue
+        if ds_cfg.get("data_subdir") == data_source or key == data_source:
+            return set(
+                ds_cfg.get("pipeline", {}).get("index", {}).get("dense_models", [])
+            )
+    return set()
 
 
 @router.get("/config/datasources")

@@ -94,6 +94,8 @@ def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         }
         if "max_tokens" in model_info:
             vec_entry["max_tokens"] = model_info["max_tokens"]
+        if "output_dimensionality" in model_info:
+            vec_entry["output_dimensionality"] = model_info["output_dimensionality"]
         result[model_name] = vec_entry
     return result
 
@@ -127,6 +129,32 @@ def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+def _resolve_default_dense_model(
+    config: Dict[str, Any],
+    search_config: Dict[str, Any],
+    db_vectors: Dict[str, Any],
+) -> str:
+    """Derive the default dense model from the first datasource's index config."""
+    # 1. First dense_model from the first datasource's pipeline.index.dense_models
+    for ds_cfg in config.get("datasources", {}).values():
+        if not isinstance(ds_cfg, dict):
+            continue
+        dense_models = (
+            ds_cfg.get("pipeline", {}).get("index", {}).get("dense_models", [])
+        )
+        for model_name in dense_models:
+            if model_name in db_vectors:
+                return model_name
+
+    # 2. Fallback to application.search config
+    explicit = search_config.get("default_dense_model")
+    if explicit and explicit in db_vectors:
+        return explicit
+
+    # 3. Hardcoded fallback
+    return "e5_large"
+
+
 def refresh_config() -> None:
     """Reload config-driven settings for vectors and LLMs."""
     global _config, _app_config, _search_config, _datasources_config
@@ -143,7 +171,9 @@ def refresh_config() -> None:
 
     _app_config = _config.get("application", {})
     _search_config = _app_config.get("search", {})
-    DENSE_VECTOR_NAME = _search_config.get("default_dense_model", "e5_large")
+    DENSE_VECTOR_NAME = _resolve_default_dense_model(
+        _config, _search_config, DB_VECTORS
+    )
     DENSE_VECTOR_SIZE = DB_VECTORS.get(DENSE_VECTOR_NAME, {}).get("size", 1024)
 
     if "ui_model_combos" in _config:

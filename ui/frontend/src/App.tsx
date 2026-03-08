@@ -376,10 +376,12 @@ type ModelCombos = Record<string, ModelComboConfig>;
 const fetchModelCombos = async (
   apiBaseUrl: string,
   setModelCombos: React.Dispatch<React.SetStateAction<ModelCombos>>,
-  setLoading: React.Dispatch<React.SetStateAction<boolean>>
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  dataSource?: string
 ): Promise<void> => {
   try {
-    const response = await axios.get<ModelCombos>(`${apiBaseUrl}/config/model-combos`);
+    const params = dataSource ? `?data_source=${encodeURIComponent(dataSource)}` : '';
+    const response = await axios.get<ModelCombos>(`${apiBaseUrl}/config/model-combos${params}`);
     const data = response.data as ModelCombos;
     setModelCombos(data);
   } catch (error: any) {
@@ -487,11 +489,7 @@ function App() {
     fetchConfig();
   }, [authState.isAuthenticated]);
 
-  // Fetch model combos config (same auth-aware guard as datasources above)
-  useEffect(() => {
-    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
-    fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading);
-  }, [authState.isAuthenticated]);
+  // Model combos are fetched after dataSource is resolved (see below)
 
   // Get available domains from config
   const availableDomains = Object.keys(datasourcesConfig);
@@ -662,6 +660,13 @@ function App() {
     // Config still loading — return empty to prevent premature API calls
     return currentDataSourceConfig?.data_subdir || '';
   }, [loadingConfig, selectedDomain, datasourcesConfig, currentDataSourceConfig]);
+
+  // Fetch model combos filtered by active data source
+  useEffect(() => {
+    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
+    if (!dataSource) return;
+    fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading, dataSource);
+  }, [authState.isAuthenticated, dataSource]);
 
   const fieldMapping = currentDataSourceConfig?.field_mapping || {};
   const filterFields = currentDataSourceConfig?.filter_fields || {};

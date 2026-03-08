@@ -371,6 +371,8 @@ def test_search_performance(
     log_poll: float = 0.2,
     log_encoding: str = "utf-8",
     query: str = "evaluation",
+    data_source: str = "uneg",
+    model_combo: str | None = None,
 ):
     load_env()
     headers = build_headers()
@@ -394,10 +396,10 @@ def test_search_performance(
         )
 
     # 1. Test Stats (General Health)
-    print("\n=== Checking System Health ===")
+    print(f"\n=== Checking System Health (data_source={data_source}) ===")
     test_endpoint(
         "Stats",
-        f"{base_url}/stats?data_source=uneg",
+        f"{base_url}/stats?data_source={data_source}",
         headers,
         iterations=iterations,
         log_reader=log_reader,
@@ -405,11 +407,20 @@ def test_search_performance(
 
     # 2. Identify configured model combos
     if not UI_MODEL_COMBOS:
-        print("\n❌ No model combos found in UI_MODEL_COMBOS!")
+        print("\nNo model combos found in UI_MODEL_COMBOS!")
         return
 
-    print(f"\n=== Found {len(UI_MODEL_COMBOS)} Model Combos ===")
-    for combo_name in UI_MODEL_COMBOS:
+    combos_to_test = UI_MODEL_COMBOS
+    if model_combo:
+        combos_to_test = {k: v for k, v in UI_MODEL_COMBOS.items() if k == model_combo}
+        if not combos_to_test:
+            print(f"\nModel combo '{model_combo}' not found. Available:")
+            for name in UI_MODEL_COMBOS:
+                print(f"  - {name}")
+            return
+
+    print(f"\n=== Testing {len(combos_to_test)} Model Combo(s) ===")
+    for combo_name in combos_to_test:
         print(f"  - {combo_name}")
 
     # 3. Test Search for EACH Combo (rerank on/off)
@@ -429,7 +440,7 @@ def test_search_performance(
     print("\n=== Benchmarking Search Performance ===")
     print(f"Query pool: {search_queries}")
 
-    for combo_name, combo_config in UI_MODEL_COMBOS.items():
+    for combo_name, combo_config in combos_to_test.items():
         embedding_model = combo_config.get("embedding_model")
         reranker_model = combo_config.get("reranker_model")
         sparse_model = combo_config.get("sparse_model")
@@ -446,7 +457,7 @@ def test_search_performance(
             )
             params = {
                 "q": search_query,
-                "data_source": "uneg",
+                "data_source": data_source,
                 "limit": 50,
                 "section_types": (
                     "executive_summary,introduction,methodology,"
@@ -559,6 +570,16 @@ if __name__ == "__main__":
         default=os.getenv("SEARCH_PERF_QUERY", "evaluation"),
         help="Search query string (default: evaluation or SEARCH_PERF_QUERY)",
     )
+    parser.add_argument(
+        "--data-source",
+        default=os.getenv("SEARCH_PERF_DATA_SOURCE", "uneg"),
+        help="Data source to test (default: uneg or SEARCH_PERF_DATA_SOURCE)",
+    )
+    parser.add_argument(
+        "--model-combo",
+        default=os.getenv("SEARCH_PERF_MODEL_COMBO"),
+        help="Test only this model combo (default: all combos)",
+    )
     args = parser.parse_args()
 
     test_search_performance(
@@ -570,4 +591,6 @@ if __name__ == "__main__":
         log_poll=args.log_poll,
         log_encoding=args.log_encoding,
         query=args.query,
+        data_source=args.data_source,
+        model_combo=args.model_combo,
     )
