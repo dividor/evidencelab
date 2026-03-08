@@ -2804,7 +2804,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const hasGlobalQuery = gridQuery.trim() !== '';
   const metricEnabled = isQueryRow || hasGlobalQuery;
   const metricValue = metricEnabled ? heatmapMetric : 'documents';
-  const isModelSupported = selectedModelCombo === 'Azure Foundry';
+  const isModelSupported = selectedModelCombo !== null;
 
   return (
     <div className="main-content">
@@ -2836,8 +2836,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             </div>
             {!isModelSupported ? (
               <div className="heatmap-model-warning">
-                Heatmapper currently only supports the <strong>Azure Foundry</strong> model.
-                Please switch to Azure Foundry using the Models dropdown above.
+                Please select a model using the Models dropdown above.
               </div>
             ) : (<>
             <div className="heatmap-controls">
