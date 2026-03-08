@@ -23,6 +23,7 @@ def _make_activity(**overrides):
     defaults = {
         "id": uuid.uuid4(),
         "user_id": uuid.uuid4(),
+        "session_id": None,
         "search_id": uuid.uuid4(),
         "query": "test query",
         "filters": None,
@@ -188,8 +189,8 @@ class TestBuildExportRow:
     def test_null_user(self):
         activity = _make_activity()
         row = _build_export_row(activity, None)
-        assert row[1] == ""  # email
-        assert row[2] == ""  # display name
+        assert row[1] == "(anonymous)"  # email
+        assert row[2] == "Anonymous"  # display name
 
     def test_no_created_at(self):
         activity = _make_activity(created_at=None)
