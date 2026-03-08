@@ -122,7 +122,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
     # Remove optimum to avoid "BetterTransformer requires transformers<4.49" error
     # infinity-emb works without optimum (especially on MPS where BetterTransformer is disabled)
     # Install langchain explicitly as it is missing from requirements.txt but needed for summarization
-    pip install -q "transformers>=4.50.0" "tokenizers>=0.21.0" "click==8.1.7" "onnxruntime" "sentence-transformers" "infinity-emb[server]>=0.0.77" "langchain" "langchain-community" "langchain-huggingface" "langchain-openai" "langchain-anthropic" "setproctitle"
+    pip install -q "transformers>=4.50.0" "tokenizers>=0.21.0" "click==8.1.7" "onnxruntime" "sentence-transformers" "infinity-emb[server]>=0.0.77" "langchain" "langchain-community" "langchain-huggingface" "langchain-openai" "langchain-anthropic" "langchain-google-vertexai>=3.0.0,<4.0.0" "setproctitle"
     pip uninstall -y -q optimum 2>/dev/null || true
 
     echo "   ✅ Environment prepared."
