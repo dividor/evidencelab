@@ -4,7 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client.http import models
 
-from pipeline.db import get_default_filter_fields, get_field_mapping
+from pipeline.db import (
+    get_default_filter_fields,
+    get_field_mapping,
+    get_taxonomy_filter_fields,
+)
 from ui.backend.utils.document_utils import map_core_field_to_storage
 from ui.backend.utils.language_codes import LANGUAGE_CODES
 
@@ -92,7 +96,11 @@ def add_dynamic_filters(
     data_source: Optional[str] = None,
 ) -> None:
     """Pick up config-driven filter params (src_*, tag_*, etc.) dynamically."""
-    filter_fields = get_default_filter_fields(data_source or "uneg")
+    source = data_source or "uneg"
+    filter_fields = {
+        **get_default_filter_fields(source),
+        **get_taxonomy_filter_fields(source),
+    }
     hardcoded = {
         "organization",
         "title",
