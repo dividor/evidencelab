@@ -439,7 +439,6 @@ def process_document_wrapper(doc: Dict[str, Any]) -> Dict[str, Any]:
     doc_id = doc.get("id")
     _log_context.doc_id = doc_id
 
-
     title = doc.get("map_title")
     if not title:
         error_msg = "No title field in source metadata (map_title is missing)"
