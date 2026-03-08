@@ -4461,6 +4461,147 @@ li.ai-fact-active::before {
   margin: 0;
 }
 
+/* Documentation Page */
+.docs-page {
+  display: flex;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 0;
+  min-height: calc(100vh - 200px);
+}
+
+.docs-sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--white);
+  border-right: 1px solid var(--gray-200);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 1rem 0;
+}
+
+.docs-search {
+  padding: 0 1rem 1rem;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.docs-search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--gray-700);
+  background: var(--gray-50);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.docs-search-input:focus {
+  border-color: var(--brand-primary);
+  background: var(--white);
+}
+
+.docs-search-input::placeholder {
+  color: var(--gray-400);
+}
+
+.docs-nav-tree {
+  padding: 0.5rem 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.docs-nav-folder {
+  margin-bottom: 0.25rem;
+}
+
+.docs-nav-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border: none;
+  background: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gray-600);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.docs-nav-folder-header:hover {
+  color: var(--gray-800);
+}
+
+.docs-nav-folder-arrow {
+  font-size: 0.7rem;
+  width: 1rem;
+  text-align: center;
+  color: var(--gray-400);
+}
+
+.docs-nav-folder-children {
+  display: flex;
+  flex-direction: column;
+}
+
+.docs-nav-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 1rem 0.4rem 2.25rem;
+  border: none;
+  background: none;
+  font-size: 0.875rem;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.15s, background-color 0.15s;
+  line-height: 1.4;
+}
+
+.docs-nav-item:hover {
+  color: var(--brand-primary-dark);
+  background: var(--gray-50);
+}
+
+.docs-nav-item.active {
+  color: var(--brand-primary-dark);
+  background: var(--brand-primary-light, rgba(59, 130, 246, 0.08));
+  font-weight: 500;
+  border-right: 3px solid var(--brand-primary);
+}
+
+.docs-content {
+  flex: 1;
+  padding: 2rem;
+  background: var(--white);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.docs-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  color: var(--gray-500);
+  font-size: 0.95rem;
+}
+
+.docs-no-results {
+  padding: 1rem;
+  color: var(--gray-400);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 /* About Modal Content */
 .about-page-container {
   max-width: 1200px;

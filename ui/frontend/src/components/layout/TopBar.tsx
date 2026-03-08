@@ -27,6 +27,7 @@ interface TopBarProps {
   onAboutClick: () => void;
   onTechClick: () => void;
   onDataClick: () => void;
+  onDocsClick: () => void;
   onAdminClick?: () => void;
   onLoadResearch?: (id: string) => void;
   navTabs?: React.ReactNode;
@@ -56,6 +57,7 @@ export const TopBar = ({
   onAboutClick,
   onTechClick,
   onDataClick,
+  onDocsClick,
   onAdminClick,
   onLoadResearch,
   navTabs,
@@ -279,6 +281,9 @@ export const TopBar = ({
                 </button>
                 <button className="dropdown-item" onClick={onDataClick}>
                   Data
+                </button>
+                <button className="dropdown-item" onClick={onDocsClick}>
+                  Docs
                 </button>
               </div>
             )}

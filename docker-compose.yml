@@ -248,6 +248,7 @@ services:
       - ./ui/frontend:/app
       - /app/node_modules
       - ./config.json:/tmp/config.json:ro
+      - ./docs:/app/docs_source:ro
       - ./logs:/app/logs
     # Pipe output to file for persistent logging
     # Copy config.json to src before starting to satisfy CRA restrictions

@@ -100,7 +100,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats', 'admin'] as const;
+const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats', 'admin', 'docs'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -867,6 +867,10 @@ function App() {
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
+  const handleDocsClick = useCallback(() => {
+    handleTabChange('docs');
+    setHelpDropdownOpen(false);
+  }, [handleTabChange]);
 
   // Listen for browser back/forward navigation and URL changes
   useEffect(() => {
@@ -1350,28 +1354,28 @@ function App() {
   useEffect(() => {
     if (activeTab === 'info') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/about.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/about.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setAboutContent(text))
         .catch(err => console.error('Failed to load about content:', err));
     }
     if (activeTab === 'tech') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/tech.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/tech.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setTechContent(text))
         .catch(err => console.error('Failed to load tech content:', err));
     }
     if (activeTab === 'data') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/data.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/data.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setDataContent(text))
         .catch(err => console.error('Failed to load data content:', err));
     }
     if (activeTab === 'privacy') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/privacy.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => {
           if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
@@ -2788,6 +2792,7 @@ function App() {
         onAboutClick={handleAboutClick}
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
+        onDocsClick={handleDocsClick}
         onAdminClick={() => handleTabChange('admin')}
         onLoadResearch={handleLoadResearch}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />}
@@ -2822,6 +2827,7 @@ function App() {
         techContent={techContent}
         dataContent={dataContent}
         privacyContent={privacyContent}
+        basePath={APP_BASE_PATH}
         onTabChange={handleTabChange}
       />
 

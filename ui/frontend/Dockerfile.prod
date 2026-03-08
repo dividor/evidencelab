@@ -18,6 +18,9 @@ COPY ui/frontend/. .
 # Copy config.json from root (after source files)
 COPY config.json ./src/config.json
 
+# Copy docs from project root (used by copy-docs script during build)
+COPY docs/ ./docs_source/
+
 # Build for production
 # API calls go to /api which Caddy proxies to the backend
 ARG REACT_APP_API_BASE_URL=/api

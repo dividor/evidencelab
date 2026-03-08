@@ -1,0 +1,16 @@
+{
+  "title": "Evidence Lab Documentation",
+  "tree": [
+    {
+      "title": "Overview",
+      "children": [
+        { "title": "About Evidence Lab", "path": "overview/about.md" },
+        { "title": "Technical Architecture", "path": "overview/tech.md" },
+        { "title": "Data Sources", "path": "overview/data.md" },
+        { "title": "Data & Attribution", "path": "overview/data_and_attribution.md" },
+        { "title": "Heatmapper", "path": "overview/heatmapper.md" },
+        { "title": "Privacy Policy", "path": "overview/privacy.md" }
+      ]
+    }
+  ]
+}

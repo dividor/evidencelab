@@ -19,7 +19,10 @@
     "yaml": "^2.8.2"
   },
   "scripts": {
+    "copy-docs": "node scripts/copy-docs.js",
+    "prestart": "npm run copy-docs",
     "start": "react-scripts start",
+    "prebuild": "npm run copy-docs",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

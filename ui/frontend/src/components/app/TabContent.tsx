@@ -3,8 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
+import DocsPage from '../docs/DocsPage';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
+type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin' | 'docs';
 
 interface TabContentProps {
   activeTab: TabName;
@@ -19,6 +20,7 @@ interface TabContentProps {
   techContent: string;
   dataContent: string;
   privacyContent: string;
+  basePath?: string;
   onTabChange: (tab: TabName) => void;
 }
 
@@ -131,6 +133,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   techContent,
   dataContent,
   privacyContent,
+  basePath,
   onTabChange,
 }) => {
   switch (activeTab) {
@@ -154,6 +157,8 @@ export const TabContent: React.FC<TabContentProps> = ({
       return <>{statsTab}</>;
     case 'privacy':
       return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
+    case 'docs':
+      return <DocsPage basePath={basePath} />;
     default:
       return null;
   }
