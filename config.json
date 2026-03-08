@@ -12,7 +12,8 @@
       "short_query_dense_weight": 0.25,
       "highlight_threshold": 0.6,
       "page_size": 50,
-      "rerank_model": "jinaai/jina-reranker-v2-base-multilingual"
+      "rerank_model": "jinaai/jina-reranker-v2-base-multilingual",
+      "default_dense_model": "e5_large"
     }
   },
   "supported_embedding_models": {
@@ -46,26 +47,10 @@
     },
     "google_gemini": {
       "model_id": "gemini-embedding-001",
-      "size": 3072,
+      "size": 2048,
       "source": "google_vertex",
       "type": "dense",
       "max_tokens": 2048
-    },
-    "google_gemini_1536": {
-      "model_id": "gemini-embedding-001",
-      "size": 1536,
-      "source": "google_vertex",
-      "type": "dense",
-      "max_tokens": 2048,
-      "output_dimensionality": 1536
-    },
-    "google_gemini_768": {
-      "model_id": "gemini-embedding-001",
-      "size": 768,
-      "source": "google_vertex",
-      "type": "dense",
-      "max_tokens": 2048,
-      "output_dimensionality": 768
     },
     "google_multilingual": {
       "model_id": "text-multilingual-embedding-002",
@@ -118,30 +103,42 @@
       "size": 105879,
       "source": "opensearch",
       "type": "sparse"
+    },
+    "google_gemini_1536": {
+      "model_id": "gemini-embedding-001",
+      "size": 1536,
+      "source": "google_vertex",
+      "type": "dense",
+      "max_tokens": 2048,
+      "output_dimensionality": 1536
+    },
+    "google_gemini_768": {
+      "model_id": "gemini-embedding-001",
+      "size": 768,
+      "source": "google_vertex",
+      "type": "dense",
+      "max_tokens": 2048,
+      "output_dimensionality": 768
     }
   },
   "supported_llms": {
     "qwen2.5-7b-instruct": {
       "model": "Qwen/Qwen2.5-7B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "together",
-      "max_tokens": 8192
+      "inference_provider": "together"
     },
     "qwen2.5-72b-instruct": {
       "model": "Qwen/Qwen2.5-72B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "novita",
-      "max_tokens": 8192
+      "inference_provider": "novita"
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",
-      "provider": "huggingface",
-      "max_tokens": 4096
+      "provider": "huggingface"
     },
     "gpt-4.1-mini": {
       "model": "gpt-4.1-mini",
-      "provider": "azure_foundry",
-      "max_tokens": 32768
+      "provider": "azure_foundry"
     },
     "gemini-2.5-flash": {
       "model": "gemini-2.5-flash",
@@ -252,6 +249,35 @@
         "pdf_url": "pdf_url",
         "report_url": "report_url"
       },
+      "example_queries": [
+        "impact of climate change on food security",
+        "gender equality in humanitarian response",
+        "WASH programme effectiveness"
+      ],
+      "default_filter_fields": {
+        "organization": "Organization",
+        "title": "Document Title",
+        "published_year": "Year Published",
+        "document_type": "Document Type",
+        "country": "Country",
+        "src_geographic_scope": "Geographic Scope",
+        "tag_sdg": "United Nations Sustainable Development Goals",
+        "tag_cross_cutting_theme": "Cross-cutting Themes",
+        "language": "Language"
+      },
+      "metadata_panel_fields": {
+        "organization": "Organization",
+        "title": "Document Title",
+        "published_year": "Year Published",
+        "document_type": "Document Type",
+        "country": "Country",
+        "src_geographic_scope": "Geographic Scope",
+        "tag_sdg": "Sustainable Development Goals",
+        "tag_cross_cutting_theme": "Cross-cutting Themes",
+        "language": "Language",
+        "full_summary": "Summary",
+        "toc_classified": "Table of Contents"
+      },
       "pipeline": {
         "processing_timeout": 3600,
         "download": {
@@ -281,10 +307,11 @@
         "chunk": {
           "max_tokens": 450,
           "min_substantive_size": 50,
-          "dense_model": "intfloat/multilingual-e5-large"
+          "tokenizer": "intfloat/multilingual-e5-large"
         },
         "summarize": {
           "enabled": true,
+          "dense_model": "e5_large",
           "llm_model": {
             "model": "Qwen/Qwen2.5-7B-Instruct",
             "provider": "huggingface",
@@ -296,7 +323,7 @@
         },
         "tag": {
           "enabled": true,
-          "dense_model": "intfloat/multilingual-e5-large",
+          "dense_model": "e5_large",
           "llm_model": {
             "model": "Qwen/Qwen2.5-7B-Instruct",
             "provider": "huggingface",
@@ -440,6 +467,7 @@
         "index": {
           "batch_size": 10,
           "embedding_workers": 1,
+          "oversize_chunks_strategy": "truncate",
           "dense_models": [
             "azure_small",
             "e5_large"
@@ -448,30 +476,6 @@
             "bm25"
           ]
         }
-      },
-      "default_filter_fields": {
-        "organization": "Organization",
-        "title": "Document Title",
-        "published_year": "Year Published",
-        "document_type": "Document Type",
-        "country": "Country",
-        "language": "Language"
-      },
-      "example_queries": [
-        "impact of humanitarian interventions on food security",
-        "gender equality in development programmes",
-        "effectiveness of disaster response operations"
-      ],
-      "metadata_panel_fields": {
-        "organization": "Organization",
-        "title": "Document Title",
-        "published_year": "Year Published",
-        "document_type": "Document Type",
-        "country": "Country",
-        "language": "Language",
-        "region": "Region",
-        "full_summary": "Summary",
-        "toc_classified": "Table of Contents"
       }
     },
     "World Bank Fraud and Integrity Reports": {
@@ -483,7 +487,7 @@
         "document_type": "majdocty",
         "country": "count",
         "region": "admreg",
-        "theme": "teratopic",
+        "theme": "theme",
         "language": "available_in",
         "topic": "subtopic",
         "abstract": "abstracts",
