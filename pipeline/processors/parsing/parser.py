@@ -1038,14 +1038,21 @@ class ParseProcessor(BaseProcessor):
         except Exception as e:
             logger.warning("  ⚠ Failed to clean markdown file: %s", e)
 
-    _GLYPH_PATTERN = re.compile(r"/gid\d{5}")
-    _GLYPH_THRESHOLD = 0.30  # 30% glyph content → parse failure
+    # CIDFont glyph IDs: /gid00007 /gid00022 ...
+    _GLYPH_ID_PATTERN = re.compile(r"/gid\d{5}")
+    # Docling GLYPH markers: GLYPH<c=3,font=/PNLMND+Calibri-Light>
+    _GLYPH_MARKER_PATTERN = re.compile(r"GLYPH<c=\d+,font=[^>]+>")
+    _GLYPH_THRESHOLD = 0.10  # 10% glyph content → parse failure
 
     def _check_glyph_contamination(self, markdown_path: Path) -> None:
         """Detect glyph-ID contamination and raise on failure.
 
-        Docling's PDF backend sometimes emits raw /gidXXXXX glyph IDs instead
-        of decoded text (see https://github.com/docling-project/docling/issues/2334).
+        Docling's PDF backend sometimes emits garbled output for PDFs with
+        CIDFont encoding or broken ToUnicode tables:
+        - Raw ``/gidXXXXX`` glyph IDs
+        - ``GLYPH<c=N,font=...>`` markers with scrambled Unicode
+
+        See https://github.com/docling-project/docling/issues/2334.
         When this exceeds the threshold the parsed output is unusable, so we
         fail the document with a clear error rather than indexing garbage.
         """
@@ -1059,17 +1066,25 @@ class ParseProcessor(BaseProcessor):
         if total < 200:
             return
 
-        glyph_chars = len(self._GLYPH_PATTERN.findall(content)) * 9
+        gid_matches = self._GLYPH_ID_PATTERN.findall(content)
+        marker_matches = self._GLYPH_MARKER_PATTERN.findall(content)
+        glyph_chars = (len(gid_matches) * 9) + sum(len(m) for m in marker_matches)
         ratio = glyph_chars / total
         if ratio < self._GLYPH_THRESHOLD:
             return
 
         pct = int(ratio * 100)
+        details = []
+        if gid_matches:
+            details.append(f"{len(gid_matches)} /gidXXXXX IDs")
+        if marker_matches:
+            details.append(f"{len(marker_matches)} GLYPH<> markers")
         raise ValueError(
-            f"Glyph contamination detected ({pct}% of parsed text is /gidXXXXX "
-            f"glyph IDs). This is a known docling-parse bug "
-            f"(https://github.com/docling-project/docling/issues/2334). "
-            f"The document cannot be parsed correctly until the bug is fixed upstream."
+            f"Glyph contamination detected ({pct}% of parsed text is "
+            f"garbled: {', '.join(details)}). This is a known docling-parse "
+            f"bug (https://github.com/docling-project/docling/issues/2334). "
+            f"The document cannot be parsed correctly until the bug is "
+            f"fixed upstream."
         )
 
     def _add_page_numbers_to_breaks(self, markdown_path: Path, document) -> None:
