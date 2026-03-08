@@ -124,32 +124,39 @@
     "qwen2.5-7b-instruct": {
       "model": "Qwen/Qwen2.5-7B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "together"
+      "inference_provider": "together",
+      "max_tokens": 4096
     },
     "qwen2.5-72b-instruct": {
       "model": "Qwen/Qwen2.5-72B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "novita"
+      "inference_provider": "novita",
+      "max_tokens": 4096
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",
-      "provider": "huggingface"
+      "provider": "huggingface",
+      "max_tokens": 4096
     },
     "gpt-4.1-mini": {
       "model": "gpt-4.1-mini",
-      "provider": "azure_foundry"
+      "provider": "azure_foundry",
+      "max_tokens": 16384
     },
     "gemini-2.5-flash": {
       "model": "gemini-2.5-flash",
-      "provider": "google_vertex"
+      "provider": "google_vertex",
+      "max_tokens": 8192
     },
     "gemini-2.5-pro": {
       "model": "gemini-2.5-pro",
-      "provider": "google_vertex"
+      "provider": "google_vertex",
+      "max_tokens": 8192
     },
     "gemini-2.0-flash": {
       "model": "gemini-2.0-flash",
-      "provider": "google_vertex"
+      "provider": "google_vertex",
+      "max_tokens": 8192
     }
   },
   "supported_rerank_models": {
