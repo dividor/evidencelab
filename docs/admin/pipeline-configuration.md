@@ -59,6 +59,8 @@ The `application` section controls global behavior:
 
 Evidence Lab maintains three model registries. Each entry uses a short nickname as its key.
 
+> **Plan your models upfront.** When the pipeline first indexes a datasource, Qdrant creates vector collections with named slots for each embedding model listed in the datasource's `dense_models` array. These slots are fixed at collection creation time — **adding a new embedding model later requires a full re-ingest** of all documents for that datasource. Define all the embedding models you may want to use (even if you don't plan to use them immediately) in `supported_embedding_models` and include them in your datasource's `dense_models` list before your first pipeline run.
+
 #### Embedding Models (`supported_embedding_models`)
 
 Each entry defines a model that can be used for vector embeddings:

@@ -4461,13 +4461,19 @@ li.ai-fact-active::before {
   margin: 0;
 }
 
-/* Documentation Page */
+/* Documentation Page — override .main-content padding/overflow so columns fill viewport */
+.main-content:has(.docs-page) {
+  padding: 0;
+  overflow: visible;
+}
+
 .docs-page {
   display: flex;
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
   gap: 0;
+  height: calc(100vh - 52px);   /* fill viewport below the sticky top-bar */
 }
 
 .docs-sidebar {
@@ -4479,9 +4485,6 @@ li.ai-fact-active::before {
   flex-direction: column;
   overflow-y: auto;
   padding: 1rem 0;
-  position: sticky;
-  top: 0;
-  height: 100vh;
 }
 
 .docs-search {
@@ -4585,15 +4588,13 @@ li.ai-fact-active::before {
   padding: 2rem;
   background: var(--white);
   min-width: 0;
+  overflow-y: auto;
 }
 
 /* Table of Contents - right sidebar */
 .docs-toc {
   width: 200px;
   min-width: 200px;
-  position: sticky;
-  top: 0;
-  height: 100vh;
   overflow-y: auto;
   padding: 1.5rem 0.75rem;
   border-left: 1px solid var(--gray-100);
@@ -4647,10 +4648,10 @@ li.ai-fact-active::before {
 @media (max-width: 768px) {
   .docs-page {
     flex-direction: column;
+    height: auto;
   }
 
   .docs-sidebar {
-    position: static;
     width: 100%;
     min-width: unset;
     height: auto;
