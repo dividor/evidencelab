@@ -10,7 +10,14 @@ import { ThreadSidebar } from './ThreadSidebar';
 interface AssistantTabProps {
   dataSource: string;
   assistantModelConfig?: SummaryModelConfig | null;
+  exampleQueries?: string[];
 }
+
+const DEFAULT_EXAMPLES = [
+  'What are the key findings across all documents?',
+  'Summarize the main recommendations',
+  'What themes emerge from the evidence?',
+];
 
 let messageIdCounter = 0;
 const nextMessageId = () => `local-${++messageIdCounter}`;
@@ -18,6 +25,7 @@ const nextMessageId = () => `local-${++messageIdCounter}`;
 export const AssistantTab: React.FC<AssistantTabProps> = ({
   dataSource,
   assistantModelConfig,
+  exampleQueries,
 }) => {
   const auth = useAuth();
   const user = USER_MODULE ? auth.user : null;
@@ -125,15 +133,18 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setToolCalls([]);
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    const query = inputValue.trim();
-    if (!query || isStreaming) return;
+  const handleSourceClick = useCallback((source: SourceReference) => {
+    console.log('Source clicked:', source.title, source);
+  }, []);
+
+  const submitQuery = useCallback(async (query: string) => {
+    if (!query.trim() || isStreaming) return;
 
     // Add user message
     const userMsg: ChatMessage = {
       id: nextMessageId(),
       role: 'user',
-      content: query,
+      content: query.trim(),
       createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
@@ -163,7 +174,6 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           setActiveThreadId(data.threadId);
           if (isAuthenticated) loadThreads();
         }
-        // Don't create message here — the post-stream code handles it
       },
       onError: (message) => {
         setMessages((prev) => [
@@ -183,7 +193,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
     await streamAssistantChat({
       apiBaseUrl: API_BASE_URL,
-      query,
+      query: query.trim(),
       dataSource,
       threadId: activeThreadId,
       assistantModelConfig: assistantModelConfig,
@@ -218,7 +228,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setIsStreaming(false);
     setStreamingPhase('');
     abortRef.current = null;
-  }, [inputValue, isStreaming, dataSource, activeThreadId, assistantModelConfig, isAuthenticated, loadThreads]);
+  }, [isStreaming, dataSource, activeThreadId, assistantModelConfig, isAuthenticated, loadThreads]);
+
+  const handleSubmit = useCallback(() => {
+    submitQuery(inputValue);
+  }, [inputValue, submitQuery]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -226,6 +240,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setStreamingPhase('');
   }, []);
 
+  const queries = exampleQueries && exampleQueries.length > 0 ? exampleQueries : DEFAULT_EXAMPLES;
   const hasMessages = messages.length > 0 || isStreaming;
 
   return (
@@ -247,32 +262,27 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       <div className="assistant-chat-area">
         {!hasMessages ? (
           <div className="assistant-welcome">
-            <div className="assistant-welcome-icon">&#128218;</div>
+            <div className="assistant-welcome-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--primary-500)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M8 9h8M8 13h6" />
+              </svg>
+            </div>
             <h2>Research Assistant</h2>
             <p>
               Ask questions about the documents in this collection.
-              The assistant will search, analyze, and synthesize findings
-              with citations.
+              The assistant will search, analyze, and synthesize findings with citations.
             </p>
             <div className="assistant-welcome-examples">
-              <button
-                className="assistant-example-btn"
-                onClick={() => setInputValue('What are the key findings on food security?')}
-              >
-                What are the key findings on food security?
-              </button>
-              <button
-                className="assistant-example-btn"
-                onClick={() => setInputValue('Summarize the main recommendations across all documents')}
-              >
-                Summarize the main recommendations
-              </button>
-              <button
-                className="assistant-example-btn"
-                onClick={() => setInputValue('What evidence exists on gender equality outcomes?')}
-              >
-                What evidence exists on gender equality?
-              </button>
+              {queries.map((q) => (
+                <button
+                  key={q}
+                  className="assistant-example-btn"
+                  onClick={() => submitQuery(q)}
+                >
+                  {q}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -284,6 +294,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
             streamingToolCalls={toolCalls}
             streamingSources={streamingSources}
             isStreaming={isStreaming}
+            onSourceClick={handleSourceClick}
           />
         )}
 

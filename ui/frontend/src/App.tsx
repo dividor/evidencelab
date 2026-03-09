@@ -2820,6 +2820,7 @@ function App() {
           <AssistantTab
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
+            exampleQueries={currentDataSourceConfig?.example_queries}
           />
         }
         heatmapTab={heatmapTab}

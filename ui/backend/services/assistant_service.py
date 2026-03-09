@@ -185,7 +185,7 @@ async def stream_research_response(
         token_buffer = ""
         async for step_output in agent.astream(
             {"messages": messages},
-            config={"run_id": str(run_id), "recursion_limit": 80},
+            config={"run_id": str(run_id), "recursion_limit": 25},
             stream_mode="updates",
         ):
             for event in _events_from_step(step_output, tracker):

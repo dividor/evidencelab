@@ -42,10 +42,10 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
         />
       ))}
 
-      {/* Streaming content */}
+      {/* Streaming status (searching / planning phases) */}
       {isStreaming && streamingPhase && !streamingContent && (
         <div className="chat-message chat-message-assistant">
-          <div className="chat-bubble-assistant">
+          <div className="assistant-status-container">
             <AgentStatus phase={streamingPhase} searchQueries={searchQueries} />
             {streamingToolCalls && streamingToolCalls.length > 0 && (
               <ToolCallPanel toolCalls={streamingToolCalls} defaultExpanded />

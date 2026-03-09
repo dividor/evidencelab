@@ -167,6 +167,7 @@ export const streamAssistantChat = async ({
   const response = await fetch(`${apiBaseUrl}/assistant/chat/stream`, {
     method: 'POST',
     headers: buildHeaders(),
+    credentials: 'include',
     body: JSON.stringify({
       query,
       thread_id: threadId || undefined,
