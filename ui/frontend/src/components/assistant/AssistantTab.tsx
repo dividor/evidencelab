@@ -13,12 +13,6 @@ interface AssistantTabProps {
   exampleQueries?: string[];
 }
 
-const DEFAULT_EXAMPLES = [
-  'What are the key findings across all documents?',
-  'Summarize the main recommendations',
-  'What themes emerge from the evidence?',
-];
-
 let messageIdCounter = 0;
 const nextMessageId = () => `local-${++messageIdCounter}`;
 
@@ -48,6 +42,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
   // Abort controller for cancelling stream
   const abortRef = useRef<AbortController | null>(null);
+
+  // Refs to track latest streaming values for safe finalization
+  const contentRef = useRef('');
+  const sourcesRef = useRef<SourceReference[]>([]);
+  const toolCallsRef = useRef<SearchToolCall[]>([]);
 
   // Load threads for authenticated users
   useEffect(() => {
@@ -155,6 +154,9 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setStreamingSources([]);
     setSearchQueries([]);
     setToolCalls([]);
+    contentRef.current = '';
+    sourcesRef.current = [];
+    toolCallsRef.current = [];
 
     // Setup abort controller
     const controller = new AbortController();
@@ -163,12 +165,19 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     const handlers: AssistantStreamHandlers = {
       onPhase: (phase) => setStreamingPhase(phase),
       onPlan: (queries) => setSearchQueries(queries),
-      onSearchStatus: (calls) => setToolCalls((prev) => [...prev, ...calls]),
+      onSearchStatus: (calls) => {
+        toolCallsRef.current = [...toolCallsRef.current, ...calls];
+        setToolCalls(toolCallsRef.current);
+      },
       onToken: (fullText) => {
+        contentRef.current = fullText;
         setStreamingContent(fullText);
         setStreamingPhase('');
       },
-      onSources: (sources) => setStreamingSources(sources),
+      onSources: (sources) => {
+        sourcesRef.current = sources;
+        setStreamingSources(sources);
+      },
       onDone: (data) => {
         if (data.threadId) {
           setActiveThreadId(data.threadId);
@@ -201,30 +210,32 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       signal: controller.signal,
     });
 
-    // Finalize: convert streaming state into a proper message
-    setStreamingContent((content) => {
-      if (content) {
-        setStreamingSources((sources) => {
-          setToolCalls((tc) => {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextMessageId(),
-                role: 'assistant',
-                content,
-                sources: sources.length > 0 ? sources : [],
-                toolCalls: tc.length > 0 ? tc : undefined,
-                createdAt: new Date().toISOString(),
-              },
-            ]);
-            return [];
-          });
-          return [];
-        });
-      }
-      return '';
-    });
+    // Finalize: convert streaming state into a proper message using refs
+    const finalContent = contentRef.current;
+    const finalSources = sourcesRef.current;
+    const finalToolCalls = toolCallsRef.current;
 
+    if (finalContent) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextMessageId(),
+          role: 'assistant',
+          content: finalContent,
+          sources: finalSources.length > 0 ? finalSources : [],
+          toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
+
+    // Clear streaming state
+    contentRef.current = '';
+    sourcesRef.current = [];
+    toolCallsRef.current = [];
+    setStreamingContent('');
+    setStreamingSources([]);
+    setToolCalls([]);
     setIsStreaming(false);
     setStreamingPhase('');
     abortRef.current = null;
@@ -240,7 +251,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setStreamingPhase('');
   }, []);
 
-  const queries = exampleQueries && exampleQueries.length > 0 ? exampleQueries : DEFAULT_EXAMPLES;
+  const hasExamples = exampleQueries && exampleQueries.length > 0;
   const hasMessages = messages.length > 0 || isStreaming;
 
   return (
@@ -273,17 +284,19 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
               Ask questions about the documents in this collection.
               The assistant will search, analyze, and synthesize findings with citations.
             </p>
-            <div className="assistant-welcome-examples">
-              {queries.map((q) => (
-                <button
-                  key={q}
-                  className="assistant-example-btn"
-                  onClick={() => submitQuery(q)}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
+            {hasExamples && (
+              <div className="assistant-welcome-examples">
+                {exampleQueries.map((q) => (
+                  <button
+                    key={q}
+                    className="assistant-example-btn"
+                    onClick={() => submitQuery(q)}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <ChatMessageList
