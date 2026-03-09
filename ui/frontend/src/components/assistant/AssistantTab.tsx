@@ -19,8 +19,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   dataSource,
   assistantModelConfig,
 }) => {
-  const auth = USER_MODULE ? useAuth() : null;
-  const user = auth?.user ?? null;
+  const auth = useAuth();
+  const user = USER_MODULE ? auth.user : null;
   const isAuthenticated = !!user;
 
   // Chat state
