@@ -112,6 +112,42 @@ def _process_agent_output(node_output: Dict) -> Dict[str, Any]:
     return result
 
 
+def _is_duplicate_or_subset(new_text: str, prev_text: str) -> bool:
+    """Check if new_text is identical or a subset of prev_text (normalized)."""
+    if not new_text or not prev_text:
+        return False
+    norm_new = " ".join(new_text.split())
+    norm_prev = " ".join(prev_text.split())
+    return norm_new == norm_prev or norm_new in norm_prev
+
+
+async def _yield_sources_and_done(
+    tracker: Any, run_id: uuid_mod.UUID
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Yield final sources (if any) followed by the done event."""
+    sources = tracker.get_sources()
+    if sources:
+        yield {"type": "sources", "sources": sources}
+    yield _build_done_event(run_id)
+
+
+async def _handle_stream_error(
+    exc: Exception, tracker: Any, run_id: uuid_mod.UUID
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Yield error or graceful completion events for a stream exception."""
+    is_recursion = "recursion" in str(exc).lower()
+    if is_recursion:
+        logger.warning("Agent hit recursion limit: %s", exc)
+    else:
+        logger.error("Research stream error: %s", exc, exc_info=True)
+
+    if is_recursion and tracker and tracker.all_results:
+        async for event in _yield_sources_and_done(tracker, run_id):
+            yield event
+    else:
+        yield {"type": "error", "error": str(exc)}
+
+
 async def stream_research_response(
     query: str,
     data_source: Optional[str] = None,
@@ -126,6 +162,11 @@ async def stream_research_response(
 
     Runs the deepagents research agent and yields structured events
     as the agent searches, plans, and synthesizes its response.
+
+    Uses a buffer-and-emit-last strategy for token events: the latest
+    synthesis text is buffered and only yielded when a non-token event
+    arrives or the stream ends.  This prevents duplicate or intermediate
+    synthesis text from reaching the client.
     """
     run_id = uuid_mod.uuid4()
     tracker = None
@@ -141,43 +182,32 @@ async def stream_research_response(
 
         yield {"type": "phase", "phase": "planning"}
 
-        last_response_text = ""
+        token_buffer = ""
         async for step_output in agent.astream(
             {"messages": messages},
             config={"run_id": str(run_id), "recursion_limit": 80},
             stream_mode="updates",
         ):
             for event in _events_from_step(step_output, tracker):
-                # Deduplicate identical token events (model node can
-                # fire multiple times with the same final synthesis)
                 if event.get("type") == "token":
-                    if event["token"] == last_response_text:
-                        continue
-                    last_response_text = event["token"]
-                yield event
+                    new_text = event["token"]
+                    if not _is_duplicate_or_subset(new_text, token_buffer):
+                        token_buffer = new_text
+                else:
+                    if token_buffer:
+                        yield {"type": "token", "token": token_buffer}
+                        token_buffer = ""
+                    yield event
 
-        # Emit final sources from tracker
-        sources = tracker.get_sources()
-        if sources:
-            yield {"type": "sources", "sources": sources}
+        if token_buffer:
+            yield {"type": "token", "token": token_buffer}
 
-        yield _build_done_event(run_id)
+        async for event in _yield_sources_and_done(tracker, run_id):
+            yield event
 
     except Exception as exc:
-        is_recursion = "recursion" in str(exc).lower()
-        if is_recursion:
-            logger.warning("Agent hit recursion limit: %s", exc)
-        else:
-            logger.error("Research stream error: %s", exc, exc_info=True)
-
-        # On recursion limit, still return sources if we have them
-        if is_recursion and tracker and tracker.all_results:
-            sources = tracker.get_sources()
-            if sources:
-                yield {"type": "sources", "sources": sources}
-            yield _build_done_event(run_id)
-        else:
-            yield {"type": "error", "error": str(exc)}
+        async for event in _handle_stream_error(exc, tracker, run_id):
+            yield event
 
 
 def _events_from_step(

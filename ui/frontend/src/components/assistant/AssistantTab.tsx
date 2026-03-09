@@ -69,6 +69,12 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       });
       if (response.ok) {
         const data = await response.json();
+        // Clear streaming state before loading thread
+        setStreamingContent('');
+        setStreamingPhase('');
+        setStreamingSources([]);
+        setSearchQueries([]);
+        setToolCalls([]);
         setActiveThreadId(threadId);
         setMessages(
           data.messages.map((m: any) => ({
@@ -76,7 +82,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
             role: m.role,
             content: m.content,
             sources: m.sources?.citations || [],
-            createdAt: m.created_at,
+            createdAt: m.createdAt || m.created_at,
           }))
         );
       }

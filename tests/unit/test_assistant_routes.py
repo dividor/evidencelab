@@ -283,3 +283,47 @@ class TestSSEEventTypes:
         assert "token" in types
         assert "sources" in types
         assert "done" in types
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_synthesis_text_tracked_for_persistence(self, mock_stream):
+        """The event_generator should track token text for persistence."""
+        events = [
+            {"type": "token", "token": "Research findings..."},
+            {
+                "type": "sources",
+                "sources": [{"chunkId": "c1", "docId": "d1", "title": "D"}],
+            },
+            {"type": "done", "messageId": "msg-1"},
+        ]
+
+        async def mock_gen(*args, **kwargs):
+            for e in events:
+                yield e
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(query="test")
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk)
+
+        # All events should be streamed without error
+        parsed = [json.loads(c[len("data: ") : -2]) for c in chunks]
+        types = [e["type"] for e in parsed]
+        assert types == ["token", "sources", "done"]
+
+        # The token text should appear in the streamed token event
+        token_event = parsed[0]
+        assert token_event["token"] == "Research findings..."

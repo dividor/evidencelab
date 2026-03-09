@@ -56,7 +56,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           rows={1}
         />
         <div className="chat-input-actions">
-          {isStreaming ? (
+          {isStreaming && (
             <button
               className="chat-input-stop-btn"
               onClick={onStop}
@@ -67,19 +67,18 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                 <rect x="3" y="3" width="10" height="10" rx="1" />
               </svg>
             </button>
-          ) : (
-            <button
-              className="chat-input-send-btn"
-              onClick={onSubmit}
-              disabled={disabled || !value.trim()}
-              title="Send message"
-              aria-label="Send message"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M2.5 1.5L14 8L2.5 14.5V9.5L10 8L2.5 6.5V1.5Z" />
-              </svg>
-            </button>
           )}
+          <button
+            className="chat-input-send-btn"
+            onClick={onSubmit}
+            disabled={disabled || !value.trim()}
+            title="Send message"
+            aria-label="Send message"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.5 1.5L14 8L2.5 14.5V9.5L10 8L2.5 6.5V1.5Z" />
+            </svg>
+          </button>
         </div>
       </div>
       <div className="chat-input-hint">

@@ -17,6 +17,7 @@ from ui.backend.services.assistant_graph import (  # noqa: E402
     _format_search_result,
     build_research_agent,
 )
+from ui.backend.services.assistant_service import _is_duplicate_or_subset  # noqa: E402
 
 
 class _FakeScoredPoint:
@@ -334,3 +335,32 @@ class TestBuildResearchAgent:
         assert call_kwargs.kwargs["model"] is llm
         assert len(call_kwargs.kwargs["tools"]) == 1
         assert "research assistant" in call_kwargs.kwargs["system_prompt"].lower()
+
+
+class TestIsDuplicateOrSubset:
+    """Tests for the token dedup helper in assistant_service."""
+
+    def test_exact_match(self):
+        assert _is_duplicate_or_subset("hello world", "hello world") is True
+
+    def test_subset_match(self):
+        assert _is_duplicate_or_subset("hello", "hello world foo") is True
+
+    def test_whitespace_normalized(self):
+        assert _is_duplicate_or_subset("hello  world", "hello world") is True
+
+    def test_different_text(self):
+        assert _is_duplicate_or_subset("foo bar", "hello world") is False
+
+    def test_empty_new_text(self):
+        assert _is_duplicate_or_subset("", "hello") is False
+
+    def test_empty_prev_text(self):
+        assert _is_duplicate_or_subset("hello", "") is False
+
+    def test_both_empty(self):
+        assert _is_duplicate_or_subset("", "") is False
+
+    def test_superset_is_not_duplicate(self):
+        """If new_text is LONGER than prev_text, it's not a duplicate."""
+        assert _is_duplicate_or_subset("hello world foo", "hello") is False

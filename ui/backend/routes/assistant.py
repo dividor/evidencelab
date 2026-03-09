@@ -17,11 +17,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from ui.backend.auth.schemas import (
-    AssistantChatRequest,
-    ConversationThreadListItem,
-    ConversationThreadRead,
-)
+from ui.backend.auth.schemas import AssistantChatRequest
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -147,6 +143,8 @@ async def stream_assistant_chat(
 
     async def event_generator():
         thread_id = body.thread_id
+        last_synthesis = ""
+        last_sources = None
         try:
             ait = stream_research_response(
                 query=body.query,
@@ -162,10 +160,23 @@ async def stream_assistant_chat(
                 if event is None:
                     yield ": heartbeat\n\n"
                     continue
-                if _should_persist(event, user, session):
+                # Track synthesis text and sources for persistence
+                etype = event.get("type")
+                if etype == "token":
+                    last_synthesis = event.get("token", "")
+                elif etype == "sources":
+                    last_sources = event.get("sources")
+                elif _should_persist(event, user, session):
+                    persist_event = {
+                        **event,
+                        "synthesis": last_synthesis,
+                        "sources": last_sources,
+                    }
                     thread_id = await _try_persist(
-                        session, user, body, event, thread_id
+                        session, user, body, persist_event, thread_id
                     )
+                    if "threadId" in persist_event:
+                        event["threadId"] = persist_event["threadId"]
                 yield f"data: {json.dumps(event)}\n\n"
 
         except Exception as e:
@@ -294,14 +305,14 @@ async def list_threads(
     rows = result.all()
 
     return [
-        ConversationThreadListItem(
-            id=row.id,
-            title=row.title,
-            data_source=row.data_source,
-            message_count=row.message_count,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
-        )
+        {
+            "id": str(row.id),
+            "title": row.title,
+            "dataSource": row.data_source,
+            "messageCount": row.message_count,
+            "createdAt": row.created_at.isoformat(),
+            "updatedAt": row.updated_at.isoformat(),
+        }
         for row in rows
     ]
 
@@ -331,7 +342,24 @@ async def get_thread(
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    return ConversationThreadRead.model_validate(thread)
+    sorted_msgs = sorted(thread.messages, key=lambda m: m.created_at)
+    return {
+        "id": str(thread.id),
+        "title": thread.title,
+        "dataSource": thread.data_source,
+        "createdAt": thread.created_at.isoformat(),
+        "updatedAt": thread.updated_at.isoformat(),
+        "messages": [
+            {
+                "id": str(m.id),
+                "role": m.role,
+                "content": m.content,
+                "sources": m.sources,
+                "createdAt": m.created_at.isoformat(),
+            }
+            for m in sorted_msgs
+        ],
+    }
 
 
 @router.delete("/assistant/threads/{thread_id}")

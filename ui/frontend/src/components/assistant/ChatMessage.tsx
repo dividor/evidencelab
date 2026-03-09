@@ -70,11 +70,7 @@ const CitedMarkdown: React.FC<{
     return map;
   }, [sources]);
 
-  // Custom component that intercepts rendered text nodes and replaces
-  // citation patterns with clickable buttons.
   const components = useMemo(() => ({
-    // Override the paragraph, list-item, heading, etc. text rendering
-    // by wrapping all children through a text transformer.
     p: ({ children, ...props }: any) => (
       <p {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</p>
     ),
@@ -120,11 +116,9 @@ function replaceCitations(
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(text)) !== null) {
-    // Text before the match
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    // Render each number as a clickable citation
     const nums = parseCitationNumbers(match[1]);
     parts.push(
       <span key={`cite-${match.index}`} className="citation-group">
@@ -141,7 +135,6 @@ function replaceCitations(
     lastIndex = re.lastIndex;
   }
 
-  // Trailing text
   if (lastIndex < text.length) {
     parts.push(text.slice(lastIndex));
   }
@@ -150,7 +143,7 @@ function replaceCitations(
 }
 
 // ---------------------------------------------------------------------------
-// References section (grouped by document, like AiSummaryReferences)
+// Collapsible references section (grouped by document)
 // ---------------------------------------------------------------------------
 
 interface DocGroup {
@@ -165,6 +158,8 @@ const AssistantReferences: React.FC<{
   sources: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
 }> = ({ content, sources, onSourceClick }) => {
+  const [expanded, setExpanded] = useState(false);
+
   const groups = useMemo(() => {
     const cited = extractCitedNumbers(content);
     const sourceByIndex = new Map<number, SourceReference>();
@@ -197,70 +192,39 @@ const AssistantReferences: React.FC<{
   if (groups.length === 0) return null;
 
   return (
-    <div className="chat-references">
-      <div className="chat-references-label">References</div>
-      <div className="chat-references-list">
-        {groups.map((group) => (
-          <div key={group.docId || group.title} className="chat-reference-item">
-            <span className="chat-reference-title">{group.title}</span>
-            <span className="chat-reference-citations">
-              {group.indices.map((idx) => (
-                <button
-                  key={idx}
-                  className="inline-citation ref-citation"
-                  onClick={() => {
-                    const src = sources.find((s) => s.index === idx);
-                    if (src && onSourceClick) onSourceClick(src);
-                  }}
-                  title={`Source ${idx}`}
-                >
-                  {idx}
-                </button>
-              ))}
-            </span>
-            {group.page && (
-              <span className="chat-reference-page">p.{group.page}</span>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// Source chip (expandable, for fallback when no inline citations)
-// ---------------------------------------------------------------------------
-
-const SourceChip: React.FC<{
-  source: SourceReference;
-  index: number;
-  onClick?: (source: SourceReference) => void;
-}> = ({ source, index, onClick }) => {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="source-chip-container">
+    <div className="assistant-references">
       <button
-        className="source-chip"
-        onClick={() => {
-          if (onClick) onClick(source);
-          setExpanded(!expanded);
-        }}
-        title={source.title}
+        className="assistant-refs-toggle"
+        onClick={() => setExpanded(!expanded)}
       >
-        [{index + 1}] {source.title.length > 40 ? `${source.title.slice(0, 40)}...` : source.title}
+        <span className="assistant-refs-toggle-icon">{expanded ? '\u25BE' : '\u25B8'}</span>
+        References ({groups.length} documents)
       </button>
       {expanded && (
-        <div className="source-preview">
-          <div className="source-preview-title">{source.title}</div>
-          <div className="source-preview-text">{source.text}</div>
-          {source.page && (
-            <div className="source-preview-page">Page {source.page}</div>
-          )}
-          <div className="source-preview-score">
-            Relevance: {(source.score * 100).toFixed(0)}%
-          </div>
+        <div className="assistant-refs-list">
+          {groups.map((group) => (
+            <div key={group.docId || group.title} className="assistant-ref-item">
+              <span className="assistant-ref-title">{group.title}</span>
+              <span className="assistant-ref-citations">
+                {group.indices.map((idx) => (
+                  <button
+                    key={idx}
+                    className="inline-citation ref-citation"
+                    onClick={() => {
+                      const src = sources.find((s) => s.index === idx);
+                      if (src && onSourceClick) onSourceClick(src);
+                    }}
+                    title={`Source ${idx}`}
+                  >
+                    {idx}
+                  </button>
+                ))}
+              </span>
+              {group.page && (
+                <span className="assistant-ref-page">p.{group.page}</span>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -281,48 +245,34 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({ message, onSo
       {!isUser && message.toolCalls && message.toolCalls.length > 0 && (
         <ToolCallPanel toolCalls={message.toolCalls} />
       )}
-      <div className={`chat-message-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
-        {isUser ? (
+
+      {isUser ? (
+        <div className="chat-bubble-user">
           <div className="chat-message-text">{message.content}</div>
-        ) : hasIndexedSources ? (
-          <div className="chat-message-markdown">
+        </div>
+      ) : (
+        <div className="assistant-response">
+          {hasIndexedSources ? (
             <CitedMarkdown
               content={message.content}
               sources={message.sources!}
               onSourceClick={onSourceClick}
             />
-          </div>
-        ) : (
-          <div className="chat-message-markdown">
+          ) : (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>
-          </div>
-        )}
-      </div>
-      {/* Inline-citation references section */}
+          )}
+        </div>
+      )}
+
+      {/* Collapsible references section */}
       {hasIndexedSources && (
         <AssistantReferences
           content={message.content}
           sources={message.sources!}
           onSourceClick={onSourceClick}
         />
-      )}
-      {/* Fallback: source chips when no indexed citations */}
-      {hasSources && !hasIndexedSources && (
-        <div className="chat-message-sources">
-          <div className="chat-sources-label">Sources</div>
-          <div className="chat-sources-list">
-            {message.sources!.map((source, i) => (
-              <SourceChip
-                key={source.chunkId || i}
-                source={source}
-                index={i}
-                onClick={onSourceClick}
-              />
-            ))}
-          </div>
-        </div>
       )}
     </div>
   );
