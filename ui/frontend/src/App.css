@@ -9757,7 +9757,7 @@ a.admin-citation-clickable:hover {
   background: var(--brand-background);
   color: var(--brand-text-secondary);
   font-size: 0.875rem;
-  text-align: left;
+  text-align: center;
   cursor: pointer;
   transition: all 0.15s ease;
 }

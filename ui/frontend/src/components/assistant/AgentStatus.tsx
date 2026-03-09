@@ -4,21 +4,20 @@ interface AgentStatusProps {
   phase: string;
 }
 
-const PHASE_CONFIG: Record<string, { icon: string; label: string }> = {
-  planning: { icon: '\uD83D\uDD0D', label: 'Planning research approach...' },
-  searching: { icon: '\uD83D\uDCDA', label: 'Searching documents...' },
-  synthesizing: { icon: '\u270D\uFE0F', label: 'Synthesizing answer...' },
-  reflecting: { icon: '\uD83E\uDD14', label: 'Reflecting on completeness...' },
+const PHASE_CONFIG: Record<string, string> = {
+  planning: 'Planning research approach',
+  searching: 'Searching documents',
+  synthesizing: 'Synthesizing answer',
+  reflecting: 'Reflecting on completeness',
 };
 
 export const AgentStatus: React.FC<AgentStatusProps> = ({ phase }) => {
-  const config = PHASE_CONFIG[phase] || { icon: '\u23F3', label: phase };
+  const label = PHASE_CONFIG[phase] || phase;
 
   return (
     <div className="agent-status">
       <div className="agent-status-indicator">
-        <span className="agent-status-icon">{config.icon}</span>
-        <span className="agent-status-label">{config.label}</span>
+        <span className="agent-status-label">{label}</span>
         <span className="agent-status-dots">
           <span className="dot">.</span>
           <span className="dot">.</span>
