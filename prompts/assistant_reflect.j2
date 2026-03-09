@@ -1,0 +1,25 @@
+Evaluate the quality and completeness of the following answer to the user's question.
+
+User question: {{ query }}
+
+Current answer:
+{{ synthesis }}
+
+Number of search results used: {{ num_results }}
+Current iteration: {{ iteration }} of {{ max_iterations }}
+
+Evaluate:
+1. Does the answer fully address the user's question?
+2. Are there important aspects that are missing or under-explored?
+3. Are the citations adequate and accurate?
+4. Would additional searches improve the answer?
+
+Return a JSON object with:
+- "should_continue": true/false (whether another search iteration would meaningfully improve the answer)
+- "reasoning": brief explanation of your assessment
+- "additional_queries": if should_continue is true, provide 1-2 new search queries to fill gaps
+
+Example:
+{"should_continue": false, "reasoning": "The answer comprehensively addresses the question with adequate citations.", "additional_queries": []}
+
+Return ONLY the JSON object, no other text.

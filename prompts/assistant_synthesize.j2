@@ -1,0 +1,24 @@
+Based on the search results below, provide a comprehensive answer to the user's question. Use inline citations [1], [2], etc. to reference specific search results.
+
+User question: {{ query }}
+
+Search results:
+{% for result in search_results %}
+[{{ loop.index }}] Document: {{ result.title }}
+{{ result.text }}
+---
+{% endfor %}
+
+{% if previous_synthesis %}
+Previous answer (improve upon this):
+{{ previous_synthesis }}
+{% endif %}
+
+Instructions:
+- Answer ONLY using information from the search results above.
+- Cite every factual claim with the corresponding result number [N].
+- Use markdown formatting with ## headings for structure.
+- If the results don't contain enough information, state what is missing.
+- Be thorough but concise. No filler or repetition.
+- Do NOT include a references section — citations are inline only.
+- Do NOT include a conclusion section.

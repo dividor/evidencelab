@@ -119,6 +119,7 @@ export interface ModelComboConfig {
   sparse_model_location?: string;
   summarization_model: SummaryModelConfig;
   semantic_highlighting_model: SummaryModelConfig;
+  assistant_model?: SummaryModelConfig;
   reranker_model: string;
   rerank_model_page_size?: number;
   summarization_model_location?: string;
@@ -132,6 +133,46 @@ export interface SummaryModelConfig {
   temperature: number;
   chunk_overlap: number;
   chunk_tokens_ratio: number;
+}
+
+// Research Assistant types
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  sources?: SourceReference[];
+  agentState?: AgentState;
+  createdAt: string;
+}
+
+export interface SourceReference {
+  chunkId: string;
+  docId: string;
+  title: string;
+  text: string;
+  score: number;
+  page?: number;
+}
+
+export interface AgentState {
+  phase: string;
+  searchQueries?: string[];
+  iterationCount?: number;
+}
+
+export interface ThreadListItem {
+  id: string;
+  title: string;
+  dataSource: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantConfig {
+  enabled: boolean;
+  maxSearchResults: number;
+  maxIterations: number;
 }
 
 export interface SearchResponse {

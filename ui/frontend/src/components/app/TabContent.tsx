@@ -4,12 +4,13 @@ import remarkGfm from 'remark-gfm';
 import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
+type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
 
 interface TabContentProps {
   activeTab: TabName;
   hasSearched: boolean;
   searchTab: React.ReactNode;
+  assistantTab?: React.ReactNode;
   heatmapTab: React.ReactNode;
   documentsTab: React.ReactNode;
   statsTab: React.ReactNode;
@@ -122,6 +123,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   activeTab,
   hasSearched,
   searchTab,
+  assistantTab,
   heatmapTab,
   documentsTab,
   statsTab,
@@ -136,6 +138,8 @@ export const TabContent: React.FC<TabContentProps> = ({
   switch (activeTab) {
     case 'search':
       return hasSearched ? <>{searchTab}</> : null;
+    case 'assistant':
+      return assistantTab ? <>{assistantTab}</> : null;
     case 'heatmap':
       return <>{heatmapTab}</>;
     case 'documents':

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { ASSISTANT_ENABLED } from '../../config';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
+type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin';
 
 interface NavTabsProps {
   activeTab: TabName;
@@ -34,6 +35,14 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
       >
         Search
       </button>
+      {ASSISTANT_ENABLED && (
+        <button
+          className={`nav-tab ${activeTab === 'assistant' ? ACTIVE_CLASS : ''}`}
+          onClick={() => onTabChange('assistant')}
+        >
+          Assistant
+        </button>
+      )}
       <button
         className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('heatmap')}
