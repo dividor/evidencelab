@@ -38,17 +38,19 @@ const InlineCitation: React.FC<{
   source?: SourceReference;
   onClick?: (source: SourceReference) => void;
 }> = ({ num, source, onClick }) => {
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
     if (source && onClick) onClick(source);
   };
   return (
-    <button
-      className="inline-citation"
+    <a
+      href="#"
+      className="ai-summary-citation"
       onClick={handleClick}
       title={source?.title || `Source ${num}`}
     >
       {num}
-    </button>
+    </a>
   );
 };
 
@@ -120,16 +122,33 @@ function replaceCitations(
       parts.push(text.slice(lastIndex, match.index));
     }
     const nums = parseCitationNumbers(match[1]);
+    // Group consecutive citations by document (same as AiSummaryWithCitations)
+    const groups: number[][] = [];
+    for (const n of nums) {
+      const docId = sourceByIndex.get(n)?.docId;
+      const prev = groups.length > 0 ? groups[groups.length - 1] : null;
+      const prevDocId = prev && sourceByIndex.get(prev[0])?.docId;
+      if (prev && docId && docId === prevDocId) {
+        prev.push(n);
+      } else {
+        groups.push([n]);
+      }
+    }
     parts.push(
       <span key={`cite-${match.index}`} className="citation-group">
-        [
-        {nums.map((n, i) => (
-          <React.Fragment key={n}>
-            {i > 0 && ', '}
-            <InlineCitation num={n} source={sourceByIndex.get(n)} onClick={onSourceClick} />
+        {groups.map((group, gi) => (
+          <React.Fragment key={`g-${gi}`}>
+            {gi > 0 && ' '}
+            <span className="citation-doc-group">
+              {group.map((n, i) => (
+                <React.Fragment key={n}>
+                  {i > 0 && <span>, </span>}
+                  <InlineCitation num={n} source={sourceByIndex.get(n)} onClick={onSourceClick} />
+                </React.Fragment>
+              ))}
+            </span>
           </React.Fragment>
         ))}
-        ]
       </span>
     );
     lastIndex = re.lastIndex;
@@ -192,7 +211,7 @@ const AssistantReferences: React.FC<{
   if (groups.length === 0) return null;
 
   return (
-    <div className="assistant-references">
+    <div className="ai-summary-references">
       <button
         className="assistant-refs-toggle"
         onClick={() => setExpanded(!expanded)}
@@ -203,26 +222,28 @@ const AssistantReferences: React.FC<{
       {expanded && (
         <div className="assistant-refs-list">
           {groups.map((group) => (
-            <div key={group.docId || group.title} className="assistant-ref-item">
-              <span className="assistant-ref-title">{group.title}</span>
-              <span className="assistant-ref-citations">
-                {group.indices.map((idx) => (
-                  <button
-                    key={idx}
-                    className="inline-citation ref-citation"
-                    onClick={() => {
+            <div key={group.docId || group.title} className="ai-summary-ref-group">
+              {group.title}
+              {' | '}
+              {group.indices.map((idx, i) => (
+                <React.Fragment key={idx}>
+                  {i > 0 && ' '}
+                  <a
+                    href="#"
+                    className="ai-summary-ref-link"
+                    onClick={(e) => {
+                      e.preventDefault();
                       const src = sources.find((s) => s.index === idx);
                       if (src && onSourceClick) onSourceClick(src);
                     }}
-                    title={`Source ${idx}`}
                   >
-                    {idx}
-                  </button>
-                ))}
-              </span>
-              {group.page && (
-                <span className="assistant-ref-page">p.{group.page}</span>
-              )}
+                    <span className="citation-doc-group">
+                      <span className="ai-summary-citation">{idx}</span>
+                    </span>
+                    {group.page ? ` p.${group.page}` : ''}
+                  </a>
+                </React.Fragment>
+              ))}
             </div>
           ))}
         </div>

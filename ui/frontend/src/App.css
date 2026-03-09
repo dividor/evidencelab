@@ -9696,7 +9696,7 @@ a.admin-citation-clickable:hover {
   height: calc(100vh - 180px);
   min-height: 400px;
   position: relative;
-  background: var(--gray-50);
+  background: var(--brand-background);
 }
 
 .assistant-chat-area {
@@ -9718,7 +9718,7 @@ a.admin-citation-clickable:hover {
   justify-content: center;
   padding: 2rem;
   text-align: center;
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
 }
 
 .assistant-welcome-icon {
@@ -9728,7 +9728,7 @@ a.admin-citation-clickable:hover {
 
 .assistant-welcome h2 {
   margin: 0 0 0.5rem;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
   font-size: 1.5rem;
 }
 
@@ -9748,10 +9748,10 @@ a.admin-citation-clickable:hover {
 
 .assistant-example-btn {
   padding: 0.75rem 1rem;
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--brand-border-light);
   border-radius: 8px;
-  background: var(--gray-50);
-  color: var(--gray-700);
+  background: var(--brand-background);
+  color: var(--brand-text-secondary);
   font-size: 0.875rem;
   text-align: left;
   cursor: pointer;
@@ -9760,8 +9760,8 @@ a.admin-citation-clickable:hover {
 
 .assistant-example-btn:hover {
   background: white;
-  border-color: var(--primary-300);
-  color: var(--primary-700);
+  border-color: var(--brand-primary-light);
+  color: var(--brand-primary-dark);
 }
 
 /* Message list */
@@ -9790,7 +9790,7 @@ a.admin-citation-clickable:hover {
 }
 
 .chat-bubble-user {
-  background: var(--primary-600);
+  background: var(--brand-primary);
   color: white;
   padding: 0.65rem 1rem;
   border-radius: 18px 18px 4px 18px;
@@ -9805,7 +9805,7 @@ a.admin-citation-clickable:hover {
   font-family: 'Open Sans', sans-serif;
   font-size: 1rem;
   line-height: 1.7;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
   word-break: break-word;
   padding: 0.25rem 0;
 }
@@ -9815,7 +9815,7 @@ a.admin-citation-clickable:hover {
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
 }
 
 .assistant-response h3 {
@@ -9823,7 +9823,7 @@ a.admin-citation-clickable:hover {
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.25rem;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
 }
 
 .assistant-response p {
@@ -9840,17 +9840,17 @@ a.admin-citation-clickable:hover {
 }
 
 .assistant-response code {
-  background: var(--gray-100);
+  background: #f1f5f9;
   padding: 0.15rem 0.3rem;
   border-radius: 3px;
   font-size: 0.85em;
 }
 
 .assistant-response blockquote {
-  border-left: 3px solid var(--primary-300);
+  border-left: 3px solid var(--brand-primary-light);
   margin: 0.5rem 0;
   padding: 0.25rem 0.75rem;
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
 }
 
 /* Sources */
@@ -9861,7 +9861,7 @@ a.admin-citation-clickable:hover {
 .chat-sources-label {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--gray-500);
+  color: var(--brand-text-tertiary);
   margin-bottom: 0.25rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -9880,11 +9880,11 @@ a.admin-citation-clickable:hover {
 .source-chip {
   display: inline-block;
   padding: 0.2rem 0.5rem;
-  background: var(--gray-100);
-  border: 1px solid var(--gray-200);
+  background: #f1f5f9;
+  border: 1px solid var(--brand-border-light);
   border-radius: 4px;
   font-size: 0.75rem;
-  color: var(--primary-700);
+  color: var(--brand-primary-dark);
   cursor: pointer;
   transition: all 0.15s ease;
   max-width: 250px;
@@ -9894,8 +9894,8 @@ a.admin-citation-clickable:hover {
 }
 
 .source-chip:hover {
-  background: var(--primary-50);
-  border-color: var(--primary-300);
+  background: rgba(91, 143, 168, 0.08);
+  border-color: var(--brand-primary-light);
 }
 
 .source-preview {
@@ -9904,7 +9904,7 @@ a.admin-citation-clickable:hover {
   top: 100%;
   z-index: 100;
   background: white;
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--brand-border-light);
   border-radius: 8px;
   padding: 0.75rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -9917,11 +9917,11 @@ a.admin-citation-clickable:hover {
 .source-preview-title {
   font-weight: 600;
   margin-bottom: 0.25rem;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
 }
 
 .source-preview-text {
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
   line-height: 1.4;
   margin-bottom: 0.5rem;
 }
@@ -9929,7 +9929,7 @@ a.admin-citation-clickable:hover {
 .source-preview-page,
 .source-preview-score {
   font-size: 0.7rem;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
 }
 
 /* Inline citations */
@@ -9941,7 +9941,7 @@ a.admin-citation-clickable:hover {
   display: inline;
   background: none;
   border: none;
-  color: var(--primary-600);
+  color: var(--primary-blue);
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -9951,14 +9951,14 @@ a.admin-citation-clickable:hover {
 }
 
 .inline-citation:hover {
-  color: var(--primary-800);
+  color: var(--brand-primary-dark);
   text-decoration: underline;
 }
 
 /* Collapsible references section */
 .assistant-references {
   margin-top: 0.75rem;
-  border-top: 1px solid var(--gray-200);
+  border-top: 1px solid var(--brand-border-light);
   padding-top: 0.5rem;
 }
 
@@ -9971,13 +9971,13 @@ a.admin-citation-clickable:hover {
   cursor: pointer;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
   padding: 0.25rem 0;
   transition: color 0.15s ease;
 }
 
 .assistant-refs-toggle:hover {
-  color: var(--gray-700);
+  color: var(--brand-text-primary);
 }
 
 .assistant-refs-toggle-icon {
@@ -9998,7 +9998,7 @@ a.admin-citation-clickable:hover {
   align-items: baseline;
   gap: 0.5rem;
   font-size: 0.8125rem;
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
   line-height: 1.5;
 }
 
@@ -10022,7 +10022,7 @@ a.admin-citation-clickable:hover {
 
 .assistant-ref-page {
   font-size: 0.7rem;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
   flex-shrink: 0;
 }
 
@@ -10036,7 +10036,7 @@ a.admin-citation-clickable:hover {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
-  border: 1px solid var(--gray-300);
+  border: 1px solid var(--brand-border);
   border-radius: 16px;
   padding: 0.5rem 0.5rem 0.5rem 0.75rem;
   background: white;
@@ -10045,8 +10045,8 @@ a.admin-citation-clickable:hover {
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--primary-400);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.08);
+  border-color: var(--brand-primary-light);
+  box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.12);
 }
 
 .chat-input-textarea {
@@ -10060,11 +10060,11 @@ a.admin-citation-clickable:hover {
   padding: 0.3rem 0;
   font-family: inherit;
   max-height: 200px;
-  color: var(--gray-800);
+  color: var(--brand-text-primary);
 }
 
 .chat-input-textarea::placeholder {
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
 }
 
 .chat-input-actions {
@@ -10089,33 +10089,33 @@ a.admin-citation-clickable:hover {
 }
 
 .chat-input-send-btn {
-  background: var(--primary-600);
+  background: var(--brand-primary);
   color: white;
 }
 
 .chat-input-send-btn:hover:not(:disabled) {
-  background: var(--primary-700);
+  background: var(--brand-primary-dark);
 }
 
 .chat-input-send-btn:disabled {
-  background: var(--gray-300);
-  color: var(--gray-400);
+  background: var(--brand-border);
+  color: var(--brand-text-tertiary);
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .chat-input-stop-btn {
-  background: var(--danger-500, #ef4444);
+  background: var(--brand-text-secondary);
   color: white;
 }
 
 .chat-input-stop-btn:hover {
-  background: var(--danger-600, #dc2626);
+  background: var(--brand-accent);
 }
 
 .chat-input-hint {
   font-size: 0.7rem;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
   text-align: center;
   margin-top: 0.35rem;
 }
@@ -10134,7 +10134,7 @@ a.admin-citation-clickable:hover {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--primary-600);
+  color: var(--brand-primary);
   font-size: 0.9rem;
 }
 
@@ -10175,11 +10175,11 @@ a.admin-citation-clickable:hover {
 .agent-status-query-chip {
   display: inline-block;
   padding: 0.2rem 0.5rem;
-  background: var(--primary-50);
-  border: 1px solid var(--primary-200);
+  background: rgba(91, 143, 168, 0.08);
+  border: 1px solid rgba(91, 143, 168, 0.25);
   border-radius: 12px;
   font-size: 0.75rem;
-  color: var(--primary-700);
+  color: var(--brand-primary-dark);
   font-style: italic;
 }
 
@@ -10193,21 +10193,21 @@ a.admin-citation-clickable:hover {
   align-items: center;
   gap: 0.375rem;
   background: none;
-  border: 1px solid var(--gray-200);
+  border: 1px solid var(--brand-border-light);
   border-radius: 6px;
   padding: 0.3rem 0.6rem;
   cursor: pointer;
   font-size: 0.75rem;
-  color: var(--gray-500);
+  color: var(--brand-text-tertiary);
   transition: all 0.15s ease;
   width: 100%;
   text-align: left;
 }
 
 .tool-call-panel-toggle:hover {
-  background: var(--gray-50);
-  border-color: var(--gray-300);
-  color: var(--gray-700);
+  background: var(--brand-background);
+  border-color: var(--brand-border);
+  color: var(--brand-text-secondary);
 }
 
 .tool-call-panel-icon {
@@ -10222,9 +10222,9 @@ a.admin-citation-clickable:hover {
 .tool-call-panel-details {
   margin-top: 0.375rem;
   padding: 0.375rem 0.5rem;
-  border: 1px solid var(--gray-150, var(--gray-200));
+  border: 1px solid var(--brand-border-light);
   border-radius: 6px;
-  background: var(--gray-50);
+  background: var(--brand-background);
 }
 
 .tool-call-item {
@@ -10237,11 +10237,11 @@ a.admin-citation-clickable:hover {
 }
 
 .tool-call-item + .tool-call-item {
-  border-top: 1px solid var(--gray-150, var(--gray-200));
+  border-top: 1px solid var(--brand-border-light);
 }
 
 .tool-call-query {
-  color: var(--gray-700);
+  color: var(--brand-text-secondary);
   font-style: italic;
   flex: 1;
   min-width: 0;
@@ -10251,7 +10251,7 @@ a.admin-citation-clickable:hover {
 }
 
 .tool-call-count {
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
   white-space: nowrap;
   font-size: 0.7rem;
 }
@@ -10269,13 +10269,13 @@ a.admin-citation-clickable:hover {
   right: -28px;
   top: 12px;
   z-index: 10;
-  background: var(--gray-50);
-  border: 1px solid var(--gray-200);
+  background: var(--brand-background);
+  border: 1px solid var(--brand-border-light);
   border-left: none;
   border-radius: 0 6px 6px 0;
   padding: 0.4rem 0.3rem;
   cursor: pointer;
-  color: var(--gray-500);
+  color: var(--brand-text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10283,16 +10283,16 @@ a.admin-citation-clickable:hover {
 }
 
 .thread-sidebar-toggle:hover {
-  background: var(--gray-100);
-  color: var(--gray-700);
+  background: #f1f5f9;
+  color: var(--brand-text-secondary);
 }
 
 .thread-sidebar {
   width: 0;
   overflow: hidden;
   transition: width 0.2s ease;
-  border-right: 1px solid var(--gray-200);
-  background: var(--gray-50);
+  border-right: 1px solid var(--brand-border-light);
+  background: var(--brand-background);
   display: flex;
   flex-direction: column;
 }
@@ -10307,14 +10307,14 @@ a.admin-citation-clickable:hover {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 0.75rem;
-  border-bottom: 1px solid var(--gray-200);
+  border-bottom: 1px solid var(--brand-border-light);
 }
 
 .thread-sidebar-header h3 {
   margin: 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--gray-700);
+  color: var(--brand-text-secondary);
 }
 
 .thread-new-btn {
@@ -10322,18 +10322,18 @@ a.admin-citation-clickable:hover {
   align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.6rem;
-  border: 1px solid var(--gray-300);
+  border: 1px solid var(--brand-border);
   border-radius: 6px;
   background: white;
-  color: var(--gray-600);
+  color: var(--brand-text-secondary);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .thread-new-btn:hover {
-  background: var(--gray-100);
-  border-color: var(--gray-400);
+  background: #f1f5f9;
+  border-color: var(--brand-text-tertiary);
 }
 
 .thread-list {
@@ -10345,7 +10345,7 @@ a.admin-citation-clickable:hover {
 .thread-list-empty {
   padding: 1.5rem 1rem;
   text-align: center;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
   font-size: 0.8rem;
   line-height: 1.5;
 }
@@ -10360,20 +10360,20 @@ a.admin-citation-clickable:hover {
 }
 
 .thread-item:hover {
-  background: var(--gray-100);
+  background: #f1f5f9;
 }
 
 .thread-item-active {
-  background: var(--primary-50);
+  background: rgba(91, 143, 168, 0.08);
 }
 
 .thread-item-active:hover {
-  background: var(--primary-50);
+  background: rgba(91, 143, 168, 0.08);
 }
 
 .thread-item-title {
   font-size: 0.8rem;
-  color: var(--gray-700);
+  color: var(--brand-text-secondary);
   line-height: 1.4;
   margin-bottom: 0.2rem;
   display: -webkit-box;
@@ -10386,7 +10386,7 @@ a.admin-citation-clickable:hover {
   display: flex;
   gap: 0.5rem;
   font-size: 0.7rem;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
 }
 
 .thread-item-delete {
@@ -10395,7 +10395,7 @@ a.admin-citation-clickable:hover {
   right: 0.3rem;
   background: none;
   border: none;
-  color: var(--gray-400);
+  color: var(--brand-text-tertiary);
   cursor: pointer;
   padding: 0.2rem;
   border-radius: 4px;

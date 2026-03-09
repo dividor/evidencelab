@@ -274,7 +274,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         {!hasMessages ? (
           <div className="assistant-welcome">
             <div className="assistant-welcome-icon">
-              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--primary-500)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--brand-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                 <path d="M8 9h8M8 13h6" />
               </svg>
