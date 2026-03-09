@@ -2766,7 +2766,7 @@ function App() {
   );
 
   const appContent = (
-    <div className="app">
+    <div className="app" data-active-tab={activeTab}>
       <TopBar
         selectedDomain={selectedDomain}
         availableDomains={availableDomains}
@@ -2821,6 +2821,7 @@ function App() {
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             exampleQueries={currentDataSourceConfig?.example_queries}
+            onResultClick={handleResultClick}
           />
         }
         heatmapTab={heatmapTab}

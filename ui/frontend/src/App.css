@@ -4423,6 +4423,10 @@ li.ai-fact-active::before {
   font-size: 0.8125rem;
 }
 
+.app[data-active-tab="assistant"] .app-footer {
+  display: none;
+}
+
 .app-footer a,
 .app-footer-link {
   color: var(--gray-600);
@@ -9768,10 +9772,30 @@ a.admin-citation-clickable:hover {
 .chat-message-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1.5rem 1rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--brand-border) transparent;
+}
+
+.chat-message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-message-list::-webkit-scrollbar-thumb {
+  background-color: var(--brand-border);
+  border-radius: 3px;
+}
+
+.chat-message-list::-webkit-scrollbar-thumb:hover {
+  background-color: var(--brand-text-secondary);
 }
 
 .chat-message {

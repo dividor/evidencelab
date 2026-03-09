@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { ChatMessage, SearchToolCall, SourceReference } from '../../types/api';
 import { ChatMessageComponent } from './ChatMessage';
 import { AgentStatus } from './AgentStatus';
@@ -8,7 +8,6 @@ interface ChatMessageListProps {
   messages: ChatMessage[];
   streamingContent?: string;
   streamingPhase?: string;
-  searchQueries?: string[];
   streamingToolCalls?: SearchToolCall[];
   streamingSources?: SourceReference[];
   isStreaming?: boolean;
@@ -19,21 +18,45 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
   messages,
   streamingContent,
   streamingPhase,
-  searchQueries,
   streamingToolCalls,
   streamingSources,
   isStreaming = false,
   onSourceClick,
 }) => {
+  const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [userScrolled, setUserScrolled] = useState(false);
+  const prevMessageCount = useRef(messages.length);
 
-  // Auto-scroll to bottom when new content arrives
+  // Detect user scroll: if they scroll up, stop auto-scrolling
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    setUserScrolled(!atBottom);
+  }, []);
+
+  // When a new user message is added, always scroll to show it
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, streamingPhase]);
+    if (messages.length > prevMessageCount.current) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === 'user') {
+        setUserScrolled(false);
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+    prevMessageCount.current = messages.length;
+  }, [messages]);
+
+  // Auto-scroll only if the user hasn't scrolled away
+  useEffect(() => {
+    if (!userScrolled) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [streamingContent, streamingPhase, userScrolled]);
 
   return (
-    <div className="chat-message-list">
+    <div className="chat-message-list" ref={listRef} onScroll={handleScroll}>
       {messages.map((msg) => (
         <ChatMessageComponent
           key={msg.id}
@@ -46,7 +69,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
       {isStreaming && streamingPhase && !streamingContent && (
         <div className="chat-message chat-message-assistant">
           <div className="assistant-status-container">
-            <AgentStatus phase={streamingPhase} searchQueries={searchQueries} />
+            <AgentStatus phase={streamingPhase} />
             {streamingToolCalls && streamingToolCalls.length > 0 && (
               <ToolCallPanel toolCalls={streamingToolCalls} defaultExpanded />
             )}

@@ -82,7 +82,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
       <div className="chat-input-hint">
-        Press Enter to send, Shift+Enter for new line
+        AI can, and will, gleefully make mistakes
       </div>
     </div>
   );

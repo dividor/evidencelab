@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import API_BASE_URL, { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
-import { ChatMessage, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
+import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
 import { streamAssistantChat, AssistantStreamHandlers } from '../../utils/assistantStream';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
@@ -11,6 +11,7 @@ interface AssistantTabProps {
   dataSource: string;
   assistantModelConfig?: SummaryModelConfig | null;
   exampleQueries?: string[];
+  onResultClick?: (result: SearchResult) => void;
 }
 
 let messageIdCounter = 0;
@@ -20,6 +21,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   dataSource,
   assistantModelConfig,
   exampleQueries,
+  onResultClick,
 }) => {
   const auth = useAuth();
   const user = USER_MODULE ? auth.user : null;
@@ -133,8 +135,18 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   }, []);
 
   const handleSourceClick = useCallback((source: SourceReference) => {
-    console.log('Source clicked:', source.title, source);
-  }, []);
+    if (!onResultClick) return;
+    onResultClick({
+      chunk_id: source.chunkId,
+      doc_id: source.docId,
+      title: source.title,
+      text: source.text,
+      page_num: source.page || 1,
+      score: source.score,
+      headings: [],
+      metadata: {},
+    });
+  }, [onResultClick]);
 
   const submitQuery = useCallback(async (query: string) => {
     if (!query.trim() || isStreaming) return;
@@ -303,7 +315,6 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
             messages={messages}
             streamingContent={streamingContent}
             streamingPhase={streamingPhase}
-            searchQueries={searchQueries}
             streamingToolCalls={toolCalls}
             streamingSources={streamingSources}
             isStreaming={isStreaming}
