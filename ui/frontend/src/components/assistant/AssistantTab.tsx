@@ -153,40 +153,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       },
       onSources: (sources) => setStreamingSources(sources),
       onDone: (data) => {
-        // Finalize the assistant message
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: data.messageId || nextMessageId(),
-            role: 'assistant',
-            content: '',  // Will be replaced below
-            sources: [],
-            createdAt: new Date().toISOString(),
-          },
-        ]);
-
-        // Replace the placeholder with final content
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last.role === 'assistant') {
-            return [
-              ...prev.slice(0, -1),
-              {
-                ...last,
-                content: '',  // Will be set from streamingContent
-              },
-            ];
-          }
-          return prev;
-        });
-
         if (data.threadId) {
           setActiveThreadId(data.threadId);
           if (isAuthenticated) loadThreads();
         }
-
-        setIsStreaming(false);
-        setStreamingPhase('');
+        // Don't create message here — the post-stream code handles it
       },
       onError: (message) => {
         setMessages((prev) => [
@@ -214,52 +185,32 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       signal: controller.signal,
     });
 
-    // After stream completes, move streaming content to messages
-    setMessages((prev) => {
-      const lastMsg = prev[prev.length - 1];
-      // If the last message is the assistant placeholder, update it
-      if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.content) {
-        return prev.slice(0, -1);  // Remove placeholder, streaming content is already shown
-      }
-      return prev;
-    });
-
     // Finalize: convert streaming state into a proper message
     setStreamingContent((content) => {
       if (content) {
-        setToolCalls((tc) => {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextMessageId(),
-              role: 'assistant',
-              content,
-              sources: [],
-              toolCalls: tc.length > 0 ? tc : undefined,
-              createdAt: new Date().toISOString(),
-            },
-          ]);
+        setStreamingSources((sources) => {
+          setToolCalls((tc) => {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextMessageId(),
+                role: 'assistant',
+                content,
+                sources: sources.length > 0 ? sources : [],
+                toolCalls: tc.length > 0 ? tc : undefined,
+                createdAt: new Date().toISOString(),
+              },
+            ]);
+            return [];
+          });
           return [];
         });
       }
       return '';
     });
 
-    setStreamingSources((sources) => {
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === 'assistant' && sources.length > 0) {
-          return [
-            ...prev.slice(0, -1),
-            { ...last, sources },
-          ];
-        }
-        return prev;
-      });
-      return [];
-    });
-
     setIsStreaming(false);
+    setStreamingPhase('');
     abortRef.current = null;
   }, [inputValue, isStreaming, dataSource, activeThreadId, assistantModelConfig, isAuthenticated, loadThreads]);
 
