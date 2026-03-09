@@ -164,7 +164,9 @@ async def stream_research_response(
 
         yield {"type": "phase", "phase": "planning"}
 
-        for step_output in graph.stream(initial_state, config={"run_id": str(run_id)}):
+        async for step_output in graph.astream(
+            initial_state, config={"run_id": str(run_id)}
+        ):
             for node_name, node_output in step_output.items():
                 for event in _events_for_node(node_name, node_output, initial_state):
                     yield event
