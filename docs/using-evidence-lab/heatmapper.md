@@ -2,7 +2,7 @@
 
 Heatmapper is a visual analysis tool for identifying trends, gaps, and patterns across your document corpus. It generates a color-coded grid showing how documents are distributed across combinations of attributes you define.
 
-![Heatmapper](/docs/images/heatmapper.png)
+![Heatmapper — Document Type × Year Published](/docs/images/heatmapper-overview.png)
 
 ### What Can You Visualize?
 
@@ -16,10 +16,14 @@ Think of Heatmapper as a configurable cross-tabulation. You choose what goes on 
 
 Heatmapper operates in two modes depending on whether you include search queries:
 
+![Heatmapper — Search query mode](/docs/images/heatmapper-query-mode.png)
+
 | Mode | When to Use | How It Counts |
 |------|-------------|---------------|
 | **Search Query Mode** | You provide search queries to filter results | Searches document content and counts unique documents among the top search hits. Best for focused analysis of specific topics. |
 | **Document Attribute Mode** | No search queries — just attribute filters | Counts all documents matching the selected attributes. Covers the full corpus and gives the broadest view. |
+
+![Heatmapper grid with data](/docs/images/heatmapper-grid-crop.png)
 
 ### Data Drilldown
 

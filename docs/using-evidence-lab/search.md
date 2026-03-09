@@ -10,6 +10,8 @@ The search bar also contains a **Filters** toggle button (≡ Filters) that lets
 
 Click **Search** or press Enter to run your query.
 
+![Search results overview](/docs/images/search-guide/search-results-full.png)
+
 ---
 
 ### AI Summary
@@ -55,6 +57,8 @@ Each result card shows:
 
 The left sidebar provides **faceted navigation** to narrow your results:
 
+![Filters sidebar](/docs/images/search-guide/filters-crop.png)
+
 | Filter | Description |
 |--------|-------------|
 | **Organization** | Filter by publishing agency (e.g., UNDP, UNICEF, ILO). Shows document counts beside each option. Use the search box within the facet to find a specific organization. |
@@ -77,6 +81,8 @@ Click any filter option to apply it immediately — results update in real-time.
 
 Click a **document title** or **page number badge** on any result to open the integrated PDF viewer. The viewer opens directly at the relevant page so you can see the source material in context.
 
+![Document preview](/docs/images/search-guide/doc-preview.png)
+
 The PDF viewer includes:
 
 - **Document header** — title, organization badge, year, and page reference
@@ -87,9 +93,21 @@ The PDF viewer includes:
 - **Contents tab** — view the document's table of contents for quick navigation
 - **Metadata tab** — view structured metadata including organization, title, year, document type, country, geographic scope, language, AI-generated summary, and table of contents
 
+#### Metadata Card
+
+When you click a result to open the document preview, a **metadata card** appears alongside the PDF viewer. This card shows key information about the document at a glance — title, organization, year, document type, country, language, and the AI-generated summary. It gives you quick context without needing to read the full document.
+
+![Document metadata card](/docs/images/search-guide/metadata-card.png)
+
 ---
 
-### Cross-Lingual Search
+### Filters & Metadata Configuration
+
+The filter fields shown in the left sidebar and the metadata fields shown in the document panel are **configurable per datasource** by admin users via the [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) file. Each datasource defines its own `default_filter_fields` and `metadata_panel_fields`, so different teams can tailor the search experience to their data. See [Pipeline Configuration](/docs/admin/pipeline-configuration.md) for details.
+
+---
+
+### Translation
 
 Evidence Lab supports searching across languages. You can:
 

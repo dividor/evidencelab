@@ -211,7 +211,7 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '' }) => {
     window.history.replaceState(null, '', newUrl);
   }, []);
 
-  // Custom ReactMarkdown components for heading IDs and image path resolution
+  // Custom ReactMarkdown components for heading IDs, image path resolution, and doc links
   const markdownComponents = useMemo(
     () => ({
       h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
@@ -228,8 +228,28 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '' }) => {
         const resolved = src?.startsWith('/docs/') ? withBase(src) : src;
         return <img src={resolved} alt={alt || ''} {...props} />;
       },
+      a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+        // Intercept links to other docs pages (e.g. /docs/using-evidence-lab/search.md)
+        if (href?.startsWith('/docs/') && href.endsWith('.md')) {
+          const docPath = href.replace(/^\/docs\//, '');
+          return (
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); handleNavigate(docPath); }}
+              {...props}
+            >
+              {children}
+            </a>
+          );
+        }
+        // External links open in new tab
+        if (href?.startsWith('http')) {
+          return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+        }
+        return <a href={href} {...props}>{children}</a>;
+      },
     }),
-    [withBase]
+    [withBase, handleNavigate]
   );
 
   const handleTocClick = useCallback((id: string) => {

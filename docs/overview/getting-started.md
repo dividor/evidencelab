@@ -37,6 +37,14 @@ For more detailed instructions refer to the [Evidence Lab GitHub Repo](https://g
      python -m pipeline.orchestrator --data-source uneg --skip-download --num-records 10
    ```
 
+   > **Tip:** Running the pipeline in Docker can be slow because it doesn't have access to GPU or Apple MPS acceleration. For faster processing using your host machine's hardware directly, use the host runner script instead:
+   >
+   > ```bash
+   > ./scripts/pipeline/run_pipeline_host.sh --data-source uneg --num-records 10
+   > ```
+   >
+   > See [Pipeline Configuration → Running on the Host](/docs/admin/pipeline-configuration.md) for full details.
+
 5. **Access the Evidence Lab UI**
    - Open http://localhost:3000
    - Select your data source and search the indexed documents

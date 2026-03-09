@@ -1,6 +1,6 @@
 ## Pipeline Configuration
 
-Evidence Lab's document processing pipeline is driven by a single configuration file — `config.json` in the repository root. This file controls everything from which AI models are used for embeddings and summarization, to how your source metadata fields map to Evidence Lab's internal schema.
+Evidence Lab's document processing pipeline is driven by a single configuration file — [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) in the repository root. This file controls everything from which AI models are used for embeddings and summarization, to how your source metadata fields map to Evidence Lab's internal schema.
 
 ---
 

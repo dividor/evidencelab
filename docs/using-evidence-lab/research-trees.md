@@ -1,6 +1,6 @@
 ## Research Trees
 
-Research Trees let you drill down into topics by building an explorable tree of sub-queries from your search results. Think of it as a guided deep-dive — each branch leads to more focused insights, with AI-generated summaries at every level.
+Research Trees let you drill down into topics by building an explorable tree of sub-queries from your search results. Think of it as a guided deep-dive — each branch leads to more focused insights, with AI-generated summaries at every level. Trees can be saved and reloaded later to continue your research, and exported to PDF for sharing or offline review.
 
 ---
 
