@@ -141,12 +141,19 @@ async def stream_research_response(
 
         yield {"type": "phase", "phase": "planning"}
 
+        last_response_text = ""
         async for step_output in agent.astream(
             {"messages": messages},
             config={"run_id": str(run_id), "recursion_limit": 80},
             stream_mode="updates",
         ):
             for event in _events_from_step(step_output, tracker):
+                # Deduplicate identical token events (model node can
+                # fire multiple times with the same final synthesis)
+                if event.get("type") == "token":
+                    if event["token"] == last_response_text:
+                        continue
+                    last_response_text = event["token"]
                 yield event
 
         # Emit final sources from tracker

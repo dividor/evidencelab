@@ -153,6 +153,7 @@ export interface SourceReference {
   text: string;
   score: number;
   page?: number;
+  index?: number;
 }
 
 export interface AgentState {

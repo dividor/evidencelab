@@ -48,9 +48,14 @@ class SearchTracker:
         self.all_results: List[Dict[str, Any]] = []
         self._seen_ids: set = set()
         self._emitted_query_count: int = 0
+        self._global_result_count: int = 0
 
     def search(self, query: str) -> List[Dict[str, Any]]:
-        """Execute search, track results, return formatted dicts."""
+        """Execute search, track results, return formatted dicts.
+
+        Each result is assigned a global index that persists across
+        multiple search calls so the LLM can cite results unambiguously.
+        """
         try:
             raw = search_chunks(
                 query=query,
@@ -68,6 +73,8 @@ class SearchTracker:
         for r in formatted:
             cid = r.get("chunk_id", "")
             if cid not in self._seen_ids:
+                self._global_result_count += 1
+                r["global_index"] = self._global_result_count
                 self.all_results.append(r)
                 self._seen_ids.add(cid)
 
@@ -80,29 +87,31 @@ class SearchTracker:
         return new
 
     def get_sources(self) -> List[Dict[str, Any]]:
-        """Build deduplicated source references from accumulated results."""
-        sources: List[Dict[str, Any]] = []
-        seen_doc_ids: set = set()
-        sorted_results = sorted(
+        """Build source references from accumulated results.
+
+        Returns all results (not deduplicated by doc_id) so that each
+        global citation index maps to exactly one entry.  Results are
+        ordered by their global index so the frontend can look up
+        ``sources[N-1]`` for citation ``[N]``.
+        """
+        ordered = sorted(
             self.all_results,
-            key=lambda x: x.get("score", 0),
-            reverse=True,
+            key=lambda x: x.get("global_index", 0),
         )
-        for r in sorted_results:
-            doc_id = r.get("doc_id", "")
-            if doc_id and doc_id not in seen_doc_ids:
-                text = r.get("text", "")
-                sources.append(
-                    {
-                        "chunkId": r.get("chunk_id", ""),
-                        "docId": doc_id,
-                        "title": r.get("title", ""),
-                        "text": (text[:200] + "...") if len(text) > 200 else text,
-                        "score": r.get("score", 0.0),
-                        "page": r.get("page"),
-                    }
-                )
-                seen_doc_ids.add(doc_id)
+        sources: List[Dict[str, Any]] = []
+        for r in ordered:
+            text = r.get("text", "")
+            sources.append(
+                {
+                    "chunkId": r.get("chunk_id", ""),
+                    "docId": r.get("doc_id", ""),
+                    "title": r.get("title", ""),
+                    "text": (text[:200] + "...") if len(text) > 200 else text,
+                    "score": r.get("score", 0.0),
+                    "page": r.get("page"),
+                    "index": r.get("global_index"),
+                }
+            )
         return sources
 
 
@@ -127,11 +136,11 @@ def _build_search_tool(tracker: SearchTracker):
             return "No results found for this query."
 
         lines = []
-        for i, r in enumerate(results, 1):
-            doc_id = r.get("doc_id", "")
+        for r in results:
+            idx = r.get("global_index", "?")
             title = r.get("title", "Untitled")
             text = r.get("text", "")
-            lines.append(f"[{i}] Document: {title} (doc_id: {doc_id})\n{text}\n---")
+            lines.append(f"[{idx}] {title}\n{text}\n---")
 
         return f"Found {len(results)} results:\n\n" + "\n".join(lines)
 

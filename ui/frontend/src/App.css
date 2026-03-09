@@ -9925,6 +9925,84 @@ a.admin-citation-clickable:hover {
   color: var(--gray-400);
 }
 
+/* Inline citations */
+.citation-group {
+  white-space: nowrap;
+}
+
+.inline-citation {
+  display: inline;
+  background: none;
+  border: none;
+  color: var(--primary-600);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 1px;
+  vertical-align: super;
+  line-height: 1;
+}
+
+.inline-citation:hover {
+  color: var(--primary-800);
+  text-decoration: underline;
+}
+
+/* References section */
+.chat-references {
+  padding: 0.75rem 1rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+.chat-references-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.chat-references-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.chat-reference-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--gray-600);
+  line-height: 1.4;
+}
+
+.chat-reference-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reference-citations {
+  display: flex;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.ref-citation {
+  font-size: 0.7rem;
+}
+
+.chat-reference-page {
+  font-size: 0.7rem;
+  color: var(--gray-400);
+  flex-shrink: 0;
+}
+
 /* Chat input */
 .chat-input-container {
   padding: 0.75rem 1rem;

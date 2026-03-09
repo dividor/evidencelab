@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessage as ChatMessageType, SourceReference } from '../../types/api';
@@ -8,6 +8,229 @@ interface ChatMessageProps {
   message: ChatMessageType;
   onSourceClick?: (source: SourceReference) => void;
 }
+
+// ---------------------------------------------------------------------------
+// Citation parsing helpers (mirrors AiSummaryWithCitations patterns)
+// ---------------------------------------------------------------------------
+
+const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
+
+const parseCitationNumbers = (raw: string): number[] =>
+  raw.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+
+/** Extract all unique cited numbers from the response text. */
+const extractCitedNumbers = (text: string): number[] => {
+  const cited = new Set<number>();
+  let m: RegExpExecArray | null;
+  const re = new RegExp(CITATION_REGEX.source, 'g');
+  while ((m = re.exec(text)) !== null) {
+    parseCitationNumbers(m[1]).forEach((n) => cited.add(n));
+  }
+  return Array.from(cited).sort((a, b) => a - b);
+};
+
+// ---------------------------------------------------------------------------
+// Inline citation component
+// ---------------------------------------------------------------------------
+
+const InlineCitation: React.FC<{
+  num: number;
+  source?: SourceReference;
+  onClick?: (source: SourceReference) => void;
+}> = ({ num, source, onClick }) => {
+  const handleClick = () => {
+    if (source && onClick) onClick(source);
+  };
+  return (
+    <button
+      className="inline-citation"
+      onClick={handleClick}
+      title={source?.title || `Source ${num}`}
+    >
+      {num}
+    </button>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Markdown renderer that converts [N] patterns into clickable citations
+// ---------------------------------------------------------------------------
+
+const CitedMarkdown: React.FC<{
+  content: string;
+  sources: SourceReference[];
+  onSourceClick?: (source: SourceReference) => void;
+}> = ({ content, sources, onSourceClick }) => {
+  // Build a lookup: global_index -> source
+  const sourceByIndex = useMemo(() => {
+    const map = new Map<number, SourceReference>();
+    sources.forEach((s) => {
+      if (s.index != null) map.set(s.index, s);
+    });
+    return map;
+  }, [sources]);
+
+  // Custom component that intercepts rendered text nodes and replaces
+  // citation patterns with clickable buttons.
+  const components = useMemo(() => ({
+    // Override the paragraph, list-item, heading, etc. text rendering
+    // by wrapping all children through a text transformer.
+    p: ({ children, ...props }: any) => (
+      <p {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</p>
+    ),
+    li: ({ children, ...props }: any) => (
+      <li {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</li>
+    ),
+    strong: ({ children, ...props }: any) => (
+      <strong {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</strong>
+    ),
+    em: ({ children, ...props }: any) => (
+      <em {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</em>
+    ),
+  }), [sourceByIndex, onSourceClick]);
+
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      {content}
+    </ReactMarkdown>
+  );
+};
+
+/** Recursively walk React children and replace citation text patterns. */
+function transformChildren(
+  children: React.ReactNode,
+  sourceByIndex: Map<number, SourceReference>,
+  onSourceClick?: (source: SourceReference) => void,
+): React.ReactNode {
+  return React.Children.map(children, (child) => {
+    if (typeof child !== 'string') return child;
+    return replaceCitations(child, sourceByIndex, onSourceClick);
+  });
+}
+
+/** Split a text string on citation patterns and return mixed text + buttons. */
+function replaceCitations(
+  text: string,
+  sourceByIndex: Map<number, SourceReference>,
+  onSourceClick?: (source: SourceReference) => void,
+): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  const re = new RegExp(CITATION_REGEX.source, 'g');
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    // Render each number as a clickable citation
+    const nums = parseCitationNumbers(match[1]);
+    parts.push(
+      <span key={`cite-${match.index}`} className="citation-group">
+        [
+        {nums.map((n, i) => (
+          <React.Fragment key={n}>
+            {i > 0 && ', '}
+            <InlineCitation num={n} source={sourceByIndex.get(n)} onClick={onSourceClick} />
+          </React.Fragment>
+        ))}
+        ]
+      </span>
+    );
+    lastIndex = re.lastIndex;
+  }
+
+  // Trailing text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
+// ---------------------------------------------------------------------------
+// References section (grouped by document, like AiSummaryReferences)
+// ---------------------------------------------------------------------------
+
+interface DocGroup {
+  title: string;
+  docId: string;
+  indices: number[];
+  page?: number;
+}
+
+const AssistantReferences: React.FC<{
+  content: string;
+  sources: SourceReference[];
+  onSourceClick?: (source: SourceReference) => void;
+}> = ({ content, sources, onSourceClick }) => {
+  const groups = useMemo(() => {
+    const cited = extractCitedNumbers(content);
+    const sourceByIndex = new Map<number, SourceReference>();
+    sources.forEach((s) => {
+      if (s.index != null) sourceByIndex.set(s.index, s);
+    });
+
+    const groupMap = new Map<string, DocGroup>();
+    const order: string[] = [];
+
+    cited.forEach((num) => {
+      const src = sourceByIndex.get(num);
+      if (!src) return;
+      const key = src.docId || src.title;
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          title: src.title,
+          docId: src.docId,
+          indices: [],
+          page: src.page,
+        });
+        order.push(key);
+      }
+      groupMap.get(key)!.indices.push(num);
+    });
+
+    return order.map((k) => groupMap.get(k)!);
+  }, [content, sources]);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="chat-references">
+      <div className="chat-references-label">References</div>
+      <div className="chat-references-list">
+        {groups.map((group) => (
+          <div key={group.docId || group.title} className="chat-reference-item">
+            <span className="chat-reference-title">{group.title}</span>
+            <span className="chat-reference-citations">
+              {group.indices.map((idx) => (
+                <button
+                  key={idx}
+                  className="inline-citation ref-citation"
+                  onClick={() => {
+                    const src = sources.find((s) => s.index === idx);
+                    if (src && onSourceClick) onSourceClick(src);
+                  }}
+                  title={`Source ${idx}`}
+                >
+                  {idx}
+                </button>
+              ))}
+            </span>
+            {group.page && (
+              <span className="chat-reference-page">p.{group.page}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Source chip (expandable, for fallback when no inline citations)
+// ---------------------------------------------------------------------------
 
 const SourceChip: React.FC<{
   source: SourceReference;
@@ -44,8 +267,14 @@ const SourceChip: React.FC<{
   );
 };
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export const ChatMessageComponent: React.FC<ChatMessageProps> = ({ message, onSourceClick }) => {
   const isUser = message.role === 'user';
+  const hasSources = !isUser && message.sources && message.sources.length > 0;
+  const hasIndexedSources = hasSources && message.sources!.some((s) => s.index != null);
 
   return (
     <div className={`chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`}>
@@ -55,6 +284,14 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({ message, onSo
       <div className={`chat-message-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-assistant'}`}>
         {isUser ? (
           <div className="chat-message-text">{message.content}</div>
+        ) : hasIndexedSources ? (
+          <div className="chat-message-markdown">
+            <CitedMarkdown
+              content={message.content}
+              sources={message.sources!}
+              onSourceClick={onSourceClick}
+            />
+          </div>
         ) : (
           <div className="chat-message-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -63,11 +300,20 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({ message, onSo
           </div>
         )}
       </div>
-      {!isUser && message.sources && message.sources.length > 0 && (
+      {/* Inline-citation references section */}
+      {hasIndexedSources && (
+        <AssistantReferences
+          content={message.content}
+          sources={message.sources!}
+          onSourceClick={onSourceClick}
+        />
+      )}
+      {/* Fallback: source chips when no indexed citations */}
+      {hasSources && !hasIndexedSources && (
         <div className="chat-message-sources">
           <div className="chat-sources-label">Sources</div>
           <div className="chat-sources-list">
-            {message.sources.map((source, i) => (
+            {message.sources!.map((source, i) => (
               <SourceChip
                 key={source.chunkId || i}
                 source={source}

@@ -38,10 +38,38 @@ class TestAssistantSystemPrompt:
         """System prompt should reference the search tool."""
         template = jinja_env.get_template("assistant_system.j2")
         result = template.render()
-        assert "search" in result.lower()
+        assert "search_documents" in result.lower()
 
     def test_citation_instructions(self, jinja_env):
         """System prompt should include citation formatting instructions."""
         template = jinja_env.get_template("assistant_system.j2")
         result = template.render()
-        assert "[1]" in result or "inline" in result.lower()
+        assert "[1]" in result
+        assert "[2]" in result
+        assert "inline" in result.lower()
+
+    def test_query_decomposition_instructions(self, jinja_env):
+        """System prompt should instruct the agent to decompose complex queries."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "plan" in result.lower()
+        assert "sub-quer" in result.lower()
+
+    def test_reflection_instructions(self, jinja_env):
+        """System prompt should instruct the agent to reflect on gaps."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "reflect" in result.lower()
+        assert "gaps" in result.lower()
+
+    def test_no_references_section(self, jinja_env):
+        """System prompt should tell the model not to include references."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "do not include a 'references' section" in result.lower()
+
+    def test_global_numbering_instruction(self, jinja_env):
+        """System prompt should mention global numbering."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "global" in result.lower()

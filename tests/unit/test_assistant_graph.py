@@ -124,7 +124,7 @@ class TestSearchTracker:
         assert len(tracker.per_query) == 1
         assert tracker.per_query[0]["result_count"] == 0
 
-    def test_get_sources_deduplicates_by_doc_id(self):
+    def test_get_sources_returns_all_results_by_index(self):
         _mock_search_fn.reset_mock()
         _mock_search_fn.side_effect = None
         _mock_search_fn.return_value = [
@@ -137,13 +137,13 @@ class TestSearchTracker:
         tracker.search("query")
         sources = tracker.get_sources()
 
-        # d1 should appear only once
-        assert len(sources) == 2
-        doc_ids = [s["docId"] for s in sources]
-        assert "d1" in doc_ids
-        assert "d2" in doc_ids
+        # All results preserved (not deduped by doc_id) for citation mapping
+        assert len(sources) == 3
+        assert sources[0]["index"] == 1
+        assert sources[1]["index"] == 2
+        assert sources[2]["index"] == 3
 
-    def test_get_sources_sorted_by_score(self):
+    def test_get_sources_ordered_by_global_index(self):
         _mock_search_fn.reset_mock()
         _mock_search_fn.side_effect = None
         _mock_search_fn.return_value = [
@@ -155,8 +155,8 @@ class TestSearchTracker:
         tracker.search("query")
         sources = tracker.get_sources()
 
-        assert sources[0]["docId"] == "d2"  # highest score first
-        assert sources[1]["docId"] == "d1"
+        assert sources[0]["index"] == 1
+        assert sources[1]["index"] == 2
 
     def test_get_sources_truncates_long_text(self):
         _mock_search_fn.reset_mock()
@@ -172,6 +172,49 @@ class TestSearchTracker:
 
         assert len(sources[0]["text"]) < 300
         assert sources[0]["text"].endswith("...")
+
+    def test_global_result_numbering_across_searches(self):
+        """Results should have globally unique indices across multiple searches."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = [
+            [
+                _make_scored_point("c1", "d1", "Doc 1", "T1", 0.9),
+                _make_scored_point("c2", "d2", "Doc 2", "T2", 0.8),
+            ],
+            [
+                _make_scored_point("c3", "d3", "Doc 3", "T3", 0.7),
+            ],
+        ]
+
+        tracker = SearchTracker()
+        r1 = tracker.search("query 1")
+        r2 = tracker.search("query 2")
+
+        # First search: indices 1 and 2
+        assert r1[0]["global_index"] == 1
+        assert r1[1]["global_index"] == 2
+        # Second search: index 3 (continues from first)
+        assert r2[0]["global_index"] == 3
+
+    def test_global_index_skips_duplicates(self):
+        """Duplicate results should not receive a new global index."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = [
+            [_make_scored_point("c1", "d1", score=0.9)],
+            [
+                _make_scored_point("c1", "d1", score=0.9),  # duplicate
+                _make_scored_point("c2", "d2", score=0.8),  # new
+            ],
+        ]
+
+        tracker = SearchTracker()
+        tracker.search("query 1")
+        tracker.search("query 2")
+
+        # Only 2 unique results, indices 1 and 2
+        assert len(tracker.all_results) == 2
+        assert tracker.all_results[0]["global_index"] == 1
+        assert tracker.all_results[1]["global_index"] == 2
 
     def test_get_new_queries_returns_only_new(self):
         _mock_search_fn.reset_mock()
@@ -217,8 +260,25 @@ class TestBuildSearchTool:
         result = tool_fn.invoke("food security")
 
         assert "Found 1 results" in result
-        assert "Doc 1" in result
+        assert "[1] Doc 1" in result
         assert "Content about food" in result
+
+    def test_tool_uses_global_numbering(self):
+        """Second search call should continue numbering from first."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = [
+            [_make_scored_point("c1", "d1", "Doc 1", "T1", 0.9)],
+            [_make_scored_point("c2", "d2", "Doc 2", "T2", 0.8)],
+        ]
+
+        tracker = SearchTracker()
+        tool_fn = _build_search_tool(tracker)
+
+        result1 = tool_fn.invoke("query 1")
+        assert "[1] Doc 1" in result1
+
+        result2 = tool_fn.invoke("query 2")
+        assert "[2] Doc 2" in result2
 
     def test_tool_returns_no_results_message(self):
         _mock_search_fn.reset_mock()
