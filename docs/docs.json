@@ -15,7 +15,8 @@
       "children": [
         { "title": "Search", "path": "using-evidence-lab/search.md" },
         { "title": "Research Trees", "path": "using-evidence-lab/research-trees.md" },
-        { "title": "Heatmapper", "path": "using-evidence-lab/heatmapper.md" }
+        { "title": "Heatmapper", "path": "using-evidence-lab/heatmapper.md" },
+        { "title": "Ratings & Feedback", "path": "using-evidence-lab/ratings-feedback.md" }
       ]
     },
     {
