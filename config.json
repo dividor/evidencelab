@@ -520,7 +520,11 @@
         "pdf_url": "pdfurl",
         "report_url": "url"
       },
-      "example_queries": [],
+      "example_queries": [
+        "What types of fraud are most commonly reported?",
+        "How does the World Bank investigate allegations of corruption?",
+        "What sanctions have been imposed for fraudulent practices?"
+      ],
       "default_filter_fields": {
         "organization": "Organization",
         "title": "Document Title",

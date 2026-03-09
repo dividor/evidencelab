@@ -10060,17 +10060,17 @@ a.admin-citation-clickable:hover {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
-  border: 1px solid var(--brand-border);
+  border: 2px solid var(--brand-border);
   border-radius: 16px;
-  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  padding: 0.625rem 0.625rem 0.625rem 1rem;
   background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--brand-primary-light);
-  box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.12);
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.15);
 }
 
 .chat-input-textarea {
@@ -10079,7 +10079,7 @@ a.admin-citation-clickable:hover {
   outline: none;
   resize: none;
   background: transparent;
-  font-size: 0.925rem;
+  font-size: 1rem;
   line-height: 1.5;
   padding: 0.3rem 0;
   font-family: inherit;

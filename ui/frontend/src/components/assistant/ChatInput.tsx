@@ -53,7 +53,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          rows={1}
+          rows={3}
         />
         <div className="chat-input-actions">
           {isStreaming && (
@@ -82,7 +82,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         </div>
       </div>
       <div className="chat-input-hint">
-        AI can, and will, gleefully make mistakes
+        AI can, and will, gleefully make mistakes. Check all responses
       </div>
     </div>
   );
