@@ -268,21 +268,23 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
   return (
     <div className="assistant-container">
-      {/* Sidebar for authenticated users */}
-      {isAuthenticated && (
-        <ThreadSidebar
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onSelectThread={loadThread}
-          onNewChat={handleNewChat}
-          onDeleteThread={deleteThread}
-          isOpen={sidebarOpen}
-          onToggle={() => setSidebarOpen(!sidebarOpen)}
-        />
-      )}
-
       {/* Main chat area */}
       <div className="assistant-chat-area">
+        {/* Thread history panel - overlays left side of chat area */}
+        {isAuthenticated && sidebarOpen && (
+          <div className="thread-panel-overlay">
+            <ThreadSidebar
+              threads={threads}
+              activeThreadId={activeThreadId}
+              onSelectThread={(id) => { loadThread(id); setSidebarOpen(false); }}
+              onNewChat={() => { handleNewChat(); setSidebarOpen(false); }}
+              onDeleteThread={deleteThread}
+              isOpen={true}
+              onToggle={() => setSidebarOpen(false)}
+            />
+          </div>
+        )}
+
         {!hasMessages ? (
           <div className="assistant-welcome">
             <div className="assistant-welcome-icon">
@@ -330,6 +332,21 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           disabled={isStreaming}
           isStreaming={isStreaming}
         />
+        {/* Chat history toggle below input */}
+        {isAuthenticated && (
+          <div className="chat-input-footer">
+            <button
+              className="chat-history-toggle"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polyline points="12 6 12 12 16 14" />
+              </svg>
+              Chat history
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

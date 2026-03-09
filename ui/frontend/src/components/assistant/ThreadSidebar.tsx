@@ -24,18 +24,6 @@ const formatDate = (dateStr: string): string => {
 };
 
 /* SVG icons */
-const ChevronLeftIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10 12L6 8L10 4" />
-  </svg>
-);
-
-const ChevronRightIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 4L10 8L6 12" />
-  </svg>
-);
-
 const PlusIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <path d="M7 1V13M1 7H13" />
@@ -48,6 +36,12 @@ const TrashIcon = () => (
   </svg>
 );
 
+const CloseIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M3 3L11 11M11 3L3 11" />
+  </svg>
+);
+
 export const ThreadSidebar: React.FC<ThreadSidebarProps> = ({
   threads,
   activeThreadId,
@@ -57,59 +51,55 @@ export const ThreadSidebar: React.FC<ThreadSidebarProps> = ({
   isOpen,
   onToggle,
 }) => {
-  return (
-    <div className="thread-sidebar-wrapper">
-      <button
-        className="thread-sidebar-toggle"
-        onClick={onToggle}
-        title={isOpen ? 'Close sidebar' : 'Open sidebar'}
-        aria-label={isOpen ? 'Close sidebar' : 'Open sidebar'}
-      >
-        {isOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-      </button>
+  if (!isOpen) return null;
 
-      <div className={`thread-sidebar ${isOpen ? 'thread-sidebar-open' : ''}`}>
-        <div className="thread-sidebar-header">
-          <h3>Conversations</h3>
+  return (
+    <div className="thread-sidebar thread-sidebar-open">
+      <div className="thread-sidebar-header">
+        <h3>Conversations</h3>
+        <div className="thread-sidebar-header-actions">
           <button className="thread-new-btn" onClick={onNewChat} title="New conversation">
             <PlusIcon />
             <span>New</span>
           </button>
+          <button className="thread-sidebar-close" onClick={onToggle} title="Close" aria-label="Close">
+            <CloseIcon />
+          </button>
         </div>
+      </div>
 
-        <div className="thread-list">
-          {threads.length === 0 && (
-            <div className="thread-list-empty">
-              No conversations yet.
-              <br />
-              Start a new chat!
+      <div className="thread-list">
+        {threads.length === 0 && (
+          <div className="thread-list-empty">
+            No conversations yet.
+            <br />
+            Start a new chat!
+          </div>
+        )}
+        {threads.map((thread) => (
+          <div
+            key={thread.id}
+            className={`thread-item ${activeThreadId === thread.id ? 'thread-item-active' : ''}`}
+            onClick={() => onSelectThread(thread.id)}
+          >
+            <div className="thread-item-title">{thread.title}</div>
+            <div className="thread-item-meta">
+              <span className="thread-item-date">{formatDate(thread.updatedAt)}</span>
+              <span className="thread-item-count">{thread.messageCount} msgs</span>
             </div>
-          )}
-          {threads.map((thread) => (
-            <div
-              key={thread.id}
-              className={`thread-item ${activeThreadId === thread.id ? 'thread-item-active' : ''}`}
-              onClick={() => onSelectThread(thread.id)}
+            <button
+              className="thread-item-delete"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteThread(thread.id);
+              }}
+              title="Delete conversation"
+              aria-label="Delete conversation"
             >
-              <div className="thread-item-title">{thread.title}</div>
-              <div className="thread-item-meta">
-                <span className="thread-item-date">{formatDate(thread.updatedAt)}</span>
-                <span className="thread-item-count">{thread.messageCount} msgs</span>
-              </div>
-              <button
-                className="thread-item-delete"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteThread(thread.id);
-                }}
-                title="Delete conversation"
-                aria-label="Delete conversation"
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          ))}
-        </div>
+              <TrashIcon />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );
