@@ -28,6 +28,10 @@ _mock_search.search_chunks = MagicMock(return_value=[])
 sys.modules.setdefault("ui.backend.services.search", _mock_search)
 
 from ui.backend.auth.schemas import AssistantChatRequest  # noqa: E402
+from ui.backend.utils.app_limits import limiter  # noqa: E402
+
+# Disable rate limiting for tests
+limiter.enabled = False
 
 _test_app = FastAPI()
 
@@ -431,3 +435,71 @@ class TestSearchSettingsPassthrough:
 
         call_kwargs = mock_stream.call_args[1]
         assert call_kwargs.get("reranker_model") == "cohere-rerank-v3"
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_system_prompt_override(self, mock_stream):
+        """system_prompt_override should be passed to the service (None for anon)."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(query="test")
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        # Without a user/session, group prompt resolves to None
+        assert call_kwargs.get("system_prompt_override") is None
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_field_boost_settings(self, mock_stream):
+        """field_boost settings should reach the service via search_settings."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(
+            query="test",
+            search_settings={
+                "field_boost_enabled": True,
+                "field_boost_fields": {"country": 0.5},
+                "dense_weight": 0.7,
+            },
+        )
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        settings = call_kwargs.get("search_settings")
+        assert settings is not None
+        assert settings["field_boost_enabled"] is True
+        assert settings["field_boost_fields"] == {"country": 0.5}
+        assert settings["dense_weight"] == 0.7

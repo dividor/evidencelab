@@ -58,26 +58,79 @@ class SearchTracker:
         self._seen_ids: set = set()
         self._emitted_query_count: int = 0
         self._global_result_count: int = 0
+        # Field boost state — lazily initialised on first search
+        self._field_boost_fields = self.search_settings.get("field_boost_fields")
+        self._field_boost_enabled = bool(
+            self.search_settings.get("field_boost_enabled") and self._field_boost_fields
+        )
+        self._known_values: Optional[Dict[str, List[str]]] = None
 
     def _build_search_kwargs(self) -> Dict[str, Any]:
         """Build kwargs for search_chunks from search settings."""
         kwargs: Dict[str, Any] = {}
         s = self.search_settings
-        if s.get("dense_weight") is not None:
-            kwargs["dense_weight"] = s["dense_weight"]
-        if s.get("recency_boost") is not None:
-            kwargs["recency_boost"] = s["recency_boost"]
-        if s.get("recency_weight") is not None:
-            kwargs["recency_weight"] = s["recency_weight"]
-        if s.get("recency_scale_days") is not None:
-            kwargs["recency_scale_days"] = s["recency_scale_days"]
-        if s.get("section_types") is not None:
-            kwargs["section_types"] = s["section_types"]
-        if s.get("keyword_boost_short_queries") is not None:
-            kwargs["keyword_boost_short_queries"] = s["keyword_boost_short_queries"]
-        if s.get("min_chunk_size") is not None:
-            kwargs["min_chunk_size"] = s["min_chunk_size"]
+        # Exclude field_boost keys — handled separately in _apply_field_boost
+        _skip = {"field_boost_enabled", "field_boost_fields"}
+        mapping = {
+            "dense_weight": "dense_weight",
+            "recency_boost": "recency_boost",
+            "recency_weight": "recency_weight",
+            "recency_scale_days": "recency_scale_days",
+            "section_types": "section_types",
+            "keyword_boost_short_queries": "keyword_boost_short_queries",
+            "min_chunk_size": "min_chunk_size",
+        }
+        for key, kwarg in mapping.items():
+            if key not in _skip and s.get(key) is not None:
+                kwargs[kwarg] = s[key]
         return kwargs
+
+    def _resolve_known_values(self) -> Dict[str, List[str]]:
+        """Lazily resolve known facet values for field boost."""
+        if self._known_values is not None:
+            return self._known_values
+        self._known_values = {}
+        if not self._field_boost_fields:
+            return self._known_values
+        try:
+            from ui.backend.utils.app_state import get_db_for_source
+
+            db = get_db_for_source(self.data_source)
+            for field in self._field_boost_fields:
+                raw = db.facet_documents(
+                    key=field, filter_conditions=None, limit=2000, exact=False
+                )
+                vals: List[str] = []
+                for rv in raw:
+                    if rv is None or rv == "":
+                        continue
+                    s = str(rv)
+                    parts = [p.strip() for p in s.split(",")] if "," in s else [s]
+                    vals.extend(p for p in parts if p)
+                self._known_values[field] = vals
+            logger.info(
+                "Resolved field boost known values for %d fields",
+                len(self._known_values),
+            )
+        except Exception as exc:
+            logger.warning("Failed to resolve field boost values: %s", exc)
+            self._field_boost_enabled = False
+        return self._known_values
+
+    def _apply_field_boost(self, results: List, query: str) -> List:
+        """Apply field boost to raw search results if enabled."""
+        if not self._field_boost_enabled or not self._field_boost_fields:
+            return results
+        known = self._resolve_known_values()
+        if not known:
+            return results
+        try:
+            from ui.backend.services.search_models import apply_field_boost
+
+            return apply_field_boost(results, query, self._field_boost_fields, known)
+        except Exception as exc:
+            logger.warning("Field boost failed: %s", exc)
+            return results
 
     def search(self, query: str) -> List[Dict[str, Any]]:
         """Execute search, track results, return formatted dicts.
@@ -104,6 +157,7 @@ class SearchTracker:
                 rerank_model=self.reranker_model,
                 **extra_kwargs,
             )
+            raw = self._apply_field_boost(raw, query)
             formatted = [_format_search_result(r) for r in raw]
         except Exception as exc:
             logger.error("Search failed for query %r: %s", query, exc)
@@ -206,6 +260,7 @@ def build_research_agent(
     data_source: Optional[str] = None,
     reranker_model: Optional[str] = None,
     search_settings: Optional[Dict[str, Any]] = None,
+    system_prompt_override: Optional[str] = None,
 ) -> tuple:
     """
     Build a deep research agent.
@@ -215,6 +270,7 @@ def build_research_agent(
         data_source: Optional data source to restrict search
         reranker_model: Optional reranker model key from UI model combo
         search_settings: Optional search parameters (dense_weight, boosts, etc.)
+        system_prompt_override: Optional group prompt to append to base prompt
 
     Returns:
         Tuple of (compiled_agent, search_tracker)
@@ -226,6 +282,17 @@ def build_research_agent(
     )
     search_tool = _build_search_tool(tracker)
     system_prompt = _load_system_prompt(data_source)
+
+    if system_prompt_override:
+        system_prompt = (
+            system_prompt
+            + "\n\n## Additional Instructions\n\n"
+            + system_prompt_override
+        )
+        logger.info(
+            "Appended group prompt override (%d chars) to system prompt",
+            len(system_prompt_override),
+        )
 
     agent = create_agent(
         model=llm,

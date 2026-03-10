@@ -318,3 +318,42 @@ class TestAssistantSearchSettings:
     def test_chat_request_without_search_settings(self):
         req = AssistantChatRequest(query="test")
         assert req.search_settings is None
+
+    def test_field_boost_fields(self):
+        """field_boost_enabled and field_boost_fields should be accepted."""
+        settings = AssistantSearchSettings(
+            field_boost_enabled=True,
+            field_boost_fields={"country": 0.5, "organization": 0.3},
+        )
+        assert settings.field_boost_enabled is True
+        assert settings.field_boost_fields == {"country": 0.5, "organization": 0.3}
+
+    def test_field_boost_defaults_to_none(self):
+        """field_boost fields should default to None."""
+        settings = AssistantSearchSettings()
+        assert settings.field_boost_enabled is None
+        assert settings.field_boost_fields is None
+
+    def test_field_boost_in_model_dump(self):
+        """field_boost fields should be included in model_dump."""
+        settings = AssistantSearchSettings(
+            field_boost_enabled=True,
+            field_boost_fields={"country": 0.5},
+        )
+        dumped = settings.model_dump(exclude_none=True)
+        assert dumped["field_boost_enabled"] is True
+        assert dumped["field_boost_fields"] == {"country": 0.5}
+
+    def test_chat_request_with_field_boost(self):
+        """AssistantChatRequest should accept field_boost in search_settings."""
+        req = AssistantChatRequest(
+            query="test",
+            search_settings={
+                "field_boost_enabled": True,
+                "field_boost_fields": {"country": 0.5},
+                "dense_weight": 0.7,
+            },
+        )
+        assert req.search_settings.field_boost_enabled is True
+        assert req.search_settings.field_boost_fields == {"country": 0.5}
+        assert req.search_settings.dense_weight == 0.7

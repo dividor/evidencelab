@@ -158,6 +158,7 @@ async def stream_research_response(
     conversation_messages: Optional[List[Dict[str, str]]] = None,
     reranker_model: Optional[str] = None,
     search_settings: Optional[Dict[str, Any]] = None,
+    system_prompt_override: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Stream a research response via SSE events.
@@ -180,7 +181,11 @@ async def stream_research_response(
             max_tokens=max_tokens,
         )
         agent, tracker = build_research_agent(
-            llm, data_source, reranker_model, search_settings
+            llm,
+            data_source,
+            reranker_model,
+            search_settings,
+            system_prompt_override=system_prompt_override,
         )
         messages = _build_conversation_messages(query, conversation_messages)
 

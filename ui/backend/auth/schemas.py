@@ -430,6 +430,8 @@ class AssistantSearchSettings(BaseModel):
     section_types: Optional[list[str]] = None
     keyword_boost_short_queries: Optional[bool] = None
     min_chunk_size: Optional[int] = None
+    field_boost_enabled: Optional[bool] = None
+    field_boost_fields: Optional[dict[str, float]] = None
 
 
 class AssistantChatRequest(BaseModel):

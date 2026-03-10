@@ -2829,6 +2829,8 @@ function App() {
               sectionTypes,
               keywordBoostShortQueries,
               minChunkSize,
+              fieldBoost: fieldBoostEnabled,
+              fieldBoostFields,
             }}
             exampleQueries={currentDataSourceConfig?.example_queries}
             onResultClick={handleResultClick}

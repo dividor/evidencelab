@@ -34,7 +34,12 @@ _USER_MODULE = _UM_RAW not in ("off", "0", "false", "no")
 
 if _USER_MODULE:
     from ui.backend.auth.db import get_async_session as _get_session_dep
-    from ui.backend.auth.models import ConversationMessage, ConversationThread
+    from ui.backend.auth.models import (
+        ConversationMessage,
+        ConversationThread,
+        UserGroup,
+        UserGroupMember,
+    )
     from ui.backend.auth.users import current_active_user as _require_user_dep
     from ui.backend.auth.users import optional_current_user as _resolve_user_dep
 else:
@@ -48,6 +53,48 @@ else:
     _resolve_user_dep = _noop_user
     _require_user_dep = _noop_user
     _get_session_dep = _noop_session
+
+
+# ---------------------------------------------------------------------------
+# Group prompt resolution
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_group_prompt(user, session) -> str | None:
+    """Return the first non-null summary_prompt from the user's groups.
+
+    This is the same logic used by the /ai-summary endpoint.  The group
+    prompt provides domain-specific instructions that supplement the
+    assistant's built-in system prompt.
+    """
+    if not _USER_MODULE or user is None or session is None:
+        return None
+    try:
+        stmt = (
+            select(UserGroup.summary_prompt, UserGroup.name, UserGroup.is_default)
+            .join(UserGroupMember, UserGroupMember.group_id == UserGroup.id)
+            .where(
+                UserGroupMember.user_id == user.id,
+                UserGroup.summary_prompt.isnot(None),
+                UserGroup.summary_prompt != "",
+            )
+            .order_by(UserGroup.is_default, UserGroup.name)
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        row = result.first()
+        if row:
+            prompt, group_name, is_default = row
+            logger.info(
+                "Resolved group prompt for assistant: group=%s (default=%s), len=%d",
+                group_name,
+                is_default,
+                len(prompt),
+            )
+            return prompt
+    except Exception as exc:
+        logger.warning("Failed to resolve group prompt: %s", exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +187,7 @@ async def stream_assistant_chat(
     """
     model_key, temperature, max_tokens = _resolve_model_config(body)
     conversation_messages = await _load_conversation_history(body, user, session)
+    group_prompt = await _resolve_group_prompt(user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -161,6 +209,7 @@ async def stream_assistant_chat(
                 conversation_messages=conversation_messages,
                 reranker_model=body.reranker_model,
                 search_settings=search_kwargs,
+                system_prompt_override=group_prompt,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

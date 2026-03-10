@@ -11,6 +11,12 @@ _mock_search_fn = MagicMock(return_value=[])
 _mock_search.search_chunks = _mock_search_fn
 sys.modules.setdefault("ui.backend.services.search", _mock_search)
 
+# Mock search_models for lazy field_boost import
+_mock_search_models = ModuleType("ui.backend.services.search_models")
+_mock_apply_field_boost = MagicMock(side_effect=lambda r, *a, **kw: r)
+_mock_search_models.apply_field_boost = _mock_apply_field_boost
+sys.modules.setdefault("ui.backend.services.search_models", _mock_search_models)
+
 from ui.backend.services.assistant_graph import (  # noqa: E402
     SearchTracker,
     _build_search_tool,
@@ -467,3 +473,131 @@ class TestSearchSettingsThreading:
         )
 
         assert tracker.reranker_model == "rerank-v3"
+
+
+class TestSystemPromptOverride:
+    """Tests for system_prompt_override being appended to the base prompt."""
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_override_appended_to_system_prompt(self, mock_create):
+        """system_prompt_override should be appended to the base prompt."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        override = "Always format responses with bullet points."
+        build_research_agent(llm, data_source="test", system_prompt_override=override)
+
+        call_kwargs = mock_create.call_args.kwargs
+        prompt = call_kwargs["system_prompt"]
+        assert "Additional Instructions" in prompt
+        assert override in prompt
+        # Base prompt should still be present
+        assert "research assistant" in prompt.lower()
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_no_override_uses_base_prompt_only(self, mock_create):
+        """Without override, system_prompt should be the base template only."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        build_research_agent(llm, data_source="test")
+
+        call_kwargs = mock_create.call_args.kwargs
+        prompt = call_kwargs["system_prompt"]
+        assert "Additional Instructions" not in prompt
+        assert "research assistant" in prompt.lower()
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_empty_override_not_appended(self, mock_create):
+        """Empty string override should not add the section."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        build_research_agent(llm, data_source="test", system_prompt_override="")
+
+        call_kwargs = mock_create.call_args.kwargs
+        prompt = call_kwargs["system_prompt"]
+        assert "Additional Instructions" not in prompt
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_none_override_not_appended(self, mock_create):
+        """None override should not add the section."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        build_research_agent(llm, data_source="test", system_prompt_override=None)
+
+        call_kwargs = mock_create.call_args.kwargs
+        prompt = call_kwargs["system_prompt"]
+        assert "Additional Instructions" not in prompt
+
+
+class TestFieldBoost:
+    """Tests for field_boost integration in SearchTracker."""
+
+    def test_field_boost_disabled_by_default(self):
+        """Field boost should be disabled when not in settings."""
+        tracker = SearchTracker()
+        assert tracker._field_boost_enabled is False
+        assert tracker._field_boost_fields is None
+
+    def test_field_boost_enabled_with_settings(self):
+        """Field boost should be enabled when settings include it."""
+        settings = {
+            "field_boost_enabled": True,
+            "field_boost_fields": {"country": 0.5},
+        }
+        tracker = SearchTracker(search_settings=settings)
+        assert tracker._field_boost_enabled is True
+        assert tracker._field_boost_fields == {"country": 0.5}
+
+    def test_field_boost_disabled_without_fields(self):
+        """Field boost should be disabled if enabled but no fields given."""
+        settings = {"field_boost_enabled": True}
+        tracker = SearchTracker(search_settings=settings)
+        assert tracker._field_boost_enabled is False
+
+    def test_field_boost_not_in_search_kwargs(self):
+        """field_boost keys should not leak into search_chunks kwargs."""
+        settings = {
+            "field_boost_enabled": True,
+            "field_boost_fields": {"country": 0.5},
+            "dense_weight": 0.7,
+        }
+        tracker = SearchTracker(search_settings=settings)
+        kwargs = tracker._build_search_kwargs()
+        assert "field_boost_enabled" not in kwargs
+        assert "field_boost_fields" not in kwargs
+        assert kwargs["dense_weight"] == 0.7
+
+    def test_apply_field_boost_called_when_enabled(self):
+        """_apply_field_boost should call apply_field_boost when enabled."""
+        _mock_apply_field_boost.reset_mock()
+        _mock_apply_field_boost.side_effect = None
+        _mock_apply_field_boost.return_value = ["boosted_result"]
+
+        settings = {
+            "field_boost_enabled": True,
+            "field_boost_fields": {"country": 0.5},
+        }
+        tracker = SearchTracker(search_settings=settings)
+        # Pre-populate known values to skip DB lookup
+        tracker._known_values = {"country": ["Kenya", "Nigeria"]}
+
+        raw = [MagicMock()]
+        result = tracker._apply_field_boost(raw, "food security Kenya")
+
+        _mock_apply_field_boost.assert_called_once_with(
+            raw,
+            "food security Kenya",
+            {"country": 0.5},
+            {"country": ["Kenya", "Nigeria"]},
+        )
+        assert result == ["boosted_result"]
+
+    def test_apply_field_boost_skipped_when_disabled(self):
+        """_apply_field_boost should return results unchanged when disabled."""
+        tracker = SearchTracker()
+        raw = [MagicMock()]
+        result = tracker._apply_field_boost(raw, "query")
+        assert result == raw
