@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessage as ChatMessageType, SourceReference } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
+import StarRating from '../ratings/StarRating';
 import { ToolCallPanel } from './ToolCallPanel';
 
 interface ChatMessageProps {
@@ -10,6 +11,12 @@ interface ChatMessageProps {
   onSourceClick?: (source: SourceReference) => void;
   searchSettings?: Partial<SearchSettings> | null;
   rerankerModel?: string | null;
+  /** Current star score for this message (0 = unrated) */
+  ratingScore?: number;
+  /** Called when user clicks a star to open the rating modal */
+  onRequestRatingModal?: (messageId: string, selectedScore: number) => void;
+  /** Whether user is authenticated (ratings require auth) */
+  isAuthenticated?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,10 +271,14 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
   onSourceClick,
   searchSettings,
   rerankerModel,
+  ratingScore = 0,
+  onRequestRatingModal,
+  isAuthenticated = false,
 }) => {
   const isUser = message.role === 'user';
   const hasSources = !isUser && message.sources && message.sources.length > 0;
   const hasIndexedSources = hasSources && message.sources!.some((s) => s.index != null);
+  const showRating = !isUser && isAuthenticated && onRequestRatingModal && message.content;
 
   return (
     <div className={`chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`}>
@@ -299,13 +310,26 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
         </div>
       )}
 
-      {/* Collapsible references section */}
-      {hasIndexedSources && (
-        <AssistantReferences
-          content={message.content}
-          sources={message.sources!}
-          onSourceClick={onSourceClick}
-        />
+      {/* References + rating row */}
+      {(hasIndexedSources || showRating) && (
+        <div className="chat-message-footer">
+          {hasIndexedSources ? (
+            <AssistantReferences
+              content={message.content}
+              sources={message.sources!}
+              onSourceClick={onSourceClick}
+            />
+          ) : (
+            <span />
+          )}
+          {showRating && (
+            <StarRating
+              score={ratingScore}
+              onRequestModal={(score) => onRequestRatingModal!(message.id, score)}
+              size={13}
+            />
+          )}
+        </div>
       )}
     </div>
   );

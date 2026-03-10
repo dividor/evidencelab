@@ -188,7 +188,14 @@ class TestValidRatingTypes:
 
     def test_expected_types(self):
         """Ensure all expected rating types are present."""
-        expected = {"search_result", "ai_summary", "doc_summary", "taxonomy", "heatmap"}
+        expected = {
+            "search_result",
+            "ai_summary",
+            "doc_summary",
+            "taxonomy",
+            "heatmap",
+            "chat",
+        }
         assert VALID_RATING_TYPES == expected
 
     def test_types_are_strings(self):

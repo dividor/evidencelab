@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import API_BASE_URL, { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
+import { useRatings, Rating } from '../../hooks/useRatings';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { streamAssistantChat, AssistantStreamHandlers } from '../../utils/assistantStream';
+import RatingModal from '../ratings/RatingModal';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
 import { ThreadSidebar } from './ThreadSidebar';
@@ -54,6 +56,38 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const contentRef = useRef('');
   const sourcesRef = useRef<SourceReference[]>([]);
   const toolCallsRef = useRef<SearchToolCall[]>([]);
+
+  // ----- Ratings -----
+  const {
+    ratings: chatRatings,
+    submitRating: submitChatRating,
+    deleteRating: deleteChatRating,
+    refresh: refreshRatings,
+  } = useRatings({
+    ratingType: 'chat',
+    referenceId: activeThreadId || '',
+    enabled: isAuthenticated && !!activeThreadId,
+  });
+
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [ratingModalMessageId, setRatingModalMessageId] = useState('');
+  const [ratingModalInitialScore, setRatingModalInitialScore] = useState(0);
+
+  // Build a map of message_id → score for quick lookup
+  const ratingsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [itemId, rating] of chatRatings) {
+      if (itemId) map.set(itemId, rating.score);
+    }
+    return map;
+  }, [chatRatings]);
+
+  const handleRequestRatingModal = useCallback((messageId: string, selectedScore: number) => {
+    const existing = chatRatings.get(messageId);
+    setRatingModalMessageId(messageId);
+    setRatingModalInitialScore(existing?.score || selectedScore);
+    setRatingModalOpen(true);
+  }, [chatRatings]);
 
   // Load threads for authenticated users
   useEffect(() => {
@@ -387,6 +421,9 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
             onSourceClick={handleSourceClick}
             searchSettings={searchSettings}
             rerankerModel={rerankerModel}
+            ratingsMap={ratingsMap}
+            onRequestRatingModal={handleRequestRatingModal}
+            isAuthenticated={isAuthenticated}
           />
         )}
 
@@ -400,6 +437,32 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           footerLeft={chatFooterLinks}
         />
       </div>
+
+      {/* Rating modal */}
+      {ratingModalOpen && (
+        <RatingModal
+          isOpen={ratingModalOpen}
+          onClose={() => setRatingModalOpen(false)}
+          title="Rate this response"
+          initialScore={ratingModalInitialScore}
+          initialComment={chatRatings.get(ratingModalMessageId)?.comment || ''}
+          onSubmit={(score, comment) => {
+            if (!activeThreadId) return;
+            submitChatRating({
+              ratingType: 'chat',
+              referenceId: activeThreadId,
+              itemId: ratingModalMessageId,
+              score,
+              comment,
+            });
+          }}
+          onDelete={
+            chatRatings.get(ratingModalMessageId)?.id
+              ? () => deleteChatRating(chatRatings.get(ratingModalMessageId)!.id)
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 };

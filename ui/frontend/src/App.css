@@ -507,13 +507,14 @@ h6,
 /* Navigation Tabs */
 .nav-tabs {
   display: flex;
-  gap: 0;
+  gap: 0.5rem;
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 var(--spacing-xl);
   background: transparent;
   border-bottom: none;
   align-items: center;
+  justify-content: center;
 }
 
 .nav-label {
@@ -10291,6 +10292,30 @@ a.admin-citation-clickable:hover {
 .inline-citation:hover {
   color: var(--brand-primary-dark);
   text-decoration: underline;
+}
+
+/* Footer row: references (left) + rating stars (right) */
+.chat-message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+/* Remove duplicate border when references are inside the footer */
+.chat-message-footer .ai-summary-references {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Align stars with the references toggle button */
+.chat-message-footer .star-rating {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
 }
 
 /* Collapsible references section */

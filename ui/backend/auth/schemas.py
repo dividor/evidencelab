@@ -191,6 +191,7 @@ VALID_RATING_TYPES = {
     "doc_summary",
     "taxonomy",
     "heatmap",
+    "chat",
 }
 
 

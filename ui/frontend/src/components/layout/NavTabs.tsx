@@ -49,7 +49,6 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
       >
         Heatmapper
       </button>
-      <span className="nav-separator">|</span>
       <div className="dropdown-container nav-dropdown">
         <button
           className={`nav-tab nav-tab-dropdown ${monitorActive ? ACTIVE_CLASS : ''}`}
