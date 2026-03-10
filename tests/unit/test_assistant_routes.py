@@ -327,3 +327,107 @@ class TestSSEEventTypes:
         # The token text should appear in the streamed token event
         token_event = parsed[0]
         assert token_event["token"] == "Research findings..."
+
+
+class TestSearchSettingsPassthrough:
+    """Tests for search_settings being forwarded to the service layer."""
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_search_settings(self, mock_stream):
+        """Search settings from the request should reach the service."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(
+            query="test",
+            search_settings={
+                "dense_weight": 0.6,
+                "recency_boost": True,
+                "min_chunk_size": 200,
+            },
+        )
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        # Consume response to trigger the event generator
+        async for _ in response.body_iterator:
+            pass
+
+        mock_stream.assert_called_once()
+        call_kwargs = mock_stream.call_args[1]
+        settings = call_kwargs.get("search_settings")
+        assert settings is not None
+        assert settings["dense_weight"] == 0.6
+        assert settings["recency_boost"] is True
+        assert settings["min_chunk_size"] == 200
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_no_search_settings(self, mock_stream):
+        """When no search_settings given, None should be passed."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(query="test")
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        assert call_kwargs.get("search_settings") is None
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_reranker_model(self, mock_stream):
+        """reranker_model from request should reach the service."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(
+            query="test",
+            reranker_model="cohere-rerank-v3",
+        )
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        assert call_kwargs.get("reranker_model") == "cohere-rerank-v3"

@@ -17,7 +17,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from ui.backend.auth.schemas import AssistantChatRequest
+from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -394,3 +394,31 @@ async def delete_thread(
     await session.commit()
 
     return {"status": "deleted", "id": str(thread_id)}
+
+
+@router.patch("/assistant/threads/{thread_id}")
+async def rename_thread(
+    thread_id: uuid.UUID,
+    body: ThreadRenameRequest,
+    user=Depends(_require_user_dep),
+    session=Depends(_get_session_dep),
+):
+    """Rename a conversation thread."""
+    if not _USER_MODULE or not user or not session:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    stmt = select(ConversationThread).where(
+        ConversationThread.id == thread_id,
+        ConversationThread.user_id == user.id,
+    )
+
+    result = await session.execute(stmt)
+    thread = result.scalar_one_or_none()
+
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    thread.title = body.title
+    await session.commit()
+
+    return {"status": "renamed", "id": str(thread_id), "title": body.title}

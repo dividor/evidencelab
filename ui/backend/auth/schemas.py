@@ -443,6 +443,12 @@ class AssistantChatRequest(BaseModel):
     search_settings: Optional[AssistantSearchSettings] = None
 
 
+class ThreadRenameRequest(BaseModel):
+    """Request payload for renaming a conversation thread."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+
+
 class ConversationMessageRead(BaseModel):
     """Single message in a conversation thread."""
 

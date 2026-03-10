@@ -364,3 +364,106 @@ class TestIsDuplicateOrSubset:
     def test_superset_is_not_duplicate(self):
         """If new_text is LONGER than prev_text, it's not a duplicate."""
         assert _is_duplicate_or_subset("hello world foo", "hello") is False
+
+
+class TestSearchSettingsThreading:
+    """Tests for search settings being passed through to search_chunks."""
+
+    def test_build_search_kwargs_with_all_settings(self):
+        """_build_search_kwargs should convert all settings to kwargs."""
+        settings = {
+            "dense_weight": 0.6,
+            "recency_boost": True,
+            "recency_weight": 0.3,
+            "recency_scale_days": 90,
+            "section_types": ["text", "table"],
+            "keyword_boost_short_queries": False,
+            "min_chunk_size": 200,
+        }
+        tracker = SearchTracker(search_settings=settings)
+        kwargs = tracker._build_search_kwargs()
+
+        assert kwargs["dense_weight"] == 0.6
+        assert kwargs["recency_boost"] is True
+        assert kwargs["recency_weight"] == 0.3
+        assert kwargs["recency_scale_days"] == 90
+        assert kwargs["section_types"] == ["text", "table"]
+        assert kwargs["keyword_boost_short_queries"] is False
+        assert kwargs["min_chunk_size"] == 200
+
+    def test_build_search_kwargs_empty_settings(self):
+        """Empty settings should produce empty kwargs."""
+        tracker = SearchTracker(search_settings={})
+        kwargs = tracker._build_search_kwargs()
+        assert kwargs == {}
+
+    def test_build_search_kwargs_none_settings(self):
+        """None settings (default) should produce empty kwargs."""
+        tracker = SearchTracker()
+        kwargs = tracker._build_search_kwargs()
+        assert kwargs == {}
+
+    def test_build_search_kwargs_partial_settings(self):
+        """Only provided settings should appear in kwargs."""
+        settings = {"dense_weight": 0.5, "recency_boost": True}
+        tracker = SearchTracker(search_settings=settings)
+        kwargs = tracker._build_search_kwargs()
+
+        assert kwargs == {"dense_weight": 0.5, "recency_boost": True}
+        assert "recency_weight" not in kwargs
+        assert "section_types" not in kwargs
+
+    def test_search_passes_settings_to_search_chunks(self):
+        """search() should pass search_settings kwargs to search_chunks."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        _mock_search_fn.return_value = [
+            _make_scored_point("c1", "d1", "Doc", "T", 0.9),
+        ]
+
+        settings = {"dense_weight": 0.7, "recency_boost": True}
+        tracker = SearchTracker(data_source="test", search_settings=settings)
+        tracker.search("food security")
+
+        # Verify search_chunks was called with the extra kwargs
+        call_kwargs = _mock_search_fn.call_args
+        assert call_kwargs.kwargs.get("dense_weight") == 0.7
+        assert call_kwargs.kwargs.get("recency_boost") is True
+
+    def test_search_without_settings_no_extra_kwargs(self):
+        """search() without settings should not pass extra kwargs."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        _mock_search_fn.return_value = []
+
+        tracker = SearchTracker(data_source="test")
+        tracker.search("query")
+
+        call_kwargs = _mock_search_fn.call_args
+        assert "dense_weight" not in (call_kwargs.kwargs or {})
+        assert "recency_boost" not in (call_kwargs.kwargs or {})
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_build_research_agent_passes_settings(self, mock_create):
+        """build_research_agent should forward search_settings to tracker."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        settings = {"dense_weight": 0.5}
+        agent, tracker = build_research_agent(
+            llm, data_source="test", search_settings=settings
+        )
+
+        assert tracker.search_settings == settings
+
+    @patch("ui.backend.services.assistant_graph.create_agent")
+    def test_build_research_agent_passes_reranker(self, mock_create):
+        """build_research_agent should forward reranker_model to tracker."""
+        mock_create.return_value = MagicMock()
+
+        llm = MagicMock()
+        agent, tracker = build_research_agent(
+            llm, data_source="test", reranker_model="rerank-v3"
+        )
+
+        assert tracker.reranker_model == "rerank-v3"

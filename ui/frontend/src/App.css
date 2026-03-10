@@ -10571,30 +10571,54 @@ a.admin-citation-clickable:hover {
   color: var(--brand-text-tertiary);
 }
 
-.thread-item-delete {
+.thread-item-actions {
   position: absolute;
   top: 0.4rem;
   right: 0.3rem;
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.thread-item:hover .thread-item-actions {
+  opacity: 1;
+}
+
+.thread-item-action {
   background: none;
   border: none;
   color: var(--brand-text-tertiary);
   cursor: pointer;
   padding: 0.2rem;
   border-radius: 4px;
-  opacity: 0;
   transition: all 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.thread-item:hover .thread-item-delete {
-  opacity: 1;
+.thread-item-rename:hover {
+  background: rgba(91, 143, 168, 0.1);
+  color: var(--brand-primary);
 }
 
 .thread-item-delete:hover {
   background: var(--danger-50, #fef2f2);
   color: var(--danger-500, #ef4444);
+}
+
+.thread-item-rename-input {
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--brand-text-secondary);
+  line-height: 1.4;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--brand-primary);
+  border-radius: 4px;
+  background: white;
+  outline: none;
+  box-sizing: border-box;
 }
 
 /* Mobile responsiveness */

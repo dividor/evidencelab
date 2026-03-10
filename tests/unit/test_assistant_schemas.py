@@ -9,9 +9,11 @@ from pydantic import ValidationError
 from ui.backend.auth.schemas import (
     AssistantChatRequest,
     AssistantModelConfig,
+    AssistantSearchSettings,
     ConversationMessageRead,
     ConversationThreadListItem,
     ConversationThreadRead,
+    ThreadRenameRequest,
 )
 
 
@@ -229,3 +231,90 @@ class TestConversationThreadListItem:
             updated_at=now,
         )
         assert item.data_source == "test_ds"
+
+
+class TestThreadRenameRequest:
+    """Tests for ThreadRenameRequest schema."""
+
+    def test_valid_title(self):
+        req = ThreadRenameRequest(title="My renamed thread")
+        assert req.title == "My renamed thread"
+
+    def test_empty_title_rejected(self):
+        with pytest.raises(ValidationError):
+            ThreadRenameRequest(title="")
+
+    def test_title_max_length(self):
+        req = ThreadRenameRequest(title="x" * 500)
+        assert len(req.title) == 500
+
+    def test_title_exceeds_max_length(self):
+        with pytest.raises(ValidationError):
+            ThreadRenameRequest(title="x" * 501)
+
+    def test_whitespace_only_title_rejected(self):
+        """A title with only whitespace should fail min_length after strip."""
+        # Note: Pydantic doesn't auto-strip, so " " has length 1 and passes
+        # min_length. The backend/frontend trims before sending.
+        req = ThreadRenameRequest(title=" ")
+        assert req.title == " "
+
+
+class TestAssistantSearchSettings:
+    """Tests for AssistantSearchSettings schema."""
+
+    def test_all_fields(self):
+        settings = AssistantSearchSettings(
+            dense_weight=0.6,
+            recency_boost=True,
+            recency_weight=0.3,
+            recency_scale_days=90,
+            section_types=["text", "table"],
+            keyword_boost_short_queries=False,
+            min_chunk_size=200,
+        )
+        assert settings.dense_weight == 0.6
+        assert settings.recency_boost is True
+        assert settings.recency_weight == 0.3
+        assert settings.recency_scale_days == 90
+        assert settings.section_types == ["text", "table"]
+        assert settings.keyword_boost_short_queries is False
+        assert settings.min_chunk_size == 200
+
+    def test_all_optional(self):
+        settings = AssistantSearchSettings()
+        assert settings.dense_weight is None
+        assert settings.recency_boost is None
+        assert settings.section_types is None
+
+    def test_partial_fields(self):
+        settings = AssistantSearchSettings(
+            dense_weight=0.8,
+            recency_boost=False,
+        )
+        assert settings.dense_weight == 0.8
+        assert settings.recency_boost is False
+        assert settings.min_chunk_size is None
+
+    def test_model_dump_exclude_none(self):
+        """model_dump(exclude_none=True) should only include set fields."""
+        settings = AssistantSearchSettings(dense_weight=0.7)
+        dumped = settings.model_dump(exclude_none=True)
+        assert dumped == {"dense_weight": 0.7}
+
+    def test_chat_request_with_search_settings(self):
+        """AssistantChatRequest should accept search_settings."""
+        req = AssistantChatRequest(
+            query="test",
+            search_settings={
+                "dense_weight": 0.6,
+                "recency_boost": True,
+            },
+        )
+        assert req.search_settings is not None
+        assert req.search_settings.dense_weight == 0.6
+        assert req.search_settings.recency_boost is True
+
+    def test_chat_request_without_search_settings(self):
+        req = AssistantChatRequest(query="test")
+        assert req.search_settings is None

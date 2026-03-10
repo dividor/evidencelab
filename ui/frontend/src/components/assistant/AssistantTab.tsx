@@ -129,6 +129,29 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     }
   }, [activeThreadId]);
 
+  const renameThread = useCallback(async (threadId: string, newTitle: string) => {
+    try {
+      const csrfMatch = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (csrfMatch) {
+        headers['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]);
+      }
+      const response = await fetch(`${API_BASE_URL}/assistant/threads/${threadId}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({ title: newTitle }),
+      });
+      if (response.ok) {
+        setThreads((prev) =>
+          prev.map((t) => (t.id === threadId ? { ...t, title: newTitle } : t))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to rename thread:', err);
+    }
+  }, []);
+
   const handleNewChat = useCallback(() => {
     // Stop any in-progress stream
     abortRef.current?.abort();
@@ -314,6 +337,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
               onSelectThread={(id) => { loadThread(id); setSidebarOpen(false); }}
               onNewChat={() => { handleNewChat(); setSidebarOpen(false); }}
               onDeleteThread={deleteThread}
+              onRenameThread={renameThread}
               isOpen={true}
               onToggle={() => setSidebarOpen(false)}
             />
