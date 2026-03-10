@@ -3,6 +3,11 @@
     "ai_summary": {
       "enabled": true
     },
+    "assistant": {
+      "enabled": true,
+      "max_search_results": 20,
+      "max_iterations": 3
+    },
     "features": {
       "semantic_highlights": true,
       "pdf_highlights": true
@@ -192,6 +197,13 @@
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
+      "assistant_model": {
+        "model": "gpt-4.1-mini",
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
       "reranker_model": "Cohere-rerank-v4.0-fast"
     },
     "Huggingface": {
@@ -205,6 +217,13 @@
         "chunk_tokens_ratio": 0.5
       },
       "semantic_highlighting_model": {
+        "model": "qwen2.5-7b-instruct",
+        "max_tokens": 500,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "assistant_model": {
         "model": "qwen2.5-7b-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
@@ -227,6 +246,13 @@
       "semantic_highlighting_model": {
         "model": "gemini-2.5-flash",
         "max_tokens": 500,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "assistant_model": {
+        "model": "gemini-2.5-flash",
+        "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
@@ -494,7 +520,11 @@
         "pdf_url": "pdfurl",
         "report_url": "url"
       },
-      "example_queries": [],
+      "example_queries": [
+        "What types of fraud are most commonly reported?",
+        "How does the World Bank investigate allegations of corruption?",
+        "What sanctions have been imposed for fraudulent practices?"
+      ],
       "default_filter_fields": {
         "organization": "Organization",
         "title": "Document Title",

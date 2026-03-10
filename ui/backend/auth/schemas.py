@@ -405,3 +405,89 @@ class SavedResearchListItem(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ----- Research Assistant Schemas -----
+
+
+class AssistantModelConfig(BaseModel):
+    """LLM configuration for the research assistant."""
+
+    model: str
+    max_tokens: int = 2000
+    temperature: float = 0.2
+    chunk_overlap: int = 800
+    chunk_tokens_ratio: float = 0.5
+
+
+class AssistantSearchSettings(BaseModel):
+    """Search settings passed from frontend for assistant searches."""
+
+    dense_weight: Optional[float] = None
+    recency_boost: Optional[bool] = None
+    recency_weight: Optional[float] = None
+    recency_scale_days: Optional[int] = None
+    section_types: Optional[list[str]] = None
+    keyword_boost_short_queries: Optional[bool] = None
+    min_chunk_size: Optional[int] = None
+    field_boost_enabled: Optional[bool] = None
+    field_boost_fields: Optional[dict[str, float]] = None
+
+
+class AssistantChatRequest(BaseModel):
+    """Request payload for assistant chat streaming endpoint."""
+
+    query: str = Field(..., max_length=5000)
+    thread_id: Optional[str] = None
+    data_source: Optional[str] = Field(None, max_length=255)
+    assistant_model_config: Optional[AssistantModelConfig] = None
+    reranker_model: Optional[str] = None
+    search_settings: Optional[AssistantSearchSettings] = None
+
+
+class ThreadRenameRequest(BaseModel):
+    """Request payload for renaming a conversation thread."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+
+
+class ConversationMessageRead(BaseModel):
+    """Single message in a conversation thread."""
+
+    id: uuid.UUID
+    thread_id: uuid.UUID
+    role: str
+    content: str
+    sources: Optional[dict] = None
+    agent_state: Optional[dict] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationThreadRead(BaseModel):
+    """Full conversation thread with messages."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    title: str
+    data_source: Optional[str] = None
+    metadata_json: Optional[dict] = None
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ConversationMessageRead] = []
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationThreadListItem(BaseModel):
+    """Compact thread for list views (omits messages)."""
+
+    id: uuid.UUID
+    title: str
+    data_source: Optional[str] = None
+    message_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

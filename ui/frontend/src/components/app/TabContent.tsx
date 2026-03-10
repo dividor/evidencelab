@@ -5,12 +5,13 @@ import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 import DocsPage from '../docs/DocsPage';
 
-type TabName = 'search' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin' | 'docs';
+type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin' | 'docs';
 
 interface TabContentProps {
   activeTab: TabName;
   hasSearched: boolean;
   searchTab: React.ReactNode;
+  assistantTab?: React.ReactNode;
   heatmapTab: React.ReactNode;
   documentsTab: React.ReactNode;
   statsTab: React.ReactNode;
@@ -124,6 +125,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   activeTab,
   hasSearched,
   searchTab,
+  assistantTab,
   heatmapTab,
   documentsTab,
   statsTab,
@@ -136,30 +138,48 @@ export const TabContent: React.FC<TabContentProps> = ({
   basePath,
   onTabChange,
 }) => {
-  switch (activeTab) {
-    case 'search':
-      return hasSearched ? <>{searchTab}</> : null;
-    case 'heatmap':
-      return <>{heatmapTab}</>;
-    case 'documents':
-      return <>{documentsTab}</>;
-    case 'pipeline':
-      return <>{pipelineTab}</>;
-    case 'processing':
-      return <>{processingTab}</>;
-    case 'info':
-      return <HelpTabContent content={aboutContent} currentTab="info" onTabChange={onTabChange} />;
-    case 'tech':
-      return <HelpTabContent content={techContent} currentTab="tech" onTabChange={onTabChange} />;
-    case 'data':
-      return <HelpTabContent content={dataContent} currentTab="data" onTabChange={onTabChange} />;
-    case 'stats':
-      return <>{statsTab}</>;
-    case 'privacy':
-      return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
-    case 'docs':
-      return <DocsPage basePath={basePath} />;
-    default:
-      return null;
-  }
+  // Render the active tab via the switch, plus always render the assistant
+  // tab (hidden when inactive) so chat state is preserved across tab switches.
+  const activeContent = (() => {
+    switch (activeTab) {
+      case 'search':
+        return hasSearched ? <>{searchTab}</> : null;
+      case 'assistant':
+        return null; // handled by the always-mounted wrapper below
+      case 'heatmap':
+        return <>{heatmapTab}</>;
+      case 'documents':
+        return <>{documentsTab}</>;
+      case 'pipeline':
+        return <>{pipelineTab}</>;
+      case 'processing':
+        return <>{processingTab}</>;
+      case 'info':
+        return <HelpTabContent content={aboutContent} currentTab="info" onTabChange={onTabChange} />;
+      case 'tech':
+        return <HelpTabContent content={techContent} currentTab="tech" onTabChange={onTabChange} />;
+      case 'data':
+        return <HelpTabContent content={dataContent} currentTab="data" onTabChange={onTabChange} />;
+      case 'stats':
+        return <>{statsTab}</>;
+      case 'privacy':
+        return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
+      case 'docs':
+        return <DocsPage basePath={basePath} />;
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <>
+      {/* AssistantTab stays mounted (hidden when inactive) to preserve chat state */}
+      {assistantTab && (
+        <div style={{ display: activeTab === 'assistant' ? 'block' : 'none' }}>
+          {assistantTab}
+        </div>
+      )}
+      {activeContent}
+    </>
+  );
 };

@@ -29,6 +29,13 @@ export const SEMANTIC_HIGHLIGHT_THRESHOLD = config.application.search.highlight_
 // AI Summary feature flag (defaults to false)
 export const AI_SUMMARY_ON = config.application.ai_summary.enabled;
 
+// Research Assistant feature flag (defaults to false)
+export const ASSISTANT_ENABLED = (config.application as any).assistant?.enabled ?? false;
+
+// Research Assistant config
+export const ASSISTANT_MAX_SEARCH_RESULTS = (config.application as any).assistant?.max_search_results ?? 20;
+export const ASSISTANT_MAX_ITERATIONS = (config.application as any).assistant?.max_iterations ?? 3;
+
 // Search results page size (defaults to 50)
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
