@@ -135,30 +135,46 @@ export const TabContent: React.FC<TabContentProps> = ({
   privacyContent,
   onTabChange,
 }) => {
-  switch (activeTab) {
-    case 'search':
-      return hasSearched ? <>{searchTab}</> : null;
-    case 'assistant':
-      return assistantTab ? <>{assistantTab}</> : null;
-    case 'heatmap':
-      return <>{heatmapTab}</>;
-    case 'documents':
-      return <>{documentsTab}</>;
-    case 'pipeline':
-      return <>{pipelineTab}</>;
-    case 'processing':
-      return <>{processingTab}</>;
-    case 'info':
-      return <HelpTabContent content={aboutContent} currentTab="info" onTabChange={onTabChange} />;
-    case 'tech':
-      return <HelpTabContent content={techContent} currentTab="tech" onTabChange={onTabChange} />;
-    case 'data':
-      return <HelpTabContent content={dataContent} currentTab="data" onTabChange={onTabChange} />;
-    case 'stats':
-      return <>{statsTab}</>;
-    case 'privacy':
-      return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
-    default:
-      return null;
-  }
+  // Render the active tab via the switch, plus always render the assistant
+  // tab (hidden when inactive) so chat state is preserved across tab switches.
+  const activeContent = (() => {
+    switch (activeTab) {
+      case 'search':
+        return hasSearched ? <>{searchTab}</> : null;
+      case 'assistant':
+        return null; // handled by the always-mounted wrapper below
+      case 'heatmap':
+        return <>{heatmapTab}</>;
+      case 'documents':
+        return <>{documentsTab}</>;
+      case 'pipeline':
+        return <>{pipelineTab}</>;
+      case 'processing':
+        return <>{processingTab}</>;
+      case 'info':
+        return <HelpTabContent content={aboutContent} currentTab="info" onTabChange={onTabChange} />;
+      case 'tech':
+        return <HelpTabContent content={techContent} currentTab="tech" onTabChange={onTabChange} />;
+      case 'data':
+        return <HelpTabContent content={dataContent} currentTab="data" onTabChange={onTabChange} />;
+      case 'stats':
+        return <>{statsTab}</>;
+      case 'privacy':
+        return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
+      default:
+        return null;
+    }
+  })();
+
+  return (
+    <>
+      {/* AssistantTab stays mounted (hidden when inactive) to preserve chat state */}
+      {assistantTab && (
+        <div style={{ display: activeTab === 'assistant' ? 'block' : 'none' }}>
+          {assistantTab}
+        </div>
+      )}
+      {activeContent}
+    </>
+  );
 };
