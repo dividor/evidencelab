@@ -441,9 +441,10 @@ def build_deep_research_agent(
     researcher_subagent: Dict[str, Any] = {
         "name": "researcher",
         "description": (
-            "Searches the document database for evidence on a "
-            "specific topic or question. Give it a focused research "
-            "task and it will return findings with citation numbers."
+            "Conducts thorough searches of the document database "
+            "using multiple diverse queries. Give it a broad research "
+            "brief and it will search from many angles, returning "
+            "comprehensive findings with citation numbers."
         ),
         "system_prompt": researcher_prompt,
         "tools": [search_tool],
