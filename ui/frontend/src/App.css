@@ -10293,6 +10293,15 @@ a.admin-citation-clickable:hover {
   text-decoration: underline;
 }
 
+/* Footer row: references (left) + rating stars (right) */
+.chat-message-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 /* Collapsible references section */
 .assistant-references {
   margin-top: 0.75rem;

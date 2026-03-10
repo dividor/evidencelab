@@ -16,6 +16,12 @@ interface ChatMessageListProps {
   onSourceClick?: (source: SourceReference) => void;
   searchSettings?: Partial<SearchSettings> | null;
   rerankerModel?: string | null;
+  /** Map of message_id → star score (0 = unrated) */
+  ratingsMap?: Map<string, number>;
+  /** Called when user clicks a star to open the rating modal */
+  onRequestRatingModal?: (messageId: string, selectedScore: number) => void;
+  /** Whether user is authenticated (ratings require auth) */
+  isAuthenticated?: boolean;
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = ({
@@ -29,6 +35,9 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
   onSourceClick,
   searchSettings,
   rerankerModel,
+  ratingsMap,
+  onRequestRatingModal,
+  isAuthenticated = false,
 }) => {
   const listRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -71,6 +80,9 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
           onSourceClick={onSourceClick}
           searchSettings={searchSettings}
           rerankerModel={rerankerModel}
+          ratingScore={ratingsMap?.get(msg.id) ?? 0}
+          onRequestRatingModal={onRequestRatingModal}
+          isAuthenticated={isAuthenticated}
         />
       ))}
 

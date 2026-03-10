@@ -499,8 +499,10 @@ const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
 // ---------------------------------------------------------------------------
 // Filter popover for categorical columns
 // ---------------------------------------------------------------------------
-// Static filter options — user_email is dynamic (computed from data)
-const STATIC_FILTER_OPTIONS: Record<string, string[]> = {};
+// Static filter options — user_email is dynamic (computed from data), type from known set
+const STATIC_FILTER_OPTIONS: Record<string, string[]> = {
+  type: ['search', 'heatmap', 'chat'],
+};
 
 interface FilterPopoverProps {
   column: string;
@@ -678,8 +680,12 @@ const ActivityManager: React.FC = () => {
     !!(r.ai_summary || (r.search_results && r.search_results.length > 0) ||
        (r.filters && Object.keys(r.filters).length > 0) || r.url);
 
-  // All remaining filters are server-side; no client-side filtering needed
-  const filteredRows = rows;
+  // Client-side filtering for type column (stored in filters.type JSONB)
+  const filteredRows = React.useMemo(() => {
+    const typeFilter = columnFilters['type'];
+    if (!typeFilter) return rows;
+    return rows.filter((r) => (r.filters?.type || 'search') === typeFilter);
+  }, [rows, columnFilters]);
 
   // Dynamic user email options from current data
   const uniqueUsers = React.useMemo(() => {
@@ -734,6 +740,8 @@ const ActivityManager: React.FC = () => {
                   <th style={{ width: 40 }}></th>
                   <SortableHeader columnKey="created_at" label="Date" sortField={sortBy} sortDirection={order}
                     onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
+                  <SortableHeader columnKey="type" label="Type" filterable sortField={sortBy} sortDirection={order}
+                    onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
                   <SortableHeader columnKey="user_email" label="User" filterable sortField={sortBy} sortDirection={order}
                     onSort={handleSort} onFilterClick={handleFilterClick} hasActiveFilter={hasActiveFilter} />
                   <SortableHeader columnKey="query" label="Query" sortField={sortBy} sortDirection={order}
@@ -750,7 +758,7 @@ const ActivityManager: React.FC = () => {
               </thead>
               <tbody>
                 {filteredRows.length === 0 ? (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>No activity found</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>No activity found</td></tr>
                 ) : (
                   filteredRows.map((r) => {
                     const isExpanded = expandedRows.has(r.id);
@@ -766,6 +774,7 @@ const ActivityManager: React.FC = () => {
                             ) : ''}
                           </td>
                           <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{formatDate(r.created_at)}</td>
+                          <td style={{ fontSize: '0.82rem', textTransform: 'capitalize' }}>{r.filters?.type || 'search'}</td>
                           <td style={{ fontSize: '0.82rem' }}>{r.user_email || r.user_display_name || '-'}</td>
                           <td style={{ fontSize: '0.82rem', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.query}>{r.query}</td>
                           <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{getResultCount(r)}</td>
@@ -784,7 +793,7 @@ const ActivityManager: React.FC = () => {
                         </tr>
                         {isExpanded && (
                           <tr className="admin-expanded-detail">
-                            <td colSpan={8} className="admin-expanded-cell">
+                            <td colSpan={9} className="admin-expanded-cell">
                               <ActivityContextPanel row={r} />
                             </td>
                           </tr>
