@@ -580,6 +580,7 @@ function App() {
   const [techContent, setTechContent] = useState('');
   const [dataContent, setDataContent] = useState('');
   const [privacyContent, setPrivacyContent] = useState('');
+  const [docsInitialPath, setDocsInitialPath] = useState<string | undefined>(undefined);
   const tooltipTimeoutRef = React.useRef<number | null>(null);
 
   const handleToggleDomainDropdown = useCallback(() => {
@@ -851,16 +852,19 @@ function App() {
   }, [selectedDomain, searchModel, selectedModelCombo]);
 
   const handleAboutClick = useCallback(() => {
+    setDocsInitialPath('overview/about.md');
     handleTabChange('info');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleTechClick = useCallback(() => {
+    setDocsInitialPath('overview/tech.md');
     handleTabChange('tech');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleDataClick = useCallback(() => {
+    setDocsInitialPath('overview/data.md');
     handleTabChange('data');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
@@ -2851,6 +2855,7 @@ function App() {
         dataContent={dataContent}
         privacyContent={privacyContent}
         basePath={APP_BASE_PATH}
+        docsInitialPath={docsInitialPath}
         onTabChange={handleTabChange}
       />
 

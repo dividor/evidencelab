@@ -10,8 +10,13 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
+# ---------------------------------------------------------------------------
 # Mock the heavy transitive imports that assistant routes pull in.
 # assistant_service -> assistant_graph -> search -> google.cloud
+#
+# We temporarily install lightweight mocks, import the modules we need,
+# then IMMEDIATELY clean up so later test modules see the real modules.
+# ---------------------------------------------------------------------------
 _mock_service = ModuleType("ui.backend.services.assistant_service")
 
 
@@ -20,15 +25,37 @@ async def _noop_stream(*args, **kwargs):
 
 
 _mock_service.stream_research_response = _noop_stream
-sys.modules.setdefault("ui.backend.services.assistant_service", _mock_service)
 
 # Mock search module since assistant_graph imports search_chunks
-_mock_search = ModuleType("ui.backend.services.search")
-_mock_search.search_chunks = MagicMock(return_value=[])
-sys.modules.setdefault("ui.backend.services.search", _mock_search)
+_mock_search_rt = ModuleType("ui.backend.services.search")
+_mock_search_rt.search_chunks = MagicMock(return_value=[])
+
+# assistant_service mock must persist because test methods lazily import
+# from ui.backend.routes.assistant which needs it.
+sys.modules.setdefault("ui.backend.services.assistant_service", _mock_service)
+
+# search mock is only needed to satisfy transitive imports; clean it up
+# immediately after to avoid leaking to other test modules.
+_saved_search_rt = sys.modules.get("ui.backend.services.search")
+sys.modules.setdefault("ui.backend.services.search", _mock_search_rt)
 
 from ui.backend.auth.schemas import AssistantChatRequest  # noqa: E402
 from ui.backend.utils.app_limits import limiter  # noqa: E402
+
+# Immediately restore search in sys.modules so other test files are not
+# affected.
+if _saved_search_rt is not None:
+    sys.modules["ui.backend.services.search"] = _saved_search_rt
+else:
+    sys.modules.pop("ui.backend.services.search", None)
+
+# Also clean up the package attribute set by the import machinery.
+import ui.backend.services as _svc_pkg_rt  # noqa: E402
+
+try:
+    delattr(_svc_pkg_rt, "search")
+except AttributeError:
+    pass
 
 # Disable rate limiting for tests
 limiter.enabled = False

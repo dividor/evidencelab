@@ -22,6 +22,7 @@ interface TabContentProps {
   dataContent: string;
   privacyContent: string;
   basePath?: string;
+  docsInitialPath?: string;
   onTabChange: (tab: TabName) => void;
 }
 
@@ -136,6 +137,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   dataContent,
   privacyContent,
   basePath,
+  docsInitialPath,
   onTabChange,
 }) => {
   // Render the active tab via the switch, plus always render the assistant
@@ -155,17 +157,15 @@ export const TabContent: React.FC<TabContentProps> = ({
       case 'processing':
         return <>{processingTab}</>;
       case 'info':
-        return <HelpTabContent content={aboutContent} currentTab="info" onTabChange={onTabChange} />;
       case 'tech':
-        return <HelpTabContent content={techContent} currentTab="tech" onTabChange={onTabChange} />;
       case 'data':
-        return <HelpTabContent content={dataContent} currentTab="data" onTabChange={onTabChange} />;
+        return <DocsPage basePath={basePath} initialPath={docsInitialPath} />;
       case 'stats':
         return <>{statsTab}</>;
       case 'privacy':
         return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
       case 'docs':
-        return <DocsPage basePath={basePath} />;
+        return <DocsPage basePath={basePath} initialPath={docsInitialPath} />;
       default:
         return null;
     }

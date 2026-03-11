@@ -47,6 +47,7 @@ export function useActivityLogging() {
       filters: Record<string, any> | null,
       results: SearchResult[],
       extra?: Record<string, any>,
+      aiSummary?: string,
     ) => {
       if (loggedSearchIds.current.has(searchId)) return;
       loggedSearchIds.current.add(searchId);
@@ -76,6 +77,7 @@ export function useActivityLogging() {
           search_results: richResults,
           url: window.location.href,
           session_id: getSessionId(),
+          ...(aiSummary ? { ai_summary: aiSummary } : {}),
         })
         .catch((err) => {
           // Silently fail — activity logging may be unavailable

@@ -6,9 +6,7 @@ Evidence Lab is a free open source platform that provides a document pipeline, s
 
 You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with about 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations). See [Data](/data) for more information on these amazing documents.
 
-We will be adding AI chat, research and Model Context Server (MCP) support so that Evidence Lab can be used in AI platforms including Claude and ChatGPT.
-
-So watch this space!
+Evidence Lab includes a built-in **Research Assistant** that uses AI agents to search, analyze, and synthesize findings from your documents with full citations. A **Deep Research** mode delegates to specialist sub-agents for more thorough multi-step investigations. See the [Research Assistant](/docs/using-evidence-lab/research-assistant) guide for details.
 
 ## Philosophy
 
@@ -40,6 +38,19 @@ Evidence Lab document processing pipeline includes the following features:
 ### User interface
 
 - Hybrid search with AI summary and reranking
+
+#### Research Assistant
+
+![Research Assistant](/docs/images/assistant/assistant-response.png)
+
+- **Research Assistant** — chat-based AI agent that searches your documents, synthesizes findings into structured responses with inline citations, and supports multi-turn conversations with thread history
+
+![Deep Research](/docs/images/assistant/deep-research-checkbox.png)
+
+- **Deep Research mode** — enables a coordinator/researcher sub-agent architecture for more thorough, multi-step investigations across your document collection
+
+#### More features
+
 - **Drilldown research** — highlight text or click "Find out more" to automatically drill into sub-topics, building an explorable research tree with query inheritance (root + parent context)
 - Experimental features such as [Heatmapper](/?tab=heatmap&dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
 - Filtering by metadata, in-document section types
@@ -63,7 +74,7 @@ Evidence Lab includes an optional user module that adds authentication and data-
 
 The module is built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns and is designed with future MFA support in mind.
 
-More features will be added soon, focused on document evidence analysis.
+More features will be added soon, focused on document evidence analysis and MCP (Model Context Protocol) support.
 
 For more detailed information on how the above features have been implemented, mosey on over to [Tech](/tech).
 

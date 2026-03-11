@@ -377,7 +377,7 @@ const AiSummaryBlock: React.FC<{ summary: string; results?: any[] }> = ({ summar
 
 /** Display filters as key-value pairs */
 /** Keys stored in filters JSONB that have dedicated display components */
-const FILTERS_EXCLUDE_KEYS = new Set(['timing', 'drilldown_tree']);
+const FILTERS_EXCLUDE_KEYS = new Set(['timing', 'drilldown_tree', 'searches']);
 
 const FiltersBlock: React.FC<{ filters: Record<string, any> }> = ({ filters }) => {
   if (!filters || Object.keys(filters).length === 0) return null;
@@ -449,6 +449,107 @@ const DrilldownTreeDisplay: React.FC<{ node: any; depth?: number }> = ({ node, d
   );
 };
 
+/** A single expandable result card showing title + truncated/full text */
+const ExpandableResultCard: React.FC<{ result: any; isLast: boolean }> = ({ result, isLast }) => {
+  const [expanded, setExpanded] = useState(false);
+  const text = result.text || '';
+  const isLong = text.length > 200;
+
+  return (
+    <div style={{ fontSize: '0.8rem', padding: '4px 0', borderBottom: isLast ? 'none' : '1px solid #eee' }}>
+      <div style={{ fontWeight: 600, color: '#1a1f36' }}>{result.title || 'Untitled'}</div>
+      {text && (
+        <div style={{ color: '#555', marginTop: 2 }}>
+          {expanded || !isLong ? text : text.slice(0, 200) + '...'}
+          {isLong && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
+              style={{
+                background: 'none', border: 'none', color: '#1a73e8', cursor: 'pointer',
+                fontSize: '0.76rem', padding: '0 4px', marginLeft: 4,
+              }}
+            >
+              {expanded ? 'less' : 'more'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** A single collapsible search query with its results */
+const AssistantSearchQueryItem: React.FC<{ search: any }> = ({ search }) => {
+  const [expanded, setExpanded] = useState(false);
+  const results = Array.isArray(search.results) ? search.results : [];
+
+  return (
+    <div style={{ borderRadius: 4, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '6px 10px', background: '#f8f9fa',
+          fontSize: '0.84rem', cursor: results.length > 0 ? 'pointer' : 'default',
+        }}
+        onClick={(e) => { e.stopPropagation(); if (results.length > 0) setExpanded((p) => !p); }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1a1f36' }}>
+          {results.length > 0 && (
+            <ChevronIcon expanded={expanded} />
+          )}
+          {search.query}
+        </span>
+        <span style={{ color: '#666', fontSize: '0.78rem', marginLeft: 12, whiteSpace: 'nowrap' }}>
+          {search.resultCount} results
+        </span>
+      </div>
+      {expanded && results.length > 0 && (
+        <div style={{ padding: '4px 10px 8px 30px', background: '#fdfdfd', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {results.map((r: any, j: number) => (
+            <ExpandableResultCard key={j} result={r} isLast={j === results.length - 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Display assistant search queries with result counts, collapsed by default */
+const AssistantSearchQueries: React.FC<{ searches: any[] }> = ({ searches }) => {
+  if (!searches || searches.length === 0) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="admin-context-label">
+        Search Queries ({searches.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {searches.map((s: any, i: number) => (
+          <AssistantSearchQueryItem key={i} search={s} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/** Check if activity is an assistant type (check both type and legacy mode field) */
+const isAssistantType = (row: ActivityRow): boolean => {
+  const t = row.filters?.type || row.filters?.mode || '';
+  return t === 'assistant-basic' || t === 'assistant-deep-research';
+};
+
+/** Render search results block — heatmap cell counts vs standard list */
+const SearchResultsBlock: React.FC<{ row: ActivityRow }> = ({ row }) => {
+  if (isAssistantType(row)) return null;
+  if (!row.search_results || !Array.isArray(row.search_results) || row.search_results.length === 0) return null;
+  const isHeatmapSingle = row.filters?.type === 'heatmap'
+    && row.search_results.length === 1
+    && typeof row.search_results[0] === 'object'
+    && !Array.isArray(row.search_results[0]);
+  return isHeatmapSingle
+    ? <HeatmapCellCountsTable counts={row.search_results[0]} />
+    : <ResultsSnapshotList results={row.search_results} />;
+};
+
 /** Full context panel for an activity row */
 const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
   const hasAny = row.ai_summary || (row.search_results && row.search_results.length > 0) ||
@@ -458,40 +559,42 @@ const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
     return <span className="admin-no-data">No detail data</span>;
   }
 
+  const assistant = isAssistantType(row);
+
   return (
     <div>
-      {/* URL */}
       {row.url && (
         <div style={{ fontSize: '0.82rem', marginBottom: 4 }}>
           <span className="admin-context-key">URL: </span>
           <AutoLink value={row.url} />
         </div>
       )}
-      {/* Search ID */}
       <div style={{ fontSize: '0.78rem', color: '#999', marginBottom: 2 }}>
         Search ID: {row.search_id}
       </div>
-      {/* Filters */}
+      {assistant && row.query && (
+        <div style={{ marginTop: 8, marginBottom: 4 }}>
+          <div className="admin-context-label">User Query</div>
+          <div style={{ fontSize: '0.88rem', color: '#1a1f36', fontWeight: 500, padding: '4px 0' }}>
+            {row.query}
+          </div>
+        </div>
+      )}
       {row.filters && <FiltersBlock filters={row.filters} />}
-      {/* AI Summary */}
+      {assistant && row.filters?.searches && (
+        <AssistantSearchQueries searches={row.filters.searches} />
+      )}
       {row.ai_summary && (
         <AiSummaryBlock summary={row.ai_summary}
           results={Array.isArray(row.search_results) ? row.search_results : []} />
       )}
-      {/* Drilldown Tree */}
       {row.filters?.drilldown_tree && (
         <div style={{ marginTop: 8 }}>
           <div className="admin-context-label">AI Summary Tree</div>
           <DrilldownTreeDisplay node={row.filters.drilldown_tree} />
         </div>
       )}
-      {/* Search Results — heatmap activities store cell counts as [{key:count}] */}
-      {row.search_results && Array.isArray(row.search_results) && row.search_results.length > 0 && (
-        row.filters?.type === 'heatmap' && row.search_results.length === 1
-          && typeof row.search_results[0] === 'object' && !Array.isArray(row.search_results[0])
-          ? <HeatmapCellCountsTable counts={row.search_results[0]} />
-          : <ResultsSnapshotList results={row.search_results} />
-      )}
+      <SearchResultsBlock row={row} />
     </div>
   );
 };
@@ -501,7 +604,7 @@ const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
 // ---------------------------------------------------------------------------
 // Static filter options — user_email is dynamic (computed from data), type from known set
 const STATIC_FILTER_OPTIONS: Record<string, string[]> = {
-  type: ['search', 'heatmap', 'chat'],
+  type: ['search', 'heatmap', 'chat', 'assistant-basic', 'assistant-deep-research'],
 };
 
 interface FilterPopoverProps {
@@ -684,7 +787,7 @@ const ActivityManager: React.FC = () => {
   const filteredRows = React.useMemo(() => {
     const typeFilter = columnFilters['type'];
     if (!typeFilter) return rows;
-    return rows.filter((r) => (r.filters?.type || 'search') === typeFilter);
+    return rows.filter((r) => (r.filters?.type || r.filters?.mode || 'search') === typeFilter);
   }, [rows, columnFilters]);
 
   // Dynamic user email options from current data
@@ -774,7 +877,7 @@ const ActivityManager: React.FC = () => {
                             ) : ''}
                           </td>
                           <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{formatDate(r.created_at)}</td>
-                          <td style={{ fontSize: '0.82rem', textTransform: 'capitalize' }}>{r.filters?.type || 'search'}</td>
+                          <td style={{ fontSize: '0.82rem', textTransform: 'capitalize' }}>{r.filters?.type || r.filters?.mode || 'search'}</td>
                           <td style={{ fontSize: '0.82rem' }}>{r.user_email || r.user_display_name || '-'}</td>
                           <td style={{ fontSize: '0.82rem', maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.query}>{r.query}</td>
                           <td style={{ textAlign: 'center', fontSize: '0.82rem' }}>{getResultCount(r)}</td>

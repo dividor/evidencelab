@@ -20,6 +20,7 @@ const defaultProps = {
   onSelectThread: jest.fn(),
   onNewChat: jest.fn(),
   onDeleteThread: jest.fn(),
+  onRenameThread: jest.fn(),
   isOpen: true,
   onToggle: jest.fn(),
 };
@@ -29,19 +30,19 @@ describe('ThreadSidebar', () => {
     jest.clearAllMocks();
   });
 
-  test('renders toggle button', () => {
+  test('renders close button when open', () => {
     render(<ThreadSidebar {...defaultProps} />);
-    expect(screen.getByLabelText(/sidebar/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('Close')).toBeInTheDocument();
   });
 
-  test('renders header with Conversations title', () => {
+  test('renders header with Chat History title', () => {
     render(<ThreadSidebar {...defaultProps} />);
-    expect(screen.getByText('Conversations')).toBeInTheDocument();
+    expect(screen.getByText('Chat History')).toBeInTheDocument();
   });
 
   test('renders New button', () => {
     render(<ThreadSidebar {...defaultProps} />);
-    expect(screen.getByText('+ New')).toBeInTheDocument();
+    expect(screen.getByText('New')).toBeInTheDocument();
   });
 
   test('shows empty state when no threads', () => {
@@ -59,13 +60,12 @@ describe('ThreadSidebar', () => {
     expect(screen.getByText('Thread Two')).toBeInTheDocument();
   });
 
-  test('truncates long thread titles', () => {
+  test('renders long thread titles without truncation', () => {
     const longTitle = 'A'.repeat(60);
     const threads = [makeThread({ title: longTitle })];
     render(<ThreadSidebar {...defaultProps} threads={threads} />);
-    // Should be truncated to 50 chars + "..."
-    const titleEl = screen.getByText(/A{50}\.\.\./);
-    expect(titleEl).toBeInTheDocument();
+    // Component renders the full title without truncation
+    expect(screen.getByText(longTitle)).toBeInTheDocument();
   });
 
   test('shows message count', () => {
@@ -106,7 +106,7 @@ describe('ThreadSidebar', () => {
     const onNewChat = jest.fn();
     render(<ThreadSidebar {...defaultProps} onNewChat={onNewChat} />);
 
-    fireEvent.click(screen.getByText('+ New'));
+    fireEvent.click(screen.getByText('New'));
     expect(onNewChat).toHaveBeenCalledTimes(1);
   });
 
@@ -146,12 +146,12 @@ describe('ThreadSidebar', () => {
     expect(onSelectThread).not.toHaveBeenCalled();
   });
 
-  test('calls onToggle when toggle button is clicked', () => {
+  test('calls onToggle when close button is clicked', () => {
     const onToggle = jest.fn();
     render(<ThreadSidebar {...defaultProps} onToggle={onToggle} />);
 
-    const toggleBtn = screen.getByLabelText(/sidebar/i);
-    fireEvent.click(toggleBtn);
+    const closeBtn = screen.getByLabelText('Close');
+    fireEvent.click(closeBtn);
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
@@ -162,17 +162,18 @@ describe('ThreadSidebar', () => {
     expect(container.querySelector('.thread-sidebar-open')).toBeInTheDocument();
   });
 
-  test('does not apply open class when sidebar is closed', () => {
+  test('renders nothing when sidebar is closed', () => {
     const { container } = render(
       <ThreadSidebar {...defaultProps} isOpen={false} />
     );
-    expect(container.querySelector('.thread-sidebar-open')).not.toBeInTheDocument();
+    expect(container.querySelector('.thread-sidebar')).not.toBeInTheDocument();
   });
 
-  test('shows Today for recent threads', () => {
+  test('shows Today with time for recent threads', () => {
     const now = new Date();
     const threads = [makeThread({ updatedAt: now.toISOString() })];
     render(<ThreadSidebar {...defaultProps} threads={threads} />);
-    expect(screen.getByText('Today')).toBeInTheDocument();
+    // formatDate returns "Today HH:MM" for same-day threads
+    expect(screen.getByText(/^Today /)).toBeInTheDocument();
   });
 });

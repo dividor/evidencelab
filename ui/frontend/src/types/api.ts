@@ -155,6 +155,8 @@ export interface SourceReference {
   score: number;
   page?: number;
   index?: number;
+  bbox?: any;
+  headings?: string[];
 }
 
 export interface AgentState {
@@ -163,9 +165,15 @@ export interface AgentState {
   iterationCount?: number;
 }
 
+export interface SearchResultCard {
+  title: string;
+  text: string;
+}
+
 export interface SearchToolCall {
   query: string;
   resultCount: number;
+  results?: SearchResultCard[];
 }
 
 export interface ThreadListItem {

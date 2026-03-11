@@ -26,6 +26,11 @@ jest.mock('../hooks/useAuth', () => ({
 
 import { AssistantTab } from '../components/assistant/AssistantTab';
 
+// JSDOM doesn't implement scrollIntoView
+beforeAll(() => {
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
 describe('AssistantTab', () => {
   test('renders welcome screen when no messages', () => {
     render(<AssistantTab dataSource="test-collection" />);
@@ -34,20 +39,31 @@ describe('AssistantTab', () => {
   });
 
   test('renders example query buttons', () => {
-    render(<AssistantTab dataSource="test-collection" />);
+    const examples = [
+      'what are the key findings on food security?',
+      'summarize the main recommendations',
+      'what progress has been made on gender equality?',
+    ];
+    render(<AssistantTab dataSource="test-collection" exampleQueries={examples} />);
     expect(screen.getByText(/key findings on food security/i)).toBeInTheDocument();
     expect(screen.getByText(/Summarize the main recommendations/i)).toBeInTheDocument();
     expect(screen.getByText(/gender equality/i)).toBeInTheDocument();
   });
 
   test('clicking example button sets input value', () => {
-    const { container } = render(<AssistantTab dataSource="test-collection" />);
+    const examples = [
+      'what are the key findings on food security?',
+      'summarize the main recommendations',
+      'what progress has been made on gender equality?',
+    ];
+    const { container } = render(<AssistantTab dataSource="test-collection" exampleQueries={examples} />);
 
     const exampleBtn = screen.getByText(/key findings on food security/i);
     fireEvent.click(exampleBtn);
 
-    const textarea = container.querySelector('.chat-input-textarea') as HTMLTextAreaElement;
-    expect(textarea.value).toBe('What are the key findings on food security?');
+    // submitQuery is called directly on click, which adds the query as a user message
+    // and clears the input. Verify the user message appears instead.
+    expect(screen.getByText('what are the key findings on food security?')).toBeInTheDocument();
   });
 
   test('renders chat input', () => {

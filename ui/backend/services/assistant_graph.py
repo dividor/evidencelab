@@ -6,17 +6,31 @@ Uses LangChain's deepagents create_agent for a focused research loop:
   - Autonomous multi-round search and synthesis
 """
 
+import asyncio
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
+from deepagents import create_deep_agent
 from deepagents.graph import create_agent
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
 
-from ui.backend.services.search import search_chunks
+from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
+
+
+def _get_assistant_config() -> Dict[str, Any]:
+    """Load assistant config from config.json."""
+    try:
+        from pipeline.db import get_application_config
+
+        return get_application_config().get("assistant", {})
+    except Exception:
+        return {}
+
 
 # Jinja2 environment for prompt templates
 PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
@@ -28,13 +42,16 @@ def _format_search_result(r: Any) -> Dict[str, Any]:
     payload = r.payload if hasattr(r, "payload") else r
     # Qdrant payloads use "map_title"; fall back to "title" for tests/dicts
     title = payload.get("map_title") or payload.get("title") or "Untitled"
+    # Qdrant stores page number as "sys_page_num"; fall back to "page_num"
+    # for tests/dicts that use the shorter name.
+    page = payload.get("sys_page_num") or payload.get("page_num")
     return {
         "chunk_id": getattr(r, "id", payload.get("chunk_id", "")),
         "doc_id": payload.get("doc_id", ""),
         "title": title,
         "text": payload.get("text", ""),
         "score": getattr(r, "score", payload.get("score", 0.0)),
-        "page": payload.get("page_num", None),
+        "page": page,
         "headings": payload.get("headings", []),
     }
 
@@ -64,6 +81,20 @@ class SearchTracker:
             self.search_settings.get("field_boost_enabled") and self._field_boost_fields
         )
         self._known_values: Optional[Dict[str, List[str]]] = None
+        # Real-time event queue for streaming search progress
+        self._event_queue: Optional[asyncio.Queue] = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def set_event_queue(
+        self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        """Attach an asyncio Queue for real-time search progress events.
+
+        Since the search tool runs synchronously (possibly in a thread),
+        events are pushed via ``loop.call_soon_threadsafe``.
+        """
+        self._event_queue = queue
+        self._event_loop = loop
 
     def _build_search_kwargs(self) -> Dict[str, Any]:
         """Build kwargs for search_chunks from search settings."""
@@ -86,7 +117,12 @@ class SearchTracker:
         return kwargs
 
     def _resolve_known_values(self) -> Dict[str, List[str]]:
-        """Lazily resolve known facet values for field boost."""
+        """Lazily resolve known facet values for field boost.
+
+        Maps abstract field names (e.g. "country") to their Qdrant storage
+        names (e.g. "map_country") before querying facets — matching the
+        behaviour of the search route.
+        """
         if self._known_values is not None:
             return self._known_values
         self._known_values = {}
@@ -97,8 +133,12 @@ class SearchTracker:
 
             db = get_db_for_source(self.data_source)
             for field in self._field_boost_fields:
+                storage_field = map_field_to_storage(field)
                 raw = db.facet_documents(
-                    key=field, filter_conditions=None, limit=2000, exact=False
+                    key=storage_field,
+                    filter_conditions=None,
+                    limit=2000,
+                    exact=False,
                 )
                 vals: List[str] = []
                 for rv in raw:
@@ -117,8 +157,38 @@ class SearchTracker:
             self._field_boost_enabled = False
         return self._known_values
 
+    @staticmethod
+    def _wrap_for_field_boost(results: List) -> List:
+        """Wrap raw Qdrant ScoredPoints for ``apply_field_boost``.
+
+        ``apply_field_boost`` expects objects with ``.metadata``,
+        ``.text``, ``.title``, ``.organization``, and ``.score``
+        attributes (the ``SearchResult`` interface).  Raw Qdrant
+        ScoredPoints have ``.payload`` / ``.score`` / ``.id`` instead.
+        """
+        wrapped: List = []
+        for r in results:
+            payload = r.payload if hasattr(r, "payload") else r
+            w = SimpleNamespace(
+                _original=r,
+                payload=payload,
+                id=getattr(r, "id", None),
+                metadata=dict(payload),
+                text=payload.get("text", ""),
+                title=(payload.get("map_title") or payload.get("title") or ""),
+                organization=payload.get("map_organization", ""),
+                score=getattr(r, "score", 0.0),
+            )
+            wrapped.append(w)
+        return wrapped
+
     def _apply_field_boost(self, results: List, query: str) -> List:
-        """Apply field boost to raw search results if enabled."""
+        """Apply field boost to raw search results if enabled.
+
+        Wraps Qdrant ScoredPoints with lightweight adapters so that
+        ``apply_field_boost`` (which expects a ``SearchResult``-like
+        interface) can access ``.metadata``, ``.text``, etc.
+        """
         if not self._field_boost_enabled or not self._field_boost_fields:
             return results
         known = self._resolve_known_values()
@@ -127,10 +197,46 @@ class SearchTracker:
         try:
             from ui.backend.services.search_models import apply_field_boost
 
-            return apply_field_boost(results, query, self._field_boost_fields, known)
+            wrapped = self._wrap_for_field_boost(results)
+            boosted = apply_field_boost(wrapped, query, self._field_boost_fields, known)
+            return boosted
         except Exception as exc:
             logger.warning("Field boost failed: %s", exc)
             return results
+
+    @staticmethod
+    def _enrich_from_postgres(
+        formatted: List[Dict[str, Any]], data_source: Optional[str]
+    ) -> None:
+        """Fill in page numbers, bounding boxes and headings from PostgreSQL.
+
+        Qdrant payloads don't store page numbers or bounding boxes — they
+        live in the PostgreSQL ``chunks`` table.  This mirrors what the
+        search route does via ``_build_chunk_cache``.
+        """
+        chunk_ids = [r["chunk_id"] for r in formatted if r.get("chunk_id")]
+        if not chunk_ids:
+            return
+        try:
+            from ui.backend.utils.app_state import get_pg_for_source
+
+            pg = get_pg_for_source(data_source)
+            chunk_cache = pg.fetch_chunks(chunk_ids)
+            for r in formatted:
+                cid = r["chunk_id"]
+                if cid not in chunk_cache:
+                    continue
+                pg_chunk = chunk_cache[cid]
+                if not r.get("text"):
+                    r["text"] = pg_chunk.get("sys_text", "")
+                if not r.get("page"):
+                    r["page"] = pg_chunk.get("sys_page_num")
+                if not r.get("bbox"):
+                    r["bbox"] = pg_chunk.get("sys_bbox")
+                if not r.get("headings"):
+                    r["headings"] = pg_chunk.get("sys_headings") or []
+        except Exception as exc:
+            logger.warning("Failed to enrich chunk data from Postgres: %s", exc)
 
     def search(self, query: str) -> List[Dict[str, Any]]:
         """Execute search, track results, return formatted dicts.
@@ -159,11 +265,29 @@ class SearchTracker:
             )
             raw = self._apply_field_boost(raw, query)
             formatted = [_format_search_result(r) for r in raw]
+            self._enrich_from_postgres(formatted, self.data_source)
         except Exception as exc:
             logger.error("Search failed for query %r: %s", query, exc)
             formatted = []
 
-        self.per_query.append({"query": query, "result_count": len(formatted)})
+        # Build result cards (title + snippet) for UI display
+        result_cards = []
+        for r in formatted[:10]:
+            text = r.get("text", "")
+            result_cards.append(
+                {
+                    "title": r.get("title", "Untitled"),
+                    "text": text,
+                }
+            )
+
+        self.per_query.append(
+            {
+                "query": query,
+                "result_count": len(formatted),
+                "results": result_cards,
+            }
+        )
 
         for r in formatted:
             cid = r.get("chunk_id", "")
@@ -172,6 +296,27 @@ class SearchTracker:
                 r["global_index"] = self._global_result_count
                 self.all_results.append(r)
                 self._seen_ids.add(cid)
+
+        # Push real-time search event (thread-safe for deep mode)
+        if self._event_queue is not None and self._event_loop is not None:
+            event = {
+                "type": "search_status",
+                "queries": [
+                    {
+                        "query": query,
+                        "result_count": len(formatted),
+                        "results": result_cards,
+                    }
+                ],
+                "total_results": len(self.all_results),
+            }
+            self._emitted_query_count = len(self.per_query)
+            try:
+                self._event_loop.call_soon_threadsafe(
+                    self._event_queue.put_nowait, event
+                )
+            except Exception as exc:
+                logger.warning("Failed to push search event to queue: %s", exc)
 
         return formatted
 
@@ -196,17 +341,19 @@ class SearchTracker:
         sources: List[Dict[str, Any]] = []
         for r in ordered:
             text = r.get("text", "")
-            sources.append(
-                {
-                    "chunkId": r.get("chunk_id", ""),
-                    "docId": r.get("doc_id", ""),
-                    "title": r.get("title", ""),
-                    "text": (text[:200] + "...") if len(text) > 200 else text,
-                    "score": r.get("score", 0.0),
-                    "page": r.get("page"),
-                    "index": r.get("global_index"),
-                }
-            )
+            entry: Dict[str, Any] = {
+                "chunkId": r.get("chunk_id", ""),
+                "docId": r.get("doc_id", ""),
+                "title": r.get("title", ""),
+                "text": (text[:200] + "...") if len(text) > 200 else text,
+                "score": r.get("score", 0.0),
+                "page": r.get("page"),
+                "index": r.get("global_index"),
+                "headings": r.get("headings", []),
+            }
+            if r.get("bbox"):
+                entry["bbox"] = r["bbox"]
+            sources.append(entry)
         return sources
 
 
@@ -275,11 +422,15 @@ def build_research_agent(
     Returns:
         Tuple of (compiled_agent, search_tracker)
     """
+    cfg = _get_assistant_config()
+    max_queries = cfg.get("max_queries", 4)
+
     tracker = SearchTracker(
         data_source=data_source,
         reranker_model=reranker_model,
         search_settings=search_settings,
     )
+    tracker.MAX_SEARCHES = max_queries
     search_tool = _build_search_tool(tracker)
     system_prompt = _load_system_prompt(data_source)
 
@@ -300,5 +451,94 @@ def build_research_agent(
         system_prompt=system_prompt,
     )
 
-    logger.info("Built research agent for data_source=%s", data_source)
+    logger.info(
+        "Built research agent for data_source=%s (max_queries=%d)",
+        data_source,
+        max_queries,
+    )
+    return agent, tracker
+
+
+def _load_deep_research_prompt(data_source: Optional[str] = None) -> str:
+    """Load and render the deep research coordinator prompt."""
+    template = _jinja_env.get_template("assistant_deep_research_coordinator.j2")
+    return template.render(data_source=data_source)
+
+
+def _load_researcher_prompt(
+    data_source: Optional[str] = None, max_queries: int = 10
+) -> str:
+    """Load and render the deep research researcher sub-agent prompt."""
+    template = _jinja_env.get_template("assistant_deep_research_researcher.j2")
+    return template.render(data_source=data_source, max_queries=max_queries)
+
+
+def build_deep_research_agent(
+    llm,
+    data_source: Optional[str] = None,
+    reranker_model: Optional[str] = None,
+    search_settings: Optional[Dict[str, Any]] = None,
+    system_prompt_override: Optional[str] = None,
+) -> tuple:
+    """Build a deep research agent with sub-agent delegation.
+
+    Uses create_deep_agent with a researcher sub-agent that has access
+    to the search_documents tool.  The coordinator plans and synthesizes
+    while the researcher executes searches.
+
+    Returns:
+        Tuple of (compiled_agent, search_tracker)
+    """
+    cfg = _get_assistant_config()
+    deep_cfg = cfg.get("deep_research", {})
+    max_queries = deep_cfg.get("max_queries", 10)
+
+    tracker = SearchTracker(
+        data_source=data_source,
+        reranker_model=reranker_model,
+        search_settings=search_settings,
+    )
+    tracker.MAX_SEARCHES = max_queries
+
+    search_tool = _build_search_tool(tracker)
+
+    coordinator_prompt = _load_deep_research_prompt(data_source)
+    researcher_prompt = _load_researcher_prompt(data_source, max_queries=max_queries)
+
+    if system_prompt_override:
+        coordinator_prompt = (
+            coordinator_prompt
+            + "\n\n## Additional Instructions\n\n"
+            + system_prompt_override
+        )
+        logger.info(
+            "Appended group prompt override (%d chars) to deep "
+            "research coordinator prompt",
+            len(system_prompt_override),
+        )
+
+    researcher_subagent: Dict[str, Any] = {
+        "name": "researcher",
+        "description": (
+            "Conducts thorough searches of the document database "
+            "using multiple diverse queries. Give it a broad research "
+            "brief and it will search from many angles, returning "
+            "comprehensive findings with citation numbers."
+        ),
+        "system_prompt": researcher_prompt,
+        "tools": [search_tool],
+    }
+
+    agent = create_deep_agent(
+        model=llm,
+        tools=[],
+        system_prompt=coordinator_prompt,
+        subagents=[researcher_subagent],
+    )
+
+    logger.info(
+        "Built deep research agent for data_source=%s (max_queries=%d)",
+        data_source,
+        max_queries,
+    )
     return agent, tracker

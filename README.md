@@ -43,19 +43,25 @@ Evidence Lab document processing pipeline includes the following features:
 
 2. User interface
 
-| Search | Heatmapper | Pipeline |
-|:---:|:---:|:---:|
-| <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200"> |
+| Search | Research Assistant | Heatmapper | Pipeline |
+|:---:|:---:|:---:|:---:|
+| <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200"> |
 
 - Hybrid search with AI summary and reranking
+- **Research Assistant** — chat-based AI agent that searches, analyzes, and synthesizes findings with inline citations and multi-turn conversations with thread history
+- **Deep Research mode** — coordinator/researcher sub-agent architecture using [deepagents](https://github.com/krrome/deepagents) for thorough multi-step investigations with real-time streaming progress
+- **Star ratings** — rate search results, AI summaries, and assistant responses with 1–5 stars and optional comments
+- **Drilldown research** — highlight text or click "Find out more" to drill into sub-topics, building an explorable research tree with query inheritance and PDF export
 - Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
 - Experimental features such as heatmapper for tracking trends in content
+- Config-driven filter fields — control which metadata fields appear in the filter panel
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
 - Auto min score filtering using percentile-based thresholding (filters bottom 30% of results)
 - Semantic highlighting in search results
 - Basic language translation
 - PDF preview with in-document search
+- Built-in searchable documentation area with sidebar navigation
 - Administration views to track pipeline, documents, performance and errors
 
 3. User authentication & permissions (opt-in)
@@ -71,7 +77,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) with future MFA support in mind
 - Three modes via `USER_MODULE` in `.env`: `off` (default), `on_passive` (optional login), `on_active` (login required)
 
-More features will be added soon, focused on document evidence analysis.
+More features will be added soon, focused on document evidence analysis and MCP (Model Context Protocol) support. See the [CHANGELOG](CHANGELOG.md) for the full list of recent additions.
 
 ## Getting started
 
@@ -152,6 +158,20 @@ Global application settings.
 | `search.page_size` | `int` | Default number of search results per page |
 | `search.rerank_model` | `string` | Default reranker model ID (must exist in `supported_rerank_models`) |
 | `search.default_dense_model` | `string` | Default dense embedding model key (must exist in `supported_embedding_models`) |
+
+### `assistant`
+
+Research Assistant configuration.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | `bool` | `true` | Enable the Research Assistant tab |
+| `max_search_results` | `int` | `20` | Maximum search results per tool call |
+| `max_iterations` | `int` | `3` | Maximum agent iterations |
+| `max_queries` | `int` | `4` | Maximum search queries per session |
+| `recursion_limit` | `int` | `12` | LangGraph recursion limit |
+| `deep_research.max_queries` | `int` | `10` | Maximum queries for deep research |
+| `deep_research.recursion_limit` | `int` | `100` | Recursion limit for deep research |
 
 ### `supported_embedding_models`
 

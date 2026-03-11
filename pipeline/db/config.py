@@ -106,7 +106,7 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     for model_name, model_info in config.get("supported_llms", {}).items():
         llm_config: Dict[str, Any] = {
             "model": model_info.get("model"),
-            "provider": model_info.get("provider", "huggingface"),
+            "provider": model_info.get("provider"),
         }
         if "inference_provider" in model_info:
             llm_config["inference_provider"] = model_info.get("inference_provider")

@@ -127,8 +127,9 @@ def get_llm(
 
     Args:
         provider: LLM provider ("huggingface", "openai", "anthropic",
-                 "openai-compatible"). If None, reads from LLM_PROVIDER
-                 env var (default: "huggingface")
+                 "azure_foundry", "google_vertex", "openai-compatible").
+                 Resolved from model config or LLM_PROVIDER env var.
+                 Raises ValueError if no provider can be determined.
         model: Model identifier. If None, reads from LLM_MODEL env var
         temperature: Temperature setting. If None, reads from
                      LLM_TEMPERATURE env var (default: 0.7)
@@ -154,7 +155,6 @@ def get_llm(
         # Use a different provider
         llm = get_llm(provider="openai", model="gpt-4-turbo")
     """
-    provider = _normalize_provider(provider)
     llm_config = _load_llm_config()
     default_model_key = _normalize_model_key(llm_config.get("model"))
     default_max_tokens = _normalize_default_max_tokens(
@@ -162,9 +162,19 @@ def get_llm(
     )
 
     model_key = model or os.getenv("LLM_MODEL") or default_model_key
+    # Resolve model settings first (may provide the provider from config)
+    initial_provider = provider or os.getenv("LLM_PROVIDER") or ""
     model, provider, inference_provider = _resolve_model_settings(
-        model_key, provider, inference_provider
+        model_key, initial_provider, inference_provider
     )
+    # Ensure we have a valid provider after resolution
+    if not provider:
+        raise ValueError(
+            f"No LLM provider found for model '{model_key}'. "
+            f"Set 'provider' in config.json supported_llms entries "
+            f"or set LLM_PROVIDER environment variable."
+        )
+    provider = provider.lower()
     temperature = _resolve_temperature(temperature)
     max_tokens = _resolve_max_tokens(max_tokens, default_max_tokens)
 
@@ -191,10 +201,6 @@ def get_llm(
     _llm_cache[cache_key] = llm
     logger.info("✓ LLM initialized and cached: %s/%s", provider, model)
     return llm
-
-
-def _normalize_provider(provider: Optional[str]) -> str:
-    return (provider or os.getenv("LLM_PROVIDER", "huggingface")).lower()
 
 
 def _load_llm_config() -> Dict[str, Any]:

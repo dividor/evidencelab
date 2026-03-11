@@ -5,6 +5,7 @@ import { useRatings, Rating } from '../../hooks/useRatings';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { streamAssistantChat, AssistantStreamHandlers } from '../../utils/assistantStream';
+import { useActivityLogging } from '../../hooks/useActivityLogging';
 import RatingModal from '../ratings/RatingModal';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
@@ -33,10 +34,12 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const auth = useAuth();
   const user = USER_MODULE ? auth.user : null;
   const isAuthenticated = !!user;
+  const { logSearch } = useActivityLogging();
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [deepResearch, setDeepResearch] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingPhase, setStreamingPhase] = useState<string>('');
   const [streamingContent, setStreamingContent] = useState('');
@@ -57,6 +60,10 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const sourcesRef = useRef<SourceReference[]>([]);
   const toolCallsRef = useRef<SearchToolCall[]>([]);
 
+  // Track which mode (basic vs deep) was used for the current thread's last response
+  const [lastResponseDeep, setLastResponseDeep] = useState(false);
+  const ratingType = lastResponseDeep ? 'assistant-deep-research' : 'assistant-basic';
+
   // ----- Ratings -----
   const {
     ratings: chatRatings,
@@ -64,7 +71,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     deleteRating: deleteChatRating,
     refresh: refreshRatings,
   } = useRatings({
-    ratingType: 'chat',
+    ratingType,
     referenceId: activeThreadId || '',
     enabled: isAuthenticated && !!activeThreadId,
   });
@@ -209,7 +216,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       text: source.text,
       page_num: source.page || 1,
       score: source.score,
-      headings: [],
+      headings: source.headings || [],
+      bbox: source.bbox,
       metadata: {},
     });
   }, [onResultClick]);
@@ -261,6 +269,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           setActiveThreadId(data.threadId);
           if (isAuthenticated) loadThreads();
         }
+        setLastResponseDeep(deepResearch);
       },
       onError: (message) => {
         setMessages((prev) => [
@@ -286,6 +295,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
       assistantModelConfig: assistantModelConfig,
       rerankerModel: rerankerModel,
       searchSettings: searchSettings,
+      deepResearch,
       handlers,
       signal: controller.signal,
     });
@@ -307,6 +317,32 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           createdAt: new Date().toISOString(),
         },
       ]);
+
+      // Log assistant interaction to activity
+      const activityId = crypto.randomUUID();
+      const searchResults: SearchResult[] = finalToolCalls.flatMap((tc) =>
+        (tc.results || []).map((r) => ({
+          chunk_id: '',
+          doc_id: '',
+          title: r.title || 'Untitled',
+          score: 0,
+          page_num: 0,
+          text: r.text || '',
+          headings: [],
+          metadata: {},
+        }))
+      );
+      logSearch(activityId, query.trim(), {
+        type: deepResearch ? 'assistant-deep-research' : 'assistant-basic',
+        searches: finalToolCalls.map((tc) => ({
+          query: tc.query,
+          resultCount: tc.resultCount,
+          results: (tc.results || []).map((r) => ({
+            title: r.title || 'Untitled',
+            text: r.text || '',
+          })),
+        })),
+      }, searchResults, undefined, finalContent);
     }
 
     // Clear streaming state
@@ -319,7 +355,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     setIsStreaming(false);
     setStreamingPhase('');
     abortRef.current = null;
-  }, [isStreaming, dataSource, activeThreadId, assistantModelConfig, rerankerModel, searchSettings, isAuthenticated, loadThreads]);
+  }, [isStreaming, dataSource, activeThreadId, assistantModelConfig, rerankerModel, searchSettings, deepResearch, isAuthenticated, loadThreads]);
 
   const handleSubmit = useCallback(() => {
     submitQuery(inputValue);
@@ -336,8 +372,21 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+  const deepResearchToggle = (
+    <label className="deep-research-toggle">
+      <input
+        type="checkbox"
+        checked={deepResearch}
+        onChange={(e) => setDeepResearch(e.target.checked)}
+        disabled={isStreaming}
+      />
+      <span>Deep research</span>
+    </label>
+  );
+
   const chatFooterLinks = isAuthenticated ? (
     <span className="chat-footer-links">
+      {deepResearchToggle}
       <button
         className="chat-history-toggle"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -357,7 +406,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         </button>
       )}
     </span>
-  ) : undefined;
+  ) : (
+    <span className="chat-footer-links">
+      {deepResearchToggle}
+    </span>
+  );
 
   return (
     <div className="assistant-container">
@@ -448,12 +501,35 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           initialComment={chatRatings.get(ratingModalMessageId)?.comment || ''}
           onSubmit={(score, comment) => {
             if (!activeThreadId) return;
+            // Build context with the assistant response for admin visibility
+            const ratedMsg = messages.find((m) => m.id === ratingModalMessageId);
+            const ratingContext: Record<string, any> = {};
+            // Find the preceding user message to capture the query
+            const ratedIdx = messages.findIndex((m) => m.id === ratingModalMessageId);
+            for (let i = ratedIdx - 1; i >= 0; i--) {
+              if (messages[i].role === 'user') {
+                ratingContext.user_query = messages[i].content;
+                break;
+              }
+            }
+            if (ratedMsg?.content) ratingContext.ai_summary = ratedMsg.content;
+            if (ratedMsg?.toolCalls && ratedMsg.toolCalls.length > 0) {
+              ratingContext.searches = ratedMsg.toolCalls.map((tc) => ({
+                query: tc.query,
+                resultCount: tc.resultCount,
+                results: (tc.results || []).map((r) => ({
+                  title: r.title || 'Untitled',
+                  text: r.text || '',
+                })),
+              }));
+            }
             submitChatRating({
-              ratingType: 'chat',
+              ratingType,
               referenceId: activeThreadId,
               itemId: ratingModalMessageId,
               score,
               comment,
+              context: Object.keys(ratingContext).length > 0 ? ratingContext : undefined,
             });
           }}
           onDelete={

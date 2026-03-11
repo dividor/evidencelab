@@ -81,6 +81,49 @@ Search powered by hybrid retrieval and AI.
 * **Drilldown Research**: Highlight text in an AI summary or click "Find out more" on the top heading to automatically drill into sub-topics. Each sub-query inherits the root search query plus the immediate parent topic for context, building an explorable tree of research. The tree view lets you navigate back to any previous node to review its results and summary. Sub-queries also inherit all active filters (data source, date range, etc.) from the parent search.
 * **Preview & Deep-Linking**: Integrated PDF viewer that opens directly to the specific page and highlights the relevant paragraph.
 
+## Research Assistant
+
+The Research Assistant is a chat-based AI agent that answers questions about your document collection by searching, analyzing, and synthesizing evidence with full citations.
+
+![Research Assistant](/docs/images/assistant/assistant-response.png)
+
+### How It Works
+
+The assistant uses a LangGraph-based agent loop powered by the [deepagents](https://github.com/krrome/deepagents) framework. When you ask a question, the agent:
+
+1. **Plans** search queries to find relevant evidence across the document collection
+2. **Searches** using the same hybrid retrieval pipeline (dense + sparse + reranking) as the main search
+3. **Synthesizes** a structured, cited response with inline reference numbers
+4. **Provides sources** — each citation links back to the specific document and page
+
+Responses are streamed in real time via Server-Sent Events (SSE), so you see the agent's progress as it plans, searches, and writes.
+
+### Normal Mode vs Deep Research
+
+* **Normal mode** (`build_research_agent`) uses `create_agent` with a single agent loop. The agent has access to a `search_documents` tool and iterates until it has enough evidence to answer. This is fast and suitable for most questions.
+
+* **Deep Research mode** (`build_deep_research_agent`) uses `create_deep_agent` with a LangChain-powered coordinator/researcher sub-agent architecture. A coordinator agent plans the investigation and delegates specific research tasks to specialist researcher sub-agents, each with their own `search_documents` tool. This enables more thorough, multi-step investigations with higher search limits. Both modes are config-driven — `max_queries`, `recursion_limit`, and `max_search_results` are set in `config.json`.
+
+Toggle between modes with the **Deep research** checkbox below the chat input.
+
+### Features
+
+* **Multi-turn conversations** — follow-up questions maintain context within a thread
+* **Thread history** — authenticated users can save, rename, and revisit past conversations
+* **Inline citations** — numbered references link each claim to specific document chunks with page numbers
+* **Expandable references** — click to expand the full reference list with document titles and page links
+* **Star ratings** — rate assistant responses to provide feedback on quality
+* **Configurable models** — the assistant respects the model selection in the top bar (Azure Foundry, Huggingface, etc.)
+* **Search settings passthrough** — dense/sparse weights, reranking, field boost, and recency boost settings from the Search Settings panel are forwarded to the assistant's search tool
+
+### API
+
+* `POST /assistant/chat/stream` — SSE endpoint that streams the assistant response
+* `GET /assistant/threads` — list saved conversation threads
+* `GET /assistant/threads/{id}` — retrieve a thread with its messages
+* `POST /assistant/threads/{id}/rename` — rename a thread
+* `DELETE /assistant/threads/{id}` — delete a thread
+
 ## Administration & Observability
 
 Tools for managing the pipeline and data quality.
@@ -117,6 +160,38 @@ Above you can see a menu options for models. The demo data was processed using t
 As shown in the above models drop-down, this user interface can use either open models found on Huggingface or Azure foundry (Azure open AI). Over time, more will be added.
 
 One thing to note, is that if using Huggingface models, the search reranker model runs locally on the application host. Since this project aims for low-cost, using such a model will result in slow search queries as the host isn't that powerful. With more work and engineering (and hosting cost) this could be addressed in future.
+
+## AI Prompts
+
+All AI-driven processes in Evidence Lab are controlled by **Jinja2 prompt templates** stored in the `prompts/` directory. This makes it straightforward to customize AI behavior without changing application code.
+
+### Prompt Templates
+
+| Template | Purpose |
+|---|---|
+| `assistant_system.j2` | Research Assistant system prompt — controls how the agent searches and synthesizes responses |
+| `assistant_deep_research_coordinator.j2` | Deep Research coordinator prompt — orchestrates sub-agent delegation |
+| `assistant_deep_research_researcher.j2` | Deep Research researcher sub-agent prompt — executes focused search tasks |
+| `ai_summary_system.j2` / `ai_summary_user.j2` | AI search summary generation — the summary shown above search results |
+| `summary_reduction.j2` / `summary_final.j2` | Document summarization — Map-Reduce pipeline for generating document abstracts |
+| `toc_classification_system.j2` / `toc_classification_user.j2` | Section classification — categorizes document sections (findings, methodology, etc.) |
+| `toc_category_judge.j2` | Section classification judge — resolves ambiguous classifications |
+| `toc_extract_from_page.j2` / `toc_validation.j2` | Table of Contents extraction and validation |
+| `taxonomy_sdg_system.j2` / `taxonomy_sdg_user.j2` | SDG taxonomy classification |
+| `taxonomy_cross_cutting_theme_system.j2` / `taxonomy_cross_cutting_theme_user.j2` | Cross-cutting theme classification |
+| `semantic_highlight_system.j2` / `semantic_highlight_user.j2` | Semantic highlighting of search result snippets |
+| `search_evals_judge_relevance_user.j2` | Search quality evaluation — judges result relevance |
+| `search_tests_*.j2` | Search test generation — creates test queries and verifies results |
+
+### Group-Level Prompt Overrides
+
+Administrators can override the AI search summary prompt on a per-group basis via the **Admin Panel → Group Settings**. This allows different user groups to receive responses tailored to their needs — for example, a technical group might receive more detailed citations while a policy group gets higher-level summaries.
+
+The override system uses a two-layer approach:
+1. **Built-in templates** (code-level) — the Jinja2 files in `prompts/` serve as the defaults
+2. **Group overrides** (database) — stored in the `UserGroup.summary_prompt` field and editable from the admin UI
+
+When a group has a custom prompt, it replaces the default system prompt for AI summary generation. If the override is cleared, the system falls back to the built-in template.
 
 ## User Authentication & Permissions
 
@@ -158,6 +233,10 @@ The authentication module is opt-in and built on [fastapi-users](https://fastapi
   * `GET /activity/all` — admin: paginated list of all activity
   * `GET /activity/export` — admin: XLSX download
 * **Data lifecycle** — both tables use `ON DELETE CASCADE` on the `user_id` foreign key, so all ratings and activity are automatically deleted when a user account is removed.
+
+### Security
+
+For full details on security architecture, automated scanning, container security, and development practices, see [SECURITY.md](https://github.com/dividor/evidencelab/blob/main/SECURITY.md). This covers defense-in-depth measures including pre-commit hooks (Bandit, Gitleaks, Hadolint), CI/CD security jobs (pip-audit, npm audit, Trivy container scanning), CORS configuration, rate limiting, API key authentication, and the active authentication enforcement middleware.
 
 ### User self-service
 

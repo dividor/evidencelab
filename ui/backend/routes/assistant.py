@@ -210,6 +210,7 @@ async def stream_assistant_chat(
                 reranker_model=body.reranker_model,
                 search_settings=search_kwargs,
                 system_prompt_override=group_prompt,
+                deep_research=body.deep_research,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

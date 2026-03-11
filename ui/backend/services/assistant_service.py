@@ -5,6 +5,7 @@ High-level service wrapping the deepagents research agent, providing
 SSE streaming and conversation persistence.
 """
 
+import asyncio
 import logging
 import sys
 import uuid as uuid_mod
@@ -13,7 +14,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ui.backend.services.assistant_graph import build_research_agent
+from ui.backend.services.assistant_graph import (
+    _get_assistant_config,
+    build_deep_research_agent,
+    build_research_agent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +87,19 @@ def _extract_search_queries(msg) -> List[str]:
     return queries
 
 
+def _extract_task_delegations(msg) -> List[str]:
+    """Extract sub-agent task delegations from an AI message's tool calls."""
+    tasks: List[str] = []
+    if hasattr(msg, "tool_calls") and msg.tool_calls:
+        for tc in msg.tool_calls:
+            if tc.get("name") == "task":
+                args = tc.get("args", {})
+                # deepagents task tool uses "description" param, not "task"
+                desc = args.get("description", "") or args.get("task", "") or str(args)
+                tasks.append(desc)
+    return tasks
+
+
 def _has_any_tool_calls(msg) -> bool:
     """Check if an AI message has any tool calls (search, write_todos, etc)."""
     return bool(getattr(msg, "tool_calls", None))
@@ -94,9 +112,14 @@ def _process_agent_output(node_output: Dict) -> Dict[str, Any]:
     The deepagents framework has built-in tools (write_todos, etc.) that
     produce tool calls we don't surface, but their presence means the
     model is still working, not producing the final answer.
+
+    In deep research mode, the coordinator delegates via the ``task``
+    tool.  We surface these as ``task_delegations`` so the UI can show
+    a "researching" phase.
     """
     result: Dict[str, Any] = {
         "tool_queries": [],
+        "task_delegations": [],
         "response_text": "",
     }
     messages = node_output.get("messages", [])
@@ -104,6 +127,10 @@ def _process_agent_output(node_output: Dict) -> Dict[str, Any]:
         search_queries = _extract_search_queries(msg)
         if search_queries:
             result["tool_queries"].extend(search_queries)
+            continue
+        task_delegations = _extract_task_delegations(msg)
+        if task_delegations:
+            result["task_delegations"].extend(task_delegations)
         elif _has_any_tool_calls(msg):
             # Model called non-search tools (write_todos, etc.) — skip
             pass
@@ -159,6 +186,7 @@ async def stream_research_response(
     reranker_model: Optional[str] = None,
     search_settings: Optional[Dict[str, Any]] = None,
     system_prompt_override: Optional[str] = None,
+    deep_research: bool = False,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Stream a research response via SSE events.
@@ -170,6 +198,11 @@ async def stream_research_response(
     synthesis text is buffered and only yielded when a non-token event
     arrives or the stream ends.  This prevents duplicate or intermediate
     synthesis text from reaching the client.
+
+    In deep research mode, the search tool pushes real-time search
+    progress events to a shared asyncio Queue so the client sees each
+    search query as it happens (instead of waiting for the whole
+    sub-agent to finish).
     """
     run_id = uuid_mod.uuid4()
     tracker = None
@@ -180,7 +213,8 @@ async def stream_research_response(
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        agent, tracker = build_research_agent(
+        builder = build_deep_research_agent if deep_research else build_research_agent
+        agent, tracker = builder(
             llm,
             data_source,
             reranker_model,
@@ -188,28 +222,25 @@ async def stream_research_response(
             system_prompt_override=system_prompt_override,
         )
         messages = _build_conversation_messages(query, conversation_messages)
+        cfg = _get_assistant_config()
+        if deep_research:
+            deep_cfg = cfg.get("deep_research", {})
+            recursion_limit = deep_cfg.get("recursion_limit", 100)
+        else:
+            recursion_limit = cfg.get("recursion_limit", 12)
 
         yield {"type": "phase", "phase": "planning"}
 
-        token_buffer = ""
-        async for step_output in agent.astream(
-            {"messages": messages},
-            config={"run_id": str(run_id), "recursion_limit": 12},
-            stream_mode="updates",
-        ):
-            for event in _events_from_step(step_output, tracker):
-                if event.get("type") == "token":
-                    new_text = event["token"]
-                    if not _is_duplicate_or_subset(new_text, token_buffer):
-                        token_buffer = new_text
-                else:
-                    if token_buffer:
-                        yield {"type": "token", "token": token_buffer}
-                        token_buffer = ""
-                    yield event
-
-        if token_buffer:
-            yield {"type": "token", "token": token_buffer}
+        if deep_research:
+            async for event in _stream_deep_research(
+                agent, tracker, messages, run_id, recursion_limit
+            ):
+                yield event
+        else:
+            async for event in _stream_normal_research(
+                agent, tracker, messages, run_id, recursion_limit
+            ):
+                yield event
 
         async for event in _yield_sources_and_done(tracker, run_id):
             yield event
@@ -217,6 +248,105 @@ async def stream_research_response(
     except Exception as exc:
         async for event in _handle_stream_error(exc, tracker, run_id):
             yield event
+
+
+async def _stream_normal_research(
+    agent: Any,
+    tracker: Any,
+    messages: List,
+    run_id: uuid_mod.UUID,
+    recursion_limit: int,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream events from a normal (non-deep) research agent."""
+    token_buffer = ""
+    async for step_output in agent.astream(
+        {"messages": messages},
+        config={"run_id": str(run_id), "recursion_limit": recursion_limit},
+        stream_mode="updates",
+    ):
+        for event in _events_from_step(step_output, tracker):
+            if event.get("type") == "token":
+                new_text = event["token"]
+                if not _is_duplicate_or_subset(new_text, token_buffer):
+                    token_buffer = new_text
+            else:
+                if token_buffer:
+                    yield {"type": "token", "token": token_buffer}
+                    token_buffer = ""
+                yield event
+
+    if token_buffer:
+        yield {"type": "token", "token": token_buffer}
+
+
+_SENTINEL = object()
+
+
+async def _stream_deep_research(
+    agent: Any,
+    tracker: Any,
+    messages: List,
+    run_id: uuid_mod.UUID,
+    recursion_limit: int,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream deep research events with real-time search progress.
+
+    The sub-agent's searches happen inside a single "tools" node, so
+    the normal ``astream`` loop blocks until the sub-agent finishes.
+    To surface search progress in real time, the tracker pushes events
+    to a shared asyncio Queue.  We run the agent stream in a background
+    task and consume from the queue, yielding events as they arrive.
+    """
+    event_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    tracker.set_event_queue(event_queue, loop)
+
+    agent_error: Optional[Exception] = None
+
+    async def _run_agent() -> None:
+        nonlocal agent_error
+        try:
+            async for step_output in agent.astream(
+                {"messages": messages},
+                config={
+                    "run_id": str(run_id),
+                    "recursion_limit": recursion_limit,
+                },
+                stream_mode="updates",
+            ):
+                for event in _events_from_step(step_output, tracker):
+                    await event_queue.put(event)
+        except Exception as exc:
+            agent_error = exc
+        finally:
+            await event_queue.put(_SENTINEL)
+
+    agent_task = asyncio.create_task(_run_agent())
+
+    token_buffer = ""
+    try:
+        while True:
+            event = await event_queue.get()
+            if event is _SENTINEL:
+                break
+            etype = event.get("type")
+            if etype == "token":
+                new_text = event["token"]
+                if not _is_duplicate_or_subset(new_text, token_buffer):
+                    token_buffer = new_text
+            else:
+                if token_buffer:
+                    yield {"type": "token", "token": token_buffer}
+                    token_buffer = ""
+                yield event
+    finally:
+        await agent_task
+
+    if token_buffer:
+        yield {"type": "token", "token": token_buffer}
+
+    if agent_error is not None:
+        raise agent_error
 
 
 def _events_from_step(
@@ -242,6 +372,9 @@ def _events_from_step(
                         "queries": agent_result["tool_queries"],
                     }
                 )
+            elif agent_result["task_delegations"]:
+                # Deep research coordinator delegated to sub-agent(s)
+                events.append({"type": "phase", "phase": "searching"})
             elif agent_result["response_text"]:
                 events.append(
                     {
@@ -261,6 +394,10 @@ def _events_from_step(
                         "total_results": len(tracker.all_results),
                     }
                 )
+            # When searches are done, transition to synthesizing phase
+            # so the user sees "Synthesizing answer..." while the LLM works
+            if tracker.all_results:
+                events.append({"type": "phase", "phase": "synthesizing"})
 
         else:
             logger.debug("Skipping middleware node: %s", node_name)

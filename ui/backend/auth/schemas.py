@@ -192,6 +192,8 @@ VALID_RATING_TYPES = {
     "taxonomy",
     "heatmap",
     "chat",
+    "assistant-basic",
+    "assistant-deep-research",
 }
 
 
@@ -416,7 +418,7 @@ class AssistantModelConfig(BaseModel):
 
     model: str
     max_tokens: int = 2000
-    temperature: float = 0.2
+    temperature: float = 0.0
     chunk_overlap: int = 800
     chunk_tokens_ratio: float = 0.5
 
@@ -444,6 +446,7 @@ class AssistantChatRequest(BaseModel):
     assistant_model_config: Optional[AssistantModelConfig] = None
     reranker_model: Optional[str] = None
     search_settings: Optional[AssistantSearchSettings] = None
+    deep_research: bool = False
 
 
 class ThreadRenameRequest(BaseModel):

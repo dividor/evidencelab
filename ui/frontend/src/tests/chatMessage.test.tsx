@@ -13,6 +13,14 @@ jest.mock('remark-gfm', () => ({
   __esModule: true,
   default: () => {},
 }));
+jest.mock('../components/ratings/StarRating', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+jest.mock('../components/assistant/ToolCallPanel', () => ({
+  __esModule: true,
+  ToolCallPanel: () => null,
+}));
 
 import { ChatMessageComponent } from '../components/assistant/ChatMessage';
 import { ChatMessage, SourceReference } from '../types/api';
@@ -41,6 +49,7 @@ const makeSources = (): SourceReference[] => [
     text: 'Evidence shows that food security has improved...',
     score: 0.92,
     page: 15,
+    index: 1,
   },
   {
     chunkId: 'c2',
@@ -48,6 +57,18 @@ const makeSources = (): SourceReference[] => [
     title: 'Nutrition Analysis',
     text: 'Malnutrition rates have decreased...',
     score: 0.85,
+    index: 2,
+  },
+];
+
+const makeSourcesWithoutIndex = (): SourceReference[] => [
+  {
+    chunkId: 'c1',
+    docId: 'd1',
+    title: 'Global Food Security Report 2024',
+    text: 'Evidence shows that food security has improved...',
+    score: 0.92,
+    page: 15,
   },
 ];
 
@@ -69,10 +90,10 @@ describe('ChatMessageComponent', () => {
       expect(screen.queryByTestId('markdown')).not.toBeInTheDocument();
     });
 
-    test('does not show sources for user messages', () => {
+    test('does not show references for user messages', () => {
       const msg = makeUserMessage({ sources: makeSources() });
       const { container } = render(<ChatMessageComponent message={msg} />);
-      expect(container.querySelector('.chat-message-sources')).not.toBeInTheDocument();
+      expect(container.querySelector('.ai-summary-references')).not.toBeInTheDocument();
     });
   });
 
@@ -85,104 +106,109 @@ describe('ChatMessageComponent', () => {
     test('applies assistant message styling class', () => {
       const { container } = render(<ChatMessageComponent message={makeAssistantMessage()} />);
       expect(container.querySelector('.chat-message-assistant')).toBeInTheDocument();
-      expect(container.querySelector('.chat-bubble-assistant')).toBeInTheDocument();
+      expect(container.querySelector('.assistant-response')).toBeInTheDocument();
     });
 
-    test('shows sources when available', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
-      const { container } = render(<ChatMessageComponent message={msg} />);
-      expect(container.querySelector('.chat-message-sources')).toBeInTheDocument();
-      expect(container.querySelector('.chat-sources-label')).toHaveTextContent('Sources');
-    });
-
-    test('renders correct number of source chips', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
-      const { container } = render(<ChatMessageComponent message={msg} />);
-      const chips = container.querySelectorAll('.source-chip');
-      expect(chips).toHaveLength(2);
-    });
-
-    test('does not show sources section when no sources', () => {
+    test('does not show references section when no sources', () => {
       const msg = makeAssistantMessage({ sources: [] });
       const { container } = render(<ChatMessageComponent message={msg} />);
-      expect(container.querySelector('.chat-message-sources')).not.toBeInTheDocument();
+      expect(container.querySelector('.ai-summary-references')).not.toBeInTheDocument();
     });
 
-    test('does not show sources section when sources undefined', () => {
+    test('does not show references section when sources undefined', () => {
       const msg = makeAssistantMessage();
       const { container } = render(<ChatMessageComponent message={msg} />);
-      expect(container.querySelector('.chat-message-sources')).not.toBeInTheDocument();
+      expect(container.querySelector('.ai-summary-references')).not.toBeInTheDocument();
+    });
+
+    test('does not show references section when sources have no index', () => {
+      const msg = makeAssistantMessage({ sources: makeSourcesWithoutIndex() });
+      const { container } = render(<ChatMessageComponent message={msg} />);
+      expect(container.querySelector('.ai-summary-references')).not.toBeInTheDocument();
     });
   });
 
-  describe('Source chips', () => {
-    test('displays source title in chip', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
-      render(<ChatMessageComponent message={msg} />);
-      expect(screen.getByText(/Global Food Security Report/)).toBeInTheDocument();
-    });
-
-    test('truncates long source titles', () => {
-      const sources: SourceReference[] = [
-        {
-          chunkId: 'c1',
-          docId: 'd1',
-          title: 'A Very Long Document Title That Exceeds Forty Characters Easily',
-          text: 'Content',
-          score: 0.9,
-        },
-      ];
-      const msg = makeAssistantMessage({ sources });
+  describe('Inline citations and references', () => {
+    test('renders references toggle when content has citation markers and sources have indices', () => {
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1]. Nutrition too [2].',
+        sources: makeSources(),
+      });
       const { container } = render(<ChatMessageComponent message={msg} />);
-      const chip = container.querySelector('.source-chip');
-      expect(chip?.textContent).toContain('...');
+      expect(container.querySelector('.assistant-refs-toggle')).toBeInTheDocument();
     });
 
-    test('expands source preview on click', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
+    test('references toggle shows document count', () => {
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1]. Nutrition too [2].',
+        sources: makeSources(),
+      });
       const { container } = render(<ChatMessageComponent message={msg} />);
-
-      // Click the first source chip
-      const chip = container.querySelector('.source-chip');
-      expect(chip).toBeInTheDocument();
-      fireEvent.click(chip!);
-
-      // Preview should now be visible
-      expect(container.querySelector('.source-preview')).toBeInTheDocument();
-      expect(container.querySelector('.source-preview-title')).toHaveTextContent(
-        'Global Food Security Report 2024'
-      );
+      const toggle = container.querySelector('.assistant-refs-toggle');
+      expect(toggle?.textContent).toContain('2 documents');
     });
 
-    test('shows page number in preview when available', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
+    test('expands references list on toggle click', () => {
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1]. Nutrition too [2].',
+        sources: makeSources(),
+      });
       const { container } = render(<ChatMessageComponent message={msg} />);
 
-      const chip = container.querySelector('.source-chip');
-      fireEvent.click(chip!);
+      const toggle = container.querySelector('.assistant-refs-toggle');
+      expect(toggle).toBeInTheDocument();
+      fireEvent.click(toggle!);
 
-      expect(container.querySelector('.source-preview-page')).toHaveTextContent('Page 15');
+      expect(container.querySelector('.assistant-refs-list')).toBeInTheDocument();
     });
 
-    test('shows relevance score in preview', () => {
-      const msg = makeAssistantMessage({ sources: makeSources() });
+    test('shows source titles in expanded references', () => {
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1]. Nutrition too [2].',
+        sources: makeSources(),
+      });
       const { container } = render(<ChatMessageComponent message={msg} />);
 
-      const chip = container.querySelector('.source-chip');
-      fireEvent.click(chip!);
+      const toggle = container.querySelector('.assistant-refs-toggle');
+      fireEvent.click(toggle!);
 
-      expect(container.querySelector('.source-preview-score')).toHaveTextContent('92%');
+      const refGroups = container.querySelectorAll('.ai-summary-ref-group');
+      expect(refGroups).toHaveLength(2);
+      expect(refGroups[0].textContent).toContain('Global Food Security Report 2024');
+      expect(refGroups[1].textContent).toContain('Nutrition Analysis');
     });
 
-    test('calls onSourceClick when chip is clicked', () => {
+    test('shows page number in expanded reference when available', () => {
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1].',
+        sources: makeSources(),
+      });
+      const { container } = render(<ChatMessageComponent message={msg} />);
+
+      const toggle = container.querySelector('.assistant-refs-toggle');
+      fireEvent.click(toggle!);
+
+      const refLinks = container.querySelectorAll('.ai-summary-ref-link');
+      expect(refLinks[0].textContent).toContain('p.15');
+    });
+
+    test('calls onSourceClick when reference link is clicked', () => {
       const onSourceClick = jest.fn();
-      const msg = makeAssistantMessage({ sources: makeSources() });
+      const msg = makeAssistantMessage({
+        content: 'Food security is important [1].',
+        sources: makeSources(),
+      });
       const { container } = render(
         <ChatMessageComponent message={msg} onSourceClick={onSourceClick} />
       );
 
-      const chip = container.querySelector('.source-chip');
-      fireEvent.click(chip!);
+      // Expand references
+      const toggle = container.querySelector('.assistant-refs-toggle');
+      fireEvent.click(toggle!);
+
+      const refLink = container.querySelector('.ai-summary-ref-link');
+      expect(refLink).toBeInTheDocument();
+      fireEvent.click(refLink!);
 
       expect(onSourceClick).toHaveBeenCalledWith(
         expect.objectContaining({ docId: 'd1' })

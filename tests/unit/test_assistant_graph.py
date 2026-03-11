@@ -2,20 +2,35 @@
 
 import sys
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F811 — patch used as decorator below
 
+# ---------------------------------------------------------------------------
 # Mock the heavy imports that assistant_graph pulls in transitively.
 # search -> search_models -> google_vertex_reranker -> google.cloud
+#
+# We temporarily install lightweight mocks into sys.modules, import the
+# modules under test (which capture direct references to our mock objects),
+# then IMMEDIATELY remove the mocks so later test modules that are
+# collected by pytest see the real modules (or get their own import errors).
+# ---------------------------------------------------------------------------
 _mock_search = ModuleType("ui.backend.services.search")
 _mock_search_fn = MagicMock(return_value=[])
 _mock_search.search_chunks = _mock_search_fn
-sys.modules.setdefault("ui.backend.services.search", _mock_search)
+_mock_search.map_field_to_storage = MagicMock(side_effect=lambda f: f"map_{f}")
+_mock_search.CORE_FIELD_MAP = {}
 
-# Mock search_models for lazy field_boost import
 _mock_search_models = ModuleType("ui.backend.services.search_models")
 _mock_apply_field_boost = MagicMock(side_effect=lambda r, *a, **kw: r)
 _mock_search_models.apply_field_boost = _mock_apply_field_boost
-sys.modules.setdefault("ui.backend.services.search_models", _mock_search_models)
+
+_MOCKED_KEYS = [
+    "ui.backend.services.search",
+    "ui.backend.services.search_models",
+]
+_saved = {k: sys.modules.get(k) for k in _MOCKED_KEYS}
+
+sys.modules["ui.backend.services.search"] = _mock_search
+sys.modules["ui.backend.services.search_models"] = _mock_search_models
 
 from ui.backend.services.assistant_graph import (  # noqa: E402
     SearchTracker,
@@ -24,6 +39,29 @@ from ui.backend.services.assistant_graph import (  # noqa: E402
     build_research_agent,
 )
 from ui.backend.services.assistant_service import _is_duplicate_or_subset  # noqa: E402
+
+# Immediately restore sys.modules so other test files are not affected.
+for _k in _MOCKED_KEYS:
+    if _saved[_k] is not None:
+        sys.modules[_k] = _saved[_k]
+    else:
+        sys.modules.pop(_k, None)
+
+# Clean up package attributes that Python's import machinery set on the
+# parent package — but ONLY if they still point to our mocks.  If the
+# real module was already loaded (e.g. by another test file collected
+# first), we must not delete it.
+import ui.backend.services as _svc_pkg  # noqa: E402
+
+for _attr, _mock_mod in [
+    ("search", _mock_search),
+    ("search_models", _mock_search_models),
+]:
+    if getattr(_svc_pkg, _attr, None) is _mock_mod:
+        try:
+            delattr(_svc_pkg, _attr)
+        except AttributeError:
+            pass
 
 
 class _FakeScoredPoint:
@@ -53,6 +91,24 @@ class TestFormatSearchResult:
         assert result["text"] == "Content"
         assert result["score"] == 0.85
 
+    def test_extracts_sys_page_num(self):
+        """page should come from sys_page_num (Qdrant convention)."""
+        point = _make_scored_point("c1", "d1", sys_page_num=5)
+        result = _format_search_result(point)
+        assert result["page"] == 5
+
+    def test_falls_back_to_page_num(self):
+        """page should fall back to page_num for tests/dicts."""
+        point = _make_scored_point("c1", "d1", page_num=3)
+        result = _format_search_result(point)
+        assert result["page"] == 3
+
+    def test_page_none_when_missing(self):
+        """page should be None when neither field is present."""
+        point = _make_scored_point("c1", "d1")
+        result = _format_search_result(point)
+        assert result["page"] is None
+
     def test_handles_dict_input(self):
         data = {
             "chunk_id": "c1",
@@ -67,6 +123,7 @@ class TestFormatSearchResult:
         assert result["title"] == "Title"
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestSearchTracker:
     """Tests for the SearchTracker class."""
 
@@ -252,6 +309,7 @@ class TestSearchTracker:
         assert new[0]["query"] == "query 3"
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestBuildSearchTool:
     """Tests for _build_search_tool."""
 
@@ -372,6 +430,7 @@ class TestIsDuplicateOrSubset:
         assert _is_duplicate_or_subset("hello world foo", "hello") is False
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestSearchSettingsThreading:
     """Tests for search settings being passed through to search_chunks."""
 
@@ -570,8 +629,12 @@ class TestFieldBoost:
         assert "field_boost_fields" not in kwargs
         assert kwargs["dense_weight"] == 0.7
 
+    @patch.dict(
+        sys.modules,
+        {"ui.backend.services.search_models": _mock_search_models},
+    )
     def test_apply_field_boost_called_when_enabled(self):
-        """_apply_field_boost should call apply_field_boost when enabled."""
+        """_apply_field_boost should call apply_field_boost with wrapped results."""
         _mock_apply_field_boost.reset_mock()
         _mock_apply_field_boost.side_effect = None
         _mock_apply_field_boost.return_value = ["boosted_result"]
@@ -584,15 +647,23 @@ class TestFieldBoost:
         # Pre-populate known values to skip DB lookup
         tracker._known_values = {"country": ["Kenya", "Nigeria"]}
 
-        raw = [MagicMock()]
-        result = tracker._apply_field_boost(raw, "food security Kenya")
-
-        _mock_apply_field_boost.assert_called_once_with(
-            raw,
-            "food security Kenya",
-            {"country": 0.5},
-            {"country": ["Kenya", "Nigeria"]},
+        raw_point = _FakeScoredPoint(
+            id="c1", score=0.9, payload={"text": "hello", "map_title": "T"}
         )
+        result = tracker._apply_field_boost([raw_point], "food security Kenya")
+
+        _mock_apply_field_boost.assert_called_once()
+        call_args = _mock_apply_field_boost.call_args
+        # First arg should be wrapped results (SimpleNamespace list)
+        wrapped = call_args[0][0]
+        assert len(wrapped) == 1
+        assert wrapped[0]._original is raw_point
+        assert wrapped[0].text == "hello"
+        assert wrapped[0].title == "T"
+        # Other args should be passed through
+        assert call_args[0][1] == "food security Kenya"
+        assert call_args[0][2] == {"country": 0.5}
+        assert call_args[0][3] == {"country": ["Kenya", "Nigeria"]}
         assert result == ["boosted_result"]
 
     def test_apply_field_boost_skipped_when_disabled(self):
@@ -601,3 +672,54 @@ class TestFieldBoost:
         raw = [MagicMock()]
         result = tracker._apply_field_boost(raw, "query")
         assert result == raw
+
+
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
+class TestGetSourcesEnrichment:
+    """Tests for get_sources including bbox and headings from enrichment."""
+
+    def test_get_sources_includes_bbox(self):
+        """get_sources should include bbox when present in results."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        _mock_search_fn.return_value = [
+            _make_scored_point("c1", "d1", "Doc", "Text", 0.9),
+        ]
+
+        tracker = SearchTracker()
+        tracker.search("query")
+        # Simulate enrichment adding bbox (as _enrich_from_postgres does)
+        tracker.all_results[0]["bbox"] = [[5, [0.1, 0.2, 0.8, 0.9]]]
+        sources = tracker.get_sources()
+
+        assert len(sources) == 1
+        assert sources[0]["bbox"] == [[5, [0.1, 0.2, 0.8, 0.9]]]
+
+    def test_get_sources_omits_bbox_when_absent(self):
+        """get_sources should not include bbox key when not present."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        _mock_search_fn.return_value = [
+            _make_scored_point("c1", "d1", "Doc", "Text", 0.9),
+        ]
+
+        tracker = SearchTracker()
+        tracker.search("query")
+        sources = tracker.get_sources()
+
+        assert "bbox" not in sources[0]
+
+    def test_get_sources_includes_headings(self):
+        """get_sources should include headings from enrichment."""
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        _mock_search_fn.return_value = [
+            _make_scored_point("c1", "d1", "Doc", "Text", 0.9),
+        ]
+
+        tracker = SearchTracker()
+        tracker.search("query")
+        tracker.all_results[0]["headings"] = ["Chapter 1", "Section A"]
+        sources = tracker.get_sources()
+
+        assert sources[0]["headings"] == ["Chapter 1", "Section A"]

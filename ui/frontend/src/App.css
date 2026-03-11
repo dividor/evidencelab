@@ -10517,6 +10517,28 @@ a.admin-citation-clickable:hover {
   background: rgba(91, 143, 168, 0.06);
 }
 
+.deep-research-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--brand-text-tertiary);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.deep-research-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.deep-research-toggle input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Status container for streaming phases */
 .assistant-status-container {
   padding: 0.5rem 0;
@@ -10608,6 +10630,17 @@ a.admin-citation-clickable:hover {
   40% { opacity: 1; }
 }
 
+.agent-status-synthesizing {
+  font-size: 0.78rem;
+  margin-top: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+.agent-status-synthesizing .agent-status-label {
+  color: var(--brand-text-secondary);
+  font-style: italic;
+}
+
 .agent-status-queries {
   display: flex;
   flex-wrap: wrap;
@@ -10679,7 +10712,6 @@ a.admin-citation-clickable:hover {
 
 .tool-call-code-entry {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: 1rem;
 }
@@ -10703,6 +10735,82 @@ a.admin-citation-clickable:hover {
 .tool-call-code-param {
   color: var(--brand-text-tertiary);
   font-size: 0.68rem;
+}
+
+/* Expandable query rows */
+.tool-call-query-row {
+  margin-bottom: 0.125rem;
+}
+
+.tool-call-code-entry--expandable {
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0.125rem 0.25rem;
+  margin: 0 -0.25rem;
+  transition: background 0.1s ease;
+}
+
+.tool-call-code-entry--expandable:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.tool-call-expand-icon {
+  font-size: 0.5rem;
+  margin-right: 0.35rem;
+  color: var(--brand-text-tertiary);
+  flex-shrink: 0;
+}
+
+.tool-call-results-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0 0.35rem 1.1rem;
+}
+
+.tool-call-result-card {
+  padding: 0.35rem 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.tool-call-result-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-call-result-card--clickable {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.tool-call-result-card--clickable:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: var(--brand-border);
+}
+
+.tool-call-result-text {
+  font-size: 0.65rem;
+  color: var(--brand-text-tertiary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-style: normal;
+}
+
+.tool-call-result-text--expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
 }
 
 /* Thread history modal */
