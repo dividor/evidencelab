@@ -6,6 +6,8 @@
 
 ## Introduction
 
+**NOTICE**: Evidence Lab v1.1.0 is coming soon. This includes user management, AI assistants, improved security compliance and better documentation. Watch this space!!
+
 ![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
 
 Evidence Lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
