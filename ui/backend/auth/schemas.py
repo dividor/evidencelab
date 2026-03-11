@@ -227,7 +227,7 @@ class RatingRead(BaseModel):
     """Rating representation returned by read endpoints."""
 
     id: uuid.UUID
-    user_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
     user_email: Optional[str] = None
     user_display_name: Optional[str] = None
     rating_type: str

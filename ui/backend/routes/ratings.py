@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User, UserActivity, UserRating
 from ui.backend.auth.schemas import VALID_RATING_TYPES, RatingCreate, RatingRead
-from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.auth.users import (
+    current_active_user,
+    current_superuser,
+    optional_current_user,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,25 +57,29 @@ def _rating_to_read(rating: UserRating, user: User | None = None) -> RatingRead:
 @router.post("/", response_model=RatingRead, tags=["ratings"])
 async def upsert_rating(
     body: RatingCreate,
-    user: User = Depends(current_active_user),
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_async_session),
 ):
     """Create or update a rating (upsert on user + type + reference + item).
 
     If a rating already exists for the same user/type/reference_id/item_id
-    combination, it is updated in place.
+    combination, it is updated in place.  Anonymous users always create new
+    ratings (no upsert without a user_id).
     """
+    user_id = user.id if user else None
     item_id_coalesce = body.item_id or ""
 
-    # Check for existing rating
-    stmt = select(UserRating).where(
-        UserRating.user_id == user.id,
-        UserRating.rating_type == body.rating_type,
-        UserRating.reference_id == body.reference_id,
-        func.coalesce(UserRating.item_id, "") == item_id_coalesce,
-    )
-    result = await session.execute(stmt)
-    existing = result.scalars().first()
+    existing = None
+    if user_id:
+        # Check for existing rating (upsert only for authenticated users)
+        stmt = select(UserRating).where(
+            UserRating.user_id == user_id,
+            UserRating.rating_type == body.rating_type,
+            UserRating.reference_id == body.reference_id,
+            func.coalesce(UserRating.item_id, "") == item_id_coalesce,
+        )
+        result = await session.execute(stmt)
+        existing = result.scalars().first()
 
     if existing:
         existing.score = body.score
@@ -84,7 +92,7 @@ async def upsert_rating(
         rating = existing
     else:
         rating = UserRating(
-            user_id=user.id,
+            user_id=user_id,
             rating_type=body.rating_type,
             reference_id=body.reference_id,
             item_id=body.item_id,
@@ -98,13 +106,13 @@ async def upsert_rating(
         await session.refresh(rating)
 
     # If this is a search-related rating, mark the activity record
-    if body.rating_type in ("search_result", "ai_summary"):
+    if user_id and body.rating_type in ("search_result", "ai_summary"):
         try:
             ref_uuid = uuid.UUID(body.reference_id)
             await session.execute(
                 update(UserActivity)
                 .where(
-                    UserActivity.user_id == user.id,
+                    UserActivity.user_id == user_id,
                     UserActivity.search_id == ref_uuid,
                 )
                 .values(has_ratings=True)
@@ -120,10 +128,16 @@ async def upsert_rating(
 async def get_my_ratings(
     rating_type: Optional[str] = Query(None),
     reference_id: Optional[str] = Query(None),
-    user: User = Depends(current_active_user),
+    user: User | None = Depends(optional_current_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Retrieve the current user's own ratings, optionally filtered."""
+    """Retrieve the current user's own ratings, optionally filtered.
+
+    Anonymous users receive an empty list (ratings cannot be tracked
+    without a user_id).
+    """
+    if not user:
+        return []
     stmt = select(UserRating).where(UserRating.user_id == user.id)
     if rating_type:
         stmt = stmt.where(UserRating.rating_type == rating_type)

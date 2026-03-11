@@ -4,7 +4,7 @@ import API_BASE_URL from '../config';
 
 export interface Rating {
   id: string;
-  user_id: string;
+  user_id: string | null;
   rating_type: string;
   reference_id: string;
   item_id: string | null;
