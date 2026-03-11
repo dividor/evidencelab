@@ -87,7 +87,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = ({
       ))}
 
       {/* Streaming status (searching / planning phases) */}
-      {isStreaming && streamingPhase && !streamingContent && (
+      {isStreaming && streamingPhase && streamingPhase !== 'synthesizing' && !streamingContent && (
         <div className="chat-message chat-message-assistant">
           <div className="assistant-status-container">
             <AgentStatus phase={streamingPhase} searchQueries={streamingSearchQueries} toolCalls={streamingToolCalls} />

@@ -320,15 +320,16 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
 
       // Log assistant interaction to activity
       const activityId = crypto.randomUUID();
-      const searchResults = finalToolCalls.flatMap((tc) =>
-        (tc.results || []).map((r, i) => ({
+      const searchResults: SearchResult[] = finalToolCalls.flatMap((tc) =>
+        (tc.results || []).map((r) => ({
           chunk_id: '',
           doc_id: '',
           title: r.title || 'Untitled',
           score: 0,
-          page_num: null,
+          page_num: 0,
           text: r.text || '',
-          link: '',
+          headings: [],
+          metadata: {},
         }))
       );
       logSearch(activityId, query.trim(), {
