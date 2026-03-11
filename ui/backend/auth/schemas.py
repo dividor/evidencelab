@@ -192,6 +192,8 @@ VALID_RATING_TYPES = {
     "taxonomy",
     "heatmap",
     "chat",
+    "assistant-basic",
+    "assistant-deep-research",
 }
 
 

@@ -195,6 +195,8 @@ class TestValidRatingTypes:
             "taxonomy",
             "heatmap",
             "chat",
+            "assistant-basic",
+            "assistant-deep-research",
         }
         assert VALID_RATING_TYPES == expected
 

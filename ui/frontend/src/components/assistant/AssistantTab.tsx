@@ -5,6 +5,7 @@ import { useRatings, Rating } from '../../hooks/useRatings';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { streamAssistantChat, AssistantStreamHandlers } from '../../utils/assistantStream';
+import { useActivityLogging } from '../../hooks/useActivityLogging';
 import RatingModal from '../ratings/RatingModal';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
@@ -33,6 +34,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const auth = useAuth();
   const user = USER_MODULE ? auth.user : null;
   const isAuthenticated = !!user;
+  const { logSearch, updateSummary: updateActivitySummary } = useActivityLogging();
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -58,6 +60,10 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const sourcesRef = useRef<SourceReference[]>([]);
   const toolCallsRef = useRef<SearchToolCall[]>([]);
 
+  // Track which mode (basic vs deep) was used for the current thread's last response
+  const [lastResponseDeep, setLastResponseDeep] = useState(false);
+  const ratingType = lastResponseDeep ? 'assistant-deep-research' : 'assistant-basic';
+
   // ----- Ratings -----
   const {
     ratings: chatRatings,
@@ -65,7 +71,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     deleteRating: deleteChatRating,
     refresh: refreshRatings,
   } = useRatings({
-    ratingType: 'chat',
+    ratingType,
     referenceId: activeThreadId || '',
     enabled: isAuthenticated && !!activeThreadId,
   });
@@ -263,6 +269,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           setActiveThreadId(data.threadId);
           if (isAuthenticated) loadThreads();
         }
+        setLastResponseDeep(deepResearch);
       },
       onError: (message) => {
         setMessages((prev) => [
@@ -310,6 +317,28 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           createdAt: new Date().toISOString(),
         },
       ]);
+
+      // Log assistant interaction to activity
+      const activityId = crypto.randomUUID();
+      const searchResults = finalToolCalls.flatMap((tc) =>
+        (tc.results || []).map((r, i) => ({
+          chunk_id: '',
+          doc_id: '',
+          title: r.title || 'Untitled',
+          score: 0,
+          page_num: null,
+          text: r.text || '',
+          link: '',
+        }))
+      );
+      logSearch(activityId, query.trim(), {
+        mode: deepResearch ? 'assistant-deep-research' : 'assistant-basic',
+        searches: finalToolCalls.map((tc) => ({
+          query: tc.query,
+          resultCount: tc.resultCount,
+        })),
+      }, searchResults);
+      updateActivitySummary(activityId, finalContent);
     }
 
     // Clear streaming state
@@ -469,7 +498,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           onSubmit={(score, comment) => {
             if (!activeThreadId) return;
             submitChatRating({
-              ratingType: 'chat',
+              ratingType,
               referenceId: activeThreadId,
               itemId: ratingModalMessageId,
               score,
