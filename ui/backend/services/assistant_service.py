@@ -15,6 +15,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ui.backend.services.assistant_graph import (
+    _get_assistant_config,
     build_deep_research_agent,
     build_research_agent,
 )
@@ -92,9 +93,10 @@ def _extract_task_delegations(msg) -> List[str]:
     if hasattr(msg, "tool_calls") and msg.tool_calls:
         for tc in msg.tool_calls:
             if tc.get("name") == "task":
-                desc = tc.get("args", {}).get("task", "")
-                if desc:
-                    tasks.append(desc)
+                args = tc.get("args", {})
+                # deepagents task tool uses "description" param, not "task"
+                desc = args.get("description", "") or args.get("task", "") or str(args)
+                tasks.append(desc)
     return tasks
 
 
@@ -220,7 +222,12 @@ async def stream_research_response(
             system_prompt_override=system_prompt_override,
         )
         messages = _build_conversation_messages(query, conversation_messages)
-        recursion_limit = 100 if deep_research else 12
+        cfg = _get_assistant_config()
+        if deep_research:
+            deep_cfg = cfg.get("deep_research", {})
+            recursion_limit = deep_cfg.get("recursion_limit", 100)
+        else:
+            recursion_limit = cfg.get("recursion_limit", 12)
 
         yield {"type": "phase", "phase": "planning"}
 
@@ -387,6 +394,10 @@ def _events_from_step(
                         "total_results": len(tracker.all_results),
                     }
                 )
+            # When searches are done, transition to synthesizing phase
+            # so the user sees "Synthesizing answer..." while the LLM works
+            if tracker.all_results:
+                events.append({"type": "phase", "phase": "synthesizing"})
 
         else:
             logger.debug("Skipping middleware node: %s", node_name)

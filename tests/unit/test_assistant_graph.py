@@ -2,7 +2,7 @@
 
 import sys
 from types import ModuleType
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: F811 — patch used as decorator below
 
 # ---------------------------------------------------------------------------
 # Mock the heavy imports that assistant_graph pulls in transitively.
@@ -48,19 +48,20 @@ for _k in _MOCKED_KEYS:
         sys.modules.pop(_k, None)
 
 # Clean up package attributes that Python's import machinery set on the
-# parent package.  Without this, later test files that do
-# ``import ui.backend.services.search`` find the stale mock via the
-# package attribute even though sys.modules no longer contains it.
-# NOTE: we only remove search/search_models — assistant_graph and
-# assistant_service must stay so that @patch() decorators in this file
-# can resolve their targets.
+# parent package — but ONLY if they still point to our mocks.  If the
+# real module was already loaded (e.g. by another test file collected
+# first), we must not delete it.
 import ui.backend.services as _svc_pkg  # noqa: E402
 
-for _attr in ("search", "search_models"):
-    try:
-        delattr(_svc_pkg, _attr)
-    except AttributeError:
-        pass
+for _attr, _mock_mod in [
+    ("search", _mock_search),
+    ("search_models", _mock_search_models),
+]:
+    if getattr(_svc_pkg, _attr, None) is _mock_mod:
+        try:
+            delattr(_svc_pkg, _attr)
+        except AttributeError:
+            pass
 
 
 class _FakeScoredPoint:
@@ -122,6 +123,7 @@ class TestFormatSearchResult:
         assert result["title"] == "Title"
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestSearchTracker:
     """Tests for the SearchTracker class."""
 
@@ -307,6 +309,7 @@ class TestSearchTracker:
         assert new[0]["query"] == "query 3"
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestBuildSearchTool:
     """Tests for _build_search_tool."""
 
@@ -427,6 +430,7 @@ class TestIsDuplicateOrSubset:
         assert _is_duplicate_or_subset("hello world foo", "hello") is False
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestSearchSettingsThreading:
     """Tests for search settings being passed through to search_chunks."""
 
@@ -670,6 +674,7 @@ class TestFieldBoost:
         assert result == raw
 
 
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
 class TestGetSourcesEnrichment:
     """Tests for get_sources including bbox and headings from enrichment."""
 

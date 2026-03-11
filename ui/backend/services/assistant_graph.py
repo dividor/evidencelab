@@ -21,6 +21,17 @@ from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
 
+
+def _get_assistant_config() -> Dict[str, Any]:
+    """Load assistant config from config.json."""
+    try:
+        from pipeline.db import get_application_config
+
+        return get_application_config().get("assistant", {})
+    except Exception:
+        return {}
+
+
 # Jinja2 environment for prompt templates
 PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
 _jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=True)
@@ -411,11 +422,15 @@ def build_research_agent(
     Returns:
         Tuple of (compiled_agent, search_tracker)
     """
+    cfg = _get_assistant_config()
+    max_queries = cfg.get("max_queries", 4)
+
     tracker = SearchTracker(
         data_source=data_source,
         reranker_model=reranker_model,
         search_settings=search_settings,
     )
+    tracker.MAX_SEARCHES = max_queries
     search_tool = _build_search_tool(tracker)
     system_prompt = _load_system_prompt(data_source)
 
@@ -436,7 +451,11 @@ def build_research_agent(
         system_prompt=system_prompt,
     )
 
-    logger.info("Built research agent for data_source=%s", data_source)
+    logger.info(
+        "Built research agent for data_source=%s (max_queries=%d)",
+        data_source,
+        max_queries,
+    )
     return agent, tracker
 
 
@@ -446,10 +465,12 @@ def _load_deep_research_prompt(data_source: Optional[str] = None) -> str:
     return template.render(data_source=data_source)
 
 
-def _load_researcher_prompt(data_source: Optional[str] = None) -> str:
+def _load_researcher_prompt(
+    data_source: Optional[str] = None, max_queries: int = 10
+) -> str:
     """Load and render the deep research researcher sub-agent prompt."""
     template = _jinja_env.get_template("assistant_deep_research_researcher.j2")
-    return template.render(data_source=data_source)
+    return template.render(data_source=data_source, max_queries=max_queries)
 
 
 def build_deep_research_agent(
@@ -468,18 +489,21 @@ def build_deep_research_agent(
     Returns:
         Tuple of (compiled_agent, search_tracker)
     """
+    cfg = _get_assistant_config()
+    deep_cfg = cfg.get("deep_research", {})
+    max_queries = deep_cfg.get("max_queries", 10)
+
     tracker = SearchTracker(
         data_source=data_source,
         reranker_model=reranker_model,
         search_settings=search_settings,
     )
-    # Allow more searches in deep mode
-    tracker.MAX_SEARCHES = 12
+    tracker.MAX_SEARCHES = max_queries
 
     search_tool = _build_search_tool(tracker)
 
     coordinator_prompt = _load_deep_research_prompt(data_source)
-    researcher_prompt = _load_researcher_prompt(data_source)
+    researcher_prompt = _load_researcher_prompt(data_source, max_queries=max_queries)
 
     if system_prompt_override:
         coordinator_prompt = (
@@ -512,5 +536,9 @@ def build_deep_research_agent(
         subagents=[researcher_subagent],
     )
 
-    logger.info("Built deep research agent for data_source=%s", data_source)
+    logger.info(
+        "Built deep research agent for data_source=%s (max_queries=%d)",
+        data_source,
+        max_queries,
+    )
     return agent, tracker

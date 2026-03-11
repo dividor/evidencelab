@@ -416,7 +416,7 @@ class AssistantModelConfig(BaseModel):
 
     model: str
     max_tokens: int = 2000
-    temperature: float = 0.2
+    temperature: float = 0.0
     chunk_overlap: int = 800
     chunk_tokens_ratio: float = 0.5
 

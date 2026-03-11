@@ -6,7 +6,13 @@
     "assistant": {
       "enabled": true,
       "max_search_results": 20,
-      "max_iterations": 3
+      "max_iterations": 3,
+      "max_queries": 4,
+      "recursion_limit": 12,
+      "deep_research": {
+        "max_queries": 10,
+        "recursion_limit": 100
+      }
     },
     "features": {
       "semantic_highlights": true,

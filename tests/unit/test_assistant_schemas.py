@@ -24,7 +24,7 @@ class TestAssistantModelConfig:
         config = AssistantModelConfig(model="gpt-4.1-mini")
         assert config.model == "gpt-4.1-mini"
         assert config.max_tokens == 2000
-        assert config.temperature == 0.2
+        assert config.temperature == 0.0
         assert config.chunk_overlap == 800
         assert config.chunk_tokens_ratio == 0.5
 
