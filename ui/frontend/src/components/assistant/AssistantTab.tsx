@@ -34,7 +34,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   const auth = useAuth();
   const user = USER_MODULE ? auth.user : null;
   const isAuthenticated = !!user;
-  const { logSearch, updateSummary: updateActivitySummary } = useActivityLogging();
+  const { logSearch } = useActivityLogging();
 
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -333,13 +333,16 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         }))
       );
       logSearch(activityId, query.trim(), {
-        mode: deepResearch ? 'assistant-deep-research' : 'assistant-basic',
+        type: deepResearch ? 'assistant-deep-research' : 'assistant-basic',
         searches: finalToolCalls.map((tc) => ({
           query: tc.query,
           resultCount: tc.resultCount,
+          results: (tc.results || []).map((r) => ({
+            title: r.title || 'Untitled',
+            text: r.text || '',
+          })),
         })),
-      }, searchResults);
-      updateActivitySummary(activityId, finalContent);
+      }, searchResults, undefined, finalContent);
     }
 
     // Clear streaming state
@@ -498,12 +501,35 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           initialComment={chatRatings.get(ratingModalMessageId)?.comment || ''}
           onSubmit={(score, comment) => {
             if (!activeThreadId) return;
+            // Build context with the assistant response for admin visibility
+            const ratedMsg = messages.find((m) => m.id === ratingModalMessageId);
+            const ratingContext: Record<string, any> = {};
+            // Find the preceding user message to capture the query
+            const ratedIdx = messages.findIndex((m) => m.id === ratingModalMessageId);
+            for (let i = ratedIdx - 1; i >= 0; i--) {
+              if (messages[i].role === 'user') {
+                ratingContext.user_query = messages[i].content;
+                break;
+              }
+            }
+            if (ratedMsg?.content) ratingContext.ai_summary = ratedMsg.content;
+            if (ratedMsg?.toolCalls && ratedMsg.toolCalls.length > 0) {
+              ratingContext.searches = ratedMsg.toolCalls.map((tc) => ({
+                query: tc.query,
+                resultCount: tc.resultCount,
+                results: (tc.results || []).map((r) => ({
+                  title: r.title || 'Untitled',
+                  text: r.text || '',
+                })),
+              }));
+            }
             submitChatRating({
               ratingType,
               referenceId: activeThreadId,
               itemId: ratingModalMessageId,
               score,
               comment,
+              context: Object.keys(ratingContext).length > 0 ? ratingContext : undefined,
             });
           }}
           onDelete={

@@ -10630,6 +10630,17 @@ a.admin-citation-clickable:hover {
   40% { opacity: 1; }
 }
 
+.agent-status-synthesizing {
+  font-size: 0.78rem;
+  margin-top: 0.25rem;
+  padding-left: 0.25rem;
+}
+
+.agent-status-synthesizing .agent-status-label {
+  color: var(--brand-text-secondary);
+  font-style: italic;
+}
+
 .agent-status-queries {
   display: flex;
   flex-wrap: wrap;

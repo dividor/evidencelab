@@ -30,7 +30,10 @@ interface RatingsResponse {
   page_size: number;
 }
 
-const RATING_TYPES = ['search_result', 'ai_summary', 'doc_summary', 'taxonomy'];
+const RATING_TYPES = [
+  'search_result', 'ai_summary', 'doc_summary', 'taxonomy',
+  'heatmap', 'chat', 'assistant-basic', 'assistant-deep-research',
+];
 const SCORE_OPTIONS = ['1', '2', '3', '4', '5'];
 
 // Static filter options — user_email is dynamic (computed from data)
@@ -104,7 +107,7 @@ const AutoLink: React.FC<{ value: string; style?: React.CSSProperties }> = ({ va
 const RESULT_CARD_FIELDS = new Set([
   'title', 'doc_id', 'chunk_id', 'page_num', 'chunk_text', 'score',
   'relevance_score', 'link', 'ai_summary', 'results_snapshot', 'summary',
-  'cellCounts', 'timing', 'drilldown_tree',
+  'cellCounts', 'timing', 'drilldown_tree', 'searches', 'user_query',
 ]);
 
 // ---------------------------------------------------------------------------
@@ -466,6 +469,88 @@ const DrilldownTreeDisplay: React.FC<{ node: any; depth?: number }> = ({ node, d
   );
 };
 
+/** A single expandable result card showing title + truncated/full text */
+const ExpandableResultCard: React.FC<{ result: any; isLast: boolean }> = ({ result, isLast }) => {
+  const [expanded, setExpanded] = useState(false);
+  const text = result.text || '';
+  const isLong = text.length > 200;
+
+  return (
+    <div style={{ fontSize: '0.8rem', padding: '4px 0', borderBottom: isLast ? 'none' : '1px solid #eee' }}>
+      <div style={{ fontWeight: 600, color: '#1a1f36' }}>{result.title || 'Untitled'}</div>
+      {text && (
+        <div style={{ color: '#555', marginTop: 2 }}>
+          {expanded || !isLong ? text : text.slice(0, 200) + '...'}
+          {isLong && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded((p) => !p); }}
+              style={{
+                background: 'none', border: 'none', color: '#1a73e8', cursor: 'pointer',
+                fontSize: '0.76rem', padding: '0 4px', marginLeft: 4,
+              }}
+            >
+              {expanded ? 'less' : 'more'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** A single collapsible search query with its results */
+const AssistantSearchQueryItem: React.FC<{ search: any }> = ({ search }) => {
+  const [expanded, setExpanded] = useState(false);
+  const results = Array.isArray(search.results) ? search.results : [];
+
+  return (
+    <div style={{ borderRadius: 4, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '6px 10px', background: '#f8f9fa',
+          fontSize: '0.84rem', cursor: results.length > 0 ? 'pointer' : 'default',
+        }}
+        onClick={(e) => { e.stopPropagation(); if (results.length > 0) setExpanded((p) => !p); }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#1a1f36' }}>
+          {results.length > 0 && (
+            <ChevronIcon expanded={expanded} />
+          )}
+          {search.query}
+        </span>
+        <span style={{ color: '#666', fontSize: '0.78rem', marginLeft: 12, whiteSpace: 'nowrap' }}>
+          {search.resultCount} results
+        </span>
+      </div>
+      {expanded && results.length > 0 && (
+        <div style={{ padding: '4px 10px 8px 30px', background: '#fdfdfd', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {results.map((r: any, j: number) => (
+            <ExpandableResultCard key={j} result={r} isLast={j === results.length - 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Display assistant search queries with result counts, collapsed by default */
+const AssistantSearchQueries: React.FC<{ searches: any[] }> = ({ searches }) => {
+  if (!searches || searches.length === 0) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="admin-context-label">
+        Search Queries ({searches.length})
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {searches.map((s: any, i: number) => (
+          <AssistantSearchQueryItem key={i} search={s} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
   const ctx = rating.context;
   if (!ctx || Object.keys(ctx).length === 0) {
@@ -479,9 +564,22 @@ const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
 
   return (
     <div>
+      {/* User query for assistant ratings */}
+      {ctx.user_query && (
+        <div style={{ marginTop: 4, marginBottom: 4 }}>
+          <div className="admin-context-label">User Query</div>
+          <div style={{ fontSize: '0.88rem', color: '#1a1f36', fontWeight: 500, padding: '4px 0' }}>
+            {ctx.user_query}
+          </div>
+        </div>
+      )}
       {/* Timing */}
       {ctx.timing && <TimingBar timing={ctx.timing} />}
-      <ContextFields context={ctx} />
+      <ContextFields context={ctx} exclude={['user_query']} />
+      {/* Assistant search queries */}
+      {ctx.searches && Array.isArray(ctx.searches) && (
+        <AssistantSearchQueries searches={ctx.searches} />
+      )}
       {aiSummary && (
         <AiSummaryBlock summary={aiSummary}
           results={Array.isArray(resultsSnapshot) ? resultsSnapshot : []} />
