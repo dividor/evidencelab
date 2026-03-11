@@ -85,7 +85,14 @@ const handleStreamedData = (
 
     case 'search_status': {
       const queries: SearchToolCall[] = (streamedData.queries || []).map(
-        (q: any) => ({ query: q.query || '', resultCount: q.result_count || 0 })
+        (q: any) => ({
+          query: q.query || '',
+          resultCount: q.result_count || 0,
+          results: (q.results || []).map((r: any) => ({
+            title: r.title || 'Untitled',
+            text: r.text || '',
+          })),
+        })
       );
       handlers.onSearchStatus(queries);
       return fullText;

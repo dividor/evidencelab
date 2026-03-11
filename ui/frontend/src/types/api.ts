@@ -165,9 +165,15 @@ export interface AgentState {
   iterationCount?: number;
 }
 
+export interface SearchResultCard {
+  title: string;
+  text: string;
+}
+
 export interface SearchToolCall {
   query: string;
   resultCount: number;
+  results?: SearchResultCard[];
 }
 
 export interface ThreadListItem {

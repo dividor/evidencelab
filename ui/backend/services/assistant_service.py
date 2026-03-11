@@ -5,6 +5,7 @@ High-level service wrapping the deepagents research agent, providing
 SSE streaming and conversation persistence.
 """
 
+import asyncio
 import logging
 import sys
 import uuid as uuid_mod
@@ -195,6 +196,11 @@ async def stream_research_response(
     synthesis text is buffered and only yielded when a non-token event
     arrives or the stream ends.  This prevents duplicate or intermediate
     synthesis text from reaching the client.
+
+    In deep research mode, the search tool pushes real-time search
+    progress events to a shared asyncio Queue so the client sees each
+    search query as it happens (instead of waiting for the whole
+    sub-agent to finish).
     """
     run_id = uuid_mod.uuid4()
     tracker = None
@@ -218,25 +224,16 @@ async def stream_research_response(
 
         yield {"type": "phase", "phase": "planning"}
 
-        token_buffer = ""
-        async for step_output in agent.astream(
-            {"messages": messages},
-            config={"run_id": str(run_id), "recursion_limit": recursion_limit},
-            stream_mode="updates",
-        ):
-            for event in _events_from_step(step_output, tracker):
-                if event.get("type") == "token":
-                    new_text = event["token"]
-                    if not _is_duplicate_or_subset(new_text, token_buffer):
-                        token_buffer = new_text
-                else:
-                    if token_buffer:
-                        yield {"type": "token", "token": token_buffer}
-                        token_buffer = ""
-                    yield event
-
-        if token_buffer:
-            yield {"type": "token", "token": token_buffer}
+        if deep_research:
+            async for event in _stream_deep_research(
+                agent, tracker, messages, run_id, recursion_limit
+            ):
+                yield event
+        else:
+            async for event in _stream_normal_research(
+                agent, tracker, messages, run_id, recursion_limit
+            ):
+                yield event
 
         async for event in _yield_sources_and_done(tracker, run_id):
             yield event
@@ -244,6 +241,105 @@ async def stream_research_response(
     except Exception as exc:
         async for event in _handle_stream_error(exc, tracker, run_id):
             yield event
+
+
+async def _stream_normal_research(
+    agent: Any,
+    tracker: Any,
+    messages: List,
+    run_id: uuid_mod.UUID,
+    recursion_limit: int,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream events from a normal (non-deep) research agent."""
+    token_buffer = ""
+    async for step_output in agent.astream(
+        {"messages": messages},
+        config={"run_id": str(run_id), "recursion_limit": recursion_limit},
+        stream_mode="updates",
+    ):
+        for event in _events_from_step(step_output, tracker):
+            if event.get("type") == "token":
+                new_text = event["token"]
+                if not _is_duplicate_or_subset(new_text, token_buffer):
+                    token_buffer = new_text
+            else:
+                if token_buffer:
+                    yield {"type": "token", "token": token_buffer}
+                    token_buffer = ""
+                yield event
+
+    if token_buffer:
+        yield {"type": "token", "token": token_buffer}
+
+
+_SENTINEL = object()
+
+
+async def _stream_deep_research(
+    agent: Any,
+    tracker: Any,
+    messages: List,
+    run_id: uuid_mod.UUID,
+    recursion_limit: int,
+) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream deep research events with real-time search progress.
+
+    The sub-agent's searches happen inside a single "tools" node, so
+    the normal ``astream`` loop blocks until the sub-agent finishes.
+    To surface search progress in real time, the tracker pushes events
+    to a shared asyncio Queue.  We run the agent stream in a background
+    task and consume from the queue, yielding events as they arrive.
+    """
+    event_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    tracker.set_event_queue(event_queue, loop)
+
+    agent_error: Optional[Exception] = None
+
+    async def _run_agent() -> None:
+        nonlocal agent_error
+        try:
+            async for step_output in agent.astream(
+                {"messages": messages},
+                config={
+                    "run_id": str(run_id),
+                    "recursion_limit": recursion_limit,
+                },
+                stream_mode="updates",
+            ):
+                for event in _events_from_step(step_output, tracker):
+                    await event_queue.put(event)
+        except Exception as exc:
+            agent_error = exc
+        finally:
+            await event_queue.put(_SENTINEL)
+
+    agent_task = asyncio.create_task(_run_agent())
+
+    token_buffer = ""
+    try:
+        while True:
+            event = await event_queue.get()
+            if event is _SENTINEL:
+                break
+            etype = event.get("type")
+            if etype == "token":
+                new_text = event["token"]
+                if not _is_duplicate_or_subset(new_text, token_buffer):
+                    token_buffer = new_text
+            else:
+                if token_buffer:
+                    yield {"type": "token", "token": token_buffer}
+                    token_buffer = ""
+                yield event
+    finally:
+        await agent_task
+
+    if token_buffer:
+        yield {"type": "token", "token": token_buffer}
+
+    if agent_error is not None:
+        raise agent_error
 
 
 def _events_from_step(

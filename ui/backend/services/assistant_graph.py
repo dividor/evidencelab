@@ -6,6 +6,7 @@ Uses LangChain's deepagents create_agent for a focused research loop:
   - Autonomous multi-round search and synthesis
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -69,6 +70,20 @@ class SearchTracker:
             self.search_settings.get("field_boost_enabled") and self._field_boost_fields
         )
         self._known_values: Optional[Dict[str, List[str]]] = None
+        # Real-time event queue for streaming search progress
+        self._event_queue: Optional[asyncio.Queue] = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+
+    def set_event_queue(
+        self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        """Attach an asyncio Queue for real-time search progress events.
+
+        Since the search tool runs synchronously (possibly in a thread),
+        events are pushed via ``loop.call_soon_threadsafe``.
+        """
+        self._event_queue = queue
+        self._event_loop = loop
 
     def _build_search_kwargs(self) -> Dict[str, Any]:
         """Build kwargs for search_chunks from search settings."""
@@ -201,6 +216,8 @@ class SearchTracker:
                 if cid not in chunk_cache:
                     continue
                 pg_chunk = chunk_cache[cid]
+                if not r.get("text"):
+                    r["text"] = pg_chunk.get("sys_text", "")
                 if not r.get("page"):
                     r["page"] = pg_chunk.get("sys_page_num")
                 if not r.get("bbox"):
@@ -242,7 +259,24 @@ class SearchTracker:
             logger.error("Search failed for query %r: %s", query, exc)
             formatted = []
 
-        self.per_query.append({"query": query, "result_count": len(formatted)})
+        # Build result cards (title + snippet) for UI display
+        result_cards = []
+        for r in formatted[:10]:
+            text = r.get("text", "")
+            result_cards.append(
+                {
+                    "title": r.get("title", "Untitled"),
+                    "text": (text[:150] + "...") if len(text) > 150 else text,
+                }
+            )
+
+        self.per_query.append(
+            {
+                "query": query,
+                "result_count": len(formatted),
+                "results": result_cards,
+            }
+        )
 
         for r in formatted:
             cid = r.get("chunk_id", "")
@@ -251,6 +285,27 @@ class SearchTracker:
                 r["global_index"] = self._global_result_count
                 self.all_results.append(r)
                 self._seen_ids.add(cid)
+
+        # Push real-time search event (thread-safe for deep mode)
+        if self._event_queue is not None and self._event_loop is not None:
+            event = {
+                "type": "search_status",
+                "queries": [
+                    {
+                        "query": query,
+                        "result_count": len(formatted),
+                        "results": result_cards,
+                    }
+                ],
+                "total_results": len(self.all_results),
+            }
+            self._emitted_query_count = len(self.per_query)
+            try:
+                self._event_loop.call_soon_threadsafe(
+                    self._event_queue.put_nowait, event
+                )
+            except Exception as exc:
+                logger.warning("Failed to push search event to queue: %s", exc)
 
         return formatted
 
