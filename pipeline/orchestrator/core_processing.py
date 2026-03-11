@@ -242,6 +242,18 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
                 mark_as_stopped(orchestrator, doc_id, f"Worker Crash: {exc}")
                 stats["failed"] += 1
 
+            except Exception as exc:
+                logger.error(
+                    "❌ Worker failed processing doc %s: %s: %s",
+                    doc_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                mark_as_stopped(
+                    orchestrator, doc_id, f"Worker Error: {type(exc).__name__}: {exc}"
+                )
+                stats["failed"] += 1
+
 
 def _process_docs_sequential(
     orchestrator, docs_to_process: list, stats: Dict[str, int]
