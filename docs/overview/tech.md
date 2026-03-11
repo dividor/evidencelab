@@ -102,7 +102,7 @@ Responses are streamed in real time via Server-Sent Events (SSE), so you see the
 
 * **Normal mode** (`build_research_agent`) uses `create_agent` with a single agent loop. The agent has access to a `search_documents` tool and iterates until it has enough evidence to answer. This is fast and suitable for most questions.
 
-* **Deep Research mode** (`build_deep_research_agent`) uses `create_deep_agent` with a coordinator/researcher sub-agent architecture. A coordinator agent plans the investigation and delegates specific research tasks to specialist researcher sub-agents, each with their own `search_documents` tool. This enables more thorough, multi-step investigations with higher search limits.
+* **Deep Research mode** (`build_deep_research_agent`) uses `create_deep_agent` with a LangChain-powered coordinator/researcher sub-agent architecture. A coordinator agent plans the investigation and delegates specific research tasks to specialist researcher sub-agents, each with their own `search_documents` tool. This enables more thorough, multi-step investigations with higher search limits. Both modes are config-driven — `max_queries`, `recursion_limit`, and `max_search_results` are set in `config.json`.
 
 Toggle between modes with the **Deep research** checkbox below the chat input.
 

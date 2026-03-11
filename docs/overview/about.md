@@ -38,8 +38,19 @@ Evidence Lab document processing pipeline includes the following features:
 ### User interface
 
 - Hybrid search with AI summary and reranking
+
+#### Research Assistant
+
+![Research Assistant](/docs/images/assistant/assistant-response.png)
+
 - **Research Assistant** — chat-based AI agent that searches your documents, synthesizes findings into structured responses with inline citations, and supports multi-turn conversations with thread history
+
+![Deep Research](/docs/images/assistant/deep-research-checkbox.png)
+
 - **Deep Research mode** — enables a coordinator/researcher sub-agent architecture for more thorough, multi-step investigations across your document collection
+
+#### More features
+
 - **Drilldown research** — highlight text or click "Find out more" to automatically drill into sub-topics, building an explorable research tree with query inheritance (root + parent context)
 - Experimental features such as [Heatmapper](/?tab=heatmap&dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
 - Filtering by metadata, in-document section types

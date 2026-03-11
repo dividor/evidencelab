@@ -20,6 +20,7 @@ interface DocsManifest {
 
 interface DocsPageProps {
   basePath?: string;
+  initialPath?: string;
 }
 
 interface TocHeading {
@@ -36,7 +37,7 @@ const slugify = (text: string): string =>
     .replace(/-+/g, '-')
     .trim();
 
-const DocsPage: React.FC<DocsPageProps> = ({ basePath = '' }) => {
+const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
   const [manifest, setManifest] = useState<DocsManifest | null>(null);
   const [activePath, setActivePath] = useState<string>('');
   const [content, setContent] = useState<string>('');
@@ -107,6 +108,13 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '' }) => {
     };
   }, [headings]);
 
+  // Navigate to initialPath when it changes (e.g. About/Tech/Data links)
+  useEffect(() => {
+    if (initialPath) {
+      setActivePath(initialPath);
+    }
+  }, [initialPath]);
+
   // Load manifest on mount
   useEffect(() => {
     fetch(`${withBase('/docs/docs.json')}?t=${Date.now()}`)
@@ -116,10 +124,10 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '' }) => {
         const params = new URLSearchParams(window.location.search);
         const urlPath = params.get('path');
         const firstDoc = data.tree[0]?.children[0]?.path;
-        setActivePath(urlPath || firstDoc || '');
+        setActivePath(initialPath || urlPath || firstDoc || '');
       })
       .catch((err) => console.error('Failed to load docs manifest:', err));
-  }, [withBase]);
+  }, [withBase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load doc content when active path changes
   useEffect(() => {
