@@ -1050,7 +1050,7 @@ class TestPipelineIntegration:
         url = (
             f"{UI_BASE_URL}/?q=increasing+government+capacity"
             "&title=Independent+Country+Programme+Evaluation%3A+Liberia+-+Main+Report"
-            "&rerank=false"
+            "&highlight=true&rerank=false"
             "&sections=executive_summary%2Ccontext%2Cmethodology%2Cfindings%2C"
             "conclusions%2Crecommendations%2Cannexes%2Cappendix%2Cother"
             f"&model_combo={quoted_combo}&dataset={quoted_dataset}"
