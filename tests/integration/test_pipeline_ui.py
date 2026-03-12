@@ -1109,9 +1109,13 @@ class TestPipelineIntegration:
                             break
 
                 # Give semantic highlighting time to complete and render.
-                deadline = time.time() + 60
+                # In CI the LLM-backed highlight API can be slow.
+                deadline = time.time() + 120
                 while time.time() < deadline and not highlight_found:
-                    time.sleep(2)
+                    # Scroll cards into view to trigger lazy highlighting
+                    for i in range(min(card_count, 6)):
+                        result_cards.nth(i).scroll_into_view_if_needed()
+                    time.sleep(3)
                     highlights = page.locator("mark.search-highlight")
                     highlight_texts = [
                         highlights.nth(j).text_content() or ""
