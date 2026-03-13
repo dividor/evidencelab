@@ -266,6 +266,38 @@ class IndexProcessor(BaseProcessor):
                 )
         return min(limits)
 
+    def _diagnose_empty_chunks(self, json_path: str) -> str:
+        """Return a human-readable reason why chunking produced zero chunks."""
+        try:
+            doc = DoclingDocument.load_from_json(Path(json_path))
+            items = list(doc.iterate_items())
+            text_types = {
+                "TextItem",
+                "DocItem",
+                "ListItem",
+                "SectionHeaderItem",
+            }
+            text_items = [
+                it
+                for it, _ in items
+                if type(it).__name__ in text_types and getattr(it, "text", None)
+            ]
+            total_chars = sum(len(getattr(it, "text", "") or "") for it in text_items)
+
+            if not text_items:
+                return (
+                    "No chunks generated: document contains no text "
+                    f"elements ({len(items)} items, all non-text "
+                    "such as images/tables)"
+                )
+            return (
+                f"No chunks generated: {len(text_items)} text elements "
+                f"found ({total_chars} chars total) but all fell below "
+                f"the minimum substantive size threshold"
+            )
+        except Exception:
+            return "No chunks generated"
+
     def _chunk_document(self, json_path: str) -> List[Dict[str, Any]]:
         """
         Load a Docling JSON document and split into chunks.
@@ -730,9 +762,8 @@ class IndexProcessor(BaseProcessor):
                 self._save_chunks_file(parsed_folder, chunks)
 
             if not chunks:
-                return self._build_failure(
-                    doc, "No chunks generated", "No chunks generated"
-                )
+                reason = self._diagnose_empty_chunks(str(json_path))
+                return self._build_failure(doc, reason, reason)
 
             # Remove existing chunks for this document to avoid duplicates
             try:

@@ -431,7 +431,7 @@ class SummarizeProcessor(BaseProcessor):
         logger.info("  Input: %s characters", len(cleaned))
 
         try:
-            max_chars = self.context_window
+            max_chars = self._token_budget_chars(self.context_window, self.max_tokens)
             effective_max = self._effective_max_chars(max_chars)
             if len(cleaned) <= effective_max:
                 return self._single_pass_summary(cleaned)
@@ -453,6 +453,28 @@ class SummarizeProcessor(BaseProcessor):
     def _effective_max_chars(self, max_chars: int) -> int:
         prompt_overhead = len(_reduction_template.render(document_text="")) + 100
         return max_chars - prompt_overhead
+
+    @staticmethod
+    def _token_budget_chars(context_window: int, max_tokens: int) -> int:
+        """Convert a token-based context window to a character budget.
+
+        Uses a conservative 1:1 chars-per-token ratio so that the rendered
+        prompt stays within the model's token limit even for CJK, Khmer,
+        and other scripts where each character may consume a full token.
+        For Latin text this is overly cautious (typically ~4 chars/token)
+        but the map-reduce strategy handles oversized documents correctly,
+        so the only cost is a few extra LLM calls for large English docs.
+
+        Args:
+            context_window: Model context window in **tokens**.
+            max_tokens: Tokens reserved for the LLM response.
+
+        Returns:
+            Maximum characters allowed for the document text portion.
+        """
+        _CHARS_PER_TOKEN = 1  # worst-case for CJK/Khmer/Thai scripts
+        available_tokens = context_window - max_tokens
+        return int(available_tokens * _CHARS_PER_TOKEN)
 
     @traceable(name="Summarization")
     def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
