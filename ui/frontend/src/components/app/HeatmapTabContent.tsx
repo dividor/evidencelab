@@ -23,8 +23,16 @@ import { SearchResultsList } from '../SearchResultsList';
 import { RainbowText } from '../RainbowText';
 import { findSemanticMatches, TextMatch } from '../../utils/textHighlighting';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
+import { useAuth } from '../../hooks/useAuth';
+import { useRatings } from '../../hooks/useRatings';
+import StarRating from '../ratings/StarRating';
+import RatingModal from '../ratings/RatingModal';
+import { generateUUID } from '../../utils/uuid';
 
-const API_KEY = process.env.REACT_APP_API_KEY;
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
 
 // Top N% of score range to display (0.2 = show only top 20%)
 const HEATMAP_SCORE_PERCENTILE = 0.2;
@@ -416,7 +424,7 @@ const resolveResultUrl = (result: SearchResult) => {
 
   // Fallback: construct path from available data
   if (!parsedFolder && result.organization && result.year && result.doc_id) {
-    const dataSource = result.data_source || result.metadata?.data_source || 'uneg';
+    const dataSource = result.data_source || result.metadata?.data_source || '';
     parsedFolder = `data/${dataSource}/parsed/${result.organization}/${result.year}/${result.doc_id}`;
   }
 
@@ -993,9 +1001,10 @@ const HeatmapGridContent = ({
 
 const translateWithFallback = async (text: string, newLang: string, label: string) => {
   try {
+    const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: newLang }),
     });
     if (resp.ok) {
@@ -1058,6 +1067,74 @@ const HEATMAP_URL_KEYS = {
   metric: 'hm_metric',
   run: 'hm_run',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Extracted rating widget to keep the main component's cyclomatic complexity low
+// ---------------------------------------------------------------------------
+interface HeatmapRatingWidgetProps {
+  heatmapId: string;
+  isAuthenticated: boolean;
+  hasCompletedGridSearch: boolean;
+  buildContext: () => Record<string, any>;
+}
+
+const HeatmapRatingWidget: React.FC<HeatmapRatingWidgetProps> = ({
+  heatmapId,
+  isAuthenticated,
+  hasCompletedGridSearch,
+  buildContext,
+}) => {
+  const {
+    ratings, submitRating, deleteRating,
+  } = useRatings({
+    ratingType: 'heatmap',
+    referenceId: heatmapId || undefined,
+    enabled: isAuthenticated && hasCompletedGridSearch && !!heatmapId,
+  });
+  const existing = ratings.get('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [initialScore, setInitialScore] = useState(0);
+
+  if (!hasCompletedGridSearch || !isAuthenticated) return null;
+
+  return (
+    <>
+      <div className="heatmap-rating-bar">
+        <span className="heatmap-rating-label">Rate this heatmap</span>
+        <StarRating
+          score={existing?.score || 0}
+          onRequestModal={(s) => {
+            setInitialScore(existing?.score || s);
+            setModalOpen(true);
+          }}
+        />
+      </div>
+      {modalOpen && (
+        <RatingModal
+          isOpen={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title="Rate this Heatmap"
+          initialScore={initialScore}
+          initialComment={existing?.comment || ''}
+          onSubmit={async (score, comment) => {
+            await submitRating({
+              ratingType: 'heatmap',
+              referenceId: heatmapId,
+              score,
+              comment,
+              context: buildContext(),
+            });
+            setModalOpen(false);
+          }}
+          onDelete={existing?.id ? async () => {
+            await deleteRating(existing.id);
+            setModalOpen(false);
+          } : undefined}
+        />
+      )}
+    </>
+  );
+};
 
 export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   selectedDomain,
@@ -1159,6 +1236,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const heatmapUrlInitRef = useRef(false);
   const heatmapUrlHadYearFilterRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
+
+  // --- Heatmap rating & activity logging ---
+  const { isAuthenticated } = useAuth();
+  const heatmapIdRef = useRef<string>('');
+  const heatmapDurationRef = useRef<number>(0);
 
   // Heatmap filters are now completely isolated from global filters
   // No syncing needed
@@ -1805,6 +1887,25 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     return !gridLoading && Object.keys(gridResults).length > 0;
   }, [gridLoading, gridResults]);
 
+  /** Build rating context with heatmap settings and grid cell counts. */
+  const buildHeatmapRatingContext = useCallback(() => ({
+    rowDimension,
+    columnDimension,
+    heatmapMetric,
+    similarityCutoff,
+    queries: rowDimension === 'queries' ? rowQueries : [gridQuery],
+    heatmapFilters: heatmapSelectedFilters,
+    gridSize: filteredRowValues.length + '×' + filteredColumnValues.length,
+    cellCounts: Object.fromEntries(
+      Object.entries(filteredGridResults).map(([k, cell]) => [k, cell?.count ?? 0])
+    ),
+    timing: { heatmap_duration_ms: heatmapDurationRef.current },
+  }), [
+    rowDimension, columnDimension, heatmapMetric, similarityCutoff,
+    rowQueries, gridQuery, heatmapSelectedFilters,
+    filteredRowValues.length, filteredColumnValues.length, filteredGridResults,
+  ]);
+
   const columnHeaderLabel = useMemo(() => {
     return (
       columnOptions.find((option) => option.value === columnDimension)?.label ||
@@ -2194,11 +2295,44 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     [gridQuery, rowDimension]
   );
 
+  /** Fire-and-forget activity log for a completed heatmap run.
+   *  Accepts rawResults so it can capture the grid snapshot immediately. */
+  const logHeatmapActivity = useCallback((rawResults: RawCellResults, durationMs: number) => {
+    const queries = rowDimension === 'queries' ? rowQueries : [gridQuery];
+    const queryLabel = rowDimension === 'queries'
+      ? rowQueries.filter((q) => q.trim()).join(' | ')
+      : gridQuery || '[heatmap: ' + rowDimension + ' × ' + columnDimension + ']';
+    // Compact snapshot: { cellKey: count }
+    const cellCounts: Record<string, number> = {};
+    for (const [k, results] of Object.entries(rawResults)) {
+      cellCounts[k] = results.length;
+    }
+    axios
+      .post(API_BASE_URL + '/activity/', {
+        search_id: heatmapIdRef.current,
+        query: queryLabel,
+        filters: {
+          type: 'heatmap', rowDimension, columnDimension, heatmapMetric,
+          similarityCutoff, queries, heatmapFilters: heatmapSelectedFilters,
+          timing: { heatmap_duration_ms: durationMs },
+        },
+        search_results: [cellCounts],
+        url: window.location.href,
+      })
+      .catch(() => {});
+  }, [
+    rowDimension, columnDimension, heatmapMetric, similarityCutoff,
+    rowQueries, gridQuery, heatmapSelectedFilters,
+  ]);
+
   const executeGridSearch = useCallback(async () => {
     if (filteredColumnValues.length === 0) {
       setGridResults({});
       return;
     }
+    const heatmapStartTime = performance.now();
+    // Generate a new heatmap ID for this grid search run
+    heatmapIdRef.current = generateUUID();
     updateHeatmapURL({ run: true });
     setGridLoading(true);
     setGridError(null);
@@ -2206,6 +2340,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setCappedCells(new Set());
     userAdjustedCutoffRef.current = false;
     const tasks: Array<() => Promise<void>> = [];
+    const accumulatedResults: RawCellResults = {};
     let failedRequests = 0;
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
     const filterEntries = Object.entries(heatmapSelectedFilters)
@@ -2258,12 +2393,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             }
             const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`);
             const data = response.data as SearchResponse;
+            accumulatedResults[cellKey] = data.results;
             setGridResults((prev) => ({ ...prev, [cellKey]: data.results }));
             if (!useDocSearch && data.results.length >= Number(HEATMAP_CELL_LIMIT)) {
               setCappedCells((prev) => new Set(prev).add(cellKey));
             }
           } catch (error) {
             failedRequests += 1;
+            accumulatedResults[cellKey] = [];
             setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
           }
         });
@@ -2279,7 +2416,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       console.error('Heatmap grid search failed:', error);
       setGridError('Grid search failed. Please try again.');
     } finally {
+      const heatmapDurationMs = Math.round(performance.now() - heatmapStartTime);
+      heatmapDurationRef.current = heatmapDurationMs;
       setGridLoading(false);
+      logHeatmapActivity(accumulatedResults, heatmapDurationMs);
     }
   }, [
     columnDimension,
@@ -2301,6 +2441,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     searchModel,
     sectionTypes,
     updateHeatmapURL,
+    logHeatmapActivity,
   ]);
 
   useEffect(() => {
@@ -2655,13 +2796,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onFieldBoostToggle,
     fieldBoostFields,
     onFieldBoostFieldsChange,
+    rangeFilters: {},
+    onRangeChange: () => {},
   };
 
   const isQueryRow = rowDimension === 'queries';
   const hasGlobalQuery = gridQuery.trim() !== '';
   const metricEnabled = isQueryRow || hasGlobalQuery;
   const metricValue = metricEnabled ? heatmapMetric : 'documents';
-  const isModelSupported = selectedModelCombo === 'Azure Foundry';
+  const isModelSupported = selectedModelCombo !== null;
 
   return (
     <div className="main-content">
@@ -2693,8 +2836,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             </div>
             {!isModelSupported ? (
               <div className="heatmap-model-warning">
-                Heatmapper currently only supports the <strong>Azure Foundry</strong> model.
-                Please switch to Azure Foundry using the Models dropdown above.
+                Please select a model using the Models dropdown above.
               </div>
             ) : (<>
             <div className="heatmap-controls">
@@ -2801,6 +2943,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               gridLoading={gridLoading}
               openCellModal={openCellModal}
             />
+            <HeatmapRatingWidget
+              heatmapId={heatmapIdRef.current}
+              isAuthenticated={isAuthenticated}
+              hasCompletedGridSearch={hasCompletedGridSearch}
+              buildContext={buildHeatmapRatingContext}
+            />
             </>)}
           </div>
         </main>
@@ -2825,6 +2973,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                 <FilterSections
                   facets={heatmapModalFacets}
                   selectedFilters={heatmapSelectedFilters}
+                  rangeFilters={{}}
                   collapsedFilters={heatmapCollapsedFilters}
                   expandedFilterLists={heatmapExpandedFilterLists}
                   filterSearchTerms={heatmapFilterSearchTerms}
@@ -2834,6 +2983,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   onSearchTermChange={handleHeatmapFilterSearchTermChange}
                   onToggleFilterListExpansion={toggleHeatmapFilterListExpansion}
                   onFilterValuesChange={handleHeatmapFilterValuesChange}
+                  onRangeChange={() => {}}
                   renderContentTop={() => (
                     <label className="heatmap-filter-select-all filter-checkbox-item">
                       <div className="filter-checkbox-row">

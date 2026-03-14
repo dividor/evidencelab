@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop, copilot/** ]
+    branches: [ main, master, develop, rc/**, copilot/** ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main, master, develop, rc/** ]
 
 jobs:
   code-quality:
@@ -85,7 +85,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Bandit Report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-report
           path: bandit-report.json
@@ -130,6 +130,53 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: gitleaks.toml
+
+  sbom:
+    runs-on: ubuntu-latest
+    needs: security-scan
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "18"
+          cache: "npm"
+          cache-dependency-path: ui/frontend/package-lock.json
+
+      # Python SBOM (CycloneDX format)
+      - name: Install cyclonedx-bom
+        run: pip install cyclonedx-bom
+
+      - name: Generate Python SBOM
+        run: |
+          pip install -r requirements.txt
+          cyclonedx-py environment -o sbom-python.json --output-format json
+
+      # JavaScript SBOM
+      - name: Install frontend dependencies
+        working-directory: ui/frontend
+        run: npm ci
+
+      - name: Generate JavaScript SBOM
+        working-directory: ui/frontend
+        run: npx @cyclonedx/cyclonedx-npm --output-format JSON --output-file ../../sbom-javascript.json
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-reports
+          path: |
+            sbom-python.json
+            sbom-javascript.json
+        if: always()
 
   container-scan:
     runs-on: ubuntu-latest
@@ -243,6 +290,7 @@ jobs:
       DATA_MOUNT_PATH: ${{ vars.DATA_MOUNT_PATH }}
       SHORT_QUERY_DENSE_WEIGHT: ${{ vars.SHORT_QUERY_DENSE_WEIGHT }}
       HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+      AUTH_SECRET_KEY: ${{ secrets.AUTH_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v6
 
@@ -284,6 +332,7 @@ jobs:
           DATA_MOUNT_PATH=${DATA_MOUNT_PATH:-./data}
           SHORT_QUERY_DENSE_WEIGHT=${SHORT_QUERY_DENSE_WEIGHT:-0.25}
           HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
+          AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
           EOF
         working-directory: ${{ github.workspace }}
 

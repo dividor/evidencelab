@@ -112,7 +112,7 @@ const RecencyControls = ({
   recencyScaleDays: number;
   onRecencyScaleDaysChange: (value: number) => void;
 }) => (
-  <>
+  <div className={recencyBoostEnabled ? 'settings-subsettings-group' : undefined}>
     <label className="rerank-checkbox-label">
       <input
         type="checkbox"
@@ -166,7 +166,7 @@ const RecencyControls = ({
         </div>
       </>
     )}
-  </>
+  </div>
 );
 
 const SectionTypesSelector = ({
@@ -395,6 +395,7 @@ export const SearchSettingsPanel = ({
               ⓘ
             </span>
           </label>
+          <div className={fieldBoostEnabled ? 'settings-subsettings-group' : undefined}>
           <label className="rerank-checkbox-label">
             <input
               type="checkbox"
@@ -459,6 +460,7 @@ export const SearchSettingsPanel = ({
                 })}
             </div>
           )}
+          </div>
         </div>
       )}
     </div>

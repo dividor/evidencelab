@@ -122,7 +122,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
     # Remove optimum to avoid "BetterTransformer requires transformers<4.49" error
     # infinity-emb works without optimum (especially on MPS where BetterTransformer is disabled)
     # Install langchain explicitly as it is missing from requirements.txt but needed for summarization
-    pip install -q "transformers>=4.50.0" "tokenizers>=0.21.0" "click==8.1.7" "onnxruntime" "sentence-transformers" "infinity-emb[server]>=0.0.77" "langchain" "langchain-community" "langchain-huggingface" "langchain-openai" "langchain-anthropic" "setproctitle"
+    pip install -q "transformers>=4.50.0" "tokenizers>=0.21.0" "click==8.1.7" "onnxruntime" "sentence-transformers" "infinity-emb[server]>=0.0.77" "langchain" "langchain-community" "langchain-huggingface" "langchain-openai" "langchain-anthropic" "langchain-google-vertexai>=3.0.0,<4.0.0" "setproctitle"
     pip uninstall -y -q optimum 2>/dev/null || true
 
     echo "   ✅ Environment prepared."
@@ -135,6 +135,7 @@ if [[ "$(uname)" == "Linux" ]]; then
         "click==8.1.7" \
         "typer==0.12.3" \
         "prometheus-fastapi-instrumentator==6.0.0" \
+        "sentence-transformers>=3.0" \
         "infinity-emb==0.0.77"
     echo "   ✅ Linux host dependencies prepared."
 fi
@@ -147,13 +148,21 @@ echo "DEBUG: INFINITY_BETTERTRANSFORMER=$INFINITY_BETTERTRANSFORMER"
 export PYTHONUNBUFFERED=1
 export EMBEDDING_WORKERS=1
 
-# Override Qdrant host for local execution if it points to the docker service name
+# Override Docker service names for local execution
 if [[ "$QDRANT_HOST" == *"//qdrant"* ]] || [[ "$QDRANT_HOST" == "qdrant" ]]; then
     echo "⚠️  Detected Docker service name 'qdrant' in QDRANT_HOST. Switching to 'localhost' for host execution."
     export QDRANT_HOST="localhost"
 fi
 
 export QDRANT_HOST=${QDRANT_HOST:-localhost}
+
+# Override Postgres host for local execution if it points to the docker service name
+if [[ "${POSTGRES_HOST:-}" == "postgres" ]]; then
+    echo "⚠️  Detected Docker service name 'postgres' in POSTGRES_HOST. Switching to 'localhost' for host execution."
+    export POSTGRES_HOST="localhost"
+fi
+export POSTGRES_HOST=${POSTGRES_HOST:-localhost}
+
 QDRANT_CURL_AUTH=()
 if [ -n "${QDRANT_API_KEY:-}" ]; then
     QDRANT_CURL_AUTH=(-H "api-key: ${QDRANT_API_KEY}")

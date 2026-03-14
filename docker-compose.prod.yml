@@ -60,6 +60,12 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evidencelab}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
     deploy:
       resources:
         limits:
@@ -163,16 +169,30 @@ services:
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
+      # User module (auth & permissions): off | on_passive | on_active
+      - USER_MODULE=${USER_MODULE:-off}
+      - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
+      - APP_BASE_URL=${APP_BASE_URL:-https://evidencelab.ai}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@evidencelab.ai}
+      - OAUTH_GOOGLE_CLIENT_ID=${OAUTH_GOOGLE_CLIENT_ID:-}
+      - OAUTH_GOOGLE_CLIENT_SECRET=${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
+      - OAUTH_MICROSOFT_CLIENT_SECRET=${OAUTH_MICROSOFT_CLIENT_SECRET:-}
+      - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-common}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      #- qdrant
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - app-network
     working_dir: /app
-    # Multi-worker Uvicorn for production concurrency
-    command: uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+    # Run migrations, wait for Qdrant (runs on host, not in Docker), then start Uvicorn
+    command: bash -c "alembic upgrade head && echo 'Waiting for Qdrant...' && until python3 -c 'import urllib.request; urllib.request.urlopen(\"${QDRANT_HOST:-http://host.docker.internal:6333}/healthz\")' 2>/dev/null; do sleep 2; done && echo 'Qdrant ready' && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
     restart: unless-stopped
     deploy:
       resources:
@@ -191,9 +211,9 @@ services:
         - REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS:-true}
         - REACT_APP_PDF_SEMANTIC_HIGHLIGHTS=${REACT_APP_PDF_SEMANTIC_HIGHLIGHTS:-true}
         - REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=${REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD:-0.4}
-        - REACT_APP_API_KEY=${REACT_APP_API_KEY}
         - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-/api}
         - REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH:-}
+        - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
     container_name: ui
     # Only visible inside Docker; Caddy reverse-proxies to this
     expose:

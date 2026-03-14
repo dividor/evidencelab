@@ -10,6 +10,7 @@ interface UseAppUrlSyncArgs {
   setQuery: (value: string) => void;
   setFilters: (value: any) => void;
   setSelectedFilters: (value: Record<string, string[]>) => void;
+  setRangeFilters: (value: Record<string, { min: string; max: string }>) => void;
   setSearchDenseWeight: (value: number) => void;
   setRerankEnabled: (value: boolean) => void;
   setSectionTypes: (value: string[]) => void;
@@ -29,6 +30,7 @@ export const useAppUrlSync = ({
   setQuery,
   setFilters,
   setSelectedFilters,
+  setRangeFilters,
   setSearchDenseWeight,
   setRerankEnabled,
   setSectionTypes,
@@ -45,6 +47,7 @@ export const useAppUrlSync = ({
       setQuery(searchState.query);
       setFilters(searchState.filters);
       setSelectedFilters(searchState.selectedFilters);
+      setRangeFilters(searchState.rangeFilters);
       setSearchDenseWeight(searchState.denseWeight);
       setRerankEnabled(searchState.rerank);
       setSectionTypes(searchState.sectionTypes);
@@ -85,6 +88,7 @@ export const useAppUrlSync = ({
     setSectionTypes,
     setSelectedDomain,
     setSelectedFilters,
+    setRangeFilters,
     setSemanticHighlighting,
     coreFilterFields,
     getTabFromPath,

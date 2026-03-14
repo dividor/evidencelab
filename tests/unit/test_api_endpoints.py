@@ -8,8 +8,8 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from ui.backend import main as main_module
-from ui.backend.routes import search as search_module
 from ui.backend.utils import facet_helpers as facet_module
+from ui.backend.utils import filter_helpers as filter_helpers_module
 from ui.backend.utils.language_codes import LANGUAGE_CODES, LANGUAGE_NAMES
 
 
@@ -120,7 +120,17 @@ async def test_datasources_config(monkeypatch):
         return {"datasources": {"Source": {"data_subdir": "src"}}}
 
     monkeypatch.setattr("pipeline.db.load_datasources_config", fake_load)
-    result = await main_module.get_datasources_config()
+
+    from ui.backend.routes import config as config_routes
+
+    # Disable user-module permission filtering so the test exercises the
+    # basic datasource-config code path without auth.
+    monkeypatch.setattr(config_routes, "_USER_MODULE", False)
+
+    request = _make_request(method="GET", path="/config/datasources")
+    result = await config_routes.get_datasources_config(
+        request=request, current_user=None, session=None
+    )
     assert "Source" in result
 
 
@@ -133,10 +143,16 @@ async def test_generate_summary(monkeypatch):
         model_key: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
     ):
         return "summary"
 
-    def fake_render(query: str, results: list, max_results: int):
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
@@ -144,9 +160,13 @@ async def test_generate_summary(monkeypatch):
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
+    from ui.backend.routes import summary as summary_routes
+
     request = _make_request(method="POST", path="/ai-summary")
     body = main_module.AISummaryRequest(query="q", results=[_make_search_result()])
-    response = await main_module.generate_summary(request, body)
+    response = await summary_routes.generate_summary(
+        request, body, user=None, session=None
+    )
 
     assert response.summary == "summary"
     assert response.prompt == "prompt"
@@ -162,11 +182,17 @@ async def test_stream_summary(monkeypatch):
         model_key: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
     ):
         for token in ["a", "b"]:
             yield token
 
-    def fake_render(query: str, results: list, max_results: int):
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
@@ -174,9 +200,13 @@ async def test_stream_summary(monkeypatch):
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
+    from ui.backend.routes import summary as summary_routes
+
     request = _make_request(method="POST", path="/ai-summary/stream")
     body = main_module.AISummaryRequest(query="q", results=[_make_search_result()])
-    response = await main_module.stream_summary(request, body)
+    response = await summary_routes.stream_summary(
+        request, body, user=None, session=None
+    )
 
     chunks = []
     async for chunk in response.body_iterator:
@@ -443,7 +473,7 @@ async def test_get_facets(monkeypatch):
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
     monkeypatch.setattr(
         main_module,
-        "get_filter_fields",
+        "get_default_filter_fields",
         lambda *_: {"organization": "Organization", "published_year": "Year"},
     )
     result = await main_module.get_facets(
@@ -867,7 +897,7 @@ def test_build_facets_from_db_routes_sys_fields_to_pg():
     pg = _FakePg([("en", 100), ("fr", 20)])
 
     filter_fields = {"organization": "Organization", "language": "Language"}
-    result = facet_module.build_facets_from_db(
+    result, range_fields = facet_module.build_facets_from_db(
         db, filter_fields, None, _fake_resolve_storage_field, pg=pg
     )
 
@@ -896,7 +926,7 @@ def test_build_facets_from_db_falls_back_to_qdrant_without_pg():
     db.facet_documents = facet_documents
 
     filter_fields = {"language": "Language"}
-    result = facet_module.build_facets_from_db(
+    result, range_fields = facet_module.build_facets_from_db(
         db, filter_fields, None, _fake_resolve_storage_field, pg=None
     )
 
@@ -912,19 +942,19 @@ def test_language_codes_roundtrip():
 
 
 def test_normalize_language_filter_maps_names_to_codes():
-    assert search_module._normalize_language_filter("English") == "en"
-    assert search_module._normalize_language_filter("French,Spanish") == "fr,es"
+    assert filter_helpers_module.normalize_language_filter("English") == "en"
+    assert filter_helpers_module.normalize_language_filter("French,Spanish") == "fr,es"
 
 
 def test_normalize_language_filter_passes_through_codes():
     """Unknown values (including raw codes) pass through unchanged."""
-    assert search_module._normalize_language_filter("en") == "en"
-    assert search_module._normalize_language_filter("Unknown") == "Unknown"
+    assert filter_helpers_module.normalize_language_filter("en") == "en"
+    assert filter_helpers_module.normalize_language_filter("Unknown") == "Unknown"
 
 
 def test_normalize_language_filter_none():
-    assert search_module._normalize_language_filter(None) is None
-    assert search_module._normalize_language_filter("") is None
+    assert filter_helpers_module.normalize_language_filter(None) is None
+    assert filter_helpers_module.normalize_language_filter("") is None
 
 
 def test_language_facets_map_codes_to_full_names():
@@ -935,7 +965,7 @@ def test_language_facets_map_codes_to_full_names():
     pg = _FakePg([("en", 50), ("fr", 10), ("Unknown", 3)])
 
     filter_fields = {"language": "Language"}
-    result = facet_module.build_facets_from_db(
+    result, range_fields = facet_module.build_facets_from_db(
         db, filter_fields, None, _fake_resolve_storage_field, pg=pg
     )
 

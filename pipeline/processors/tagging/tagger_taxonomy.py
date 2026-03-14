@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -15,6 +16,7 @@ from langsmith import traceable
 from pipeline.db import Database, PostgresClient
 from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_llm import resolve_llm_config
+from pipeline.utilities.llm_retry import invoke_with_retry
 from utils.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
@@ -156,28 +158,120 @@ class TaxonomyTagger(BaseTagger):
         ]
 
         try:
-            response = llm.invoke(messages)
+            response = invoke_with_retry(llm, messages)
             return self._parse_llm_response(str(response.content))
         except Exception as exc:
             logger.error("LLM call failed for taxonomy: %s", exc)
             return None
 
+    # -- context-window splitting helpers --
+
+    _CHARS_PER_TOKEN = 2  # conservative estimate for structured/multilingual content
+
+    def _estimate_prompt_overhead_chars(
+        self, tax_key: str, tax_config: Dict[str, Any]
+    ) -> int:
+        """Return the character length of everything *except* context_text."""
+        system_prompt, user_prompt = self._build_taxonomy_prompt(
+            tax_key, tax_config, context_text=""
+        )
+        return len(system_prompt) + len(user_prompt)
+
+    @staticmethod
+    def _split_context(context_text: str, max_chars: int) -> List[str]:
+        """Split *context_text* into roughly equal chunks that each fit in *max_chars*.
+
+        Splits are symmetric: if the text is 1 char over the limit the result
+        is two halves, not a full chunk + a tiny remainder.  Splits prefer
+        paragraph boundaries (``\\n\\n``) for cleaner breaks.
+        """
+        if len(context_text) <= max_chars:
+            return [context_text]
+
+        n_chunks = math.ceil(len(context_text) / max_chars)
+        target_size = len(context_text) // n_chunks
+
+        chunks: List[str] = []
+        start = 0
+        for i in range(n_chunks):
+            if i == n_chunks - 1:
+                chunks.append(context_text[start:])
+                break
+            ideal_end = start + target_size
+            # look for a paragraph break near the ideal end
+            search_start = max(start, ideal_end - 200)
+            search_end = min(len(context_text), ideal_end + 200)
+            window = context_text[search_start:search_end]
+            para_pos = window.rfind("\n\n")
+            if para_pos != -1:
+                split_at = search_start + para_pos + 2  # after the blank line
+            else:
+                split_at = ideal_end
+            chunks.append(context_text[start:split_at])
+            start = split_at
+
+        return chunks
+
+    @staticmethod
+    def _merge_taxonomy_results(
+        results_list: List[List[Dict[str, str]]],
+    ) -> List[Dict[str, str]]:
+        """Merge results from multiple chunks, deduplicating by code."""
+        seen: Dict[str, Dict[str, str]] = {}
+        for results in results_list:
+            for item in results:
+                code = item.get("code")
+                if code and code not in seen:
+                    seen[code] = item
+        return list(seen.values())
+
+    # -- end splitting helpers --
+
     def _process_taxonomy(
         self, tax_key: str, tax_config: Dict[str, Any], context_text: str
     ) -> List[Dict[str, str]]:
-        """Process a single taxonomy. Returns list of dicts with code, name, reason."""
-        system_prompt, user_prompt = self._build_taxonomy_prompt(
-            tax_key, tax_config, context_text
+        """Process a single taxonomy. Returns list of dicts with code, name, reason.
+
+        When the summary exceeds the available context window the text is split
+        into equal-sized chunks and each chunk is classified independently; the
+        results are then merged (union, first-occurrence wins).
+        """
+        context_window = self.config.get("context_window", 29000)
+        _, _, _, max_tokens, _ = resolve_llm_config(self.config)
+
+        overhead_chars = self._estimate_prompt_overhead_chars(tax_key, tax_config)
+        available_input_tokens = context_window - max_tokens
+        available_summary_chars = (
+            int(available_input_tokens * self._CHARS_PER_TOKEN) - overhead_chars
         )
 
-        results = self._call_llm(system_prompt, user_prompt)
-        if not results:
-            return []
+        chunks = self._split_context(context_text, max(available_summary_chars, 1))
+
+        if len(chunks) > 1:
+            logger.info(
+                "Summary (%d chars) exceeds context budget (%d chars) for taxonomy "
+                "'%s'; splitting into %d equal chunks",
+                len(context_text),
+                available_summary_chars,
+                tax_key,
+                len(chunks),
+            )
+
+        all_results: List[List[Dict[str, str]]] = []
+        for chunk in chunks:
+            system_prompt, user_prompt = self._build_taxonomy_prompt(
+                tax_key, tax_config, chunk
+            )
+            results = self._call_llm(system_prompt, user_prompt)
+            if results:
+                all_results.append(results)
+
+        merged = self._merge_taxonomy_results(all_results) if all_results else []
 
         enriched_values = []
         defined_values = tax_config.get("values", {})
 
-        for item in results:
+        for item in merged:
             code = item.get("code")
             reason = item.get("reason", "No reason provided")
             if code and code in defined_values:
@@ -189,14 +283,20 @@ class TaxonomyTagger(BaseTagger):
         """Compute all taxonomy tags for a document. Returns cached if available."""
         doc_id = self._get_document_identifier(document)
         if not doc_id:
+            logger.warning("compute_document_tags: no doc_id found")
             return {}
 
         if doc_id in self._document_cache:
+            logger.debug("compute_document_tags: returning cached for %s", doc_id)
             return self._document_cache[doc_id]
 
-        # Check existing tags in document if we want to skip re-processing?
-        # For now, we assume if pipeline runs, we re-process.
-        # But we could check existing sys_taxonomies.
+        logger.info(
+            "compute_document_tags: doc=%s, taxonomies_config_keys=%s, "
+            "has_summary=%s",
+            doc_id,
+            list(self.taxonomies_config.keys()) if self.taxonomies_config else "EMPTY",
+            bool(document.get("sys_full_summary")),
+        )
 
         sys_taxonomies = {}
         tags_updates = {}
@@ -204,6 +304,12 @@ class TaxonomyTagger(BaseTagger):
         summary = document.get("sys_full_summary")
         if not summary:
             # Cannot tag without full summary for document-level taxonomies
+            logger.warning(
+                "compute_document_tags: no sys_full_summary for doc %s. "
+                "Doc keys: %s",
+                doc_id,
+                [k for k in document.keys() if k.startswith("sys_")],
+            )
             self._document_cache[doc_id] = {}
             return {}
 

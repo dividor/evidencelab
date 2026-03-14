@@ -415,7 +415,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   searchQuery = '',
   initialBBox = [],
   metadata = {},
-  dataSource = 'uneg',
+  dataSource = '',
   semanticHighlightModelConfig,
   onOpenMetadata,
   searchDenseWeight = 0.8,
@@ -482,6 +482,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     processedBBoxesRef.current.clear(); // Clear processed bboxes when doc/chunk/page changes
     // Always enable programmatic scrolling when doc/chunk/page changes
     isScrollingProgrammatically.current = true;
+    // Navigate to the requested page (useState only captures the initial
+    // value, so prop changes need to be synchronised explicitly)
+    setCurrentPage(pageNum);
     // Clear in-PDF search results when opening a new document
     setInPdfSearchResults([]);
     setInPdfSearchQuery('');

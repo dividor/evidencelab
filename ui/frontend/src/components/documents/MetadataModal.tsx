@@ -5,6 +5,8 @@ import {
   buildSummaryDisplayText,
   buildTimelineStages,
   formatTimestamp,
+  resolveConfiguredFields,
+  getConfiguredFieldKeys,
 } from './documentsModalUtils';
 
 const MARKDOWN_MARGIN = '0 0 0.5em 0';
@@ -202,18 +204,28 @@ const renderLongTextSection = (
   );
 };
 
+/** Keys that get special rendering as clickable links in the configured fields section. */
+const SPECIAL_LINK_FIELDS = new Set(['full_summary', 'toc_classified']);
+
 interface MetadataModalProps {
   isOpen: boolean;
   onClose: () => void;
   metadataDoc: any;
+  metadataPanelFields?: Record<string, string>;
+  onOpenSummary?: (summary: string, title: string, docId?: string) => void;
+  onOpenToc?: (doc: any) => void;
 }
 
 export const MetadataModal: React.FC<MetadataModalProps> = ({
   isOpen,
   onClose,
   metadataDoc,
+  metadataPanelFields,
+  onOpenSummary,
+  onOpenToc,
 }) => {
   const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({});
+  const [systemInfoExpanded, setSystemInfoExpanded] = useState(false);
   const toggleExpanded = (key: string) => {
     setExpandedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -221,6 +233,14 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
   if (!isOpen || !metadataDoc) {
     return null;
   }
+
+  const hasConfiguredFields = metadataPanelFields && Object.keys(metadataPanelFields).length > 0;
+  const configuredItems = hasConfiguredFields
+    ? resolveConfiguredFields(metadataDoc, metadataPanelFields)
+    : [];
+  const configuredFieldKeys = hasConfiguredFields
+    ? getConfiguredFieldKeys(metadataDoc, metadataPanelFields)
+    : new Set<string>();
 
   const sections = buildMetadataSections(metadataDoc);
   const renderTaxonomies = (value: any, isExpanded: boolean, onToggle: () => void) => {
@@ -314,6 +334,16 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
     return renderValueParts(valueStr);
   };
 
+  // Filter out configured field keys from system info sections
+  const filteredSections = hasConfiguredFields
+    ? sections.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => !configuredFieldKeys.has(item.key)),
+      }))
+    : sections;
+
+  const hasSystemInfo = filteredSections.some((s) => s.items.length > 0);
+
   return (
     <div className="preview-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
@@ -327,7 +357,124 @@ export const MetadataModal: React.FC<MetadataModalProps> = ({
           <div className="metadata-content">
             <table className="metadata-table">
               <tbody>
-                {sections.map((section, index) => (
+                {/* Configured fields at top */}
+                {hasConfiguredFields && configuredItems.length > 0 && (
+                  <>
+                    {configuredItems.map((item) => {
+                      // Special rendering for summary and toc as clickable links
+                      // Use configKey (the original config field name) since the resolved
+                      // metadata key may be prefixed (e.g. sys_full_summary vs full_summary)
+                      if (item.configKey === 'full_summary' && onOpenSummary) {
+                        const title = metadataDoc.map_title || metadataDoc.title || '';
+                        const docId = metadataDoc.doc_id || '';
+                        return (
+                          <tr key={item.key}>
+                            <td className="metadata-key">
+                              {item.displayKey}
+                              <em className="header-label-subtitle">(AI-generated)</em>
+                            </td>
+                            <td className="metadata-value">
+                              <a
+                                href="#"
+                                className="doc-link"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  onOpenSummary(String(item.value), title, docId);
+                                }}
+                              >
+                                View Summary →
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      if (item.configKey === 'toc_classified' && onOpenToc) {
+                        return (
+                          <tr key={item.key}>
+                            <td className="metadata-key">{item.displayKey}</td>
+                            <td className="metadata-value">
+                              <a
+                                href="#"
+                                className="doc-link"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  onOpenToc(metadataDoc);
+                                }}
+                              >
+                                View Contents →
+                              </a>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      return (
+                        <tr key={item.key}>
+                          <td className="metadata-key">
+                            {item.displayKey}
+                            {(item.key === 'sys_taxonomies') && (
+                              <em className="header-label-subtitle">(AI-generated : Experimental)</em>
+                            )}
+                          </td>
+                          <td className="metadata-value">{renderValue(item)}</td>
+                        </tr>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* System Information: collapsible when configured fields are present */}
+                {hasConfiguredFields && hasSystemInfo && (
+                  <>
+                    <tr className="metadata-divider">
+                      <td colSpan={2}>
+                        <div className="metadata-divider-line" />
+                      </td>
+                    </tr>
+                    <tr className="metadata-section-toggle" onClick={() => setSystemInfoExpanded(!systemInfoExpanded)}>
+                      <td className="metadata-key" colSpan={2}>
+                        <strong>
+                          <span className="metadata-section-icon">
+                            {systemInfoExpanded ? '▼' : '▶'}
+                          </span>
+                          {' '}System Information
+                        </strong>
+                      </td>
+                    </tr>
+                    {systemInfoExpanded && filteredSections.map((section, index) => (
+                      <React.Fragment key={section.label}>
+                        {section.items.length > 0 && (
+                          <tr className="metadata-section">
+                            <td className="metadata-key" colSpan={2}>
+                              <strong>{section.label}</strong>
+                            </td>
+                          </tr>
+                        )}
+                        {section.items.map((item) => (
+                          <tr key={item.key}>
+                            <td className="metadata-key">
+                              {item.displayKey}
+                              {(item.key === 'sys_taxonomies' || item.key === 'full_summary') && (
+                                <em className="header-label-subtitle">(AI-generated : Experimental)</em>
+                              )}
+                            </td>
+                            <td className="metadata-value">{renderValue(item)}</td>
+                          </tr>
+                        ))}
+                        {section.items.length > 0 &&
+                          filteredSections.slice(index + 1).some((next) => next.items.length > 0) && (
+                            <tr className="metadata-divider">
+                              <td colSpan={2}>
+                                <div className="metadata-divider-line" />
+                              </td>
+                            </tr>
+                          )}
+                      </React.Fragment>
+                    ))}
+                  </>
+                )}
+
+                {/* Fallback: no configured fields — show all sections as before */}
+                {!hasConfiguredFields && sections.map((section, index) => (
                   <React.Fragment key={section.label}>
                     {section.items.length > 0 && (
                       <tr className="metadata-section">

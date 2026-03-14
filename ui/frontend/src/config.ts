@@ -29,6 +29,13 @@ export const SEMANTIC_HIGHLIGHT_THRESHOLD = config.application.search.highlight_
 // AI Summary feature flag (defaults to false)
 export const AI_SUMMARY_ON = config.application.ai_summary.enabled;
 
+// Research Assistant feature flag (defaults to false)
+export const ASSISTANT_ENABLED = (config.application as any).assistant?.enabled ?? false;
+
+// Research Assistant config
+export const ASSISTANT_MAX_SEARCH_RESULTS = (config.application as any).assistant?.max_search_results ?? 20;
+export const ASSISTANT_MAX_ITERATIONS = (config.application as any).assistant?.max_iterations ?? 3;
+
 // Search results page size (defaults to 50)
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
@@ -42,5 +49,22 @@ export const USER_FEEDBACK = process.env.REACT_APP_USER_FEEDBACK === '1';
 // Google Analytics Measurement ID (optional, set via REACT_APP_GA_MEASUREMENT_ID)
 export const GA_MEASUREMENT_ID: string | undefined =
   process.env.REACT_APP_GA_MEASUREMENT_ID || undefined;
+
+// User module — enables authentication, user profiles, and permissions
+// Modes: off | on_passive | on_active
+//   off        — no auth UI
+//   on_passive — auth UI available, login optional (anonymous access allowed)
+//   on_active  — auth UI required, all access requires login
+// Backwards compatible: 'true' → on_active, 'false'/unset → off
+const _USER_MODULE_RAW = (process.env.REACT_APP_USER_MODULE || 'off').toLowerCase();
+export type UserModuleMode = 'off' | 'on_passive' | 'on_active';
+export const USER_MODULE_MODE: UserModuleMode =
+  _USER_MODULE_RAW === 'true' || _USER_MODULE_RAW === 'on_active'
+    ? 'on_active'
+    : _USER_MODULE_RAW === 'on_passive'
+      ? 'on_passive'
+      : 'off';
+// Auth module is enabled (true for both on_passive and on_active)
+export const USER_MODULE = USER_MODULE_MODE !== 'off';
 
 export default API_BASE_URL;

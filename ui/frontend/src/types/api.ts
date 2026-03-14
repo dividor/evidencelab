@@ -119,6 +119,8 @@ export interface ModelComboConfig {
   sparse_model_location?: string;
   summarization_model: SummaryModelConfig;
   semantic_highlighting_model: SummaryModelConfig;
+  assistant_model?: SummaryModelConfig;
+  assistant_model_location?: string;
   reranker_model: string;
   rerank_model_page_size?: number;
   summarization_model_location?: string;
@@ -132,6 +134,61 @@ export interface SummaryModelConfig {
   temperature: number;
   chunk_overlap: number;
   chunk_tokens_ratio: number;
+}
+
+// Research Assistant types
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  sources?: SourceReference[];
+  toolCalls?: SearchToolCall[];
+  agentState?: AgentState;
+  createdAt: string;
+}
+
+export interface SourceReference {
+  chunkId: string;
+  docId: string;
+  title: string;
+  text: string;
+  score: number;
+  page?: number;
+  index?: number;
+  bbox?: any;
+  headings?: string[];
+}
+
+export interface AgentState {
+  phase: string;
+  searchQueries?: string[];
+  iterationCount?: number;
+}
+
+export interface SearchResultCard {
+  title: string;
+  text: string;
+}
+
+export interface SearchToolCall {
+  query: string;
+  resultCount: number;
+  results?: SearchResultCard[];
+}
+
+export interface ThreadListItem {
+  id: string;
+  title: string;
+  dataSource: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantConfig {
+  enabled: boolean;
+  maxSearchResults: number;
+  maxIterations: number;
 }
 
 export interface SearchResponse {
@@ -148,9 +205,15 @@ export interface FacetValue {
   published_year?: string;  // For title facets - associated year
 }
 
+export interface RangeInfo {
+  min: number;
+  max: number;
+}
+
 export interface Facets {
   facets: Record<string, FacetValue[]>;  // core_field_name -> facet values
   filter_fields: Record<string, string>;  // core_field_name -> display label
+  range_fields?: Record<string, RangeInfo>;  // numerical fields with min/max
 }
 
 export interface HighlightBox {
@@ -175,6 +238,19 @@ export interface HighlightBox {
 export interface HighlightResponse {
   highlights: HighlightBox[];
   total: number;
+}
+
+/** A node in the drilldown exploration tree */
+export interface DrilldownNode {
+  id: string;
+  label: string;
+  summary: string;
+  prompt: string;
+  results: SearchResult[];
+  translatedText: string | null;
+  translatedLang: string | null;
+  expanded: boolean;
+  children: DrilldownNode[];
 }
 
 // Dynamic search filters using core field names

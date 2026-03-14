@@ -11,6 +11,7 @@ class PostgresAdminMixin:
     docs_table: str
     chunks_table: str
     _ensured_doc_sys_columns: set[str]
+    _ensured_doc_map_columns: set[str]
     _ensured_chunk_sys_columns: set[str]
 
     def _get_conn(self):
@@ -237,6 +238,29 @@ class PostgresAdminMixin:
                 f"ADD COLUMN IF NOT EXISTS {key} {_infer_type(key, value)}"
             )
             self._ensured_doc_sys_columns.add(key)
+
+        if not additions:
+            return
+
+        query = f"ALTER TABLE {self.docs_table} {', '.join(additions)}"
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+            conn.commit()
+
+    def ensure_map_doc_columns(self, map_fields: dict) -> None:
+        """Auto-create missing map_* columns derived from config field_mapping."""
+        if not map_fields:
+            return
+
+        additions = []
+        for key in sorted(map_fields.keys()):
+            if not key.startswith("map_"):
+                continue
+            if key in self._ensured_doc_map_columns:
+                continue
+            additions.append(f"ADD COLUMN IF NOT EXISTS {key} TEXT")
+            self._ensured_doc_map_columns.add(key)
 
         if not additions:
             return

@@ -1,4 +1,5 @@
 # Data directories - NEVER copy into Docker images
+data
 data/
 data/**
 
@@ -73,3 +74,5 @@ public/
 logs/
 db/
 .cache/
+caddy_data/
+caddy_config/

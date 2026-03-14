@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Tuple
+import re
+from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 from pipeline.db import get_field_mapping
 from pipeline.processors.scanning.mapping_utils import sanitize_source_key
 
 logger = logging.getLogger(__name__)
+
+# Pattern for transform functions, e.g. YEAR(docdt)
+_TRANSFORM_RE = re.compile(r"^([A-Z_]+)\((.+)\)$")
 
 
 class ScannerMappingMixin:
@@ -38,6 +43,46 @@ class ScannerMappingMixin:
         logger.info("Final mapped organization: %s", org_value)
         return src_fields, map_fields
 
+    # Fields that should never be split into lists (URLs, titles, years).
+    _SCALAR_FIELDS = frozenset(
+        {"title", "published_year", "year", "pdf_url", "report_url", "organization"}
+    )
+
+    @staticmethod
+    def _resolve_source_value(
+        raw_metadata: Dict[str, Any], mapping_value: str
+    ) -> Optional[Any]:
+        """Resolve a mapping value to the raw source value.
+
+        Supports:
+        - Plain field names: ``"display_title"``
+        - Transform functions: ``"YEAR(docdt)"``
+        """
+        match = _TRANSFORM_RE.match(mapping_value)
+        if not match:
+            return raw_metadata.get(mapping_value)
+
+        func_name, field_name = match.group(1), match.group(2)
+        raw_value = raw_metadata.get(field_name)
+        if raw_value is None or raw_value == "":
+            return None
+
+        if func_name == "YEAR":
+            try:
+                # Handle trailing Z (UTC indicator) for fromisoformat
+                val_str = str(raw_value).replace("Z", "+00:00")
+                return str(datetime.fromisoformat(val_str).year)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "YEAR transform failed for field '%s' value '%s'",
+                    field_name,
+                    raw_value,
+                )
+                return None
+
+        logger.warning("Unknown transform function: %s", func_name)
+        return None
+
     def _apply_mapped_core_values(
         self,
         raw_metadata: Dict[str, Any],
@@ -52,14 +97,26 @@ class ScannerMappingMixin:
                 "fixed_value:"
             ):
                 continue
-            source_value = raw_metadata.get(mapping_value)
+            source_value = self._resolve_source_value(raw_metadata, mapping_value)
             if source_value is None or source_value == "":
                 continue
             if core_field in ("published_year", "year"):
                 mapped_core[core_field] = str(source_value)
             else:
-                mapped_core[core_field] = source_value
+                mapped_core[core_field] = self._split_if_multival(
+                    core_field, source_value
+                )
         return mapped_core
+
+    @classmethod
+    def _split_if_multival(cls, core_field: str, value: Any) -> Any:
+        """Split semicolon-separated strings into lists for multi-value fields."""
+        if core_field in cls._SCALAR_FIELDS:
+            return value
+        if isinstance(value, str) and ";" in value:
+            parts = [v.strip() for v in value.split(";") if v.strip()]
+            return parts if len(parts) > 1 else (parts[0] if parts else value)
+        return value
 
     def _build_src_fields(self, raw_metadata: Dict[str, Any]) -> Dict[str, Any]:
         src_fields: Dict[str, Any] = {}

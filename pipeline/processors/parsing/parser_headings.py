@@ -54,15 +54,30 @@ def apply_hierarchical_postprocessor(_parser, result: Any, filepath: Path) -> No
     stdout_tee = _TeeStream(sys.stdout, stdout_buffer)
     stderr_tee = _TeeStream(sys.stderr, stderr_buffer)
 
-    with contextlib.redirect_stdout(
-        cast(TextIO, stdout_tee)
-    ), contextlib.redirect_stderr(cast(TextIO, stderr_tee)):
-        if ResultPostprocessor is not None:
-            ResultPostprocessor(result, source=filepath, raise_on_error=False).process()
-        else:
-            logger.warning(
-                "ResultPostprocessor not available, skipping hierarchical processing"
-            )
+    try:
+        with contextlib.redirect_stdout(
+            cast(TextIO, stdout_tee)
+        ), contextlib.redirect_stderr(cast(TextIO, stderr_tee)):
+            if ResultPostprocessor is not None:
+                ResultPostprocessor(
+                    result, source=filepath, raise_on_error=False
+                ).process()
+            else:
+                logger.warning(
+                    "ResultPostprocessor not available, "
+                    "skipping hierarchical processing"
+                )
+    except IndexError as exc:
+        # The hierarchical library tries doc[page+1] for the last TOC
+        # bookmark without bounds-checking, causing "page N not in
+        # document" when a bookmark sits on the final page.
+        logger.warning(
+            "  ⚠ Hierarchical postprocessor hit page bounds error: %s. "
+            "Reverting to Docling headers...",
+            exc,
+        )
+        result.document = original_document
+        return
 
     captured = stdout_buffer.getvalue() + stderr_buffer.getvalue()
     missing_heading_count += captured.count("Following heading was not found")

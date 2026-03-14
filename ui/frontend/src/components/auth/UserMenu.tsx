@@ -1,0 +1,140 @@
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import LoginModal from './LoginModal';
+import ProfileModal from './ProfileModal';
+import SavedResearchModal from '../SavedResearchModal';
+
+interface UserMenuProps {
+  onAdminClick?: () => void;
+  onLoadResearch?: (id: string) => void;
+}
+
+const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => {
+  const {
+    user, isAuthenticated, isLoading, logout,
+    verificationMessage, resetPasswordToken, clearResetPasswordToken,
+  } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showSavedResearch, setShowSavedResearch] = useState(false);
+
+  // Auto-open the login modal when a verification message arrives
+  useEffect(() => {
+    if (verificationMessage && !isAuthenticated) {
+      setShowLogin(true);
+    }
+  }, [verificationMessage, isAuthenticated]);
+
+  // Auto-open the login modal in reset-password mode
+  useEffect(() => {
+    if (resetPasswordToken) {
+      setShowLogin(true);
+    }
+  }, [resetPasswordToken]);
+
+  if (isLoading) return null;
+
+  const initials = (user?.first_name || user?.last_name)
+    ? [user?.first_name?.[0], user?.last_name?.[0]]
+        .filter(Boolean)
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : user?.email?.charAt(0).toUpperCase() || '?';
+
+  const handleBlur = () => {
+    // Delay to allow click events on dropdown items
+    setTimeout(() => setMenuOpen(false), 200);
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <button
+          className="user-menu-trigger user-menu-trigger-anonymous"
+          onClick={() => setShowLogin(true)}
+          title="Sign in"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+        </button>
+        {showLogin && (
+          <LoginModal
+            onClose={() => { setShowLogin(false); clearResetPasswordToken(); }}
+            resetToken={resetPasswordToken}
+          />
+        )}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="dropdown-container">
+        <button
+          className="user-menu-trigger"
+          onClick={() => setMenuOpen(!menuOpen)}
+          onBlur={handleBlur}
+          title={user?.email || 'User menu'}
+        >
+          {initials}
+        </button>
+        {menuOpen && (
+          <div className="dropdown-menu user-menu-dropdown">
+            <div className="user-menu-header">
+              <strong>{user?.display_name || user?.email}</strong>
+              {user?.display_name && (
+                <span className="user-menu-email">{user?.email}</span>
+              )}
+            </div>
+            <button
+              className="dropdown-item"
+              onClick={() => { setShowProfile(true); setMenuOpen(false); }}
+            >
+              Profile
+            </button>
+            {onLoadResearch && (
+              <button
+                className="dropdown-item"
+                onClick={() => { setShowSavedResearch(true); setMenuOpen(false); }}
+              >
+                Saved Research
+              </button>
+            )}
+            {user?.is_superuser && onAdminClick && (
+              <button
+                className="dropdown-item"
+                onClick={() => { onAdminClick(); setMenuOpen(false); }}
+              >
+                Admin
+              </button>
+            )}
+            <button
+              className="dropdown-item user-menu-logout"
+              onClick={() => { logout(); setMenuOpen(false); }}
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
+      </div>
+      {showProfile && (
+        <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
+      {showSavedResearch && onLoadResearch && (
+        <SavedResearchModal
+          onClose={() => setShowSavedResearch(false)}
+          onLoadResearch={(id: string) => {
+            setShowSavedResearch(false);
+            onLoadResearch(id);
+          }}
+        />
+      )}
+    </>
+  );
+};
+
+export default UserMenu;

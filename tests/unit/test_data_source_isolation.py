@@ -114,13 +114,17 @@ class TestProcessorDataSourceIntegration:
         from pipeline.db import Database
         from pipeline.processors.indexing.indexer import IndexProcessor
 
+        chunk_config = {
+            "tokenizer": "intfloat/multilingual-e5-large",
+            "max_tokens": 450,
+        }
         with patch("pipeline.db.QdrantClient") as mock_qdrant, patch(
             "pipeline.db.database.PostgresClient"
         ):
             mock_qdrant.return_value.get_collections.return_value.collections = []
 
             custom_db = Database(data_source="custom")
-            indexer = IndexProcessor(db=custom_db)
+            indexer = IndexProcessor(db=custom_db, chunk_config=chunk_config)
 
             assert indexer.db.data_source == "custom"
             assert indexer.db.chunks_collection == "chunks_custom"

@@ -57,8 +57,8 @@ const DocumentThumbnail: React.FC<{ doc: any; thumbnailUrl: string }> = ({ doc, 
 export const DocumentsTableRow: React.FC<{
   doc: any;
   index: number;
-  onOpenSummary: (summary: string, docTitle: string) => void;
-  onOpenTaxonomyModal?: (value: any, definition: string, taxonomyName: string) => void;
+  onOpenSummary: (summary: string, docTitle: string, docId?: string) => void;
+  onOpenTaxonomyModal?: (value: any, definition: string, taxonomyName: string, docId?: string, docTitle?: string, docSummary?: string) => void;
   onOpenToc: (doc: any) => void;
   onOpenMetadata: (doc: any) => void;
   onOpenTimeline: (doc: any) => void;
@@ -85,7 +85,7 @@ export const DocumentsTableRow: React.FC<{
   onOpenPdfPreview,
   reprocessingDocId,
   dataSourceConfig,
-  dataSource = 'uneg',
+  dataSource = '',
 }) => {
     const lastUpdated = formatTimestamp(getLastUpdatedTimestamp(doc.stages || {}));
 
@@ -125,7 +125,7 @@ export const DocumentsTableRow: React.FC<{
           <DocumentsSummaryCell
             summary={doc.full_summary}
             docTitle={doc.title || 'Untitled'}
-            onOpenSummary={onOpenSummary}
+            onOpenSummary={(summary, title) => onOpenSummary(summary, title, doc.doc_id)}
           />
         </td>
         <DocumentMetadataCell doc={doc} onOpenToc={onOpenToc} onOpenMetadata={onOpenMetadata} />
@@ -140,7 +140,7 @@ export const DocumentsTableRow: React.FC<{
             doc={doc}
             taxonomyKey={taxonomyKey}
             taxonomyConfig={taxonomies[taxonomyKey]}
-            onOpenTaxonomyModal={onOpenTaxonomyModal}
+            onOpenTaxonomyModal={onOpenTaxonomyModal ? (value: any, definition: string, taxonomyName: string) => onOpenTaxonomyModal(value, definition, taxonomyName, doc.doc_id, doc.title, doc.full_summary) : undefined}
           />
         ))}
         <DocumentFormatCell fileFormat={doc.file_format} />

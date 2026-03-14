@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Set
@@ -68,9 +69,40 @@ def get_pg_for_source(data_source: str = None) -> PostgresClient:
     return _pg_cache[source]
 
 
+class JSONLogFormatter(logging.Formatter):
+    """Structured JSON log formatter for SIEM ingestion (ASVS V7.1.3)."""
+
+    # Extra fields that are included in output when present on the LogRecord.
+    _EXTRA_FIELDS = ("user_id", "user_email", "ip_address", "event_type", "request_id")
+
+    def format(self, record: logging.LogRecord) -> str:  # noqa: A003
+        entry: dict = {
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
+        }
+        if record.exc_info and record.exc_info[0] is not None:
+            entry["exception"] = self.formatException(record.exc_info)
+        for key in self._EXTRA_FIELDS:
+            val = getattr(record, key, None)
+            if val is not None:
+                entry[key] = val
+        return json.dumps(entry, default=str)
+
+
 def setup_logging() -> logging.Logger:
-    """Setup logging to file and console."""
+    """Setup logging to file and console.
+
+    Set ``LOG_FORMAT=json`` for structured JSON output (SIEM-friendly).
+    """
     log_file = None
+    log_format = os.environ.get("LOG_FORMAT", "text").lower()
 
     # Determine log directory
     if os.path.exists("/app/logs"):
@@ -85,9 +117,16 @@ def setup_logging() -> logging.Logger:
             RotatingFileHandler(log_file, maxBytes=10 * 1024 * 1024, backupCount=3)
         )
 
+    if log_format == "json":
+        formatter: logging.Formatter = JSONLogFormatter()
+    else:
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+
+    for handler in handlers:
+        handler.setFormatter(formatter)
+
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=handlers,
         force=True,
     )

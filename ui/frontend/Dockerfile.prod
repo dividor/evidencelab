@@ -18,6 +18,9 @@ COPY ui/frontend/. .
 # Copy config.json from root (after source files)
 COPY config.json ./src/config.json
 
+# Copy docs from project root (used by copy-docs script during build)
+COPY docs/ ./docs_source/
+
 # Build for production
 # API calls go to /api which Caddy proxies to the backend
 ARG REACT_APP_API_BASE_URL=/api
@@ -36,14 +39,14 @@ ENV REACT_APP_PDF_SEMANTIC_HIGHLIGHTS=${REACT_APP_PDF_SEMANTIC_HIGHLIGHTS}
 ARG REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=0.4
 ENV REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=${REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD}
 
-ARG REACT_APP_API_KEY
-ENV REACT_APP_API_KEY=${REACT_APP_API_KEY}
-
 ARG REACT_APP_BASE_PATH=
 ENV REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH}
 
 ARG REACT_APP_USER_FEEDBACK=0
 ENV REACT_APP_USER_FEEDBACK=${REACT_APP_USER_FEEDBACK}
+
+ARG REACT_APP_USER_MODULE=false
+ENV REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE}
 
 RUN npm run build
 

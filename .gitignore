@@ -141,7 +141,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
-.venv
+.venv*/
 env/
 venv/
 ENV/
@@ -212,6 +212,12 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Claude Code
+.claude/
+
+# Backup files
+*.bak
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
@@ -242,7 +248,7 @@ pipeline/integration/wfp-evaluation-ai/
 # Debug artifacts
 *_search_results.json
 *.png
-!ui/frontend/public/docs/images/*.png
+!docs/images/**/*.png
 !ui/frontend/public/logo.png
 !ui/frontend/public/og-image.png
 HIGHLIGHT_SCROLL_TESTING.md
@@ -266,3 +272,4 @@ ui/frontend/src/config.json
 
 logs
 config.json
+*key.json

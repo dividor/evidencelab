@@ -57,11 +57,15 @@ interface PipelineDataState {
 let pipelineDataCache: PipelineDataState | null = null;
 let pipelineDataPromise: Promise<PipelineDataState> | null = null;
 
-const fetchPipelineData = async (dataSource: string): Promise<PipelineDataState> => {
+const fetchPipelineData = async (
+  dataSource: string,
+  refresh = false,
+): Promise<PipelineDataState> => {
+  const qs = refresh ? `&refresh=true` : '';
   const [statsRes, sankeyRes, timelineRes] = await Promise.all([
-    axios.get(`${API_BASE_URL}/stats?data_source=${dataSource}`),
-    axios.get(`${API_BASE_URL}/stats/sankey?data_source=${dataSource}`),
-    axios.get(`${API_BASE_URL}/stats/timeline?data_source=${dataSource}`)
+    axios.get(`${API_BASE_URL}/stats?data_source=${dataSource}${qs}`),
+    axios.get(`${API_BASE_URL}/stats/sankey?data_source=${dataSource}${qs}`),
+    axios.get(`${API_BASE_URL}/stats/timeline?data_source=${dataSource}${qs}`)
   ]);
 
   return {
@@ -79,10 +83,12 @@ const getCachedData = (dataSource: string) => {
   return pipelineDataCache.dataSource === dataSource ? pipelineDataCache : null;
 };
 
-const requestPipelineData = async (dataSource: string) => {
-  const cached = getCachedData(dataSource);
-  if (cached) {
-    return cached;
+const requestPipelineData = async (dataSource: string, refresh = false) => {
+  if (!refresh) {
+    const cached = getCachedData(dataSource);
+    if (cached) {
+      return cached;
+    }
   }
 
   if (pipelineDataCache && pipelineDataCache.dataSource !== dataSource) {
@@ -90,8 +96,8 @@ const requestPipelineData = async (dataSource: string) => {
     pipelineDataPromise = null;
   }
 
-  if (!pipelineDataPromise) {
-    pipelineDataPromise = fetchPipelineData(dataSource)
+  if (!pipelineDataPromise || refresh) {
+    pipelineDataPromise = fetchPipelineData(dataSource, refresh)
       .then((data) => {
         pipelineDataCache = data;
         return data;
@@ -111,11 +117,11 @@ export const usePipelineData = (dataSource: string) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (bustCache = false) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await requestPipelineData(dataSource);
+      const data = await requestPipelineData(dataSource, bustCache);
       setStats(data.stats);
       setSankeyData(data.sankey);
       setTimelineData(data.timeline);
@@ -127,6 +133,8 @@ export const usePipelineData = (dataSource: string) => {
     }
   }, [dataSource]);
 
+  const refresh = useCallback(() => loadData(true), [loadData]);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -137,6 +145,7 @@ export const usePipelineData = (dataSource: string) => {
     timelineData,
     loading,
     error,
-    reload: loadData
+    reload: loadData,
+    refresh,
   };
 };

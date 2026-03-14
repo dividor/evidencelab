@@ -7,7 +7,9 @@ import API_BASE_URL, {
   SEMANTIC_HIGHLIGHT_THRESHOLD,
   SEARCH_RESULTS_PAGE_SIZE,
   APP_BASE_PATH,
-  GA_MEASUREMENT_ID
+  GA_MEASUREMENT_ID,
+  USER_MODULE,
+  USER_MODULE_MODE,
 } from './config';
 
 import {
@@ -17,13 +19,16 @@ import {
   SearchFilters,
   SearchResult,
   ModelComboConfig,
-  SummaryModelConfig
+  SummaryModelConfig,
+  DrilldownNode,
 } from './types/api';
+import { useDrilldownTree, AiSummarySnapshot } from './hooks/useDrilldownTree';
 import { Documents } from './components/Documents';
 import { Stats } from './components/Stats';
 import { Pipeline, Processing } from './components/Pipeline';
 import TocModal from './components/TocModal';
 import { MetadataModal } from './components/documents/MetadataModal';
+import { SummaryModal } from './components/documents/SummaryModal';
 import { TopBar } from './components/layout/TopBar';
 import { NavTabs } from './components/layout/NavTabs';
 import { SearchBox } from './components/SearchBox';
@@ -32,6 +37,15 @@ import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent, getGaConsent } from './components/CookieConsent';
+import SavedResearchModal from './components/SavedResearchModal';
+import { AuthContext, useAuthState } from './hooks/useAuth';
+import { useGroupDefaults } from './hooks/useGroupDefaults';
+import { useActivityLogging } from './hooks/useActivityLogging';
+import { serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
+import { generateUUID } from './utils/uuid';
+import AdminPanel from './components/admin/AdminPanel';
+import { AssistantTab } from './components/assistant/AssistantTab';
+import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
@@ -42,25 +56,22 @@ import {
 // datasource config is now fetched dynamically
 // import datasourcesConfig from './datasources.config.json';
 
-// Configure API key header for all axios requests
-const API_KEY = process.env.REACT_APP_API_KEY;
-if (API_KEY) {
-  if (!axios.defaults) {
-    axios.defaults = {} as typeof axios.defaults;
-  }
-  if (!axios.defaults.headers) {
-    axios.defaults.headers = {
-      common: {},
-      post: {},
-      put: {},
-      patch: {}
-    };
-  }
-  if (!axios.defaults.headers.common) {
-    axios.defaults.headers.common = {};
-  }
-  axios.defaults.headers.common['X-API-Key'] = API_KEY;
-}
+const AI_SUMMARY_ERROR = 'Uh oh. Something went wrong asking the AI.';
+
+/** Wrapper to isolate conditional render from main App CC */
+const LoadResearchModalWrapper: React.FC<{
+  show: boolean;
+  onClose: () => void;
+  onLoad: (id: string) => void;
+}> = ({ show, onClose, onLoad }) => {
+  if (!show) return null;
+  return <SavedResearchModal onClose={onClose} onLoadResearch={onLoad} />;
+};
+
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
 
 // Type for datasource configuration
 interface FieldMapping {
@@ -79,6 +90,8 @@ export interface DataSourceConfigItem {
   data_subdir: string;
   field_mapping: FieldMapping;
   filter_fields: FilterFields;
+  metadata_panel_fields?: FilterFields;
+  example_queries?: string[];
   pipeline?: any; // Add pipeline to access taxonomies
   total_documents?: number;
 }
@@ -88,7 +101,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats'] as const;
+const VALID_TABS = ['search', 'assistant', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats', 'admin', 'docs'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -129,9 +142,10 @@ const buildSearchErrorMessage = (error: any): string => {
 
 const translateViaApi = async (text: string, targetLanguage: string, sourceLanguage?: string): Promise<string | null> => {
   try {
+    const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {
@@ -363,10 +377,12 @@ type ModelCombos = Record<string, ModelComboConfig>;
 const fetchModelCombos = async (
   apiBaseUrl: string,
   setModelCombos: React.Dispatch<React.SetStateAction<ModelCombos>>,
-  setLoading: React.Dispatch<React.SetStateAction<boolean>>
+  setLoading: React.Dispatch<React.SetStateAction<boolean>>,
+  dataSource?: string
 ): Promise<void> => {
   try {
-    const response = await axios.get<ModelCombos>(`${apiBaseUrl}/config/model-combos`);
+    const params = dataSource ? `?data_source=${encodeURIComponent(dataSource)}` : '';
+    const response = await axios.get<ModelCombos>(`${apiBaseUrl}/config/model-combos${params}`);
     const data = response.data as ModelCombos;
     setModelCombos(data);
   } catch (error: any) {
@@ -398,14 +414,20 @@ const getTabFromPath = (): TabName => {
   return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
 };
 
-// Core field names used in URL and API (order matters for display)
-const CORE_FILTER_FIELDS = ['organization', 'title', 'published_year', 'document_type', 'country', 'language'];
+// Default filter fields (fallback for URL parsing before facets load)
+const DEFAULT_FILTER_FIELDS = ['organization', 'title', 'published_year', 'document_type', 'country', 'language'];
 const DEFAULT_PUBLISHED_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
 
 function App() {
+  // Auth state (only active when USER_MODULE is enabled)
+  const authState = useAuthState();
+
+  // Activity logging (fire-and-forget)
+  const { logSearch, updateSummary: updateActivitySummary } = useActivityLogging();
+
   // Initialize search state from URL parameters
   const initialSearchState = getSearchStateFromURL(
-    CORE_FILTER_FIELDS,
+    DEFAULT_FILTER_FIELDS,
     DEFAULT_SECTION_TYPES
   );
   const initialQueryFromUrlRef = useRef(Boolean(initialSearchState.query.trim()));
@@ -433,13 +455,18 @@ function App() {
   );
   const [searchModel, setSearchModel] = useState<string | null>(initialSearchState.model);
   const [summaryModelConfig, setSummaryModelConfig] = useState<SummaryModelConfig | null>(null);
+  const [assistantModelConfig, setAssistantModelConfig] = useState<SummaryModelConfig | null>(null);
   const [semanticHighlightModelConfig, setSemanticHighlightModelConfig] =
     useState<SummaryModelConfig | null>(null);
   const [rerankModel, setRerankModel] = useState<string | null>(null);
   const [rerankModelPageSize, setRerankModelPageSize] = useState<number | null>(null);
 
-  // Fetch datasources config on mount (includes total_documents per datasource)
+  // Fetch datasources config.
+  // In on_active mode, wait until the user is authenticated so the request
+  // isn't rejected with 401 by ActiveAuthMiddleware.  When USER_MODULE is
+  // off (or on_passive), fetch immediately on mount.
   useEffect(() => {
+    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
     const fetchConfig = async () => {
       try {
         const response = await axios.get<DataSourcesConfig>(`${API_BASE_URL}/config/datasources`);
@@ -462,12 +489,9 @@ function App() {
       }
     };
     fetchConfig();
-  }, []);
+  }, [authState.isAuthenticated]);
 
-  // Fetch model combos config on mount
-  useEffect(() => {
-    fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading);
-  }, []);
+  // Model combos are fetched after dataSource is resolved (see below)
 
   // Get available domains from config
   const availableDomains = Object.keys(datasourcesConfig);
@@ -487,7 +511,7 @@ function App() {
     if (initialSearchState.dataset) {
       return initialSearchState.dataset;
     }
-    return 'UN Humanitarian Evaluation';  // Fallback default
+    return '';  // Will be set to first available domain when config loads
   });
 
   // Update selected domain when config loads if needed, or ensure it's valid
@@ -540,6 +564,7 @@ function App() {
     }
     setSearchModel(combo.embedding_model);
     setSummaryModelConfig(combo.summarization_model);
+    setAssistantModelConfig(combo.assistant_model ?? combo.summarization_model);
     setSemanticHighlightModelConfig(combo.semantic_highlighting_model);
     setRerankModel(combo.reranker_model);
     setRerankModelPageSize(combo.rerank_model_page_size ?? null);
@@ -555,6 +580,7 @@ function App() {
   const [techContent, setTechContent] = useState('');
   const [dataContent, setDataContent] = useState('');
   const [privacyContent, setPrivacyContent] = useState('');
+  const [docsInitialPath, setDocsInitialPath] = useState<string | undefined>(undefined);
   const tooltipTimeoutRef = React.useRef<number | null>(null);
 
   const handleToggleDomainDropdown = useCallback(() => {
@@ -633,21 +659,33 @@ function App() {
   const dataSource = React.useMemo(() => {
     // If we have a selectedDomain and config is loaded, get the data_subdir
     if (!loadingConfig && selectedDomain && datasourcesConfig[selectedDomain]) {
-      return datasourcesConfig[selectedDomain].data_subdir || 'uneg';
+      return datasourcesConfig[selectedDomain].data_subdir || '';
     }
-    // If config is still loading but we have a dataset in URL, we need to wait
-    // Return 'uneg' as fallback, but it will update when config loads
-    return currentDataSourceConfig?.data_subdir || 'uneg';
+    // Config still loading — return empty to prevent premature API calls
+    return currentDataSourceConfig?.data_subdir || '';
   }, [loadingConfig, selectedDomain, datasourcesConfig, currentDataSourceConfig]);
+
+  // Fetch model combos filtered by active data source
+  useEffect(() => {
+    if (USER_MODULE_MODE === 'on_active' && !authState.isAuthenticated) return;
+    if (!dataSource) return;
+    fetchModelCombos(API_BASE_URL, setModelCombos, setModelCombosLoading, dataSource);
+  }, [authState.isAuthenticated, dataSource]);
 
   const fieldMapping = currentDataSourceConfig?.field_mapping || {};
   const filterFields = currentDataSourceConfig?.filter_fields || {};
+  const metadataPanelFields = React.useMemo(
+    () => currentDataSourceConfig?.metadata_panel_fields
+      || currentDataSourceConfig?.filter_fields
+      || {},
+    [currentDataSourceConfig],
+  );
 
 
   // Initialize search state from URL parameters - MOVED TO TOP
   const [query, setQuery] = useState(initialSearchState.query);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [searchId, setSearchId] = useState(0);
+  const [searchId, setSearchId] = useState(() => generateUUID());
   const [facets, setFacets] = useState<Facets | null>(null);
   const [allFacets, setAllFacets] = useState<Facets | null>(null);
   const [facetsDataSource, setFacetsDataSource] = useState<string | null>(null);
@@ -655,6 +693,7 @@ function App() {
   const [filters, setFilters] = useState<SearchFilters>(initialSearchState.filters);
   const [initialSearchDone, setInitialSearchDone] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hasSearchRun, setHasSearchRun] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<SearchResult | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
@@ -667,6 +706,11 @@ function App() {
   const [loadingToc, setLoadingToc] = useState(false);
   const [metadataModalOpen, setMetadataModalOpen] = useState(false);
   const [metadataModalDoc, setMetadataModalDoc] = useState<Record<string, any> | null>(null);
+  // Summary modal state for metadata panel
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [selectedSummary, setSelectedSummary] = useState('');
+  const [selectedSummaryTitle, setSelectedSummaryTitle] = useState('');
+  const [selectedSummaryDocId, setSelectedSummaryDocId] = useState('');
   const fetchTocPdfUrl = useCallback(async (docId: string) => {
     try {
       const response = await axios.get(
@@ -709,6 +753,8 @@ function App() {
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
+  // Group greeting message (overrides search placeholder on landing page)
+  const [greetingMessage, setGreetingMessage] = useState<string>('');
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -722,6 +768,47 @@ function App() {
   const [aiSummaryTranslatedText, setAiSummaryTranslatedText] = useState<string | null>(null);
   const [aiSummaryTranslatingLang, setAiSummaryTranslatingLang] = useState<string | null>(null);
   const [aiSummaryTranslatedLang, setAiSummaryTranslatedLang] = useState<string | null>(null);
+
+  // AI Summary Drilldown state (tree-based)
+  const {
+    drilldownTree, currentNodeId, isDrilldown, currentHighlight: drilldownHighlight,
+    resetTree: resetDrilldownTree,
+    loadTree: loadDrilldownTree,
+    startDrilldown: startDrilldownInTree,
+    addChildNode: addChildNodeInTree,
+    addChildToNode: addChildToNodeInTree,
+    removeNode: removeNodeInTree,
+    getNode: getNodeInTree,
+    updateNodeData: updateNodeDataInTree,
+    navigateBack: navigateBackInTree,
+    navigateToNode: navigateToNodeInTree,
+  } = useDrilldownTree();
+  const [findOutMoreLoading, setFindOutMoreLoading] = useState(false);
+  const [findOutMoreActiveFact, setFindOutMoreActiveFact] = useState<string | null>(null);
+  const [findOutMoreDone, setFindOutMoreDone] = useState(false);
+  const [savedResearchId, setSavedResearchId] = useState<string | null>(null);
+  const [saveResearchLoading, setSaveResearchLoading] = useState(false);
+  const [saveResearchStatus, setSaveResearchStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [showLoadResearchModal, setShowLoadResearchModal] = useState(false);
+  const [addingNodeParentId, setAddingNodeParentId] = useState<string | null>(null);
+
+  // Apply per-group search defaults (fetched when user is authenticated)
+  useGroupDefaults(USER_MODULE, authState, {
+    denseWeight: setSearchDenseWeight,
+    rerank: setRerankEnabled,
+    recencyBoost: setRecencyBoostEnabled,
+    recencyWeight: setRecencyWeight,
+    recencyScaleDays: setRecencyScaleDays,
+    sectionTypes: setSectionTypes,
+    keywordBoostShortQueries: setKeywordBoostShortQueries,
+    minChunkSize: setMinChunkSize,
+    semanticHighlighting: setSemanticHighlighting,
+    autoMinScore: setAutoMinScore,
+    deduplicate: setDeduplicateEnabled,
+    fieldBoost: setFieldBoostEnabled,
+    fieldBoostFields: setFieldBoostFields,
+    greetingMessage: setGreetingMessage,
+  });
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {
@@ -765,16 +852,19 @@ function App() {
   }, [selectedDomain, searchModel, selectedModelCombo]);
 
   const handleAboutClick = useCallback(() => {
+    setDocsInitialPath('overview/about.md');
     handleTabChange('info');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleTechClick = useCallback(() => {
+    setDocsInitialPath('overview/tech.md');
     handleTabChange('tech');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleDataClick = useCallback(() => {
+    setDocsInitialPath('overview/data.md');
     handleTabChange('data');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
@@ -784,6 +874,10 @@ function App() {
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
+  const handleDocsClick = useCallback(() => {
+    handleTabChange('docs');
+    setHelpDropdownOpen(false);
+  }, [handleTabChange]);
 
   // Listen for browser back/forward navigation and URL changes
   useEffect(() => {
@@ -791,13 +885,15 @@ function App() {
       setActiveTab(getTabFromPath());
       // Also restore search state from URL
       const searchState = getSearchStateFromURL(
-        CORE_FILTER_FIELDS,
+        DEFAULT_FILTER_FIELDS,
         DEFAULT_SECTION_TYPES
       );
       setQuery(searchState.query);
       setFilters(searchState.filters);
       // Restore selected filter arrays (dynamic)
       setSelectedFilters(searchState.selectedFilters);
+      // Restore range filter values
+      setRangeFilters(searchState.rangeFilters);
       // Restore search mode settings
       setSearchDenseWeight(searchState.denseWeight);
       setRerankEnabled(searchState.rerank);
@@ -822,7 +918,7 @@ function App() {
     // Also check URL on mount and when availableDomains changes (for direct navigation)
     const checkURLForDataset = () => {
       const searchState = getSearchStateFromURL(
-        CORE_FILTER_FIELDS,
+        DEFAULT_FILTER_FIELDS,
         DEFAULT_SECTION_TYPES
       );
       if (searchState.dataset && availableDomains.includes(searchState.dataset) && selectedDomain !== searchState.dataset) {
@@ -852,18 +948,42 @@ function App() {
     setHeatmapFiltersExpanded((prev) => !prev);
   }, []);
 
-  const buildEmptySelectedFilters = () => {
+  const buildEmptySelectedFilters = useCallback(() => {
     const cleared: Record<string, string[]> = {};
-    for (const field of CORE_FILTER_FIELDS) {
+    const fields = facets?.filter_fields
+      ? Object.keys(facets.filter_fields)
+      : DEFAULT_FILTER_FIELDS;
+    for (const field of fields) {
       cleared[field] = [];
     }
     return cleared;
-  };
+  }, [facets]);
 
   const defaultYearFiltersAppliedRef = useRef(false);
 
   // Multi-select filters (dynamic by core field name) - initialize from URL
   const [selectedFilters, setSelectedFilters] = useState<Record<string, string[]>>(initialSearchState.selectedFilters);
+
+  // Range filters for numerical fields (min/max inputs)
+  const [rangeFilters, setRangeFilters] = useState<Record<string, { min: string; max: string }>>(initialSearchState.rangeFilters);
+
+  // Sync selectedFilters when facets load with new config-driven fields
+  useEffect(() => {
+    if (!facets?.filter_fields) return;
+    const configFields = Object.keys(facets.filter_fields);
+    setSelectedFilters((prev) => {
+      const hasNewFields = configFields.some((f) => !(f in prev));
+      if (!hasNewFields) return prev;
+      const next = { ...prev };
+      for (const field of configFields) {
+        if (!(field in next)) {
+          next[field] = [];
+        }
+      }
+      return next;
+    });
+  }, [facets]);
+
   const [heatmapFilters, setHeatmapFilters] = useState<SearchFilters>({});
   const [heatmapSelectedFilters, setHeatmapSelectedFilters] = useState<Record<string, string[]>>(
     buildEmptySelectedFilters()
@@ -927,6 +1047,30 @@ function App() {
       handleFilterChange(coreField, buildFilterValue(nextValues));
     },
     [buildFilterValue, handleFilterChange]
+  );
+
+  const handleRangeChange = useCallback(
+    (coreField: string, min: string, max: string) => {
+      setRangeFilters((prev) => ({
+        ...prev,
+        [coreField]: { min, max },
+      }));
+      setFilters((prev) => {
+        const next = { ...prev };
+        if (min) {
+          next[`${coreField}_min`] = min;
+        } else {
+          delete next[`${coreField}_min`];
+        }
+        if (max) {
+          next[`${coreField}_max`] = max;
+        } else {
+          delete next[`${coreField}_max`];
+        }
+        return next;
+      });
+    },
+    []
   );
 
   const handleHeatmapRemoveFilter = useCallback(
@@ -1163,7 +1307,7 @@ function App() {
 
   const loadFacets = useCallback(async (options?: { includeQuery?: boolean; filtersOverride?: SearchFilters; queryValue?: string }) => {
     try {
-      if (loadingConfig && initialSearchState.dataset) {
+      if (!dataSource || (loadingConfig && initialSearchState.dataset)) {
         return;
       }
       const includeQuery = options?.includeQuery ?? false;
@@ -1198,7 +1342,7 @@ function App() {
 
   const loadAllFacets = useCallback(async () => {
     try {
-      if (loadingConfig && initialSearchState.dataset) {
+      if (!dataSource || (loadingConfig && initialSearchState.dataset)) {
         return;
       }
       const params = new URLSearchParams();
@@ -1217,28 +1361,28 @@ function App() {
   useEffect(() => {
     if (activeTab === 'info') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/about.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/about.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setAboutContent(text))
         .catch(err => console.error('Failed to load about content:', err));
     }
     if (activeTab === 'tech') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/tech.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/tech.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setTechContent(text))
         .catch(err => console.error('Failed to load tech content:', err));
     }
     if (activeTab === 'data') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/data.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/data.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => setDataContent(text))
         .catch(err => console.error('Failed to load data content:', err));
     }
     if (activeTab === 'privacy') {
       // Add timestamp to prevent caching during development
-      fetch(`${withBasePath('/docs/privacy.md')}?t=${Date.now()}`)
+      fetch(`${withBasePath('/docs/overview/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => {
           if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
@@ -1451,29 +1595,16 @@ function App() {
     }
   }, [query, semanticHighlightModelConfig]);
 
-  const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
-    if (!AI_SUMMARY_ON || summaryResults.length === 0) {
-      setAiSummary('');
-      setAiPrompt('');
-      return;
-    }
-    if (!summaryModelConfig) {
-      console.error('AI summary model config is missing.');
-      setAiSummary('AI summary unavailable: no summary model configured.');
-      setAiSummaryLoading(false);
-      return;
-    }
-
-    // Abort any in-flight stream
+  /** Shared helper: strip results to lean payload and stream a summary */
+  const launchSummaryStream = useCallback((streamQuery: string, streamResults: SearchResult[]) => {
     if (aiSummaryAbortRef.current) {
       aiSummaryAbortRef.current.abort();
     }
     const abortController = new AbortController();
     aiSummaryAbortRef.current = abortController;
 
-    const sliced = summaryResults.slice(0, 20);
-    setAiSummaryResults(sliced);
     setAiSummaryLoading(true);
+    summaryStartMsRef.current = performance.now();
     setAiSummary('');
     setAiSummaryBuffer('');
     setAiPrompt('');
@@ -1481,9 +1612,7 @@ function App() {
     setAiSummaryTranslatingLang(null);
     setAiSummaryTranslatedLang(null);
 
-    // Strip results to only the fields the backend prompt template needs,
-    // avoiding huge payloads from chunk_elements, images, tables, etc.
-    const leanResults = sliced.map((r) => ({
+    const leanResults = streamResults.map((r) => ({
       chunk_id: r.chunk_id,
       doc_id: r.doc_id,
       text: r.text,
@@ -1497,33 +1626,386 @@ function App() {
 
     streamAiSummary({
       apiBaseUrl: API_BASE_URL,
-      apiKey: API_KEY || undefined,
       dataSource,
-      query,
+      query: streamQuery,
       results: leanResults,
       summaryModelConfig,
       signal: abortController.signal,
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
-        onDone: () => setAiSummaryLoading(false),
+        onDone: () => {
+          setAiSummaryLoading(false);
+        },
         onError: (message: string) => {
           console.error('AI summary streaming error:', message);
-          setAiSummary('Uh oh. Something went wrong asking the AI.');
+          setAiSummary(AI_SUMMARY_ERROR);
           setAiSummaryLoading(false);
         },
       },
     }).catch((error) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       console.error('AI summary streaming failed:', error);
-      setAiSummary('Uh oh. Something went wrong asking the AI.');
+      setAiSummary(AI_SUMMARY_ERROR);
       setAiSummaryLoading(false);
     });
-  }, [dataSource, query, summaryModelConfig]);
+  }, [dataSource, summaryModelConfig]);
+
+  const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
+    if (!AI_SUMMARY_ON || summaryResults.length === 0) {
+      setAiSummary('');
+      setAiPrompt('');
+      return;
+    }
+    if (!summaryModelConfig) {
+      console.error('AI summary model config is missing.');
+      setAiSummary('AI summary unavailable: no summary model configured.');
+      setAiSummaryLoading(false);
+      return;
+    }
+
+    resetDrilldownTree();
+    setSavedResearchId(null);
+    setAddingNodeParentId(null);
+    setFindOutMoreDone(false);
+
+    const sliced = summaryResults.slice(0, 20);
+    setAiSummaryResults(sliced);
+    setAiSummaryExpanded(false);
+    launchSummaryStream(query, sliced);
+  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream]);
 
   const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
     startAiSummaryStream(data.results);
   }, [startAiSummaryStream]);
+
+  // Helper: build current AI summary snapshot for drilldown save/restore
+  const getSnapshot = useCallback((): AiSummarySnapshot => ({
+    summary: aiSummary,
+    prompt: aiPrompt,
+    results: aiSummaryResults,
+    expanded: aiSummaryExpanded,
+    translatedText: aiSummaryTranslatedText,
+    translatedLang: aiSummaryTranslatedLang,
+  }), [aiSummary, aiPrompt, aiSummaryResults, aiSummaryExpanded,
+      aiSummaryTranslatedText, aiSummaryTranslatedLang]);
+
+  // Helper: restore UI state from a drilldown node
+  const restoreFromNode = useCallback((node: { summary: string; prompt: string; results: SearchResult[]; expanded: boolean; translatedText: string | null; translatedLang: string | null }) => {
+    setAiSummary(node.summary);
+    setAiPrompt(node.prompt);
+    setResults(node.results);
+    setAiSummaryResults(node.results);
+    setAiSummaryExpanded(node.expanded);
+    setAiSummaryTranslatedText(node.translatedText);
+    setAiSummaryTranslatedLang(node.translatedLang);
+    setAiSummaryTranslatingLang(null);
+    setAiSummaryLoading(false);
+  }, []);
+
+  // Drilldown: save current state, search for fresh results, stream focused summary
+  const startDrilldown = useCallback(async (highlightedText: string) => {
+    const snapshot = getSnapshot();
+    startDrilldownInTree(highlightedText, snapshot, query);
+
+    setAiSummaryExpanded(true);
+    setAiSummaryLoading(true);
+    setAiSummary('');
+    setAiPrompt('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Perform a fresh search using the highlighted text as the query
+    const params = buildSearchParams({
+      query: highlightedText,
+      filters,
+      searchDenseWeight,
+      rerankEnabled,
+      recencyBoostEnabled,
+      recencyWeight,
+      recencyScaleDays,
+      sectionTypes,
+      keywordBoostShortQueries,
+      minChunkSize,
+      rerankModel,
+      rerankModelPageSize,
+      searchModel,
+      dataSource,
+      autoMinScore,
+      deduplicateEnabled,
+      fieldBoostEnabled,
+      fieldBoostFields,
+    });
+
+    try {
+      const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
+      const freshResults = response.data.results.slice(0, 20);
+      setResults(freshResults);
+      setAiSummaryResults(freshResults);
+
+      // Query inheritance: always include root query for broad context,
+      // plus the immediate parent node label for specificity (avoids noisy
+      // full-chain at deep levels). drilldownHighlight is the current node's
+      // label before drilling deeper.
+      const parentContext = drilldownHighlight && drilldownHighlight !== query
+        ? `, specifically "${drilldownHighlight}"`
+        : '';
+      const drilldownQuery = `Regarding: "${highlightedText}"\n\nProvide detail about this, in the context of: "${query}"${parentContext}`;
+      launchSummaryStream(drilldownQuery, freshResults);
+    } catch (error) {
+      console.error('Drilldown search failed:', error);
+      setAiSummary(AI_SUMMARY_ERROR);
+      setAiSummaryLoading(false);
+    }
+  }, [getSnapshot, startDrilldownInTree, query, drilldownHighlight, launchSummaryStream,
+      filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
+      recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
+      minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+
+  // Navigate back to parent node in the drilldown tree
+  const navigateBackDrilldown = useCallback(() => {
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+      aiSummaryAbortRef.current = null;
+    }
+    const parent = navigateBackInTree(getSnapshot());
+    if (parent) restoreFromNode(parent);
+  }, [getSnapshot, navigateBackInTree, restoreFromNode]);
+
+  // Navigate to any node in the drilldown tree by ID
+  const navigateDrilldownToNode = useCallback((nodeId: string) => {
+    if (aiSummaryAbortRef.current) {
+      aiSummaryAbortRef.current.abort();
+      aiSummaryAbortRef.current = null;
+    }
+    const target = navigateToNodeInTree(nodeId, getSnapshot());
+    if (target) {
+      restoreFromNode(target);
+      setAiSummaryExpanded(true);
+    }
+  }, [getSnapshot, navigateToNodeInTree, restoreFromNode]);
+
+  // Batch-research all Key Facts: create child nodes and populate them
+  const handleFindOutMore = useCallback(async (keyFacts: string[]) => {
+    if (keyFacts.length === 0) return;
+    setFindOutMoreLoading(true);
+    setFindOutMoreDone(false);
+
+    const snapshot = getSnapshot();
+
+    // Create stub child nodes for all facts
+    const nodeIds = keyFacts.map((fact) =>
+      addChildNodeInTree(fact, snapshot, query)
+    );
+
+    // Sequentially search and summarize each fact
+    for (let i = 0; i < keyFacts.length; i++) {
+      const fact = keyFacts[i];
+      const nodeId = nodeIds[i];
+      setFindOutMoreActiveFact(fact);
+      try {
+        const params = buildSearchParams({
+          query: fact, filters, searchDenseWeight, rerankEnabled,
+          recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
+          keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
+          searchModel, dataSource, autoMinScore, deduplicateEnabled,
+          fieldBoostEnabled, fieldBoostFields,
+        });
+        const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
+        const freshResults = searchResp.data.results.slice(0, 20);
+
+        // Query inheritance (root + parent): same approach as startDrilldown above.
+        // At root level parentContext is empty; deeper levels add the immediate
+        // parent's label so the LLM stays focused without a long ancestor chain.
+        const parentContext = drilldownHighlight && drilldownHighlight !== query
+          ? `, specifically "${drilldownHighlight}"`
+          : '';
+        const summaryQuery = `Regarding: "${fact}"\n\nProvide detail about this, in the context of: "${query}"${parentContext}`;
+        const leanResults = freshResults.map((r) => ({
+          chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
+          title: r.title, organization: r.organization, year: r.year,
+          page_num: r.page_num, headings: r.headings, score: r.score,
+        }));
+        const summaryResp = await axios.post<{ summary: string; prompt: string }>(`${API_BASE_URL}/ai-summary?data_source=${dataSource}`, {
+          query: summaryQuery,
+          results: leanResults,
+          max_results: 20,
+          ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+        });
+
+        updateNodeDataInTree(nodeId, {
+          summary: summaryResp.data.summary,
+          prompt: summaryResp.data.prompt,
+          results: freshResults,
+        });
+      } catch (error) {
+        console.error(`Find out more failed for: ${fact}`, error);
+        updateNodeDataInTree(nodeId, { summary: 'Failed to generate summary.' });
+      }
+    }
+    setFindOutMoreLoading(false);
+    setFindOutMoreActiveFact(null);
+    setFindOutMoreDone(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [getSnapshot, addChildNodeInTree, updateNodeDataInTree, query, drilldownHighlight, summaryModelConfig,
+      filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
+      recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
+      minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+
+  // Add a custom node to the tree: create stub, search, summarize, update
+  const handleAddNodeToTree = useCallback(async (parentId: string, userQuery: string) => {
+    setAddingNodeParentId(null);
+
+    // Create stub child node
+    const nodeId = addChildToNodeInTree(parentId, userQuery);
+    updateNodeDataInTree(nodeId, { summary: 'Researching...' });
+
+    // Build contextual query with parent label for inheritance
+    const parentNode = getNodeInTree(parentId);
+    const parentLabel = parentNode?.label;
+    const parentContext = parentLabel && parentLabel !== query
+      ? `, specifically "${parentLabel}"`
+      : '';
+    const summaryQuery = `Regarding: "${userQuery}"\n\nProvide detail about this, in the context of: "${query}"${parentContext}`;
+
+    try {
+      const params = buildSearchParams({
+        query: userQuery, filters, searchDenseWeight, rerankEnabled,
+        recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
+        keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
+        searchModel, dataSource, autoMinScore, deduplicateEnabled,
+        fieldBoostEnabled, fieldBoostFields,
+      });
+      const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
+      const freshResults = searchResp.data.results.slice(0, 20);
+
+      const leanResults = freshResults.map((r) => ({
+        chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
+        title: r.title, organization: r.organization, year: r.year,
+        page_num: r.page_num, headings: r.headings, score: r.score,
+      }));
+      const summaryResp = await axios.post<{ summary: string; prompt: string }>(
+        `${API_BASE_URL}/ai-summary?data_source=${dataSource}`,
+        {
+          query: summaryQuery,
+          results: leanResults,
+          max_results: 20,
+          ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+        }
+      );
+
+      updateNodeDataInTree(nodeId, {
+        summary: summaryResp.data.summary,
+        prompt: summaryResp.data.prompt,
+        results: freshResults,
+      });
+    } catch (error) {
+      console.error('Add node to tree failed:', error);
+      updateNodeDataInTree(nodeId, { summary: 'Failed to generate summary.' });
+    }
+  }, [addChildToNodeInTree, getNodeInTree, updateNodeDataInTree, query, summaryModelConfig,
+      filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
+      recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
+      minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+
+  // Remove a node from the tree
+  const handleRemoveNodeFromTree = useCallback((nodeId: string) => {
+    removeNodeInTree(nodeId);
+  }, [removeNodeInTree]);
+
+  // Show add-node input for a specific parent
+  const handleAddNodeClick = useCallback((parentId: string) => {
+    setAddingNodeParentId(parentId);
+  }, []);
+
+  // Cancel adding a node
+  const handleAddNodeCancel = useCallback(() => {
+    setAddingNodeParentId(null);
+  }, []);
+
+  // Save research tree to backend
+  const handleSaveResearch = useCallback(async (title: string) => {
+    if (!drilldownTree || !authState.user) return;
+    setSaveResearchLoading(true);
+    setSaveResearchStatus('idle');
+
+    try {
+      const currentId = currentNodeId || drilldownTree.id;
+      const patchedTree = patchNodeInTree(drilldownTree, currentId, aiSummary, aiSummaryResults);
+      const fullTree = serializeFullDrilldownTree(patchedTree);
+
+      if (savedResearchId) {
+        await axios.put(`${API_BASE_URL}/research/${savedResearchId}`, {
+          title,
+          drilldown_tree: fullTree,
+          filters,
+        });
+      } else {
+        const resp = await axios.post<{ id: string }>(`${API_BASE_URL}/research/`, {
+          title,
+          query,
+          filters,
+          data_source: dataSource,
+          drilldown_tree: fullTree,
+        });
+        setSavedResearchId(resp.data.id);
+      }
+      setSaveResearchStatus('saved');
+      setTimeout(() => setSaveResearchStatus('idle'), 3000);
+    } catch (error) {
+      console.error('Failed to save research:', error);
+      setSaveResearchStatus('error');
+      setTimeout(() => setSaveResearchStatus('idle'), 4000);
+    } finally {
+      setSaveResearchLoading(false);
+    }
+  }, [drilldownTree, currentNodeId, savedResearchId, query, filters, dataSource,
+      authState.user, aiSummary, aiSummaryResults]);
+
+  // Load research tree from backend
+  const handleLoadResearch = useCallback(async (researchId: string) => {
+    try {
+      interface SavedResearchData {
+        id: string;
+        query: string;
+        filters: SearchFilters | null;
+        data_source: string | null;
+        drilldown_tree: DrilldownNode;
+      }
+      const resp = await axios.get<SavedResearchData>(`${API_BASE_URL}/research/${researchId}`);
+      const data = resp.data;
+
+      setQuery(data.query);
+      if (data.filters) setFilters(data.filters);
+
+      const tree = data.drilldown_tree;
+      loadDrilldownTree(tree);
+      restoreFromNode(tree);
+      setSavedResearchId(data.id);
+      setFindOutMoreDone(true);
+      setAiSummaryExpanded(true);
+      handleTabChange('search');
+    } catch (error) {
+      console.error('Failed to load research:', error);
+    }
+  }, [loadDrilldownTree, restoreFromNode, handleTabChange]);
+
+  // Update root node when global summary is generated and display it
+  const handleGlobalSummaryGenerated = useCallback((summary: string, globalResults: SearchResult[]) => {
+    updateNodeDataInTree('root', { summary, results: globalResults });
+    // Also update displayed state so the summary view renders it immediately
+    setAiSummary(summary);
+    setAiSummaryResults(globalResults);
+  }, [updateNodeDataInTree]);
+
+  const closeLoadResearchModal = useCallback(() => setShowLoadResearchModal(false), []);
+
+  const handleLoadResearchFromModal = useCallback((id: string) => {
+    setShowLoadResearchModal(false);
+    handleLoadResearch(id);
+  }, [handleLoadResearch]);
 
   const handlePostSearchResults = useCallback((data: SearchResponse) => {
     if (data.results.length > 0) {
@@ -1558,7 +2040,7 @@ function App() {
   }, []);
 
   const performSearch = useCallback(async () => {
-    if (!query.trim() || isSearchingRef.current) {
+    if (!dataSource || !query.trim() || isSearchingRef.current) {
       if (isSearchingRef.current) {
         console.warn("Search already in progress, skipping double call.");
       }
@@ -1566,10 +2048,11 @@ function App() {
     }
 
     setLoading(true);
+    setHasSearchRun(true);
     setSearchError(null);
     processingHighlightsRef.current.clear(); // Clear highlight locks
     isSearchingRef.current = true;
-    setSearchId((prev) => prev + 1);
+    setSearchId(generateUUID());
 
     try {
       const params = buildSearchParams({
@@ -1604,9 +2087,18 @@ function App() {
       const searchEndTime = performance.now();
       console.log(`[Perf] Search API took ${(searchEndTime - searchStartTime).toFixed(2)}ms`);
       console.log(`[Perf] Results count: ${data.results.length}`);
+      searchDurationMsRef.current = Math.round(searchEndTime - searchStartTime);
       setResults(data.results);
       // Initialize all headings as collapsed by default
       setCollapsedHeadings(new Set(data.results.map((_, index) => index)));
+
+      // Log search activity (fire-and-forget, works for all users)
+      if (USER_MODULE) {
+        logSearch(searchId, query, filters, data.results, {
+          timing: { search_duration_ms: searchDurationMsRef.current },
+        });
+        activitySearchIdRef.current = searchId;
+      }
 
       // Reload facets to reflect search result distribution (with query)
       loadFacets({ includeQuery: true, queryValue: query });
@@ -1643,10 +2135,14 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    logSearch,
+    searchId,
   ]);
 
   // Track if we've done initial search to avoid double-searching on load
   const hasSearchedRef = React.useRef(false);
+  // Track pending example query search (set query state, then search on next render)
+  const pendingExampleSearchRef = React.useRef(false);
 
   // Search only triggers via:
   // 1. Form submit (handleSearch)
@@ -1671,6 +2167,76 @@ function App() {
     query,
     searchModel,
   ]);
+
+  // Trigger search after example query click (query state must update first)
+  useEffect(() => {
+    if (pendingExampleSearchRef.current && query.trim()) {
+      pendingExampleSearchRef.current = false;
+      performSearch();
+      const searchParams = buildSearchURL(
+        query, filters, searchDenseWeight, rerankEnabled,
+        recencyBoostEnabled, recencyWeight, recencyScaleDays,
+        sectionTypes, keywordBoostShortQueries, minChunkSize,
+        semanticHighlighting, autoMinScore, deduplicateEnabled,
+        searchModel, selectedModelCombo, selectedDomain,
+        fieldBoostEnabled, fieldBoostFields
+      );
+      window.history.pushState(null, '', withBasePath(searchParams ? `/?${searchParams}` : '/'));
+    }
+  }, [query, performSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Activity logging: update summary when AI summary stream finishes
+  // Track the searchId that was used for the activity POST, so the PATCH
+  // uses the same value (searchId state changes after setSearchId in performSearch).
+  const activitySearchIdRef = useRef<string>('');
+  const searchDurationMsRef = useRef<number>(0);
+  const summaryStartMsRef = useRef<number>(0);
+  const prevAiSummaryLoadingRef = useRef(false);
+  useEffect(() => {
+    // Detect transition from loading → done and log the completed summary
+    if (
+      prevAiSummaryLoadingRef.current &&
+      !aiSummaryLoading &&
+      USER_MODULE &&
+      aiSummary &&
+      aiSummary !== AI_SUMMARY_ERROR &&
+      !isDrilldown &&
+      activitySearchIdRef.current
+    ) {
+      const summaryDurationMs = summaryStartMsRef.current
+        ? Math.round(performance.now() - summaryStartMsRef.current)
+        : undefined;
+      console.debug('[Activity] Summary PATCH: summaryDurationMs=' + summaryDurationMs);
+      updateActivitySummary(
+        activitySearchIdRef.current,
+        aiSummary,
+        summaryDurationMs,
+        drilldownTree ? serializeDrilldownTree(drilldownTree) : undefined,
+      );
+    }
+    prevAiSummaryLoadingRef.current = aiSummaryLoading;
+  }, [aiSummaryLoading, aiSummary, isDrilldown, updateActivitySummary, drilldownTree]);
+
+  // Send drilldown tree updates to the activity record when the user
+  // navigates the AI Summary Tree (i.e. when children are added).
+  const prevDrilldownChildCountRef = useRef(0);
+  useEffect(() => {
+    const childCount = drilldownTree?.children?.length ?? 0;
+    if (
+      childCount > prevDrilldownChildCountRef.current &&
+      activitySearchIdRef.current &&
+      USER_MODULE &&
+      drilldownTree
+    ) {
+      updateActivitySummary(
+        activitySearchIdRef.current,
+        undefined, // don't update ai_summary
+        undefined, // no timing update
+        serializeDrilldownTree(drilldownTree),
+      );
+    }
+    prevDrilldownChildCountRef.current = childCount;
+  }, [drilldownTree, updateActivitySummary]);
 
   // Handler for toggling auto min score mode
   const handleAutoMinScoreToggle = useCallback((enabled: boolean) => {
@@ -1721,6 +2287,18 @@ function App() {
       window.history.pushState(null, '', newURL);
     }
   };
+
+  const handleShowFilters = useCallback(() => {
+    hasSearchedRef.current = true;
+    setFiltersExpanded(true);
+    setInitialSearchDone(true);
+  }, []);
+
+  const handleExampleQueryClick = useCallback((q: string) => {
+    setQuery(q);
+    hasSearchedRef.current = true;
+    pendingExampleSearchRef.current = true;
+  }, []);
 
   const handleClearFilters = () => {
     setFilters({});
@@ -1807,6 +2385,28 @@ function App() {
   const handleCloseMetadataModal = () => {
     setMetadataModalOpen(false);
   };
+
+  const handleOpenSummaryFromMetadata = useCallback((summary: string, title: string, docId?: string) => {
+    setSelectedSummary(summary);
+    setSelectedSummaryTitle(title);
+    setSelectedSummaryDocId(docId || '');
+    setSummaryModalOpen(true);
+  }, []);
+
+  const handleOpenTocFromMetadata = useCallback((doc: any) => {
+    const tocValue = doc.toc_classified || doc.sys_toc_classified || '';
+    const docId = doc.doc_id || doc.id || '';
+    const pdfUrl = doc.pdf_url || doc.map_pdf_url || '';
+    const pageCount = doc.page_count ?? doc.sys_page_count ?? null;
+    setSelectedTocDocId(docId);
+    setSelectedToc(tocValue);
+    setSelectedTocPdfUrl(pdfUrl);
+    setSelectedTocPageCount(pageCount);
+    if (!pdfUrl && docId) {
+      fetchTocPdfUrl(docId);
+    }
+    setTocModalOpen(true);
+  }, [fetchTocPdfUrl]);
 
   const handleResultLanguageChange = async (result: SearchResult, newLang: string) => {
     const originalLanguage = result.language || result.metadata?.language || 'en';
@@ -2013,6 +2613,7 @@ function App() {
       onClearFilters={handleClearFilters}
       facets={displayFacets}
       selectedFilters={selectedFilters}
+      rangeFilters={rangeFilters}
       collapsedFilters={collapsedFilters}
       expandedFilterLists={expandedFilterLists}
       filterSearchTerms={filterSearchTerms}
@@ -2023,6 +2624,7 @@ function App() {
       onFilterSearchTermChange={handleFilterSearchTermChange}
       onToggleFilterListExpansion={toggleFilterListExpansion}
       onFilterValuesChange={handleFilterValuesChange}
+      onRangeChange={handleRangeChange}
       searchDenseWeight={searchDenseWeight}
       onSearchDenseWeightChange={setSearchDenseWeight}
       keywordBoostShortQueries={keywordBoostShortQueries}
@@ -2079,6 +2681,30 @@ function App() {
       aiSummaryTranslatingLang={aiSummaryTranslatingLang}
       aiSummaryTranslatedLang={aiSummaryTranslatedLang}
       onAiSummaryLanguageChange={handleAiSummaryLanguageChange}
+      aiDrilldownStackDepth={isDrilldown ? 1 : 0}
+      aiDrilldownHighlight={drilldownHighlight}
+      onAiDrilldown={startDrilldown}
+      onAiDrilldownBack={navigateBackDrilldown}
+      aiDrilldownTree={drilldownTree}
+      aiDrilldownCurrentNodeId={currentNodeId}
+      onAiDrilldownNavigate={navigateDrilldownToNode}
+      onFindOutMore={handleFindOutMore}
+      findOutMoreLoading={findOutMoreLoading}
+      findOutMoreActiveFact={findOutMoreActiveFact}
+      requestShowGraph={findOutMoreDone}
+      dataSource={dataSource}
+      summaryModelConfig={summaryModelConfig}
+      hasSearchRun={hasSearchRun}
+      onSaveResearch={handleSaveResearch}
+      saveResearchLoading={saveResearchLoading}
+      saveResearchStatus={saveResearchStatus}
+      onLoadPreviousResearch={() => setShowLoadResearchModal(true)}
+      onGlobalSummaryGenerated={handleGlobalSummaryGenerated}
+      onAddNodeToTree={handleAddNodeToTree}
+      onRemoveNodeFromTree={handleRemoveNodeFromTree}
+      addingNodeParentId={addingNodeParentId}
+      onAddNodeClick={handleAddNodeClick}
+      onAddNodeCancel={handleAddNodeCancel}
     />
   );
 
@@ -2147,8 +2773,8 @@ function App() {
     />
   );
 
-  return (
-    <div className="app">
+  const appContent = (
+    <div className="app" data-active-tab={activeTab}>
       <TopBar
         selectedDomain={selectedDomain}
         availableDomains={availableDomains}
@@ -2173,6 +2799,9 @@ function App() {
         onAboutClick={handleAboutClick}
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
+        onDocsClick={handleDocsClick}
+        onAdminClick={() => handleTabChange('admin')}
+        onLoadResearch={handleLoadResearch}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />}
       />
 
@@ -2184,12 +2813,38 @@ function App() {
         searchError={searchError}
         onQueryChange={setQuery}
         onSubmit={handleSearch}
+        onShowFilters={handleShowFilters}
+        datasetName={selectedDomain}
+        documentCount={datasetTotals[selectedDomain]}
+        exampleQueries={currentDataSourceConfig?.example_queries}
+        onExampleQueryClick={handleExampleQueryClick}
+        greetingMessage={greetingMessage}
       />
 
       <TabContent
         activeTab={activeTab}
         hasSearched={hasSearched}
         searchTab={searchTab}
+        assistantTab={
+          <AssistantTab
+            dataSource={dataSource}
+            assistantModelConfig={assistantModelConfig}
+            rerankerModel={rerankModel}
+            searchSettings={{
+              denseWeight: searchDenseWeight,
+              recencyBoost: recencyBoostEnabled,
+              recencyWeight,
+              recencyScaleDays,
+              sectionTypes,
+              keywordBoostShortQueries,
+              minChunkSize,
+              fieldBoost: fieldBoostEnabled,
+              fieldBoostFields,
+            }}
+            exampleQueries={currentDataSourceConfig?.example_queries}
+            onResultClick={handleResultClick}
+          />
+        }
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
         statsTab={statsTab}
@@ -2199,8 +2854,12 @@ function App() {
         techContent={techContent}
         dataContent={dataContent}
         privacyContent={privacyContent}
+        basePath={APP_BASE_PATH}
+        docsInitialPath={docsInitialPath}
         onTabChange={handleTabChange}
       />
+
+      <AdminPanel isActive={activeTab === 'admin'} />
 
       <footer className="app-footer">
         <button
@@ -2274,8 +2933,17 @@ function App() {
         searchModel={searchModel}
       />
 
-      {/* TOC Modal for Search Results */}
-      {/* TOC Modal */}
+      {/* MetadataModal rendered first so TocModal/SummaryModal stack above it */}
+      <MetadataModal
+        isOpen={metadataModalOpen}
+        onClose={handleCloseMetadataModal}
+        metadataDoc={metadataModalDoc}
+        metadataPanelFields={metadataPanelFields}
+        onOpenSummary={handleOpenSummaryFromMetadata}
+        onOpenToc={handleOpenTocFromMetadata}
+      />
+
+      {/* TOC Modal — rendered after MetadataModal so it appears on top */}
       <TocModal
         isOpen={tocModalOpen}
         onClose={() => setTocModalOpen(false)}
@@ -2288,14 +2956,28 @@ function App() {
         pageCount={selectedTocPageCount}
       />
 
-      <MetadataModal
-        isOpen={metadataModalOpen}
-        onClose={handleCloseMetadataModal}
-        metadataDoc={metadataModalDoc}
+      <SummaryModal
+        isOpen={summaryModalOpen}
+        onClose={() => setSummaryModalOpen(false)}
+        summary={selectedSummary}
+        title={selectedSummaryTitle}
+        docId={selectedSummaryDocId}
+      />
+
+      <LoadResearchModalWrapper
+        show={showLoadResearchModal}
+        onClose={closeLoadResearchModal}
+        onLoad={handleLoadResearchFromModal}
       />
 
       <CookieConsent />
     </div >
+  );
+
+  return (
+    <AuthContext.Provider value={authState}>
+      <AuthGate>{appContent}</AuthGate>
+    </AuthContext.Provider>
   );
 }
 

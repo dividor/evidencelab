@@ -36,43 +36,21 @@ class TestConfigIntegration(unittest.TestCase):
         )
         pipeline_config = source_config.get("pipeline", {})
 
-        # We need a shared embedding model mock to avoid instantiating the heavy one
-        # BUT orchestrator creates it if we don't pass it?
-        # init_worker doesn't take embedding_model arg, it expects global shared_dense_model
-        # We need to mock shared_dense_model module-level variable in orchestrator IF we can
-        # OR just let it try to load.
-        # Loading "e5_large" locally takes time/memory.
-        # But wait, init_worker uses `shared_dense_model` from `orchestrator.py`?
-
-        # Let's check init_worker signature:
-        # def init_worker(data_source, skip_parse, skip_summarize, skip_index,
-        #                 skip_tag, pipeline_config=None, shared_objects=None):
-        # It takes `shared_objects`? No, checking code...
-        # It uses global variables.
-
-        # We should patch the embedding model instantiation in orchestrator to avoid heavy lift
-        # but let the config logic run real.
+        # Patch EmbeddingService to avoid heavy model loading while letting
+        # config logic run for real.
 
         from unittest.mock import MagicMock, patch
 
-        # We need to patch where the classes are DEFINED or IMPORTED.
-        # orchestrator imports RemoteEmbeddingClient from pipeline.utilities.embedding_client
-        # it imports TextEmbedding inside the function from fastembed
-        # Mock TextEmbedding.list_supported_models() to avoid fastembed installation check
-        mock_text_embedding = MagicMock()
-        mock_text_embedding.list_supported_models.return_value = ["mock-model"]
+        # Patch EmbeddingService to avoid heavy model loading
+        mock_embedding_service = MagicMock()
 
-        with patch("pipeline.utilities.embedding_client.RemoteEmbeddingClient"), patch(
-            "fastembed.TextEmbedding", mock_text_embedding
+        with patch(
+            "pipeline.orchestrator.worker.EmbeddingService",
+            return_value=mock_embedding_service,
         ), patch("pipeline.db.Database.init_collections"), patch(
             "pipeline.db.Database.create_payload_indexes"
         ):
 
-            # We also need to mock SentenceTransformer if used somewhere,
-            # but orchestrator doesn't seem to use it directly in init_worker locally?
-            # It uses TextEmbedding or RemoteEmbeddingClient.
-
-            # Force pipeline_config to be empty to trigger fallback
             init_worker(
                 data_source="uneg",  # Use 'uneg' so get_db can find config
                 skip_parse=True,

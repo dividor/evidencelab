@@ -129,7 +129,7 @@ class EmbeddingServerManager:
 
             # Wait for startup
             logger.info("Waiting for embedding server to become healthy...")
-            self._wait_for_healthy(timeout=60)
+            self._wait_for_healthy(timeout=600)
             logger.info("Embedding server started successfully.")
 
         except FileNotFoundError:

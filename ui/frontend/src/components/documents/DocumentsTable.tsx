@@ -15,8 +15,8 @@ interface DocumentsTableProps {
   onSort: (field: string) => void;
   onFilterClick: (column: string, event: React.MouseEvent<HTMLButtonElement>) => void;
   hasActiveFilter: (column: string) => boolean;
-  onOpenSummary: (summary: string, docTitle: string) => void;
-  onOpenTaxonomyModal?: (value: any, definition: string, taxonomyName: string) => void;
+  onOpenSummary: (summary: string, docTitle: string, docId?: string) => void;
+  onOpenTaxonomyModal?: (value: any, definition: string, taxonomyName: string, docId?: string, docTitle?: string, docSummary?: string) => void;
   onOpenToc: (doc: any) => void;
   onOpenMetadata: (doc: any) => void;
   onOpenTimeline: (doc: any) => void;

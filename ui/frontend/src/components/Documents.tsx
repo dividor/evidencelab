@@ -11,11 +11,14 @@ interface DocumentsProps {
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
-  dataSource = 'uneg',
+  dataSource = '',
   semanticHighlightModelConfig,
   dataSourceConfig,
 }) => {
   const state = useDocumentsState(dataSource, dataSourceConfig);
+  const metadataPanelFields = dataSourceConfig?.metadata_panel_fields
+    || dataSourceConfig?.filter_fields
+    || {};
 
   return (
     <div className="statistics-container">
@@ -88,11 +91,15 @@ export const Documents: React.FC<DocumentsProps> = ({
         onCloseSummaryModal={state.closeSummaryModal}
         selectedSummary={state.selectedSummary}
         selectedSummaryTitle={state.selectedSummaryTitle}
+        selectedSummaryDocId={state.selectedSummaryDocId}
         taxonomyModalOpen={state.taxonomyModalOpen}
         onCloseTaxonomyModal={state.closeTaxonomyModal}
         selectedTaxonomyValue={state.selectedTaxonomyValue}
         selectedTaxonomyDefinition={state.selectedTaxonomyDefinition}
         selectedTaxonomyName={state.selectedTaxonomyName}
+        selectedTaxonomyDocId={state.selectedTaxonomyDocId}
+        selectedTaxonomyDocTitle={state.selectedTaxonomyDocTitle}
+        selectedTaxonomyDocSummary={state.selectedTaxonomyDocSummary}
         metadataModalOpen={state.metadataModalOpen}
         onCloseMetadataModal={state.closeMetadataModal}
         selectedMetadataDoc={state.selectedMetadataDoc}
@@ -116,6 +123,9 @@ export const Documents: React.FC<DocumentsProps> = ({
         onTocApprovedChange={state.handleTocApprovedChange}
         selectedTocPageCount={state.selectedTocPageCount}
         semanticHighlightModelConfig={semanticHighlightModelConfig}
+        metadataPanelFields={metadataPanelFields}
+        onOpenSummaryFromMetadata={state.handleOpenSummary}
+        onOpenTocFromMetadata={state.handleOpenToc}
       />
     </div >
   );

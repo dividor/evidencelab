@@ -632,6 +632,7 @@ def get_stats(
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
+    refresh: bool = Query(False, description="Bypass cache and re-compute"),
 ):
     """
     Get pipeline statistics for dashboard.
@@ -639,9 +640,10 @@ def get_stats(
     Uses Postgres sidecar fields for counting.
     """
     source = data_source or "uneg"
-    cached = _pipeline_cache.get(f"stats:{source}")
-    if cached is not None:
-        return cached
+    if not refresh:
+        cached = _pipeline_cache.get(f"stats:{source}")
+        if cached is not None:
+            return cached
     try:
         result = _compute_stats(data_source)
         _pipeline_cache[f"stats:{source}"] = result
@@ -676,15 +678,17 @@ def get_sankey_data(
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
+    refresh: bool = Query(False, description="Bypass cache and re-compute"),
 ):
     """
     Get Sankey diagram data for pipeline flow visualization.
     Based on the logic from scripts/stats.py
     """
     source = data_source or "uneg"
-    cached = _pipeline_cache.get(f"sankey:{source}")
-    if cached is not None:
-        return cached
+    if not refresh:
+        cached = _pipeline_cache.get(f"sankey:{source}")
+        if cached is not None:
+            return cached
     try:
         result = _compute_sankey(data_source)
         _pipeline_cache[f"sankey:{source}"] = result
@@ -735,15 +739,17 @@ def get_timeline_data(
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
+    refresh: bool = Query(False, description="Bypass cache and re-compute"),
 ):
     """
     Get timeline data for pipeline processing visualization.
     Returns events for parsing, summarizing, tagging, and indexing phases.
     """
     source = data_source or "uneg"
-    cached = _pipeline_cache.get(f"timeline:{source}")
-    if cached is not None:
-        return cached
+    if not refresh:
+        cached = _pipeline_cache.get(f"timeline:{source}")
+        if cached is not None:
+            return cached
     try:
         result = _compute_timeline(data_source)
         _pipeline_cache[f"timeline:{source}"] = result
