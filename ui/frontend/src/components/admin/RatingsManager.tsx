@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { SortableHeader } from '../documents/SortableHeader';
+import { createCitationRenderer, AdminReferences } from './RatingsCitations';
 
 /** Collapse triple+ newlines to double newlines */
 const cleanNewlines = (text: string): string => text.replace(/\n{3,}/g, '\n\n');
@@ -107,8 +108,81 @@ const AutoLink: React.FC<{ value: string; style?: React.CSSProperties }> = ({ va
 const RESULT_CARD_FIELDS = new Set([
   'title', 'doc_id', 'chunk_id', 'page_num', 'chunk_text', 'score',
   'relevance_score', 'link', 'ai_summary', 'results_snapshot', 'summary',
-  'cellCounts', 'timing', 'drilldown_tree', 'searches', 'user_query',
+  'cellCounts', 'timing', 'drilldown_tree', 'searches', 'user_query', 'query',
 ]);
+
+// ---------------------------------------------------------------------------
+// Rated result card — shown at the top of the context panel for search_result
+// ratings so the reviewer can immediately see which result was rated.
+// ---------------------------------------------------------------------------
+const RatedResultCard: React.FC<{ context: Record<string, any> }> = ({ context }) => {
+  const title = context.title;
+  const link = context.link;
+  const docId = context.doc_id;
+  const chunkId = context.chunk_id;
+  const pageNum = context.page_num;
+  const relevance = context.relevance_score ?? context.score;
+  const chunkText = context.chunk_text;
+
+  if (!title && !chunkText) return null;
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="admin-context-label">Rated Result</div>
+      <div className="admin-result-card">
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+          {link ? (
+            <a href={link} target="_blank" rel="noopener noreferrer"
+              className="admin-result-title-link"
+              onClick={(e) => e.stopPropagation()}>
+              {title || 'Untitled'}
+            </a>
+          ) : (
+            <span style={{ color: '#1a1f36' }}>{title || 'Untitled'}</span>
+          )}
+        </div>
+        <div className="admin-result-meta">
+          {docId && <span>Doc: {docId}</span>}
+          {chunkId && <><span className="admin-meta-sep">|</span><span>Chunk: {chunkId}</span></>}
+          {pageNum && <><span className="admin-meta-sep">|</span><span>Page {pageNum}</span></>}
+          {relevance != null && (
+            <><span className="admin-meta-sep">|</span>
+            <span>Score: {typeof relevance === 'number' ? relevance.toFixed(3) : relevance}</span></>
+          )}
+        </div>
+        {chunkText && (
+          <div className="admin-result-chunk-text">
+            {cleanNewlines(chunkText)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Collapsible section — used to wrap AI summary / search results so they
+// don't dominate the panel when the reviewer only needs the rated result.
+// ---------------------------------------------------------------------------
+const CollapsibleSection: React.FC<{
+  label: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}> = ({ label, defaultOpen = false, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((p) => !p); }}
+        className="admin-show-more-btn"
+        style={{ marginBottom: open ? 8 : 0, padding: '4px 0', border: 'none' }}
+      >
+        {open ? '\u25BC' : '\u25B6'} {label}
+      </button>
+      {open && children}
+    </div>
+  );
+};
 
 // ---------------------------------------------------------------------------
 // Heatmap cell-counts table
@@ -186,118 +260,6 @@ const HeatmapCellCountsTable: React.FC<{ counts: Record<string, number> }> = ({ 
           </tbody>
         </table>
       </div>
-    </div>
-  );
-};
-
-/**
- * Build a citation renderer that creates clickable citation badges.
- * Each badge shows the document title on hover and links to the source.
- */
-const CITE_SPLIT = /(\[\d+(?:\s*,\s*\d+)*\](?!\())/g;
-const CITE_MATCH = /^\[(\d+(?:\s*,\s*\d+)*)\]$/;
-const CITE_EXTRACT = /\[(\d+(?:,\s*\d+)*)\]/g;
-
-const buildCitationBadge = (num: number, results: any[], i: number, j: number) => {
-  const idx = num - 1;
-  const r = idx >= 0 && idx < results.length ? results[idx] : null;
-  if (r?.link) {
-    const pageSuffix = r.page_num ? ', p.' + String(r.page_num) : '';
-    const tip = (r.title || 'Untitled') + pageSuffix;
-    return (
-      <a key={`c${i}-${j}`} href={r.link} target="_blank" rel="noopener noreferrer"
-        className="admin-citation-badge admin-citation-clickable" title={tip}
-        onClick={(e) => e.stopPropagation()}>{num}</a>
-    );
-  }
-  return <span key={`c${i}-${j}`} className="admin-citation-badge">{num}</span>;
-};
-
-const createCitationRenderer = (results: any[]) => {
-  const render = (children: React.ReactNode): React.ReactNode => {
-    return React.Children.map(children, (child) => {
-      if (typeof child === 'string') {
-        const parts = child.split(CITE_SPLIT);
-        if (parts.length === 1) return child;
-        return parts.map((part, i) => {
-          const m = part.match(CITE_MATCH);
-          if (m) {
-            return m[1].split(',').map((n, j) =>
-              buildCitationBadge(parseInt(n.trim(), 10), results, i, j),
-            );
-          }
-          return part || null;
-        });
-      }
-      if (React.isValidElement(child) && (child.props as any).children) {
-        return React.cloneElement(
-          child as React.ReactElement<any>,
-          {},
-          render((child.props as any).children),
-        );
-      }
-      return child;
-    });
-  };
-  return render;
-};
-
-/** Extract all cited numbers, map to results, group by document title */
-const buildGroupedRefs = (summary: string, results: any[]) => {
-  const cited = new Set<number>();
-  let m: RegExpExecArray | null;
-  const re = new RegExp(CITE_EXTRACT.source, 'g');
-  while ((m = re.exec(summary)) !== null) {
-    m[1].split(',').forEach((n) => cited.add(parseInt(n.trim(), 10)));
-  }
-  if (cited.size === 0 || !results?.length) return [];
-  const groups = new Map<string, { title: string; org?: string; year?: string; refs: { num: number; result: any }[] }>();
-  const order: string[] = [];
-  const sorted = Array.from(cited).sort((a, b) => a - b);
-  sorted.forEach((origNum, seqIdx) => {
-    const idx = origNum - 1;
-    if (idx < 0 || idx >= results.length) return;
-    const r = results[idx];
-    const key = r.title || `result-${idx}`;
-    if (!groups.has(key)) {
-      groups.set(key, { title: r.title || 'Untitled', org: r.organization, year: r.year, refs: [] });
-      order.push(key);
-    }
-    groups.get(key)!.refs.push({ num: seqIdx + 1, result: r });
-  });
-  return order.map((k) => groups.get(k)!);
-};
-
-/** References section matching the main search view style */
-const AdminReferences: React.FC<{ summary: string; results: any[] }> = ({ summary, results }) => {
-  const groups = buildGroupedRefs(summary, results);
-  if (groups.length === 0) return null;
-  return (
-    <div className="admin-references-section">
-      <h4>References:</h4>
-      {groups.map((g) => (
-        <div key={g.title} className="admin-ref-group">
-          <span>{g.title}{g.org && `, ${g.org}`}{g.year && `, ${g.year}`}</span>
-          {' | '}
-          {g.refs.map(({ num, result }, i) => (
-            <React.Fragment key={num}>
-              {i > 0 && ' '}
-              {result.link ? (
-                <a href={result.link} target="_blank" rel="noopener noreferrer"
-                  className="admin-ref-link" onClick={(e) => e.stopPropagation()}>
-                  <span className="admin-citation-badge admin-citation-clickable">{num}</span>
-                  {result.page_num ? ` p.${result.page_num}` : ''}
-                </a>
-              ) : (
-                <>
-                  <span className="admin-citation-badge">{num}</span>
-                  {result.page_num ? <span className="admin-ref-page"> p.{result.page_num}</span> : ''}
-                </>
-              )}
-            </React.Fragment>
-          ))}
-        </div>
-      ))}
     </div>
   );
 };
@@ -551,6 +513,30 @@ const AssistantSearchQueries: React.FC<{ searches: any[] }> = ({ searches }) => 
   );
 };
 
+/** Wrap children in a CollapsibleSection when collapsed=true, otherwise render directly. */
+const MaybeCollapsible: React.FC<{
+  collapsed: boolean; label: string; children: React.ReactNode;
+}> = ({ collapsed, label, children }) =>
+  collapsed ? <CollapsibleSection label={label}>{children}</CollapsibleSection> : <>{children}</>;
+
+/** Header section for search_result ratings: query + rated card */
+const SearchResultHeader: React.FC<{ context: Record<string, any> }> = ({ context }) => {
+  if (!context.title && !context.chunk_text) return null;
+  return (
+    <>
+      {context.query && (
+        <div style={{ marginBottom: 8 }}>
+          <div className="admin-context-label">Search Query</div>
+          <div style={{ fontSize: '0.88rem', color: '#1a1f36', fontWeight: 500, padding: '4px 0' }}>
+            {context.query}
+          </div>
+        </div>
+      )}
+      <RatedResultCard context={context} />
+    </>
+  );
+};
+
 const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
   const ctx = rating.context;
   if (!ctx || Object.keys(ctx).length === 0) {
@@ -558,12 +544,14 @@ const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
   }
 
   const aiSummary = ctx.ai_summary || ctx.summary || '';
-  const resultsSnapshot = ctx.results_snapshot;
-
+  const resultsSnapshot = Array.isArray(ctx.results_snapshot) ? ctx.results_snapshot : null;
   const cellCounts = ctx.cellCounts;
+  const isSearchResult = rating.rating_type === 'search_result';
+  const searches = Array.isArray(ctx.searches) ? ctx.searches : null;
 
   return (
     <div>
+      {isSearchResult && <SearchResultHeader context={ctx} />}
       {/* User query for assistant ratings */}
       {ctx.user_query && (
         <div style={{ marginTop: 4, marginBottom: 4 }}>
@@ -573,26 +561,23 @@ const RatingContextPanel: React.FC<{ rating: RatingRow }> = ({ rating }) => {
           </div>
         </div>
       )}
-      {/* Timing */}
       {ctx.timing && <TimingBar timing={ctx.timing} />}
       <ContextFields context={ctx} exclude={['user_query']} />
-      {/* Assistant search queries */}
-      {ctx.searches && Array.isArray(ctx.searches) && (
-        <AssistantSearchQueries searches={ctx.searches} />
-      )}
+      {searches && <AssistantSearchQueries searches={searches} />}
       {aiSummary && (
-        <AiSummaryBlock summary={aiSummary}
-          results={Array.isArray(resultsSnapshot) ? resultsSnapshot : []} />
+        <MaybeCollapsible collapsed={isSearchResult} label="AI Summary">
+          <AiSummaryBlock summary={aiSummary} results={resultsSnapshot || []} />
+        </MaybeCollapsible>
       )}
-      {/* Drilldown Tree */}
       {ctx.drilldown_tree && (
-        <div style={{ marginTop: 8 }}>
-          <div className="admin-context-label">AI Summary Tree</div>
+        <MaybeCollapsible collapsed={isSearchResult} label="AI Summary Tree">
           <DrilldownTreeDisplay node={ctx.drilldown_tree} />
-        </div>
+        </MaybeCollapsible>
       )}
-      {resultsSnapshot && Array.isArray(resultsSnapshot) && (
-        <ResultsSnapshotList results={resultsSnapshot} />
+      {resultsSnapshot && (
+        <MaybeCollapsible collapsed={isSearchResult} label={`Search Results (${resultsSnapshot.length})`}>
+          <ResultsSnapshotList results={resultsSnapshot} />
+        </MaybeCollapsible>
       )}
       {cellCounts && typeof cellCounts === 'object' && !Array.isArray(cellCounts) && (
         <HeatmapCellCountsTable counts={cellCounts} />
@@ -665,6 +650,42 @@ const FilterPopover: React.FC<FilterPopoverProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Rating table row (extracted to reduce cyclomatic complexity)
+// ---------------------------------------------------------------------------
+const hasContext = (r: RatingRow) => r.context && Object.keys(r.context).length > 0;
+
+const RatingTableRow: React.FC<{
+  rating: RatingRow; isExpanded: boolean; onToggle: (id: string) => void;
+}> = ({ rating, isExpanded, onToggle }) => {
+  const expandable = hasContext(rating);
+  return (
+    <React.Fragment>
+      <tr className={`${expandable ? 'admin-expandable-row' : ''} ${isExpanded ? 'admin-expanded-parent' : ''}`}
+        onClick={() => expandable && onToggle(rating.id)}>
+        <td style={{ textAlign: 'center', padding: '0.4rem' }}>
+          {expandable ? <span className="admin-expand-icon"><ChevronIcon expanded={isExpanded} /></span> : ''}
+        </td>
+        <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{formatDate(rating.created_at)}</td>
+        <td style={{ fontSize: '0.82rem' }}>{rating.user_email || rating.user_display_name || '-'}</td>
+        <td style={{ fontSize: '0.82rem' }}>{rating.rating_type.replace(/_/g, ' ')}</td>
+        <td style={{ color: '#d4a017', fontSize: '0.9rem', letterSpacing: '1px' }}>{renderStars(rating.score)}</td>
+        <td style={{ fontSize: '0.82rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rating.comment || ''}>{rating.comment || '-'}</td>
+        <td style={{ fontSize: '0.82rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rating.url || ''}>
+          {rating.url ? <a href={rating.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1a73e8' }} onClick={(e) => e.stopPropagation()}>link</a> : '-'}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr className="admin-expanded-detail">
+          <td colSpan={7} className="admin-expanded-cell">
+            <RatingContextPanel rating={rating} />
+          </td>
+        </tr>
+      )}
+    </React.Fragment>
   );
 };
 
@@ -794,8 +815,6 @@ const RatingsManager: React.FC = () => {
     if (SERVER_FILTER_COLUMNS.has(column)) setPage(1);
   }, []);
 
-  const hasContext = (r: RatingRow) => r.context && Object.keys(r.context).length > 0;
-
   // Apply client-side column filters (score)
   const filteredRatings = ratings.filter((r) =>
     matchesScoreFilter(r, columnFilters['score'] || ''),
@@ -873,38 +892,9 @@ const RatingsManager: React.FC = () => {
                 {filteredRatings.length === 0 ? (
                   <tr><td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>No ratings found</td></tr>
                 ) : (
-                  filteredRatings.map((r) => {
-                    const isExpanded = expandedRows.has(r.id);
-                    return (
-                      <React.Fragment key={r.id}>
-                        <tr className={`${hasContext(r) ? 'admin-expandable-row' : ''} ${isExpanded ? 'admin-expanded-parent' : ''}`}
-                          onClick={() => hasContext(r) && toggleRow(r.id)}>
-                          <td style={{ textAlign: 'center', padding: '0.4rem' }}>
-                            {hasContext(r) ? (
-                              <span className="admin-expand-icon">
-                                <ChevronIcon expanded={isExpanded} />
-                              </span>
-                            ) : ''}
-                          </td>
-                          <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem' }}>{formatDate(r.created_at)}</td>
-                          <td style={{ fontSize: '0.82rem' }}>{r.user_email || r.user_display_name || '-'}</td>
-                          <td style={{ fontSize: '0.82rem' }}>{r.rating_type.replace(/_/g, ' ')}</td>
-                          <td style={{ color: '#d4a017', fontSize: '0.9rem', letterSpacing: '1px' }}>{renderStars(r.score)}</td>
-                          <td style={{ fontSize: '0.82rem', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.comment || ''}>{r.comment || '-'}</td>
-                          <td style={{ fontSize: '0.82rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.url || ''}>
-                            {r.url ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1a73e8' }} onClick={(e) => e.stopPropagation()}>link</a> : '-'}
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr className="admin-expanded-detail">
-                            <td colSpan={7} className="admin-expanded-cell">
-                              <RatingContextPanel rating={r} />
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
+                  filteredRatings.map((r) => (
+                    <RatingTableRow key={r.id} rating={r} isExpanded={expandedRows.has(r.id)} onToggle={toggleRow} />
+                  ))
                 )}
               </tbody>
             </table>
