@@ -46,8 +46,6 @@ From the tree view you can:
 
 Click on any node in the tree to see its detailed AI summary. Each sub-topic summary includes structured headings, cited evidence, and its own **"Find out more"** button — so you can keep drilling deeper.
 
-![Sub-topic summary](/docs/images/search-guide/subtopic-summary.png)
-
 Notice the breadcrumb at the top (e.g. *Exploring: "Effects on Agricultural Production and Food Availability"*) — this tells you where you are in the tree. Click **"Show tree"** to navigate back to the full tree view at any time.
 
 ---
@@ -60,24 +58,3 @@ Research Trees persist across your session. You can also:
 - **Load previous research** — click **"Load Previous Research"** to restore a tree from an earlier session.
 - **Export research** — click **"Export research"** to download your tree and summaries.
 - **Generate a Global Summary** — click **"Generate Global Summary"** to create a single summary that synthesizes findings from across all branches of your tree.
-
----
-
-### Tips for Effective Research Trees
-
-1. **Start broad, then narrow** — begin with a general query like "impact of climate change on food security", then drill into specific aspects that interest you.
-2. **Use text highlighting** — don't just rely on the pre-generated headings. Highlight specific phrases in any summary to research exactly what caught your eye.
-3. **Combine with filters** — all active filters (organization, date range, country, etc.) carry forward into sub-queries, keeping your research scoped to relevant documents.
-4. **Compare branches** — navigate between different branches of your tree to compare findings across sub-topics.
-5. **Export for reports** — use the export feature to capture your research structure and summaries for inclusion in reports or briefings.
-
----
-
-### Use Cases
-
-| Use Case | How to Approach It |
-|----------|-------------------|
-| **Literature reviews** | Start with a broad topic and systematically drill into each aspect — agricultural productivity, climate adaptation, nutritional outcomes — building a comprehensive evidence map. |
-| **Gap analysis** | Explore related sub-topics to quickly identify where evidence is strong and where it's lacking across your document corpus. |
-| **Evidence synthesis** | Build a structured overview of a complex topic, with each branch providing its own AI summary and source documents. Use "Generate Global Summary" to bring it all together. |
-| **Briefing preparation** | Use the tree to organize background research, with each node providing a focused summary on a specific aspect. Export the results for your briefing document. |

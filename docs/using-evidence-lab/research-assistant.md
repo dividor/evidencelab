@@ -68,10 +68,3 @@ The assistant respects the same search settings available in the Search tab. Thi
 - **Field boost** — boost results matching detected field values (e.g., country names)
 
 These settings are configured via the Search Settings panel and automatically forwarded to the assistant's search tool.
-
-### Tips for Better Results
-
-- **Be specific** — instead of "Tell me about climate change," try "How has climate change affected food production in East Africa according to evaluation reports?"
-- **Use Deep Research for complex topics** — if your question spans multiple themes or requires evidence from many documents, Deep Research will produce more comprehensive results
-- **Follow up** — if the initial response misses an angle, ask a follow-up question to steer the research
-- **Check the citations** — click on citation numbers to verify the source material and read the original context

@@ -26,13 +26,9 @@ You can rate five types of content across the application:
 
 Each search result card shows a small star rating in its footer. Click any star to open the rating modal.
 
-![Rating a search result](/docs/images/ratings/search-result-rating.png)
-
 #### Rating AI Summaries
 
 After the AI Summary expands, you'll see a **"Rate"** label with stars at the bottom of the summary. Click to rate.
-
-![Rating an AI summary](/docs/images/ratings/ai-summary-rating.png)
 
 #### Rating Document Summaries
 
@@ -52,8 +48,6 @@ When you click a star, a modal opens where you can:
 2. **Add a comment** — optional free-text feedback (up to 2,000 characters)
 3. **Submit** — saves your rating
 
-![Rating modal](/docs/images/ratings/rating-modal.png)
-
 If you've already rated something, the modal shows your previous score and comment. You can update your rating at any time, or click **"Remove Rating"** to delete it.
 
 > Each rating is unique per user — you can only have one rating per item. Submitting again updates your existing rating rather than creating a duplicate.
@@ -69,8 +63,6 @@ Along with your star score and comment, Evidence Lab captures a snapshot of what
 ### Viewing Ratings (Admin)
 
 Administrators can view all user ratings from the **Admin Panel → Ratings** tab.
-
-![Admin Ratings panel](/docs/images/admin/ratings-panel.png)
 
 The Ratings panel provides:
 
