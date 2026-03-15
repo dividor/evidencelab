@@ -494,6 +494,74 @@ class TestSearchSettingsPassthrough:
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_conversation_history_for_anon(self, mock_stream):
+        """Client-sent conversation_history should be forwarded for anon users."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        history = [
+            {"role": "user", "content": "What is food security?"},
+            {"role": "assistant", "content": "Food security is..."},
+        ]
+        body = AssistantChatRequest(
+            query="Tell me more",
+            conversation_history=history,
+        )
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        conv = call_kwargs.get("conversation_messages")
+        assert conv is not None
+        assert len(conv) == 2
+        assert conv[0]["role"] == "user"
+        assert conv[1]["content"] == "Food security is..."
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_no_conversation_history_when_absent(self, mock_stream):
+        """Without conversation_history, conversation_messages should be empty."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(query="test")
+
+        response = await stream_assistant_chat(
+            request=request,
+            body=body,
+            user=None,
+            session=None,
+        )
+
+        async for _ in response.body_iterator:
+            pass
+
+        call_kwargs = mock_stream.call_args[1]
+        conv = call_kwargs.get("conversation_messages")
+        assert conv == []
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
     async def test_passes_field_boost_settings(self, mock_stream):
         """field_boost settings should reach the service via search_settings."""
 

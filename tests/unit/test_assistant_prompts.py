@@ -73,3 +73,18 @@ class TestAssistantSystemPrompt:
         template = jinja_env.get_template("assistant_system.j2")
         result = template.render()
         assert "global" in result.lower()
+
+    def test_forbids_citation_ranges(self, jinja_env):
+        """System prompt should explicitly forbid citation ranges like [1-10]."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "[1-5]" in result
+        assert "[1-10]" in result
+        assert "list individual numbers explicitly" in result.lower()
+
+    def test_forbids_closing_summary(self, jinja_env):
+        """System prompt should forbid conclusion/summary paragraphs."""
+        template = jinja_env.get_template("assistant_system.j2")
+        result = template.render()
+        assert "closing paragraph" in result.lower()
+        assert "never add a paragraph that summarizes" in result.lower()

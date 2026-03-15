@@ -95,6 +95,24 @@ class TestAssistantChatRequest:
         with pytest.raises(ValidationError):
             AssistantChatRequest(query="test", data_source=long_ds)
 
+    def test_conversation_history_accepted(self):
+        history = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+        req = AssistantChatRequest(query="follow up", conversation_history=history)
+        assert req.conversation_history is not None
+        assert len(req.conversation_history) == 2
+        assert req.conversation_history[0]["role"] == "user"
+
+    def test_conversation_history_defaults_none(self):
+        req = AssistantChatRequest(query="test")
+        assert req.conversation_history is None
+
+    def test_conversation_history_empty_list(self):
+        req = AssistantChatRequest(query="test", conversation_history=[])
+        assert req.conversation_history == []
+
 
 class TestConversationMessageRead:
     """Tests for ConversationMessageRead schema."""
