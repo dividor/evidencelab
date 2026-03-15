@@ -7,13 +7,23 @@ interface OAuthButtonsProps {
 }
 
 const OAuthButtons: React.FC<OAuthButtonsProps> = ({ action = 'Sign in' }) => {
-  const handleGoogle = () => {
-    window.location.href = `${API_BASE_URL}/auth/google/authorize`;
+  const handleOAuth = async (provider: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/${provider}/authorize`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.authorization_url) {
+        window.location.href = data.authorization_url;
+      }
+    } catch (err) {
+      console.error(`OAuth ${provider} error:`, err);
+    }
   };
 
-  const handleMicrosoft = () => {
-    window.location.href = `${API_BASE_URL}/auth/microsoft/authorize`;
-  };
+  const handleGoogle = () => handleOAuth('google');
+  const handleMicrosoft = () => handleOAuth('microsoft');
 
   return (
     <div className="oauth-buttons">
