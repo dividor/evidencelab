@@ -223,6 +223,7 @@ services:
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
+      - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
     depends_on:
       - api
     networks:
