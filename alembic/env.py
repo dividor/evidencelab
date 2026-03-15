@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from logging.config import fileConfig
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 from sqlalchemy import String, engine_from_config, pool, text
@@ -24,7 +25,7 @@ def _build_postgres_url() -> str:
     db = os.getenv("POSTGRES_DBNAME") or os.getenv("POSTGRES_DB", "evidencelab")
     user = os.getenv("POSTGRES_USER", "evidencelab")
     password = os.getenv("POSTGRES_PASSWORD", "evidencelab")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    return f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
 
 
 VERSION_NUM_TYPE = String(128)
