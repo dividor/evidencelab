@@ -101,7 +101,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'assistant', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'stats', 'admin', 'docs'] as const;
+const VALID_TABS = ['search', 'assistant', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'terms', 'stats', 'admin', 'docs'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -580,6 +580,7 @@ function App() {
   const [techContent, setTechContent] = useState('');
   const [dataContent, setDataContent] = useState('');
   const [privacyContent, setPrivacyContent] = useState('');
+  const [termsContent, setTermsContent] = useState('');
   const [docsInitialPath, setDocsInitialPath] = useState<string | undefined>(undefined);
   const tooltipTimeoutRef = React.useRef<number | null>(null);
 
@@ -871,6 +872,11 @@ function App() {
 
   const handlePrivacyClick = useCallback(() => {
     handleTabChange('privacy');
+    setHelpDropdownOpen(false);
+  }, [handleTabChange]);
+
+  const handleTermsClick = useCallback(() => {
+    handleTabChange('terms');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
@@ -1402,6 +1408,12 @@ function App() {
           }
         })
         .catch(err => console.error('Failed to load privacy content:', err));
+    }
+    if (activeTab === 'terms') {
+      fetch(`${withBasePath('/docs/overview/terms.md')}?t=${Date.now()}`)
+        .then(response => response.text())
+        .then(text => setTermsContent(text))
+        .catch(err => console.error('Failed to load terms content:', err));
     }
   }, [activeTab]);
 
@@ -2854,6 +2866,7 @@ function App() {
         techContent={techContent}
         dataContent={dataContent}
         privacyContent={privacyContent}
+        termsContent={termsContent}
         basePath={APP_BASE_PATH}
         docsInitialPath={docsInitialPath}
         onTabChange={handleTabChange}
@@ -2884,6 +2897,14 @@ function App() {
           onClick={handlePrivacyClick}
         >
           Privacy
+        </button>
+        <span className="app-footer-divider">•</span>
+        <button
+          type="button"
+          className="app-footer-link"
+          onClick={handleTermsClick}
+        >
+          Terms
         </button>
         <span className="app-footer-divider">•</span>
         <a href="https://github.com/dividor/evidencelab" target="_blank" rel="noreferrer">

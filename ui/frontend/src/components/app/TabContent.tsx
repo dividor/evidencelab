@@ -5,7 +5,7 @@ import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 import DocsPage from '../docs/DocsPage';
 
-type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin' | 'docs';
+type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
 interface TabContentProps {
   activeTab: TabName;
@@ -21,6 +21,7 @@ interface TabContentProps {
   techContent: string;
   dataContent: string;
   privacyContent: string;
+  termsContent: string;
   basePath?: string;
   docsInitialPath?: string;
   onTabChange: (tab: TabName) => void;
@@ -31,13 +32,15 @@ const INFO_TAB_LABELS: Record<string, string> = {
   tech: 'Tech',
   data: 'Data',
   privacy: 'Privacy',
+  terms: 'Terms of Service',
 };
 
 const INFO_TAB_LINKS: Record<string, TabName[]> = {
   info: ['tech', 'data'],
   tech: ['info', 'data'],
   data: ['info', 'tech'],
-  privacy: ['info', 'tech', 'data'],
+  privacy: ['info', 'terms'],
+  terms: ['info', 'privacy'],
 };
 
 const InfoFooterLinks = ({ currentTab, onTabChange }: { currentTab: TabName; onTabChange: (tab: TabName) => void }) => {
@@ -136,6 +139,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   techContent,
   dataContent,
   privacyContent,
+  termsContent,
   basePath,
   docsInitialPath,
   onTabChange,
@@ -164,6 +168,8 @@ export const TabContent: React.FC<TabContentProps> = ({
         return <>{statsTab}</>;
       case 'privacy':
         return <PrivacyTabContent content={privacyContent} onTabChange={onTabChange} />;
+      case 'terms':
+        return <HelpTabContent content={termsContent} currentTab="terms" onTabChange={onTabChange} />;
       case 'docs':
         return <DocsPage basePath={basePath} initialPath={docsInitialPath} />;
       default:

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ASSISTANT_ENABLED } from '../../config';
 
-type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'stats' | 'admin' | 'docs';
+type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
 interface NavTabsProps {
   activeTab: TabName;
