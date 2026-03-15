@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi_users import schemas
 from pydantic import BaseModel, Field, computed_field, field_validator
@@ -447,6 +447,10 @@ class AssistantChatRequest(BaseModel):
     reranker_model: Optional[str] = None
     search_settings: Optional[AssistantSearchSettings] = None
     deep_research: bool = False
+    conversation_history: Optional[List[Dict[str, str]]] = Field(
+        None,
+        description="Prior conversation messages for unauthenticated users",
+    )
 
 
 class ThreadRenameRequest(BaseModel):

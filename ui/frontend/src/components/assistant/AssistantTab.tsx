@@ -288,6 +288,13 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     };
 
     try {
+      // For unauthenticated users, pass local conversation history so the
+      // backend can maintain context across messages (including when the
+      // user toggles deep research mid-conversation).
+      const history = !isAuthenticated && messages.length > 0
+        ? messages.map((m) => ({ role: m.role, content: m.content }))
+        : undefined;
+
       await streamAssistantChat({
         apiBaseUrl: API_BASE_URL,
         query: query.trim(),
@@ -297,6 +304,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         rerankerModel: rerankerModel,
         searchSettings: searchSettings,
         deepResearch,
+        conversationHistory: history,
         handlers,
         signal: controller.signal,
       });

@@ -17,6 +17,11 @@ export interface AssistantStreamHandlers {
   onError: (message: string) => void;
 }
 
+interface ConversationMessage {
+  role: string;
+  content: string;
+}
+
 interface AssistantStreamOptions {
   apiBaseUrl: string;
   query: string;
@@ -26,6 +31,7 @@ interface AssistantStreamOptions {
   rerankerModel?: string | null;
   searchSettings?: Partial<SearchSettings> | null;
   deepResearch?: boolean;
+  conversationHistory?: ConversationMessage[];
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -195,6 +201,7 @@ export const streamAssistantChat = async ({
   rerankerModel,
   searchSettings,
   deepResearch,
+  conversationHistory,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -210,6 +217,7 @@ export const streamAssistantChat = async ({
       reranker_model: rerankerModel || undefined,
       search_settings: buildSearchSettingsPayload(searchSettings),
       deep_research: deepResearch || undefined,
+      conversation_history: conversationHistory?.length ? conversationHistory : undefined,
     }),
     signal,
   });

@@ -187,6 +187,9 @@ async def stream_assistant_chat(
     """
     model_key, temperature, max_tokens = _resolve_model_config(body)
     conversation_messages = await _load_conversation_history(body, user, session)
+    # For unauthenticated users (no thread persistence), use client-sent history
+    if not conversation_messages and body.conversation_history:
+        conversation_messages = body.conversation_history
     group_prompt = await _resolve_group_prompt(user, session)
 
     async def event_generator():
