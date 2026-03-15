@@ -1,6 +1,6 @@
 import React from 'react';
 
-const FILTER_LIST_COLUMNS = new Set([
+const MULTISELECT_COLUMNS = new Set([
   'title',
   'organization',
   'document_type',
@@ -24,6 +24,55 @@ interface DocumentsFilterPopoverProps {
   dataSourceConfig?: any; // Config to determine taxonomy columns dynamically
 }
 
+/** Checkbox-based multiselect filter with Select All */
+const CheckboxMultiselect: React.FC<{
+  options: string[];
+  selectedValues: Set<string>;
+  onToggle: (value: string) => void;
+  onToggleAll: () => void;
+  onApply: () => void;
+  onClear: (() => void) | null;
+}> = ({ options, selectedValues, onToggle, onToggleAll, onApply, onClear }) => {
+  const allSelected = options.length > 0 && selectedValues.size === options.length;
+  const someSelected = selectedValues.size > 0 && selectedValues.size < options.length;
+
+  return (
+    <div className="filter-multiselect">
+      <div className="filter-multiselect-options">
+        <label className="filter-checkbox-item filter-select-all">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => { if (el) el.indeterminate = someSelected; }}
+            onChange={onToggleAll}
+          />
+          <span>Select all</span>
+        </label>
+        {options.map((option) => (
+          <label key={option} className="filter-checkbox-item">
+            <input
+              type="checkbox"
+              checked={selectedValues.has(option)}
+              onChange={() => onToggle(option)}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+      <div className="filter-actions">
+        <button className="filter-apply-button" onClick={onApply}>
+          Apply{selectedValues.size > 0 ? ` (${selectedValues.size})` : ''}
+        </button>
+        {onClear && (
+          <button className="filter-clear-button" onClick={onClear}>
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
   activeFilterColumn,
   filterPopoverPosition,
@@ -38,7 +87,7 @@ export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
   dataSourceConfig,
 }) => {
   const isTextFilter = activeFilterColumn === 'error_message';
-  const isListFilter = FILTER_LIST_COLUMNS.has(activeFilterColumn);
+  const isMultiselectFilter = MULTISELECT_COLUMNS.has(activeFilterColumn);
 
   // Determine if column is a taxonomy from config (not hardcoded)
   const taxonomies = dataSourceConfig?.pipeline?.tag?.taxonomies || {};
@@ -50,25 +99,40 @@ export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
     return new Set(current ? current.split(',').map((v) => v.trim()) : []);
   });
 
+  const options = React.useMemo(
+    () => getCategoricalOptions(activeFilterColumn),
+    [getCategoricalOptions, activeFilterColumn],
+  );
+
   const toggleValue = (value: string) => {
-    const newSelected = new Set(selectedValues);
-    if (newSelected.has(value)) {
-      newSelected.delete(value);
+    setSelectedValues((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedValues.size === options.length) {
+      setSelectedValues(new Set());
     } else {
-      newSelected.add(value);
+      setSelectedValues(new Set(options));
     }
-    setSelectedValues(newSelected);
   };
 
   const applyMultiselect = () => {
     if (selectedValues.size === 0) {
       onClearFilter(activeFilterColumn);
     } else {
-      const filterValue = Array.from(selectedValues).join(',');
-      onApplyFilter(activeFilterColumn, filterValue);
+      onApplyFilter(activeFilterColumn, Array.from(selectedValues).join(','));
     }
     onClose();
   };
+
+  const clearAndClose = hasActiveFilter(activeFilterColumn)
+    ? () => { onClearFilter(activeFilterColumn); setSelectedValues(new Set()); onClose(); }
+    : null;
 
   return (
     <div
@@ -117,56 +181,15 @@ export const DocumentsFilterPopover: React.FC<DocumentsFilterPopoverProps> = ({
             </div>
           </div>
         )}
-        {isListFilter && (
-          <div className="filter-list">
-            <div
-              className={`filter-list-item ${!columnFilters[activeFilterColumn] ? 'selected' : ''}`}
-              onClick={() => onClearFilter(activeFilterColumn)}
-            >
-              <span>All</span>
-            </div>
-            {getCategoricalOptions(activeFilterColumn).map((option) => (
-              <div
-                key={option}
-                className={`filter-list-item ${
-                  columnFilters[activeFilterColumn] === option ? 'selected' : ''
-                }`}
-                onClick={() => onApplyFilter(activeFilterColumn, option)}
-              >
-                <span>{option}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        {isTaxonomyFilter && (
-          <div className="filter-multiselect">
-            <div className="filter-multiselect-options">
-              {getCategoricalOptions(activeFilterColumn).map((option) => (
-                <label key={option} className="filter-checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={selectedValues.has(option)}
-                    onChange={() => toggleValue(option)}
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
-            </div>
-            <div className="filter-actions">
-              <button className="filter-apply-button" onClick={applyMultiselect}>
-                Apply ({selectedValues.size})
-              </button>
-              {hasActiveFilter(activeFilterColumn) && (
-                <button className="filter-clear-button" onClick={() => {
-                  onClearFilter(activeFilterColumn);
-                  setSelectedValues(new Set());
-                  onClose();
-                }}>
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
+        {(isMultiselectFilter || isTaxonomyFilter) && (
+          <CheckboxMultiselect
+            options={options}
+            selectedValues={selectedValues}
+            onToggle={toggleValue}
+            onToggleAll={toggleAll}
+            onApply={applyMultiselect}
+            onClear={clearAndClose}
+          />
         )}
       </div>
     </div>
