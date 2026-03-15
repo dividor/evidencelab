@@ -1507,7 +1507,7 @@ h6,
 
 .filter-popover-content {
   padding: 12px;
-  overflow-y: visible;
+  overflow-y: auto;
   max-height: 340px;
 }
 
@@ -1620,6 +1620,13 @@ h6,
 
 .filter-checkbox-item input[type="checkbox"] {
   cursor: pointer;
+}
+
+.filter-select-all {
+  border-bottom: 1px solid var(--gray-200);
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .documents-table th.sortable {

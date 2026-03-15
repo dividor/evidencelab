@@ -145,29 +145,32 @@ def _build_document_filters(
     sdg: Optional[str],
     cross_cutting_theme: Optional[str],
 ) -> Dict[str, Any]:
+    def _split_or_single(val: str) -> Any:
+        """Return a list if comma-separated, else a single string."""
+        parts = [v.strip() for v in val.split(",") if v.strip()]
+        return parts if len(parts) > 1 else val
+
     filters: Dict[str, Any] = {}
     if organization:
-        filters["organization"] = organization
+        filters["organization"] = _split_or_single(organization)
     if document_type:
-        filters["document_type"] = document_type
+        filters["document_type"] = _split_or_single(document_type)
     if published_year:
-        filters["published_year"] = published_year
+        filters["published_year"] = _split_or_single(published_year)
     if toc_approved is not None:
         filters["toc_approved"] = toc_approved
     if sdg:
-        # Split comma-separated values for multiselect
         filters["sdg"] = [s.strip() for s in sdg.split(",") if s.strip()]
     if cross_cutting_theme:
-        # Split comma-separated values for multiselect
         filters["cross_cutting_theme"] = [
             c.strip() for c in cross_cutting_theme.split(",") if c.strip()
         ]
     if language:
-        filters["language"] = language
+        filters["language"] = _split_or_single(language)
     if file_format:
-        filters["file_format"] = file_format
+        filters["file_format"] = _split_or_single(file_format)
     if status:
-        filters["status"] = status
+        filters["status"] = _split_or_single(status)
     if title:
         filters["title"] = title
     if search:
