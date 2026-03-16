@@ -223,6 +223,9 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
           By creating an account, you agree to our{' '}
           <a href="/privacy" target="_blank" rel="noopener noreferrer">
             Privacy Policy
+          </a>{' '}and{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer">
+            Terms of Service
           </a>.
         </p>
       )}
