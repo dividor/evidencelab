@@ -156,6 +156,7 @@ def _custom_openapi():
         title=app.title,
         version=app.version,
         routes=app.routes,
+        root_path=app.root_path,
     )
     schemes = schema.get("components", {}).get("securitySchemes", {})
     # Keep only the API key header scheme
