@@ -1,3 +1,4 @@
+import { API_KEY } from '../config';
 import { SummaryModelConfig, SourceReference, SearchToolCall } from '../types/api';
 import { SearchSettings } from '../types/auth';
 
@@ -45,6 +46,9 @@ const buildHeaders = (): Record<string, string> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
   const csrfToken = getCsrfToken();
   if (csrfToken) {
     headers['X-CSRF-Token'] = csrfToken;

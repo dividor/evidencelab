@@ -67,4 +67,9 @@ export const USER_MODULE_MODE: UserModuleMode =
 // Auth module is enabled (true for both on_passive and on_active)
 export const USER_MODULE = USER_MODULE_MODE !== 'off';
 
+// API key for authenticating UI requests to the backend.
+// Set via REACT_APP_API_KEY in .env — required for the app to function.
+export const API_KEY: string | undefined =
+  process.env.REACT_APP_API_KEY || undefined;
+
 export default API_BASE_URL;

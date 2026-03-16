@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
-import API_BASE_URL, { USER_MODULE } from '../config';
+import API_BASE_URL, { API_KEY, USER_MODULE } from '../config';
 import type { AuthContextValue, AuthState, AuthUser, LoginCredentials, RegisterData } from '../types/auth';
 
 /**
@@ -14,12 +14,19 @@ import type { AuthContextValue, AuthState, AuthUser, LoginCredentials, RegisterD
 axios.defaults.withCredentials = true;
 
 /**
+ * Request interceptor — attaches API key and CSRF token.
+ *
+ * API key: sent on every request so the backend can authenticate the UI.
+ *
  * CSRF protection — double-submit cookie pattern.
  * The backend sets a non-httpOnly `evidencelab_csrf` cookie.  We read it
  * and echo it back as the `X-CSRF-Token` header on every state-changing
  * request so the backend can verify the two match.
  */
 axios.interceptors.request.use((config) => {
+  if (API_KEY && config.headers) {
+    config.headers['X-API-Key'] = API_KEY;
+  }
   const method = (config.method ?? '').toLowerCase();
   if (method !== 'get' && method !== 'head' && method !== 'options') {
     const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
