@@ -16,10 +16,23 @@ interface LoginModalProps {
 
 type TabMode = 'login' | 'register' | 'forgot' | 'reset';
 
+/** Map raw error codes from fastapi-users to user-friendly messages. */
+const ERROR_MESSAGES: Record<string, string> = {
+  REGISTER_USER_ALREADY_EXISTS: 'An account with this email address already exists. Try signing in instead.',
+  LOGIN_BAD_CREDENTIALS: 'Incorrect email or password. Please try again.',
+  LOGIN_USER_NOT_VERIFIED: 'Please verify your email address before signing in. Check your inbox for the verification link.',
+  RESET_PASSWORD_BAD_TOKEN: 'This reset link has expired or is invalid. Please request a new one.', // pragma: allowlist secret
+  VERIFY_USER_BAD_TOKEN: 'This verification link has expired or is invalid. Please request a new one.',
+  VERIFY_USER_ALREADY_VERIFIED: 'Your email has already been verified. You can sign in.',
+  OAUTH_EXCHANGE_ERROR: 'Sign-in failed — could not complete the authentication. Please try again.',
+  OAUTH_NOT_AVAILABLE_EMAIL: 'Your account provider did not share an email address. Please use a different sign-in method.',
+  OAUTH_USER_ALREADY_EXISTS: 'An account with this email already exists. Try signing in with your email and password instead.',
+};
+
 /** Extract a human-readable message from fastapi-users error responses. */
 function parseErrorDetail(err: any, fallback: string): string {
   const detail = err.response?.data?.detail;
-  if (typeof detail === 'string') return detail;
+  if (typeof detail === 'string') return ERROR_MESSAGES[detail] || detail;
   if (detail?.reason) return detail.reason;
   return fallback;
 }
@@ -223,6 +236,9 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
           By creating an account, you agree to our{' '}
           <a href="/privacy" target="_blank" rel="noopener noreferrer">
             Privacy Policy
+          </a>{' '}and{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer">
+            Terms of Service
           </a>.
         </p>
       )}
