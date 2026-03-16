@@ -26,6 +26,7 @@
       "children": [
         { "title": "Pipeline Configuration", "path": "admin/pipeline-configuration.md" },
         { "title": "User Administration", "path": "admin/user-administration.md" },
+        { "title": "API", "path": "admin/api-keys.md" },
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" }
       ]
     }

@@ -74,6 +74,10 @@ Evidence Lab includes an optional user module that adds authentication and data-
 
 The module is built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns and is designed with future MFA support in mind.
 
+### REST API
+
+Evidence Lab provides a full REST API for programmatic access. All data endpoints are protected by API key authentication. Interactive API documentation is available via Swagger UI at `/api/docs`. Administrators can generate API keys from the **API Keys** tab in the admin panel. See [API](/docs/admin/api-keys) for details.
+
 More features will be added soon, focused on document evidence analysis and MCP (Model Context Protocol) support.
 
 For more detailed information on how the above features have been implemented, mosey on over to [Tech](/tech).

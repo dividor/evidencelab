@@ -165,6 +165,7 @@ services:
       - DATA_MOUNT_PATH=/app/data
       - PYTHONPATH=/app
       - API_SECRET_KEY=${API_SECRET_KEY}
+      - API_ROOT_PATH=${API_ROOT_PATH:-/api}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://evidencelab.ai}
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
