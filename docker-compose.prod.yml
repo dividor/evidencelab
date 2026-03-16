@@ -215,6 +215,7 @@ services:
         - REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL:-/api}
         - REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH:-}
         - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
+        - REACT_APP_API_KEY=${REACT_APP_API_KEY:-}
     container_name: ui
     # Only visible inside Docker; Caddy reverse-proxies to this
     expose:
