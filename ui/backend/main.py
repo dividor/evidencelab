@@ -258,10 +258,11 @@ async def startup_event():
                 len(raw_secret),
             )
     if not API_KEY:
-        logger.warning(
-            "API_SECRET_KEY is not set -- API endpoints are NOT protected. "
-            "Set API_SECRET_KEY in .env (e.g. openssl rand -hex 32)."
+        logger.error(
+            "API_SECRET_KEY is not set. The API will not start without it. "
+            "Set API_SECRET_KEY in .env (e.g. `openssl rand -hex 32`)."
         )
+        raise SystemExit(1)
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
