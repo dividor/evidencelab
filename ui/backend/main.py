@@ -150,13 +150,38 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
 # API documentation always available; endpoints still require API key.
 # Users authenticate via the Authorize button in Swagger UI.
 app = FastAPI(
-    title="Humanitarian Evaluation Search API",
+    title="Evidence Lab API",
     dependencies=[Depends(verify_api_key)],
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     swagger_ui_parameters={"persistAuthorization": True},
 )
+
+
+def _custom_openapi():
+    """Strip OAuth2/Cookie schemes so Swagger Authorize only shows API key."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+    )
+    schemes = schema.get("components", {}).get("securitySchemes", {})
+    # Keep only the API key header scheme
+    for name in list(schemes):
+        if schemes[name].get("type") != "apiKey" or schemes[name].get("in") != "header":
+            del schemes[name]
+    # Update global security to reference only the remaining scheme
+    schema["security"] = [{name: []} for name in schemes]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi  # type: ignore[method-assign]
 
 # Add rate limiter to app
 app.state.limiter = limiter
