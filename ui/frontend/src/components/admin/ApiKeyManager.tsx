@@ -17,52 +17,64 @@ interface CreatedKey extends ApiKeyItem {
   key: string;
 }
 
+const MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+
 const ApiKeyManager: React.FC = () => {
-  const [keys, setKeys] = useState<ApiKeyItem[]>([]);
+  const [currentKey, setCurrentKey] = useState<ApiKeyItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [label, setLabel] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [generatedKey, setGeneratedKey] = useState<CreatedKey | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const fetchKeys = useCallback(async () => {
+  const fetchKey = useCallback(async () => {
     try {
       const resp = await axios.get<ApiKeyItem[]>(`${API_BASE_URL}/api-keys/`);
-      setKeys(resp.data);
+      const activeKeys = resp.data.filter((k) => k.is_active);
+      setCurrentKey(activeKeys.length > 0 ? activeKeys[0] : null);
     } catch {
-      setError('Failed to load API keys');
+      setError('Failed to load API key');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchKeys();
-  }, [fetchKeys]);
+    fetchKey();
+  }, [fetchKey]);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!label.trim()) return;
+  const generateKey = async () => {
     setError('');
-    setCreating(true);
+    setGenerating(true);
+    setCopied(false);
     try {
-      const resp = await axios.post<CreatedKey>(`${API_BASE_URL}/api-keys/`, { label: label.trim() });
-      setGeneratedKey(resp.data);
-      setLabel('');
-      await fetchKeys();
+      // Revoke existing key first if one exists
+      if (currentKey) {
+        await axios.delete(`${API_BASE_URL}/api-keys/${currentKey.id}`);
+      }
+      const resp = await axios.post<CreatedKey>(`${API_BASE_URL}/api-keys/`, { label: 'API Key' });
+      setRevealedKey(resp.data.key);
+      await fetchKey();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to generate API key');
     } finally {
-      setCreating(false);
+      setGenerating(false);
+    }
+  };
+
+  const handleGenerate = () => {
+    if (currentKey) {
+      setShowConfirm(true);
+    } else {
+      generateKey();
     }
   };
 
   const handleCopy = async () => {
-    if (!generatedKey) return;
+    if (!revealedKey) return;
     try {
-      await navigator.clipboard.writeText(generatedKey.key);
+      await navigator.clipboard.writeText(revealedKey);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -70,23 +82,17 @@ const ApiKeyManager: React.FC = () => {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    try {
-      await axios.delete(`${API_BASE_URL}/api-keys/${deleteTarget.id}`);
-      setDeleteTarget(null);
-      await fetchKeys();
-    } catch (err: any) {
-      setDeleteTarget(null);
-      setError(err.response?.data?.detail || 'Failed to revoke API key');
-    }
-  };
+  if (loading) return <p>Loading...</p>;
 
-  if (loading) return <p>Loading API keys...</p>;
+  const displayValue = revealedKey || (currentKey ? `${currentKey.key_prefix}${MASK}` : '');
 
   return (
     <div className="admin-section">
-      <h3>API Keys</h3>
+      <h3>API Key</h3>
+      <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
+        Use this key to authenticate API requests via the <code>X-API-Key</code> header.
+      </p>
+
       {error && (
         <div className="auth-error" style={{ marginBottom: 12 }}>
           {error}
@@ -94,94 +100,62 @@ const ApiKeyManager: React.FC = () => {
         </div>
       )}
 
-      {/* Generate form */}
-      <form onSubmit={handleCreate} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 16 }}>
-        <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-          <label htmlFor="api-key-label">Label</label>
-          <input
-            id="api-key-label"
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="e.g. Production pipeline"
-            maxLength={255}
-            required
-          />
-        </div>
-        <button type="submit" className="auth-submit" disabled={creating} style={{ whiteSpace: 'nowrap' }}>
-          {creating ? 'Generating...' : 'Generate Key'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 600 }}>
+        <input
+          type="text"
+          readOnly
+          value={displayValue}
+          placeholder="No API key generated"
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            border: '1px solid #d1d5db',
+            borderRadius: 4,
+            fontSize: 14,
+            fontFamily: 'monospace',
+            background: '#f9fafb',
+            color: revealedKey ? '#111827' : '#6b7280',
+          }}
+        />
+        <button
+          className="btn-sm btn-primary"
+          onClick={handleCopy}
+          disabled={!revealedKey}
+          title="Copy key"
+          style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {copied ? 'Copied!' : 'Copy'}
         </button>
-      </form>
+        <button
+          className="btn-sm btn-primary"
+          onClick={handleGenerate}
+          disabled={generating}
+          title={currentKey ? 'Regenerate key' : 'Generate key'}
+          style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {generating ? 'Generating...' : currentKey ? 'Regenerate' : 'Generate'}
+        </button>
+      </div>
 
-      {/* Generated key modal */}
-      {generatedKey && (
-        <div className="modal-overlay" onClick={() => setGeneratedKey(null)}>
-          <div className="modal-content login-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>API Key Generated</h3>
-              <button className="modal-close" onClick={() => setGeneratedKey(null)}>&times;</button>
-            </div>
-            <div className="modal-body">
-              <p style={{ color: '#d97706', fontWeight: 'bold', marginBottom: 8 }}>
-                Copy this key now. It will not be shown again.
-              </p>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <code style={{
-                  flex: 1, padding: '8px 12px', background: '#f1f5f9',
-                  borderRadius: 4, wordBreak: 'break-all', fontSize: 13
-                }}>
-                  {generatedKey.key}
-                </code>
-                <button onClick={handleCopy} className="auth-submit" style={{ whiteSpace: 'nowrap' }}>
-                  {copied ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {revealedKey && (
+        <p style={{ color: '#d97706', fontSize: 13, marginTop: 8 }}>
+          Copy this key now — it will not be shown again after you leave this page.
+        </p>
       )}
 
-      {/* Key list */}
-      {keys.length === 0 ? (
-        <p style={{ color: '#6b7280' }}>No API keys generated yet.</p>
-      ) : (
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>Label</th>
-              <th>Key Prefix</th>
-              <th>Created By</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id}>
-                <td>{k.label}</td>
-                <td><code>{k.key_prefix}...</code></td>
-                <td>{k.created_by_email || '-'}</td>
-                <td>{new Date(k.created_at).toLocaleDateString()}</td>
-                <td>
-                  <button
-                    className="admin-btn-danger"
-                    onClick={() => setDeleteTarget({ id: k.id, label: k.label })}
-                  >
-                    Revoke
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {currentKey && (
+        <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
+          Created {new Date(currentKey.created_at).toLocaleDateString()}
+          {currentKey.created_by_email && ` by ${currentKey.created_by_email}`}
+        </p>
       )}
 
-      {deleteTarget && (
+      {showConfirm && (
         <ConfirmModal
-          title="Revoke API Key"
-          message={`Are you sure you want to revoke the API key "${deleteTarget.label}"? Any applications using this key will lose access.`}
-          onConfirm={confirmDelete}
-          onCancel={() => setDeleteTarget(null)}
+          title="Regenerate API Key"
+          message="This will revoke the current key and generate a new one. Any applications using the current key will lose access. Continue?"
+          onConfirm={() => { setShowConfirm(false); generateKey(); }}
+          onCancel={() => setShowConfirm(false)}
         />
       )}
     </div>

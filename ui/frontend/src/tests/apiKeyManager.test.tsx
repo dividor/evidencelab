@@ -17,183 +17,121 @@ if (!mockedAxios.delete) {
 
 import ApiKeyManager from '../components/admin/ApiKeyManager';
 
-const mockKeys = [
-  {
-    id: 'key-1',
-    label: 'Production pipeline',
-    key_prefix: 'el_abc12ab',
-    is_active: true,
-    created_at: '2026-01-15T00:00:00Z',
-    created_by_email: 'admin@test.com',
-    last_used_at: null,
-  },
-  {
-    id: 'key-2',
-    label: 'Staging environment',
-    key_prefix: 'el_xyz98yz',
-    is_active: true,
-    created_at: '2026-02-01T00:00:00Z',
-    created_by_email: null,
-    last_used_at: '2026-03-01T00:00:00Z',
-  },
-];
+const mockActiveKey = {
+  id: 'key-1',
+  label: 'API Key',
+  key_prefix: 'el_abc12ab',
+  is_active: true,
+  created_at: '2026-01-15T00:00:00Z',
+  created_by_email: 'admin@test.com',
+  last_used_at: null,
+};
 
 describe('ApiKeyManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedAxios.get.mockResolvedValue({ data: mockKeys });
   });
 
   test('shows loading state initially', () => {
     mockedAxios.get.mockReturnValue(new Promise(() => {}));
     render(<ApiKeyManager />);
-    expect(screen.getByText('Loading API keys...')).toBeInTheDocument();
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
-  test('renders key list after loading', async () => {
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Staging environment')).toBeInTheDocument();
-  });
-
-  test('displays key prefixes', async () => {
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('el_abc12ab...')).toBeInTheDocument();
-    });
-    expect(screen.getByText('el_xyz98yz...')).toBeInTheDocument();
-  });
-
-  test('displays creator email or dash', async () => {
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('admin@test.com')).toBeInTheDocument();
-    });
-    expect(screen.getByText('-')).toBeInTheDocument();
-  });
-
-  test('shows empty state when no keys', async () => {
+  test('shows Generate button when no key exists', async () => {
     mockedAxios.get.mockResolvedValue({ data: [] });
     render(<ApiKeyManager />);
     await waitFor(() => {
-      expect(screen.getByText('No API keys generated yet.')).toBeInTheDocument();
+      expect(screen.getByText('Generate')).toBeInTheDocument();
     });
+    expect(screen.getByPlaceholderText('No API key generated')).toBeInTheDocument();
+  });
+
+  test('shows masked key and Regenerate button when key exists', async () => {
+    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Regenerate')).toBeInTheDocument();
+    });
+    const input = screen.getByDisplayValue(/el_abc12ab/);
+    expect(input).toBeInTheDocument();
+  });
+
+  test('generates key on Generate click', async () => {
+    const createdKey = {
+      ...mockActiveKey,
+      id: 'key-new',
+      key: 'el_new123n-full-secret-key-value',
+    };
+    mockedAxios.get.mockResolvedValue({ data: [] });
+    mockedAxios.post.mockResolvedValue({ data: createdKey });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Generate')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Generate'));
+
+    await waitFor(() => {
+      expect(mockedAxios.post).toHaveBeenCalledWith('/api/api-keys/', {
+        label: 'API Key',
+      });
+    });
+  });
+
+  test('shows confirmation dialog before regenerating', async () => {
+    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Regenerate')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Regenerate'));
+
+    expect(screen.getByText('Regenerate API Key')).toBeInTheDocument();
+    expect(
+      screen.getByText(/This will revoke the current key/)
+    ).toBeInTheDocument();
+  });
+
+  test('shows revealed key with copy warning after generation', async () => {
+    const createdKey = {
+      ...mockActiveKey,
+      id: 'key-new',
+      key: 'el_new123n-full-secret-key-value',
+    };
+    mockedAxios.get
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: [createdKey] });
+    mockedAxios.post.mockResolvedValue({ data: createdKey });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Generate')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Generate'));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/will not be shown again/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  test('Copy button disabled when no revealed key', async () => {
+    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText('Copy')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Copy')).toBeDisabled();
   });
 
   test('shows error on fetch failure', async () => {
     mockedAxios.get.mockRejectedValue(new Error('Network error'));
     render(<ApiKeyManager />);
     await waitFor(() => {
-      expect(screen.getByText('Failed to load API keys')).toBeInTheDocument();
-    });
-  });
-
-  test('generate form requires label', async () => {
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-    const input = screen.getByPlaceholderText('e.g. Production pipeline');
-    expect(input).toBeRequired();
-  });
-
-  test('calls create API on form submit', async () => {
-    const createdKey = {
-      id: 'key-3',
-      label: 'New key',
-      key_prefix: 'el_new123n',
-      is_active: true,
-      created_at: '2026-03-16T00:00:00Z',
-      created_by_email: 'admin@test.com',
-      last_used_at: null,
-      key: 'el_new123n-full-secret-key-value',
-    };
-    mockedAxios.post.mockResolvedValue({ data: createdKey });
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-
-    const input = screen.getByPlaceholderText('e.g. Production pipeline');
-    fireEvent.change(input, { target: { value: 'New key' } });
-    fireEvent.click(screen.getByText('Generate Key'));
-
-    await waitFor(() => {
-      expect(mockedAxios.post).toHaveBeenCalledWith('/api/api-keys/', {
-        label: 'New key',
-      });
-    });
-  });
-
-  test('shows generated key modal with copy warning', async () => {
-    const createdKey = {
-      id: 'key-3',
-      label: 'New key',
-      key_prefix: 'el_new123n',
-      is_active: true,
-      created_at: '2026-03-16T00:00:00Z',
-      created_by_email: 'admin@test.com',
-      last_used_at: null,
-      key: 'el_new123n-full-secret-key-value',
-    };
-    mockedAxios.post.mockResolvedValue({ data: createdKey });
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-
-    const input = screen.getByPlaceholderText('e.g. Production pipeline');
-    fireEvent.change(input, { target: { value: 'New key' } });
-    fireEvent.click(screen.getByText('Generate Key'));
-
-    await waitFor(() => {
-      expect(screen.getByText('API Key Generated')).toBeInTheDocument();
-    });
-    expect(
-      screen.getByText('Copy this key now. It will not be shown again.')
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText('el_new123n-full-secret-key-value')
-    ).toBeInTheDocument();
-    expect(screen.getByText('Copy')).toBeInTheDocument();
-  });
-
-  test('opens confirm modal on revoke click', async () => {
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-
-    const revokeButtons = screen.getAllByText('Revoke');
-    fireEvent.click(revokeButtons[0]);
-
-    expect(screen.getByText('Revoke API Key')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Are you sure you want to revoke the API key "Production pipeline"/
-      )
-    ).toBeInTheDocument();
-  });
-
-  test('calls delete API on revoke confirm', async () => {
-    mockedAxios.delete.mockResolvedValue({});
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Production pipeline')).toBeInTheDocument();
-    });
-
-    const revokeButtons = screen.getAllByText('Revoke');
-    fireEvent.click(revokeButtons[0]);
-
-    const confirmBtn = document.querySelector(
-      '.confirm-modal-actions .btn-danger'
-    ) as HTMLElement;
-    fireEvent.click(confirmBtn);
-
-    await waitFor(() => {
-      expect(mockedAxios.delete).toHaveBeenCalledWith('/api/api-keys/key-1');
+      expect(screen.getByText('Failed to load API key')).toBeInTheDocument();
     });
   });
 
@@ -201,11 +139,20 @@ describe('ApiKeyManager', () => {
     mockedAxios.get.mockRejectedValue(new Error('fail'));
     render(<ApiKeyManager />);
     await waitFor(() => {
-      expect(screen.getByText('Failed to load API keys')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load API key')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('×'));
+    fireEvent.click(screen.getByText('\u00d7'));
     expect(
-      screen.queryByText('Failed to load API keys')
+      screen.queryByText('Failed to load API key')
     ).not.toBeInTheDocument();
+  });
+
+  test('shows creation date when key exists', async () => {
+    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
+    render(<ApiKeyManager />);
+    await waitFor(() => {
+      expect(screen.getByText(/Created/)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/admin@test.com/)).toBeInTheDocument();
   });
 });

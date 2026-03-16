@@ -418,7 +418,7 @@ class SavedResearchListItem(BaseModel):
 class ApiKeyCreate(BaseModel):
     """Payload for generating a new API key."""
 
-    label: str = Field(..., min_length=1, max_length=255)
+    label: str = Field("API Key", min_length=1, max_length=255)
 
 
 class ApiKeyRead(BaseModel):

@@ -57,6 +57,11 @@ class TestApiKeySchemas:
         schema = ApiKeyCreate(label="Production pipeline")
         assert schema.label == "Production pipeline"
 
+    def test_create_default_label(self):
+        """ApiKeyCreate uses default label when none provided."""
+        schema = ApiKeyCreate()
+        assert schema.label == "API Key"
+
     def test_create_empty_label_rejected(self):
         """ApiKeyCreate rejects empty label."""
         with pytest.raises(ValidationError):
