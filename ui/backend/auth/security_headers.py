@@ -60,6 +60,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     # Paths whose responses must never be cached (auth, user data, etc.)
     _SENSITIVE_PREFIXES = ("/auth/", "/users/", "/groups/", "/ratings/", "/activity/")
 
+    # Swagger UI / ReDoc paths that load assets from CDN
+    _DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+
     async def dispatch(self, request, call_next):  # type: ignore[override]
         response = await call_next(request)
 
@@ -71,7 +74,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"] = (
             "camera=(), microphone=(), geolocation=()"
         )
-        response.headers["Content-Security-Policy"] = _CSP_POLICY
+        # Swagger UI loads JS/CSS from cdn.jsdelivr.net; use a relaxed CSP
+        # for docs paths so the interactive API explorer works.
+        if request.url.path in self._DOCS_PATHS:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "img-src 'self' data: https:; "
+                "font-src 'self' https://cdn.jsdelivr.net; "
+                "frame-ancestors 'none'"
+            )
+        else:
+            response.headers["Content-Security-Policy"] = _CSP_POLICY
 
         if _HSTS_VALUE:
             response.headers["Strict-Transport-Security"] = _HSTS_VALUE
