@@ -116,6 +116,10 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
     """Verify the API key from request header"""
     if request.url.path == "/health":
         return None
+    # Swagger UI and OpenAPI schema — allow unauthenticated access so users
+    # can load the docs page and then authenticate via the Authorize button.
+    if request.url.path in ("/docs", "/redoc", "/openapi.json"):
+        return None
     if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
         return None
     if "/thumbnail" in request.url.path:
@@ -143,13 +147,15 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
     return api_key
 
 
-# Disable docs in production (when API_KEY is set)
+# API documentation always available; endpoints still require API key.
+# Users authenticate via the Authorize button in Swagger UI.
 app = FastAPI(
     title="Humanitarian Evaluation Search API",
     dependencies=[Depends(verify_api_key)],
-    docs_url=None if API_KEY else "/docs",
-    redoc_url=None if API_KEY else "/redoc",
-    openapi_url=None if API_KEY else "/openapi.json",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
 # Add rate limiter to app
@@ -235,6 +241,11 @@ async def startup_event():
                 "(e.g. `openssl rand -hex 32`).",
                 len(raw_secret),
             )
+    if not API_KEY:
+        logger.warning(
+            "API_SECRET_KEY is not set -- API endpoints are NOT protected. "
+            "Set API_SECRET_KEY in .env (e.g. openssl rand -hex 32)."
+        )
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
