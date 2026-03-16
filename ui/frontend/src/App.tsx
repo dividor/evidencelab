@@ -2891,21 +2891,21 @@ function App() {
           Data & Attribution
         </button>
         <span className="app-footer-divider">•</span>
-        <button
-          type="button"
+        <a
+          href="/privacy"
           className="app-footer-link"
-          onClick={handlePrivacyClick}
+          onClick={(e) => { e.preventDefault(); handlePrivacyClick(); }}
         >
           Privacy
-        </button>
+        </a>
         <span className="app-footer-divider">•</span>
-        <button
-          type="button"
+        <a
+          href="/terms"
           className="app-footer-link"
-          onClick={handleTermsClick}
+          onClick={(e) => { e.preventDefault(); handleTermsClick(); }}
         >
           Terms
-        </button>
+        </a>
         <span className="app-footer-divider">•</span>
         <a href="https://github.com/dividor/evidencelab" target="_blank" rel="noreferrer">
           GitHub
