@@ -5,12 +5,11 @@ FastAPI server that provides semantic search over indexed documents in Qdrant.
 
 import logging
 import os
-import secrets
 import signal
 from typing import Any, Dict, List, Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
@@ -111,66 +110,24 @@ USER_MODULE = USER_MODULE_MODE != "off"
 API_KEY = os.environ.get("API_SECRET_KEY")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+# Sync config to the extracted verify module so it reads the same values.
+from ui.backend.auth import api_key_verify as _akv  # noqa: E402
+
+_akv.API_KEY = API_KEY
+_akv.USER_MODULE = USER_MODULE
+_akv.USER_MODULE_MODE = USER_MODULE_MODE
+
 
 async def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
-    """Verify the API key from request header, or valid session cookie."""
-    if request.url.path == "/health":
-        return None
-    # Swagger UI and OpenAPI schema — allow unauthenticated access so users
-    # can load the docs page and then authenticate via the Authorize button.
-    if request.url.path in ("/docs", "/redoc", "/openapi.json"):
-        return None
-    if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
-        return None
-    if "/thumbnail" in request.url.path:
-        return None
-    # Auth routes are protected by their own rate-limiting and CSRF;
-    # exempt them so unauthenticated users can register / login.
-    if request.url.path.startswith("/auth/"):
-        return None
-    # User and group management routes use cookie-based JWT auth
-    # (current_active_user / current_superuser); exempt from API key.
-    if request.url.path.startswith("/users/") or request.url.path.startswith(
-        "/groups/"
-    ):
-        return None
-    # Ratings and activity routes use cookie-based JWT auth; exempt from API key.
-    if request.url.path.startswith("/ratings/") or request.url.path.startswith(
-        "/activity/"
-    ):
-        return None
-    # API key management routes use cookie-based JWT auth (superuser).
-    if request.url.path.startswith("/api-keys"):
-        return None
-    if not API_KEY:
-        # If no API key configured, allow all requests (development mode)
-        return None
-    # Check API key first (external / Swagger users)
-    if api_key:
-        # Check global env key (fast path, timing-safe)
-        if secrets.compare_digest(api_key, API_KEY):
-            return api_key
-        # Check admin-managed keys via cached SHA-256 hashes
-        import hashlib
+    """Verify the API key from request header, or valid session cookie.
 
-        from ui.backend.auth.api_key_cache import get_active_key_hashes
+    Delegates to :func:`ui.backend.auth.api_key_verify.verify_api_key`
+    which holds the actual logic (extracted so it can be unit-tested
+    without importing the heavy pipeline modules).
+    """
+    from ui.backend.auth.api_key_verify import verify_api_key as _verify
 
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-        active_hashes = await get_active_key_hashes()
-        if key_hash in active_hashes:
-            return api_key
-    # Allow authenticated UI users through (session cookie / Bearer JWT).
-    # ActiveAuthMiddleware performs full validation; here we just check for
-    # the presence of a cookie so the dependency doesn't reject logged-in
-    # browser requests that don't carry an API key header.
-    if USER_MODULE and request.cookies.get("evidencelab_auth"):
-        return None
-    # on_passive: anonymous users can browse without API key or cookie.
-    # ActiveAuthMiddleware is NOT active in passive mode, so we must allow
-    # unauthenticated requests through here.
-    if USER_MODULE_MODE == "on_passive":
-        return None
-    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    return await _verify(request, api_key)
 
 
 # API documentation always available; endpoints still require API key.
