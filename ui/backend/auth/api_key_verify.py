@@ -52,8 +52,10 @@ async def verify_api_key(request: Request, api_key: str | None) -> str | None:
         return None
 
     if not API_KEY:
-        # If no API key configured, allow all requests (development mode)
-        return None
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: API_SECRET_KEY is not set.",
+        )
 
     # Check API key first (external / Swagger users)
     if api_key:

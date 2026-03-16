@@ -114,12 +114,14 @@ class TestApiKeyRequired:
         assert result == _TEST_KEY
 
     @pytest.mark.asyncio
-    async def test_no_api_key_configured_allows_all(self):
-        """When API_SECRET_KEY is not set, all requests pass (dev mode)."""
+    async def test_no_api_key_configured_returns_500(self):
+        """When API_SECRET_KEY is not set, requests get a 500 error."""
         _configure(api_key=None)
         req = _make_request("/search")
-        result = await api_key_verify.verify_api_key(req, api_key=None)
-        assert result is None
+        with pytest.raises(HTTPException) as exc_info:
+            await api_key_verify.verify_api_key(req, api_key=None)
+        assert exc_info.value.status_code == 500
+        assert "API_SECRET_KEY" in exc_info.value.detail
 
     @pytest.mark.asyncio
     async def test_exempt_paths_skip_auth(self):
