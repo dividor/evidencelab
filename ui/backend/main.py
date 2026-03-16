@@ -165,6 +165,11 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
     # browser requests that don't carry an API key header.
     if USER_MODULE and request.cookies.get("evidencelab_auth"):
         return None
+    # on_passive: anonymous users can browse without API key or cookie.
+    # ActiveAuthMiddleware is NOT active in passive mode, so we must allow
+    # unauthenticated requests through here.
+    if USER_MODULE_MODE == "on_passive":
+        return None
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
