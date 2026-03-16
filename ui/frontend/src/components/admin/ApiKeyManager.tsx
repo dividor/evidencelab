@@ -154,6 +154,7 @@ const ApiKeyManager: React.FC = () => {
         <ConfirmModal
           title="Regenerate API Key"
           message="This will revoke the current key and generate a new one. Any applications using the current key will lose access. Continue?"
+          confirmLabel="Regenerate"
           onConfirm={() => { setShowConfirm(false); generateKey(); }}
           onCancel={() => setShowConfirm(false)}
         />
