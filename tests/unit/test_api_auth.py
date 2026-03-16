@@ -224,20 +224,22 @@ class TestAdminManagedKeys:
 
 
 class TestPassiveMode:
-    """on_passive mode allows anonymous browsing — no API key or cookie needed.
-    Users who DO have a session cookie or API key are also accepted."""
+    """on_passive mode: users can browse the UI without logging in, but
+    direct API access still requires a valid API key or session cookie."""
 
     @pytest.mark.asyncio
-    async def test_anonymous_request_allowed(self):
-        """Anonymous request (no key, no cookie) passes in passive mode."""
+    async def test_anonymous_api_request_rejected(self):
+        """Anonymous API request (no key, no cookie) is rejected even in
+        passive mode — API endpoints always require authentication."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_passive")
         req = _make_request("/search")
-        result = await api_key_verify.verify_api_key(req, api_key=None)
-        assert result is None
+        with pytest.raises(HTTPException) as exc_info:
+            await api_key_verify.verify_api_key(req, api_key=None)
+        assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_api_key_still_accepted(self):
-        """Providing a valid API key still works in passive mode."""
+    async def test_api_key_accepted(self):
+        """Providing a valid API key works in passive mode."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_passive")
         req = _make_request("/search")
         result = await api_key_verify.verify_api_key(req, api_key=_TEST_KEY)
@@ -252,9 +254,8 @@ class TestPassiveMode:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_wrong_key_still_passes_in_passive(self):
-        """Even a wrong API key doesn't block in passive mode — anonymous
-        fallthrough applies."""
+    async def test_wrong_key_rejected_in_passive(self):
+        """Wrong API key without session cookie is rejected in passive mode."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_passive")
         req = _make_request("/search")
         with patch(
@@ -262,8 +263,9 @@ class TestPassiveMode:
             new_callable=AsyncMock,
             return_value=set(),
         ):
-            result = await api_key_verify.verify_api_key(req, api_key=_ALT_KEY)
-            assert result is None
+            with pytest.raises(HTTPException) as exc_info:
+                await api_key_verify.verify_api_key(req, api_key=_ALT_KEY)
+            assert exc_info.value.status_code == 401
 
     def test_no_active_auth_middleware_in_passive(self):
         """ActiveAuthMiddleware is NOT added in on_passive mode — only in
