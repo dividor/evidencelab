@@ -440,6 +440,7 @@ const extractFieldValues = (doc: SearchResult, metaKey: string): string[] => {
   if (!val) return [];
   const raw = Array.isArray(val) ? val
     : typeof val === 'string' && val.includes('; ') ? val.split('; ')
+    : typeof val === 'string' && val.includes(' | ') ? val.split(' | ')
     : [val];
   return raw.map((v: any) => String(v).trim()).filter(Boolean);
 };

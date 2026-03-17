@@ -821,11 +821,13 @@ def _count_list_values(counter: Counter, val: List) -> None:
             counter[item] += 1
 
 
-def _count_comma_separated(counter: Counter, val: str) -> None:
-    for item in val.split(","):
-        item = item.strip()
-        if item:
-            counter[item] += 1
+def _split_multivalue_inline(val: str) -> List[str]:
+    """Split a multi-value string on '; ' or ' | ' separators."""
+    if "; " in val:
+        return [p.strip() for p in val.split("; ") if p.strip()]
+    if " | " in val:
+        return [p.strip() for p in val.split(" | ") if p.strip()]
+    return []
 
 
 def _accumulate_facet_counts(
@@ -843,10 +845,13 @@ def _accumulate_facet_counts(
             _count_year_value(counter, val)
         elif isinstance(val, list):
             _count_list_values(counter, val)
-        elif (
-            isinstance(val, str) and "," in val and core_field in ["country", "region"]
-        ):
-            _count_comma_separated(counter, val)
+        elif isinstance(val, str):
+            parts = _split_multivalue_inline(val)
+            if parts:
+                for item in parts:
+                    counter[item] += 1
+            else:
+                counter[val] += 1
         else:
             counter[val] += 1
     return counter

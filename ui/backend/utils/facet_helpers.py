@@ -46,11 +46,15 @@ def build_year_facets(raw_counts: Dict[Any, int]) -> List[FacetValue]:
 
 
 def _split_multivalue(raw_value: str) -> List[str]:
-    """Split a multi-value string on '; ' or ',' separators."""
+    """Split a multi-value string on '; ' or ' | ' separators.
+
+    Comma is NOT used as a separator because many values legitimately
+    contain commas (e.g. ``"Egypt, Arab Rep."``, ``"Gambia, The"``).
+    """
     if "; " in raw_value:
         return [p.strip() for p in raw_value.split("; ") if p.strip()]
-    if "," in raw_value:
-        return [p.strip() for p in raw_value.split(",") if p.strip()]
+    if " | " in raw_value:
+        return [p.strip() for p in raw_value.split(" | ") if p.strip()]
     return []
 
 
@@ -85,8 +89,9 @@ def expand_multivalue_filter(db, storage_field: str, selected: List[str]) -> Lis
     expanded = set(selected)
     for raw_value in raw_counts:
         raw_str = str(raw_value)
-        if "; " in raw_str:
-            parts = {p.strip() for p in raw_str.split("; ")}
+        if "; " in raw_str or " | " in raw_str:
+            sep = "; " if "; " in raw_str else " | "
+            parts = {p.strip() for p in raw_str.split(sep)}
             if parts & selected_set:
                 expanded.add(raw_str)
     return list(expanded)
