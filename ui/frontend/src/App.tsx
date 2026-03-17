@@ -414,6 +414,67 @@ const getTabFromPath = (): TabName => {
   return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
 };
 
+/** Deduplicate search results by doc_id, keeping the first occurrence. */
+const deduplicateByDocId = (results: SearchResult[]): SearchResult[] => {
+  const seen = new Set<string>();
+  const unique: SearchResult[] = [];
+  for (const r of results) {
+    if (r.doc_id && !seen.has(r.doc_id)) {
+      seen.add(r.doc_id);
+      unique.push(r);
+    }
+  }
+  return unique;
+};
+
+/** Resolve the metadata key for a given facet field name. */
+const resolveMetaKey = (field: string): string => {
+  if (field === 'language') return 'sys_language';
+  if (field.startsWith('map_') || field.startsWith('src_') || field.startsWith('tag_')) return field;
+  return `map_${field}`;
+};
+
+/** Extract and normalise a metadata value into individual strings. */
+const extractFieldValues = (doc: SearchResult, metaKey: string): string[] => {
+  const val = doc.metadata?.[metaKey] ?? (doc as Record<string, any>)[metaKey];
+  if (!val) return [];
+  const raw = Array.isArray(val) ? val
+    : typeof val === 'string' && val.includes('; ') ? val.split('; ')
+    : typeof val === 'string' && val.includes(' | ') ? val.split(' | ')
+    : [val];
+  return raw.map((v: any) => String(v).trim()).filter(Boolean);
+};
+
+/** Count per-field values across deduplicated docs. */
+const countFieldValues = (docs: SearchResult[], metaKey: string): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const doc of docs) {
+    for (const v of extractFieldValues(doc, metaKey)) {
+      counts.set(v, (counts.get(v) || 0) + 1);
+    }
+  }
+  return counts;
+};
+
+/** Merge all-DB facet values with result-derived counts, sorting counted first. */
+const mergeFacetField = (allValues: FacetValue[], resultCounts: Map<string, number>): FacetValue[] => {
+  const seen = new Set<string>();
+  const merged: FacetValue[] = allValues.map(v => {
+    seen.add(v.value);
+    return { ...v, count: resultCounts.get(v.value) ?? 0 };
+  });
+  for (const [val, count] of resultCounts) {
+    if (!seen.has(val)) merged.push({ value: val, count });
+  }
+  merged.sort((a, b) => {
+    if (a.count > 0 && b.count === 0) return -1;
+    if (a.count === 0 && b.count > 0) return 1;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.value.localeCompare(b.value);
+  });
+  return merged;
+};
+
 // Default filter fields (fallback for URL parsing before facets load)
 const DEFAULT_FILTER_FIELDS = ['organization', 'title', 'published_year', 'document_type', 'country', 'language'];
 const DEFAULT_PUBLISHED_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025'];
@@ -2608,8 +2669,23 @@ function App() {
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
   const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
-  const displayFacets =
-    allFacetsDataSource === dataSource && allFacets ? allFacets : facets;
+  // When search results are displayed, compute facet counts directly from
+  // the actual results (deduped by doc_id) so counts exactly match what the
+  // user sees.  All DB values from allFacets are preserved; values absent
+  // from the results get count 0 (the UI hides the number for those).
+  const displayFacets = React.useMemo(() => {
+    const all = allFacetsDataSource === dataSource ? allFacets : null;
+    if (!all) return facets;
+    if (!hasSearchRun || !query?.trim() || results.length === 0) return all;
+
+    const uniqueDocs = deduplicateByDocId(results);
+    const mergedFacetEntries: Record<string, FacetValue[]> = {};
+    for (const [field, allValues] of Object.entries(all.facets)) {
+      const resultCounts = countFieldValues(uniqueDocs, resolveMetaKey(field));
+      mergedFacetEntries[field] = mergeFacetField(allValues, resultCounts);
+    }
+    return { ...all, facets: mergedFacetEntries } as Facets;
+  }, [allFacets, allFacetsDataSource, facets, dataSource, hasSearchRun, query, results]);
 
   const requestHighlightHandler = resolveRequestHighlightHandler(
     SEARCH_SEMANTIC_HIGHLIGHTS,

@@ -821,11 +821,20 @@ def _count_list_values(counter: Counter, val: List) -> None:
             counter[item] += 1
 
 
-def _count_comma_separated(counter: Counter, val: str) -> None:
-    for item in val.split(","):
-        item = item.strip()
-        if item:
-            counter[item] += 1
+def _count_string_value(counter: Counter, val: str) -> None:
+    """Split a string value on known separators and add clean parts to *counter*."""
+    from ui.backend.utils.facet_helpers import (  # noqa: PLC0415
+        _looks_like_concatenated,
+        _split_multivalue,
+    )
+
+    parts = _split_multivalue(val)
+    if parts:
+        for item in parts:
+            if not _looks_like_concatenated(item):
+                counter[item] += 1
+    elif not _looks_like_concatenated(val):
+        counter[val] += 1
 
 
 def _accumulate_facet_counts(
@@ -843,10 +852,8 @@ def _accumulate_facet_counts(
             _count_year_value(counter, val)
         elif isinstance(val, list):
             _count_list_values(counter, val)
-        elif (
-            isinstance(val, str) and "," in val and core_field in ["country", "region"]
-        ):
-            _count_comma_separated(counter, val)
+        elif isinstance(val, str):
+            _count_string_value(counter, val)
         else:
             counter[val] += 1
     return counter
