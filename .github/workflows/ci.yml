@@ -275,8 +275,8 @@ jobs:
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       UI_BASE_URL: ${{ vars.UI_BASE_URL }}
-      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
-      REACT_APP_API_KEY: ${{ secrets.API_SECRET_KEY }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'ci-integration-test-key' }}
+      REACT_APP_API_KEY: ${{ secrets.API_SECRET_KEY || 'ci-integration-test-key' }}
       DENSE_EMBEDDING_MODEL: ${{ vars.DENSE_EMBEDDING_MODEL }}
       QDRANT_HOST: ${{ vars.QDRANT_HOST }}
       CELERY_BROKER_URL: ${{ vars.CELERY_BROKER_URL }}

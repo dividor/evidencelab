@@ -180,7 +180,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY}
+      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - USE_EMBEDDING_SERVER=true
