@@ -87,4 +87,4 @@ class TestAssistantSystemPrompt:
         template = jinja_env.get_template("assistant_system.j2")
         result = template.render()
         assert "closing paragraph" in result.lower()
-        assert "never add a paragraph that summarizes" in result.lower()
+        assert "do not add any paragraph that rounds up" in result.lower()
