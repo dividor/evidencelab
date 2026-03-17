@@ -186,7 +186,10 @@ class PostgresDocMixin:
             resolved_status,
             self._normalize_timestamp(resolved_timestamp),
             Json(sys_fields) if sys_fields else None,
-        ] + [map_fields.get(key) for key in sorted(map_fields.keys())]
+        ] + [
+            "; ".join(v) if isinstance(v := map_fields.get(key), list) else v
+            for key in sorted(map_fields.keys())
+        ]
         for key in sorted(extra_sys_columns):
             _append_sys_field_value(
                 values,
