@@ -198,21 +198,21 @@ jobs:
           driver: docker
 
       - name: Build base image (required by backend)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.base
           tags: evidencelab-ai-base:latest
 
       - name: Build backend image for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ui/backend/Dockerfile
           tags: evidencelab-api:scan
 
       - name: Build frontend image for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ui/frontend
           file: ui/frontend/Dockerfile
