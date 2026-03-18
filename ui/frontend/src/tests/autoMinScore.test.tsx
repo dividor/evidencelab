@@ -198,7 +198,7 @@ describe('Auto Min Score Feature', () => {
     fireEvent.click(autoCheckbox);
 
     // Perform a search
-    const searchInput = screen.getByPlaceholderText(/search/i);
+    const searchInput = screen.getByPlaceholderText('Search documents');
     fireEvent.change(searchInput, { target: { value: 'test query' } });
     fireEvent.submit(searchInput.closest('form')!);
 
@@ -284,7 +284,7 @@ describe('Auto Min Score Feature', () => {
     fireEvent.click(autoCheckbox);
 
     // Perform a search
-    const searchInput = screen.getByPlaceholderText(/search/i);
+    const searchInput = screen.getByPlaceholderText('Search documents');
     fireEvent.change(searchInput, { target: { value: 'test' } });
     fireEvent.submit(searchInput.closest('form')!);
 
@@ -312,7 +312,7 @@ describe('Auto Min Score Feature', () => {
     fireEvent.click(autoCheckbox);
 
     // Perform search with auto mode enabled
-    const searchInput = screen.getByPlaceholderText(/search/i);
+    const searchInput = screen.getByPlaceholderText('Search documents');
     fireEvent.change(searchInput, { target: { value: 'auto filter test' } });
     fireEvent.submit(searchInput.closest('form')!);
 

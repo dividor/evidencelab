@@ -37,6 +37,7 @@ class PostgresClientBase:
         self.chunks_table = f"chunks_{source}"
         self._pool: Optional[SimpleConnectionPool] = None
         self._ensured_doc_sys_columns: set[str] = set()
+        self._ensured_doc_map_columns: set[str] = set()
         self._ensured_chunk_sys_columns: set[str] = set()
 
     def _get_pool(self) -> SimpleConnectionPool:

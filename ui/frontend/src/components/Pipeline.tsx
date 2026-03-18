@@ -645,8 +645,27 @@ interface PipelineProps {
   dataSource?: string;
 }
 
-export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
-  const { stats, sankeyData, timelineData, loading, error } =
+const RefreshIcon: React.FC<{ spinning?: boolean }> = ({ spinning }) => (
+  <svg
+    className={`refresh-icon${spinning ? ' refresh-icon-spinning' : ''}`}
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M21 2v6h-6" />
+    <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+    <path d="M3 22v-6h6" />
+    <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+  </svg>
+);
+
+export const Pipeline: React.FC<PipelineProps> = ({ dataSource = '' }) => {
+  const { stats, sankeyData, timelineData, loading, error, refresh } =
     usePipelineData(dataSource);
 
   // Animated counter states
@@ -711,7 +730,17 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
   return (
     <div className="statistics-container">
       <div className="statistics-content">
-        <h2 className="statistics-title">Document pipeline status</h2>
+        <div className="statistics-title-row">
+          <h2 className="statistics-title">Document pipeline status</h2>
+          <button
+            className="refresh-button"
+            onClick={refresh}
+            disabled={loading}
+            title="Refresh data"
+          >
+            <RefreshIcon spinning={loading} />
+          </button>
+        </div>
 
         {/* Key Metrics */}
         <div className="stats-grid">
@@ -838,8 +867,8 @@ export const Pipeline: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
   );
 };
 
-export const Processing: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => {
-  const { timelineData, loading, error } = usePipelineData(dataSource);
+export const Processing: React.FC<PipelineProps> = ({ dataSource = '' }) => {
+  const { timelineData, loading, error, refresh } = usePipelineData(dataSource);
   const [timeRange, setTimeRange] = useState<'24h' | '48h' | 'all'>('all');
   const filteredData = filterTimelineData(timelineData, timeRange);
   const hasTimelineData = Boolean(
@@ -860,7 +889,17 @@ export const Processing: React.FC<PipelineProps> = ({ dataSource = 'uneg' }) => 
   return (
     <div className="statistics-container">
       <div className="statistics-content">
-        <h2 className="statistics-title">Document processing performance</h2>
+        <div className="statistics-title-row">
+          <h2 className="statistics-title">Document processing performance</h2>
+          <button
+            className="refresh-button"
+            onClick={refresh}
+            disabled={loading}
+            title="Refresh data"
+          >
+            <RefreshIcon spinning={loading} />
+          </button>
+        </div>
         {hasTimelineData ? (
           <PipelineTimelineSection
             filteredData={filteredData}

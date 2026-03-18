@@ -22,6 +22,10 @@
     <title>Evidence Lab</title>
     <!-- Google Analytics (optional, enabled via REACT_APP_GA_MEASUREMENT_ID) -->
     <!-- GA only loads after user grants cookie consent (GDPR) -->
+    <!-- CSP: SHA-256 of this script block is allowlisted in security_headers.py.
+         If you modify this script, recompute the hash:
+         python3 -c "import hashlib,base64,sys; s=sys.stdin.read(); print('sha256-'+base64.b64encode(hashlib.sha256(s.encode()).digest()).decode())"
+         Then update _GA_SCRIPT_HASH in ui/backend/auth/security_headers.py -->
     <script>
       (function() {
         var gaId = '%REACT_APP_GA_MEASUREMENT_ID%';
@@ -30,6 +34,7 @@
           if (localStorage.getItem('ga-consent') !== 'granted') return;
           var s = document.createElement('script');
           s.async = true;
+          s.crossOrigin = 'anonymous';
           s.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
           document.head.appendChild(s);
           window.dataLayer = window.dataLayer || [];
@@ -44,5 +49,10 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <!-- Static links visible to crawlers that do not execute JavaScript -->
+    <div id="static-footer" style="text-align:center;padding:1rem;font-size:0.85rem;">
+      <a href="/privacy">Privacy Policy</a> |
+      <a href="/terms">Terms of Service</a>
+    </div>
   </body>
 </html>

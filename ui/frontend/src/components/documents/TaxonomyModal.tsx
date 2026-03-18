@@ -1,4 +1,8 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import { useRatings } from '../../hooks/useRatings';
+import StarRating from '../ratings/StarRating';
+import RatingModal from '../ratings/RatingModal';
 
 interface TaxonomyValue {
   code: string;
@@ -12,6 +16,12 @@ interface TaxonomyModalProps {
   taxonomyValue: TaxonomyValue | null;
   definition: string;
   taxonomyName: string;
+  /** Document ID used as rating reference */
+  docId?: string;
+  /** Document title for rating context */
+  docTitle?: string;
+  /** Document AI summary for rating context */
+  docSummary?: string;
 }
 
 export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
@@ -19,8 +29,49 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
   onClose,
   taxonomyValue,
   definition,
-  taxonomyName
+  taxonomyName,
+  docId,
+  docTitle,
+  docSummary,
 }) => {
+  const { isAuthenticated } = useAuth();
+  const { ratings, submitRating, deleteRating } = useRatings({
+    ratingType: 'taxonomy',
+    referenceId: docId || '',
+    enabled: isAuthenticated && !!docId && isOpen,
+  });
+  const [ratingModalOpen, setRatingModalOpen] = useState(false);
+  const [modalInitialScore, setModalInitialScore] = useState(0);
+
+  const itemId = taxonomyValue?.code || '';
+  const existing = ratings.get(itemId);
+
+  const handleSubmit = useCallback((score: number, comment: string) => {
+    if (!docId || !taxonomyValue) return;
+    submitRating({
+      ratingType: 'taxonomy',
+      referenceId: docId,
+      itemId: taxonomyValue.code,
+      score,
+      comment,
+      context: {
+        doc_id: docId,
+        title: docTitle || '',
+        link: window.location.href,
+        summary: docSummary || '',
+        taxonomy_type: taxonomyName,
+        taxonomy_value: `${taxonomyValue.code} - ${taxonomyValue.name || ''}`.trim(),
+        code: taxonomyValue.code,
+        name: taxonomyValue.name,
+        reason: taxonomyValue.reason,
+      },
+    });
+  }, [docId, docTitle, docSummary, taxonomyValue, taxonomyName, submitRating]);
+
+  const handleDelete = useCallback(() => {
+    if (existing?.id) deleteRating(existing.id);
+  }, [existing, deleteRating]);
+
   if (!isOpen || !taxonomyValue) {
     return null;
   }
@@ -92,8 +143,42 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
               </section>
             )}
           </div>
+          {isAuthenticated && docId && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 6,
+              marginTop: 16,
+              paddingTop: 12,
+              borderTop: '1px solid var(--brand-border-light)',
+            }}>
+              <span style={{ fontSize: '0.82rem', color: 'var(--brand-text-tertiary)' }}>
+                Rate this taxonomy tag
+              </span>
+              <StarRating
+                score={existing?.score || 0}
+                onRequestModal={(selectedScore) => {
+                  setModalInitialScore(existing?.score || selectedScore);
+                  setRatingModalOpen(true);
+                }}
+                size={14}
+              />
+            </div>
+          )}
         </div>
       </div>
+      {ratingModalOpen && (
+        <RatingModal
+          isOpen={ratingModalOpen}
+          onClose={() => setRatingModalOpen(false)}
+          title={`Rate: ${taxonomyValue.code.toUpperCase()}`}
+          initialScore={modalInitialScore}
+          initialComment={existing?.comment || ''}
+          onSubmit={handleSubmit}
+          onDelete={existing?.id ? handleDelete : undefined}
+        />
+      )}
     </div>
   );
 };

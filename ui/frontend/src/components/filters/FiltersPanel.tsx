@@ -8,6 +8,7 @@ interface FiltersPanelProps {
   onClearFilters: () => void;
   facets: Facets | null;
   selectedFilters: Record<string, string[]>;
+  rangeFilters: Record<string, { min: string; max: string }>;
   collapsedFilters: Set<string>;
   expandedFilterLists: Set<string>;
   filterSearchTerms: Record<string, string>;
@@ -18,6 +19,7 @@ interface FiltersPanelProps {
   onFilterSearchTermChange: (coreField: string, value: string) => void;
   onToggleFilterListExpansion: (coreField: string) => void;
   onFilterValuesChange: (coreField: string, nextValues: string[]) => void;
+  onRangeChange: (coreField: string, min: string, max: string) => void;
   searchDenseWeight: number;
   onSearchDenseWeightChange: (value: number) => void;
   keywordBoostShortQueries: boolean;
@@ -54,6 +56,7 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onClearFilters,
   facets,
   selectedFilters,
+  rangeFilters,
   collapsedFilters,
   expandedFilterLists,
   filterSearchTerms,
@@ -64,6 +67,7 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onFilterSearchTermChange,
   onToggleFilterListExpansion,
   onFilterValuesChange,
+  onRangeChange,
   searchDenseWeight,
   onSearchDenseWeightChange,
   keywordBoostShortQueries,
@@ -113,6 +117,7 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
           <FilterSections
             facets={facets}
             selectedFilters={selectedFilters}
+            rangeFilters={rangeFilters}
             collapsedFilters={collapsedFilters}
             expandedFilterLists={expandedFilterLists}
             filterSearchTerms={filterSearchTerms}
@@ -122,6 +127,7 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onSearchTermChange={onFilterSearchTermChange}
             onToggleFilterListExpansion={onToggleFilterListExpansion}
             onFilterValuesChange={onFilterValuesChange}
+            onRangeChange={onRangeChange}
           />
 
           <SearchSettingsPanel

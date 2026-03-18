@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from ui.backend import main as main_module
 
@@ -103,7 +104,7 @@ async def test_highlighting_invalid_type():
         highlight_type="invalid",
     )
 
-    with pytest.raises(main_module.HTTPException) as exc:
+    with pytest.raises(HTTPException) as exc:
         await main_module.highlight_text(request)
 
     assert exc.value.status_code == 400

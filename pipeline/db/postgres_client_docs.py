@@ -132,6 +132,9 @@ class PostgresDocMixin:
     def ensure_sys_doc_columns(self, sys_fields: Dict[str, Any]) -> None:
         raise NotImplementedError
 
+    def ensure_map_doc_columns(self, map_fields: Dict[str, Any]) -> None:
+        raise NotImplementedError
+
     def ensure_sys_doc_taxonomies_column(self) -> None:
         raise NotImplementedError
 
@@ -151,6 +154,8 @@ class PostgresDocMixin:
         sys_status: Optional[str] = None,
         sys_status_timestamp: Optional[datetime | str] = None,
     ) -> None:
+        if map_fields:
+            self.ensure_map_doc_columns(map_fields)
         if sys_fields:
             self.ensure_sys_doc_columns(sys_fields)
         if sys_qdrant_legacy is not None:
@@ -181,7 +186,10 @@ class PostgresDocMixin:
             resolved_status,
             self._normalize_timestamp(resolved_timestamp),
             Json(sys_fields) if sys_fields else None,
-        ] + [map_fields.get(key) for key in sorted(map_fields.keys())]
+        ] + [
+            "; ".join(v) if isinstance(v := map_fields.get(key), list) else v
+            for key in sorted(map_fields.keys())
+        ]
         for key in sorted(extra_sys_columns):
             _append_sys_field_value(
                 values,
@@ -777,11 +785,32 @@ class PostgresDocMixin:
             page, page_size, filters, filter_map, sort_by, sort_order
         )
 
+    @staticmethod
+    def _taxonomy_clause(key: str, value: Any) -> Optional[str]:
+        """Build a WHERE clause for taxonomy (JSONB) filters."""
+        codes = value if isinstance(value, list) else [value]
+        conditions = [
+            f"jsonb_path_exists(sys_taxonomies, "
+            f"'$.{key}[*].code ? (@ == \"{code}\")')"
+            for code in codes
+        ]
+        return f"({' OR '.join(conditions)})" if conditions else None
+
+    @staticmethod
+    def _column_clause(col: str, value: Any, params: List[Any]) -> str:
+        """Build a WHERE clause for a standard column, supporting lists."""
+        if isinstance(value, list):
+            placeholders = ", ".join(["%s"] * len(value))
+            params.extend(value)
+            return f"{col} IN ({placeholders})"
+        params.append(value)
+        return f"{col} = %s"
+
     def _build_filter_clauses(
         self, filters: Dict[str, Any], filter_map: Dict[str, str]
     ) -> Tuple[List[str], List[Any]]:
-        where_clauses = []
-        params = []
+        where_clauses: List[str] = []
+        params: List[Any] = []
 
         for key, value in filters.items():
             if not value:
@@ -805,30 +834,13 @@ class PostgresDocMixin:
                         f"({cond} OR sys_data ->> 'sys_toc_approved' IS NULL)"
                     )
             elif key in ("sdg", "cross_cutting_theme"):
-                # Handle taxonomy filters (support lists for multiselect)
-                if isinstance(value, list) and value:
-                    # Check if requested taxonomy codes exist in document's array
-                    # sys_taxonomies->'{key}' is JSONB array: [{"code": "sdg1"}]
-                    # Check if any code in array matches filter values
-                    conditions = []
-                    for tax_code in value:
-                        # Use jsonb_path_exists to check for matching code
-                        path_expr = f'$.{key}[*].code ? (@ == "{tax_code}")'
-                        conditions.append(
-                            f"jsonb_path_exists(sys_taxonomies, '{path_expr}')"
-                        )
-                    if conditions:
-                        where_clauses.append(f"({' OR '.join(conditions)})")
-                elif isinstance(value, str):
-                    # Single value (backward compatibility)
-                    path_expr = f'$.{key}[*].code ? (@ == "{value}")'
-                    where_clauses.append(
-                        f"jsonb_path_exists(sys_taxonomies, '{path_expr}')"
-                    )
+                clause = self._taxonomy_clause(key, value)
+                if clause:
+                    where_clauses.append(clause)
             elif key in filter_map:
-                col = filter_map[key]
-                where_clauses.append(f"{col} = %s")
-                params.append(value)
+                where_clauses.append(
+                    self._column_clause(filter_map[key], value, params)
+                )
 
         return where_clauses, params
 

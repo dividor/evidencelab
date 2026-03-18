@@ -10,20 +10,22 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client.http import models
 
-from pipeline.db import (  # noqa: E402
+from pipeline.db import DEFAULT_DATA_SOURCE  # noqa: E402
+from pipeline.db import (
     DB_VECTORS,
-    DEFAULT_DATA_SOURCE,
     DENSE_VECTOR_NAME,
     SPARSE_VECTOR_NAME,
     SUPPORTED_RERANK_MODELS,
     Database,
     PostgresClient,
     get_db,
+    get_default_filter_fields,
     get_field_mapping,
-    get_filter_fields,
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
+from ui.backend.utils.filter_helpers import build_doc_id_filter  # noqa: E402
+from ui.backend.utils.filter_helpers import collect_range_conditions
 from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
 
 # Add parent directory to path
@@ -78,7 +80,16 @@ def map_filters_to_storage(
 ) -> dict | None:
     if not filters:
         return filters
-    return {_resolve_storage_field(k, data_source): v for k, v in filters.items()}
+    result = {}
+    for k, v in filters.items():
+        # Range params: strip _min/_max suffix before field mapping, re-add after
+        if k.endswith("_min"):
+            result[_resolve_storage_field(k[:-4], data_source) + "_min"] = v
+        elif k.endswith("_max"):
+            result[_resolve_storage_field(k[:-4], data_source) + "_max"] = v
+        else:
+            result[_resolve_storage_field(k, data_source)] = v
+    return result
 
 
 # Load search configuration
@@ -193,48 +204,6 @@ def _get_rerank_model_config(model_key: Optional[str]) -> Dict[str, Any]:
 
 def _is_azure_foundry_reranker(config: Dict[str, Any]) -> bool:
     return search_models._is_azure_foundry_reranker(config)
-
-
-def _get_azure_foundry_rerank_endpoint(
-    deployment: str, config: Optional[Dict[str, Any]] = None
-) -> str:
-    return search_models._get_azure_foundry_rerank_endpoint(config, deployment)
-
-
-def _get_azure_foundry_api_key() -> str:
-    return search_models._get_azure_foundry_api_key()
-
-
-def _scores_from_results(results: Any, doc_count: int) -> Optional[List[float]]:
-    return search_models._scores_from_results(results, doc_count)
-
-
-def _scores_from_list(scores: Any) -> Optional[List[float]]:
-    return search_models._scores_from_list(scores)
-
-
-def _scores_from_data(data: Any, doc_count: int) -> Optional[List[float]]:
-    return search_models._scores_from_data(data, doc_count)
-
-
-def _parse_azure_rerank_response(
-    response_json: Dict[str, Any], doc_count: int
-) -> List[float]:
-    return search_models._parse_azure_rerank_response(response_json, doc_count)
-
-
-def _rerank_with_azure_foundry(
-    query: str,
-    documents: List[str],
-    deployment: str,
-    config: Dict[str, Any],
-) -> List[float]:
-    return search_models._rerank_with_azure_foundry(
-        query=query,
-        documents=documents,
-        deployment=deployment,
-        config=config,
-    )
 
 
 def get_rerank_model(model_key: Optional[str] = None):
@@ -382,6 +351,10 @@ def _build_filter_condition(
     )
 
 
+_DOC_ONLY_FIELDS = {"map_language", "sys_language"}
+_TEXT_MATCH_FIELDS = {"map_title"}
+
+
 def _build_query_filter(
     filters: Optional[dict],
     section_types: Optional[List[str]],
@@ -401,49 +374,19 @@ def _build_query_filter(
 
     filters = map_filters_to_storage(filters, data_source=data_source)
     if filters:
-        text_match_fields = {"map_title"}
-        # Language is doc-level only (sys_language/map_language), not on chunks
-        doc_only_fields = {"map_language", "sys_language"}
         for field, value in filters.items():
-            if field in doc_only_fields:
+            if field in _DOC_ONLY_FIELDS:
+                continue
+            if field.endswith("_min") or field.endswith("_max"):
                 continue
             if field == "doc_id":
-                # doc_id filter must be required, but we need to check both doc_id and sys_doc_id
-                # Create a nested filter: MUST(doc_id=X OR sys_doc_id=X)
-                doc_id_should_conditions = []
-                multi_values = _as_multi_values(value)
-                if multi_values:
-                    doc_id_should_conditions.append(
-                        models.FieldCondition(
-                            key="doc_id",
-                            match=models.MatchAny(any=multi_values),
-                        )
-                    )
-                    doc_id_should_conditions.append(
-                        models.FieldCondition(
-                            key="sys_doc_id",
-                            match=models.MatchAny(any=multi_values),
-                        )
-                    )
-                else:
-                    doc_id_should_conditions.append(
-                        models.FieldCondition(
-                            key="doc_id",
-                            match=models.MatchValue(value=value),
-                        )
-                    )
-                    doc_id_should_conditions.append(
-                        models.FieldCondition(
-                            key="sys_doc_id",
-                            match=models.MatchValue(value=value),
-                        )
-                    )
-                # Wrap the should conditions in a nested filter and add to must
-                must_conditions.append(models.Filter(should=doc_id_should_conditions))
+                must_conditions.append(build_doc_id_filter(value, _as_multi_values))
                 continue
-            condition = _build_filter_condition(field, value, text_match_fields)
+            condition = _build_filter_condition(field, value, _TEXT_MATCH_FIELDS)
             if condition:
                 must_conditions.append(condition)
+
+        must_conditions.extend(collect_range_conditions(filters))
 
     return models.Filter(
         must=must_conditions if must_conditions else None,
@@ -878,11 +821,20 @@ def _count_list_values(counter: Counter, val: List) -> None:
             counter[item] += 1
 
 
-def _count_comma_separated(counter: Counter, val: str) -> None:
-    for item in val.split(","):
-        item = item.strip()
-        if item:
-            counter[item] += 1
+def _count_string_value(counter: Counter, val: str) -> None:
+    """Split a string value on known separators and add clean parts to *counter*."""
+    from ui.backend.utils.facet_helpers import (  # noqa: PLC0415
+        _looks_like_concatenated,
+        _split_multivalue,
+    )
+
+    parts = _split_multivalue(val)
+    if parts:
+        for item in parts:
+            if not _looks_like_concatenated(item):
+                counter[item] += 1
+    elif not _looks_like_concatenated(val):
+        counter[val] += 1
 
 
 def _accumulate_facet_counts(
@@ -900,10 +852,8 @@ def _accumulate_facet_counts(
             _count_year_value(counter, val)
         elif isinstance(val, list):
             _count_list_values(counter, val)
-        elif (
-            isinstance(val, str) and "," in val and core_field in ["country", "region"]
-        ):
-            _count_comma_separated(counter, val)
+        elif isinstance(val, str):
+            _count_string_value(counter, val)
         else:
             counter[val] += 1
     return counter
@@ -937,7 +887,7 @@ def get_search_facets(
 
     source = data_source or "uneg"
     db = _get_search_db(None, source)
-    filter_fields_config = get_filter_fields(source)
+    filter_fields_config = get_default_filter_fields(source)
     from pipeline.db import get_taxonomy_filter_fields  # noqa: PLC0415
 
     filter_fields_config = {

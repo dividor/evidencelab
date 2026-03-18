@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ModelComboConfig } from '../../types/api';
+import { USER_MODULE } from '../../config';
+import UserMenu from '../auth/UserMenu';
+import { ModelComboPanel } from './ModelComboPanel';
 
 interface TopBarProps {
   selectedDomain: string;
@@ -25,6 +28,9 @@ interface TopBarProps {
   onAboutClick: () => void;
   onTechClick: () => void;
   onDataClick: () => void;
+  onDocsClick: () => void;
+  onAdminClick?: () => void;
+  onLoadResearch?: (id: string) => void;
   navTabs?: React.ReactNode;
 }
 
@@ -52,6 +58,9 @@ export const TopBar = ({
   onAboutClick,
   onTechClick,
   onDataClick,
+  onDocsClick,
+  onAdminClick,
+  onLoadResearch,
   navTabs,
 }: TopBarProps) => {
   const [hoveredModelCombo, setHoveredModelCombo] = useState<string | null>(null);
@@ -185,67 +194,7 @@ export const TopBar = ({
                   ))}
                 </div>
                 {activeComboConfig && (
-                  <div className="model-combo-panel">
-                    <div className="model-combo-panel-title">{displayComboName}</div>
-                    <div className="model-combo-panel-row">
-                      <span className="model-combo-panel-label">Embedding</span>
-                      <span className="model-combo-panel-value">
-                        {activeComboConfig.embedding_model_id
-                          ?? activeComboConfig.embedding_model}
-                      </span>
-                      {activeComboConfig.embedding_model_location && (
-                        <span className="model-combo-panel-badge">
-                          {activeComboConfig.embedding_model_location}
-                        </span>
-                      )}
-                    </div>
-                    {activeComboConfig.sparse_model && (
-                      <div className="model-combo-panel-row">
-                        <span className="model-combo-panel-label">Sparse</span>
-                        <span className="model-combo-panel-value">
-                          {activeComboConfig.sparse_model}
-                        </span>
-                        {activeComboConfig.sparse_model_location && (
-                          <span className="model-combo-panel-badge">
-                            {activeComboConfig.sparse_model_location}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <div className="model-combo-panel-row">
-                      <span className="model-combo-panel-label">Summary</span>
-                      <span className="model-combo-panel-value">
-                        {activeComboConfig.summarization_model.model}
-                      </span>
-                      {activeComboConfig.summarization_model_location && (
-                        <span className="model-combo-panel-badge">
-                          {activeComboConfig.summarization_model_location}
-                        </span>
-                      )}
-                    </div>
-                    <div className="model-combo-panel-row">
-                      <span className="model-combo-panel-label">Highlighting</span>
-                      <span className="model-combo-panel-value">
-                        {activeComboConfig.semantic_highlighting_model.model}
-                      </span>
-                      {activeComboConfig.semantic_highlighting_location && (
-                        <span className="model-combo-panel-badge">
-                          {activeComboConfig.semantic_highlighting_location}
-                        </span>
-                      )}
-                    </div>
-                    <div className="model-combo-panel-row">
-                      <span className="model-combo-panel-label">Reranker</span>
-                      <span className="model-combo-panel-value">
-                        {activeComboConfig.reranker_model}
-                      </span>
-                      {activeComboConfig.reranker_model_location && (
-                        <span className="model-combo-panel-badge">
-                          {activeComboConfig.reranker_model_location}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <ModelComboPanel config={activeComboConfig} displayName={displayComboName} />
                 )}
               </div>
             )}
@@ -274,9 +223,13 @@ export const TopBar = ({
                 <button className="dropdown-item" onClick={onDataClick}>
                   Data
                 </button>
+                <button className="dropdown-item" onClick={onDocsClick}>
+                  Docs
+                </button>
               </div>
             )}
           </div>
+          {USER_MODULE && <UserMenu onAdminClick={onAdminClick} onLoadResearch={onLoadResearch} />}
         </div>
       </div>
       {navTabs}

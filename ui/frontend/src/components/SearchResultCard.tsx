@@ -1,4 +1,4 @@
-import React, { memo, useRef, useEffect, useState } from 'react';
+import React, { memo, useRef, useEffect, useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { SearchResult } from '../types/api';
 import { LANGUAGES } from '../constants';
@@ -11,6 +11,8 @@ import {
     renderMarkdownText,
     formatLinesWithIndentation
 } from '../utils/textHighlighting';
+import StarRating from './ratings/StarRating';
+import RatingModal from './ratings/RatingModal';
 
 interface SearchResultCardProps {
     result: SearchResult;
@@ -21,6 +23,27 @@ interface SearchResultCardProps {
     onLanguageChange: (result: SearchResult, newLang: string) => void;
     onRequestHighlight?: (chunkId: string, text: string) => void;
     hidePageNumber?: boolean;
+    /** UUID search ID for rating reference */
+    searchId?: string;
+    /** Whether user is authenticated (controls rating visibility) */
+    isAuthenticated?: boolean;
+    /** Callback to submit a rating */
+    onSubmitRating?: (params: {
+        ratingType: string;
+        referenceId: string;
+        itemId?: string;
+        score: number;
+        comment?: string;
+        context?: Record<string, any>;
+    }) => Promise<any>;
+    /** Existing rating score for this item (0 = no rating) */
+    existingRatingScore?: number;
+    /** Existing rating comment */
+    existingRatingComment?: string;
+    /** Existing rating id (for deletion) */
+    existingRatingId?: string;
+    /** Delete a rating */
+    onDeleteRating?: (ratingId: string) => Promise<void>;
 }
 
 const ResultTitleRow = ({
@@ -71,26 +94,90 @@ const CountryDisplay = ({ raw }: { raw: string }) => {
     );
 };
 
-const ResultSubtitleRow = ({ result }: { result: SearchResult }) => {
+/** Renders organization, year, and country parts separated by bullets */
+const MetadataSubtitle = ({ result }: { result: SearchResult }) => {
     const country = result.metadata?.map_country || result.metadata?.country || '';
-    const hasOrg = !!result.organization;
-    const hasYear = !!result.year;
-    const hasCountry = !!country;
+    const parts: React.ReactNode[] = [];
+    if (result.organization) parts.push(<span key="org">{result.organization}</span>);
+    if (result.year) parts.push(<span key="year">{result.year}</span>);
+    if (country) parts.push(<CountryDisplay key="country" raw={country} />);
+    if (parts.length === 0) return null;
+    return (
+        <>
+            {parts.map((part, i) => (
+                <React.Fragment key={i}>
+                    {i > 0 && <span> • </span>}
+                    {part}
+                </React.Fragment>
+            ))}
+        </>
+    );
+};
+
+const ResultSubtitleRow = ({
+    result,
+    onLanguageChange
+}: {
+    result: SearchResult;
+    onLanguageChange: (result: SearchResult, newLang: string) => void;
+}) => {
     return (
         <div
             className="result-subtitle"
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
         >
             <div>
-                {(hasOrg || hasYear || hasCountry) && (
-                    <>
-                        {hasOrg && <span>{result.organization}</span>}
-                        {hasOrg && (hasYear || hasCountry) && <span> • </span>}
-                        {hasYear && <span>{result.year}</span>}
-                        {hasYear && hasCountry && <span> • </span>}
-                        {hasCountry && <CountryDisplay raw={country} />}
-                    </>
+                <MetadataSubtitle result={result} />
+            </div>
+            <div
+                className="result-language-selector"
+                onClick={(e) => e.stopPropagation()}
+                style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}
+            >
+                {result.is_translating && (
+                    <div
+                        className="rainbow-overlay translating-dropdown"
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'white',
+                            pointerEvents: 'none',
+                            fontSize: '0.8rem',
+                            borderRadius: '4px',
+                            zIndex: 1
+                        }}
+                    >
+                        <RainbowText text={LANGUAGES[result.translated_language || 'en'] || '...'} />
+                    </div>
                 )}
+                <select
+                    value={result.translated_language || result.language || result.metadata?.language || 'en'}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                        onLanguageChange(result, e.target.value)
+                    }
+                    style={{
+                        fontSize: '0.8rem',
+                        padding: '2px 4px',
+                        border: 'none',
+                        borderRadius: '4px',
+                        backgroundColor: 'transparent',
+                        color: '#6b7280',
+                        cursor: 'pointer',
+                        visibility: result.is_translating ? 'hidden' : 'visible'
+                    }}
+                >
+                    {Object.entries(LANGUAGES).map(([code, name]) => (
+                        <option key={code} value={code}>
+                            {name}
+                        </option>
+                    ))}
+                </select>
             </div>
         </div>
     );
@@ -139,11 +226,9 @@ const TranslatedSnippet = ({
 const ResultBadges = ({
     result,
     onOpenMetadata,
-    onLanguageChange
 }: {
     result: SearchResult;
     onOpenMetadata: (result: SearchResult) => void;
-    onLanguageChange: (result: SearchResult, newLang: string) => void;
 }) => (
     <div className="result-badges">
         <button
@@ -155,56 +240,6 @@ const ResultBadges = ({
         >
             Metadata
         </button>
-        <div
-            className="result-language-selector"
-            onClick={(e) => e.stopPropagation()}
-            style={{ position: 'relative', display: 'inline-block', marginLeft: 'auto' }}
-        >
-            {result.is_translating && (
-                <div
-                    className="rainbow-overlay translating-dropdown"
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'white',
-                        pointerEvents: 'none',
-                        fontSize: '0.8rem',
-                        borderRadius: '4px',
-                        zIndex: 1
-                    }}
-                >
-                    <RainbowText text={LANGUAGES[result.translated_language || 'en'] || '...'} />
-                </div>
-            )}
-            <select
-                value={result.translated_language || result.language || result.metadata?.language || 'en'}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                    onLanguageChange(result, e.target.value)
-                }
-                style={{
-                    fontSize: '0.8rem',
-                    padding: '2px 4px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    backgroundColor: 'transparent',
-                    color: '#6b7280',
-                    cursor: 'pointer',
-                    visibility: result.is_translating ? 'hidden' : 'visible'
-                }}
-            >
-                {Object.entries(LANGUAGES).map(([code, name]) => (
-                    <option key={code} value={code}>
-                        {name}
-                    </option>
-                ))}
-            </select>
-        </div>
     </div>
 );
 
@@ -216,9 +251,18 @@ const SearchResultCard = memo(({
     onOpenMetadata,
     onLanguageChange,
     onRequestHighlight,
-    hidePageNumber
+    hidePageNumber,
+    searchId,
+    isAuthenticated,
+    onSubmitRating,
+    existingRatingScore = 0,
+    existingRatingComment = '',
+    existingRatingId,
+    onDeleteRating,
 }: SearchResultCardProps) => {
     const cardRef = useRef<HTMLDivElement>(null);
+    const [ratingModalOpen, setRatingModalOpen] = useState(false);
+    const [modalInitialScore, setModalInitialScore] = useState(0);
 
     // IntersectionObserver to trigger highlighting when scrolled into view
     useEffect(() => {
@@ -244,6 +288,33 @@ const SearchResultCard = memo(({
         };
     }, [result.chunk_id, result.highlightedText, onRequestHighlight]);
 
+    const handleRatingSubmit = useCallback((score: number, comment: string) => {
+        if (!onSubmitRating || !searchId) return;
+        onSubmitRating({
+            ratingType: 'search_result',
+            referenceId: searchId,
+            itemId: result.chunk_id,
+            score,
+            comment,
+            context: {
+                query,
+                doc_id: result.doc_id,
+                title: result.title,
+                chunk_id: result.chunk_id,
+                page_num: result.page_num || null,
+                relevance_score: result.score,
+                chunk_text: result.text || '',
+                link: window.location.href,
+            },
+        });
+    }, [onSubmitRating, searchId, result.chunk_id, result.doc_id, result.title, result.score, result.page_num, result.text, query]);
+
+    const handleDeleteRating = useCallback(() => {
+        if (existingRatingId && onDeleteRating) {
+            onDeleteRating(existingRatingId);
+        }
+    }, [existingRatingId, onDeleteRating]);
+
     // Convert single newlines to double newlines for proper paragraph breaks in markdown
     const snippetText = result.text.replace(/\n/g, '\n\n');
 
@@ -258,7 +329,7 @@ const SearchResultCard = memo(({
             data-page={result.page_num}
         >
             <ResultTitleRow result={result} onClick={onClick} hidePageNumber={hidePageNumber} />
-            <ResultSubtitleRow result={result} />
+            <ResultSubtitleRow result={result} onLanguageChange={onLanguageChange} />
 
             <div className="result-snippet-container">
                 <ResultHeadings result={result} />
@@ -271,12 +342,35 @@ const SearchResultCard = memo(({
                 />
             </div>
 
-            <ResultBadges
-                result={result}
-                onOpenMetadata={onOpenMetadata}
-                onLanguageChange={onLanguageChange}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 'var(--spacing-sm)' }}>
+                <ResultBadges
+                    result={result}
+                    onOpenMetadata={onOpenMetadata}
+                />
+                {isAuthenticated && searchId && (
+                    <StarRating
+                        score={existingRatingScore}
+                        onRequestModal={(selectedScore) => {
+                            setModalInitialScore(existingRatingScore || selectedScore);
+                            setRatingModalOpen(true);
+                        }}
+                        size={14}
+                        className="result-card-star-rating"
+                    />
+                )}
+            </div>
 
+            {ratingModalOpen && (
+                <RatingModal
+                    isOpen={ratingModalOpen}
+                    onClose={() => setRatingModalOpen(false)}
+                    title="Rate this search result"
+                    initialScore={modalInitialScore}
+                    initialComment={existingRatingComment}
+                    onSubmit={handleRatingSubmit}
+                    onDelete={existingRatingId ? handleDeleteRating : undefined}
+                />
+            )}
         </div>
     );
 });

@@ -24,10 +24,12 @@ from jinja2 import Environment, FileSystemLoader
 from langchain_core.messages import HumanMessage
 from langsmith import traceable
 from nltk.tokenize import sent_tokenize
-from sentence_transformers import SentenceTransformer, util
+from sentence_transformers import util
 
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.base import BaseProcessor
+from pipeline.utilities.embedding_service import EmbeddingService
+from pipeline.utilities.llm_retry import invoke_with_retry
 from pipeline.utilities.logging_utils import _log_context
 from utils import llm_factory
 from utils.langsmith_util import setup_langsmith_tracing
@@ -174,27 +176,34 @@ class SummarizeProcessor(BaseProcessor):
             return "llama"
         return "chat"
 
-    def setup(self, embedding_model=None) -> None:
+    def setup(self, embedding_service: EmbeddingService = None) -> None:
         """
-        Load embedding model and get LLM token.
+        Load embedding model via EmbeddingService and get LLM token.
 
         Args:
-            embedding_model: Optional shared embedding model
-                             (SentenceTransformer, fastembed, or RemoteEmbeddingClient)
+            embedding_service: Central embedding service for obtaining
+                model clients.
         """
         logger.info("Initializing %s...", self.name)
 
-        # Load embedding model
-        if embedding_model:
-            logger.info("Using shared embedding model")
-            self._embedding_model = embedding_model
+        # Resolve dense_model from config
+        dense_model_name = self.config.get("dense_model")
+        if not dense_model_name:
+            raise ValueError(
+                "SummarizeProcessor: 'dense_model' missing in summarize config. "
+                "Add it to datasources.<name>.pipeline.summarize in config.json."
+            )
+
+        if embedding_service is not None:
+            logger.info(
+                "Loading embedding model '%s' via EmbeddingService", dense_model_name
+            )
+            self._embedding_model = embedding_service.get_model(dense_model_name)
         else:
-            # Fallback to local loading
-            model_name = os.getenv("DENSE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
-            logger.info("Loading local embedding model (%s)...", model_name)
-            # We use SentenceTransformer for local fallback to maintain compatibility
-            # unless we decided to switch to fastembed entirely, but for now this is safest.
-            self._embedding_model = SentenceTransformer(model_name)
+            raise ValueError(
+                "SummarizeProcessor: embedding_service is required. "
+                "Ensure the worker provides an EmbeddingService instance."
+            )
 
         # Get HuggingFace token
         self._hf_token = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
@@ -385,22 +394,17 @@ class SummarizeProcessor(BaseProcessor):
             if self._embedding_model is None:
                 raise ValueError("Embedding model not initialized")
 
-            if hasattr(self._embedding_model, "embed"):
-                gen = self._embedding_model.embed(inputs, batch_size=32)
-                return np.array(list(gen))
-
-            return self._embedding_model.encode(inputs, show_progress_bar=False)
+            gen = self._embedding_model.embed(inputs, batch_size=32)
+            return np.array(list(gen))
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Failed to generate embeddings: %s", e)
             return None
 
     def _prepare_embedding_inputs(self, sentences: List[str]) -> List[str]:
-        is_e5 = (
-            "e5" in os.getenv("DENSE_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL).lower()
-        )
-        if not is_e5:
-            return sentences
-        return [f"passage: {sentence}" for sentence in sentences]
+        dense_model_name = self.config.get("dense_model", "")
+        if "e5" in dense_model_name.lower():
+            return [f"passage: {sentence}" for sentence in sentences]
+        return sentences
 
     def _tokenize_sentences(self, text: str) -> List[str]:
         """Tokenize text into sentences."""
@@ -427,7 +431,7 @@ class SummarizeProcessor(BaseProcessor):
         logger.info("  Input: %s characters", len(cleaned))
 
         try:
-            max_chars = self.context_window
+            max_chars = self._token_budget_chars(self.context_window, self.max_tokens)
             effective_max = self._effective_max_chars(max_chars)
             if len(cleaned) <= effective_max:
                 return self._single_pass_summary(cleaned)
@@ -450,6 +454,28 @@ class SummarizeProcessor(BaseProcessor):
         prompt_overhead = len(_reduction_template.render(document_text="")) + 100
         return max_chars - prompt_overhead
 
+    @staticmethod
+    def _token_budget_chars(context_window: int, max_tokens: int) -> int:
+        """Convert a token-based context window to a character budget.
+
+        Uses a conservative 1:1 chars-per-token ratio so that the rendered
+        prompt stays within the model's token limit even for CJK, Khmer,
+        and other scripts where each character may consume a full token.
+        For Latin text this is overly cautious (typically ~4 chars/token)
+        but the map-reduce strategy handles oversized documents correctly,
+        so the only cost is a few extra LLM calls for large English docs.
+
+        Args:
+            context_window: Model context window in **tokens**.
+            max_tokens: Tokens reserved for the LLM response.
+
+        Returns:
+            Maximum characters allowed for the document text portion.
+        """
+        _CHARS_PER_TOKEN = 1  # worst-case for CJK/Khmer/Thai scripts
+        available_tokens = context_window - max_tokens
+        return int(available_tokens * _CHARS_PER_TOKEN)
+
     @traceable(name="Summarization")
     def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
         llm = llm_factory.get_llm(
@@ -459,7 +485,7 @@ class SummarizeProcessor(BaseProcessor):
             max_tokens=self.max_tokens,
             inference_provider=self.inference_provider if include_inference else None,
         )
-        response = llm.invoke([HumanMessage(content=prompt)])
+        response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
         if hasattr(response, "content"):
             return response.content.strip()
         return str(response).strip()
@@ -519,7 +545,7 @@ class SummarizeProcessor(BaseProcessor):
         # prevent infinite recursion if we can't split it further meaningfuly.
         # But here _split_chunks uses strict sizing, so it should always split.
 
-        if len(chunks) > 50:  # Increased safety limit
+        if len(chunks) > 200:  # Safety limit for extremely large documents
             logger.warning("  Too many chunks (%s) - will use centroid", len(chunks))
             return "USE_CENTROID", None
 

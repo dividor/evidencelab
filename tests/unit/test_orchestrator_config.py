@@ -11,10 +11,10 @@ from pipeline.orchestrator.worker import init_worker  # noqa: E402
 
 class TestOrchestratorConfig(unittest.TestCase):
     @patch("pipeline.orchestrator.worker.get_db")
-    @patch("pipeline.orchestrator.worker.RemoteEmbeddingClient")
+    @patch("pipeline.orchestrator.worker.EmbeddingService")
     @patch("pipeline.orchestrator.worker.SummarizeProcessor")
     def test_init_worker_propagates_llm_config(
-        self, mock_summarizer_cls, mock_remote_client, mock_get_db
+        self, mock_summarizer_cls, mock_embedding_service, mock_get_db
     ):
         """
         Test that init_worker correctly extracts LLM config from pipeline_config

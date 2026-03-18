@@ -3,19 +3,20 @@ Search API Backend
 FastAPI server that provides semantic search over indexed documents in Qdrant.
 """
 
+import logging
 import os
-import secrets
 import signal
 from typing import Any, Dict, List, Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from pipeline.db import (
     DB_VECTORS,
@@ -23,9 +24,11 @@ from pipeline.db import (
     SUPPORTED_LLMS,
     SUPPORTED_RERANK_MODELS,
     UI_MODEL_COMBOS,
-    get_filter_fields,
+    get_default_filter_fields,
+    load_datasources_config,
 )
 from pipeline.utilities.tasks import app as celery_app
+from ui.backend.routes import assistant as assistant_routes
 from ui.backend.routes import config as config_routes
 from ui.backend.routes import documents as documents_routes
 from ui.backend.routes import highlight as highlight_routes
@@ -91,36 +94,85 @@ USE_EMBEDDING_SERVER = os.environ.get("USE_EMBEDDING_SERVER", "false").lower() i
     "true",
     "yes",
 )
+# Parse USER_MODULE mode: off | on_passive | on_active
+# Backwards compatible: true/1/yes → on_active, false/0/no → off
+_USER_MODULE_RAW = os.environ.get("USER_MODULE", "off").lower()
+if _USER_MODULE_RAW in ("1", "true", "yes", "on_active"):
+    USER_MODULE_MODE = "on_active"
+elif _USER_MODULE_RAW in ("on_passive",):
+    USER_MODULE_MODE = "on_passive"
+else:
+    USER_MODULE_MODE = "off"
+# Auth module is loaded (True for both on_passive and on_active)
+USER_MODULE = USER_MODULE_MODE != "off"
 
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+# Sync config to the extracted verify module so it reads the same values.
+from ui.backend.auth import api_key_verify as _akv  # noqa: E402
+
+_akv.API_KEY = API_KEY
+_akv.USER_MODULE = USER_MODULE
+_akv.USER_MODULE_MODE = USER_MODULE_MODE
+
 
 async def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
-    """Verify the API key from request header"""
-    if request.url.path == "/health":
-        return None
-    if request.url.path.startswith("/file/") or request.url.path.startswith("/pdf/"):
-        return None
-    if "/thumbnail" in request.url.path:
-        return None
-    if not API_KEY:
-        # If no API key configured, allow all requests (development mode)
-        return None
-    if not api_key or not secrets.compare_digest(api_key, API_KEY):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
-    return api_key
+    """Verify the API key from request header, or valid session cookie.
+
+    Delegates to :func:`ui.backend.auth.api_key_verify.verify_api_key`
+    which holds the actual logic (extracted so it can be unit-tested
+    without importing the heavy pipeline modules).
+    """
+    from ui.backend.auth.api_key_verify import verify_api_key as _verify
+
+    return await _verify(request, api_key)
 
 
-# Disable docs in production (when API_KEY is set)
+# API documentation always available; endpoints still require API key.
+# Users authenticate via the Authorize button in Swagger UI.
+# root_path lets Swagger UI find /openapi.json when behind a reverse proxy
+# that strips a path prefix (e.g. nginx /api/ → /).
+ROOT_PATH = os.environ.get("API_ROOT_PATH", "")
 app = FastAPI(
-    title="Humanitarian Evaluation Search API",
+    title="Evidence Lab API",
     dependencies=[Depends(verify_api_key)],
-    docs_url=None if API_KEY else "/docs",
-    redoc_url=None if API_KEY else "/redoc",
-    openapi_url=None if API_KEY else "/openapi.json",
+    root_path=ROOT_PATH,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={"persistAuthorization": True},
 )
+
+
+def _custom_openapi():
+    """Strip OAuth2/Cookie schemes so Swagger Authorize only shows API key."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+
+    servers = None
+    if app.root_path:
+        servers = [{"url": app.root_path}]
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        routes=app.routes,
+        servers=servers,
+    )
+    schemes = schema.get("components", {}).get("securitySchemes", {})
+    # Keep only the API key header scheme
+    for name in list(schemes):
+        if schemes[name].get("type") != "apiKey" or schemes[name].get("in") != "header":
+            del schemes[name]
+    # Update global security to reference only the remaining scheme
+    schema["security"] = [{name: []} for name in schemes]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi  # type: ignore[method-assign]
 
 # Add rate limiter to app
 app.state.limiter = limiter
@@ -128,17 +180,89 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.highlight_cache = highlight_routes._highlight_cache
 
 
-# Custom exception handler for validation errors (e.g., invalid data_source)
+# ---------------------------------------------------------------------------
+# Request body size limit (ASVS V13.1.3)
+# ---------------------------------------------------------------------------
+MAX_REQUEST_BODY_BYTES = int(
+    os.environ.get("MAX_REQUEST_BODY_BYTES", str(2 * 1024 * 1024))  # 2 MB
+)
+
+_main_logger = logging.getLogger(__name__)
+
+# Debug flag — when true, exception handlers return full error details.
+API_DEBUG = os.environ.get("API_DEBUG", "false").lower() in ("1", "true", "yes")
+
+
+class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose Content-Length exceeds the configured limit."""
+
+    async def dispatch(self, request, call_next):  # type: ignore[override]
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_BODY_BYTES:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request body too large"},
+            )
+        return await call_next(request)
+
+
+# Safe ValueError prefixes whose details can be shown to clients.
+_SAFE_VALUE_ERROR_PREFIXES = ("Invalid data_source:",)
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
-    """Convert ValueError to HTTP 400 Bad Request."""
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+    """Convert ValueError to HTTP 400 — sanitise detail in production."""
+    msg = str(exc)
+    if API_DEBUG or any(msg.startswith(p) for p in _SAFE_VALUE_ERROR_PREFIXES):
+        return JSONResponse(status_code=400, content={"detail": msg})
+    _main_logger.warning(
+        "ValueError on %s %s: %s", request.method, request.url.path, msg
+    )
+    return JSONResponse(
+        status_code=400, content={"detail": "Invalid request parameters"}
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    """Return a generic 500 — never expose internals in production."""
+    _main_logger.exception(
+        "Unhandled exception on %s %s", request.method, request.url.path
+    )
+    detail = str(exc) if API_DEBUG else "Internal server error"
+    return JSONResponse(status_code=500, content={"detail": detail})
 
 
 @app.on_event("startup")
 async def startup_event():
     """Preload embedding models and pipeline data on API startup."""
     logger.info("API startup (pid=%s)", os.getpid())
+
+    # Block insecure auth secrets in production (ASVS V14.1.2)
+    if USER_MODULE:
+        raw_secret = os.environ.get("AUTH_SECRET_KEY", "")
+        _insecure_values = {
+            "CHANGE-ME-IN-PRODUCTION",
+            "changeme-generate-a-real-secret",
+            "changeme",
+            "secret",
+            "",
+        }
+        if raw_secret in _insecure_values or len(raw_secret) < 32:
+            logger.critical(
+                "AUTH_SECRET_KEY is insecure (len=%d). An ephemeral key has "
+                "been generated, but tokens will NOT survive restarts. "
+                "Set AUTH_SECRET_KEY to a random 32+ character string "
+                "(e.g. `openssl rand -hex 32`).",
+                len(raw_secret),
+            )
+    if not API_KEY:
+        logger.error(
+            "API_SECRET_KEY is not set. The API will not start without it. "
+            "Set API_SECRET_KEY in .env (e.g. `openssl rand -hex 32`)."
+        )
+        raise SystemExit(1)
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
@@ -153,12 +277,22 @@ async def startup_event():
         logger.info("🔄 Preloading reranker model...")
         get_rerank_model()
         logger.info("✅ Reranker model preloaded and ready")
-    # Warm pipeline data cache in background thread
+    # Warm pipeline data cache for all configured data sources
     import threading
 
-    threading.Thread(
-        target=stats_routes.warm_pipeline_cache, args=("uneg",), daemon=True
-    ).start()
+    _config = load_datasources_config()
+    _data_subdirs = [
+        v.get("data_subdir")
+        for v in _config.get("datasources", {}).values()
+        if isinstance(v, dict) and v.get("data_subdir")
+    ]
+    if not _data_subdirs:
+        logger.error("No datasources found in config — skipping cache warm")
+        return
+    for _source in _data_subdirs:
+        threading.Thread(
+            target=stats_routes.warm_pipeline_cache, args=(_source,), daemon=True
+        ).start()
 
 
 @app.on_event("shutdown")
@@ -398,7 +532,7 @@ async def get_facets(
     q: Optional[str] = None,
 ):
     search_routes.get_db_for_source = get_db_for_source
-    search_routes.get_filter_fields = get_filter_fields
+    search_routes.get_default_filter_fields = get_default_filter_fields
     return await _get_facets(
         request=request,
         organization=organization,
@@ -511,13 +645,47 @@ if not CORS_ORIGINS or CORS_ORIGINS == [""]:
         "http://127.0.0.1:8000",
     ]
 
+# CORS allowed headers - explicit whitelist instead of "*"
+_CORS_HEADERS_RAW = os.environ.get("CORS_ALLOWED_HEADERS", "")
+CORS_HEADERS = [h.strip() for h in _CORS_HEADERS_RAW.split(",") if h.strip()]
+if not CORS_HEADERS:
+    CORS_HEADERS = [
+        "Content-Type",
+        "Authorization",
+        "X-API-Key",
+        "X-CSRF-Token",
+        "Accept",
+        "Accept-Language",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
+    allow_headers=CORS_HEADERS,
 )
+
+# Security response headers (always active — defence-in-depth)
+from ui.backend.auth.security_headers import SecurityHeadersMiddleware  # noqa: E402
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Request body size limit (ASVS V13.1.3)
+app.add_middleware(RequestBodyLimitMiddleware)
+
+# CSRF protection (only when user module / cookie auth is active)
+if USER_MODULE:
+    from ui.backend.auth.csrf import CSRFMiddleware  # noqa: E402
+
+    app.add_middleware(CSRFMiddleware)
+
+# on_active: deny unauthenticated requests to all data endpoints
+if USER_MODULE_MODE == "on_active":
+    from ui.backend.auth.active_auth import ActiveAuthMiddleware  # noqa: E402
+    from ui.backend.auth.users import AUTH_SECRET  # noqa: E402
+
+    app.add_middleware(ActiveAuthMiddleware, auth_secret=AUTH_SECRET, api_key=API_KEY)
 
 
 # Models
@@ -655,7 +823,85 @@ app.include_router(summary_routes.router)
 app.include_router(highlight_routes.router)
 app.include_router(stats_routes.router)
 app.include_router(search_routes.router)
+app.include_router(assistant_routes.router, tags=["assistant"])
 app.include_router(documents_routes.router)
+
+# User authentication & permissions module (opt-in via USER_MODULE env var)
+if USER_MODULE:
+    from ui.backend.auth.rate_limit import check_auth_rate_limit
+    from ui.backend.routes import auth as auth_routes
+    from ui.backend.routes import groups as groups_routes
+    from ui.backend.routes import users as users_routes
+
+    app.include_router(
+        auth_routes.router,
+        prefix="/auth",
+        tags=["auth"],
+        dependencies=[Depends(check_auth_rate_limit)],
+    )
+    app.include_router(users_routes.router, prefix="/users", tags=["users"])
+    app.include_router(groups_routes.router, prefix="/groups", tags=["groups"])
+
+    from ui.backend.routes import activity as activity_routes
+    from ui.backend.routes import api_keys as api_keys_routes
+    from ui.backend.routes import ratings as ratings_routes
+    from ui.backend.routes import research as research_routes
+
+    app.include_router(ratings_routes.router, prefix="/ratings", tags=["ratings"])
+    app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
+    app.include_router(research_routes.router, prefix="/research", tags=["research"])
+    app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
+    logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
+
+    # Auto-promote first superuser on startup (if configured)
+    _FIRST_SUPERUSER_EMAIL = os.environ.get("FIRST_SUPERUSER_EMAIL", "").strip()
+
+    @app.on_event("startup")
+    async def promote_first_superuser():
+        """Auto-promote a user to superuser based on FIRST_SUPERUSER_EMAIL."""
+        if not _FIRST_SUPERUSER_EMAIL:
+            return
+        from sqlalchemy import select
+        from sqlalchemy import update as sa_update
+
+        from ui.backend.auth.db import async_session_factory
+        from ui.backend.auth.models import User
+
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(User).where(User.email == _FIRST_SUPERUSER_EMAIL)
+            )
+            user = result.scalars().first()
+            if user is None:
+                logger.info(
+                    "FIRST_SUPERUSER_EMAIL=%s — user not registered yet; "
+                    "will be promoted on next restart after registration.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            if user.is_superuser:
+                logger.debug(
+                    "FIRST_SUPERUSER_EMAIL=%s — already a superuser.",
+                    _FIRST_SUPERUSER_EMAIL,
+                )
+                return
+            await session.execute(
+                sa_update(User)
+                .where(User.id == user.id)
+                .values(is_superuser=True, is_verified=True)
+            )
+            await session.commit()
+            logger.info(
+                "Promoted %s to superuser (FIRST_SUPERUSER_EMAIL).",
+                _FIRST_SUPERUSER_EMAIL,
+            )
+
+    # Expose USER_MODULE mode so config route can read it
+    app.state.user_module_enabled = True
+    app.state.user_module_mode = USER_MODULE_MODE
+else:
+    app.state.user_module_enabled = False
+    app.state.user_module_mode = "off"
 
 if __name__ == "__main__":
     # Host configurable for security - 0.0.0.0 for Docker, 127.0.0.1 for local dev

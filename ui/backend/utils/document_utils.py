@@ -1,3 +1,4 @@
+import re
 from typing import Any, Dict
 
 CORE_FIELD_MAP = {
@@ -46,6 +47,17 @@ def normalize_document_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     for system_field, sys_key in SYSTEM_FIELD_MAP.items():
         if sys_key in payload:
             normalized[system_field] = payload[sys_key]
+    # Unpack src_doc_raw_metadata into individual src_* top-level keys.
+    # Raw keys are human-readable (e.g. "Evaluation category") so we
+    # sanitize them to snake_case with src_ prefix.
+    raw_meta = payload.get("src_doc_raw_metadata")
+    if isinstance(raw_meta, dict):
+        for key, value in raw_meta.items():
+            sanitized = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+            src_key = (
+                f"src_{sanitized}" if not sanitized.startswith("src_") else sanitized
+            )
+            normalized.setdefault(src_key, value)
     return normalized
 
 

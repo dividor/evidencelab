@@ -142,11 +142,9 @@ class Database:
         if create_indexes:
             self.create_payload_indexes()  # Automatically create indexes for faceting
 
-    def _load_pipeline_config(self) -> Dict[str, Any]:
-        """Load pipeline configuration for the current data source from JSON."""
-        # Using the global load_datasources_config logic but targeting specific datasource path
+    def _load_datasource_config(self) -> Dict[str, Any]:
+        """Load the full datasource config for the current data source."""
         config_data = load_datasources_config()
-        # Handle new root structure if present
         datasources = config_data.get("datasources", config_data)
 
         datasource_key = next(
@@ -158,8 +156,12 @@ class Database:
             None,
         )
         if datasource_key:
-            return datasources[datasource_key].get("pipeline", {})
+            return datasources[datasource_key]
         return {}
+
+    def _load_pipeline_config(self) -> Dict[str, Any]:
+        """Load pipeline configuration for the current data source from JSON."""
+        return self._load_datasource_config().get("pipeline", {})
 
     def _get_vector_config(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
@@ -228,30 +230,23 @@ class Database:
         Returns (vector_name, vector_size).
         """
         config = self._load_pipeline_config()
-        # Try to find the primary model active for chunking/queries
-        # Use chunking config as the source of truth for "active" model
-        primary_model_id = config.get("chunk", {}).get("dense_model")
-        if not primary_model_id:
-            raise ValueError("No dense_model found in chunk config")
-
-        clean_name = clean_model_name(primary_model_id)
-
-        # Verify it exists in our vectors list
         dense_vectors, _ = self._get_vector_config()
 
-        if clean_name in dense_vectors:
-            return clean_name, dense_vectors[clean_name]["size"]
+        # Primary source: first model in index.dense_models
+        index_models = config.get("index", {}).get("dense_models", [])
+        if index_models:
+            primary = index_models[0]
+            clean_name = clean_model_name(primary)
+            if clean_name in dense_vectors:
+                return clean_name, dense_vectors[clean_name]["size"]
+            for name, v_cfg in dense_vectors.items():
+                if v_cfg["model_id"] == primary:
+                    return name, v_cfg["size"]
 
-        # Fallback logic if name mismatch or not found in list
-        for name, v_cfg in dense_vectors.items():
-            if v_cfg["model_id"] == primary_model_id:
-                return name, v_cfg["size"]
-
-        # If we are here, the configured chunk model is not in the enabled models list.
-        # This is invalid config, but we might default to first enabled dense vector?
-        raise ValueError(
-            f"Active model {primary_model_id} not found/enabled in models list."
-        )
+        # Fallback: first enabled dense vector
+        if dense_vectors:
+            name = next(iter(dense_vectors))
+            return name, dense_vectors[name]["size"]
 
         raise ValueError("No enabled dense vectors found in configuration")
 
@@ -461,8 +456,14 @@ class Database:
         for tax_key in taxonomies:
             field_name = f"tag_{tax_key}"
             facet_fields.append((field_name, models.PayloadSchemaType.KEYWORD))
-            # Also add to chunks? Yes, usually.
-            # facet_fields is used for both.
+
+        # Add src_* filter fields from config (e.g. src_geographic_scope)
+        ds_cfg = self._load_datasource_config()
+        filter_fields = ds_cfg.get("filter_fields", {})
+        indexed = {f for f, _ in facet_fields}
+        for field_name in filter_fields:
+            if field_name.startswith("src_") and field_name not in indexed:
+                facet_fields.append((field_name, models.PayloadSchemaType.KEYWORD))
 
         # Create indexes on documents collection
         for field_name, field_type in facet_fields:
@@ -1035,7 +1036,7 @@ class Database:
                     value = value.isoformat()
                 sys_fields[key] = value
                 continue
-            if key.startswith(("src_", "map_")) or key == "is_duplicate":
+            if key.startswith(("src_", "map_", "tag_")) or key == "is_duplicate":
                 qdrant_payload[key] = value
         return qdrant_payload, sys_fields
 

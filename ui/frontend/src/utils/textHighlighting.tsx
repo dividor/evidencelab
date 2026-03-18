@@ -3,7 +3,10 @@ import React from 'react';
 import API_BASE_URL, { SEARCH_SEMANTIC_HIGHLIGHTS } from '../config';
 import { SearchResult, SummaryModelConfig } from '../types/api';
 
-const API_KEY = process.env.REACT_APP_API_KEY;
+const getCsrfToken = (): string | null => {
+  const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
 
 export interface TextMatch {
   start: number;
@@ -186,11 +189,12 @@ export const highlightTextWithAPI = async (
   if (!query.trim() || !text.trim()) return { highlighted_text: text, matches: [] };
 
   try {
+    const csrfToken = getCsrfToken();
     const response = await fetch(`${API_BASE_URL}/highlight`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(API_KEY ? { 'X-API-Key': API_KEY } : {})
+        ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
       },
       body: JSON.stringify({
         query: query.trim(),

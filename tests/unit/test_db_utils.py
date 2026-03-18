@@ -5,7 +5,7 @@ from pipeline.db import (
     _clean_model_name,
     core_to_source_field,
     get_application_config,
-    get_filter_fields,
+    get_default_filter_fields,
     source_to_core_field,
 )
 
@@ -51,7 +51,7 @@ def configured_datasources(monkeypatch):
                     "title": "title",
                     "organization_fixed": "fixed_value:Org",
                 },
-                "filter_fields": {"organization": "Organization"},
+                "default_filter_fields": {"organization": "Organization"},
             }
         },
         "application": {"search": {"default_dense_model": "e5_large"}},
@@ -66,7 +66,7 @@ def test_field_mapping_for_configured_source(configured_datasources):
     data_subdir, mapping = _find_datasource_with_mapping(config, "organization")
     assert mapping["organization"]
 
-    filters = get_filter_fields(data_subdir)
+    filters = get_default_filter_fields(data_subdir)
     assert "organization" in filters
 
 

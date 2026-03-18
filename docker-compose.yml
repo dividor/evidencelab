@@ -37,6 +37,12 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q 'HTTP/1.1 200' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # Postgres sidecar (pgvector)
   postgres:
@@ -53,6 +59,12 @@ services:
     restart: unless-stopped
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evidencelab}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # Embedding Server (Infinity) - Shared GPU/CPU inference
   embedding-server:
@@ -119,9 +131,9 @@ services:
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
-        condition: service_started
+        condition: service_healthy
       postgres:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
       embedding-server:
@@ -168,20 +180,35 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY}
+      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - USE_EMBEDDING_SERVER=true
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
       - MAX_CONCURRENT_SEARCHES=${MAX_CONCURRENT_SEARCHES:-2}
       - MAX_CONCURRENT_RERANKS=${MAX_CONCURRENT_RERANKS:-1}
+      # User module (auth & permissions): off | on_passive | on_active
+      - USER_MODULE=${USER_MODULE:-off}
+      - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
+      - APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@evidencelab.ai}
+      - OAUTH_GOOGLE_CLIENT_ID=${OAUTH_GOOGLE_CLIENT_ID:-}
+      - OAUTH_GOOGLE_CLIENT_SECRET=${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
+      - OAUTH_MICROSOFT_CLIENT_SECRET=${OAUTH_MICROSOFT_CLIENT_SECRET:-}
+      - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-common}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       qdrant:
-        condition: service_started
+        condition: service_healthy
       postgres:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_started
       embedding-server:
@@ -190,7 +217,7 @@ services:
       - app-network
     working_dir: /app
     # Development: single worker with hot reload
-    command: uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log #--reload
+    command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log" #--reload
     restart: unless-stopped
 
   # React frontend (development server with hot reload)
@@ -206,9 +233,11 @@ services:
       # Integration tests override this via environment or use host.docker.internal
       - PORT=3000
       - REACT_APP_API_URL=http://api:8000
-      - REACT_APP_API_KEY=${API_SECRET_KEY:-}
+      - API_SECRET_KEY=${API_SECRET_KEY:-}
+      - REACT_APP_API_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
       - REACT_APP_GA_MEASUREMENT_ID=${REACT_APP_GA_MEASUREMENT_ID:-}
       - REACT_APP_HEATMAP_LIMIT=${REACT_APP_HEATMAP_LIMIT:-1000}
+      - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
       - CHOKIDAR_USEPOLLING=true
     extra_hosts:
       - "host.docker.internal:host-gateway" # Required for Linux Docker
@@ -220,6 +249,7 @@ services:
       - ./ui/frontend:/app
       - /app/node_modules
       - ./config.json:/tmp/config.json:ro
+      - ./docs:/app/docs_source:ro
       - ./logs:/app/logs
     # Pipe output to file for persistent logging
     # Copy config.json to src before starting to satisfy CRA restrictions
@@ -233,6 +263,21 @@ services:
       retries: 10
       start_period: 30s
     restart: unless-stopped
+
+  # Mailpit — development SMTP server with web UI for testing emails
+  # Web UI: http://localhost:8025  |  SMTP: mailpit:1025
+  # Only needed when testing email verification / password reset flows.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mailpit
+    ports:
+      - "8025:8025"   # Web UI
+      - "1025:1025"   # SMTP
+    restart: unless-stopped
+    networks:
+      - app-network
+    profiles:
+      - mail
 
 networks:
   app-network:

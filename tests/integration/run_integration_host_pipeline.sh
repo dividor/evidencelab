@@ -16,14 +16,18 @@ DATA_SOURCE="${DATA_SOURCE:-uneg}"
 resolve_host_qdrant() {
   local qdrant_url="${QDRANT_HOST:-http://localhost:6333}"
   local max=15 attempt=1
+  local auth_header=""
+  if [ -n "${QDRANT_API_KEY:-}" ]; then
+    auth_header="-H api-key:${QDRANT_API_KEY}"
+  fi
   echo "Waiting for Qdrant on host at ${qdrant_url}..."
   while [ "${attempt}" -le "${max}" ]; do
-    if curl -4 -fsS --max-time 2 "${qdrant_url}/collections" >/dev/null 2>&1; then
+    if curl -4 -fsS --max-time 2 ${auth_header} "${qdrant_url}/collections" >/dev/null 2>&1; then
       QDRANT_HOST="${qdrant_url}"
       export QDRANT_HOST
       return 0
     fi
-    if curl -4 -fsS --max-time 2 "http://host.docker.internal:6333/collections" >/dev/null 2>&1; then
+    if curl -4 -fsS --max-time 2 ${auth_header} "http://host.docker.internal:6333/collections" >/dev/null 2>&1; then
       QDRANT_HOST="http://host.docker.internal:6333"
       export QDRANT_HOST
       return 0
@@ -193,6 +197,9 @@ echo "Restarting docker containers..."
 # Reset QDRANT_HOST so containers get the default (http://qdrant:6333)
 # instead of the host-resolved localhost URL from resolve_host_qdrant().
 unset QDRANT_HOST
+# Use passive user module so the UI does not block Playwright with auth popups.
+export USER_MODULE=on_passive
+export REACT_APP_USER_MODULE=on_passive
 docker compose up -d --build
 docker compose up -d embedding-server
 
@@ -227,4 +234,6 @@ docker compose exec -T \
   -e UI_BASE_URL="${UI_BASE_URL}" \
   -e SKIP_PIPELINE=1 \
   -e SKIP_PURGE=1 \
+  -e USER_MODULE=on_passive \
+  -e REACT_APP_USER_MODULE=on_passive \
   pipeline pytest tests/integration -vv

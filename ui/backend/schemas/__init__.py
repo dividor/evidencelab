@@ -54,9 +54,15 @@ class FacetValue(BaseModel):
     published_year: Optional[str] = None
 
 
+class RangeInfo(BaseModel):
+    min: float
+    max: float
+
+
 class Facets(BaseModel):
     facets: Dict[str, List[FacetValue]]
     filter_fields: Dict[str, str]
+    range_fields: Dict[str, RangeInfo] = {}
 
 
 class HighlightBox(BaseModel):

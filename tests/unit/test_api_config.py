@@ -41,7 +41,16 @@ class TestApiConfig(unittest.TestCase):
 
         importlib.reload(pipeline.db)
 
-        # Now import search
+        # Now import and reload search.
+        # Another test file's mock cleanup may have removed the 'search'
+        # attribute from the parent package.  Restore it from sys.modules
+        # so that ``import ui.backend.services.search`` succeeds.
+        import ui.backend.services as _svc
+
+        _search_mod = sys.modules.get("ui.backend.services.search")
+        if _search_mod is not None and not hasattr(_svc, "search"):
+            _svc.search = _search_mod
+
         import ui.backend.services.search
 
         importlib.reload(ui.backend.services.search)

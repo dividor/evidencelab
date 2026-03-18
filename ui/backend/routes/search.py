@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from qdrant_client.http import models as qmodels
 
-from pipeline.db import get_field_mapping, get_filter_fields, get_taxonomy_filter_fields
+from pipeline.db import get_default_filter_fields, get_taxonomy_filter_fields
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
@@ -26,7 +26,15 @@ from ui.backend.utils.document_utils import (
     normalize_document_payload,
 )
 from ui.backend.utils.facet_helpers import build_facets_from_db
-from ui.backend.utils.language_codes import LANGUAGE_CODES
+from ui.backend.utils.filter_helpers import (
+    add_dynamic_filters,
+    build_core_filters_from_params,
+    build_needed_fields,
+    collect_range_bounds,
+    normalize_language_filter,
+    resolve_storage_field,
+    split_filter_values,
+)
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "2"))
@@ -34,21 +42,12 @@ search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
 
 
-def _normalize_language_filter(language: Optional[str]) -> Optional[str]:
-    """Convert full language name(s) back to codes for DB queries."""
-    if not language:
-        return None
-    parts = [v.strip() for v in language.split(",") if v.strip()]
-    mapped = [LANGUAGE_CODES.get(p, p) for p in parts]
-    return ",".join(mapped)
-
-
 def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     """Replace language filter with doc_id filter (language not on chunks)."""
     lang = core_filters.pop("language", None)
     if not lang:
         return
-    lang_code = _normalize_language_filter(lang)
+    lang_code = normalize_language_filter(lang)
     if not lang_code:
         return
     doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
@@ -72,7 +71,7 @@ def _build_core_filters(
             "published_year": published_year,
             "document_type": document_type,
             "country": country,
-            "language": _normalize_language_filter(language),
+            "language": normalize_language_filter(language),
         }.items()
         if v is not None
     }
@@ -346,7 +345,9 @@ def _build_search_results(
                 ),
                 language=normalized_doc.get("language"),
                 metadata={
-                    k: v for k, v in doc.items() if k not in ("abstractive_summary",)
+                    k: v
+                    for k, v in normalized_doc.items()
+                    if k not in ("abstractive_summary",)
                 },
             )
         )
@@ -357,63 +358,17 @@ def _build_search_results(
     return filtered_results
 
 
-def _build_needed_fields(
-    filter_fields_config: Dict[str, str], data_source: Optional[str]
-) -> List[str]:
-    needed_fields = [
-        _resolve_storage_field(core_field, data_source)
-        for core_field in filter_fields_config.keys()
-        if core_field != "title"
-    ]
-    return list(set(needed_fields))
-
-
-def _resolve_storage_field(core_field: str, data_source: Optional[str]) -> str:
-    if core_field != "language":
-        return map_core_field_to_storage(core_field)
-    source = data_source or "uneg"
-    field_mapping = get_field_mapping(source)
-    if field_mapping.get("language") == "sys_language":
-        return "sys_language"
-    return map_core_field_to_storage(core_field)
-
-
-def _build_core_filters_from_params(
-    organization: Optional[str],
-    title: Optional[str],
-    published_year: Optional[str],
-    document_type: Optional[str],
-    country: Optional[str],
-    language: Optional[str],
-) -> Dict[str, Any]:
-    return {
-        "organization": organization,
-        "title": title,
-        "published_year": published_year,
-        "document_type": document_type,
-        "country": country,
-        "language": _normalize_language_filter(language),
-    }
-
-
-def _split_filter_values(value: Any) -> Optional[List[str]]:
-    if isinstance(value, str) and "," in value:
-        values = [item.strip() for item in value.split(",") if item.strip()]
-        if values:
-            return values
-    return None
-
-
 def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
-    # Build a Qdrant filter from core filter fields for restricting facet counts.
+    """Build a Qdrant filter from core filter fields for restricting facet counts."""
     facet_conditions = []
+
     for core_field, value in core_filters.items():
-        if not value:
+        if not value or core_field.endswith("_min") or core_field.endswith("_max"):
             continue
-        storage_field = _resolve_storage_field(core_field, data_source)
+        storage_field = resolve_storage_field(core_field, data_source)
         if core_field == "published_year":
             value = str(value)
-        multi_values = _split_filter_values(value)
+        multi_values = split_filter_values(value)
         facet_conditions.append(
             qmodels.FieldCondition(
                 key=storage_field,
@@ -424,6 +379,12 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
                 ),
             )
         )
+
+    for sf, bounds in collect_range_bounds(core_filters, data_source).items():
+        facet_conditions.append(
+            qmodels.FieldCondition(key=sf, range=qmodels.Range(**bounds))
+        )
+
     return qmodels.Filter(must=facet_conditions) if facet_conditions else None
 
 
@@ -551,13 +512,6 @@ def _parse_boost_fields(raw: Optional[str]) -> Dict[str, float]:
     return config
 
 
-def _add_taxonomy_filters(core_filters: Dict, query_params) -> None:
-    """Pick up tag_* query params (taxonomy filters) dynamically."""
-    for name, value in query_params.items():
-        if name.startswith("tag_") and value:
-            core_filters[name] = value
-
-
 def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     """Build doc/chunk caches and construct SearchResult list. Returns None if no docs."""
     t_doc = time.time()
@@ -629,7 +583,7 @@ def _gather_known_values(
     """
     known: Dict[str, List[str]] = {}
     for core_field in boost_fields:
-        storage_field = _resolve_storage_field(core_field, source)
+        storage_field = resolve_storage_field(core_field, source)
         raw_counts = db.facet_documents(
             key=storage_field,
             filter_conditions=None,
@@ -730,7 +684,7 @@ async def search(
             country,
             language,
         )
-        _add_taxonomy_filters(core_filters, request.query_params)
+        add_dynamic_filters(core_filters, request.query_params, source)
         # Language is doc-level only; convert to doc_id filter for chunk search
         _convert_language_to_doc_ids(core_filters, pg)
 
@@ -932,9 +886,7 @@ async def docsearch(
         core_filters = _build_core_filters(
             organization, title, published_year, document_type, country, language
         )
-        for param_name, param_value in request.query_params.items():
-            if param_name.startswith("tag_") and param_value:
-                core_filters[param_name] = param_value
+        add_dynamic_filters(core_filters, request.query_params, source)
 
         combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
 
@@ -1029,11 +981,11 @@ async def get_facets(
         source = data_source or "uneg"
         db = get_db_for_source(source)
         pg = get_pg_for_source(source)
-        filter_fields_config = get_filter_fields(source)
+        filter_fields_config = get_default_filter_fields(source)
         taxonomy_fields = get_taxonomy_filter_fields(source)
         filter_fields_config = {**filter_fields_config, **taxonomy_fields}
 
-        core_filters = _build_core_filters_from_params(
+        core_filters = build_core_filters_from_params(
             organization,
             title,
             published_year,
@@ -1041,6 +993,7 @@ async def get_facets(
             country,
             language,
         )
+        add_dynamic_filters(core_filters, request.query_params, source)
         title_filter = core_filters.get("title")
         if title_filter and q:
             title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
@@ -1048,6 +1001,7 @@ async def get_facets(
                 return Facets(
                     facets={},
                     filter_fields=filter_fields_config,
+                    range_fields={},
                 )
             core_filters.pop("title", None)
             core_filters["doc_id"] = title_doc_ids
@@ -1065,15 +1019,36 @@ async def get_facets(
                 ]
                 for field, values in facets_data_raw.items()
             }
-            return Facets(facets=facets_data, filter_fields=filter_fields_config)
+            # Range fields are data-global (not query-dependent), so we still
+            # need to compute them for the search-filtered facets path.
+            facet_filter = _build_facet_filter(core_filters, source)
+            _, range_fields = build_facets_from_db(
+                db,
+                filter_fields_config,
+                facet_filter,
+                resolve_storage_field,
+                pg=pg,
+            )
+            return Facets(
+                facets=facets_data,
+                filter_fields=filter_fields_config,
+                range_fields=range_fields,
+            )
 
-        _build_needed_fields(filter_fields_config, source)
+        build_needed_fields(filter_fields_config, source)
         facet_filter = _build_facet_filter(core_filters, source)
-        facets_result = build_facets_from_db(
-            db, filter_fields_config, facet_filter, _resolve_storage_field, pg=pg
+        facets_result, range_fields = build_facets_from_db(
+            db, filter_fields_config, facet_filter, resolve_storage_field, pg=pg
         )
-        return Facets(facets=facets_result, filter_fields=filter_fields_config)
+        return Facets(
+            facets=facets_result,
+            filter_fields=filter_fields_config,
+            range_fields=range_fields,
+        )
 
+    except ValueError as e:
+        logger.error(f"Facets validation error: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error(f"Facets error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

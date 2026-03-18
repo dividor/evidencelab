@@ -102,6 +102,7 @@ class PipelineOrchestrator:
         self.server_started = False
 
         full_config = load_datasources_config()
+        self._model_registry = full_config.get("supported_embedding_models", {})
         datasources = full_config.get("datasources", full_config)
         self.pipeline_config = {}
 
@@ -115,6 +116,24 @@ class PipelineOrchestrator:
                 "No pipeline config found for data source '%s'. using defaults.",
                 self.data_source,
             )
+
+    def _needs_local_embedding_server(self) -> bool:
+        """Check if any configured dense models require the local Infinity server."""
+        index_cfg = self.pipeline_config.get("index", {})
+        dense_names = set(index_cfg.get("dense_models", []))
+        chunk_model = self.pipeline_config.get("chunk", {}).get("dense_model")
+        tag_model = self.pipeline_config.get("tag", {}).get("dense_model")
+        if chunk_model:
+            dense_names.add(chunk_model)
+        if tag_model:
+            dense_names.add(tag_model)
+
+        for name in dense_names:
+            model_info = self._model_registry.get(name, {})
+            source = model_info.get("source", "huggingface")
+            if source in ("huggingface", "fastembed"):
+                return True
+        return False
 
     def setup_initial(self) -> None:
         """Initialize lightweight processors (Scanner)."""
@@ -146,7 +165,20 @@ class PipelineOrchestrator:
                     default_docker_url,
                 )
             else:
-                if not self.skip_index:
+                needs_embeddings = (
+                    not self.skip_index or not self.skip_summarize or not self.skip_tag
+                )
+                if not needs_embeddings:
+                    logger.info(
+                        "Skipping embedding server start "
+                        "(no stages require embeddings)"
+                    )
+                elif not self._needs_local_embedding_server():
+                    logger.info(
+                        "Skipping local embedding server "
+                        "(no huggingface models configured)"
+                    )
+                else:
                     self.embedding_manager.start()
                     self.server_started = True
                     os.environ["EMBEDDING_API_URL"] = (
@@ -155,10 +187,6 @@ class PipelineOrchestrator:
                     logger.info(
                         "Embedding API URL set to local: %s",
                         os.environ["EMBEDDING_API_URL"],
-                    )
-                else:
-                    logger.info(
-                        "Skipping embedding server start (--skip-index is enabled)"
                     )
 
     def teardown(self) -> None:
@@ -242,9 +270,13 @@ class PipelineOrchestrator:
                 self._scanner = ScanProcessor(base_dir=pdfs_dir, db=self.db)
                 self._scanner.setup()
             logger.info("\n⏭️  Skipping full scan (targeted scan for single document)")
-            return self._scanner.scan_and_sync_single(
+            resolved_uuid = self._scanner.scan_and_sync_single(
                 report_path=self.report, doc_id=self.doc_id
             )
+            if resolved_uuid and self.doc_id and resolved_uuid != self.doc_id:
+                logger.info("Resolved file-id %s → %s", self.doc_id, resolved_uuid)
+                self.doc_id = resolved_uuid
+            return bool(resolved_uuid)
 
         logger.info("\n" + "=" * 60)
         logger.info("STEP: Scan files and sync to Qdrant")

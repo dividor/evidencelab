@@ -15,6 +15,7 @@ import logging
 import multiprocessing
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -497,9 +498,18 @@ class ParseProcessor(BaseProcessor):
         filepath = self._resolve_data_filepath(filepath)
 
         if not os.path.exists(filepath):
-            return self._build_parse_failure(
-                doc, "File not found", error_detail=f"File not found: {filepath}"
+            stage_updates = self.build_stage_updates(
+                doc, success=False, error="File not found"
             )
+            return {
+                "success": False,
+                "updates": {
+                    "sys_status": "download_error",
+                    "sys_error_message": f"File not found: {filepath}",
+                    **stage_updates,
+                },
+                "error": f"File not found: {filepath}",
+            }
 
         # Convert DOC/DOCX to PDF (Linux) or proper DOCX (Mac) if needed
         original_filepath = filepath
@@ -969,6 +979,8 @@ class ParseProcessor(BaseProcessor):
     ) -> Tuple[str, int]:
         """Finalize parsing artifacts and return toc/word_count."""
         self._clean_markdown_file(markdown_path)
+        if Path(filepath).suffix.lower() == ".pdf":
+            self._check_glyph_contamination(markdown_path)
 
         json_path = Path(output_folder) / f"{markdown_path.stem}.json"
         result.document.save_as_json(json_path)
@@ -1025,6 +1037,55 @@ class ParseProcessor(BaseProcessor):
 
         except Exception as e:
             logger.warning("  ⚠ Failed to clean markdown file: %s", e)
+
+    # CIDFont glyph IDs: /gid00007 /gid00022 ...
+    _GLYPH_ID_PATTERN = re.compile(r"/gid\d{5}")
+    # Docling GLYPH markers: GLYPH<c=3,font=/PNLMND+Calibri-Light>
+    _GLYPH_MARKER_PATTERN = re.compile(r"GLYPH<c=\d+,font=[^>]+>")
+    _GLYPH_THRESHOLD = 0.10  # 10% glyph content → parse failure
+
+    def _check_glyph_contamination(self, markdown_path: Path) -> None:
+        """Detect glyph-ID contamination and raise on failure.
+
+        Docling's PDF backend sometimes emits garbled output for PDFs with
+        CIDFont encoding or broken ToUnicode tables:
+        - Raw ``/gidXXXXX`` glyph IDs
+        - ``GLYPH<c=N,font=...>`` markers with scrambled Unicode
+
+        See https://github.com/docling-project/docling/issues/2334.
+        When this exceeds the threshold the parsed output is unusable, so we
+        fail the document with a clear error rather than indexing garbage.
+        """
+        try:
+            with open(markdown_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError:
+            return
+
+        total = len(content)
+        if total < 200:
+            return
+
+        gid_matches = self._GLYPH_ID_PATTERN.findall(content)
+        marker_matches = self._GLYPH_MARKER_PATTERN.findall(content)
+        glyph_chars = (len(gid_matches) * 9) + sum(len(m) for m in marker_matches)
+        ratio = glyph_chars / total
+        if ratio < self._GLYPH_THRESHOLD:
+            return
+
+        pct = int(ratio * 100)
+        details = []
+        if gid_matches:
+            details.append(f"{len(gid_matches)} /gidXXXXX IDs")
+        if marker_matches:
+            details.append(f"{len(marker_matches)} GLYPH<> markers")
+        raise ValueError(
+            f"Glyph contamination detected ({pct}% of parsed text is "
+            f"garbled: {', '.join(details)}). This is a known docling-parse "
+            f"bug (https://github.com/docling-project/docling/issues/2334). "
+            f"The document cannot be parsed correctly until the bug is "
+            f"fixed upstream."
+        )
 
     def _add_page_numbers_to_breaks(self, markdown_path: Path, document) -> None:
         """Add page numbers to page break placeholders."""

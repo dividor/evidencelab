@@ -1,6 +1,7 @@
 """Filename sanitization helpers."""
 
 import re
+import unicodedata
 
 
 def sanitize_filename(filename: str) -> str:
@@ -20,11 +21,14 @@ def sanitize_filename(filename: str) -> str:
     # Lowercase
     clean = filename.lower()
 
+    # Decompose unicode so accented chars become base letter + combining mark
+    clean = unicodedata.normalize("NFD", clean)
+
     # Replace spaces with underscores
     clean = clean.replace(" ", "_")
 
     # Keep only alphanumeric, underscores, hyphens, and dots
-    # This also effectively removes other special chars
+    # Combining marks from NFD decomposition are stripped, base letters kept
     clean = re.sub(r"[^a-z0-9_.-]", "", clean)
 
     # Collapse multiple underscores

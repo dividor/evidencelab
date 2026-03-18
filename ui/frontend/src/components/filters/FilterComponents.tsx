@@ -1,5 +1,5 @@
 import React from 'react';
-import { Facets, FacetValue } from '../../types/api';
+import { Facets, FacetValue, RangeInfo } from '../../types/api';
 
 interface SelectedFiltersDisplayProps {
   facets: Facets;
@@ -10,6 +10,7 @@ interface SelectedFiltersDisplayProps {
 interface FilterSectionsProps {
   facets: Facets;
   selectedFilters: Record<string, string[]>;
+  rangeFilters: Record<string, { min: string; max: string }>;
   collapsedFilters: Set<string>;
   expandedFilterLists: Set<string>;
   filterSearchTerms: Record<string, string>;
@@ -19,8 +20,53 @@ interface FilterSectionsProps {
   onSearchTermChange: (coreField: string, value: string) => void;
   onToggleFilterListExpansion: (coreField: string) => void;
   onFilterValuesChange: (coreField: string, nextValues: string[]) => void;
+  onRangeChange: (coreField: string, min: string, max: string) => void;
   renderContentTop?: (coreField: string, displayLabel: string) => React.ReactNode;
 }
+
+interface RangeFilterInputProps {
+  coreField: string;
+  rangeInfo: RangeInfo;
+  currentMin: string;
+  currentMax: string;
+  onRangeChange: (coreField: string, min: string, max: string) => void;
+}
+
+const RangeFilterInput = ({
+  coreField,
+  rangeInfo,
+  currentMin,
+  currentMax,
+  onRangeChange,
+}: RangeFilterInputProps) => (
+  <div className="filter-range-inputs">
+    <div className="filter-range-row">
+      <label className="filter-range-label">Min</label>
+      <input
+        type="number"
+        className="filter-range-input"
+        placeholder={String(rangeInfo.min)}
+        value={currentMin}
+        onChange={(e) => onRangeChange(coreField, e.target.value, currentMax)}
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      />
+    </div>
+    <div className="filter-range-row">
+      <label className="filter-range-label">Max</label>
+      <input
+        type="number"
+        className="filter-range-input"
+        placeholder={String(rangeInfo.max)}
+        value={currentMax}
+        onChange={(e) => onRangeChange(coreField, currentMin, e.target.value)}
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      />
+    </div>
+    <div className="filter-range-hint">
+      Range: {rangeInfo.min} &mdash; {rangeInfo.max}
+    </div>
+  </div>
+);
 
 interface TitleFilterChipProps {
   coreField: string;
@@ -244,7 +290,9 @@ const FilterCheckboxList = ({
                   </span>
                 )}
               </div>
-              <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
+              {item.count > 0 && (
+                <span className="filter-checkbox-count">({item.count.toLocaleString()})</span>
+              )}
             </div>
           </label>
         );
@@ -256,6 +304,7 @@ const FilterCheckboxList = ({
 export const FilterSections = ({
   facets,
   selectedFilters,
+  rangeFilters,
   collapsedFilters,
   expandedFilterLists,
   filterSearchTerms,
@@ -265,10 +314,39 @@ export const FilterSections = ({
   onSearchTermChange,
   onToggleFilterListExpansion,
   onFilterValuesChange,
+  onRangeChange,
   renderContentTop,
 }: FilterSectionsProps) => (
   <React.Fragment>
     {Object.entries(facets.filter_fields).map(([coreField, displayLabel]) => {
+      const rangeInfo = facets.range_fields?.[coreField];
+      const isCollapsed = !collapsedFilters.has(coreField);
+
+      // Range field rendering
+      if (rangeInfo) {
+        const currentRange = rangeFilters[coreField] || { min: '', max: '' };
+        return (
+          <div key={coreField} className="filter-section">
+            <div className="filter-section-header" onClick={() => onToggleFilter(coreField)}>
+              <span className="filter-section-toggle">{isCollapsed ? '▶' : '▼'}</span>
+              <span className="filter-section-title">{displayLabel}</span>
+            </div>
+            {!isCollapsed && (
+              <div className="filter-section-content">
+                <RangeFilterInput
+                  coreField={coreField}
+                  rangeInfo={rangeInfo}
+                  currentMin={currentRange.min}
+                  currentMax={currentRange.max}
+                  onRangeChange={onRangeChange}
+                />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      // Standard checkbox rendering
       const facetValues = facets.facets[coreField] || [];
       const selectedValues = selectedFilters[coreField] || [];
       const searchTerm = (filterSearchTerms[coreField] || '').toLowerCase();
@@ -281,7 +359,6 @@ export const FilterSections = ({
         titleSearchResults,
         facetSearchResults
       );
-      const isCollapsed = !collapsedFilters.has(coreField);
       const showContent =
         !isCollapsed && (coreField === 'title' || facetValues.length > 0 || searchTerm.length > 0);
 

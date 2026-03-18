@@ -1,11 +1,15 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Facets, FacetValue, SearchResult } from '../../types/api';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { Facets, FacetValue, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
+import { useRatings } from '../../hooks/useRatings';
+import { useAuth } from '../../hooks/useAuth';
+import RatingModal from '../ratings/RatingModal';
+import { serializeDrilldownTree } from '../../utils/drilldownUtils';
 
 interface SearchTabContentProps {
   filtersExpanded: boolean;
@@ -14,6 +18,7 @@ interface SearchTabContentProps {
   onClearFilters: () => void;
   facets: Facets | null;
   selectedFilters: Record<string, string[]>;
+  rangeFilters: Record<string, { min: string; max: string }>;
   collapsedFilters: Set<string>;
   expandedFilterLists: Set<string>;
   filterSearchTerms: Record<string, string>;
@@ -24,6 +29,7 @@ interface SearchTabContentProps {
   onFilterSearchTermChange: (coreField: string, value: string) => void;
   onToggleFilterListExpansion: (coreField: string) => void;
   onFilterValuesChange: (coreField: string, nextValues: string[]) => void;
+  onRangeChange: (coreField: string, min: string, max: string) => void;
   searchDenseWeight: number;
   onSearchDenseWeightChange: (value: number) => void;
   keywordBoostShortQueries: boolean;
@@ -79,7 +85,31 @@ interface SearchTabContentProps {
   aiSummaryTranslatingLang?: string | null;
   aiSummaryTranslatedLang?: string | null;
   onAiSummaryLanguageChange?: (newLang: string) => void;
-  searchId: number;
+  searchId: string;
+  aiDrilldownStackDepth?: number;
+  aiDrilldownHighlight?: string;
+  onAiDrilldown?: (selectedText: string) => void;
+  onAiDrilldownBack?: () => void;
+  aiDrilldownTree?: DrilldownNode | null;
+  aiDrilldownCurrentNodeId?: string | null;
+  onAiDrilldownNavigate?: (nodeId: string) => void;
+  onFindOutMore?: (keyFacts: string[]) => void;
+  findOutMoreLoading?: boolean;
+  findOutMoreActiveFact?: string | null;
+  requestShowGraph?: boolean;
+  dataSource?: string;
+  summaryModelConfig?: SummaryModelConfig | null;
+  hasSearchRun?: boolean;
+  onSaveResearch?: (title: string) => void;
+  saveResearchLoading?: boolean;
+  saveResearchStatus?: 'idle' | 'saved' | 'error';
+  onLoadPreviousResearch?: () => void;
+  onGlobalSummaryGenerated?: (summary: string, results: SearchResult[]) => void;
+  onAddNodeToTree?: (parentId: string, query: string) => void;
+  onRemoveNodeFromTree?: (nodeId: string) => void;
+  addingNodeParentId?: string | null;
+  onAddNodeClick?: (parentId: string) => void;
+  onAddNodeCancel?: () => void;
 }
 
 const DOT_SIZES = [12, 12, 12, 12, 12];
@@ -201,6 +231,144 @@ const WanderingSpinner: React.FC = () => {
   );
 };
 
+/** Extracted sub-component for the org buttons, document thumbnail carousel, and filter indicator */
+const SearchResultFilters: React.FC<{
+  uniqueOrgs: Array<{ org: string; count: number }>;
+  filteredOrgs: string[];
+  onOrgToggle: (org: string) => void;
+  filteredDocIds: string[];
+  onDocToggle: (docId: string) => void;
+  filteredUniqueDocuments: SearchResult[];
+  selectedDomain: string;
+  hasActiveFilter: boolean;
+  filterLabel: string | null;
+  thumbnailsRef: React.RefObject<HTMLDivElement | null>;
+  canScrollLeft: boolean;
+  canScrollRight: boolean;
+  scrollThumbnails: (direction: 'left' | 'right') => void;
+  onClearAll: () => void;
+}> = ({
+  uniqueOrgs,
+  filteredOrgs,
+  onOrgToggle,
+  filteredDocIds,
+  onDocToggle,
+  filteredUniqueDocuments,
+  selectedDomain,
+  hasActiveFilter,
+  filterLabel,
+  thumbnailsRef,
+  canScrollLeft,
+  canScrollRight,
+  scrollThumbnails,
+  onClearAll,
+}) => (
+  <div className="search-result-filters">
+    <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
+    {uniqueOrgs.length > 0 && (
+      <div className="search-result-filters-orgs">
+        {uniqueOrgs.map(({ org, count }) => (
+          <button
+            key={org}
+            className={`search-result-filters-org-label ${filteredOrgs.includes(org) ? 'active' : ''}`}
+            onClick={() => onOrgToggle(org)}
+          >
+            {org} ({count})
+          </button>
+        ))}
+      </div>
+    )}
+    <div className="search-result-filters-thumbnails">
+      {canScrollLeft && (
+        <button
+          className="thumbnail-carousel-arrow thumbnail-carousel-arrow-left"
+          onClick={() => scrollThumbnails('left')}
+          aria-label="Scroll left"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        </button>
+      )}
+      <div className="search-result-filters-thumbnails-container" ref={thumbnailsRef}>
+        {filteredUniqueDocuments.map((doc) => {
+          const dataSource = doc.data_source || selectedDomain;
+          const thumbnailUrl = doc.doc_id
+            ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
+            : null;
+          const isSelected = filteredDocIds.includes(doc.doc_id);
+          return (
+            <div
+              key={doc.doc_id}
+              className={`search-result-filters-thumbnail ${isSelected ? 'selected' : ''}`}
+              onClick={() => onDocToggle(doc.doc_id)}
+              title={doc.title || 'Untitled'}
+            >
+              <div className="search-result-filters-thumbnail-image">
+                {thumbnailUrl ? (
+                  <img
+                    src={thumbnailUrl}
+                    alt={doc.title || 'Document thumbnail'}
+                    className="search-result-filters-thumbnail-img"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="search-result-filters-thumbnail-placeholder">
+                    No thumbnail
+                  </div>
+                )}
+              </div>
+              <div className="search-result-filters-thumbnail-info">
+                <div className="search-result-filters-thumbnail-title">
+                  {doc.title || 'Untitled'}
+                </div>
+                {(doc.organization || doc.year) && (
+                  <div className="search-result-filters-thumbnail-source">
+                    {doc.organization}
+                    {doc.organization && doc.year && ' \u2022 '}
+                    {doc.year}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {canScrollRight && (
+        <button
+          className="thumbnail-carousel-arrow thumbnail-carousel-arrow-right"
+          onClick={() => scrollThumbnails('right')}
+          aria-label="Scroll right"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        </button>
+      )}
+    </div>
+    {hasActiveFilter && (
+      <div className="search-result-filters-indicator">
+        <span className="search-result-filters-indicator-text">
+          Showing results from: <strong>{filterLabel}</strong>
+        </span>
+        <button
+          className="search-result-filters-clear"
+          onClick={onClearAll}
+        >
+          × Clear filters
+        </button>
+      </div>
+    )}
+  </div>
+);
+
+/** Whether AI summary panel should be visible (has content or is loading) */
+const isAiSummaryVisible = (
+  configEnabled: boolean, results: SearchResult[],
+  loading: boolean, summary: string,
+): boolean => {
+  if (!configEnabled) return false;
+  return results.length > 0 || loading || Boolean(summary);
+};
+
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   filtersExpanded,
   activeFiltersCount,
@@ -208,6 +376,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onClearFilters,
   facets,
   selectedFilters,
+  rangeFilters,
   collapsedFilters,
   expandedFilterLists,
   filterSearchTerms,
@@ -218,6 +387,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onFilterSearchTermChange,
   onToggleFilterListExpansion,
   onFilterValuesChange,
+  onRangeChange,
   searchDenseWeight,
   onSearchDenseWeightChange,
   keywordBoostShortQueries,
@@ -274,6 +444,30 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   aiSummaryTranslatedLang,
   onAiSummaryLanguageChange,
   searchId,
+  aiDrilldownStackDepth,
+  aiDrilldownHighlight,
+  onAiDrilldown,
+  onAiDrilldownBack,
+  aiDrilldownTree,
+  aiDrilldownCurrentNodeId,
+  onAiDrilldownNavigate,
+  onFindOutMore,
+  findOutMoreLoading,
+  findOutMoreActiveFact,
+  requestShowGraph,
+  dataSource,
+  summaryModelConfig,
+  hasSearchRun,
+  onSaveResearch,
+  saveResearchLoading,
+  saveResearchStatus,
+  onLoadPreviousResearch,
+  onGlobalSummaryGenerated,
+  onAddNodeToTree,
+  onRemoveNodeFromTree,
+  addingNodeParentId,
+  onAddNodeClick,
+  onAddNodeCancel,
 }) => {
   const [filteredOrgs, setFilteredOrgs] = useState<string[]>(() => {
     const params = new URLSearchParams(window.location.search);
@@ -289,10 +483,84 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   const prevSearchIdRef = useRef(searchId);
   const pendingUrlFilterRegen = useRef(filteredOrgs.length > 0 || filteredDocIds.length > 0);
 
+  // Auth state for ratings
+  const { isAuthenticated } = useAuth();
+
+  // Ratings for search results (keyed by chunk_id)
+  const {
+    ratings: searchResultRatings,
+    submitRating,
+    deleteRating,
+  } = useRatings({
+    ratingType: 'search_result',
+    referenceId: searchId,
+    enabled: isAuthenticated && results.length > 0,
+  });
+
+  // AI summary rating (keyed by '' since no item_id)
+  const {
+    ratings: aiSummaryRatings,
+    submitRating: submitAiRating,
+    deleteRating: deleteAiRating,
+  } = useRatings({
+    ratingType: 'ai_summary',
+    referenceId: searchId,
+    enabled: isAuthenticated && !!aiSummary,
+  });
+
+  const [aiRatingModalOpen, setAiRatingModalOpen] = useState(false);
+  const [aiRatingModalInitialScore, setAiRatingModalInitialScore] = useState(0);
+  const aiRating = aiSummaryRatings.get('');
+
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
     results.filter((r) => r.score >= minScore),
     [results, minScore]);
+
+  // Build a compact snapshot of visible results for rating context
+  const buildResultsSnapshot = useCallback(() =>
+    visibleResults.slice(0, 20).map((r) => ({
+      title: r.title,
+      doc_id: r.doc_id,
+      chunk_id: r.chunk_id,
+      page_num: r.page_num || null,
+      score: r.score,
+      chunk_text: r.text || '',
+    })),
+    [visibleResults]
+  );
+
+  // Wrap submitRating so search-result ratings automatically include the
+  // AI summary and results list in context for admin visibility
+  const enrichedSubmitRating = useCallback(
+    async (params: Parameters<typeof submitRating>[0]) => {
+      const enrichedContext = {
+        ...params.context,
+        ai_summary: aiSummary || '',
+        results_snapshot: buildResultsSnapshot(),
+        ...(aiDrilldownTree ? { drilldown_tree: serializeDrilldownTree(aiDrilldownTree) } : {}),
+      };
+      return submitRating({ ...params, context: enrichedContext });
+    },
+    [submitRating, aiSummary, buildResultsSnapshot, aiDrilldownTree]
+  );
+
+  // Handlers for SearchResultFilters sub-component
+  const handleOrgToggle = useCallback((org: string) => {
+    isUserFilterAction.current = true;
+    setFilteredOrgs(prev => prev.includes(org) ? prev.filter(o => o !== org) : [...prev, org]);
+  }, []);
+
+  const handleDocToggle = useCallback((docId: string) => {
+    isUserFilterAction.current = true;
+    setFilteredDocIds(prev => prev.includes(docId) ? prev.filter(d => d !== docId) : [...prev, docId]);
+  }, []);
+
+  const handleClearCarouselFilters = useCallback(() => {
+    isUserFilterAction.current = true;
+    setFilteredOrgs([]);
+    setFilteredDocIds([]);
+  }, []);
 
   // Reset carousel filters when a new search is performed.
   // searchId increments in App.tsx each time performSearch is called.
@@ -415,11 +683,70 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
   const contentGridClass = `content-grid ${filtersExpanded ? '' : 'content-grid-no-filters'}`;
   const isInitialLoading = loading && results.length === 0;
+  const aiSummaryVisible = isAiSummaryVisible(aiSummaryEnabled, results, aiSummaryLoading, aiSummary);
+
+  const filtersPanelNode = filtersExpanded ? (
+    <div className="global-filters-column">
+      <FiltersPanel
+        filtersExpanded={filtersExpanded}
+        onClearFilters={onClearFilters}
+        facets={facets}
+        selectedFilters={selectedFilters}
+        rangeFilters={rangeFilters}
+        collapsedFilters={collapsedFilters}
+        expandedFilterLists={expandedFilterLists}
+        filterSearchTerms={filterSearchTerms}
+        titleSearchResults={titleSearchResults}
+        facetSearchResults={facetSearchResults}
+        onRemoveFilter={onRemoveFilter}
+        onToggleFilter={onToggleFilter}
+        onFilterSearchTermChange={onFilterSearchTermChange}
+        onToggleFilterListExpansion={onToggleFilterListExpansion}
+        onFilterValuesChange={onFilterValuesChange}
+        onRangeChange={onRangeChange}
+        searchDenseWeight={searchDenseWeight}
+        onSearchDenseWeightChange={onSearchDenseWeightChange}
+        keywordBoostShortQueries={keywordBoostShortQueries}
+        onKeywordBoostChange={onKeywordBoostChange}
+        semanticHighlighting={semanticHighlighting}
+        onSemanticHighlightingChange={onSemanticHighlightingChange}
+        minScore={minScore}
+        maxScore={maxScore}
+        onMinScoreChange={onMinScoreChange}
+        autoMinScore={autoMinScore}
+        onAutoMinScoreToggle={onAutoMinScoreToggle}
+        rerankEnabled={rerankEnabled}
+        onRerankToggle={onRerankToggle}
+        recencyBoostEnabled={recencyBoostEnabled}
+        onRecencyBoostToggle={onRecencyBoostToggle}
+        recencyWeight={recencyWeight}
+        onRecencyWeightChange={onRecencyWeightChange}
+        recencyScaleDays={recencyScaleDays}
+        onRecencyScaleDaysChange={onRecencyScaleDaysChange}
+        minChunkSize={minChunkSize}
+        onMinChunkSizeChange={onMinChunkSizeChange}
+        sectionTypes={sectionTypes}
+        onSectionTypesChange={onSectionTypesChange}
+        deduplicateEnabled={deduplicateEnabled}
+        onDeduplicateToggle={onDeduplicateToggle}
+        fieldBoostEnabled={fieldBoostEnabled}
+        onFieldBoostToggle={onFieldBoostToggle}
+        fieldBoostFields={fieldBoostFields}
+        onFieldBoostFieldsChange={onFieldBoostFieldsChange}
+      />
+    </div>
+  ) : null;
 
   if (isInitialLoading) {
     return (
       <div className="main-content">
-        <div className="content-grid content-grid-no-filters search-panel-with-tab">
+        <MobileFiltersToggle
+          filtersExpanded={filtersExpanded}
+          activeFiltersCount={activeFiltersCount}
+          onToggle={onToggleFiltersExpanded}
+        />
+        <div className={`${contentGridClass} search-panel-with-tab`}>
+          {filtersPanelNode}
           <main className="results-section">
             <WanderingSpinner />
           </main>
@@ -437,59 +764,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       />
 
       <div className={`${contentGridClass} search-panel-with-tab`}>
-        {filtersExpanded && (
-          <div className="global-filters-column">
-            <FiltersPanel
-              filtersExpanded={filtersExpanded}
-              onClearFilters={onClearFilters}
-              facets={facets}
-              selectedFilters={selectedFilters}
-              collapsedFilters={collapsedFilters}
-              expandedFilterLists={expandedFilterLists}
-              filterSearchTerms={filterSearchTerms}
-              titleSearchResults={titleSearchResults}
-              facetSearchResults={facetSearchResults}
-              onRemoveFilter={onRemoveFilter}
-              onToggleFilter={onToggleFilter}
-              onFilterSearchTermChange={onFilterSearchTermChange}
-              onToggleFilterListExpansion={onToggleFilterListExpansion}
-              onFilterValuesChange={onFilterValuesChange}
-              searchDenseWeight={searchDenseWeight}
-              onSearchDenseWeightChange={onSearchDenseWeightChange}
-              keywordBoostShortQueries={keywordBoostShortQueries}
-              onKeywordBoostChange={onKeywordBoostChange}
-              semanticHighlighting={semanticHighlighting}
-              onSemanticHighlightingChange={onSemanticHighlightingChange}
-              minScore={minScore}
-              maxScore={maxScore}
-              onMinScoreChange={onMinScoreChange}
-              autoMinScore={autoMinScore}
-              onAutoMinScoreToggle={onAutoMinScoreToggle}
-              rerankEnabled={rerankEnabled}
-              onRerankToggle={onRerankToggle}
-              recencyBoostEnabled={recencyBoostEnabled}
-              onRecencyBoostToggle={onRecencyBoostToggle}
-              recencyWeight={recencyWeight}
-              onRecencyWeightChange={onRecencyWeightChange}
-              recencyScaleDays={recencyScaleDays}
-              onRecencyScaleDaysChange={onRecencyScaleDaysChange}
-              minChunkSize={minChunkSize}
-              onMinChunkSizeChange={onMinChunkSizeChange}
-              sectionTypes={sectionTypes}
-              onSectionTypesChange={onSectionTypesChange}
-              deduplicateEnabled={deduplicateEnabled}
-              onDeduplicateToggle={onDeduplicateToggle}
-              fieldBoostEnabled={fieldBoostEnabled}
-              onFieldBoostToggle={onFieldBoostToggle}
-              fieldBoostFields={fieldBoostFields}
-              onFieldBoostFieldsChange={onFieldBoostFieldsChange}
-            />
-          </div>
-        )}
+        {filtersPanelNode}
 
         <main className="results-section">
           <AiSummaryPanel
-            enabled={aiSummaryEnabled}
+            enabled={aiSummaryVisible}
             aiSummaryCollapsed={aiSummaryCollapsed}
             aiSummaryExpanded={aiSummaryExpanded}
             aiSummaryLoading={aiSummaryLoading}
@@ -508,119 +787,97 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             onResultClick={onResultClick}
             onOpenPrompt={onOpenPrompt}
             onClosePrompt={onClosePrompt}
+            drilldownStackDepth={aiDrilldownStackDepth}
+            drilldownHighlight={aiDrilldownHighlight}
+            onDrilldown={onAiDrilldown}
+            onDrilldownBack={onAiDrilldownBack}
+            drilldownTree={aiDrilldownTree}
+            drilldownCurrentNodeId={aiDrilldownCurrentNodeId}
+            onDrilldownNavigate={onAiDrilldownNavigate}
+            onFindOutMore={onFindOutMore}
+            findOutMoreLoading={findOutMoreLoading}
+            findOutMoreActiveFact={findOutMoreActiveFact}
+            requestShowGraph={requestShowGraph}
+            dataSource={dataSource}
+            summaryModelConfig={summaryModelConfig}
+            isAuthenticated={isAuthenticated}
+            onSaveResearch={onSaveResearch}
+            saveResearchLoading={saveResearchLoading}
+            saveResearchStatus={saveResearchStatus}
+            onLoadPreviousResearch={onLoadPreviousResearch}
+            onGlobalSummaryGenerated={onGlobalSummaryGenerated}
+            onAddNodeToTree={onAddNodeToTree}
+            onRemoveNodeFromTree={onRemoveNodeFromTree}
+            addingNodeParentId={addingNodeParentId}
+            onAddNodeClick={onAddNodeClick}
+            onAddNodeCancel={onAddNodeCancel}
+            ratingScore={aiRating?.score || 0}
+            onRequestRatingModal={(selectedScore) => {
+              setAiRatingModalInitialScore(aiRating?.score || selectedScore);
+              setAiRatingModalOpen(true);
+            }}
           />
+          {aiRatingModalOpen && (
+            <RatingModal
+              isOpen={aiRatingModalOpen}
+              onClose={() => setAiRatingModalOpen(false)}
+              title="Rate this AI summary"
+              initialScore={aiRatingModalInitialScore}
+              initialComment={aiRating?.comment || ''}
+              onSubmit={(score, comment) => {
+                submitAiRating({
+                  ratingType: 'ai_summary',
+                  referenceId: searchId,
+                  score,
+                  comment,
+                  context: {
+                    query,
+                    ai_summary: aiSummary || '',
+                    results_snapshot: buildResultsSnapshot(),
+                    link: window.location.href,
+                    ...(aiDrilldownTree ? { drilldown_tree: serializeDrilldownTree(aiDrilldownTree) } : {}),
+                  },
+                });
+              }}
+              onDelete={aiRating?.id ? () => deleteAiRating(aiRating.id) : undefined}
+            />
+          )}
 
           {results.length > 0 && <h3 className="search-results-heading">Search Results</h3>}
           {showFilters && (
-            <div className="search-result-filters">
-              <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
-              {uniqueOrgs.length > 0 && (
-                <div className="search-result-filters-orgs">
-                  {uniqueOrgs.map(({ org, count }) => (
-                    <button
-                      key={org}
-                      className={`search-result-filters-org-label ${filteredOrgs.includes(org) ? 'active' : ''}`}
-                      onClick={() => {
-                        isUserFilterAction.current = true;
-                        setFilteredOrgs(prev => prev.includes(org) ? prev.filter(o => o !== org) : [...prev, org]);
-                      }}
-                    >
-                      {org} ({count})
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="search-result-filters-thumbnails">
-                {canScrollLeft && (
-                  <button
-                    className="thumbnail-carousel-arrow thumbnail-carousel-arrow-left"
-                    onClick={() => scrollThumbnails('left')}
-                    aria-label="Scroll left"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
-                  </button>
-                )}
-                <div className="search-result-filters-thumbnails-container" ref={thumbnailsRef}>
-                  {filteredUniqueDocuments.map((doc) => {
-                    const dataSource = doc.data_source || selectedDomain;
-                    const thumbnailUrl = doc.doc_id
-                      ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
-                      : null;
-                    const isSelected = filteredDocIds.includes(doc.doc_id);
-                    return (
-                      <div
-                        key={doc.doc_id}
-                        className={`search-result-filters-thumbnail ${isSelected ? 'selected' : ''}`}
-                        onClick={() => { isUserFilterAction.current = true; setFilteredDocIds(prev => prev.includes(doc.doc_id) ? prev.filter(d => d !== doc.doc_id) : [...prev, doc.doc_id]); }}
-                        title={doc.title || 'Untitled'}
-                      >
-                        <div className="search-result-filters-thumbnail-image">
-                          {thumbnailUrl ? (
-                            <img
-                              src={thumbnailUrl}
-                              alt={doc.title || 'Document thumbnail'}
-                              className="search-result-filters-thumbnail-img"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div className="search-result-filters-thumbnail-placeholder">
-                              No thumbnail
-                            </div>
-                          )}
-                        </div>
-                        <div className="search-result-filters-thumbnail-info">
-                          <div className="search-result-filters-thumbnail-title">
-                            {doc.title || 'Untitled'}
-                          </div>
-                          {(doc.organization || doc.year) && (
-                            <div className="search-result-filters-thumbnail-source">
-                              {doc.organization}
-                              {doc.organization && doc.year && ' \u2022 '}
-                              {doc.year}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {canScrollRight && (
-                  <button
-                    className="thumbnail-carousel-arrow thumbnail-carousel-arrow-right"
-                    onClick={() => scrollThumbnails('right')}
-                    aria-label="Scroll right"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
-                  </button>
-                )}
-              </div>
-              {hasActiveFilter && (
-                <div className="search-result-filters-indicator">
-                  <span className="search-result-filters-indicator-text">
-                    Showing results from: <strong>{filterLabel}</strong>
-                  </span>
-                  <button
-                    className="search-result-filters-clear"
-                    onClick={() => { isUserFilterAction.current = true; setFilteredOrgs([]); setFilteredDocIds([]); }}
-                  >
-                    × Clear filters
-                  </button>
-                </div>
-              )}
-            </div>
+            <SearchResultFilters
+              uniqueOrgs={uniqueOrgs}
+              filteredOrgs={filteredOrgs}
+              onOrgToggle={handleOrgToggle}
+              filteredDocIds={filteredDocIds}
+              onDocToggle={handleDocToggle}
+              filteredUniqueDocuments={filteredUniqueDocuments}
+              selectedDomain={selectedDomain}
+              hasActiveFilter={hasActiveFilter}
+              filterLabel={filterLabel}
+              thumbnailsRef={thumbnailsRef}
+              canScrollLeft={canScrollLeft}
+              canScrollRight={canScrollRight}
+              scrollThumbnails={scrollThumbnails}
+              onClearAll={handleClearCarouselFilters}
+            />
           )}
           <SearchResultsList
             results={hasActiveFilter ? displayedResults : results}
             minScore={hasActiveFilter ? 0 : minScore}
             loading={loading}
             query={query}
+            hasSearchRun={hasSearchRun}
             selectedDoc={selectedDoc}
             onResultClick={onResultClick}
             onOpenMetadata={onOpenMetadata}
             onLanguageChange={onLanguageChange}
             onRequestHighlight={onRequestHighlight}
+            searchId={searchId}
+            isAuthenticated={isAuthenticated}
+            ratingsMap={searchResultRatings}
+            onSubmitRating={enrichedSubmitRating}
+            onDeleteRating={deleteRating}
           />
         </main>
       </div>
