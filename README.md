@@ -4,11 +4,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**NOTICE**: *Evidence Lab v1.1.0 is coming soon (by Mar 20th 2026). This includes user management, AI assistants, improved security compliance and better documentation. Watch this space!!*
-
 ## Introduction
-
-![Evidence Lab](ui/frontend/public/docs/images/evidence-lab.png)
 
 Evidence Lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
 
@@ -47,7 +43,7 @@ Evidence Lab document processing pipeline includes the following features:
 
 | Search | Research Assistant | Heatmapper | Pipeline |
 |:---:|:---:|:---:|:---:|
-| <img src="ui/frontend/public/docs/images/search.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/pipeline.png" alt="Pipeline" height="200"> |
+| <img src="ui/frontend/public/docs/images/search-guide/search-results-full.png" alt="Search" height="200"> | <img src="ui/frontend/public/docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="ui/frontend/public/docs/images/heatmapper-overview.png" alt="Heatmapper" height="200"> | <img src="ui/frontend/public/docs/images/monitor/pipeline-view.png" alt="Pipeline" height="200"> |
 
 - Hybrid search with AI summary and reranking
 - **Research Assistant** — chat-based AI agent that searches, analyzes, and synthesizes findings with inline citations and multi-turn conversations with thread history
