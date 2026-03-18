@@ -2,6 +2,54 @@
 
 For more detailed instructions refer to the [Evidence Lab GitHub Repo](https://github.com/dividor/evidencelab).
 
+### Demo (quickest way to try it)
+
+The interactive demo script guides you through provider selection, API key
+setup, downloads a few World Bank documents, and runs the full pipeline.
+
+**Running on host** (recommended — can use hardware acceleration such as Apple
+MPS or NVIDIA CUDA, but may require some adjustments to suit your environment):
+
+```bash
+# Create and activate a virtual environment
+python3 -m venv ~/.venvs/evidencelab-ai
+source ~/.venvs/evidencelab-ai/bin/activate
+pip install -r requirements.txt
+
+# Start infrastructure services (Qdrant, PostgreSQL)
+docker compose up -d qdrant postgres
+
+# Run the demo — interactive setup will prompt for provider and API keys
+python scripts/demo/run_demo.py --mode host
+```
+
+The script will automatically configure `.env`, add a demo datasource to
+`config.json`, download documents, and run the pipeline.
+
+**Running in Docker** (guaranteed to work on any Docker-capable machine, but
+can be significantly slower as it cannot utilise GPU or Apple MPS acceleration
+on your host):
+
+```bash
+# Start all services
+docker compose up -d --build
+
+# Run the demo
+python scripts/demo/run_demo.py --mode docker
+```
+
+Once complete, open http://localhost:3000 and select the **demo** data source.
+
+**Options:**
+
+```bash
+python scripts/demo/run_demo.py --mode host --num-docs 10   # Download more documents
+python scripts/demo/run_demo.py --mode host --skip-download  # Re-run pipeline only
+python scripts/demo/run_demo.py --mode host --skip-pipeline  # Download only
+```
+
+### Full Setup
+
 1. **Configure data sources**
    - Edit [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) in the repo root to define `datasources`, `data_subdir`, and `field_mapping`, along with fields to control how your documents are parsed.
    - The UI reads the same `config.json` via Docker Compose.
