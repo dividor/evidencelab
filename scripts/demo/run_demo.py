@@ -355,7 +355,7 @@ def run_pipeline_docker(num_docs):
         "-m",
         "pipeline.orchestrator",
         "--data-source",
-        DEMO_DATASOURCE_KEY,
+        DEMO_DATA_SUBDIR,
         "--num-records",
         str(num_docs),
         "--skip-download",
@@ -373,7 +373,7 @@ def run_pipeline_host(num_docs):
     cmd = [
         str(HOST_PIPELINE_SCRIPT),
         "--data-source",
-        DEMO_DATASOURCE_KEY,
+        DEMO_DATA_SUBDIR,
         "--num-records",
         str(num_docs),
         "--skip-download",
