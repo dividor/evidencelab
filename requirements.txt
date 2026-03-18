@@ -69,7 +69,7 @@ aiosmtplib==5.1.0
 
 # LangChain and LLM integration
 langchain==1.2.10
-langchain-core==1.2.13
+langchain-core==1.2.19
 langchain-community==0.4.1
 langchain-huggingface==1.2.0
 langchain-openai==1.1.10
