@@ -30,9 +30,7 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 ## Features
 
-<a href="https://www.loom.com/share/b3043d80834e44b3b935b7db7a086a1d"><img src="https://cdn.loom.com/sessions/thumbnails/b3043d80834e44b3b935b7db7a086a1d-04eb569ecf17a386.jpg" alt="Overview video" width="300"></a>
-
-**[Overview video](https://www.loom.com/share/b3043d80834e44b3b935b7db7a086a1d)**
+<a href="https://www.loom.com/share/b3043d80834e44b3b935b7db7a086a1d"><img src="https://cdn.loom.com/sessions/thumbnails/b3043d80834e44b3b935b7db7a086a1d-04eb569ecf17a386-full-play.gif" alt="Watch overview video" width="400"></a>
 
 Evidence Lab document processing pipeline includes the following features:
 
