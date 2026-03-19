@@ -1,0 +1,124 @@
+digraph Pipeline {
+    bgcolor="white"
+    fontcolor="#2C3E50"
+    fontsize=14
+    fontname="Helvetica"
+    rankdir=TB
+    ranksep=0.8
+    nodesep=0.6
+    pad=0.5
+    dpi=150
+    splines=true
+    newrank=true
+
+    node [
+        shape=box
+        style="rounded,filled"
+        fillcolor="#fafbfc"
+        color="#5B8FA8"
+        fontcolor="#2C3E50"
+        fontname="Helvetica"
+        fontsize=11
+        penwidth=1.5
+        margin="0.3,0.2"
+    ]
+
+    edge [
+        color="#5B8FA8"
+        fontcolor="#4A7490"
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+    ]
+
+    // Data Sources
+    datasrc [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="13" COLOR="#2C3E50"><B>Data Sources</B></FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">World Bank API · UNEG · Custom</FONT></TD></TR>
+        </TABLE>
+    > fillcolor="#fafbfc"]
+
+    // Pipeline Orchestrator
+    orchestrator [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="8" CELLPADDING="4">
+        <TR><TD COLSPAN="6" ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="13" COLOR="#2C3E50"><B>Pipeline Orchestrator</B></FONT><BR/><FONT FACE="Helvetica" POINT-SIZE="10" COLOR="#6B7876">Multiprocessing</FONT></TD></TR>
+        <TR>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Download</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Fetch PDFs from<BR/>data source API</FONT></TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Scan</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Detect new and<BR/>changed files</FONT></TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Parse</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Docling: extract<BR/>markdown + TOC<BR/><BR/>LLM</FONT></TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Summarise</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Extractive +<BR/>abstractive<BR/><BR/>EMBEDDING<BR/>LLM</FONT></TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Tag</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Section types +<BR/>taxonomy<BR/><BR/>EMBEDDING<BR/>LLM</FONT></TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" VALIGN="TOP" WIDTH="95"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Index</B></FONT><BR/><BR/><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Chunk + embed<BR/>dense + sparse<BR/><BR/>EMBEDDING</FONT></TD>
+        </TR>
+        </TABLE>
+    > fillcolor="#fafbfc" color="#5B8FA8" penwidth=1.5 margin="0.2,0.15"]
+
+    // Data stores
+    pg [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="11" COLOR="#2C3E50"><B>PostgreSQL</B></FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Raw metadata · Parsed text<BR/>Chunks · Status tracking</FONT></TD></TR>
+        </TABLE>
+    > fillcolor="#fafbfc" width=2.2]
+
+    qd [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="11" COLOR="#2C3E50"><B>Qdrant</B></FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">Document vectors<BR/>Chunk vectors (dense + sparse)</FONT></TD></TR>
+        </TABLE>
+    > fillcolor="#fafbfc" width=2.2]
+
+    fs [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="2">
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="11" COLOR="#2C3E50"><B>Filesystem</B></FONT></TD></TR>
+        <TR><TD ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="9" COLOR="#6B7876">PDFs · Parsed output<BR/>Images · Tables</FONT></TD></TR>
+        </TABLE>
+    > fillcolor="#fafbfc" width=2.2]
+
+    // Models box
+    models [label=<
+        <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="8" CELLPADDING="6" BGCOLOR="#fafbfc">
+        <TR><TD COLSPAN="5" ALIGN="CENTER"><FONT FACE="Helvetica" POINT-SIZE="13" COLOR="#2C3E50"><B>Models</B></FONT><BR/><FONT FACE="Helvetica" POINT-SIZE="10" COLOR="#6B7876">config.json model_combo</FONT></TD></TR>
+        <TR>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" COLSPAN="2" VALIGN="TOP">
+                <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="4" CELLPADDING="3">
+                <TR><TD COLSPAN="2" ALIGN="CENTER"><FONT FACE="Helvetica" COLOR="#4A7490" POINT-SIZE="11"><B>Local</B></FONT></TD></TR>
+                <TR>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Embedding</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Infinity server +<BR/>HF models</FONT></TD>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Rerank</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Jina v2<BR/>multilingual</FONT></TD>
+                </TR>
+                </TABLE>
+            </TD>
+            <TD BGCOLOR="#EDF2F7" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" COLSPAN="3" VALIGN="TOP">
+                <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="4" CELLPADDING="3">
+                <TR><TD COLSPAN="3" ALIGN="CENTER"><FONT FACE="Helvetica" COLOR="#4A7490" POINT-SIZE="11"><B>Remote API</B></FONT></TD></TR>
+                <TR>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Embedding</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure text-embedding-3<BR/>Google gemini-embedding</FONT></TD>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>LLMs</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure GPT-4.1<BR/>HF Qwen 2.5 / Llama 3.1<BR/>Google Gemini 2.5</FONT></TD>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Rerank</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure Cohere<BR/>Google Vertex Ranker</FONT></TD>
+                </TR>
+                </TABLE>
+            </TD>
+        </TR>
+        </TABLE>
+    > fillcolor="#fafbfc" color="#5B8FA8" penwidth=1.5 margin="0.2,0.15"]
+
+    // Layout
+    {rank=same; pg; qd; fs}
+
+    // Connections
+    datasrc -> orchestrator [label="  PDFs + Metadata  " weight=10]
+
+    orchestrator -> pg [label="  Relational Data  " dir=both weight=5]
+    orchestrator -> qd [label="  Vectors  " weight=5]
+    orchestrator -> fs [label="  Files  " dir=both weight=5]
+
+    // Force models below data stores
+    pg -> models [style=invis weight=10]
+    qd -> models [style=invis weight=10]
+    fs -> models [style=invis weight=10]
+
+    // Models connected from orchestrator
+    orchestrator -> models [label="  EMBEDDING + LLM  " dir=both weight=1]
+}

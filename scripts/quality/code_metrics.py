@@ -130,9 +130,9 @@ def discover_files(paths: Sequence[str], exclude_dirs: set[str]) -> list[Path]:
         if not root.exists():
             raise FileNotFoundError(f"Path does not exist: {root}")
         for path in root.rglob("*"):
-            if not path.is_file():
-                continue
             if should_skip(path, exclude_dirs):
+                continue
+            if not path.is_file():
                 continue
             if normalize_language(path):
                 files.append(path)

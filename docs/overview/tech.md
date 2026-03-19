@@ -1,5 +1,7 @@
 ## Document Processing Pipeline
 
+![Pipeline Architecture](/docs/images/admin/architecture/pipeline-architecture.png)
+
 The pipeline is modular and managed by `orchestrator.py`. If you put PDF/DOCX files in some folders, each with a metadata JSON file for extra information, orchestrator will do everything else.
 
 **Note**: Individual processing modules for downloading content are external to this repository to separate sourcing from processing logic.
@@ -67,6 +69,8 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 
 ## Search & Discovery
 
+![Application Architecture](/docs/images/admin/architecture/app-architecture.png)
+
 Search powered by hybrid retrieval and AI.
 
 * **Hybrid Search (RRF)**: Uses Reciprocal Rank Fusion to mathematically combine results from Semantic Search (Dense) and Keyword Search (Sparse). This captures both "conceptual matches" and "exact phrase matches".
@@ -80,6 +84,8 @@ Search powered by hybrid retrieval and AI.
 * **AI Search Summary**: Generates a direct answer to the user's query by synthesizing the top search results.
 * **Drilldown Research**: Highlight text in an AI summary or click "Find out more" on the top heading to automatically drill into sub-topics. Each sub-query inherits the root search query plus the immediate parent topic for context, building an explorable tree of research. The tree view lets you navigate back to any previous node to review its results and summary. Sub-queries also inherit all active filters (data source, date range, etc.) from the parent search.
 * **Preview & Deep-Linking**: Integrated PDF viewer that opens directly to the specific page and highlights the relevant paragraph.
+
+![Search Sequence](/docs/images/admin/architecture/search-sequence.png)
 
 ## Research Assistant
 
