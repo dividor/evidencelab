@@ -1,0 +1,90 @@
+%%{init: {
+  "theme": "base",
+  "themeVariables": {
+    "actorBkg": "#fafbfc",
+    "actorBorder": "#5B8FA8",
+    "actorTextColor": "#2C3E50",
+    "actorFontFamily": "Helvetica",
+    "actorFontSize": "13px",
+    "signalColor": "#5B8FA8",
+    "signalTextColor": "#4A7490",
+    "labelTextColor": "#4A7490",
+    "loopTextColor": "#4A7490",
+    "noteBkgColor": "#EDF2F7",
+    "noteBorderColor": "#5B8FA8",
+    "noteTextColor": "#2C3E50",
+    "activationBkgColor": "#EDF2F7",
+    "activationBorderColor": "#5B8FA8",
+    "sequenceNumberColor": "#fafbfc",
+    "fontFamily": "Helvetica",
+    "fontSize": "12px"
+  },
+  "sequence": {
+    "mirrorActors": true,
+    "showSequenceNumbers": false,
+    "actorMargin": 60,
+    "messageMargin": 30
+  }
+}}%%
+
+sequenceDiagram
+    actor User
+    participant UI as Frontend UI
+    participant API as FastAPI Backend
+    participant Embed as Embedding Provider
+    participant QD as Qdrant DB
+    participant Rerank as Rerank Model
+    participant LLM as LLM Provider
+
+    User->>UI: Types query + filters
+    activate UI
+    UI->>API: GET /search
+    activate API
+
+    API->>Embed: Generate dense + sparse vectors from query
+    activate Embed
+    Embed-->>API: Dense vector + sparse vector
+    deactivate Embed
+
+    API->>QD: Hybrid search (BM25 + dense)
+    activate QD
+    QD-->>API: Top N results (RRF combined)
+    deactivate QD
+
+    opt If reranker enabled
+        API->>Rerank: Send query + top N snippets
+        activate Rerank
+        Rerank-->>API: Re-scored + re-ordered results
+        deactivate Rerank
+    end
+
+    API->>API: Apply field boosting + recency decay + deduplication
+
+    API-->>UI: Final search results
+    deactivate API
+    UI-->>User: Display results with semantic highlights
+
+    loop As user scrolls results into view
+        UI->>API: POST /highlight (query + chunk text)
+        activate API
+        API->>Embed: Encode query + chunk phrases
+        activate Embed
+        Embed-->>API: Similarity scores
+        deactivate Embed
+        API-->>UI: Highlighted HTML with semantic matches
+        deactivate API
+    end
+
+    UI->>API: POST /ai-summary/stream (query + results)
+    activate API
+
+    API->>LLM: Render prompt with indexed results [1], [2]... and stream
+    activate LLM
+    LLM-->>API: Stream tokens with inline citations [1], [2, 3]
+    deactivate LLM
+    API-->>UI: SSE stream tokens
+    deactivate API
+
+    UI->>UI: Validate + re-index citations, map to search results
+    UI-->>User: Display AI summary with linked citations
+    deactivate UI

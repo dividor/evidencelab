@@ -85,6 +85,8 @@ Search powered by hybrid retrieval and AI.
 * **Drilldown Research**: Highlight text in an AI summary or click "Find out more" on the top heading to automatically drill into sub-topics. Each sub-query inherits the root search query plus the immediate parent topic for context, building an explorable tree of research. The tree view lets you navigate back to any previous node to review its results and summary. Sub-queries also inherit all active filters (data source, date range, etc.) from the parent search.
 * **Preview & Deep-Linking**: Integrated PDF viewer that opens directly to the specific page and highlights the relevant paragraph.
 
+![Search Sequence](/docs/images/admin/architecture/search-sequence.png)
+
 ## Research Assistant
 
 The Research Assistant is a chat-based AI agent that answers questions about your document collection by searching, analyzing, and synthesizing evidence with full citations.
