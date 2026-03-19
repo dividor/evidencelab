@@ -7,7 +7,6 @@ This document outlines the security measures, scanning tools, and best practices
 - [Reporting Security Vulnerabilities](#reporting-security-vulnerabilities)
 - [Security Architecture](#security-architecture)
 - [Automated Security Scanning](#automated-security-scanning)
-- [Software Bill of Materials (SBOM)](#sbom-job)
 - [Dependency Management](#dependency-management)
 - [Code Security Measures](#code-security-measures)
 - [Container Security](#container-security)
@@ -72,29 +71,8 @@ The GitHub Actions workflow includes dedicated security jobs:
 
 | Check | Tool | Description |
 |-------|------|-------------|
-| API Image | Trivy | Scans built Docker image for OS and application vulnerabilities (CRITICAL, HIGH severity) |
-| UI Image | Trivy | Scans built Docker image for OS and application vulnerabilities (CRITICAL, HIGH severity) |
-
-Container images are built from `Dockerfile.base` (shared runtime layer), then scanned before any integration tests run.
-
-#### `sbom` Job
-
-Software Bill of Materials (SBOM) generation for supply chain transparency:
-
-| Component | Tool | Output |
-|-----------|------|--------|
-| Python dependencies | cyclonedx-bom | `sbom-python.json` (CycloneDX format) |
-| JavaScript dependencies | @cyclonedx/cyclonedx-npm | `sbom-javascript.json` (CycloneDX format) |
-
-SBOMs are uploaded as CI artifacts on every run, providing a complete inventory of all third-party dependencies for audit and compliance purposes.
-
-#### CI Pipeline Execution Order
-
-Security jobs run in a strict dependency chain to ensure code quality gates pass before more expensive scans:
-
-`code-quality` → `security-scan` → `sbom` + `container-scan` → `tests` + `ui-tests` → `integration-tests`
-
-Pre-commit hooks (Bandit, Gitleaks, Hadolint, detect-secrets) also run as part of the `code-quality` job, ensuring the same checks that run locally are enforced in CI.
+| API Image | Trivy | Scans built Docker image for OS and application vulnerabilities |
+| UI Image | Trivy | Scans built Docker image for OS and application vulnerabilities |
 
 ### Frontend Security Linting
 
@@ -204,8 +182,6 @@ Hadolint enforces:
 - Using specific package versions where practical
 - Multi-stage builds to reduce attack surface
 
-**Ignored rules**: `DL3008` (pin apt versions), `DL3013` (pin pip versions), `DL3042` (pip cache) — suppressed because ML dependencies require flexible version resolution and pip caching improves build times.
-
 ### Image Scanning
 
 Trivy scans Docker images for:
@@ -213,8 +189,6 @@ Trivy scans Docker images for:
 - OS package vulnerabilities
 - Application dependency vulnerabilities
 - Misconfigurations
-
-Scans are configured for CRITICAL and HIGH severity. Results are uploaded as SARIF reports to GitHub Security for tracking.
 
 ## API Security
 
@@ -336,7 +310,7 @@ Production deployments via Caddy additionally include:
 ### Secret Management
 
 - `detect-secrets` baseline prevents new secrets from being committed
-- Gitleaks provides additional coverage with comprehensive patterns (configured in `gitleaks.toml`)
+- Gitleaks provides additional coverage with comprehensive patterns
 - Pre-commit hooks catch secrets before they enter git history
 
 ### Secure Coding Guidelines
@@ -384,8 +358,6 @@ Before submitting a PR, ensure:
 | pip-audit | Python dependency scanning | https://github.com/pypa/pip-audit |
 | npm audit | JS dependency scanning | https://docs.npmjs.com/cli/v8/commands/npm-audit |
 | Trivy | Container scanning | https://aquasecurity.github.io/trivy/ |
-| cyclonedx-bom | Python SBOM generation | https://github.com/CycloneDX/cyclonedx-python |
-| @cyclonedx/cyclonedx-npm | JavaScript SBOM generation | https://github.com/CycloneDX/cyclonedx-node-npm |
 | eslint-plugin-security | JS security linting | https://github.com/eslint-community/eslint-plugin-security |
 
 ## Changelog
