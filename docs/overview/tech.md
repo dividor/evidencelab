@@ -1,7 +1,3 @@
-## Architecture
-
-![Application Architecture](/docs/images/admin/architecture/app-architecture.png)
-
 ## Document Processing Pipeline
 
 ![Pipeline Architecture](/docs/images/admin/architecture/pipeline-architecture.png)
@@ -72,6 +68,8 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 * **Document Embeddings**: Generates a separate "Document Level" embedding (Title + Summary) to support "More like this" recommendations at the document level.
 
 ## Search & Discovery
+
+![Application Architecture](/docs/images/admin/architecture/app-architecture.png)
 
 Search powered by hybrid retrieval and AI.
 
