@@ -1,4 +1,8 @@
-"""Tests for scripts/quality/code_metrics.py."""
+"""Tests for scripts/quality/code_metrics.py.
+
+Requires ``lizard`` which is a dev-only dependency (not installed in CI).
+The entire module is skipped when lizard is unavailable.
+"""
 
 import sys
 from pathlib import Path
@@ -7,6 +11,9 @@ from unittest.mock import patch
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "quality"))
+
+lizard = pytest.importorskip("lizard", reason="lizard not installed (dev-only)")
+
 from code_metrics import discover_files, should_skip  # noqa: E402
 
 
