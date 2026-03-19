@@ -1,8 +1,10 @@
 ## Architecture
 
-![Application Architecture](../images/admin/architecture/app-architecture.png)
+![Application Architecture](/docs/images/admin/architecture/app-architecture.png)
 
 ## Document Processing Pipeline
+
+![Pipeline Architecture](/docs/images/admin/architecture/pipeline-architecture.png)
 
 The pipeline is modular and managed by `orchestrator.py`. If you put PDF/DOCX files in some folders, each with a metadata JSON file for extra information, orchestrator will do everything else.
 
