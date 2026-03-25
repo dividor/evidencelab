@@ -1507,8 +1507,6 @@ h6,
 
 .filter-popover-content {
   padding: 12px;
-  overflow-y: auto;
-  max-height: 340px;
 }
 
 /* Text filter input */
