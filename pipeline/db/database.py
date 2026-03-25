@@ -21,7 +21,9 @@ from pipeline.db.config import (
     HNSW_EF_CONSTRUCT,
     HNSW_M,
     HNSW_ON_DISK,
+    INDEXING_THRESHOLD,
     MAX_SEGMENT_SIZE,
+    MEMMAP_THRESHOLD,
     QUANTIZATION_ALWAYS_RAM,
     QUANTIZATION_TYPE,
     VECTOR_DISTANCE_METRIC,
@@ -334,11 +336,16 @@ class Database:
             )
 
     def _apply_optimizers(self, collection_config: dict) -> None:
+        opts: dict = {}
         if DEFAULT_SEGMENT_NUMBER > 0:
-            collection_config["optimizers_config"] = models.OptimizersConfigDiff(
-                default_segment_number=DEFAULT_SEGMENT_NUMBER,
-                max_segment_size=MAX_SEGMENT_SIZE,
-            )
+            opts["default_segment_number"] = DEFAULT_SEGMENT_NUMBER
+            opts["max_segment_size"] = MAX_SEGMENT_SIZE
+        if INDEXING_THRESHOLD > 0:
+            opts["indexing_threshold"] = INDEXING_THRESHOLD
+        if MEMMAP_THRESHOLD > 0:
+            opts["memmap_threshold"] = MEMMAP_THRESHOLD
+        if opts:
+            collection_config["optimizers_config"] = models.OptimizersConfigDiff(**opts)
 
     def _validate_collection_vectors(self, collection_name: str) -> None:
         """
