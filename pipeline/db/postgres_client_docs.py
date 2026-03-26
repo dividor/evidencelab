@@ -779,6 +779,7 @@ class PostgresDocMixin:
             "language": "map_language",
             "file_format": "sys_data ->> 'sys_file_format'",
             "status": "sys_status",
+            "ocr_applied": "sys_ocr_applied",
             "sdg": "sys_taxonomies ->> 'sdg'",
             "date": "sys_status_timestamp",
         }
@@ -916,7 +917,8 @@ class PostgresDocMixin:
                 map_region,
                 map_theme,
                 map_pdf_url,
-                map_report_url
+                map_report_url,
+                sys_ocr_applied
             FROM {self.docs_table}
             {where_sql}
             ORDER BY {sort_col} {order_direction}
@@ -963,6 +965,7 @@ class PostgresDocMixin:
                         map_theme,
                         map_pdf_url,
                         map_report_url,
+                        sys_ocr_applied,
                     ) = row
 
                     sys_toc = None
@@ -1004,6 +1007,7 @@ class PostgresDocMixin:
                             "map_theme": map_theme,
                             "map_pdf_url": map_pdf_url,
                             "map_report_url": map_report_url,
+                            "sys_ocr_applied": sys_ocr_applied,
                         }
                     )
 
