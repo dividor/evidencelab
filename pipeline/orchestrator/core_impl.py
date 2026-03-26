@@ -340,7 +340,7 @@ class PipelineOrchestrator:
         start_time = time.time()
 
         logger.info("\n" + "=" * 60)
-        logger.info("HUMANITARIAN EVALUATION DOCUMENT PROCESSING PIPELINE")
+        logger.info("EVIDENCE LAB DOCUMENT PROCESSING PIPELINE")
         logger.info("=" * 60)
         logger.info("Data source: %s", self.data_source)
         logger.info("Workers: %s", self.workers)

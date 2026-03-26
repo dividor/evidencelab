@@ -65,10 +65,13 @@ def _collect_ocr_fallback_docs(db, recent_first: bool) -> list:
         for doc in failed_docs:
             doc_id = doc.get("id")
             if doc_id:
-                db.pg.upsert_doc(
-                    doc_id=doc_id,
-                    sys_status="downloaded",
-                )
+                conn = db.pg._get_conn()
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE {db.pg.docs_table} SET sys_status = %s WHERE doc_id = %s",
+                        ("downloaded", doc_id),
+                    )
+                conn.commit()
             parsed_folder = doc.get("sys_parsed_folder", "")
             if parsed_folder:
                 md_name = Path(parsed_folder).name + ".md"
