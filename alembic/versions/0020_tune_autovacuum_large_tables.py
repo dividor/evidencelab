@@ -10,6 +10,8 @@ Revises: 0019_create_api_keys_table
 Create Date: 2026-03-25
 """
 
+from sqlalchemy import text
+
 from alembic import op  # type: ignore[attr-defined]
 
 revision = "0020_tune_autovacuum_large_tables"
@@ -35,9 +37,7 @@ _SETTINGS = {
 def _get_matching_tables(conn) -> list[str]:
     """Return existing table names matching large-table prefixes."""
     result = conn.execute(
-        op.inline_literal(
-            "SELECT tablename FROM pg_tables " "WHERE schemaname = 'public'"
-        )
+        text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
     )
     tables = [row[0] for row in result]
     return [
