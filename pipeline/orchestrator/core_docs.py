@@ -72,6 +72,7 @@ def _collect_ocr_fallback_docs(db, recent_first: bool) -> list:
                             ("downloaded", doc_id),
                         )
                     conn.commit()
+                doc["sys_status"] = "downloaded"
             parsed_folder = doc.get("sys_parsed_folder", "")
             if parsed_folder:
                 md_name = Path(parsed_folder).name + ".md"

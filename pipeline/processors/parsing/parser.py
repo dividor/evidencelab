@@ -95,7 +95,16 @@ def _parse_pdf_worker(filepath, output_folder, parser_config, result_queue):
         parser = ParseProcessor(**parser_config)
         parser._init_converter()
         result = parser._parse_document_internal(filepath, output_folder, doc_id=None)
-        result_queue.put({"success": True, "result": result})
+        # OCR fallback: if too few words, retry with OCR enabled
+        ocr_applied = False
+        if parser._needs_ocr_retry(result):
+            ocr_result = parser._retry_with_ocr(filepath, output_folder, doc_id=None)
+            if ocr_result:
+                result = ocr_result
+                ocr_applied = True
+        result_queue.put(
+            {"success": True, "result": result, "ocr_applied": ocr_applied}
+        )
     except Exception as e:
         result_queue.put(
             {"success": False, "error": str(e), "traceback": traceback.format_exc()}
@@ -655,6 +664,7 @@ class ParseProcessor(BaseProcessor):
 
         # Extract result tuple from worker
         result = worker_result["result"]
+        ocr_applied = worker_result.get("ocr_applied", False)
         if result[0]:  # markdown_path exists
             markdown_path, toc, pages, words, lang, fmt = result
             return {
@@ -668,6 +678,7 @@ class ParseProcessor(BaseProcessor):
                     "sys_word_count": words,
                     "sys_file_format": fmt,
                     "sys_file_size_mb": file_size_mb,
+                    "sys_ocr_applied": ocr_applied,
                 },
                 "error": None,
             }
