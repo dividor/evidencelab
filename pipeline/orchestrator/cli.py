@@ -59,6 +59,11 @@ def main() -> None:
         "--from-year", type=int, default=None, help="Filter by start year"
     )
     parser.add_argument("--to-year", type=int, default=None, help="Filter by end year")
+    parser.add_argument(
+        "--ocr-fallback",
+        action="store_true",
+        help="Retry parsing with OCR when initial parse yields too few words",
+    )
 
     args = parser.parse_args()
 
@@ -85,6 +90,7 @@ def main() -> None:
         from_year=args.from_year,
         to_year=args.to_year,
         doc_id=args.file_id,
+        ocr_fallback=args.ocr_fallback,
     )
 
     success = orchestrator.run()

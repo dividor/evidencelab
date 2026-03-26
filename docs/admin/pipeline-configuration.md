@@ -245,6 +245,7 @@ When a placeholder resolves to `null`, both it and its preceding flag are cleanl
 | `enable_superscripts` | boolean | `true` | Enable superscript/footnote detection |
 | `use_subprocess` | boolean | `false` | Run parsing in a subprocess for OOM protection |
 | `subprocess_timeout` | int | `1200` | Timeout in seconds for subprocess parsing (20 minutes) |
+| `ocr_fallback` | boolean | `false` | Automatically retry with OCR if initial parse yields fewer than 10 words (e.g. scanned image PDFs). Also available as `--ocr-fallback` CLI flag. When OCR is applied, `sys_ocr_applied` is set to `true` in the document record. |
 
 #### Chunk
 
