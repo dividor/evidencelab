@@ -714,6 +714,7 @@ class Database:
             "toc_approved": "sys_toc_approved",
             "error_message": "sys_error_message",
             "taxonomies": "sys_taxonomies",
+            "ocr_applied": "sys_ocr_applied",
         }
         return field_map.get(key, key)
 

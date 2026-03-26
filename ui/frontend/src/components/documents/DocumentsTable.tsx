@@ -85,6 +85,7 @@ const generateSortableHeaders = (dataSourceConfig?: import('../../App').DataSour
     { key: 'file_size_mb', label: 'Size (MB)' },
     { key: 'error_message', label: 'Error', filterable: true },
     { key: 'last_updated', label: 'Last updated' },
+    { key: 'ocr_applied', label: 'OCR', filterable: true },
   ];
 
   return [...baseHeaders, ...taxonomyHeaders, ...endHeaders];
