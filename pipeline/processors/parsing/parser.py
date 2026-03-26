@@ -736,6 +736,8 @@ class ParseProcessor(BaseProcessor):
 
     def _needs_ocr_retry(self, parse_result: tuple) -> bool:
         """Check whether a parse result warrants an OCR retry."""
+        if not parse_result or len(parse_result) < 6:
+            return False
         _, _, pages, words, _, _ = parse_result
         return (
             self.ocr_fallback and self.no_ocr and (words or 0) < 10 and (pages or 0) > 0
@@ -754,6 +756,14 @@ class ParseProcessor(BaseProcessor):
                     filepath, output_folder, doc_id=doc_id
                 )
 
+            # Try OCR fallback before giving up on empty results
+            ocr_applied = False
+            if self._needs_ocr_retry(result):
+                ocr_result = self._retry_with_ocr(filepath, output_folder, doc_id)
+                if ocr_result:
+                    result = ocr_result
+                    ocr_applied = True
+
             if not result[0]:
                 return {
                     "success": False,
@@ -763,13 +773,6 @@ class ParseProcessor(BaseProcessor):
                     },
                     "error": "Parsing failed",
                 }
-
-            ocr_applied = False
-            if self._needs_ocr_retry(result):
-                ocr_result = self._retry_with_ocr(filepath, output_folder, doc_id)
-                if ocr_result:
-                    result = ocr_result
-                    ocr_applied = True
 
             return self._build_success_result(
                 result, output_folder, file_size_mb, ocr_applied
