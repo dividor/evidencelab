@@ -65,7 +65,10 @@ def _collect_ocr_fallback_docs(db, recent_first: bool) -> list:
         for doc in failed_docs:
             doc_id = doc.get("id")
             if doc_id:
-                db.update_document_status(doc_id, "downloaded")
+                db.pg.upsert_doc(
+                    doc_id=doc_id,
+                    sys_status="downloaded",
+                )
             parsed_folder = doc.get("sys_parsed_folder", "")
             if parsed_folder:
                 md_name = Path(parsed_folder).name + ".md"
