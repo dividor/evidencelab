@@ -416,7 +416,7 @@ class PostgresDocMixin:
         query = f"""
             SELECT doc_id, sys_data, map_title, map_organization, map_published_year,
                    map_document_type, map_country, map_language, map_region, map_theme,
-                   map_pdf_url, map_report_url, sys_status
+                   map_pdf_url, map_report_url, sys_status, sys_parsed_folder
             FROM {self.docs_table}
             WHERE sys_status = %s
             {year_clause}
@@ -442,12 +442,14 @@ class PostgresDocMixin:
                 map_pdf_url,
                 map_report_url,
                 sys_status,
+                sys_parsed_folder_col,
             ) = row
             sys_filepath = None
-            sys_parsed_folder = None
+            sys_parsed_folder = sys_parsed_folder_col
             if isinstance(sys_data, dict):
                 sys_filepath = sys_data.get("sys_filepath")
-                sys_parsed_folder = sys_data.get("sys_parsed_folder")
+                if not sys_parsed_folder:
+                    sys_parsed_folder = sys_data.get("sys_parsed_folder")
 
             results.append(
                 {
