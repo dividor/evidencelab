@@ -312,7 +312,6 @@ class PipelineOrchestrator:
             self.skip_parse,
             self.report,
             self.recent_first,
-            ocr_fallback=self.ocr_fallback,
         )
 
     def _dedupe_docs_by_id(self, docs: list) -> list:

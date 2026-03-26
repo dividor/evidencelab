@@ -176,7 +176,6 @@ def _collect_documents(orchestrator) -> list:
         orchestrator.skip_parse,
         orchestrator.report,
         orchestrator.recent_first,
-        ocr_fallback=getattr(orchestrator, "ocr_fallback", False),
     )
 
 
