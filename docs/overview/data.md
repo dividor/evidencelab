@@ -4,6 +4,7 @@ In order to test a document ingestion pipeline and AI tools, and to confirm it's
 
 - About 19,000 United Nations humanitarian evaluation reports (1985–2025) from 30+ agencies sourced from the [United Nations Evaluation Group (UNEG)](https://www.un.org/evaluations). The UNEG site is evolving rapidly as it's developed and so data formats are changing. The snapshot in Evidence Lab was created in Dec 2025, and will be refreshed as the site evolves.
 - About 10,500 reports related to Fraud and Program Integrity (2020–2026) sourced from [The World Bank](https://www.worldbank.org/ext/en/home) via the [World Bank Documents & Reports API](https://documents.worldbank.org). The snapshot in Evidence Lab was created in Mar 2026.
+- About 4,000 United Nations resolutions and decisions sourced from the [UN Mandates Registry](https://www.un.org/securitycouncil/content/mandates-registry) covering the General Assembly, Security Council, and other UN organs. The snapshot in Evidence Lab was created in Mar 2026.
 
 ## No Affiliation or Endorsement
 

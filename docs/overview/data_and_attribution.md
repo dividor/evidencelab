@@ -5,12 +5,14 @@ Evidence Lab includes publicly available documents sourced from third parties fo
 The current online instance at [evidencelab.ai](https://evidencelab.ai) includes:
 
 - Approximately 20,000 United Nations humanitarian evaluation reports sourced from the United Nations Evaluation Group (UNEG).
+- Approximately 10,500 reports related to Fraud and Program Integrity sourced from The World Bank via the World Bank Documents & Reports API.
+- Approximately 4,000 United Nations resolutions and decisions sourced from the UN Mandates Registry covering the General Assembly, Security Council, and other UN organs.
 
-Links to source document UNEG hosting pages and agency PDFs are provided throughout Evidence Lab.
+Links to source document hosting pages and PDFs are provided throughout Evidence Lab.
 
 ## No Affiliation or Endorsement
 
-Evidence Lab is not affiliated with, endorsed by, or associated with the United Nations, the United Nations Evaluation Group, or any of its agencies or programs.
+Evidence Lab is not affiliated with, endorsed by, or associated with the United Nations, the United Nations Evaluation Group, the World Bank, the UN Mandates Registry, or any of their agencies or programs.
 
 The inclusion of these documents is solely for research, testing, and demonstration purposes.
 
