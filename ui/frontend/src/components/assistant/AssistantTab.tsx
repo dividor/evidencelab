@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import API_BASE_URL, { USER_MODULE } from '../../config';
+import API_BASE_URL, { API_KEY, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { useRatings, Rating } from '../../hooks/useRatings';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
@@ -107,6 +107,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/assistant/threads`, {
         credentials: 'include',
+        headers: { ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
       });
       if (response.ok) {
         const data = await response.json();
@@ -121,6 +122,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     try {
       const response = await fetch(`${API_BASE_URL}/assistant/threads/${threadId}`, {
         credentials: 'include',
+        headers: { ...(API_KEY ? { 'X-API-Key': API_KEY } : {}) },
       });
       if (response.ok) {
         const data = await response.json();
@@ -150,6 +152,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     try {
       const csrfMatch = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
       const headers: Record<string, string> = {};
+      if (API_KEY) headers['X-API-Key'] = API_KEY;
       if (csrfMatch) {
         headers['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]);
       }
@@ -174,6 +177,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     try {
       const csrfMatch = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (API_KEY) headers['X-API-Key'] = API_KEY;
       if (csrfMatch) {
         headers['X-CSRF-Token'] = decodeURIComponent(csrfMatch[1]);
       }

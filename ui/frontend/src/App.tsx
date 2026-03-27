@@ -3,6 +3,7 @@ import axios from 'axios';
 import './App.css';
 import API_BASE_URL, {
   AI_SUMMARY_ON,
+  API_KEY,
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
   SEARCH_RESULTS_PAGE_SIZE,
@@ -146,7 +147,7 @@ const translateViaApi = async (text: string, targetLanguage: string, sourceLangu
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
     if (resp.ok) {

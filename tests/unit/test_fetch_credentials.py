@@ -46,11 +46,41 @@ def _find_fetch_calls_missing_credentials():
     return issues
 
 
+def _find_fetch_calls_missing_api_key():
+    """Return list of (file, line_number, line) for fetch calls without X-API-Key."""
+    issues = []
+    for ts_file in SRC_DIR.rglob("*.ts*"):
+        if "node_modules" in str(ts_file) or ".test." in str(ts_file):
+            continue
+        lines = ts_file.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if re.search(r"fetch\(\`\$\{API_BASE_URL\}", line):
+                exempt = any(f'/{p.strip("/")}' in line for p in EXEMPT_PATHS)
+                if exempt:
+                    continue
+                # Look in surrounding context (headers may be built above)
+                start = max(0, i - 10)
+                block = "\n".join(lines[start : i + 8])
+                if "X-API-Key" not in block:
+                    issues.append((str(ts_file), i + 1, line.strip()))
+    return issues
+
+
 def test_all_api_fetch_calls_include_credentials():
     """Every fetch to API_BASE_URL must include credentials: 'include'."""
     issues = _find_fetch_calls_missing_credentials()
     if issues:
         msg = "fetch() calls missing credentials: 'include':\n"
+        for path, lineno, line in issues:
+            msg += f"  {path}:{lineno}: {line}\n"
+        pytest.fail(msg)
+
+
+def test_all_api_fetch_calls_include_api_key():
+    """Every fetch to API_BASE_URL must include X-API-Key header."""
+    issues = _find_fetch_calls_missing_api_key()
+    if issues:
+        msg = "fetch() calls missing X-API-Key header:\n"
         for path, lineno, line in issues:
             msg += f"  {path}:{lineno}: {line}\n"
         pytest.fail(msg)

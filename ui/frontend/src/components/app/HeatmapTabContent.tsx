@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL, {
+  API_KEY,
   HEATMAP_CELL_LIMIT,
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
@@ -1005,7 +1006,7 @@ const translateWithFallback = async (text: string, newLang: string, label: strin
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+      headers: { 'Content-Type': 'application/json', ...(API_KEY ? { 'X-API-Key': API_KEY } : {}), ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: newLang }),
     });
     if (resp.ok) {
