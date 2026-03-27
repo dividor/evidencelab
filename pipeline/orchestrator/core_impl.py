@@ -54,9 +54,11 @@ class PipelineOrchestrator:
         from_year: int = None,
         to_year: int = None,
         doc_id: str = None,
+        ocr_fallback: bool = False,
     ):
         self.data_source = data_source
         self.doc_id = doc_id
+        self.ocr_fallback = ocr_fallback
         base_data_dir = os.getenv("DATA_MOUNT_PATH", "./data")
         self.data_dir = f"{base_data_dir}/{data_source}"
         self.skip_download = skip_download
@@ -116,6 +118,11 @@ class PipelineOrchestrator:
                 "No pipeline config found for data source '%s'. using defaults.",
                 self.data_source,
             )
+
+        # Inject CLI overrides into parse config
+        if self.ocr_fallback:
+            parse_cfg = self.pipeline_config.setdefault("parse", {})
+            parse_cfg["ocr_fallback"] = True
 
     def _needs_local_embedding_server(self) -> bool:
         """Check if any configured dense models require the local Infinity server."""
@@ -305,6 +312,7 @@ class PipelineOrchestrator:
             self.skip_parse,
             self.report,
             self.recent_first,
+            ocr_fallback=self.ocr_fallback,
         )
 
     def _dedupe_docs_by_id(self, docs: list) -> list:
@@ -332,7 +340,7 @@ class PipelineOrchestrator:
         start_time = time.time()
 
         logger.info("\n" + "=" * 60)
-        logger.info("HUMANITARIAN EVALUATION DOCUMENT PROCESSING PIPELINE")
+        logger.info("EVIDENCE LAB DOCUMENT PROCESSING PIPELINE")
         logger.info("=" * 60)
         logger.info("Data source: %s", self.data_source)
         logger.info("Workers: %s", self.workers)

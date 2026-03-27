@@ -35,6 +35,7 @@ SYSTEM_FIELD_MAP = {
     "toc_approved": "sys_toc_approved",
     "error_message": "sys_error_message",
     "taxonomies": "sys_taxonomies",
+    "ocr_applied": "sys_ocr_applied",
 }
 
 

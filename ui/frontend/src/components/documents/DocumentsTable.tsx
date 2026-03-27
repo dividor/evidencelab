@@ -85,6 +85,7 @@ const generateSortableHeaders = (dataSourceConfig?: import('../../App').DataSour
     { key: 'file_size_mb', label: 'Size (MB)' },
     { key: 'error_message', label: 'Error', filterable: true },
     { key: 'last_updated', label: 'Last updated' },
+    { key: 'ocr_applied', label: 'OCR', filterable: true },
   ];
 
   return [...baseHeaders, ...taxonomyHeaders, ...endHeaders];
@@ -278,6 +279,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
             <col className="col-size" />
             <col className="col-error" />
             <col className="col-updated" />
+            <col className="col-ocr" />
             <col className="col-chunks" />
             {USER_FEEDBACK && <col className="col-actions" />}
           </colgroup>

@@ -12,6 +12,13 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
+
+try:
+    import brotli as _brotli
+
+    _HAS_BROTLI = True
+except ImportError:
+    _HAS_BROTLI = False
 from qdrant_client.http import models as qmodels
 
 # This python script is executed INSIDE the restore worker container
@@ -383,6 +390,44 @@ def restore_qdrant(*, source: Path, use_dev: bool, skip_wait: bool) -> None:
         snapshots = list(extract_dir.rglob("*.snapshot"))
         if not snapshots:
             raise RuntimeError("No .snapshot files found in source.")
+
+        # Decompress brotli-encoded snapshots if needed.
+        # Qdrant's HTTP API may serve snapshots with brotli
+        # content-encoding; the dump script historically saved
+        # the raw (compressed) bytes.  Valid snapshots are tar
+        # archives whose first bytes are a POSIX path; brotli
+        # data never starts that way.
+        for snap in snapshots:
+            with open(snap, "rb") as fh:
+                magic = fh.read(6)
+            is_tar = magic[:2] in (b"0/", b"./", b"co")  # common tar path starts
+            if not is_tar and _HAS_BROTLI:
+                logger.info("Decompressing brotli snapshot: %s", snap.name)
+                with open(snap, "rb") as fh:
+                    raw = fh.read()
+                try:
+                    decompressed = _brotli.decompress(raw)
+                except _brotli.error:
+                    logger.warning(
+                        "Snapshot %s is not tar and not brotli — skipping decompression",
+                        snap.name,
+                    )
+                    continue
+                with open(snap, "wb") as fh:
+                    fh.write(decompressed)
+                logger.info(
+                    "  Decompressed %s: %d -> %d bytes",
+                    snap.name,
+                    len(raw),
+                    len(decompressed),
+                )
+            elif not is_tar and not _HAS_BROTLI:
+                logger.warning(
+                    "Snapshot %s does not appear to be a tar archive and "
+                    "brotli is not installed (pip install brotli). "
+                    "Restore may fail.",
+                    snap.name,
+                )
 
         logger.info("Found snapshots: %s", [s.name for s in snapshots])
 

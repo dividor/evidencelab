@@ -1,6 +1,5 @@
 import argparse
 import os
-import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -186,8 +185,13 @@ def dump_qdrant(
 
             with requests.get(download_url, headers=headers, stream=True) as r:
                 r.raise_for_status()
+                # Use iter_content instead of r.raw so that
+                # content-encoding (brotli, gzip) is decoded
+                # automatically by the requests/urllib3 stack.
                 with open(target_file, "wb") as f:
-                    shutil.copyfileobj(r.raw, f)
+                    for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
 
             if target_file.stat().st_size == 0:
                 logger.error(
