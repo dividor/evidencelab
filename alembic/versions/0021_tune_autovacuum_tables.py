@@ -14,8 +14,8 @@ from sqlalchemy import text
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision = "0020_tune_autovacuum_tables"
-down_revision = "0019_create_api_keys_table"
+revision = "0021_tune_autovacuum_tables"
+down_revision = "0020_add_ocr_columns"
 branch_labels = None
 depends_on = None
 
