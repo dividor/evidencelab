@@ -8,6 +8,7 @@ const MULTISELECT_COLUMNS = new Set([
   'language',
   'file_format',
   'status',
+  'ocr_applied',
 ]);
 
 interface DocumentsFilterPopoverProps {

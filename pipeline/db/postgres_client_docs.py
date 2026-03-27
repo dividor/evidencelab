@@ -836,6 +836,12 @@ class PostgresDocMixin:
                     where_clauses.append(
                         f"({cond} OR sys_data ->> 'sys_toc_approved' IS NULL)"
                     )
+            elif key == "ocr_applied":
+                col = filter_map.get(key, "sys_ocr_applied")
+                if value:
+                    where_clauses.append(f"{col} IS TRUE")
+                else:
+                    where_clauses.append(f"({col} IS NOT TRUE OR {col} IS NULL)")
             elif key in ("sdg", "cross_cutting_theme"):
                 clause = self._taxonomy_clause(key, value)
                 if clause:

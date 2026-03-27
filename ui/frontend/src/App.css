@@ -1346,6 +1346,10 @@ h6,
   width: 180px;
 }
 
+.documents-table col.col-ocr {
+  width: 100px;
+}
+
 .documents-table col.col-chunks {
   width: 120px;
 }

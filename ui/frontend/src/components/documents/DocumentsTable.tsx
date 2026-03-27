@@ -279,6 +279,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
             <col className="col-size" />
             <col className="col-error" />
             <col className="col-updated" />
+            <col className="col-ocr" />
             <col className="col-chunks" />
             {USER_FEEDBACK && <col className="col-actions" />}
           </colgroup>

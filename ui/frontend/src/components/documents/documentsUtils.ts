@@ -27,6 +27,7 @@ const COLUMN_FILTER_PARAM_MAP: Record<string, string> = {
   status: 'status',
   sdg: 'sdg',
   cross_cutting_theme: 'cross_cutting_theme',
+  ocr_applied: 'ocr_applied',
 };
 
 export const getInitialChartView = (): ChartView => {
@@ -148,6 +149,8 @@ export const getCategoricalOptions = (
       return Object.keys(stats.format_breakdown || {}).sort();
     case 'status':
       return Object.keys(stats.status_breakdown).sort();
+    case 'ocr_applied':
+      return ['Yes', 'No'];
     default:
       return [];
   }
