@@ -192,6 +192,7 @@ export const highlightTextWithAPI = async (
     const csrfToken = getCsrfToken();
     const response = await fetch(`${API_BASE_URL}/highlight`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})

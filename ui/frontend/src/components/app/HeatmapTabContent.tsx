@@ -1004,6 +1004,7 @@ const translateWithFallback = async (text: string, newLang: string, label: strin
     const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: newLang }),
     });

@@ -145,6 +145,7 @@ const translateViaApi = async (text: string, targetLanguage: string, sourceLangu
     const csrfToken = getCsrfToken();
     const resp = await fetch(`${API_BASE_URL}/translate`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
       body: JSON.stringify({ text, target_language: targetLanguage, source_language: sourceLanguage })
     });
