@@ -25,6 +25,7 @@ from typing import Any, Dict, Optional, Tuple
 from huggingface_hub import InferenceClient
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_google_vertexai import ChatVertexAI
 from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 from langchain_openai import ChatOpenAI
@@ -458,12 +459,21 @@ def _create_google_vertex_llm(
     kwargs: dict[str, Any] = {}
     if "2.5" in model:
         kwargs["thinking_budget"] = 0
+    # Throttle requests to stay within GCP Vertex AI per-minute quotas.
+    # VERTEX_AI_RPM env var controls requests-per-minute (default 10).
+    rpm = int(os.getenv("VERTEX_AI_RPM", "10"))
+    rate_limiter = InMemoryRateLimiter(
+        requests_per_second=rpm / 60.0,
+        check_every_n_seconds=0.5,
+        max_bucket_size=rpm,
+    )
     return ChatVertexAI(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
         project=project,
         location=location,
+        rate_limiter=rate_limiter,
         **kwargs,
     )
 
