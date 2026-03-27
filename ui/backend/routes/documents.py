@@ -176,7 +176,7 @@ def _build_document_filters(
         filters["title"] = title
     if search:
         filters["search"] = search
-    if ocr_applied:
+    if ocr_applied and isinstance(ocr_applied, str):
         filters["ocr_applied"] = ocr_applied.lower() == "yes"
     return filters
 
