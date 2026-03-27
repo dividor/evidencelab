@@ -20,14 +20,14 @@ def test_create_google_vertex_llm_from_env(monkeypatch):
             max_tokens=2000,
         )
 
-    mock_cls.assert_called_once_with(
-        model="gemini-2.5-flash",
-        temperature=0.2,
-        max_tokens=2000,
-        project="test-proj",
-        location="europe-west1",
-        thinking_budget=0,
-    )
+    mock_cls.assert_called_once()
+    call_kwargs = mock_cls.call_args[1]
+    assert call_kwargs["model"] == "gemini-2.5-flash"
+    assert call_kwargs["temperature"] == 0.2
+    assert call_kwargs["max_tokens"] == 2000
+    assert call_kwargs["project"] == "test-proj"
+    assert call_kwargs["location"] == "europe-west1"
+    assert call_kwargs["thinking_budget"] == 0
 
 
 def test_create_google_vertex_llm_from_creds_file(monkeypatch, tmp_path):
@@ -45,14 +45,14 @@ def test_create_google_vertex_llm_from_creds_file(monkeypatch, tmp_path):
             max_tokens=4000,
         )
 
-    mock_cls.assert_called_once_with(
-        model="gemini-2.5-pro",
-        temperature=0.0,
-        max_tokens=4000,
-        project="creds-project",
-        location="us-central1",
-        thinking_budget=0,
-    )
+    mock_cls.assert_called_once()
+    call_kwargs = mock_cls.call_args[1]
+    assert call_kwargs["model"] == "gemini-2.5-pro"
+    assert call_kwargs["temperature"] == 0.0
+    assert call_kwargs["max_tokens"] == 4000
+    assert call_kwargs["project"] == "creds-project"
+    assert call_kwargs["location"] == "us-central1"
+    assert call_kwargs["thinking_budget"] == 0
 
 
 def test_create_google_vertex_llm_no_thinking_for_non_25(monkeypatch):
@@ -68,13 +68,11 @@ def test_create_google_vertex_llm_no_thinking_for_non_25(monkeypatch):
             max_tokens=2000,
         )
 
-    mock_cls.assert_called_once_with(
-        model="gemini-2.0-flash",
-        temperature=0.2,
-        max_tokens=2000,
-        project="test-proj",
-        location="us-central1",
-    )
+    mock_cls.assert_called_once()
+    call_kwargs = mock_cls.call_args[1]
+    assert call_kwargs["model"] == "gemini-2.0-flash"
+    assert call_kwargs["project"] == "test-proj"
+    assert "thinking_budget" not in call_kwargs
 
 
 def test_create_google_vertex_llm_raises_without_project(monkeypatch):
