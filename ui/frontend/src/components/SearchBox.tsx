@@ -36,10 +36,13 @@ export const SearchBox = ({
   }
 
   const isLanding = !hasSearched;
-  const defaultPlaceholder = datasetName && documentCount
-    ? `Search ${documentCount.toLocaleString()} ${datasetName}`
-    : 'Search documents';
-  const placeholder = isLanding && greetingMessage?.trim()
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+  const defaultPlaceholder = isMobile
+    ? 'Explore ...'
+    : datasetName && documentCount
+      ? `Search ${documentCount.toLocaleString()} ${datasetName}`
+      : 'Search documents';
+  const placeholder = isLanding && greetingMessage?.trim() && !isMobile
     ? greetingMessage.trim()
     : defaultPlaceholder;
 
@@ -66,7 +69,7 @@ export const SearchBox = ({
                     <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M1 3h14M4 8h8M6 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
-                    Filters
+                    <span className="search-input-filters-label">Filters</span>
                   </button>
                 )}
               </div>
