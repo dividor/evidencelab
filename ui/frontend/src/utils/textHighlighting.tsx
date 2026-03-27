@@ -1,6 +1,6 @@
 // Shared text highlighting and rendering utilities used by App, PDFViewer, and SearchResultCard
 import React from 'react';
-import API_BASE_URL, { SEARCH_SEMANTIC_HIGHLIGHTS } from '../config';
+import API_BASE_URL, { API_KEY, SEARCH_SEMANTIC_HIGHLIGHTS } from '../config';
 import { SearchResult, SummaryModelConfig } from '../types/api';
 
 const getCsrfToken = (): string | null => {
@@ -192,8 +192,10 @@ export const highlightTextWithAPI = async (
     const csrfToken = getCsrfToken();
     const response = await fetch(`${API_BASE_URL}/highlight`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
+        ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
         ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
       },
       body: JSON.stringify({
