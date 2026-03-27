@@ -5,7 +5,7 @@ default 20% threshold can handle, causing bloat and write slowdowns.
 This migration lowers the trigger thresholds and increases the cost
 limit so autovacuum runs more often and does more work each cycle.
 
-Revision ID: 0020_tune_autovacuum_large_tables
+Revision ID: 0020_tune_autovacuum_tables
 Revises: 0019_create_api_keys_table
 Create Date: 2026-03-25
 """
@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision = "0020_tune_autovacuum_large_tables"
+revision = "0020_tune_autovacuum_tables"
 down_revision = "0019_create_api_keys_table"
 branch_labels = None
 depends_on = None
