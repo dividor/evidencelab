@@ -1,6 +1,6 @@
-# Contributing to Humanitarian Evaluation AI Research Pipeline
+# Contributing to Evidence Lab
 
-Thank you for your interest in contributing to the Humanitarian Evaluation AI Research Pipeline! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Evidence Lab! This document provides guidelines and instructions for contributing to the project.
 
 ## 📋 Table of Contents
 
@@ -609,4 +609,4 @@ Contributors will be recognized in:
 - Release notes for significant contributions
 - Project acknowledgments
 
-Thank you for contributing to the Humanitarian Evaluation AI Research Pipeline! 🎉
+Thank you for contributing to Evidence Lab! 🎉

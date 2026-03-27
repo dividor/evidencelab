@@ -148,6 +148,7 @@ export const DocumentsTableRow: React.FC<{
         <td>{doc.file_size_mb || '-'}</td>
         <DocumentErrorCell doc={doc} />
         <td>{lastUpdated || '-'}</td>
+        <td>{doc.ocr_applied ? 'Yes' : '-'}</td>
         <DocumentChunksCell doc={doc} onViewChunks={onViewChunks} />
         {USER_FEEDBACK && (
           <DocumentActionsCell

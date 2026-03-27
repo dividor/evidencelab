@@ -95,7 +95,16 @@ def _parse_pdf_worker(filepath, output_folder, parser_config, result_queue):
         parser = ParseProcessor(**parser_config)
         parser._init_converter()
         result = parser._parse_document_internal(filepath, output_folder, doc_id=None)
-        result_queue.put({"success": True, "result": result})
+        # OCR fallback: if too few words, retry with OCR enabled
+        ocr_applied = False
+        if parser._needs_ocr_retry(result):
+            ocr_result = parser._retry_with_ocr(filepath, output_folder, doc_id=None)
+            if ocr_result:
+                result = ocr_result
+                ocr_applied = True
+        result_queue.put(
+            {"success": True, "result": result, "ocr_applied": ocr_applied}
+        )
     except Exception as e:
         result_queue.put(
             {"success": False, "error": str(e), "traceback": traceback.format_exc()}
@@ -172,6 +181,7 @@ class ParseProcessor(BaseProcessor):
         self.subprocess_timeout = subprocess_timeout
         self.enable_superscripts = enable_superscripts
         self.superscript_mode = superscript_mode
+        self.ocr_fallback = False
         self._converter = None
 
     def _init_converter(self) -> None:
@@ -579,6 +589,7 @@ class ParseProcessor(BaseProcessor):
             "use_subprocess": False,  # Don't nest subprocesses
             "enable_superscripts": self.enable_superscripts,
             "superscript_mode": self.superscript_mode,
+            "ocr_fallback": self.ocr_fallback,
         }
 
         process = multiprocessing.Process(
@@ -653,6 +664,7 @@ class ParseProcessor(BaseProcessor):
 
         # Extract result tuple from worker
         result = worker_result["result"]
+        ocr_applied = worker_result.get("ocr_applied", False)
         if result[0]:  # markdown_path exists
             markdown_path, toc, pages, words, lang, fmt = result
             return {
@@ -666,6 +678,7 @@ class ParseProcessor(BaseProcessor):
                     "sys_word_count": words,
                     "sys_file_format": fmt,
                     "sys_file_size_mb": file_size_mb,
+                    "sys_ocr_applied": ocr_applied,
                 },
                 "error": None,
             }
@@ -679,13 +692,73 @@ class ParseProcessor(BaseProcessor):
                 "error": "Parsing failed",
             }
 
+    def _retry_with_ocr(
+        self, filepath: str, output_folder: str, doc_id: str | None
+    ) -> tuple | None:
+        """Re-parse a document with OCR enabled.
+
+        Temporarily switches the converter to OCR mode, re-parses, then
+        restores the original (no-OCR) converter for subsequent documents.
+
+        Returns:
+            The parse result tuple on success, or ``None`` if OCR did not help.
+        """
+        logger.info("  ⚠ Too few words extracted. Retrying with OCR...")
+        self.no_ocr = False
+        self._converter = None
+        self._init_converter()
+        try:
+            result = self._parse_document_internal(
+                filepath, output_folder, doc_id=doc_id
+            )
+            if result[0]:
+                logger.info("  ✓ OCR retry: %s words extracted", result[3])
+                return result
+            return None
+        finally:
+            self.no_ocr = True
+            self._converter = None
+            self._init_converter()
+
+    def _build_success_result(
+        self,
+        parse_result: tuple,
+        output_folder: str,
+        file_size_mb: float,
+        ocr_applied: bool = False,
+    ) -> Dict[str, Any]:
+        """Build a success result dict from a parse result tuple."""
+        _, toc, pages, words, lang, fmt = parse_result
+        return {
+            "success": True,
+            "updates": {
+                "sys_status": "parsed",
+                "sys_parsed_folder": self._make_relative_path(str(output_folder)),
+                "sys_toc": toc or "",
+                "sys_language": lang or "Unknown",
+                "sys_page_count": pages,
+                "sys_word_count": words,
+                "sys_file_format": fmt,
+                "sys_file_size_mb": file_size_mb,
+                "sys_ocr_applied": ocr_applied,
+            },
+            "error": None,
+        }
+
+    def _needs_ocr_retry(self, parse_result: tuple) -> bool:
+        """Check whether a parse result warrants an OCR retry."""
+        if not parse_result or len(parse_result) < 6:
+            return False
+        _, _, pages, words, _, _ = parse_result
+        return (
+            self.ocr_fallback and self.no_ocr and (words or 0) < 10 and (pages or 0) > 0
+        )
+
     def _parse_direct(
         self, filepath: str, output_folder: str, title: str, file_size_mb: float
     ) -> Dict[str, Any]:
         """Parse document directly (no subprocess isolation)."""
         try:
-            # Parse with chunking if needed
-            # Get doc_id from the doc dict if available
             doc_id = getattr(self, "_current_doc_id", None)
             if self.enable_chunking and self._should_chunk(filepath):
                 result = self._parse_with_chunking(filepath, output_folder)
@@ -694,25 +767,15 @@ class ParseProcessor(BaseProcessor):
                     filepath, output_folder, doc_id=doc_id
                 )
 
-            if result[0]:  # markdown_path exists
-                markdown_path, toc, pages, words, lang, fmt = result
-                return {
-                    "success": True,
-                    "updates": {
-                        "sys_status": "parsed",
-                        "sys_parsed_folder": self._make_relative_path(
-                            str(output_folder)
-                        ),
-                        "sys_toc": toc or "",
-                        "sys_language": lang or "Unknown",
-                        "sys_page_count": pages,
-                        "sys_word_count": words,
-                        "sys_file_format": fmt,
-                        "sys_file_size_mb": file_size_mb,
-                    },
-                    "error": None,
-                }
-            else:
+            # Try OCR fallback before giving up on empty results
+            ocr_applied = False
+            if self._needs_ocr_retry(result):
+                ocr_result = self._retry_with_ocr(filepath, output_folder, doc_id)
+                if ocr_result:
+                    result = ocr_result
+                    ocr_applied = True
+
+            if not result[0]:
                 return {
                     "success": False,
                     "updates": {
@@ -721,6 +784,10 @@ class ParseProcessor(BaseProcessor):
                     },
                     "error": "Parsing failed",
                 }
+
+            return self._build_success_result(
+                result, output_folder, file_size_mb, ocr_applied
+            )
 
         except MemoryError as e:
             logger.error(

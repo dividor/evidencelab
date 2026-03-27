@@ -416,7 +416,7 @@ class PostgresDocMixin:
         query = f"""
             SELECT doc_id, sys_data, map_title, map_organization, map_published_year,
                    map_document_type, map_country, map_language, map_region, map_theme,
-                   map_pdf_url, map_report_url, sys_status
+                   map_pdf_url, map_report_url, sys_status, sys_parsed_folder
             FROM {self.docs_table}
             WHERE sys_status = %s
             {year_clause}
@@ -442,12 +442,14 @@ class PostgresDocMixin:
                 map_pdf_url,
                 map_report_url,
                 sys_status,
+                sys_parsed_folder_col,
             ) = row
             sys_filepath = None
-            sys_parsed_folder = None
+            sys_parsed_folder = sys_parsed_folder_col
             if isinstance(sys_data, dict):
                 sys_filepath = sys_data.get("sys_filepath")
-                sys_parsed_folder = sys_data.get("sys_parsed_folder")
+                if not sys_parsed_folder:
+                    sys_parsed_folder = sys_data.get("sys_parsed_folder")
 
             results.append(
                 {
@@ -777,6 +779,7 @@ class PostgresDocMixin:
             "language": "map_language",
             "file_format": "sys_data ->> 'sys_file_format'",
             "status": "sys_status",
+            "ocr_applied": "sys_ocr_applied",
             "sdg": "sys_taxonomies ->> 'sdg'",
             "date": "sys_status_timestamp",
         }
@@ -833,6 +836,12 @@ class PostgresDocMixin:
                     where_clauses.append(
                         f"({cond} OR sys_data ->> 'sys_toc_approved' IS NULL)"
                     )
+            elif key == "ocr_applied":
+                col = filter_map.get(key, "sys_ocr_applied")
+                if value:
+                    where_clauses.append(f"{col} IS TRUE")
+                else:
+                    where_clauses.append(f"({col} IS NOT TRUE OR {col} IS NULL)")
             elif key in ("sdg", "cross_cutting_theme"):
                 clause = self._taxonomy_clause(key, value)
                 if clause:
@@ -914,7 +923,8 @@ class PostgresDocMixin:
                 map_region,
                 map_theme,
                 map_pdf_url,
-                map_report_url
+                map_report_url,
+                sys_ocr_applied
             FROM {self.docs_table}
             {where_sql}
             ORDER BY {sort_col} {order_direction}
@@ -961,6 +971,7 @@ class PostgresDocMixin:
                         map_theme,
                         map_pdf_url,
                         map_report_url,
+                        sys_ocr_applied,
                     ) = row
 
                     sys_toc = None
@@ -1002,6 +1013,7 @@ class PostgresDocMixin:
                             "map_theme": map_theme,
                             "map_pdf_url": map_pdf_url,
                             "map_report_url": map_report_url,
+                            "sys_ocr_applied": sys_ocr_applied,
                         }
                     )
 

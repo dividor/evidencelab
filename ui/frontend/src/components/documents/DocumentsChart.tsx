@@ -131,7 +131,7 @@ const getChartEntries = (
   if (chartView === 'year') {
     return [...entries].sort((a, b) => b[0].localeCompare(a[0]));
   }
-  if (chartView === 'country') {
+  if (chartView === 'country' || chartView === 'agency') {
     return entries;
   }
   return entries.slice(0, 10);

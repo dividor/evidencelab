@@ -144,6 +144,7 @@ def _build_document_filters(
     toc_approved: Optional[bool],
     sdg: Optional[str],
     cross_cutting_theme: Optional[str],
+    ocr_applied: Optional[str] = None,
 ) -> Dict[str, Any]:
     def _split_or_single(val: str) -> Any:
         """Return a list if comma-separated, else a single string."""
@@ -175,6 +176,8 @@ def _build_document_filters(
         filters["title"] = title
     if search:
         filters["search"] = search
+    if ocr_applied and isinstance(ocr_applied, str):
+        filters["ocr_applied"] = ocr_applied.lower() == "yes"
     return filters
 
 
@@ -248,6 +251,7 @@ async def get_documents(
         None,
         description="Filter by cross-cutting theme (comma-separated for multiple)",
     ),
+    ocr_applied: str = Query(None, description="Filter by OCR applied (Yes/No)"),
     sort_by: str = Query("year", description="Field to sort by"),
     order: str = Query("desc", description="Sort order (asc/desc)"),
 ):
@@ -273,6 +277,7 @@ async def get_documents(
             toc_approved,
             sdg,
             cross_cutting_theme,
+            ocr_applied,
         )
 
         # Run blocking Postgres call in a separate thread to avoid blocking the event loop

@@ -369,6 +369,8 @@ def _init_parser(
     parser = ParseProcessor(output_dir=parsed_dir)
     if "subprocess_timeout" in parse_config:
         parser.subprocess_timeout = parse_config["subprocess_timeout"]
+    if parse_config.get("ocr_fallback"):
+        parser.ocr_fallback = True
     parser.setup()
     _worker_context["parser"] = parser
 

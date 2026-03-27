@@ -44,6 +44,46 @@ def get_docs_by_status(db, status: str, recent_first: bool) -> list:
     return db.get_documents_by_status(status)
 
 
+def _collect_ocr_fallback_docs(db, recent_first: bool) -> list:
+    """Collect failed docs for OCR re-processing.
+
+    Resets their status to 'downloaded' and clears empty parsed output
+    so the parser re-runs with OCR enabled.
+    """
+    import shutil
+
+    collected: List[Dict[str, Any]] = []
+    for fail_status in ("summarize_failed", "parse_failed"):
+        failed_docs = get_docs_by_status(db, fail_status, recent_first)
+        if not failed_docs:
+            continue
+        logger.info(
+            "OCR fallback: resetting %s %s documents for re-parse",
+            len(failed_docs),
+            fail_status,
+        )
+        for doc in failed_docs:
+            doc_id = doc.get("id")
+            if doc_id:
+                with db.pg._get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            f"UPDATE {db.pg.docs_table} SET sys_status = %s WHERE doc_id = %s",
+                            ("downloaded", doc_id),
+                        )
+                    conn.commit()
+                doc["sys_status"] = "downloaded"
+            parsed_folder = doc.get("sys_parsed_folder", "")
+            if parsed_folder:
+                md_name = Path(parsed_folder).name + ".md"
+                md_path = Path(parsed_folder) / md_name
+                if md_path.exists() and md_path.stat().st_size == 0:
+                    shutil.rmtree(parsed_folder, ignore_errors=True)
+                    logger.info("  Cleared empty parsed output: %s", parsed_folder)
+        collected.extend(failed_docs)
+    return collected
+
+
 def collect_docs_by_stage(
     db,
     skip_index: bool,
@@ -52,6 +92,7 @@ def collect_docs_by_stage(
     skip_parse: bool,
     report: str | None,
     recent_first: bool,
+    ocr_fallback: bool = False,
 ) -> list:
     """Collect documents to process based on enabled pipeline stages."""
     docs_to_process: List[Dict[str, Any]] = []
@@ -75,6 +116,9 @@ def collect_docs_by_stage(
     if not skip_parse:
         docs = _collect_parse_docs(db, report, recent_first)
         docs_to_process.extend(docs)
+
+    if ocr_fallback and not skip_parse:
+        docs_to_process.extend(_collect_ocr_fallback_docs(db, recent_first))
 
     return docs_to_process
 
