@@ -460,7 +460,7 @@ def _create_google_vertex_llm(
     if "2.5" in model:
         kwargs["thinking_budget"] = 0
     # Throttle requests to stay within GCP Vertex AI per-minute quotas.
-    # VERTEX_AI_RPM env var controls requests-per-minute (default 10).
+    # VERTEX_AI_RPM env var controls requests-per-minute (default 5).
     rpm = int(os.getenv("VERTEX_AI_RPM", "5"))
     rate_limiter = InMemoryRateLimiter(
         requests_per_second=rpm / 60.0,
