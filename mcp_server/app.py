@@ -10,9 +10,15 @@ import time
 from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from mcp_server.audit import log_mcp_call
+from mcp_server.schemas import (
+    MCPAssistantResponse,
+    MCPDocumentResponse,
+    MCPSearchResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +116,12 @@ mcp = FastMCP(
 # ---------------------------------------------------------------------------
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, openWorldHint=True
+    ),
+    structured_output=True,
+)
 async def search(
     query: Annotated[
         str,
@@ -128,8 +139,8 @@ async def search(
     ] = "uneg",
     limit: Annotated[
         int,
-        Field(description="Maximum number of results to return (1-100, default 20)"),
-    ] = 20,
+        Field(description="Maximum number of results to return (1-100, default 10)"),
+    ] = 10,
     filters: Annotated[
         Optional[Any],
         Field(description=_filters_description()),
@@ -186,7 +197,7 @@ async def search(
             )
         ),
     ] = False,
-) -> dict:
+) -> MCPSearchResponse:
     """Search evaluation documents using hybrid semantic + keyword search.
 
     Returns ranked text passages with metadata including document title,
@@ -239,7 +250,7 @@ async def search(
             model_combo=model_combo,
             include_facets=include_facets,
         )
-        return result.model_dump()
+        return result
     except Exception as exc:
         status = "error"
         error_msg = str(exc)
@@ -263,7 +274,10 @@ async def search(
         )
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    structured_output=True,
+)
 async def get_document(
     doc_id: Annotated[
         str,
@@ -282,7 +296,7 @@ async def get_document(
             )
         ),
     ] = "uneg",
-) -> dict:
+) -> MCPDocumentResponse:
     """Retrieve full metadata and content for a specific document.
 
     Returns the complete document record including: title, organization,
@@ -305,7 +319,7 @@ async def get_document(
 
     try:
         result = await mcp_get_document(doc_id=doc_id, data_source=data_source)
-        return result.model_dump()
+        return result
     except Exception as exc:
         status = "error"
         error_msg = str(exc)
@@ -324,7 +338,12 @@ async def get_document(
         )
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, openWorldHint=True
+    ),
+    structured_output=True,
+)
 async def ask_assistant(
     query: Annotated[
         str,
@@ -366,7 +385,7 @@ async def ask_assistant(
             )
         ),
     ] = "Azure Foundry",
-) -> dict:
+) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
 
     The assistant automatically searches the document collection using
@@ -405,7 +424,7 @@ async def ask_assistant(
             deep_research=deep_research,
             model_combo=model_combo,
         )
-        return result.model_dump()
+        return result
     except Exception as exc:
         status = "error"
         error_msg = str(exc)
