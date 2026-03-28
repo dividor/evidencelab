@@ -6,9 +6,10 @@ The HTTP server (http_server.py) handles transport and authentication.
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
 from ui.backend.mcp.audit import log_mcp_call
 
@@ -48,68 +49,92 @@ mcp = FastMCP(
 
 @mcp.tool()
 async def search(
-    query: str,
-    data_source: Optional[str] = None,
-    limit: int = 20,
-    filters: Optional[Dict[str, Any]] = None,
-    section_types: Optional[List[str]] = None,
-    rerank: bool = True,
-    recency_boost: bool = False,
-    field_boost: bool = True,
-    model_combo: str = "Azure Foundry",
+    query: Annotated[
+        str,
+        Field(
+            description=(
+                "Natural language search query. Examples: "
+                '"impact of climate change on food security", '
+                '"gender equality in humanitarian response"'
+            )
+        ),
+    ],
+    data_source: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "Data collection to search. Options: "
+                '"uneg" (UN Humanitarian Evaluation Reports, default), '
+                '"worldbank" (World Bank Fraud and Integrity Reports), '
+                '"unmandates" (UN Mandates Registry - resolutions/decisions)'
+            )
+        ),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(description=("Maximum number of results to return (1-100, default 20)")),
+    ] = 20,
+    filters: Annotated[
+        Optional[Dict[str, Any]],
+        Field(
+            description=(
+                "Field filters as {field_name: value} pairs. "
+                'For "uneg": organization (e.g. "UNDP","UNICEF","WFP","FAO"), '
+                'published_year (e.g. "2024"), document_type (e.g. "Project Evaluation"), '
+                'country, language (e.g. "English","French"), '
+                'src_geographic_scope, tag_sdg (e.g. "SDG1 - No Poverty"), '
+                "tag_cross_cutting_theme. "
+                'For "worldbank": organization, published_year, document_type, '
+                "country, region, theme, topic, language, tag_sdg. "
+                'For "unmandates": organization (Issuing Organ, e.g. "General Assembly"), '
+                "published_year (Year adopted), document_type, document_symbol, "
+                "subject, tag_sdg."
+            )
+        ),
+    ] = None,
+    section_types: Annotated[
+        Optional[List[str]],
+        Field(
+            description=(
+                "Restrict to specific document sections. Options: "
+                '"executive_summary", "findings", "recommendations", '
+                '"conclusions", "methodology", "context", "lessons_learned", "other"'
+            )
+        ),
+    ] = None,
+    rerank: Annotated[
+        bool,
+        Field(
+            description=(
+                "Rerank results with cross-encoder for better relevance (slower)"
+            )
+        ),
+    ] = True,
+    recency_boost: Annotated[
+        bool,
+        Field(
+            description=("Boost more recently published documents in relevance scoring")
+        ),
+    ] = False,
+    field_boost: Annotated[
+        bool, Field(description=("Apply field-specific importance weighting"))
+    ] = True,
+    model_combo: Annotated[
+        str,
+        Field(
+            description=(
+                "Model configuration for embeddings/reranking. Options: "
+                '"Azure Foundry" (default, GPT-4.1-mini, best quality), '
+                '"Huggingface" (Qwen 2.5-7B, free/local), '
+                '"Google Vertex" (Gemini 2.5 Flash, fast)'
+            )
+        ),
+    ] = "Azure Foundry",
 ) -> dict:
     """Search evaluation documents using hybrid semantic + keyword search.
 
-    Performs a vector search over chunked documents from UN agencies,
-    World Bank, and other development organizations. Returns ranked
-    text passages with metadata including document title, organization,
-    year, country, and relevance score.
-
-    Args:
-        query: Natural language search query. Examples:
-            "impact of climate change on food security"
-            "gender equality in humanitarian response"
-            "What mandates address women peace and security?"
-        data_source: Data collection to search. Options:
-            "uneg" - UN Humanitarian Evaluation Reports (default)
-            "worldbank" - World Bank Fraud and Integrity Reports
-            "unmandates" - UN Mandates Registry (resolutions/decisions)
-        limit: Maximum number of results to return (1-100, default 20).
-        filters: Field filters as {field_name: value} pairs. Available
-            fields vary by data source:
-
-            For "uneg" (UN Evaluations):
-              organization: UN agency (e.g. "UNDP", "UNICEF", "WFP", "FAO")
-              published_year: Year published (e.g. "2024")
-              document_type: Type (e.g. "Project Evaluation", "Country Programme")
-              country: Country name
-              language: Language code (e.g. "English", "French", "Spanish")
-              src_geographic_scope: Geographic scope
-              tag_sdg: SDG tag (e.g. "SDG1 - No Poverty")
-              tag_cross_cutting_theme: Cross-cutting theme
-
-            For "worldbank" (World Bank):
-              organization, published_year, document_type, country,
-              region, theme, topic, language, tag_sdg
-
-            For "unmandates" (UN Mandates):
-              organization: Issuing organ (e.g. "General Assembly")
-              published_year: Year adopted
-              document_type, document_symbol, subject, tag_sdg
-
-        section_types: Restrict results to specific document sections:
-            "executive_summary", "findings", "recommendations",
-            "conclusions", "methodology", "context", "lessons_learned",
-            "other"
-        rerank: Whether to rerank results with a cross-encoder model
-            for improved relevance (default True, slower but better).
-        recency_boost: Boost more recently published documents in
-            relevance scoring (default False).
-        field_boost: Apply field-specific importance weighting
-            (default True).
-        model_combo: Model configuration to use for embeddings and
-            reranking. Options: "Azure Foundry" (default, best quality),
-            "Huggingface" (free, local), "Google Vertex" (fast).
+    Returns ranked text passages with metadata including document title,
+    organization, year, country, and relevance score.
     """
     from ui.backend.mcp.tools.search import mcp_search
 
@@ -156,23 +181,28 @@ async def search(
 
 @mcp.tool()
 async def get_document(
-    doc_id: str,
-    data_source: Optional[str] = None,
+    doc_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Unique document identifier (returned in search results as doc_id)"
+            )
+        ),
+    ],
+    data_source: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "Data collection containing the document. Options: "
+                '"uneg" (default), "worldbank", "unmandates"'
+            )
+        ),
+    ] = None,
 ) -> dict:
     """Retrieve full metadata for a specific evaluation document.
 
-    Returns the complete document record including title, organization,
-    publication year, abstract, AI-generated summary, table of contents,
-    and all available metadata fields. Use this after finding a document
-    via the search tool to get more details.
-
-    Args:
-        doc_id: The unique document identifier (returned in search results
-            as chunk_id or doc_id).
-        data_source: Data collection containing the document. Options:
-            "uneg" - UN Humanitarian Evaluation Reports (default)
-            "worldbank" - World Bank Fraud and Integrity Reports
-            "unmandates" - UN Mandates Registry
+    Returns title, organization, year, abstract, AI summary, table of
+    contents, and all metadata fields. Use after search to get details.
     """
     from ui.backend.mcp.tools.document import mcp_get_document
 
@@ -204,38 +234,51 @@ async def get_document(
 
 @mcp.tool()
 async def ask_assistant(
-    query: str,
-    data_source: Optional[str] = None,
-    deep_research: bool = False,
-    model_combo: str = "Azure Foundry",
+    query: Annotated[
+        str,
+        Field(
+            description=(
+                "Research question to answer. Examples: "
+                '"What are the main findings on climate adaptation in Africa?", '
+                '"How effective have school feeding programs been?", '
+                '"Compare approaches to gender mainstreaming across agencies"'
+            )
+        ),
+    ],
+    data_source: Annotated[
+        Optional[str],
+        Field(
+            description=(
+                "Data collection to search. Options: "
+                '"uneg" (default), "worldbank", "unmandates"'
+            )
+        ),
+    ] = None,
+    deep_research: Annotated[
+        bool,
+        Field(
+            description=(
+                "Enable multi-pass deep research mode for complex questions. "
+                "Uses multiple search queries and iterative analysis (slower but thorough)"
+            )
+        ),
+    ] = False,
+    model_combo: Annotated[
+        str,
+        Field(
+            description=(
+                "LLM model configuration. Options: "
+                '"Azure Foundry" (default, GPT-4.1-mini, best quality), '
+                '"Huggingface" (Qwen 2.5-7B, free/local), '
+                '"Google Vertex" (Gemini 2.5 Flash, fast)'
+            )
+        ),
+    ] = "Azure Foundry",
 ) -> dict:
     """Ask the AI research assistant a question about evaluation documents.
 
-    The assistant searches the document collection, retrieves relevant
-    passages, and synthesizes a comprehensive answer with source
-    citations. Returns the full answer text and a list of source
-    documents referenced.
-
-    Use deep_research=True for complex questions that benefit from
-    multiple search passes and deeper analysis (slower but more
-    thorough).
-
-    Args:
-        query: The research question to answer. Examples:
-            "What are the main findings on climate adaptation in Africa?"
-            "How effective have school feeding programs been?"
-            "Compare approaches to gender mainstreaming across agencies"
-        data_source: Data collection to search. Options:
-            "uneg" - UN Humanitarian Evaluation Reports (default)
-            "worldbank" - World Bank Fraud and Integrity Reports
-            "unmandates" - UN Mandates Registry
-        deep_research: Enable multi-pass deep research mode for complex
-            questions. Uses multiple search queries and iterative
-            analysis (default False, slower but more thorough).
-        model_combo: LLM model configuration. Options:
-            "Azure Foundry" (default) - GPT-4.1-mini, best quality
-            "Huggingface" - Qwen 2.5-7B, free/local
-            "Google Vertex" - Gemini 2.5 Flash, fast
+    Searches documents, retrieves relevant passages, and synthesizes a
+    comprehensive answer with source citations.
     """
     from ui.backend.mcp.tools.assistant import mcp_ask_assistant
 
