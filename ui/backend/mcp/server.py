@@ -4,8 +4,6 @@ Registers tools, prompts, and resources on a FastMCP instance.
 The HTTP server (http_server.py) handles transport and authentication.
 """
 
-from __future__ import annotations
-
 import logging
 import time
 from typing import Any, Dict, List, Optional
