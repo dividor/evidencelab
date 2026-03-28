@@ -44,6 +44,14 @@ class MCPSearchResponse(BaseModel):
     data_source: Optional[str] = Field(
         default=None, description="Data source that was searched"
     )
+    facets: Optional[Dict[str, List[Dict[str, Any]]]] = Field(
+        default=None,
+        description=(
+            "Available filter values with counts, keyed by field name. "
+            "Only present when include_facets=True. Each entry is a list "
+            "of {value, count} objects sorted by count descending."
+        ),
+    )
 
 
 class MCPDocumentResponse(BaseModel):

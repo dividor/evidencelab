@@ -25,6 +25,7 @@ async def mcp_search(
     recency_boost: bool = False,
     field_boost: bool = True,
     model_combo: str = "Azure Foundry",
+    include_facets: bool = False,
 ) -> MCPSearchResponse:
     """Search evaluation documents using hybrid semantic + keyword search.
 
@@ -83,12 +84,59 @@ async def mcp_search(
     # Enrich with Postgres metadata
     results = _convert_results(raw_results, data_source)
 
+    facets = None
+    if include_facets:
+        facets = await loop.run_in_executor(
+            _executor,
+            lambda: _fetch_facets(data_source),
+        )
+
     return MCPSearchResponse(
         results=results,
         total=len(results),
         query=query,
         data_source=data_source,
+        facets=facets,
     )
+
+
+def _fetch_facets(data_source: Optional[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """Fetch available filter values (facets) for a data source.
+
+    Returns a dict mapping field names to lists of {value, count} dicts,
+    limited to top 30 values per field for conciseness.
+    """
+    from pipeline.db import get_default_filter_fields, get_taxonomy_filter_fields
+    from ui.backend.utils.app_state import get_db_for_source
+
+    source = data_source or "uneg"
+    db = get_db_for_source(source)
+    filter_fields = get_default_filter_fields(source)
+    taxonomy_fields = get_taxonomy_filter_fields(source)
+    filter_fields = {**filter_fields, **taxonomy_fields}
+
+    facets: Dict[str, List[Dict[str, Any]]] = {}
+    for field_key, field_label in filter_fields.items():
+        if field_key in ("title",):
+            continue
+        # Core fields are stored with map_ prefix in Qdrant
+        qdrant_key = field_key
+        if not field_key.startswith(("src_", "tag_")):
+            qdrant_key = f"map_{field_key}"
+        try:
+            raw = db.facet_documents(qdrant_key, limit=30)
+        except Exception:
+            continue
+        if not raw:
+            continue
+        # Sort by count descending, take top 30
+        sorted_items = sorted(raw.items(), key=lambda x: -x[1])[:30]
+        facets[field_key] = [
+            {"value": str(k), "count": v}
+            for k, v in sorted_items
+            if k is not None and str(k).strip()
+        ]
+    return facets
 
 
 def _convert_results(

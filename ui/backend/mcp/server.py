@@ -189,6 +189,18 @@ async def search(
             )
         ),
     ] = "Azure Foundry",
+    include_facets: Annotated[
+        bool,
+        Field(
+            description=(
+                "If true, return available filter values (facets) alongside "
+                "results. Use this on first search to discover what "
+                "organizations, years, countries, SDGs, etc. are available "
+                "for filtering. Facets include value counts so you can see "
+                "which filters are most relevant."
+            )
+        ),
+    ] = False,
 ) -> dict:
     """Search evaluation documents using hybrid semantic + keyword search.
 
@@ -236,6 +248,7 @@ async def search(
             recency_boost=recency_boost,
             field_boost=field_boost,
             model_combo=model_combo,
+            include_facets=include_facets,
         )
         return result.model_dump()
     except Exception as exc:
