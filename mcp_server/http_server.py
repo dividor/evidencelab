@@ -83,6 +83,19 @@ def _add_cors_headers(headers: list, origin: str | None) -> list:
 # ---------------------------------------------------------------------------
 
 
+def _get_client_ip(scope: dict) -> str:
+    """Extract client IP from ASGI scope, preferring X-Forwarded-For."""
+    headers = dict(scope.get("headers", []))
+    forwarded = headers.get(b"x-forwarded-for", b"").decode()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real_ip = headers.get(b"x-real-ip", b"").decode()
+    if real_ip:
+        return real_ip
+    client = scope.get("client")
+    return client[0] if client else "unknown"
+
+
 class MCPApp:
     """Minimal ASGI app that routes /mcp to the session manager."""
 
@@ -148,12 +161,13 @@ class MCPApp:
             request = Request(scope, receive)
             req_body = await request.body()
             client_data = json.loads(req_body) if req_body else {}
-            result = register_client(client_data)
+            client_ip = _get_client_ip(scope)
+            status_code, result = register_client(client_data, client_ip)
             body = json.dumps(result).encode()
             await send(
                 {
                     "type": "http.response.start",
-                    "status": 201,
+                    "status": status_code,
                     "headers": [
                         (b"content-type", b"application/json"),
                         (b"cache-control", b"no-store"),
@@ -169,7 +183,8 @@ class MCPApp:
             from urllib.parse import parse_qs
 
             params = {k: v[0] for k, v in parse_qs(qs).items()}
-            status_code, redirect_url = build_authorize_redirect(params)
+            client_ip = _get_client_ip(scope)
+            status_code, redirect_url = build_authorize_redirect(params, client_ip)
             if status_code == 302:
                 await send(
                     {
@@ -280,7 +295,8 @@ class MCPApp:
                 parsed = parse_qs(req_body.decode())
                 token_data = {k: v[0] for k, v in parsed.items()}
 
-            status_code, result = exchange_token(token_data)
+            client_ip = _get_client_ip(scope)
+            status_code, result = exchange_token(token_data, client_ip)
             body = json.dumps(result).encode()
             origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
             headers = _add_cors_headers(
