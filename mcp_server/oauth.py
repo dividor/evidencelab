@@ -159,29 +159,63 @@ def build_authorize_redirect(params: dict) -> tuple[int, str]:
             }
         )
 
-    # Generate an authorization code and store the pending request
-    code = secrets.token_urlsafe(32)
-    _auth_codes[code] = {
+    # Store the pending authorization request with a unique ID.
+    # The user must complete login before this becomes a valid code.
+    pending_id = secrets.token_urlsafe(24)
+    _auth_codes[pending_id] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "code_challenge": code_challenge,
         "state": state,
         "scope": scope,
-        "user_id": None,  # Set when user completes login
+        "user_id": None,
         "expires_at": time.time() + 600,  # 10 minutes
         "authenticated": False,
     }
 
-    # For now, auto-approve and redirect back immediately.
-    # In a full implementation, this would show the Evidence Lab
-    # login page and set user_id after authentication.
-    _auth_codes[code]["authenticated"] = True
-    _auth_codes[code]["user_id"] = "mcp_user"
+    # Redirect to the Evidence Lab login page.  The UI detects the
+    # ``mcp_auth`` query parameter and shows the login/register modal.
+    # After login it redirects the browser to /mcp/complete?pending=...
+    # which finalises the OAuth handshake.
+    login_url = f"{_APP_BASE_URL}?mcp_auth={pending_id}"
+    return 302, login_url
 
-    # Build redirect back to the client
+
+def complete_authorize(pending_id: str, user_id: str) -> tuple[int, str]:
+    """Finalise the OAuth flow after the user has logged in.
+
+    Called by the ``/mcp/complete`` endpoint once the browser has a valid
+    session cookie.  Generates the authorization code and redirects the
+    browser back to the MCP client's ``redirect_uri``.
+
+    Returns (status_code, redirect_or_error_body).
+    """
+    _clean_expired(_auth_codes)
+
+    if pending_id not in _auth_codes:
+        return 400, json.dumps(
+            {
+                "error": "invalid_request",
+                "error_description": "Authorization request expired or invalid",
+            }
+        )
+
+    pending = _auth_codes.pop(pending_id)
+
+    # Mark as authenticated with the real user ID
+    code = secrets.token_urlsafe(32)
+    _auth_codes[code] = {
+        **pending,
+        "user_id": user_id,
+        "authenticated": True,
+        "expires_at": time.time() + 300,  # 5 minutes to exchange
+    }
+
+    # Redirect back to the MCP client
+    redirect_uri = pending["redirect_uri"]
     callback_params = {"code": code}
-    if state:
-        callback_params["state"] = state
+    if pending.get("state"):
+        callback_params["state"] = pending["state"]
 
     separator = "&" if "?" in redirect_uri else "?"
     redirect_url = f"{redirect_uri}{separator}{urlencode(callback_params)}"

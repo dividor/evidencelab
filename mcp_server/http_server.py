@@ -23,6 +23,7 @@ from mcp_server.app import mcp as mcp_server
 from mcp_server.auth import verify_mcp_auth
 from mcp_server.oauth import (
     build_authorize_redirect,
+    complete_authorize,
     exchange_token,
     get_metadata,
     register_client,
@@ -169,6 +170,75 @@ class MCPApp:
 
             params = {k: v[0] for k, v in parse_qs(qs).items()}
             status_code, redirect_url = build_authorize_redirect(params)
+            if status_code == 302:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 302,
+                        "headers": [
+                            (b"location", redirect_url.encode()),
+                            (b"cache-control", b"no-store"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b""})
+            else:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": status_code,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send(
+                    {"type": "http.response.body", "body": redirect_url.encode()}
+                )
+            return
+
+        # Complete OAuth after user login (GET /complete?pending=...)
+        if path == "/complete" and method == "GET":
+            request = Request(scope, receive)
+            qs = scope.get("query_string", b"").decode()
+            from urllib.parse import parse_qs
+
+            params = {k: v[0] for k, v in parse_qs(qs).items()}
+            pending_id = params.get("pending", "")
+
+            if not pending_id:
+                body = json.dumps({"error": "Missing pending parameter"}).encode()
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 400,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": body})
+                return
+
+            # Verify the user is authenticated via session cookie or JWT
+            try:
+                auth_info = await verify_mcp_auth(request)
+                user_id = auth_info.get("user_id", "unknown")
+            except PermissionError:
+                # Not logged in — redirect back to login page
+                from mcp_server.oauth import _APP_BASE_URL
+
+                login_url = f"{_APP_BASE_URL}?mcp_auth={pending_id}"
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 302,
+                        "headers": [
+                            (b"location", login_url.encode()),
+                            (b"cache-control", b"no-store"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b""})
+                return
+
+            status_code, redirect_url = complete_authorize(pending_id, user_id)
             if status_code == 302:
                 await send(
                     {
