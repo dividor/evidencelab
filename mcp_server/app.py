@@ -223,8 +223,13 @@ async def search(
     SECTION TYPES: executive_summary, findings, recommendations,
       conclusions, methodology, context, lessons_learned, other
 
-    IMPORTANT: When presenting results to users, always include the
-    document title, organization, and year for proper attribution.
+    IMPORTANT — your response MUST include:
+    1. Every factual claim MUST have at least one clickable inline citation:
+       [[1]](url), [[2]](url). Use the citations array from the response.
+    2. A References section (each ref on its OWN line) — copy from the
+       references array in the response.
+    3. Caveat any totals: semantic search matches variations, so counts
+       are approximate.
     """
     from mcp_server.tools.search import mcp_search
 
@@ -407,8 +412,11 @@ async def ask_assistant(
     - "Huggingface": Qwen 2.5-7B running locally. Free, no API key.
     - "Google Vertex": Gemini 2.5 Flash. Fast, requires GCP credentials.
 
-    IMPORTANT: Always attribute findings to specific source documents
-    when presenting results to users.
+    IMPORTANT — your response MUST include:
+    1. Every factual claim MUST have at least one clickable inline citation
+       from the sources array: [[1]](url), [[2]](url).
+    2. A References section listing all cited sources.
+    3. Always attribute findings to specific source documents.
     """
     from mcp_server.tools.assistant import mcp_ask_assistant
 

@@ -35,12 +35,40 @@ class MCPSearchResult(BaseModel):
     )
 
 
+class MCPCitation(BaseModel):
+    """A citation linking a search result to its source document."""
+
+    label: str = Field(description="Citation label e.g. '[1]'")
+    url: str = Field(description="URL to the source document or evaluation page")
+    title: str = Field(description="Formatted citation title with org and year")
+    organization: Optional[str] = Field(
+        default=None, description="Publishing organization"
+    )
+    year: Optional[str] = Field(default=None, description="Publication year")
+
+
 class MCPSearchResponse(BaseModel):
     """Response from the Evidence Lab search tool."""
 
-    results: List[MCPSearchResult] = Field(description="List of matching chunks")
     total: int = Field(description="Total number of results returned")
     query: str = Field(description="Original search query")
+    summary: str = Field(
+        default="",
+        description="Human-readable summary of results count and citations available",
+    )
+    results: List[MCPSearchResult] = Field(description="List of matching chunks")
+    citations: List[MCPCitation] = Field(
+        default_factory=list,
+        description="Numbered citations for each result with clickable URLs",
+    )
+    references: List[str] = Field(
+        default_factory=list,
+        description="Pre-formatted markdown references for easy copying into responses",
+    )
+    citation_guidance: str = Field(
+        default="",
+        description="Instructions for how to use citations in responses",
+    )
     data_source: Optional[str] = Field(
         default=None, description="Data source that was searched"
     )

@@ -7,12 +7,25 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from mcp_server.schemas import MCPSearchResponse, MCPSearchResult
+from mcp_server.schemas import MCPCitation, MCPSearchResponse, MCPSearchResult
 
 logger = logging.getLogger(__name__)
 
 # Shared executor for running synchronous search in a thread
 _executor = ThreadPoolExecutor(max_workers=4)
+
+_CITATION_GUIDANCE = (
+    "IMPORTANT: You MUST include ALL of the following in your response:\n"
+    "1. Every factual claim MUST have at least one clickable inline citation: "
+    "[[1]](url), [[2]](url). Renumber sequentially from 1 in your response order.\n"
+    "2. Include a References section (each ref on its OWN line) for every item "
+    "you cited.\n"
+    "3. Include a 'Browse in Evidence Lab' section with a link to the Evidence Lab "
+    "search page so the user can explore results directly.\n"
+    "4. When reporting counts from a text/semantic query, caveat that the total "
+    "is approximate — semantic search matches variations and related terms.\n"
+    "Do NOT omit inline citations. Do NOT put multiple references on one line."
+)
 
 # Fields too large for MCP responses — strip from metadata
 _EXCLUDE_FROM_META = frozenset(
@@ -102,9 +115,13 @@ async def mcp_search(
 
     search_results = await loop.run_in_executor(_executor, _run)
 
-    # Convert SearchResult objects to MCP schema
-    results = []
-    for sr in search_results:
+    # Convert SearchResult objects to MCP schema with citations
+    results: List[MCPSearchResult] = []
+    citations: List[MCPCitation] = []
+    references: List[str] = []
+    seen_docs: Dict[str, int] = {}
+
+    for i, sr in enumerate(search_results, 1):
         # Only keep clean user-facing metadata fields
         _KEEP_FIELDS = {
             "country",
@@ -118,6 +135,11 @@ async def mcp_search(
             "taxonomies",
         }
         meta = {k: v for k, v in (sr.metadata or {}).items() if k in _KEEP_FIELDS and v}
+
+        # Build citation URL — prefer report_url, fall back to pdf_url
+        report_url = (sr.metadata or {}).get("report_url", "")
+        pdf_url = (sr.metadata or {}).get("pdf_url", "")
+        cite_url = report_url or pdf_url or ""
 
         results.append(
             MCPSearchResult(
@@ -136,6 +158,34 @@ async def mcp_search(
             )
         )
 
+        # Build citation (one per unique document)
+        if sr.doc_id not in seen_docs:
+            cite_num = len(citations) + 1
+            seen_docs[sr.doc_id] = cite_num
+            org = sr.organization or "Unknown"
+            year = sr.year or ""
+            title = sr.title or f"Document {cite_num}"
+            cite_title = f"{title} ({org}, {year})" if year else f"{title} ({org})"
+
+            citations.append(
+                MCPCitation(
+                    label=f"[{cite_num}]",
+                    url=cite_url,
+                    title=cite_title,
+                    organization=sr.organization,
+                    year=sr.year,
+                )
+            )
+            if cite_url:
+                references.append(f"[{cite_num}] [{cite_title}]({cite_url})")
+            else:
+                references.append(f"[{cite_num}] {cite_title}")
+
+    summary = (
+        f"Found {len(results)} results from {len(citations)} documents. "
+        f"Use the citations below for attribution."
+    )
+
     facets = None
     if include_facets:
         facets = await loop.run_in_executor(
@@ -144,9 +194,13 @@ async def mcp_search(
         )
 
     return MCPSearchResponse(
-        results=results,
         total=len(results),
         query=query,
+        summary=summary,
+        results=results,
+        citations=citations,
+        references=references,
+        citation_guidance=_CITATION_GUIDANCE,
         data_source=source,
         facets=facets,
     )
