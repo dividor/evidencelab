@@ -108,6 +108,18 @@ class MCPAssistantResponse(BaseModel):
         default_factory=list,
         description="Source documents referenced in the answer",
     )
+    citations: List[MCPCitation] = Field(
+        default_factory=list,
+        description="Numbered citations for each source with clickable URLs",
+    )
+    references: List[str] = Field(
+        default_factory=list,
+        description="Pre-formatted markdown references for easy copying into responses",
+    )
+    citation_guidance: str = Field(
+        default="",
+        description="Instructions for how to use citations in responses",
+    )
     query: str = Field(description="Original query")
     data_source: Optional[str] = Field(
         default=None, description="Data source that was searched"

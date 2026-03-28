@@ -4,11 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
-from mcp_server.schemas import MCPAssistantResponse
+from mcp_server.schemas import MCPAssistantResponse, MCPCitation
 
 logger = logging.getLogger(__name__)
+
+_CITATION_GUIDANCE = (
+    "IMPORTANT: You MUST include ALL of the following in your response:\n"
+    "1. Every factual claim MUST have at least one clickable inline citation: "
+    "[[1]](url), [[2]](url). Renumber sequentially from 1 in your response order.\n"
+    "2. Include a References section (each ref on its OWN line) for every item "
+    "you cited.\n"
+    "3. When reporting counts from a text/semantic query, caveat that the total "
+    "is approximate — semantic search matches variations and related terms.\n"
+    "Do NOT omit inline citations. Do NOT put multiple references on one line."
+)
 
 # Maximum time to wait for the assistant to produce a complete response.
 _ASSISTANT_TIMEOUT_SECONDS = 120
@@ -87,9 +99,39 @@ async def mcp_ask_assistant(
             )
         # Partial answer is still useful — return what we have
 
+    # Build citations and references from sources
+    app_base = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
+    citations: List[MCPCitation] = []
+    references: List[str] = []
+    for i, src in enumerate(sources, 1):
+        title = src.get("title", f"Document {i}")
+        org = src.get("organization", "")
+        year = src.get("year", "")
+        report_url = src.get("report_url", "") or src.get("url", "")
+        page_num = src.get("page_num")
+        url = report_url or f"{app_base}/search"
+        if page_num and url and "#" not in url:
+            url = f"{url}#page={page_num}"
+        label_parts = [org, year]
+        label_suffix = ", ".join(p for p in label_parts if p)
+        formatted_title = f"{title} ({label_suffix})" if label_suffix else title
+        citations.append(
+            MCPCitation(
+                label=f"[{i}]",
+                url=url,
+                title=formatted_title,
+                organization=org or None,
+                year=year or None,
+            )
+        )
+        references.append(f"[{i}] [{formatted_title}]({url})")
+
     return MCPAssistantResponse(
         answer=answer_text,
         sources=sources,
+        citations=citations,
+        references=references,
+        citation_guidance=_CITATION_GUIDANCE,
         query=query,
         data_source=data_source,
     )
