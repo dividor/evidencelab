@@ -21,6 +21,12 @@ from starlette.requests import Request
 
 from mcp_server.app import mcp as mcp_server
 from mcp_server.auth import verify_mcp_auth
+from mcp_server.oauth import (
+    build_authorize_redirect,
+    exchange_token,
+    get_metadata,
+    register_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,110 @@ class MCPApp:
                     "type": "http.response.start",
                     "status": 200,
                     "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # OAuth 2.0 metadata discovery (RFC 8414)
+        if path == "/.well-known/oauth-authorization-server":
+            body = json.dumps(get_metadata()).encode()
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # Dynamic client registration (RFC 7591)
+        if path == "/register" and method == "POST":
+            request = Request(scope, receive)
+            req_body = await request.body()
+            client_data = json.loads(req_body) if req_body else {}
+            result = register_client(client_data)
+            body = json.dumps(result).encode()
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 201,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # Authorization endpoint (GET)
+        if path == "/authorize" and method == "GET":
+            qs = scope.get("query_string", b"").decode()
+            from urllib.parse import parse_qs
+
+            params = {k: v[0] for k, v in parse_qs(qs).items()}
+            status_code, redirect_url = build_authorize_redirect(params)
+            if status_code == 302:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 302,
+                        "headers": [
+                            (b"location", redirect_url.encode()),
+                            (b"cache-control", b"no-store"),
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b""})
+            else:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": status_code,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send(
+                    {"type": "http.response.body", "body": redirect_url.encode()}
+                )
+            return
+
+        # Token endpoint (POST)
+        if path == "/token" and method == "POST":
+            request = Request(scope, receive)
+            req_body = await request.body()
+            # Accept both JSON and form-encoded
+            content_type = (
+                dict(scope.get("headers", [])).get(b"content-type", b"").decode()
+            )
+            if "application/json" in content_type:
+                token_data = json.loads(req_body) if req_body else {}
+            else:
+                from urllib.parse import parse_qs
+
+                parsed = parse_qs(req_body.decode())
+                token_data = {k: v[0] for k, v in parsed.items()}
+
+            status_code, result = exchange_token(token_data)
+            body = json.dumps(result).encode()
+            origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
+            headers = _add_cors_headers(
+                [
+                    (b"content-type", b"application/json"),
+                    (b"cache-control", b"no-store"),
+                ],
+                origin,
+            )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": status_code,
+                    "headers": headers,
                 }
             )
             await send({"type": "http.response.body", "body": body})
