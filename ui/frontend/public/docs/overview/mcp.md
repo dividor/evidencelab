@@ -1,6 +1,6 @@
-# MCP Server
+# Using Evidence Lab in AI Platforms
 
-Evidence Lab provides a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that allows AI assistants like Claude and ChatGPT to search and analyze evaluation documents.
+Evidence Lab provides a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that allows AI assistants like Claude and ChatGPT to search and analyze evaluation documents directly from within their chat interfaces.
 
 ## Getting Started
 
