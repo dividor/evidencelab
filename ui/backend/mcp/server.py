@@ -4,130 +4,77 @@ Registers tools, prompts, and resources on a FastMCP instance.
 The HTTP server (http_server.py) handles transport and authentication.
 """
 
+import json
 import logging
 import time
-from typing import Annotated, List, Optional
+from typing import Annotated, Any, List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ui.backend.mcp.audit import log_mcp_call
 
-
-class SearchFilters(BaseModel):
-    """Filter fields for narrowing search results.
-
-    Use include_facets=True on the search tool to get all available
-    values and their counts for the selected data_source.
-    """
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {"organization": "UNDP", "published_year": "2024"},
-                {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"},
-                {
-                    "organization": "General Assembly",
-                    "subject": "Women and peace and security",
-                },
-            ]
-        }
-    }
-
-    organization: Optional[str] = Field(
-        None,
-        description=(
-            "Filter by organization/agency. "
-            "For uneg: UNDP, UNICEF, WFP, FAO, ILO, UNEP, IOM, etc. "
-            "For unmandates: General Assembly, Security Council, ECOSOC. "
-            "For worldbank: INT."
-        ),
-        examples=["UNDP", "UNICEF", "WFP", "General Assembly"],
-    )
-    published_year: Optional[str] = Field(
-        None,
-        description="Filter by publication year.",
-        examples=["2024", "2023", "2020"],
-    )
-    document_type: Optional[str] = Field(
-        None,
-        description=(
-            "Filter by document type. "
-            "For uneg: Project Evaluation, Country Programme Evaluation, etc. "
-            "For unmandates: UN Resolution/Decision."
-        ),
-        examples=["Project Evaluation", "Country Programme Evaluation"],
-    )
-    country: Optional[str] = Field(
-        None,
-        description="Filter by country name.",
-        examples=["Kenya", "Bangladesh", "Colombia"],
-    )
-    language: Optional[str] = Field(
-        None,
-        description="Filter by document language.",
-        examples=["English", "French", "Spanish", "Arabic"],
-    )
-    tag_sdg: Optional[str] = Field(
-        None,
-        description="Filter by UN Sustainable Development Goal.",
-        examples=[
-            "SDG1 - No Poverty",
-            "SDG5 - Gender Equality",
-            "SDG13 - Climate Action",
-        ],
-    )
-    tag_cross_cutting_theme: Optional[str] = Field(
-        None,
-        description="Filter by cross-cutting theme (uneg only).",
-        examples=["Gender Equality", "Human Rights", "Climate Change"],
-    )
-    region: Optional[str] = Field(
-        None,
-        description="Filter by region.",
-        examples=["Sub-Saharan Africa", "East Asia and Pacific"],
-    )
-    document_symbol: Optional[str] = Field(
-        None,
-        description="Filter by document symbol (unmandates only).",
-        examples=["A/RES/78/1", "S/RES/2686"],
-    )
-    subject: Optional[str] = Field(
-        None,
-        description="Filter by subject heading (unmandates only).",
-        examples=["Women and peace and security", "Climate change"],
-    )
-
-
 logger = logging.getLogger(__name__)
+
+
+def _load_config() -> dict:
+    """Load config.json from project root."""
+    import json as _json
+    from pathlib import Path
+
+    config_path = Path(__file__).resolve().parents[3] / "config.json"
+    with open(config_path) as f:
+        return _json.load(f)
 
 
 def _data_source_description() -> str:
     """Build data_source field description from config.json."""
     try:
-        import json
-        from pathlib import Path
-
-        config_path = Path(__file__).resolve().parents[3] / "config.json"
-        with open(config_path) as f:
-            cfg = json.load(f)
+        cfg = _load_config()
         sources = cfg.get("datasources", {})
-        parts = ["Data collection to search. Options: "]
         entries = []
         for name, conf in sources.items():
             subdir = conf.get("data_subdir", "")
             entries.append(f'"{subdir}" ({name})')
-        parts.append(", ".join(entries))
-        if entries:
-            first_subdir = list(sources.values())[0].get("data_subdir", "uneg")
-            parts.append(f'. Default: "{first_subdir}".')
-        return "".join(parts)
+        first_subdir = list(sources.values())[0].get("data_subdir", "uneg")
+        return (
+            "Data collection to search. Options: "
+            + ", ".join(entries)
+            + f'. Default: "{first_subdir}".'
+        )
     except Exception:
         return (
             "Data collection to search. Options: "
             '"uneg" (UN Humanitarian Evaluation Reports, default), '
             '"worldbank" (World Bank Fraud and Integrity Reports), '
             '"unmandates" (UN Mandates Registry)'
+        )
+
+
+def _filters_description() -> str:
+    """Build filters field description from config.json."""
+    try:
+        cfg = _load_config()
+        sources = cfg.get("datasources", {})
+        parts = ["JSON object with filter field/value pairs. " "All fields optional. "]
+        for name, conf in sources.items():
+            subdir = conf.get("data_subdir", "")
+            fields = conf.get("default_filter_fields", {})
+            if fields:
+                field_names = [k for k in fields if k != "title"]
+                parts.append(f'For "{subdir}": {", ".join(field_names)}. ')
+        parts.append(
+            'Examples: {"organization": "UNDP", "published_year": "2024"} '
+            'or {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"}. '
+            "TIP: Set include_facets=True to discover all available "
+            "filter values and counts."
+        )
+        return "".join(parts)
+    except Exception:
+        return (
+            "JSON object with filter field/value pairs. "
+            'Example: {"organization": "UNDP", "published_year": "2024"}. '
+            "TIP: Set include_facets=True to discover available values."
         )
 
 
@@ -184,19 +131,8 @@ async def search(
         Field(description="Maximum number of results to return (1-100, default 20)"),
     ] = 20,
     filters: Annotated[
-        Optional[SearchFilters],
-        Field(
-            description=(
-                "Filter results by metadata fields. All fields are optional. "
-                "Available fields vary by data_source — irrelevant fields "
-                "are ignored. "
-                'Example: {"organization": "UNDP", "published_year": "2024"} '
-                'or {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"}. '
-                "TIP: Call search with include_facets=True first to discover "
-                "all available filter values and their counts for the "
-                "selected data_source."
-            )
-        ),
+        Optional[Any],
+        Field(description=_filters_description()),
     ] = None,
     section_types: Annotated[
         Optional[List[str]],
@@ -291,7 +227,11 @@ async def search(
             query=query,
             data_source=data_source,
             limit=limit,
-            filters=filters.model_dump(exclude_none=True) if filters else None,
+            filters=(
+                (json.loads(filters) if isinstance(filters, str) else filters)
+                if filters
+                else None
+            ),
             section_types=section_types,
             rerank=rerank,
             recency_boost=recency_boost,
