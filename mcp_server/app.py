@@ -178,10 +178,11 @@ async def search(
         str,
         Field(
             description=(
-                "Model configuration for embeddings/reranking. Options: "
-                '"Azure Foundry" (default, GPT-4.1-mini, best quality), '
-                '"Huggingface" (Qwen 2.5-7B, free/local), '
-                '"Google Vertex" (Gemini 2.5 Flash, fast)'
+                "Model configuration for embeddings/reranking. ALWAYS use the "
+                "default unless the user explicitly requests a different model. "
+                '"Azure Foundry" (RECOMMENDED default — best quality), '
+                '"Huggingface" (requires local GPU server), '
+                '"Google Vertex" (requires GCP credentials)'
             )
         ),
     ] = "Azure Foundry",
@@ -383,10 +384,13 @@ async def ask_assistant(
         str,
         Field(
             description=(
-                "LLM model configuration. Options: "
-                '"Azure Foundry" (default, GPT-4.1-mini, best quality), '
-                '"Huggingface" (Qwen 2.5-7B, free/local), '
-                '"Google Vertex" (Gemini 2.5 Flash, fast)'
+                "LLM model configuration. ALWAYS use the default unless "
+                "the user explicitly requests a different model. Options: "
+                '"Azure Foundry" (RECOMMENDED default — GPT-4.1-mini via Azure, '
+                "best quality and reliability), "
+                '"Huggingface" (Qwen 2.5-7B, requires local GPU server — '
+                "will fail if not running locally), "
+                '"Google Vertex" (Gemini 2.5 Flash, requires GCP credentials)'
             )
         ),
     ] = "Azure Foundry",
@@ -406,11 +410,11 @@ async def ask_assistant(
     search with multiple query reformulations (2-5x slower but
     significantly more thorough).
 
-    MODEL OPTIONS:
-    - "Azure Foundry": GPT-4.1-mini via Azure. Best quality, requires
-      Azure API key.
-    - "Huggingface": Qwen 2.5-7B running locally. Free, no API key.
-    - "Google Vertex": Gemini 2.5 Flash. Fast, requires GCP credentials.
+    MODEL OPTIONS (always use default "Azure Foundry" unless user requests otherwise):
+    - "Azure Foundry" (RECOMMENDED): GPT-4.1-mini via Azure. Best quality.
+    - "Huggingface": Qwen 2.5-7B. Requires local GPU server — will fail
+      if not running locally.
+    - "Google Vertex": Gemini 2.5 Flash. Requires GCP credentials.
 
     IMPORTANT — your response MUST include:
     1. Every factual claim MUST have at least one clickable inline citation
