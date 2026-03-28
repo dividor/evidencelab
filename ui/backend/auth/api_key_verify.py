@@ -30,7 +30,6 @@ _EXEMPT_PREFIXES = (
     "/api-keys",
     "/file/",
     "/pdf/",
-    "/mcp",
 )
 _EXEMPT_EXACT = frozenset(("/health", "/docs", "/redoc", "/openapi.json"))
 

@@ -1,8 +1,7 @@
 """MCP server for Evidence Lab.
 
-Registers tools, prompts, and resources on a FastMCP instance and
-exposes a factory function that returns the Streamable HTTP ASGI app
-for mounting on the main FastAPI application.
+Registers tools, prompts, and resources on a FastMCP instance.
+The HTTP server (http_server.py) handles transport and authentication.
 """
 
 from __future__ import annotations
@@ -11,14 +10,14 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 
 from ui.backend.mcp.audit import log_mcp_call
 
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP(
-    name="Evidence Lab",
+    "Evidence Lab",
     instructions=(
         "Evidence Lab provides semantic search and AI-powered analysis "
         "of evaluation documents from UN agencies, World Bank, and other "
@@ -237,27 +236,3 @@ def comparative_analysis(topic: str, dimension: str = "organization") -> str:
     from ui.backend.mcp.prompts.research import comparative_analysis_prompt
 
     return comparative_analysis_prompt(topic=topic, dimension=dimension)
-
-
-# ---------------------------------------------------------------------------
-# Factory
-# ---------------------------------------------------------------------------
-
-
-def create_mcp_app():
-    """Create the MCP ASGI app for mounting on FastAPI.
-
-    Returns a Starlette/ASGI application that handles the MCP
-    Streamable HTTP protocol at the mount point.
-    """
-    # Use create_streamable_http_app directly with path="/"
-    # so the handler sits at the root of the sub-app.
-    # The parent FastAPI app mounts us at /mcp.
-    from fastmcp.server.http import create_streamable_http_app
-
-    return create_streamable_http_app(
-        mcp,
-        streamable_http_path="/",
-        stateless_http=False,
-        json_response=False,
-    )

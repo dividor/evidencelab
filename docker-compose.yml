@@ -220,6 +220,46 @@ services:
     command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --access-log" #--reload
     restart: unless-stopped
 
+  # MCP server (Model Context Protocol) — separate service with SSE transport
+  mcp:
+    image: evidencelab-ai-python:latest
+    container_name: mcp
+    ports:
+      - "8001:8001"
+    volumes:
+      - .:/app
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - QDRANT_HOST=${QDRANT_HOST:-http://qdrant:6333}
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - PYTHONPATH=/app
+      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
+      - USE_EMBEDDING_SERVER=true
+      - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
+      - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      embedding-server:
+        condition: service_healthy
+    networks:
+      - app-network
+    working_dir: /app
+    command: python -m ui.backend.mcp.http_server
+    restart: unless-stopped
+
   # React frontend (development server with hot reload)
   ui:
     build:

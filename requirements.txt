@@ -60,7 +60,7 @@ fastapi==0.135.1
 uvicorn[standard]==0.42.0
 python-multipart==0.0.22
 slowapi==0.1.9
-fastmcp>=2.0.0
+mcp>=1.26.0,<2
 
 # User authentication and permissions (USER_MODULE)
 fastapi-users[sqlalchemy,oauth]==15.0.4
