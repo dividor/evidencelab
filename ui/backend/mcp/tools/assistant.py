@@ -18,6 +18,7 @@ async def mcp_ask_assistant(
     query: str,
     data_source: Optional[str] = None,
     deep_research: bool = False,
+    model_combo: str = "Azure Foundry",
 ) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
 
@@ -42,10 +43,18 @@ async def mcp_ask_assistant(
 
     async def _consume_stream():
         nonlocal answer_text, sources
+        from pipeline.db import UI_MODEL_COMBOS
+
+        combo = UI_MODEL_COMBOS.get(model_combo, {})
+        assistant_model_config = combo.get("assistant_model")
+        reranker_model = combo.get("reranker_model")
+
         async for event in stream_research_response(
             query=query,
             data_source=data_source,
             deep_research=deep_research,
+            assistant_model_config=assistant_model_config,
+            reranker_model=reranker_model,
         ):
             event_type = event.get("type")
             if event_type == "token":

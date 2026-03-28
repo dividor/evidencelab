@@ -24,6 +24,7 @@ async def mcp_search(
     rerank: bool = True,
     recency_boost: bool = False,
     field_boost: bool = True,
+    model_combo: str = "Azure Foundry",
 ) -> MCPSearchResponse:
     """Search evaluation documents using hybrid semantic + keyword search.
 
@@ -57,6 +58,12 @@ async def mcp_search(
     loop = asyncio.get_running_loop()
 
     def _run_search():
+        from pipeline.db import UI_MODEL_COMBOS
+
+        combo = UI_MODEL_COMBOS.get(model_combo, {})
+        dense_model = combo.get("embedding_model")
+        rerank_model = combo.get("reranker_model") if rerank else None
+
         db = get_db_for_source(data_source)
         return search_chunks(
             query=query,
@@ -65,8 +72,10 @@ async def mcp_search(
             data_source=data_source,
             filters=filters,
             rerank=rerank,
+            rerank_model=rerank_model,
             recency_boost=recency_boost,
             section_types=section_types,
+            dense_model=dense_model,
         )
 
     raw_results = await loop.run_in_executor(_executor, _run_search)
