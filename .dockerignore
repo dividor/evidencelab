@@ -70,7 +70,7 @@ HIGHLIGHT_SCROLL_TESTING.md
 models/
 
 # Large directories to exclude
-public/
+/public/
 logs/
 db/
 .cache/

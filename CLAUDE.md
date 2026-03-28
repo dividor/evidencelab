@@ -2,6 +2,7 @@
 
 ## Git Commits
 - **NEVER use `--no-verify` when committing.** If a pre-commit hook fails, ALWAYS fix the underlying issue (lint errors, formatting, complexity, etc.) before committing again. No exceptions.
+- **NEVER commit directly to `main`, `rc/*`, or any release branch.** All changes MUST go through a feature branch and PR.
 
 ## Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.
