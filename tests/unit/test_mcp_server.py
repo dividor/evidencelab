@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from evidencelab_mcp.schemas import (
+from mcp_server.schemas import (
     MCPAssistantResponse,
     MCPDocumentResponse,
     MCPSearchResponse,
@@ -56,7 +56,7 @@ async def test_search_tool_basic(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(query="climate change")
 
@@ -91,7 +91,7 @@ async def test_search_tool_with_filters(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     filters = {"organization": "UNICEF", "published_year": "2022"}
     result = await mcp_search(
@@ -127,7 +127,7 @@ async def test_search_tool_empty_results(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(query="nonexistent topic xyz")
 
@@ -157,7 +157,7 @@ async def test_get_document_found(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.document import mcp_get_document
+    from mcp_server.tools.document import mcp_get_document
 
     result = await mcp_get_document(doc_id="doc-42")
 
@@ -180,7 +180,7 @@ async def test_get_document_not_found(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.document import mcp_get_document
+    from mcp_server.tools.document import mcp_get_document
 
     with pytest.raises(ValueError, match="Document not found: missing-doc"):
         await mcp_get_document(doc_id="missing-doc")
@@ -206,7 +206,7 @@ async def test_ask_assistant_basic(monkeypatch):
         sys.modules, "ui.backend.services.assistant_service", assistant_svc_mod
     )
 
-    from evidencelab_mcp.tools.assistant import mcp_ask_assistant
+    from mcp_server.tools.assistant import mcp_ask_assistant
 
     result = await mcp_ask_assistant(query="What is the meaning of life?")
 
@@ -220,7 +220,7 @@ async def test_ask_assistant_basic(monkeypatch):
 @pytest.mark.asyncio
 async def test_ask_assistant_timeout(monkeypatch):
     """mcp_ask_assistant raises RuntimeError on timeout with no partial answer."""
-    import evidencelab_mcp.tools.assistant as assistant_mod
+    import mcp_server.tools.assistant as assistant_mod
 
     # Use a very short timeout for the test
     monkeypatch.setattr(assistant_mod, "_ASSISTANT_TIMEOUT_SECONDS", 0.05)
@@ -237,7 +237,7 @@ async def test_ask_assistant_timeout(monkeypatch):
         sys.modules, "ui.backend.services.assistant_service", assistant_svc_mod
     )
 
-    from evidencelab_mcp.tools.assistant import mcp_ask_assistant
+    from mcp_server.tools.assistant import mcp_ask_assistant
 
     with pytest.raises(RuntimeError, match="Assistant timed out"):
         await mcp_ask_assistant(query="slow question")

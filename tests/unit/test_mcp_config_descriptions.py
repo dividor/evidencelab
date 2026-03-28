@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from evidencelab_mcp.schemas import MCPSearchResponse
+from mcp_server.schemas import MCPSearchResponse
 
 # ── Config-driven description tests ──────────────────────────────────
 
@@ -25,7 +25,7 @@ def test_data_source_description_reads_config(monkeypatch, tmp_path):
     config_file = tmp_path / "config.json"
     config_file.write_text(json.dumps(config))
 
-    import evidencelab_mcp.server as server_mod
+    import mcp_server.server as server_mod
 
     monkeypatch.setattr(
         server_mod,
@@ -41,7 +41,7 @@ def test_data_source_description_reads_config(monkeypatch, tmp_path):
 
 def test_data_source_description_fallback_on_error(monkeypatch):
     """_data_source_description returns fallback when config fails."""
-    import evidencelab_mcp.server as server_mod
+    import mcp_server.server as server_mod
 
     monkeypatch.setattr(
         server_mod,
@@ -70,7 +70,7 @@ def test_filters_description_reads_config(monkeypatch):
         }
     }
 
-    import evidencelab_mcp.server as server_mod
+    import mcp_server.server as server_mod
 
     monkeypatch.setattr(server_mod, "_load_config", lambda: config)
 
@@ -83,7 +83,7 @@ def test_filters_description_reads_config(monkeypatch):
 
 def test_filters_description_fallback_on_error(monkeypatch):
     """_filters_description returns fallback when config fails."""
-    import evidencelab_mcp.server as server_mod
+    import mcp_server.server as server_mod
 
     monkeypatch.setattr(
         server_mod,
@@ -121,7 +121,7 @@ async def test_search_accepts_dict_filters(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(
         query="test",
@@ -175,7 +175,7 @@ async def test_search_none_filters(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(query="test")
 
@@ -226,7 +226,7 @@ async def test_search_include_facets(monkeypatch):
         raising=False,
     )
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(query="test", include_facets=True)
 
@@ -257,7 +257,7 @@ async def test_search_no_facets_by_default(monkeypatch):
     app_state_mod.get_pg_for_source = lambda _: fake_pg
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
 
-    from evidencelab_mcp.tools.search import mcp_search
+    from mcp_server.tools.search import mcp_search
 
     result = await mcp_search(query="test")
 

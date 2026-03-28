@@ -7,7 +7,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from evidencelab_mcp.schemas import MCPSearchResponse, MCPSearchResult
+from mcp_server.schemas import MCPSearchResponse, MCPSearchResult
 
 logger = logging.getLogger(__name__)
 
