@@ -163,9 +163,9 @@ async def search(
         ),
     ],
     data_source: Annotated[
-        Optional[str],
+        str,
         Field(description=_data_source_description()),
-    ] = None,
+    ] = "uneg",
     limit: Annotated[
         int,
         Field(description="Maximum number of results to return (1-100, default 20)"),
@@ -199,10 +199,12 @@ async def search(
         bool,
         Field(
             description=(
-                "Rerank results with cross-encoder for better relevance (slower)"
+                "Rerank results with cross-encoder for better relevance. "
+                "Requires Azure Foundry reranker to be configured. "
+                "Default false for MCP to avoid dependency."
             )
         ),
-    ] = True,
+    ] = False,
     recency_boost: Annotated[
         bool,
         Field(
@@ -319,14 +321,14 @@ async def get_document(
         ),
     ],
     data_source: Annotated[
-        Optional[str],
+        str,
         Field(
             description=(
                 "Data collection containing the document. Options: "
                 '"uneg" (default), "worldbank", "unmandates"'
             )
         ),
-    ] = None,
+    ] = "uneg",
 ) -> dict:
     """Retrieve full metadata and content for a specific document.
 
@@ -383,14 +385,14 @@ async def ask_assistant(
         ),
     ],
     data_source: Annotated[
-        Optional[str],
+        str,
         Field(
             description=(
                 "Data collection to search. Options: "
                 '"uneg" (default), "worldbank", "unmandates"'
             )
         ),
-    ] = None,
+    ] = "uneg",
     deep_research: Annotated[
         bool,
         Field(
