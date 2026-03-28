@@ -134,7 +134,30 @@ async def search(
     """Search evaluation documents using hybrid semantic + keyword search.
 
     Returns ranked text passages with metadata including document title,
-    organization, year, country, and relevance score.
+    organization, year, country, and relevance score. Results are ordered
+    by relevance with scores between 0 and 1.
+
+    Each result contains: text (the matching passage), title, organization,
+    year, doc_id, chunk_id, score, page_num, headings, and section_type.
+
+    AVAILABLE DATA SOURCES:
+    - "uneg": ~15,000 UN evaluation reports from 20+ agencies (1985-2027)
+    - "worldbank": World Bank Fraud and Integrity investigation reports
+    - "unmandates": ~4,000 UN resolutions and decisions
+
+    FILTER FIELDS (vary by data source):
+    For "uneg": organization, published_year, document_type, country,
+      language, src_geographic_scope, tag_sdg, tag_cross_cutting_theme
+    For "worldbank": organization, published_year, document_type, country,
+      region, theme, topic, language, tag_sdg
+    For "unmandates": organization, published_year, document_type,
+      document_symbol, subject, tag_sdg
+
+    SECTION TYPES: executive_summary, findings, recommendations,
+      conclusions, methodology, context, lessons_learned, other
+
+    IMPORTANT: When presenting results to users, always include the
+    document title, organization, and year for proper attribution.
     """
     from ui.backend.mcp.tools.search import mcp_search
 
@@ -199,10 +222,18 @@ async def get_document(
         ),
     ] = None,
 ) -> dict:
-    """Retrieve full metadata for a specific evaluation document.
+    """Retrieve full metadata and content for a specific document.
 
-    Returns title, organization, year, abstract, AI summary, table of
-    contents, and all metadata fields. Use after search to get details.
+    Returns the complete document record including: title, organization,
+    publication year, document type, country, language, abstract,
+    AI-generated summary, table of contents, and all indexed metadata.
+
+    Use this tool after the search tool to get full details about a
+    document found in search results. Pass the doc_id from the search
+    result.
+
+    The metadata dict contains all available fields for the document,
+    which vary by data source and document.
     """
     from ui.backend.mcp.tools.document import mcp_get_document
 
@@ -277,8 +308,27 @@ async def ask_assistant(
 ) -> dict:
     """Ask the AI research assistant a question about evaluation documents.
 
-    Searches documents, retrieves relevant passages, and synthesizes a
-    comprehensive answer with source citations.
+    The assistant automatically searches the document collection using
+    multiple queries, retrieves the most relevant passages, and
+    synthesizes a comprehensive answer with source citations.
+
+    Returns: answer (full synthesized text), sources (list of cited
+    documents with title, organization, year, and relevance), and
+    the original query.
+
+    For complex questions spanning multiple topics or requiring
+    cross-referencing, set deep_research=True. This uses iterative
+    search with multiple query reformulations (2-5x slower but
+    significantly more thorough).
+
+    MODEL OPTIONS:
+    - "Azure Foundry": GPT-4.1-mini via Azure. Best quality, requires
+      Azure API key.
+    - "Huggingface": Qwen 2.5-7B running locally. Free, no API key.
+    - "Google Vertex": Gemini 2.5 Flash. Fast, requires GCP credentials.
+
+    IMPORTANT: Always attribute findings to specific source documents
+    when presenting results to users.
     """
     from ui.backend.mcp.tools.assistant import mcp_ask_assistant
 
