@@ -133,6 +133,9 @@ class MCPApp:
             await send({"type": "http.response.body", "body": b""})
             return
 
+        # Log all requests
+        logger.info("REQUEST %s %s (original: %s)", method, path, scope.get("path", ""))
+
         # Health check
         if path == "/health":
             body = json.dumps({"status": "ok", "service": "mcp"}).encode()
@@ -141,6 +144,45 @@ class MCPApp:
                     "type": "http.response.start",
                     "status": 200,
                     "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # OAuth 2.0 Protected Resource Metadata (RFC 9728)
+        if path == "/.well-known/oauth-protected-resource":
+            base_url = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
+            resource_meta = {
+                "resource": f"{base_url}/mcp",
+                "authorization_servers": [f"{base_url}/mcp"],
+                "bearer_methods_supported": ["header"],
+            }
+            body = json.dumps(resource_meta).encode()
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+
+        # OpenID Connect discovery (Claude checks this)
+        if path == "/.well-known/openid-configuration":
+            meta = get_metadata()
+            body = json.dumps(meta).encode()
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"cache-control", b"no-store"),
+                    ],
                 }
             )
             await send({"type": "http.response.body", "body": body})
@@ -324,21 +366,50 @@ class MCPApp:
 
         # MCP endpoint
         if path in ("/mcp", "/mcp/"):
+            # Log incoming request details
+            req_headers = dict(scope.get("headers", []))
+            auth_hdr = req_headers.get(b"authorization", b"").decode()
+            api_key_hdr = req_headers.get(b"x-api-key", b"").decode()
+            content_type = req_headers.get(b"content-type", b"").decode()
+            logger.info(
+                "MCP %s %s | auth=%r api_key=%s content_type=%s",
+                method,
+                scope.get("path", ""),
+                auth_hdr[:40] + "..." if len(auth_hdr) > 40 else auth_hdr,
+                "present" if api_key_hdr else "absent",
+                content_type,
+            )
+
             # Auth check
             if REQUIRE_AUTH:
                 request = Request(scope, receive)
                 try:
-                    await verify_mcp_auth(request)
+                    principal = await verify_mcp_auth(request)
+                    logger.info("MCP auth OK: %s", principal)
                 except PermissionError as exc:
+                    logger.warning("MCP auth DENIED: %s", exc)
                     body = json.dumps({"detail": str(exc)}).encode()
                     origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
+                    # Return 401 with WWW-Authenticate to trigger
+                    # the client's OAuth discovery flow (MCP spec).
+                    base_url = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
+                    resource_url = f"{base_url}/mcp"
                     headers = _add_cors_headers(
-                        [(b"content-type", b"application/json")], origin
+                        [
+                            (b"content-type", b"application/json"),
+                            (
+                                b"www-authenticate",
+                                f"Bearer resource_metadata="
+                                f'"{resource_url}/.well-known/'
+                                f'oauth-protected-resource"'.encode(),
+                            ),
+                        ],
+                        origin,
                     )
                     await send(
                         {
                             "type": "http.response.start",
-                            "status": 403,
+                            "status": 401,
                             "headers": headers,
                         }
                     )
