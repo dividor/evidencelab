@@ -21,6 +21,19 @@ class SearchFilters(BaseModel):
     values and their counts for the selected data_source.
     """
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"organization": "UNDP", "published_year": "2024"},
+                {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"},
+                {
+                    "organization": "General Assembly",
+                    "subject": "Women and peace and security",
+                },
+            ]
+        }
+    }
+
     organization: Optional[str] = Field(
         None,
         description=(
