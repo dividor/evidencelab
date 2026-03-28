@@ -99,16 +99,35 @@ async def mcp_ask_assistant(
             )
         # Partial answer is still useful — return what we have
 
+    # Look up document metadata for each unique docId so we can build
+    # proper citations with report_url, organization, and year.
+    doc_metadata: Dict[str, Dict[str, Any]] = {}
+    unique_doc_ids = {s.get("docId", "") for s in sources if s.get("docId")}
+    if unique_doc_ids:
+        from mcp_server.tools.document import mcp_get_document
+
+        for did in unique_doc_ids:
+            try:
+                doc = await mcp_get_document(doc_id=did, data_source=data_source)
+                doc_metadata[did] = doc.metadata
+                doc_metadata[did]["_title"] = doc.title
+                doc_metadata[did]["_org"] = doc.organization or ""
+                doc_metadata[did]["_year"] = doc.year or ""
+            except Exception:
+                logger.debug("Could not fetch metadata for doc %s", did)
+
     # Build citations and references from sources
     app_base = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
     citations: List[MCPCitation] = []
     references: List[str] = []
     for i, src in enumerate(sources, 1):
-        title = src.get("title", f"Document {i}")
-        org = src.get("organization", "")
-        year = src.get("year", "")
-        report_url = src.get("report_url", "") or src.get("url", "")
-        page_num = src.get("page_num")
+        doc_id = src.get("docId", "")
+        meta = doc_metadata.get(doc_id, {})
+        title = src.get("title") or meta.get("_title", f"Document {i}")
+        org = meta.get("_org", "")
+        year = meta.get("_year", "")
+        report_url = meta.get("report_url", "")
+        page_num = src.get("page")
         url = report_url or f"{app_base}/search"
         if page_num and url and "#" not in url:
             url = f"{url}#page={page_num}"
