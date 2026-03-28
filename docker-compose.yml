@@ -229,6 +229,8 @@ services:
     volumes:
       - .:/app
       - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ./.cache/huggingface:/root/.cache/huggingface
+      - ./.cache/fastembed:/root/.cache/fastembed
       - ./logs:/app/logs
     env_file:
       - .env
