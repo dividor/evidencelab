@@ -202,6 +202,43 @@ services:
         reservations:
           memory: 2G
 
+  # MCP server (Model Context Protocol) — Streamable HTTP transport
+  mcp:
+    image: evidencelab-ai-python:latest
+    container_name: mcp
+    expose:
+      - "8001"
+    env_file:
+      - .env
+    environment:
+      - QDRANT_HOST=http://host.docker.internal:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - DATA_MOUNT_PATH=/app/data
+      - PYTHONPATH=/app
+      - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
+      - APP_BASE_URL=${APP_BASE_URL:-https://evidencelab.ai}
+      - MCP_API_KEY=${MCP_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - api
+    networks:
+      - app-network
+    working_dir: /app
+    command: python -m mcp_server.http_server
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
   # React frontend (production build with nginx)
   ui:
     build:
