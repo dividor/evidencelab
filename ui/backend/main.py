@@ -28,6 +28,7 @@ from pipeline.db import (
     load_datasources_config,
 )
 from pipeline.utilities.tasks import app as celery_app
+from ui.backend.mcp.server import create_mcp_app
 from ui.backend.routes import assistant as assistant_routes
 from ui.backend.routes import config as config_routes
 from ui.backend.routes import documents as documents_routes
@@ -904,8 +905,6 @@ else:
     app.state.user_module_mode = "off"
 
 # MCP server (optional, enabled when fastmcp is installed)
-from ui.backend.mcp.server import create_mcp_app  # noqa: E402
-
 mcp_app = create_mcp_app()
 app.mount("/mcp", mcp_app)
 logger.info("MCP server mounted at /mcp")
