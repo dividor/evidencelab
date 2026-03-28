@@ -258,6 +258,6 @@ def create_mcp_app():
     return create_streamable_http_app(
         mcp,
         streamable_http_path="/",
-        stateless_http=True,
-        json_response=True,
+        stateless_http=False,
+        json_response=False,
     )
