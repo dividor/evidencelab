@@ -3,6 +3,7 @@ Search API Backend
 FastAPI server that provides semantic search over indexed documents in Qdrant.
 """
 
+import asyncio
 import logging
 import os
 import signal
@@ -136,6 +137,8 @@ async def verify_api_key(request: Request, api_key: str = Depends(api_key_header
 # root_path lets Swagger UI find /openapi.json when behind a reverse proxy
 # that strips a path prefix (e.g. nginx /api/ → /).
 ROOT_PATH = os.environ.get("API_ROOT_PATH", "")
+mcp_asgi = create_mcp_app()
+
 app = FastAPI(
     title="Evidence Lab API",
     dependencies=[Depends(verify_api_key)],
@@ -904,10 +907,99 @@ else:
     app.state.user_module_enabled = False
     app.state.user_module_mode = "off"
 
-# MCP server (optional, enabled when fastmcp is installed)
-mcp_app = create_mcp_app()
-app.mount("/mcp", mcp_app)
-logger.info("MCP server mounted at /mcp")
+# MCP server — start lifespan on startup, route /mcp via ASGI middleware.
+_mcp_shutdown_event = asyncio.Event()
+
+
+@app.on_event("startup")
+async def _mcp_startup():
+    """Initialize the MCP StreamableHTTP session manager."""
+
+    async def _run_mcp_lifespan():
+        phase = "startup"
+        ready = asyncio.Event()
+
+        async def recv():
+            nonlocal phase
+            if phase == "startup":
+                phase = "running"
+                return {"type": "lifespan.startup"}
+            await _mcp_shutdown_event.wait()
+            return {"type": "lifespan.shutdown"}
+
+        async def send_msg(message):
+            if message["type"] == "lifespan.startup.complete":
+                ready.set()
+
+        # Start the MCP app's lifespan
+        task = asyncio.ensure_future(
+            mcp_asgi(
+                {"type": "lifespan", "asgi": {"version": "3.0"}},
+                recv,
+                send_msg,
+            )
+        )
+        await asyncio.wait_for(ready.wait(), timeout=10.0)
+        logger.info("MCP StreamableHTTP session manager started")
+        # Store task so it stays alive
+        app.state._mcp_task = task
+
+    await _run_mcp_lifespan()
+
+
+@app.on_event("shutdown")
+async def _mcp_shutdown():
+    """Shut down the MCP session manager."""
+    _mcp_shutdown_event.set()
+    task = getattr(app.state, "_mcp_task", None)
+    if task:
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            task.cancel()
+
+
+# Raw ASGI middleware to intercept /mcp before FastAPI routing.
+# Must be added via app.middleware("http") which wraps at the ASGI level.
+@app.middleware("http")
+async def _mcp_route_middleware(request: Request, call_next):
+    """Route /mcp requests to the FastMCP ASGI app."""
+    if not request.url.path.startswith("/mcp"):
+        return await call_next(request)
+
+    scope = dict(request.scope)
+    scope["path"] = scope["path"][4:] or "/"
+    scope["root_path"] = scope.get("root_path", "") + "/mcp"
+
+    status_code = 200
+    resp_headers: list = []
+    body_parts: list = []
+
+    async def receive():
+        body = await request.body()
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    async def send(message):
+        nonlocal status_code
+        if message["type"] == "http.response.start":
+            status_code = message["status"]
+            resp_headers.extend(message.get("headers", []))
+        elif message["type"] == "http.response.body":
+            body_parts.append(message.get("body", b""))
+
+    await mcp_asgi(scope, receive, send)
+
+    from starlette.responses import Response as _Response
+
+    headers_dict = {k.decode(): v.decode() for k, v in resp_headers}
+    return _Response(
+        content=b"".join(body_parts),
+        status_code=status_code,
+        headers=headers_dict,
+    )
+
+
+logger.info("MCP server configured at /mcp")
 
 if __name__ == "__main__":
     # Host configurable for security - 0.0.0.0 for Docker, 127.0.0.1 for local dev

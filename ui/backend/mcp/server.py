@@ -250,4 +250,14 @@ def create_mcp_app():
     Returns a Starlette/ASGI application that handles the MCP
     Streamable HTTP protocol at the mount point.
     """
-    return mcp.http_app(path="/")
+    # Use create_streamable_http_app directly with path="/"
+    # so the handler sits at the root of the sub-app.
+    # The parent FastAPI app mounts us at /mcp.
+    from fastmcp.server.http import create_streamable_http_app
+
+    return create_streamable_http_app(
+        mcp,
+        streamable_http_path="/",
+        stateless_http=True,
+        json_response=True,
+    )
