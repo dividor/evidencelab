@@ -6,12 +6,80 @@ The HTTP server (http_server.py) handles transport and authentication.
 
 import logging
 import time
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, List, Optional
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from ui.backend.mcp.audit import log_mcp_call
+
+
+class SearchFilters(BaseModel):
+    """Filter fields for narrowing search results."""
+
+    organization: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by organization/agency. "
+            'For uneg: "UNDP", "UNICEF", "WFP", "FAO", "ILO", "UNEP", '
+            '"IOM", "UN_Women", "OIOS", "IFAD", "UNESCO", "WHO", etc. '
+            'For unmandates: "General Assembly", "Security Council", '
+            '"ECOSOC", "Human Rights Council". '
+            'For worldbank: "INT" (Integrity Vice Presidency).'
+        ),
+    )
+    published_year: Optional[str] = Field(
+        None,
+        description='Filter by publication year, e.g. "2024", "2023".',
+    )
+    document_type: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by document type. "
+            'For uneg: "Project Evaluation", "Country Programme Evaluation", '
+            '"Thematic Evaluation", "Impact Evaluation", etc. '
+            'For unmandates: "UN Resolution/Decision".'
+        ),
+    )
+    country: Optional[str] = Field(
+        None,
+        description='Filter by country name, e.g. "Kenya", "Bangladesh".',
+    )
+    language: Optional[str] = Field(
+        None,
+        description='Filter by document language: "English", "French", "Spanish", "Arabic".',
+    )
+    tag_sdg: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by UN Sustainable Development Goal. "
+            'e.g. "SDG1 - No Poverty", "SDG2 - Zero Hunger", '
+            '"SDG5 - Gender Equality", "SDG13 - Climate Action".'
+        ),
+    )
+    tag_cross_cutting_theme: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by cross-cutting theme (uneg only). "
+            'e.g. "Gender Equality", "Human Rights", "Climate Change".'
+        ),
+    )
+    region: Optional[str] = Field(
+        None,
+        description='Filter by region, e.g. "Sub-Saharan Africa", "East Asia and Pacific".',
+    )
+    document_symbol: Optional[str] = Field(
+        None,
+        description=(
+            "Filter by document symbol (unmandates only). "
+            'e.g. "A/RES/78/1", "S/RES/2686".'
+        ),
+    )
+    subject: Optional[str] = Field(
+        None,
+        description="Filter by subject heading (unmandates only).",
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -75,20 +143,11 @@ async def search(
         Field(description=("Maximum number of results to return (1-100, default 20)")),
     ] = 20,
     filters: Annotated[
-        Optional[Dict[str, Any]],
+        Optional[SearchFilters],
         Field(
             description=(
-                "Field filters as {field_name: value} pairs. "
-                'For "uneg": organization (e.g. "UNDP","UNICEF","WFP","FAO"), '
-                'published_year (e.g. "2024"), document_type (e.g. "Project Evaluation"), '
-                'country, language (e.g. "English","French"), '
-                'src_geographic_scope, tag_sdg (e.g. "SDG1 - No Poverty"), '
-                "tag_cross_cutting_theme. "
-                'For "worldbank": organization, published_year, document_type, '
-                "country, region, theme, topic, language, tag_sdg. "
-                'For "unmandates": organization (Issuing Organ, e.g. "General Assembly"), '
-                "published_year (Year adopted), document_type, document_symbol, "
-                "subject, tag_sdg."
+                "Filter results by metadata fields. All fields are optional. "
+                "Available fields vary by data_source — irrelevant fields are ignored."
             )
         ),
     ] = None,
@@ -171,7 +230,7 @@ async def search(
             query=query,
             data_source=data_source,
             limit=limit,
-            filters=filters,
+            filters=filters.model_dump(exclude_none=True) if filters else None,
             section_types=section_types,
             rerank=rerank,
             recency_boost=recency_boost,
