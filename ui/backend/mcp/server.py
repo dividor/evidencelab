@@ -83,6 +83,36 @@ class SearchFilters(BaseModel):
 
 logger = logging.getLogger(__name__)
 
+
+def _data_source_description() -> str:
+    """Build data_source field description from config.json."""
+    try:
+        import json
+        from pathlib import Path
+
+        config_path = Path(__file__).resolve().parents[3] / "config.json"
+        with open(config_path) as f:
+            cfg = json.load(f)
+        sources = cfg.get("datasources", {})
+        parts = ["Data collection to search. Options: "]
+        entries = []
+        for name, conf in sources.items():
+            subdir = conf.get("data_subdir", "")
+            entries.append(f'"{subdir}" ({name})')
+        parts.append(", ".join(entries))
+        if entries:
+            first_subdir = list(sources.values())[0].get("data_subdir", "uneg")
+            parts.append(f'. Default: "{first_subdir}".')
+        return "".join(parts)
+    except Exception:
+        return (
+            "Data collection to search. Options: "
+            '"uneg" (UN Humanitarian Evaluation Reports, default), '
+            '"worldbank" (World Bank Fraud and Integrity Reports), '
+            '"unmandates" (UN Mandates Registry)'
+        )
+
+
 mcp = FastMCP(
     "Evidence Lab",
     instructions=(
@@ -129,25 +159,24 @@ async def search(
     ],
     data_source: Annotated[
         Optional[str],
-        Field(
-            description=(
-                "Data collection to search. Options: "
-                '"uneg" (UN Humanitarian Evaluation Reports, default), '
-                '"worldbank" (World Bank Fraud and Integrity Reports), '
-                '"unmandates" (UN Mandates Registry - resolutions/decisions)'
-            )
-        ),
+        Field(description=_data_source_description()),
     ] = None,
     limit: Annotated[
         int,
-        Field(description=("Maximum number of results to return (1-100, default 20)")),
+        Field(description="Maximum number of results to return (1-100, default 20)"),
     ] = 20,
     filters: Annotated[
         Optional[SearchFilters],
         Field(
             description=(
                 "Filter results by metadata fields. All fields are optional. "
-                "Available fields vary by data_source — irrelevant fields are ignored."
+                "Available fields vary by data_source — irrelevant fields "
+                "are ignored. "
+                'Example: {"organization": "UNDP", "published_year": "2024"} '
+                'or {"tag_sdg": "SDG5 - Gender Equality", "country": "Kenya"}. '
+                "TIP: Call search with include_facets=True first to discover "
+                "all available filter values and their counts for the "
+                "selected data_source."
             )
         ),
     ] = None,
