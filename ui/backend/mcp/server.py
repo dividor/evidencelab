@@ -250,4 +250,4 @@ def create_mcp_app():
     Returns a Starlette/ASGI application that handles the MCP
     Streamable HTTP protocol at the mount point.
     """
-    return mcp.http_app()
+    return mcp.http_app(path="/")
