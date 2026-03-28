@@ -113,6 +113,12 @@ class MCPApp:
         path = scope.get("path", "")
         method = scope.get("method", "GET")
 
+        # When behind a reverse proxy at /mcp, requests arrive with
+        # /mcp prefix (e.g. /mcp/.well-known/...).  Strip it so
+        # route matching works the same both directly and proxied.
+        if path.startswith("/mcp/"):
+            path = path[4:]  # /mcp/foo -> /foo
+
         # CORS preflight
         if method == "OPTIONS":
             origin = dict(scope.get("headers", [])).get(b"origin", b"").decode()
