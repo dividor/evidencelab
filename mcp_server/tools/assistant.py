@@ -46,20 +46,24 @@ async def mcp_ask_assistant(
         from pipeline.db import UI_MODEL_COMBOS
 
         combo = UI_MODEL_COMBOS.get(model_combo, {})
-        assistant_model_config = combo.get("assistant_model")
+        assistant_cfg = combo.get("assistant_model") or {}
+        model_key = (
+            assistant_cfg.get("model")
+            if isinstance(assistant_cfg, dict)
+            else assistant_cfg
+        )
         reranker_model = combo.get("reranker_model")
 
         async for event in stream_research_response(
             query=query,
             data_source=data_source,
             deep_research=deep_research,
-            assistant_model_config=assistant_model_config,
+            model_key=model_key,
             reranker_model=reranker_model,
         ):
             event_type = event.get("type")
             if event_type == "token":
-                # The last token event contains the full synthesized text
-                answer_text = event.get("token", "")
+                answer_text += event.get("token", "")
             elif event_type == "sources":
                 sources = event.get("sources", [])
             elif event_type == "error":
