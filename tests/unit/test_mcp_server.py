@@ -45,6 +45,23 @@ async def test_search_tool_basic(monkeypatch):
             "map_published_year": "2023",
         }
     }
+    fake_pg.fetch_chunks.return_value = {}
+
+    from ui.backend.schemas import SearchResult as BackendSearchResult
+
+    fake_search_result = BackendSearchResult(
+        chunk_id="chunk-1",
+        doc_id="doc-1",
+        text="Climate change impacts on agriculture.",
+        page_num=5,
+        headings=["Introduction"],
+        section_type="findings",
+        score=0.85,
+        title="Climate Report",
+        organization="UNEP",
+        year="2023",
+        metadata={"report_url": "https://example.com/report.pdf"},
+    )
 
     # Patch the source modules that are lazily imported inside mcp_search
     search_mod = ModuleType("ui.backend.services.search")
@@ -54,7 +71,16 @@ async def test_search_tool_basic(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: [
+        fake_search_result
+    ]
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 

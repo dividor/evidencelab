@@ -25,7 +25,7 @@ def test_data_source_description_reads_config(monkeypatch, tmp_path):
     config_file = tmp_path / "config.json"
     config_file.write_text(json.dumps(config))
 
-    import mcp_server.server as server_mod
+    import mcp_server.app as server_mod
 
     monkeypatch.setattr(
         server_mod,
@@ -41,7 +41,7 @@ def test_data_source_description_reads_config(monkeypatch, tmp_path):
 
 def test_data_source_description_fallback_on_error(monkeypatch):
     """_data_source_description returns fallback when config fails."""
-    import mcp_server.server as server_mod
+    import mcp_server.app as server_mod
 
     monkeypatch.setattr(
         server_mod,
@@ -70,7 +70,7 @@ def test_filters_description_reads_config(monkeypatch):
         }
     }
 
-    import mcp_server.server as server_mod
+    import mcp_server.app as server_mod
 
     monkeypatch.setattr(server_mod, "_load_config", lambda: config)
 
@@ -83,7 +83,7 @@ def test_filters_description_reads_config(monkeypatch):
 
 def test_filters_description_fallback_on_error(monkeypatch):
     """_filters_description returns fallback when config fails."""
-    import mcp_server.server as server_mod
+    import mcp_server.app as server_mod
 
     monkeypatch.setattr(
         server_mod,
