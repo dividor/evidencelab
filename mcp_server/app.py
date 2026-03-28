@@ -213,6 +213,12 @@ async def search(
 ) -> MCPSearchResponse:
     """Search evaluation documents using hybrid semantic + keyword search.
 
+    START HERE — use this tool first before ask_assistant. It returns the
+    raw text passages so you can read, quote, and analyse the evidence
+    yourself without the assistant paraphrasing or filtering it for you.
+    Use ask_assistant only when you want a synthesized narrative answer;
+    prefer search when you want direct quotes, counts, or your own analysis.
+
     Returns ranked text passages with metadata including document title,
     organization, year, country, and relevance score. Results are ordered
     by relevance with scores between 0 and 1.
@@ -398,6 +404,12 @@ async def ask_assistant(
     ] = "Azure Foundry",
 ) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
+
+    USE SEARCH FIRST — before calling this tool, run one or more search
+    calls to retrieve raw passages. This lets you (and the user) see the
+    underlying evidence directly. Use ask_assistant when you want a
+    synthesized narrative that draws across many passages; it is slower
+    and less transparent than reading raw search results yourself.
 
     The assistant automatically searches the document collection using
     multiple queries, retrieves the most relevant passages, and
