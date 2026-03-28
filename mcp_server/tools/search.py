@@ -137,9 +137,13 @@ async def mcp_search(
         meta = {k: v for k, v in (sr.metadata or {}).items() if k in _KEEP_FIELDS and v}
 
         # Build citation URL — prefer report_url, fall back to pdf_url
+        # Append #page=N if page number is available
         report_url = (sr.metadata or {}).get("report_url", "")
         pdf_url = (sr.metadata or {}).get("pdf_url", "")
         cite_url = report_url or pdf_url or ""
+        page = sr.page_num or 0
+        if cite_url and page > 0:
+            cite_url = f"{cite_url}#page={page}"
 
         results.append(
             MCPSearchResult(
