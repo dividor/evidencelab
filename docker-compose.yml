@@ -257,7 +257,7 @@ services:
     networks:
       - app-network
     working_dir: /app
-    command: python -m ui.backend.mcp.http_server
+    command: python -m evidencelab_mcp.http_server
     restart: unless-stopped
 
   # React frontend (development server with hot reload)

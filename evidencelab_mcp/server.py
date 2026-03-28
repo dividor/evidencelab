@@ -12,7 +12,7 @@ from typing import Annotated, Any, List, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
-from ui.backend.mcp.audit import log_mcp_call
+from evidencelab_mcp.audit import log_mcp_call
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def _load_config() -> dict:
     import json as _json
     from pathlib import Path
 
-    config_path = Path(__file__).resolve().parents[3] / "config.json"
+    config_path = Path(__file__).resolve().parents[1] / "config.json"
     with open(config_path) as f:
         return _json.load(f)
 
@@ -215,7 +215,7 @@ async def search(
     IMPORTANT: When presenting results to users, always include the
     document title, organization, and year for proper attribution.
     """
-    from ui.backend.mcp.tools.search import mcp_search
+    from evidencelab_mcp.tools.search import mcp_search
 
     t0 = time.monotonic()
     auth_info: dict = {"type": "unknown", "user_id": "unknown"}
@@ -296,7 +296,7 @@ async def get_document(
     The metadata dict contains all available fields for the document,
     which vary by data source and document.
     """
-    from ui.backend.mcp.tools.document import mcp_get_document
+    from evidencelab_mcp.tools.document import mcp_get_document
 
     t0 = time.monotonic()
     auth_info: dict = {"type": "unknown", "user_id": "unknown"}
@@ -391,7 +391,7 @@ async def ask_assistant(
     IMPORTANT: Always attribute findings to specific source documents
     when presenting results to users.
     """
-    from ui.backend.mcp.tools.assistant import mcp_ask_assistant
+    from evidencelab_mcp.tools.assistant import mcp_ask_assistant
 
     t0 = time.monotonic()
     auth_info: dict = {"type": "unknown", "user_id": "unknown"}
@@ -449,7 +449,7 @@ def research_question(topic: str, data_source: str = "uneg") -> str:
         data_source: The document collection to search.
             "uneg" (default), "worldbank", or "unmandates"
     """
-    from ui.backend.mcp.prompts.research import research_question_prompt
+    from evidencelab_mcp.prompts.research import research_question_prompt
 
     return research_question_prompt(topic=topic, data_source=data_source)
 
@@ -471,6 +471,6 @@ def comparative_analysis(topic: str, dimension: str = "organization") -> str:
             "time_period" - Compare across years/decades
             "sector" - Compare across development sectors
     """
-    from ui.backend.mcp.prompts.research import comparative_analysis_prompt
+    from evidencelab_mcp.prompts.research import comparative_analysis_prompt
 
     return comparative_analysis_prompt(topic=topic, dimension=dimension)

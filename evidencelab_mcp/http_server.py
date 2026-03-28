@@ -6,7 +6,7 @@ Claude Code, ChatGPT, MCP Inspector, etc.).
 
 Usage::
 
-    python -m ui.backend.mcp.http_server
+    python -m evidencelab_mcp.http_server
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ import uvicorn
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.requests import Request
 
-from ui.backend.mcp.auth import verify_mcp_auth
-from ui.backend.mcp.server import mcp as mcp_server
+from evidencelab_mcp.auth import verify_mcp_auth
+from evidencelab_mcp.server import mcp as mcp_server
 
 logger = logging.getLogger(__name__)
 

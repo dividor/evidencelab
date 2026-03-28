@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ui.backend.mcp.audit import _do_log
+from evidencelab_mcp.audit import _do_log
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_log_mcp_call_success(monkeypatch):
     fake_pool = AsyncMock()
     fake_pool.execute = AsyncMock()
 
-    import ui.backend.mcp.audit as audit_mod
+    import evidencelab_mcp.audit as audit_mod
 
     monkeypatch.setattr(audit_mod, "_get_pool", AsyncMock(return_value=fake_pool))
 
@@ -57,7 +57,7 @@ async def test_log_mcp_call_handles_db_error(monkeypatch):
     fake_pool = AsyncMock()
     fake_pool.execute = AsyncMock(side_effect=Exception("connection refused"))
 
-    import ui.backend.mcp.audit as audit_mod
+    import evidencelab_mcp.audit as audit_mod
 
     monkeypatch.setattr(audit_mod, "_get_pool", AsyncMock(return_value=fake_pool))
 

@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from ui.backend.mcp.schemas import MCPAssistantResponse
+from evidencelab_mcp.schemas import MCPAssistantResponse
 
 logger = logging.getLogger(__name__)
 

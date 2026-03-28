@@ -7,7 +7,7 @@ import hashlib
 import pytest
 from starlette.requests import Request
 
-from ui.backend.mcp.auth import verify_mcp_auth
+from evidencelab_mcp.auth import verify_mcp_auth
 
 
 def _make_request(headers: dict | None = None, cookies: dict | None = None) -> Request:
@@ -58,7 +58,7 @@ async def test_valid_admin_api_key(monkeypatch):
         return {key_hash}
 
     monkeypatch.setattr(
-        "ui.backend.mcp.auth.get_active_key_hashes",
+        "evidencelab_mcp.auth.get_active_key_hashes",
         fake_get_active_key_hashes,
         raising=False,
     )
