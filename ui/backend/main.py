@@ -903,6 +903,16 @@ else:
     app.state.user_module_enabled = False
     app.state.user_module_mode = "off"
 
+# MCP server (optional, enabled when fastmcp is installed)
+try:
+    from ui.backend.mcp.server import create_mcp_app
+
+    mcp_app = create_mcp_app()
+    app.mount("/mcp", mcp_app)
+    logger.info("MCP server mounted at /mcp")
+except ImportError:
+    logger.info("FastMCP not installed; MCP server disabled")
+
 if __name__ == "__main__":
     # Host configurable for security - 0.0.0.0 for Docker, 127.0.0.1 for local dev
     host = os.environ.get("API_HOST", "127.0.0.1")

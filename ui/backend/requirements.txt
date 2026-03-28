@@ -18,3 +18,6 @@ sqlalchemy[asyncio]==2.0.36
 asyncpg==0.31.0
 aiosmtplib==5.1.0
 openpyxl>=3.1.0
+
+# MCP server (Model Context Protocol)
+fastmcp>=2.0.0
