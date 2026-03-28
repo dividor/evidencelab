@@ -684,9 +684,22 @@ h6,
 .search-container.search-container-landing .search-input {
   font-size: 1.25rem;
   padding: 0 1.75rem;
+  padding-right: 9rem;
   height: 64px;
   display: flex;
   align-items: center;
+}
+
+/* Mobile: icon-only filter button, shorter placeholder */
+@media (max-width: 640px) {
+  .search-input-filters .search-input-filters-label {
+    display: none;
+  }
+  .search-input-wrapper .search-input,
+  .search-container.search-container-landing .search-input {
+    padding-right: 3.5rem;
+    font-size: 1rem;
+  }
 }
 
 /* Landing search button: solid style */
