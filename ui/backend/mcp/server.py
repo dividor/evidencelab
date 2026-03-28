@@ -15,69 +15,74 @@ from ui.backend.mcp.audit import log_mcp_call
 
 
 class SearchFilters(BaseModel):
-    """Filter fields for narrowing search results."""
+    """Filter fields for narrowing search results.
+
+    Use include_facets=True on the search tool to get all available
+    values and their counts for the selected data_source.
+    """
 
     organization: Optional[str] = Field(
         None,
         description=(
             "Filter by organization/agency. "
-            'For uneg: "UNDP", "UNICEF", "WFP", "FAO", "ILO", "UNEP", '
-            '"IOM", "UN_Women", "OIOS", "IFAD", "UNESCO", "WHO", etc. '
-            'For unmandates: "General Assembly", "Security Council", '
-            '"ECOSOC", "Human Rights Council". '
-            'For worldbank: "INT" (Integrity Vice Presidency).'
+            "For uneg: UNDP, UNICEF, WFP, FAO, ILO, UNEP, IOM, etc. "
+            "For unmandates: General Assembly, Security Council, ECOSOC. "
+            "For worldbank: INT."
         ),
+        examples=["UNDP", "UNICEF", "WFP", "General Assembly"],
     )
     published_year: Optional[str] = Field(
         None,
-        description='Filter by publication year, e.g. "2024", "2023".',
+        description="Filter by publication year.",
+        examples=["2024", "2023", "2020"],
     )
     document_type: Optional[str] = Field(
         None,
         description=(
             "Filter by document type. "
-            'For uneg: "Project Evaluation", "Country Programme Evaluation", '
-            '"Thematic Evaluation", "Impact Evaluation", etc. '
-            'For unmandates: "UN Resolution/Decision".'
+            "For uneg: Project Evaluation, Country Programme Evaluation, etc. "
+            "For unmandates: UN Resolution/Decision."
         ),
+        examples=["Project Evaluation", "Country Programme Evaluation"],
     )
     country: Optional[str] = Field(
         None,
-        description='Filter by country name, e.g. "Kenya", "Bangladesh".',
+        description="Filter by country name.",
+        examples=["Kenya", "Bangladesh", "Colombia"],
     )
     language: Optional[str] = Field(
         None,
-        description='Filter by document language: "English", "French", "Spanish", "Arabic".',
+        description="Filter by document language.",
+        examples=["English", "French", "Spanish", "Arabic"],
     )
     tag_sdg: Optional[str] = Field(
         None,
-        description=(
-            "Filter by UN Sustainable Development Goal. "
-            'e.g. "SDG1 - No Poverty", "SDG2 - Zero Hunger", '
-            '"SDG5 - Gender Equality", "SDG13 - Climate Action".'
-        ),
+        description="Filter by UN Sustainable Development Goal.",
+        examples=[
+            "SDG1 - No Poverty",
+            "SDG5 - Gender Equality",
+            "SDG13 - Climate Action",
+        ],
     )
     tag_cross_cutting_theme: Optional[str] = Field(
         None,
-        description=(
-            "Filter by cross-cutting theme (uneg only). "
-            'e.g. "Gender Equality", "Human Rights", "Climate Change".'
-        ),
+        description="Filter by cross-cutting theme (uneg only).",
+        examples=["Gender Equality", "Human Rights", "Climate Change"],
     )
     region: Optional[str] = Field(
         None,
-        description='Filter by region, e.g. "Sub-Saharan Africa", "East Asia and Pacific".',
+        description="Filter by region.",
+        examples=["Sub-Saharan Africa", "East Asia and Pacific"],
     )
     document_symbol: Optional[str] = Field(
         None,
-        description=(
-            "Filter by document symbol (unmandates only). "
-            'e.g. "A/RES/78/1", "S/RES/2686".'
-        ),
+        description="Filter by document symbol (unmandates only).",
+        examples=["A/RES/78/1", "S/RES/2686"],
     )
     subject: Optional[str] = Field(
         None,
         description="Filter by subject heading (unmandates only).",
+        examples=["Women and peace and security", "Climate change"],
     )
 
 
