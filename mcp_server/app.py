@@ -84,6 +84,29 @@ def _filters_description() -> str:
         )
 
 
+def _model_combo_description() -> str:
+    """Build model_combo field description from config.json."""
+    try:
+        cfg = _load_config()
+        combos = cfg.get("ui_model_combos", {})
+        if not combos:
+            return "Model configuration. Default: Azure Foundry."
+        names = list(combos.keys())
+        default = names[0]
+        options = ", ".join(f'"{n}"' for n in names)
+        return (
+            f"Model configuration. ALWAYS use the default "
+            f'"{default}" unless the user explicitly requests a '
+            f"different model. Available: {options}."
+        )
+    except Exception:
+        return (
+            "Model configuration. ALWAYS use the default "
+            '"Azure Foundry" unless the user explicitly requests '
+            "a different model."
+        )
+
+
 mcp = FastMCP(
     "Evidence Lab",
     instructions=(
@@ -98,11 +121,8 @@ mcp = FastMCP(
         "Integrity Vice Presidency investigation reports.\n"
         '  - "unmandates" (UN Mandates Registry): ~4,000 UN General Assembly, '
         "Security Council, and ECOSOC resolutions/decisions.\n\n"
-        "AVAILABLE MODEL COMBOS (for ask_assistant):\n"
-        '  - "Azure Foundry" (default): GPT-4.1-mini via Azure, '
-        "Cohere reranker. Best quality.\n"
-        '  - "Huggingface": Qwen 2.5-7B local model. Free, no API key needed.\n'
-        '  - "Google Vertex": Gemini 2.5 Flash. Fast, good quality.\n\n'
+        "MODEL: Always use the default model_combo unless the user "
+        "explicitly requests a different one.\n\n"
         "TOOLS:\n"
         "  - search: Find relevant text passages across documents\n"
         "  - get_document: Retrieve full metadata for a specific document\n"
@@ -176,15 +196,7 @@ async def search(
     ] = True,
     model_combo: Annotated[
         str,
-        Field(
-            description=(
-                "Model configuration for embeddings/reranking. ALWAYS use the "
-                "default unless the user explicitly requests a different model. "
-                '"Azure Foundry" (RECOMMENDED default — best quality), '
-                '"Huggingface" (requires local GPU server), '
-                '"Google Vertex" (requires GCP credentials)'
-            )
-        ),
+        Field(description=(_model_combo_description())),
     ] = "Azure Foundry",
     include_facets: Annotated[
         bool,
@@ -382,17 +394,7 @@ async def ask_assistant(
     ] = False,
     model_combo: Annotated[
         str,
-        Field(
-            description=(
-                "LLM model configuration. ALWAYS use the default unless "
-                "the user explicitly requests a different model. Options: "
-                '"Azure Foundry" (RECOMMENDED default — GPT-4.1-mini via Azure, '
-                "best quality and reliability), "
-                '"Huggingface" (Qwen 2.5-7B, requires local GPU server — '
-                "will fail if not running locally), "
-                '"Google Vertex" (Gemini 2.5 Flash, requires GCP credentials)'
-            )
-        ),
+        Field(description=(_model_combo_description())),
     ] = "Azure Foundry",
 ) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
@@ -410,11 +412,9 @@ async def ask_assistant(
     search with multiple query reformulations (2-5x slower but
     significantly more thorough).
 
-    MODEL OPTIONS (always use default "Azure Foundry" unless user requests otherwise):
-    - "Azure Foundry" (RECOMMENDED): GPT-4.1-mini via Azure. Best quality.
-    - "Huggingface": Qwen 2.5-7B. Requires local GPU server — will fail
-      if not running locally.
-    - "Google Vertex": Gemini 2.5 Flash. Requires GCP credentials.
+    MODEL: Always use the default model_combo unless the user explicitly
+    requests a different one. Available models are listed in the
+    model_combo parameter description.
 
     IMPORTANT — your response MUST include:
     1. Every factual claim MUST have at least one clickable inline citation
