@@ -90,7 +90,7 @@ async def _do_log(
             auth_info.get("key_hash"),
             client_ip,
             json.dumps(input_params, default=str),
-            output_summary[:2000] if output_summary else "",
+            output_summary or "",
             duration_ms,
             status,
             error_message,

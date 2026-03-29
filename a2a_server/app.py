@@ -176,7 +176,7 @@ async def _handle_tasks_send(
             "query": first_text[:500],
             "data_source": (send_params.message.metadata or {}).get("data_source"),
         },
-        output_summary=f"state={state}",
+        output_summary=json.dumps(task.model_dump(exclude_none=True)),
         duration_ms=duration_ms,
         status="ok" if state == "completed" else "error",
         protocol="a2a",
@@ -251,7 +251,11 @@ async def _handle_tasks_send_subscribe(
             "query": first_text[:500],
             "data_source": (send_params.message.metadata or {}).get("data_source"),
         },
-        output_summary="streamed",
+        output_summary=(
+            json.dumps(_tasks[task_id].model_dump(exclude_none=True))
+            if task_id in _tasks
+            else "streamed"
+        ),
         duration_ms=duration_ms,
         status="ok",
         protocol="a2a",
