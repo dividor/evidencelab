@@ -81,7 +81,7 @@ Evidence Lab integrates with external AI systems via two open protocols:
 - **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude, ChatGPT, and other AI assistants call Evidence Lab as a tool directly from within your AI platform. Tools: `search` (semantic search with filters and citations) and `get_document` (full document metadata). Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT.
 - **A2A Agent** — [Agent-to-Agent protocol](https://a2a-protocol.org/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, Azure AI Foundry, etc.). Exposes a `research` skill — the same assistant as the UI — that returns synthesised answers with citations, and a `search` skill for raw evidence retrieval. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`.
 
-Both protocols share API key authentication, rate limiting, and audit logging. See [Using in AI Platforms](/docs/overview/mcp) for connection instructions.
+Both protocols share API key authentication, rate limiting, and audit logging. See [Connecting to AI Platforms](/docs/overview/mcp) for connection instructions.
 
 ### REST API
 

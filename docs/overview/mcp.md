@@ -1,4 +1,4 @@
-# Using AI Platforms
+# Connecting to AI Platforms
 
 Evidence Lab can be connected to AI platforms and agent frameworks via two open protocols:
 
