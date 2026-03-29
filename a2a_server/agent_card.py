@@ -6,11 +6,9 @@ import os
 from typing import List
 
 
-def _datasource_names() -> List[str]:
-    """Return the list of configured datasource names from config.json."""
+def _load_datasources() -> List[tuple]:
+    """Return [(name, key), ...] for each configured datasource."""
     try:
-        # get_application_config returns the application sub-key; load raw config for
-        # the top-level datasources list
         import json
 
         config_path = os.path.join(
@@ -18,43 +16,57 @@ def _datasource_names() -> List[str]:
         )
         with open(config_path, encoding="utf-8") as f:
             raw = json.load(f)
-        return list(raw.get("datasources", {}).keys())
+        return [
+            (name, ds.get("data_subdir", name))
+            for name, ds in raw.get("datasources", {}).items()
+        ]
     except Exception:
         return []
 
 
-def _build_description(datasource_names: List[str]) -> str:
-    if not datasource_names:
+def _build_description(datasources: List[tuple]) -> str:
+    if not datasources:
         return (
             "AI research agent for evaluation and policy documents. "
             "Searches document collections and synthesises answers with source citations."
         )
-    if len(datasource_names) == 1:
-        collections = datasource_names[0]
-    elif len(datasource_names) == 2:
-        collections = f"{datasource_names[0]} and {datasource_names[1]}"
+    names = [name for name, _ in datasources]
+    if len(names) == 1:
+        collections = names[0]
+    elif len(names) == 2:
+        collections = f"{names[0]} and {names[1]}"
     else:
-        collections = ", ".join(datasource_names[:-1]) + f", and {datasource_names[-1]}"
+        collections = ", ".join(names[:-1]) + f", and {names[-1]}"
     return (
         f"AI research agent for {collections}. "
         "Searches document collections and synthesises answers with source citations."
     )
 
 
-def _build_research_description(datasource_names: List[str]) -> str:
-    if not datasource_names:
-        return (
-            "Answer research questions across configured document collections. "
-            "Returns a synthesised answer with inline citations and links to source documents."
+def _build_skill_description(datasources: List[tuple], skill: str) -> str:
+    if not datasources:
+        ds_list = "configured document collections"
+        data_source_hint = ""
+    else:
+        entries = [f'"{key}" ({name})' for name, key in datasources]
+        ds_list = "; ".join(entries)
+        keys = [key for _, key in datasources]
+        data_source_hint = (
+            f" Pass data_source in message metadata to select a collection: "
+            f"{', '.join(repr(k) for k in keys)}."
         )
-    collections = (
-        "; ".join(datasource_names)
-        if datasource_names
-        else "configured document collections"
-    )
+
+    if skill == "research":
+        return (
+            f"Answer research questions across: {ds_list}."
+            f"{data_source_hint}"
+            " Returns a synthesised answer with inline citations and links to source documents."
+        )
     return (
-        f"Answer research questions across: {collections}. "
-        "Returns a synthesised answer with inline citations and links to source documents."
+        f"Semantic search over: {ds_list}."
+        f"{data_source_hint}"
+        " Returns ranked text passages with metadata, scores, and citation links."
+        " Use when you want to analyse the raw evidence yourself."
     )
 
 
@@ -69,11 +81,11 @@ def build_agent_card():  # type: ignore[return]
 
     base_url = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
     a2a_url = f"{base_url}/a2a"
-    datasource_names = _datasource_names()
+    datasources = _load_datasources()
 
     return AgentCard(
         name="Evidence Lab Research Agent",
-        description=_build_description(datasource_names),
+        description=_build_description(datasources),
         url=a2a_url,
         version="1.0.0",
         capabilities=AgentCapabilities(
@@ -91,7 +103,7 @@ def build_agent_card():  # type: ignore[return]
             AgentSkill(
                 id="research",
                 name="Research Evaluations",
-                description=_build_research_description(datasource_names),
+                description=_build_skill_description(datasources, "research"),
                 tags=["research", "evaluations", "evidence"],
                 examples=[
                     "What are the main findings on climate adaptation in Africa?",
@@ -105,14 +117,7 @@ def build_agent_card():  # type: ignore[return]
             AgentSkill(
                 id="search",
                 name="Search Evaluation Documents",
-                description=(
-                    "Semantic search over document chunks. "
-                    "Returns ranked text passages with metadata. "
-                    "Accepts optional JSON filters for organisation, year, "
-                    "country, SDG, etc. "
-                    "Use this skill to retrieve raw evidence passages "
-                    "when you want to analyse the data yourself."
-                ),
+                description=_build_skill_description(datasources, "search"),
                 tags=["search", "evaluations", "semantic"],
                 examples=[
                     "Search for findings on food security in Yemen",
