@@ -8,7 +8,7 @@
         { "title": "Getting Started", "path": "overview/getting-started.md" },
         { "title": "Technical Info", "path": "overview/tech.md" },
         { "title": "Data Sources", "path": "overview/data.md" },
-        { "title": "Using in AI Platforms", "path": "overview/mcp.md" }
+        { "title": "Connecting to AI Platforms", "path": "overview/mcp.md" }
       ]
     },
     {
@@ -28,7 +28,9 @@
         { "title": "Pipeline Configuration", "path": "admin/pipeline-configuration.md" },
         { "title": "User Administration", "path": "admin/user-administration.md" },
         { "title": "API", "path": "admin/api-keys.md" },
-        { "title": "System Monitoring", "path": "admin/system-monitoring.md" }
+        { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
+        { "title": "MCP Server", "path": "admin/mcp-server.md" },
+        { "title": "A2A Server", "path": "admin/a2a-server.md" }
       ]
     }
   ]
