@@ -87,8 +87,7 @@ const ApiKeyManager: React.FC = () => {
       <h3>API Key</h3>
       <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
         Use this key to authenticate API, MCP, and A2A requests via the <code>X-API-Key</code> header.
-        After generating a new key, allow up to 60 seconds before using it with MCP or A2A — those
-        services cache key hashes and refresh on a 60-second cycle.
+        After generating a new key, allow up to 60 seconds before using it with MCP or A2A.
       </p>
 
       {error && (
