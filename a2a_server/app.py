@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import uuid
 from typing import Any, Dict
 
@@ -65,8 +66,19 @@ async def handle_agent_card(send) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-async def handle_a2a_request(scope, receive, send) -> None:
-    """Handle POST /a2a — JSON-RPC task endpoint."""
+async def handle_a2a_request(
+    scope,
+    receive,
+    send,
+    principal: str | None = None,
+    auth_info: Dict[str, Any] | None = None,
+    client_ip: str = "",
+) -> None:
+    """Handle POST /a2a — JSON-RPC task endpoint.
+
+    ``auth_info`` and ``client_ip`` are forwarded to audit logging so that
+    each task execution is recorded in ``mcp_audit_log`` with protocol='a2a'.
+    """
     # Read body
     body_chunks = []
     more = True
@@ -75,6 +87,8 @@ async def handle_a2a_request(scope, receive, send) -> None:
         body_chunks.append(msg.get("body", b""))
         more = msg.get("more_body", False)
     raw = b"".join(body_chunks)
+
+    _auth = auth_info or {}
 
     # Parse JSON-RPC envelope
     try:
@@ -98,9 +112,11 @@ async def handle_a2a_request(scope, receive, send) -> None:
     try:
         # Support both old spec (tasks/*) and new spec (message/*) method names
         if method in ("tasks/send", "message/send"):
-            await _handle_tasks_send(rpc_id, params, send)
+            await _handle_tasks_send(rpc_id, params, send, method, _auth, client_ip)
         elif method in ("tasks/sendSubscribe", "message/stream"):
-            await _handle_tasks_send_subscribe(rpc_id, params, scope, send)
+            await _handle_tasks_send_subscribe(
+                rpc_id, params, scope, send, method, _auth, client_ip
+            )
         elif method == "tasks/get":
             await _handle_tasks_get(rpc_id, params, send)
         elif method == "tasks/cancel":
@@ -119,8 +135,17 @@ async def handle_a2a_request(scope, receive, send) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _handle_tasks_send(rpc_id: Any, params: Any, send) -> None:
+async def _handle_tasks_send(
+    rpc_id: Any,
+    params: Any,
+    send,
+    method: str = "tasks/send",
+    auth_info: Dict[str, Any] | None = None,
+    client_ip: str = "",
+) -> None:
     """tasks/send / message/send — execute task and return completed Task."""
+    from mcp_server.audit import log_mcp_call
+
     try:
         send_params = TaskSendParams.model_validate(params)
     except Exception as exc:
@@ -129,20 +154,50 @@ async def _handle_tasks_send(rpc_id: Any, params: Any, send) -> None:
 
     # params.id (old spec) or fall back to rpc_id (new spec) or uuid
     task_id = send_params.id or (str(rpc_id) if rpc_id else None) or str(uuid.uuid4())
+    t0 = time.monotonic()
     task = await handle_task(task_id, send_params.message)
+    duration_ms = (time.monotonic() - t0) * 1000
+
     _tasks[task_id] = task
     if len(_tasks) > _MAX_TASKS:
         oldest_key = next(iter(_tasks))
         del _tasks[oldest_key]
+
+    state = task.status.state.value if task.status else "unknown"
+    first_text = next(
+        (p.text for p in (send_params.message.parts or []) if hasattr(p, "text")),
+        "",
+    )
+    log_mcp_call(
+        tool_name=method,
+        auth_info=auth_info or {},
+        client_ip=client_ip,
+        input_params={
+            "query": first_text[:500],
+            "data_source": (send_params.message.metadata or {}).get("data_source"),
+        },
+        output_summary=f"state={state}",
+        duration_ms=duration_ms,
+        status="ok" if state == "completed" else "error",
+        protocol="a2a",
+    )
 
     response = JSONRPCResponse(id=rpc_id, result=task.model_dump(exclude_none=True))
     await _send_json(send, 200, response.model_dump(exclude_none=True))
 
 
 async def _handle_tasks_send_subscribe(
-    rpc_id: Any, params: Any, scope: dict, send
+    rpc_id: Any,
+    params: Any,
+    scope: dict,
+    send,
+    method: str = "tasks/sendSubscribe",
+    auth_info: Dict[str, Any] | None = None,
+    client_ip: str = "",
 ) -> None:
     """tasks/sendSubscribe / message/stream — stream task events as SSE."""
+    from mcp_server.audit import log_mcp_call
+
     try:
         send_params = TaskSendParams.model_validate(params)
     except Exception as exc:
@@ -175,12 +230,32 @@ async def _handle_tasks_send_subscribe(
         }
     )
 
+    t0 = time.monotonic()
     async for sse_line in handle_task_streaming(task_id, send_params.message, rpc_id):
         await send(
             {"type": "http.response.body", "body": sse_line.encode(), "more_body": True}
         )
+    duration_ms = (time.monotonic() - t0) * 1000
 
     await send({"type": "http.response.body", "body": b"", "more_body": False})
+
+    first_text = next(
+        (p.text for p in (send_params.message.parts or []) if hasattr(p, "text")),
+        "",
+    )
+    log_mcp_call(
+        tool_name=method,
+        auth_info=auth_info or {},
+        client_ip=client_ip,
+        input_params={
+            "query": first_text[:500],
+            "data_source": (send_params.message.metadata or {}).get("data_source"),
+        },
+        output_summary="streamed",
+        duration_ms=duration_ms,
+        status="ok",
+        protocol="a2a",
+    )
 
 
 async def _handle_tasks_get(rpc_id: Any, params: Any, send) -> None:

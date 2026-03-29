@@ -375,10 +375,13 @@ class MCPApp:
 
         # A2A JSON-RPC task endpoint
         if path in ("/a2a", "/a2a/") and method == "POST":
+            a2a_auth_info: dict = {}
+            a2a_principal: str | None = None
             if REQUIRE_AUTH:
                 request = Request(scope, receive)
                 try:
-                    await verify_mcp_auth(request)
+                    a2a_auth_info = await verify_mcp_auth(request)
+                    a2a_principal = a2a_auth_info.get("user_id")
                 except PermissionError as exc:
                     logger.warning("A2A auth DENIED: %s", exc)
                     body = json.dumps({"detail": str(exc)}).encode()
@@ -391,7 +394,14 @@ class MCPApp:
                     )
                     await send({"type": "http.response.body", "body": body})
                     return
-            await handle_a2a_request(scope, receive, send)
+            await handle_a2a_request(
+                scope,
+                receive,
+                send,
+                principal=a2a_principal,
+                auth_info=a2a_auth_info,
+                client_ip=_get_client_ip(scope),
+            )
             return
 
         # MCP endpoint
