@@ -3,10 +3,6 @@
 import logging
 from typing import List, Optional
 
-from google.cloud import discoveryengine_v1 as discoveryengine
-
-from pipeline.utilities.google_vertex_client import _load_gcp_project_id
-
 logger = logging.getLogger(__name__)
 
 
@@ -14,6 +10,10 @@ def rerank_with_google_vertex(
     query: str, documents: List[str], model_id: str
 ) -> List[float]:
     """Rerank documents using the Vertex AI Ranking API (Discovery Engine)."""
+    from google.cloud import discoveryengine_v1 as discoveryengine
+
+    from pipeline.utilities.google_vertex_client import _load_gcp_project_id
+
     project_id = _load_gcp_project_id()
     client = discoveryengine.RankServiceClient()
     ranking_config = client.ranking_config_path(

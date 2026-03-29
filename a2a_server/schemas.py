@@ -118,7 +118,7 @@ class JSONRPCResponse(BaseModel):
 
 
 class TaskSendParams(BaseModel):
-    id: str
+    id: Optional[str] = None
     sessionId: Optional[str] = None
     message: Message
     historyLength: Optional[int] = None

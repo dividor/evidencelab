@@ -22,13 +22,8 @@ import logging
 import os
 from typing import Any, Dict, Optional, Tuple
 
-from huggingface_hub import InferenceClient
-from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.rate_limiters import InMemoryRateLimiter
-from langchain_google_vertexai import ChatVertexAI
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
-from langchain_openai import ChatOpenAI
 
 from utils.langsmith_util import setup_langsmith_tracing
 
@@ -331,6 +326,9 @@ def _create_huggingface_llm(
 def _create_huggingface_inference_llm(
     model: str, api_key: str, inference_provider: str
 ) -> Optional[BaseChatModel]:
+    from huggingface_hub import InferenceClient
+    from langchain_huggingface import ChatHuggingFace
+
     try:
         inference_client = InferenceClient(
             model=model, token=api_key, provider=inference_provider
@@ -358,6 +356,8 @@ def _create_huggingface_inference_llm(
 def _create_huggingface_endpoint_llm(
     model: str, api_key: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
+    from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+
     llm_endpoint = HuggingFaceEndpoint(
         repo_id=model,
         huggingfacehub_api_token=api_key,
@@ -372,6 +372,8 @@ def _create_azure_foundry_llm(
     model: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
     """Create Azure Foundry LLM instance."""
+    from langchain_openai import ChatOpenAI
+
     api_key = os.getenv("AZURE_FOUNDRY_KEY")
     endpoint = os.getenv("AZURE_FOUNDRY_ENDPOINT")
     api_version = os.getenv("AZURE_FOUNDRY_API_VERSION", "2024-02-15-preview")
@@ -402,6 +404,8 @@ def _create_openai_llm(
     model: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI LLM instance."""
+    from langchain_openai import ChatOpenAI
+
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise ValueError(
@@ -421,6 +425,8 @@ def _create_anthropic_llm(
     model: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
     """Create Anthropic LLM instance."""
+    from langchain_anthropic import ChatAnthropic
+
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise ValueError(
@@ -440,6 +446,8 @@ def _create_google_vertex_llm(
     model: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
     """Create Google Vertex AI LLM instance."""
+    from langchain_google_vertexai import ChatVertexAI
+
     project = os.getenv("GOOGLE_CLOUD_PROJECT")
     if not project:
         creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
@@ -482,6 +490,8 @@ def _create_openai_compatible_llm(
     model: str, temperature: float, max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI-compatible LLM instance (Groq, Together, etc.)."""
+    from langchain_openai import ChatOpenAI
+
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_API_BASE")
 

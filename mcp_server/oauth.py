@@ -130,9 +130,16 @@ def _validate_redirect_uri(client_id: str, redirect_uri: str) -> str | None:
 
     registered_uris = _clients[client_id].get("redirect_uris", [])
 
-    # If no URIs were registered, allow any (some MCP clients don't
-    # pre-register URIs during dynamic registration)
+    # If no URIs were registered during dynamic registration,
+    # only allow localhost/loopback (native app clients).
+    # External redirect_uris require pre-registration to prevent open redirects.
     if not registered_uris:
+        parsed = urlparse(redirect_uri)
+        if parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
+            return (
+                "Client has no pre-registered redirect_uris. "
+                "Non-localhost URIs must be registered during client registration."
+            )
         return None
 
     if redirect_uri not in registered_uris:
@@ -430,6 +437,13 @@ def exchange_token(body: dict, client_ip: str = "") -> tuple[int, dict]:
         }
 
     # Issue a JWT access token
+    if not AUTH_SECRET:
+        logger.error("AUTH_SECRET_KEY not configured — cannot issue tokens")
+        return 500, {
+            "error": "server_error",
+            "error_description": "Token signing key not configured",
+        }
+
     now = time.time()
     payload = {
         "sub": pending["user_id"],

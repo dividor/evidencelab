@@ -65,13 +65,13 @@ class TestMCPIntegration:
         assert "tools" in result["capabilities"]
 
     def test_tools_list(self):
-        """tools/list returns search, get_document, and ask_assistant."""
+        """tools/list returns search and get_document tools."""
         data = _mcp_call("tools/list")
         tools = data["result"]["tools"]
         names = {t["name"] for t in tools}
         assert "search" in names
         assert "get_document" in names
-        assert "ask_assistant" in names
+        assert "ask_assistant" not in names  # removed — use A2A for research
 
     def test_tools_have_descriptions(self):
         """All tools have non-empty descriptions."""

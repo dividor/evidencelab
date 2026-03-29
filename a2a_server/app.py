@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 # In-memory task store (task_id → Task).
 # Tasks are short-lived; this is sufficient for stateless deployments.
 _tasks: Dict[str, Task] = {}
+_MAX_TASKS = 1000
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,9 @@ async def _handle_tasks_send(rpc_id: Any, params: Any, send) -> None:
     task_id = send_params.id or str(uuid.uuid4())
     task = await handle_task(task_id, send_params.message)
     _tasks[task_id] = task
+    if len(_tasks) > _MAX_TASKS:
+        oldest_key = next(iter(_tasks))
+        del _tasks[oldest_key]
 
     response = JSONRPCResponse(id=rpc_id, result=task.model_dump(exclude_none=True))
     await _send_json(send, 200, response.model_dump(exclude_none=True))
