@@ -262,3 +262,82 @@ class TestA2AIntegration:
         # The default _a2a_call uses Accept: application/json, not text/event-stream
         assert "error" in data
         assert data["error"]["code"] == -32004  # A2A_UNSUPPORTED_OPERATION
+
+    def test_research_task_returns_summary_and_citations(self):
+        """tasks/send with research skill returns a synthesised summary with citations."""
+        data = _a2a_call(
+            "tasks/send",
+            {
+                "message": {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "type": "text",
+                            "text": "what are the key findings on humanitarian evaluations?",
+                        }
+                    ],
+                    "metadata": {"skill": "research"},
+                }
+            },
+            call_id=99,
+        )
+
+        assert "error" not in data, f"Unexpected error: {data.get('error')}"
+        task = data["result"]
+
+        # Task must complete successfully
+        assert task["status"]["state"] == "completed"
+        assert len(task["artifacts"]) > 0
+
+        artifact = task["artifacts"][0]
+        assert artifact["name"] == "research_response"
+
+        # Must contain a text part with a substantive summary
+        text_parts = [p for p in artifact["parts"] if p.get("type") == "text"]
+        assert text_parts, "Research artifact must include a text summary"
+        summary = text_parts[0]["text"]
+        assert len(summary) > 50, "Summary text should be substantive, not empty"
+
+        # Must contain a data part with citations
+        data_parts = [p for p in artifact["parts"] if p.get("type") == "data"]
+        assert data_parts, "Research artifact must include a data part with citations"
+        research_data = data_parts[0]["data"]
+
+        assert "citations" in research_data, "Data part must include 'citations'"
+        citations = research_data["citations"]
+        assert isinstance(citations, list)
+        assert len(citations) > 0, "Research must cite at least one source document"
+
+        # Each citation should carry basic document metadata
+        first = citations[0]
+        has_title = "title" in first
+        has_source = "source" in first or "doc_id" in first
+        assert (
+            has_title or has_source
+        ), f"Each citation needs at minimum a title or source identifier; got: {first}"
+
+        # references list should be present (may be empty for some queries)
+        assert "references" in research_data
+
+    def test_invalid_data_source_returns_error(self):
+        """tasks/send with an unknown data_source returns a task-failed status."""
+        data = _a2a_call(
+            "tasks/send",
+            {
+                "message": {
+                    "role": "user",
+                    "parts": [{"type": "text", "text": "search for climate"}],
+                    "metadata": {
+                        "skill": "search",
+                        "data_source": "../../etc/passwd",
+                    },
+                }
+            },
+        )
+        # Should either return a JSON-RPC error or a failed task — not silently succeed
+        task = data.get("result", {})
+        has_rpc_error = "error" in data
+        has_failed_task = task.get("status", {}).get("state") == "failed"
+        assert (
+            has_rpc_error or has_failed_task
+        ), "An invalid data_source must not result in a completed task"

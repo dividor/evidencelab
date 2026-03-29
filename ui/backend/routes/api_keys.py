@@ -16,18 +16,33 @@ from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import ApiKey, User
 from ui.backend.auth.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyRead
 from ui.backend.auth.users import current_superuser
+from utils.encryption import decrypt_value, encrypt_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 def _key_to_read(key: ApiKey, email: str | None = None) -> ApiKeyRead:
-    """Convert an ApiKey ORM object to an ApiKeyRead schema."""
+    """Convert an ApiKey ORM object to an ApiKeyRead schema.
+
+    Decrypts ``key_value`` if it was stored encrypted.  Legacy plaintext
+    values (pre-encryption) are returned as-is with a warning logged.
+    """
+    decrypted: str | None = None
+    if key.key_value:
+        try:
+            decrypted = decrypt_value(key.key_value)
+        except Exception:
+            logger.error(
+                "Failed to decrypt key_value for key id=%s — "
+                "value may be corrupted. Returning None.",
+                key.id,
+            )
     return ApiKeyRead(
         id=key.id,
         label=key.label,
         key_prefix=key.key_prefix,
-        key_value=key.key_value,
+        key_value=decrypted,
         is_active=key.is_active,
         created_at=key.created_at,
         created_by_email=email,
@@ -65,7 +80,7 @@ async def create_api_key(
         label=body.label,
         key_hash=key_hash,
         key_prefix=key_prefix,
-        key_value=raw_key,
+        key_value=encrypt_value(raw_key),
         created_by_user_id=admin.id,
     )
     session.add(api_key)
