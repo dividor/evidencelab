@@ -8,8 +8,7 @@
         { "title": "Getting Started", "path": "overview/getting-started.md" },
         { "title": "Technical Info", "path": "overview/tech.md" },
         { "title": "Data Sources", "path": "overview/data.md" },
-        { "title": "Using in AI Platforms", "path": "overview/mcp.md" },
-        { "title": "Agent-to-Agent (A2A) Server", "path": "overview/a2a.md" }
+        { "title": "Using in AI Platforms", "path": "overview/mcp.md" }
       ]
     },
     {
