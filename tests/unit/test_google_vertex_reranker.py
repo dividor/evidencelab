@@ -10,8 +10,8 @@ def _make_fake_record(record_id: str, score: float) -> SimpleNamespace:
     return SimpleNamespace(id=record_id, score=score)
 
 
-@patch("ui.backend.services.google_vertex_reranker._load_gcp_project_id")
-@patch("ui.backend.services.google_vertex_reranker.discoveryengine")
+@patch("pipeline.utilities.google_vertex_client._load_gcp_project_id")
+@patch("google.cloud.discoveryengine_v1", create=True)
 def test_rerank_returns_scores_in_original_order(mock_de, mock_project):
     mock_project.return_value = "test-project"
 
@@ -44,8 +44,8 @@ def test_rerank_returns_scores_in_original_order(mock_de, mock_project):
     assert scores[2] == 0.95  # doc2
 
 
-@patch("ui.backend.services.google_vertex_reranker._load_gcp_project_id")
-@patch("ui.backend.services.google_vertex_reranker.discoveryengine")
+@patch("pipeline.utilities.google_vertex_client._load_gcp_project_id")
+@patch("google.cloud.discoveryengine_v1", create=True)
 def test_rerank_builds_correct_request(mock_de, mock_project):
     mock_project.return_value = "my-project"
 
@@ -76,8 +76,8 @@ def test_rerank_builds_correct_request(mock_de, mock_project):
     assert call_kwargs[1]["top_n"] == 2
 
 
-@patch("ui.backend.services.google_vertex_reranker._load_gcp_project_id")
-@patch("ui.backend.services.google_vertex_reranker.discoveryengine")
+@patch("pipeline.utilities.google_vertex_client._load_gcp_project_id")
+@patch("google.cloud.discoveryengine_v1", create=True)
 def test_rerank_missing_doc_gets_zero_score(mock_de, mock_project):
     mock_project.return_value = "p"
 

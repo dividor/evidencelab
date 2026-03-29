@@ -92,6 +92,66 @@ async def test_handle_task_research(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_handle_task_research_includes_citations(monkeypatch):
+    """Research skill artifact contains text answer AND citation data part."""
+    from mcp_server.schemas import MCPAssistantResponse, MCPCitation
+
+    fake_citation = MCPCitation(
+        label="[1]",
+        url="https://evidencelab.ai/document/doc-123",
+        title="UNDP Evaluation 2023",
+        organization="UNDP",
+        year="2023",
+    )
+    fake_response = MCPAssistantResponse(
+        answer="Climate adaptation programs showed significant impact [[1]](url).",
+        sources=[{"doc_id": "doc-123", "title": "UNDP Evaluation 2023"}],
+        citations=[fake_citation],
+        references=["[1] UNDP Evaluation 2023 (UNDP, 2023)"],
+        citation_guidance="",
+        query="What are climate findings?",
+        data_source="uneg",
+    )
+
+    mock_ask = AsyncMock(return_value=fake_response)
+    assistant_mod = ModuleType("mcp_server.tools.assistant")
+    assistant_mod.mcp_ask_assistant = mock_ask
+    monkeypatch.setitem(sys.modules, "mcp_server.tools.assistant", assistant_mod)
+
+    from a2a_server.schemas import DataPart
+    from a2a_server.task_handler import handle_task
+
+    msg = Message(
+        role="user",
+        parts=[TextPart(text="What are climate findings?")],
+        metadata={"data_source": "uneg"},
+    )
+    task = await handle_task("task-cit", msg)
+
+    assert task.status.state == TaskState.COMPLETED
+    assert task.artifacts is not None
+    artifact = task.artifacts[0]
+
+    # First part is the text answer
+    text_part = artifact.parts[0]
+    assert isinstance(text_part, TextPart)
+    assert "Climate adaptation" in text_part.text
+
+    # Second part is the structured citation data
+    assert len(artifact.parts) == 2
+    data_part = artifact.parts[1]
+    assert isinstance(data_part, DataPart)
+    assert "citations" in data_part.data
+    assert len(data_part.data["citations"]) == 1
+    assert data_part.data["citations"][0]["label"] == "[1]"
+    assert data_part.data["citations"][0]["organization"] == "UNDP"
+    assert "references" in data_part.data
+    assert len(data_part.data["references"]) == 1
+    assert "sources" in data_part.data
+    assert len(data_part.data["sources"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_handle_task_failure(monkeypatch):
     """handle_task returns FAILED state when the assistant raises."""
     mock_ask = AsyncMock(side_effect=RuntimeError("boom"))

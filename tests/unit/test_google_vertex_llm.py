@@ -12,7 +12,7 @@ def test_create_google_vertex_llm_from_env(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "europe-west1")
 
-    with patch.object(llm_factory, "ChatVertexAI") as mock_cls:
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         llm_factory._create_google_vertex_llm(
             model="gemini-2.5-flash",
@@ -37,7 +37,7 @@ def test_create_google_vertex_llm_from_creds_file(monkeypatch, tmp_path):
     monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", str(creds))
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 
-    with patch.object(llm_factory, "ChatVertexAI") as mock_cls:
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         llm_factory._create_google_vertex_llm(
             model="gemini-2.5-pro",
@@ -60,7 +60,7 @@ def test_create_google_vertex_llm_no_thinking_for_non_25(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-proj")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 
-    with patch.object(llm_factory, "ChatVertexAI") as mock_cls:
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         llm_factory._create_google_vertex_llm(
             model="gemini-2.0-flash",
@@ -87,7 +87,7 @@ def test_create_google_vertex_llm_default_location(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "proj")
     monkeypatch.delenv("GOOGLE_CLOUD_LOCATION", raising=False)
 
-    with patch.object(llm_factory, "ChatVertexAI") as mock_cls:
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         llm_factory._create_google_vertex_llm("gemini-2.5-flash", 0.7, 500)
 
@@ -98,7 +98,7 @@ def test_create_google_vertex_llm_default_location(monkeypatch):
 def test_create_llm_for_provider_routes_google_vertex(monkeypatch):
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "proj")
 
-    with patch.object(llm_factory, "ChatVertexAI") as mock_cls:
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
         mock_cls.return_value = MagicMock()
         llm_factory._create_llm_for_provider(
             provider="google_vertex",
