@@ -1,5 +1,6 @@
 """MCP / A2A audit log read routes (admin only)."""
 
+import json
 import logging
 from typing import List, Optional
 
@@ -114,7 +115,11 @@ async def list_mcp_audit(
             status=row.status,
             error_message=row.error_message,
             output_summary=row.output_summary,
-            input_params=row.input_params,
+            input_params=(
+                json.dumps(row.input_params)
+                if isinstance(row.input_params, dict)
+                else row.input_params
+            ),
         )
         for row in rows.mappings()
     ]
