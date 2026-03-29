@@ -117,7 +117,7 @@ const ApiKeyManager: React.FC = () => {
         <button
           className="btn-sm btn-primary"
           onClick={handleCopy}
-          disabled={!currentKey}
+          disabled={!fullKey}
           title="Copy key"
           style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
         >
