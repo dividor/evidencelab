@@ -90,6 +90,22 @@ async def create_api_key(
     )
 
 
+@router.get("/legacy")
+async def get_legacy_key(
+    admin: User = Depends(current_superuser),
+) -> dict:
+    """Return the legacy API_KEY env-var value (admin only).
+
+    This key is stored in plaintext in the environment and is safe to
+    expose to superusers for copy-paste convenience.
+    """
+    from ui.backend.auth.api_key_verify import API_KEY
+
+    if not API_KEY:
+        return {"key": None}
+    return {"key": API_KEY}
+
+
 @router.delete("/{key_id}")
 async def delete_api_key(
     key_id: uuid.UUID,
