@@ -53,7 +53,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - ${DB_DATA_MOUNT:-./db}/postgres:/var/lib/postgresql/data:z
     restart: unless-stopped
@@ -121,7 +121,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
@@ -178,7 +178,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
       - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -241,7 +241,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
       - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
       - USE_EMBEDDING_SERVER=true

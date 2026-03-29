@@ -239,13 +239,15 @@ class TestA2AIntegration:
                 events.append(json.loads(line[5:].strip()))
 
         assert len(events) > 0, "Expected at least one SSE event"
-        # First event must be working status
-        first = events[0]
-        assert first.get("status", {}).get("state") == "working"
+        # Events are JSON-RPC envelopes per the A2A spec:
+        # {"jsonrpc": "2.0", "id": ..., "result": {<event payload>}}
+        # Unwrap the envelope before checking payload fields.
+        first_payload = events[0].get("result", events[0])
+        assert first_payload.get("status", {}).get("state") == "working"
         # Last event must be completed status with final=True
-        last = events[-1]
-        assert last.get("status", {}).get("state") == "completed"
-        assert last.get("final") is True
+        last_payload = events[-1].get("result", events[-1])
+        assert last_payload.get("status", {}).get("state") == "completed"
+        assert last_payload.get("final") is True
 
     def test_sendsubscribe_requires_event_stream_accept(self):
         """tasks/sendSubscribe returns error if Accept header does not include text/event-stream."""
@@ -262,3 +264,87 @@ class TestA2AIntegration:
         # The default _a2a_call uses Accept: application/json, not text/event-stream
         assert "error" in data
         assert data["error"]["code"] == -32004  # A2A_UNSUPPORTED_OPERATION
+
+    def test_research_task_returns_summary_and_citations(self):
+        """tasks/send with research skill returns a synthesised summary with citations."""
+        data = _a2a_call(
+            "tasks/send",
+            {
+                "message": {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "type": "text",
+                            "text": "what are the key findings on humanitarian evaluations?",
+                        }
+                    ],
+                    "metadata": {"skill": "research"},
+                }
+            },
+            call_id=99,
+        )
+
+        assert "error" not in data, f"Unexpected error: {data.get('error')}"
+        task = data["result"]
+
+        # Task must complete successfully
+        assert task["status"]["state"] == "completed"
+        assert len(task["artifacts"]) > 0
+
+        artifact = task["artifacts"][0]
+        assert artifact["name"] == "research_response"
+
+        # Must contain a text part with a substantive summary
+        text_parts = [p for p in artifact["parts"] if p.get("type") == "text"]
+        assert text_parts, "Research artifact must include a text summary"
+        summary = text_parts[0]["text"]
+        assert len(summary) > 50, "Summary text should be substantive, not empty"
+
+        # Must contain a data part (always present; citations list may be empty if no data)
+        data_parts = [p for p in artifact["parts"] if p.get("type") == "data"]
+        assert data_parts, "Research artifact must include a structured data part"
+        research_data = data_parts[0]["data"]
+
+        assert "citations" in research_data, "Data part must include 'citations'"
+        assert "references" in research_data, "Data part must include 'references'"
+        citations = research_data["citations"]
+        assert isinstance(citations, list)
+
+        # Citation data-quality assertions require indexed documents in Qdrant
+        if not citations:
+            import pytest as _pytest
+
+            _pytest.skip(
+                "No indexed documents available — skipping citation assertions"
+            )
+
+        # Each citation should carry basic document metadata
+        first_cit = citations[0]
+        has_title = "title" in first_cit
+        has_source = "source" in first_cit or "doc_id" in first_cit
+        assert (
+            has_title or has_source
+        ), f"Citation needs a title or source identifier; got: {first_cit}"
+
+    def test_invalid_data_source_returns_error(self):
+        """tasks/send with an unknown data_source returns a task-failed status."""
+        data = _a2a_call(
+            "tasks/send",
+            {
+                "message": {
+                    "role": "user",
+                    "parts": [{"type": "text", "text": "search for climate"}],
+                    "metadata": {
+                        "skill": "search",
+                        "data_source": "../../etc/passwd",
+                    },
+                }
+            },
+        )
+        # Should either return a JSON-RPC error or a failed task — not silently succeed
+        task = data.get("result", {})
+        has_rpc_error = "error" in data
+        has_failed_task = task.get("status", {}).get("state") == "failed"
+        assert (
+            has_rpc_error or has_failed_task
+        ), "An invalid data_source must not result in a completed task"

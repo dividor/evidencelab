@@ -133,6 +133,12 @@ const ApiKeyManager: React.FC = () => {
         </button>
       </div>
 
+      {fullKey && (
+        <p style={{ color: '#f59e0b', fontSize: 12, marginTop: 4 }}>
+          Copy this key now — it will not be shown again.
+        </p>
+      )}
+
       {currentKey && (
         <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
           Created {new Date(currentKey.created_at).toLocaleDateString()}

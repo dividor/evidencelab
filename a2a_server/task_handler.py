@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -24,6 +25,49 @@ from a2a_server.schemas import (
 logger = logging.getLogger(__name__)
 
 _ASSISTANT_TIMEOUT_SECONDS = 120
+
+
+def _load_allowed_data_sources() -> frozenset[str]:
+    """Read allowed data_source values from config.json at import time.
+
+    Returns a frozenset of valid ``data_subdir`` strings (e.g. ``"uneg"``,
+    ``"worldbank"``).  If config.json is missing or malformed an empty set is
+    returned and validation is skipped — fail-open is intentional here because
+    a missing config file is a deployment issue, not an injection attempt.
+    """
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), "..", "config.json")
+        with open(config_path) as fh:
+            config = json.load(fh)
+        sources = config.get("datasources", {})
+        return frozenset(
+            ds.get("data_subdir") for ds in sources.values() if ds.get("data_subdir")
+        )
+    except FileNotFoundError:
+        logger.warning("config.json not found — data_source validation skipped")
+        return frozenset()
+    except Exception as exc:
+        logger.error("Failed to load allowed data sources from config.json: %s", exc)
+        return frozenset()
+
+
+# Loaded once at startup; empty set means validation is skipped.
+_ALLOWED_DATA_SOURCES: frozenset[str] = _load_allowed_data_sources()
+
+
+def _validate_data_source(data_source: str | None) -> None:
+    """Raise ValueError if *data_source* is not in the allowed set.
+
+    No-op when *data_source* is None/empty or when the allowed set is empty
+    (config not loaded).
+    """
+    if not data_source or not _ALLOWED_DATA_SOURCES:
+        return
+    if data_source not in _ALLOWED_DATA_SOURCES:
+        raise ValueError(
+            f"Invalid data_source {data_source!r}. "
+            f"Allowed values: {sorted(_ALLOWED_DATA_SOURCES)}"
+        )
 
 
 def _now() -> str:
@@ -162,6 +206,7 @@ async def _run_research(
 
     meta = metadata or {}
     data_source = meta.get("data_source")
+    _validate_data_source(data_source)
     deep_research = bool(meta.get("deep_research", False))
     model_combo = meta.get("model_combo")
 
@@ -174,17 +219,17 @@ async def _run_research(
 
     parts: List[Any] = [TextPart(text=response.answer)]
 
-    # Include structured citation data as a data part
-    if response.citations:
-        parts.append(
-            DataPart(
-                data={
-                    "citations": [c.model_dump() for c in response.citations],
-                    "references": response.references,
-                    "sources": response.sources,
-                },
-            )
+    # Always include a structured data part so callers can inspect citation metadata.
+    # The citations list may be empty when no matching documents were found.
+    parts.append(
+        DataPart(
+            data={
+                "citations": [c.model_dump() for c in response.citations],
+                "references": response.references,
+                "sources": response.sources,
+            },
         )
+    )
 
     return [
         Artifact(
@@ -207,6 +252,7 @@ async def _run_research_streaming(
 
     meta = metadata or {}
     data_source = meta.get("data_source")
+    _validate_data_source(data_source)
     deep_research = bool(meta.get("deep_research", False))
     model_combo = meta.get("model_combo")
 
@@ -299,6 +345,7 @@ async def _run_search(query: str, metadata: Optional[Dict[str, Any]]) -> List[Ar
 
     meta = metadata or {}
     data_source = meta.get("data_source")
+    _validate_data_source(data_source)
     limit = int(meta.get("limit", 10))
     filters = meta.get("filters")
     model_combo = meta.get("model_combo")

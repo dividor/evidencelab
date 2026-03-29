@@ -1,6 +1,8 @@
 # MCP Server Administration
 
-The MCP server runs as a separate Docker service that exposes Evidence Lab's search and assistant capabilities via the [Model Context Protocol](https://modelcontextprotocol.io/).
+The MCP server runs as a separate Docker service that exposes Evidence Lab's search tools via the [Model Context Protocol](https://modelcontextprotocol.io/). The same service also hosts the [A2A Server](a2a-server.md) for agent-to-agent research tasks.
+
+> **Tools:** `search` and `get_document` only. Research synthesis is handled by the [A2A Server](a2a-server.md).
 
 ## Architecture
 
@@ -63,8 +65,10 @@ The MCP server supports three authentication methods:
 ### 1. API Key
 
 Clients can authenticate by passing an API key in the `X-API-Key` header. This matches either:
-- The `API_SECRET_KEY` environment variable (master key)
-- An admin-generated API key stored in the database
+- The `API_SECRET_KEY` environment variable (master key) — takes effect immediately across all services
+- An admin-generated key managed via the Admin → API Keys screen
+
+> **Note:** Admin-generated keys are cached in-memory per service process with a 60-second TTL. After generating or revoking a key in the admin screen, allow up to 60 seconds before it takes effect in the MCP and A2A servers. The `API_SECRET_KEY` env var is always effective immediately.
 
 ### 2. OAuth 2.0 (for Claude and ChatGPT)
 
@@ -96,13 +100,14 @@ Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The 
 
 ## Tools
 
-The MCP server exposes three tools, all read-only:
+The MCP server exposes two tools, both read-only:
 
 | Tool | Description | Rate Limit |
 |------|-------------|------------|
 | `search` | Hybrid semantic + keyword search across document chunks | 30/min |
 | `get_document` | Retrieve full document metadata by ID | 30/min |
-| `ask_assistant` | AI research assistant with citation synthesis | 10/min |
+
+For synthesised research answers, use the [A2A Server](a2a-server.md) `research` skill.
 
 Tool parameters, descriptions, and available data sources are driven by `config.json`. When data sources are added or removed, the MCP tool descriptions update automatically.
 
@@ -151,4 +156,4 @@ RATE_LIMIT_MCP_AI=20/minute
 
 ### Model Errors
 
-If `ask_assistant` returns model errors, verify the configured model combo is available. The default is "Azure Foundry" which requires Azure OpenAI credentials. Check that `AZURE_FOUNDRY_API_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set.
+If the A2A `research` skill returns model errors, verify the configured model combo is available. The default is "Azure Foundry" which requires Azure OpenAI credentials. Check that `AZURE_FOUNDRY_API_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set. See [A2A Server](a2a-server.md#troubleshooting).

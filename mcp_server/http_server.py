@@ -85,14 +85,34 @@ def _add_cors_headers(headers: list, origin: str | None) -> list:
 
 
 def _get_client_ip(scope: dict) -> str:
-    """Extract client IP from ASGI scope, preferring X-Forwarded-For."""
+    """Extract the real client IP from the ASGI scope.
+
+    Priority order:
+    1. ``X-Real-IP`` — set by nginx to ``$remote_addr`` (the IP of the
+       directly-connected client, cannot be spoofed by end users).
+    2. The *rightmost* value in ``X-Forwarded-For`` — added by the nearest
+       trusted reverse proxy (nginx/Caddy), so it reflects the last hop the
+       request passed through under our control.  The leftmost entries can be
+       set by the client and must not be trusted for security purposes.
+    3. The ASGI ``client`` tuple as a last resort (direct connection).
+
+    Never use the *first* (leftmost) ``X-Forwarded-For`` entry for auth or
+    rate-limiting decisions — it is client-controlled and trivially spoofable.
+    """
     headers = dict(scope.get("headers", []))
-    forwarded = headers.get(b"x-forwarded-for", b"").decode()
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    real_ip = headers.get(b"x-real-ip", b"").decode()
+
+    # X-Real-IP is set by nginx to $remote_addr — cannot be spoofed by clients
+    real_ip = headers.get(b"x-real-ip", b"").decode().strip()
     if real_ip:
         return real_ip
+
+    # Fall back to the rightmost X-Forwarded-For entry (our trusted proxy)
+    forwarded = headers.get(b"x-forwarded-for", b"").decode()
+    if forwarded:
+        ips = [ip.strip() for ip in forwarded.split(",") if ip.strip()]
+        if ips:
+            return ips[-1]  # rightmost = set by our proxy, not the client
+
     client = scope.get("client")
     return client[0] if client else "unknown"
 
@@ -375,10 +395,12 @@ class MCPApp:
 
         # A2A JSON-RPC task endpoint
         if path in ("/a2a", "/a2a/") and method == "POST":
+            principal: str | None = None
             if REQUIRE_AUTH:
                 request = Request(scope, receive)
                 try:
-                    await verify_mcp_auth(request)
+                    auth_info = await verify_mcp_auth(request)
+                    principal = auth_info.get("user_id")
                 except PermissionError as exc:
                     logger.warning("A2A auth DENIED: %s", exc)
                     body = json.dumps({"detail": str(exc)}).encode()
@@ -391,7 +413,7 @@ class MCPApp:
                     )
                     await send({"type": "http.response.body", "body": body})
                     return
-            await handle_a2a_request(scope, receive, send)
+            await handle_a2a_request(scope, receive, send, principal=principal)
             return
 
         # MCP endpoint

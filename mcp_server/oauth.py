@@ -192,7 +192,12 @@ def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
         return 429, {"error": "too_many_requests", "error_description": rate_err}
 
     client_id = secrets.token_urlsafe(24)
+    # Generate a client_secret and return it to the registrant (RFC 7591 §3.2.1).
+    # The flow uses PKCE (token_endpoint_auth_method: "none"), so the secret is
+    # never verified again — but we store a SHA-256 hash rather than plaintext
+    # so a memory dump of the process cannot be used to impersonate a client.
     client_secret = secrets.token_urlsafe(32)
+    client_secret_hash = hashlib.sha256(client_secret.encode()).hexdigest()
 
     redirect_uris = body.get("redirect_uris", [])
     if not redirect_uris:
@@ -200,7 +205,8 @@ def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
 
     client = {
         "client_id": client_id,
-        "client_secret": client_secret,
+        # Hash stored; plaintext is returned once and then discarded
+        "client_secret_hash": client_secret_hash,
         "client_name": body.get("client_name", "MCP Client"),
         "redirect_uris": redirect_uris,
         "grant_types": ["authorization_code"],
@@ -220,7 +226,7 @@ def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
 
     return 201, {
         "client_id": client_id,
-        "client_secret": client_secret,
+        "client_secret": client_secret,  # returned once; not stored in plaintext
         "client_name": client["client_name"],
         "redirect_uris": redirect_uris,
         "grant_types": client["grant_types"],

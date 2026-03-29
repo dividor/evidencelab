@@ -2,11 +2,45 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Metadata safety helpers (mirrors ui.backend.auth.schemas)
+# ---------------------------------------------------------------------------
+
+_MAX_METADATA_DEPTH = 10
+_MAX_METADATA_SIZE = 32_000  # 32 KB — generous for task metadata
+
+
+def _check_depth(obj: Any, depth: int = 0) -> None:
+    if depth > _MAX_METADATA_DEPTH:
+        raise ValueError(
+            f"metadata nesting exceeds maximum depth of {_MAX_METADATA_DEPTH}"
+        )
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _check_depth(v, depth + 1)
+    elif isinstance(obj, list):
+        for item in obj:
+            _check_depth(item, depth + 1)
+
+
+def _validate_metadata(v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Validate metadata depth and size to prevent DoS via deeply nested payloads."""
+    if v is None:
+        return v
+    _check_depth(v)
+    if len(json.dumps(v, default=str)) > _MAX_METADATA_SIZE:
+        raise ValueError(
+            f"metadata payload exceeds maximum size of {_MAX_METADATA_SIZE} characters"
+        )
+    return v
+
 
 # ---------------------------------------------------------------------------
 # Parts
@@ -25,6 +59,12 @@ class DataPart(BaseModel):
     kind: str = "data"
     data: Dict[str, Any]
 
+    @field_validator("data")
+    @classmethod
+    def validate_data(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        _check_depth(v)
+        return v
+
 
 Part = Union[TextPart, DataPart]
 
@@ -42,6 +82,11 @@ class Message(BaseModel):
     taskId: Optional[str] = None
     contextId: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        return _validate_metadata(v)
 
 
 # ---------------------------------------------------------------------------

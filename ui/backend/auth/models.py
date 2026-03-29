@@ -303,7 +303,11 @@ class ApiKey(Base):
         String(64), unique=True, index=True, nullable=False
     )
     key_prefix: Mapped[str] = mapped_column(String(10), nullable=False)
-    key_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Stores the API key encrypted at rest using Fernet (utils.encryption).
+    # 512 chars accommodates Fernet tokens (~140 chars) with headroom.
+    # Legacy plaintext values (pre-encryption) are detected by utils.encryption
+    # via the absence of the "gAAAAA" Fernet prefix.
+    key_value: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
