@@ -183,6 +183,8 @@ class AgentCard(BaseModel):
     description: str
     url: str
     version: str = "1.0.0"
+    protocolVersion: str = "0.3.0"
+    preferredTransport: str = "JSONRPC"
     capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
     defaultInputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
     defaultOutputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
