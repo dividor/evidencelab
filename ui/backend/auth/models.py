@@ -303,6 +303,7 @@ class ApiKey(Base):
         String(64), unique=True, index=True, nullable=False
     )
     key_prefix: Mapped[str] = mapped_column(String(10), nullable=False)
+    key_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

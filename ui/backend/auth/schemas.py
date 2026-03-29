@@ -422,11 +422,12 @@ class ApiKeyCreate(BaseModel):
 
 
 class ApiKeyRead(BaseModel):
-    """API key representation (never includes the full key)."""
+    """API key representation — includes the stored plaintext key when available."""
 
     id: uuid.UUID
     label: str
     key_prefix: str
+    key_value: Optional[str] = None
     is_active: bool
     created_at: datetime
     created_by_email: Optional[str] = None
@@ -436,7 +437,7 @@ class ApiKeyRead(BaseModel):
 
 
 class ApiKeyCreated(ApiKeyRead):
-    """Returned once at creation time — includes the full plaintext key."""
+    """Returned at creation time — includes the full plaintext key."""
 
     key: str
 
