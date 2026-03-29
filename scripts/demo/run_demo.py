@@ -7,6 +7,7 @@ Usage:
     python scripts/demo/run_demo.py --mode host
     python scripts/demo/run_demo.py --mode docker
     python scripts/demo/run_demo.py --mode host --setup   # Re-run setup
+    python scripts/demo/run_demo.py --ci --setup-only     # CI: write .env + config only
 
 What it does:
     0. Interactive setup: choose provider, enter API keys, write .env
@@ -17,8 +18,10 @@ What it does:
 """
 
 import argparse
+import base64
 import copy
 import json
+import os
 import re
 import secrets
 import subprocess
@@ -92,6 +95,31 @@ PROVIDER_COMBOS = [
 # ---------------------------------------------------------------------------
 # Interactive setup
 # ---------------------------------------------------------------------------
+def _generate_fernet_key():
+    """Generate a Fernet-compatible 32-byte base64url key (no extra dependencies)."""
+    return base64.urlsafe_b64encode(os.urandom(32)).decode()
+
+
+def _ci_select_provider():
+    """For CI: pick the first combo whose required env vars are all set."""
+    for combo in PROVIDER_COMBOS:
+        if all(os.environ.get(k) for k in combo["required_env"]):
+            return combo
+    return PROVIDER_COMBOS[0]
+
+
+def _ci_collect_keys(combo):
+    """For CI: read provider-specific keys from the environment. Fail loudly if missing."""
+    collected = {}
+    for env_var in combo["required_env"]:
+        value = os.environ.get(env_var, "")
+        if not value:
+            print(f"ERROR: --ci mode requires {env_var} to be set in the environment.")
+            sys.exit(1)
+        collected[env_var] = value
+    return collected
+
+
 def _mask(value):
     """Mask all but the last 4 characters of a secret."""
     if len(value) <= 4:
@@ -151,59 +179,103 @@ def prompt_qdrant_key():
     return value
 
 
-def interactive_setup():
-    """Run the full interactive setup flow. Returns (combo, env_vars)."""
+def interactive_setup(ci_mode=False):
+    """Run the full interactive setup flow. Returns (combo, env_vars).
+
+    In CI mode (--ci), all prompts are skipped: the provider is auto-selected
+    from available environment variables, provider-specific keys are read from
+    the environment, and all generated secrets are written to .env without
+    asking for confirmation.
+    """
     print()
     print("=" * 60)
     print("  Evidence Lab - Interactive Setup")
     print("=" * 60)
     print()
 
-    # 1. Provider selection
-    combo = prompt_provider()
-    print(f"\n  Selected: {combo['name']}\n")
+    if ci_mode:
+        # 1. Auto-select provider
+        combo = _ci_select_provider()
+        print(f"  Provider: {combo['name']} (auto-selected)\n")
 
-    # 2. Provider-specific API keys
-    env_vars = prompt_api_keys(combo)
+        # 2. Provider-specific keys from environment
+        env_vars = _ci_collect_keys(combo)
 
-    # 3. Qdrant API key
-    env_vars["QDRANT_API_KEY"] = prompt_qdrant_key()
-
-    # 4. Auto-generate API_SECRET_KEY and AUTH_SECRET_KEY
-    env_vars["API_SECRET_KEY"] = secrets.token_hex(32)
-    env_vars["AUTH_SECRET_KEY"] = secrets.token_hex(32)
-    # Keep REACT_APP_API_KEY in sync with API_SECRET_KEY
-    env_vars["REACT_APP_API_KEY"] = env_vars["API_SECRET_KEY"]
-    print("  Auto-generated API_SECRET_KEY and AUTH_SECRET_KEY")
-
-    # 5. Confirmation
-    print()
-    print("-" * 60)
-    print("  Configuration summary:")
-    print(f"  Provider:        {combo['name']}")
-    for key, val in env_vars.items():
-        if key in ("API_SECRET_KEY", "AUTH_SECRET_KEY", "REACT_APP_API_KEY"):
-            print(f"  {key + ':':23s} [auto-generated]")
-        elif key == "QDRANT_API_KEY" and len(val) == 64:
-            print(f"  {key + ':':23s} [auto-generated]")
-        else:
-            print(f"  {key + ':':23s} {_mask(val)}")
-    print("-" * 60)
-
-    if ENV_PATH.exists():
-        confirm = (
-            input("\n  .env already exists. Update the above variables? [Y/n]: ")
-            .strip()
-            .lower()
-        )
-        if confirm in ("n", "no"):
-            print("  Keeping existing .env unchanged")
-            return combo, env_vars
+        # 3. Qdrant key — re-use env if set, otherwise generate
+        env_vars["QDRANT_API_KEY"] = os.environ.get(
+            "QDRANT_API_KEY"
+        ) or secrets.token_hex(32)
     else:
-        confirm = input("\n  Write to .env? [Y/n]: ").strip().lower()
-        if confirm in ("n", "no"):
-            print("  Skipped writing .env")
-            return combo, env_vars
+        # 1. Provider selection
+        combo = prompt_provider()
+        print(f"\n  Selected: {combo['name']}\n")
+
+        # 2. Provider-specific API keys
+        env_vars = prompt_api_keys(combo)
+
+        # 3. Qdrant API key
+        env_vars["QDRANT_API_KEY"] = prompt_qdrant_key()
+
+    # 4. Auto-generate application secrets
+    #    In CI mode, re-use env var if already set (so callers can pin values).
+    def _gen_or_env(key, generator):
+        return (os.environ.get(key) or generator()) if ci_mode else generator()
+
+    env_vars["API_SECRET_KEY"] = _gen_or_env(
+        "API_SECRET_KEY", lambda: secrets.token_hex(32)
+    )
+    env_vars["AUTH_SECRET_KEY"] = _gen_or_env(
+        "AUTH_SECRET_KEY", lambda: secrets.token_hex(32)
+    )
+    env_vars["REACT_APP_API_KEY"] = env_vars["API_SECRET_KEY"]
+    env_vars["KEY_ENCRYPTION_KEY"] = _gen_or_env(
+        "KEY_ENCRYPTION_KEY", _generate_fernet_key
+    )
+    env_vars["POSTGRES_PASSWORD"] = _gen_or_env(
+        "POSTGRES_PASSWORD", lambda: secrets.token_hex(16)
+    )
+
+    _AUTO_GENERATED = {
+        "API_SECRET_KEY",
+        "AUTH_SECRET_KEY",
+        "REACT_APP_API_KEY",
+        "KEY_ENCRYPTION_KEY",
+        "POSTGRES_PASSWORD",
+    }
+
+    if not ci_mode:
+        # 5. Confirmation
+        print(
+            "  Auto-generated API_SECRET_KEY, AUTH_SECRET_KEY, "
+            "KEY_ENCRYPTION_KEY, and POSTGRES_PASSWORD"
+        )
+        print()
+        print("-" * 60)
+        print("  Configuration summary:")
+        print(f"  Provider:        {combo['name']}")
+        for key, val in env_vars.items():
+            if key in _AUTO_GENERATED:
+                print(f"  {key + ':':23s} [auto-generated]")
+            elif key == "QDRANT_API_KEY" and len(val) == 64:
+                print(f"  {key + ':':23s} [auto-generated]")
+            else:
+                print(f"  {key + ':':23s} {_mask(val)}")
+        print("-" * 60)
+
+        if ENV_PATH.exists():
+            confirm = (
+                input("\n  .env already exists. Update the above variables? [Y/n]: ")
+                .strip()
+                .lower()
+            )
+            if confirm in ("n", "no"):
+                print("  Keeping existing .env unchanged")
+                return combo, env_vars
+        else:
+            confirm = input("\n  Write to .env? [Y/n]: ").strip().lower()
+            if confirm in ("n", "no"):
+                print("  Skipped writing .env")
+                return combo, env_vars
 
     # 6. Write .env
     write_env_file(env_vars)
@@ -458,10 +530,23 @@ def main():
         action="store_true",
         help="Skip running the pipeline (only download documents and add config)",
     )
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help=(
+            "Non-interactive CI mode: auto-select provider from env vars, "
+            "skip all prompts, write .env without confirmation"
+        ),
+    )
+    parser.add_argument(
+        "--setup-only",
+        action="store_true",
+        help="Write .env and configure config.json then exit (no download, pipeline, or services)",
+    )
     args = parser.parse_args()
 
     # Step 0: Interactive setup (always runs)
-    combo, _ = interactive_setup()
+    combo, _ = interactive_setup(ci_mode=args.ci)
 
     print()
     print("=" * 60)
@@ -476,6 +561,12 @@ def main():
     if changed:
         save_config(config)
     print()
+
+    if args.setup_only:
+        print(
+            "Setup complete (--setup-only). Skipping download, pipeline, and services."
+        )
+        sys.exit(0)
 
     # Step 2: Download documents
     if args.skip_download:

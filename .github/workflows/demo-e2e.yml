@@ -1,0 +1,199 @@
+name: Demo E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly on Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  push:
+    branches: [ rc/**, feature/demo-** ]
+
+jobs:
+  demo-e2e:
+    runs-on: ubuntu-latest
+    environment: ENV1
+    timeout-minutes: 90
+
+    env:
+      # Injected from GH secrets/vars — demo --ci mode will re-use these
+      # rather than generating new ones, keeping all services in sync.
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      AUTH_SECRET_KEY: ${{ secrets.AUTH_SECRET_KEY }}
+      KEY_ENCRYPTION_KEY: ${{ secrets.KEY_ENCRYPTION_KEY }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      AZURE_FOUNDRY_KEY: ${{ secrets.AZURE_FOUNDRY_KEY }}
+      AZURE_FOUNDRY_ENDPOINT: ${{ vars.AZURE_FOUNDRY_ENDPOINT }}
+      HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL /usr/local/.ghcup /usr/share/swift \
+            /usr/local/graalvm /usr/local/share/boost /usr/share/miniconda \
+            /usr/local/share/powershell /usr/share/az_* /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache
+          docker system prune -af --volumes
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          df -h /
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ----------------------------------------------------------------
+      # Step 1: Write .env and configure config.json via demo setup
+      # The demo --ci flag auto-selects the provider from available env
+      # vars and writes .env without prompts.
+      # ----------------------------------------------------------------
+      - name: Run demo setup (write .env + configure datasource)
+        run: python scripts/demo/run_demo.py --ci --setup-only
+
+      # ----------------------------------------------------------------
+      # Step 2: Build and start all Docker services
+      # ----------------------------------------------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker
+
+      - name: Build base image
+        run: docker build -t evidencelab-ai-python:latest --target runtime .
+
+      - name: Build all service images
+        run: docker compose build
+
+      - name: Start all services
+        run: docker compose up -d
+
+      # ----------------------------------------------------------------
+      # Step 3: Wait for infrastructure
+      # ----------------------------------------------------------------
+      - name: Wait for Postgres
+        run: |
+          echo "Waiting for Postgres..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+              echo "Postgres is ready."
+              break
+            fi
+            echo "  ($i/30) waiting..."
+            sleep 3
+          done
+
+      - name: Run database migrations
+        run: |
+          docker compose exec -T pipeline /bin/bash -lc "alembic upgrade head"
+
+      - name: Wait for embedding server
+        run: |
+          echo "Waiting for embedding server at http://localhost:7997..."
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:7997/health >/dev/null 2>&1 || \
+               curl -fsS http://localhost:7997/ >/dev/null 2>&1; then
+              echo "Embedding server is ready."
+              break
+            fi
+            echo "  ($i/90) waiting..."
+            sleep 5
+          done
+
+      # ----------------------------------------------------------------
+      # Step 4: Download demo documents and run pipeline
+      # ----------------------------------------------------------------
+      - name: Download demo documents (World Bank)
+        run: python scripts/demo/download.py --limit 2 --data-dir ./data/demo
+
+      - name: Run pipeline on demo documents
+        run: |
+          docker compose exec -T pipeline python -m pipeline.orchestrator \
+            --data-source demo --num-records 2 --skip-download
+
+      # ----------------------------------------------------------------
+      # Step 5: Wait for API, MCP, and UI
+      # ----------------------------------------------------------------
+      - name: Wait for API
+        run: |
+          echo "Waiting for API at http://localhost:8000/health..."
+          for i in $(seq 1 60); do
+            if curl -fsS -H "X-API-Key: ${API_SECRET_KEY}" \
+                http://localhost:8000/health >/dev/null 2>&1; then
+              echo "API is ready."
+              break
+            fi
+            echo "  ($i/60) waiting..."
+            sleep 3
+          done
+
+      - name: Wait for MCP server
+        run: |
+          echo "Waiting for MCP server at http://localhost:8001/health..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8001/health >/dev/null 2>&1; then
+              echo "MCP server is ready."
+              break
+            fi
+            echo "  ($i/30) waiting..."
+            sleep 3
+          done
+
+      - name: Wait for UI
+        run: |
+          echo "Waiting for UI at http://localhost:3000..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/ >/dev/null 2>&1; then
+              echo "UI is ready."
+              break
+            fi
+            echo "  ($i/30) waiting..."
+            sleep 3
+          done
+
+      # ----------------------------------------------------------------
+      # Step 6: Smoke tests
+      # ----------------------------------------------------------------
+      - name: Run smoke tests
+        run: python scripts/demo/smoke_test.py
+        env:
+          API_URL: http://localhost:8000
+          MCP_URL: http://localhost:8001
+          UI_URL: http://localhost:3000
+          API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+
+      # ----------------------------------------------------------------
+      # Diagnostics on failure
+      # ----------------------------------------------------------------
+      - name: Dump service logs
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-e2e-service-logs
+          path: /tmp/demo-e2e-logs/
+        continue-on-error: true
