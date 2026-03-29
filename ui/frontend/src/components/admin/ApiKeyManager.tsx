@@ -117,7 +117,7 @@ const ApiKeyManager: React.FC = () => {
         <button
           className="btn-sm btn-primary"
           onClick={handleCopy}
-          disabled={!fullKey}
+          disabled={!currentKey}
           title="Copy key"
           style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
         >
@@ -132,6 +132,12 @@ const ApiKeyManager: React.FC = () => {
           {generating ? 'Generating...' : currentKey ? 'Regenerate' : 'Generate'}
         </button>
       </div>
+
+      {fullKey && (
+        <p style={{ color: '#d97706', fontSize: 12, marginTop: 8 }}>
+          Copy this key now — it will not be shown again.
+        </p>
+      )}
 
       {currentKey && (
         <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
