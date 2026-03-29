@@ -8,6 +8,9 @@
 - **All docs MUST go in `docs/` at the repo root.** The directory `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
 - **`docs/docs.json` is the source of truth** for the docs sidebar. Add new pages here.
 
+## Database
+- **NEVER run ad-hoc database commands** (ALTER, UPDATE, DELETE, DROP, etc.) unless explicitly requested by the user. All schema changes MUST go through Alembic migrations. All data fixes must be scripted and reviewed.
+
 ## Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.
 - **NEVER code fallbacks or graceful degradation unless explicitly requested.** If a dependency or feature is required, fail hard and loud. Silent fallbacks hide bugs.

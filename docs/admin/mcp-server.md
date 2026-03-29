@@ -115,13 +115,30 @@ Tool parameters, descriptions, and available data sources are driven by `config.
 
 ### Audit Logging
 
-All MCP tool calls are logged with:
-- Tool name and input parameters
-- Authentication method and user identity
-- Response time and status
-- Client IP address
+Every MCP tool call and A2A task execution is recorded in the `mcp_audit_log` database table and is visible in the **Admin → MCP / A2A** tab.
 
-Logs are written to the standard application log and can be viewed via `docker compose logs mcp`.
+Each entry records:
+
+| Field | Description |
+|-------|-------------|
+| **Protocol** | `mcp` (tool call) or `a2a` (task execution) |
+| **Tool / Method** | e.g. `search`, `get_document`, `tasks/send` |
+| **Auth** | Authentication method used (`api_key`, `oauth`, `jwt`) |
+| **User** | Authenticated user ID if available |
+| **IP** | Client IP address |
+| **Duration** | Time to complete the call |
+| **Status** | `ok` or `error` |
+| **Summary** | Brief output summary or error message |
+
+The tab has dropdowns to filter by **Protocol** (All / MCP / A2A) and **Status** (All / OK / Error), and paginates 50 entries at a time newest-first.
+
+> **Note:** Audit entries are written asynchronously. They require a working database connection from the `mcp` container. If entries are missing, check `docker compose logs mcp` for `Failed to create asyncpg pool` warnings and verify `POSTGRES_PASSWORD` is set correctly.
+
+Log output from the container is also available via:
+
+```bash
+docker compose logs mcp
+```
 
 ### Health Check
 
