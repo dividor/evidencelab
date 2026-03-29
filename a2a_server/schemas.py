@@ -1,0 +1,207 @@
+"""A2A protocol Pydantic models (Google Agent-to-Agent spec)."""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, Field
+
+# ---------------------------------------------------------------------------
+# Parts
+# ---------------------------------------------------------------------------
+
+
+class TextPart(BaseModel):
+    type: str = "text"
+    text: str
+
+
+class DataPart(BaseModel):
+    type: str = "data"
+    data: Dict[str, Any]
+    mimeType: Optional[str] = None
+
+
+Part = Union[TextPart, DataPart]
+
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
+
+
+class Message(BaseModel):
+    role: str  # "user" or "agent"
+    parts: List[Part]
+    metadata: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# Task state
+# ---------------------------------------------------------------------------
+
+
+class TaskState(str, Enum):
+    SUBMITTED = "submitted"
+    WORKING = "working"
+    INPUT_REQUIRED = "input_required"
+    COMPLETED = "completed"
+    CANCELED = "canceled"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+class TaskStatus(BaseModel):
+    state: TaskState
+    message: Optional[Message] = None
+    timestamp: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Artifacts
+# ---------------------------------------------------------------------------
+
+
+class Artifact(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    parts: List[Part]
+    index: int = 0
+    append: bool = False
+    lastChunk: bool = True
+    metadata: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# Task
+# ---------------------------------------------------------------------------
+
+
+class Task(BaseModel):
+    id: str
+    sessionId: Optional[str] = None
+    status: TaskStatus
+    artifacts: Optional[List[Artifact]] = None
+    history: Optional[List[Message]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# JSON-RPC envelopes
+# ---------------------------------------------------------------------------
+
+
+class JSONRPCRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Union[str, int]
+    method: str
+    params: Optional[Any] = None
+
+
+class JSONRPCError(BaseModel):
+    code: int
+    message: str
+    data: Optional[Any] = None
+
+
+class JSONRPCResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Union[str, int]
+    result: Optional[Any] = None
+    error: Optional[JSONRPCError] = None
+
+
+# ---------------------------------------------------------------------------
+# Method params
+# ---------------------------------------------------------------------------
+
+
+class TaskSendParams(BaseModel):
+    id: str
+    sessionId: Optional[str] = None
+    message: Message
+    historyLength: Optional[int] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class TaskQueryParams(BaseModel):
+    id: str
+    historyLength: Optional[int] = None
+
+
+class TaskIdParams(BaseModel):
+    id: str
+
+
+# ---------------------------------------------------------------------------
+# Streaming events (tasks/sendSubscribe)
+# ---------------------------------------------------------------------------
+
+
+class TaskStatusUpdateEvent(BaseModel):
+    id: str
+    status: TaskStatus
+    final: bool = False
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class TaskArtifactUpdateEvent(BaseModel):
+    id: str
+    artifact: Artifact
+    metadata: Optional[Dict[str, Any]] = None
+
+
+# ---------------------------------------------------------------------------
+# Agent Card
+# ---------------------------------------------------------------------------
+
+
+class AgentSkill(BaseModel):
+    id: str
+    name: str
+    description: str
+    tags: List[str] = Field(default_factory=list)
+    examples: List[str] = Field(default_factory=list)
+    inputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
+    outputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
+
+
+class AgentCapabilities(BaseModel):
+    streaming: bool = True
+    pushNotifications: bool = False
+    stateTransitionHistory: bool = False
+
+
+class AgentAuthentication(BaseModel):
+    schemes: List[str]
+    credentials: Optional[str] = None
+
+
+class AgentCard(BaseModel):
+    name: str
+    description: str
+    url: str
+    version: str = "1.0.0"
+    capabilities: AgentCapabilities = Field(default_factory=AgentCapabilities)
+    defaultInputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
+    defaultOutputModes: List[str] = Field(default_factory=lambda: ["text/plain"])
+    authentication: AgentAuthentication
+    skills: List[AgentSkill]
+    documentationUrl: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Error codes (JSON-RPC + A2A extensions)
+# ---------------------------------------------------------------------------
+
+JSONRPC_PARSE_ERROR = -32700
+JSONRPC_INVALID_REQUEST = -32600
+JSONRPC_METHOD_NOT_FOUND = -32601
+JSONRPC_INVALID_PARAMS = -32602
+JSONRPC_INTERNAL_ERROR = -32603
+
+A2A_TASK_NOT_FOUND = -32001
+A2A_TASK_NOT_CANCELABLE = -32002
+A2A_PUSH_NOT_SUPPORTED = -32003
+A2A_UNSUPPORTED_OPERATION = -32004

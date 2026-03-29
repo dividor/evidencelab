@@ -119,7 +119,13 @@ async def test_search_accepts_dict_filters(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 
@@ -173,7 +179,13 @@ async def test_search_none_filters(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 
@@ -206,7 +218,13 @@ async def test_search_include_facets(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     # Patch get_default_filter_fields and get_taxonomy_filter_fields
     pipeline_db_mod = sys.modules.get("pipeline.db")
@@ -255,7 +273,13 @@ async def test_search_no_facets_by_default(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 

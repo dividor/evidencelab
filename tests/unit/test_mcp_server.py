@@ -115,7 +115,13 @@ async def test_search_tool_with_filters(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 
@@ -151,7 +157,13 @@ async def test_search_tool_empty_results(monkeypatch):
     app_state_mod = ModuleType("ui.backend.utils.app_state")
     app_state_mod.get_db_for_source = lambda _: fake_db
     app_state_mod.get_pg_for_source = lambda _: fake_pg
+    app_state_mod.logger = MagicMock()
     monkeypatch.setitem(sys.modules, "ui.backend.utils.app_state", app_state_mod)
+    routes_search_mod = ModuleType("ui.backend.routes.search")
+    routes_search_mod._build_doc_cache = lambda pg, results: {}
+    routes_search_mod._build_chunk_cache = lambda pg, results: {}
+    routes_search_mod._build_search_results = lambda *args, **kwargs: []
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", routes_search_mod)
 
     from mcp_server.tools.search import mcp_search
 

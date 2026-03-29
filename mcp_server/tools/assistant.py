@@ -99,8 +99,28 @@ async def mcp_ask_assistant(
             )
         # Partial answer is still useful — return what we have
 
-    # Look up document metadata for each unique docId so we can build
-    # proper citations with report_url, organization, and year.
+    citations, references = await _build_citations_from_sources(sources, data_source)
+
+    return MCPAssistantResponse(
+        answer=answer_text,
+        sources=sources,
+        citations=citations,
+        references=references,
+        citation_guidance=_CITATION_GUIDANCE,
+        query=query,
+        data_source=data_source,
+    )
+
+
+async def _build_citations_from_sources(
+    sources: List[Dict[str, Any]],
+    data_source: Optional[str],
+) -> tuple[List[MCPCitation], List[str]]:
+    """Build citation and reference lists from raw assistant sources.
+
+    Shared by both MCP (ask_assistant) and the A2A task handler so
+    citation logic is not duplicated.
+    """
     doc_metadata: Dict[str, Dict[str, Any]] = {}
     unique_doc_ids = {s.get("docId", "") for s in sources if s.get("docId")}
     if unique_doc_ids:
@@ -116,8 +136,6 @@ async def mcp_ask_assistant(
             except Exception:
                 logger.debug("Could not fetch metadata for doc %s", did)
 
-    # Build citations and references from sources
-    app_base = os.environ.get("APP_BASE_URL", "https://evidencelab.ai")
     citations: List[MCPCitation] = []
     references: List[str] = []
     for i, src in enumerate(sources, 1):
@@ -128,7 +146,10 @@ async def mcp_ask_assistant(
         year = meta.get("_year", "")
         report_url = meta.get("report_url", "")
         page_num = src.get("page")
-        url = report_url or f"{app_base}/search"
+        url = (
+            report_url
+            or f"{os.environ.get('APP_BASE_URL', 'https://evidencelab.ai')}/search"
+        )
         if page_num and url and "#" not in url:
             url = f"{url}#page={page_num}"
         label_parts = [org, year]
@@ -145,12 +166,4 @@ async def mcp_ask_assistant(
         )
         references.append(f"[{i}] [{formatted_title}]({url})")
 
-    return MCPAssistantResponse(
-        answer=answer_text,
-        sources=sources,
-        citations=citations,
-        references=references,
-        citation_guidance=_CITATION_GUIDANCE,
-        query=query,
-        data_source=data_source,
-    )
+    return citations, references

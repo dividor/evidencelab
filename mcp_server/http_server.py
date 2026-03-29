@@ -19,6 +19,7 @@ import uvicorn
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.requests import Request
 
+from a2a_server.app import handle_a2a_request, handle_agent_card
 from mcp_server.app import mcp as mcp_server
 from mcp_server.auth import verify_mcp_auth
 from mcp_server.oauth import (
@@ -362,6 +363,32 @@ class MCPApp:
                 }
             )
             await send({"type": "http.response.body", "body": body})
+            return
+
+        # A2A Agent Card
+        if path == "/.well-known/agent.json" and method == "GET":
+            await handle_agent_card(send)
+            return
+
+        # A2A JSON-RPC task endpoint
+        if path in ("/a2a", "/a2a/") and method == "POST":
+            if REQUIRE_AUTH:
+                request = Request(scope, receive)
+                try:
+                    await verify_mcp_auth(request)
+                except PermissionError as exc:
+                    logger.warning("A2A auth DENIED: %s", exc)
+                    body = json.dumps({"detail": str(exc)}).encode()
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": 401,
+                            "headers": [(b"content-type", b"application/json")],
+                        }
+                    )
+                    await send({"type": "http.response.body", "body": body})
+                    return
+            await handle_a2a_request(scope, receive, send)
             return
 
         # MCP endpoint

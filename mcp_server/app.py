@@ -14,11 +14,7 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 
 from mcp_server.audit import log_mcp_call
-from mcp_server.schemas import (
-    MCPAssistantResponse,
-    MCPDocumentResponse,
-    MCPSearchResponse,
-)
+from mcp_server.schemas import MCPDocumentResponse, MCPSearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +121,9 @@ mcp = FastMCP(
         "explicitly requests a different one.\n\n"
         "TOOLS:\n"
         "  - search: Find relevant text passages across documents\n"
-        "  - get_document: Retrieve full metadata for a specific document\n"
-        "  - ask_assistant: Ask a research question and get a synthesized answer"
+        "  - get_document: Retrieve full metadata for a specific document\n\n"
+        "For synthesised research answers, use the Evidence Lab A2A agent "
+        "at <base_url>/a2a (Agent-to-Agent protocol)."
     ),
 )
 
@@ -213,11 +210,9 @@ async def search(
 ) -> MCPSearchResponse:
     """Search evaluation documents using hybrid semantic + keyword search.
 
-    START HERE — use this tool first before ask_assistant. It returns the
-    raw text passages so you can read, quote, and analyse the evidence
-    yourself without the assistant paraphrasing or filtering it for you.
-    Use ask_assistant only when you want a synthesized narrative answer;
-    prefer search when you want direct quotes, counts, or your own analysis.
+    START HERE for raw evidence. Returns text passages so you can read,
+    quote, and analyse directly. For synthesised narrative answers, use
+    the Evidence Lab A2A agent instead of this tool.
 
     Returns ranked text passages with metadata including document title,
     organization, year, country, and relevance score. Results are ordered
@@ -355,116 +350,6 @@ async def get_document(
             auth_info=auth_info,
             client_ip="unknown",
             input_params={"doc_id": doc_id, "data_source": data_source},
-            output_summary=f"status={status}",
-            duration_ms=duration_ms,
-            status=status,
-            error_message=error_msg,
-        )
-
-
-@mcp.tool(
-    annotations=ToolAnnotations(
-        readOnlyHint=True, destructiveHint=False, openWorldHint=True
-    ),
-    structured_output=True,
-)
-async def ask_assistant(
-    query: Annotated[
-        str,
-        Field(
-            description=(
-                "Research question to answer. Examples: "
-                '"What are the main findings on climate adaptation in Africa?", '
-                '"How effective have school feeding programs been?", '
-                '"Compare approaches to gender mainstreaming across agencies"'
-            )
-        ),
-    ],
-    data_source: Annotated[
-        str,
-        Field(
-            description=(
-                "Data collection to search. Options: "
-                '"uneg" (default), "worldbank", "unmandates"'
-            )
-        ),
-    ] = "uneg",
-    deep_research: Annotated[
-        bool,
-        Field(
-            description=(
-                "Enable multi-pass deep research mode for complex questions. "
-                "Uses multiple search queries and iterative analysis (slower but thorough)"
-            )
-        ),
-    ] = False,
-    model_combo: Annotated[
-        str,
-        Field(description=(_model_combo_description())),
-    ] = "Azure Foundry",
-) -> MCPAssistantResponse:
-    """Ask the AI research assistant a question about evaluation documents.
-
-    USE SEARCH FIRST — before calling this tool, run one or more search
-    calls to retrieve raw passages. This lets you (and the user) see the
-    underlying evidence directly. Use ask_assistant when you want a
-    synthesized narrative that draws across many passages; it is slower
-    and less transparent than reading raw search results yourself.
-
-    The assistant automatically searches the document collection using
-    multiple queries, retrieves the most relevant passages, and
-    synthesizes a comprehensive answer with source citations.
-
-    Returns: answer (full synthesized text), sources (list of cited
-    documents with title, organization, year, and relevance), and
-    the original query.
-
-    For complex questions spanning multiple topics or requiring
-    cross-referencing, set deep_research=True. This uses iterative
-    search with multiple query reformulations (2-5x slower but
-    significantly more thorough).
-
-    MODEL: Always use the default model_combo unless the user explicitly
-    requests a different one. Available models are listed in the
-    model_combo parameter description.
-
-    IMPORTANT — your response MUST include:
-    1. Every factual claim MUST have at least one clickable inline citation
-       from the sources array: [[1]](url), [[2]](url).
-    2. A References section listing all cited sources.
-    3. Always attribute findings to specific source documents.
-    """
-    from mcp_server.tools.assistant import mcp_ask_assistant
-
-    t0 = time.monotonic()
-    auth_info: dict = {"type": "unknown", "user_id": "unknown"}
-    status = "ok"
-    error_msg = None
-
-    try:
-        result = await mcp_ask_assistant(
-            query=query,
-            data_source=data_source,
-            deep_research=deep_research,
-            model_combo=model_combo,
-        )
-        return result
-    except Exception as exc:
-        status = "error"
-        error_msg = str(exc)
-        raise
-    finally:
-        duration_ms = (time.monotonic() - t0) * 1000
-        log_mcp_call(
-            tool_name="ask_assistant",
-            auth_info=auth_info,
-            client_ip="unknown",
-            input_params={
-                "query": query,
-                "data_source": data_source,
-                "deep_research": deep_research,
-                "model_combo": model_combo,
-            },
             output_summary=f"status={status}",
             duration_ms=duration_ms,
             status=status,
