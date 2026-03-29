@@ -175,7 +175,7 @@ async def _handle_tasks_send_subscribe(
         }
     )
 
-    async for sse_line in handle_task_streaming(task_id, send_params.message):
+    async for sse_line in handle_task_streaming(task_id, send_params.message, rpc_id):
         await send(
             {"type": "http.response.body", "body": sse_line.encode(), "more_body": True}
         )

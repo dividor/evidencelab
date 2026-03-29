@@ -144,19 +144,23 @@ class TaskIdParams(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Streaming events (tasks/sendSubscribe)
+# Streaming events (message/stream / tasks/sendSubscribe)
 # ---------------------------------------------------------------------------
 
 
 class TaskStatusUpdateEvent(BaseModel):
-    id: str
+    kind: str = "status-update"
+    taskId: str
+    contextId: str
     status: TaskStatus
     final: bool = False
     metadata: Optional[Dict[str, Any]] = None
 
 
 class TaskArtifactUpdateEvent(BaseModel):
-    id: str
+    kind: str = "artifact-update"
+    taskId: str
+    contextId: str
     artifact: Artifact
     metadata: Optional[Dict[str, Any]] = None
 

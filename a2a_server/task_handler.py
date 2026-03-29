@@ -85,23 +85,24 @@ async def handle_task(task_id: str, message: Message) -> Task:
 
 
 async def handle_task_streaming(
-    task_id: str, message: Message
+    task_id: str, message: Message, rpc_id: Any
 ) -> AsyncGenerator[str, None]:
     """Execute a task and yield SSE-formatted A2A events.
 
-    Yields lines suitable for an SSE response:
-        data: <json>\\n\\n
+    Each yielded line is a full JSON-RPC response envelope per the A2A spec:
+        data: {"jsonrpc":"2.0","id":<rpc_id>,"result":{...}}\\n\\n
     """
     query = _extract_query(message)
     skill = _extract_skill(message)
 
     # Notify client we're working
     working_event = TaskStatusUpdateEvent(
-        id=task_id,
+        taskId=task_id,
+        contextId=task_id,
         status=TaskStatus(state=TaskState.WORKING, timestamp=_now()),
         final=False,
     )
-    yield _sse("TaskStatusUpdateEvent", working_event.model_dump())
+    yield _sse_rpc(rpc_id, working_event.model_dump())
 
     try:
         if skill == "search":
@@ -109,26 +110,30 @@ async def handle_task_streaming(
         else:
             # Stream tokens from the assistant
             async for sse_line in _run_research_streaming(
-                task_id, query, message.metadata
+                task_id, query, message.metadata, rpc_id
             ):
                 yield sse_line
             return
 
         for artifact in artifacts:
-            artifact_event = TaskArtifactUpdateEvent(id=task_id, artifact=artifact)
-            yield _sse("TaskArtifactUpdateEvent", artifact_event.model_dump())
+            artifact_event = TaskArtifactUpdateEvent(
+                taskId=task_id, contextId=task_id, artifact=artifact
+            )
+            yield _sse_rpc(rpc_id, artifact_event.model_dump())
 
         final_event = TaskStatusUpdateEvent(
-            id=task_id,
+            taskId=task_id,
+            contextId=task_id,
             status=TaskStatus(state=TaskState.COMPLETED, timestamp=_now()),
             final=True,
         )
-        yield _sse("TaskStatusUpdateEvent", final_event.model_dump())
+        yield _sse_rpc(rpc_id, final_event.model_dump())
 
     except Exception as exc:
         logger.error("A2A streaming task %s failed: %s", task_id, exc)
         error_event = TaskStatusUpdateEvent(
-            id=task_id,
+            taskId=task_id,
+            contextId=task_id,
             status=TaskStatus(
                 state=TaskState.FAILED,
                 timestamp=_now(),
@@ -139,7 +144,7 @@ async def handle_task_streaming(
             ),
             final=True,
         )
-        yield _sse("TaskStatusUpdateEvent", error_event.model_dump())
+        yield _sse_rpc(rpc_id, error_event.model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +199,7 @@ async def _run_research_streaming(
     task_id: str,
     query: str,
     metadata: Optional[Dict[str, Any]],
+    rpc_id: Any = None,
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from the assistant, yielding SSE events."""
     from pipeline.db import UI_MODEL_COMBOS, get_default_model_combo
@@ -237,11 +243,9 @@ async def _run_research_streaming(
                     lastChunk=False,
                 )
                 chunk_event = TaskArtifactUpdateEvent(
-                    id=task_id, artifact=chunk_artifact
+                    taskId=task_id, contextId=task_id, artifact=chunk_artifact
                 )
-                token_events.append(
-                    _sse("TaskArtifactUpdateEvent", chunk_event.model_dump())
-                )
+                token_events.append(_sse_rpc(rpc_id, chunk_event.model_dump()))
             elif event_type == "sources":
                 sources.extend(event.get("sources", []))
             elif event_type == "error":
@@ -282,15 +286,18 @@ async def _run_research_streaming(
         append=False,
         lastChunk=True,
     )
-    final_artifact_event = TaskArtifactUpdateEvent(id=task_id, artifact=final_artifact)
-    yield _sse("TaskArtifactUpdateEvent", final_artifact_event.model_dump())
+    final_artifact_event = TaskArtifactUpdateEvent(
+        taskId=task_id, contextId=task_id, artifact=final_artifact
+    )
+    yield _sse_rpc(rpc_id, final_artifact_event.model_dump())
 
     final_status = TaskStatusUpdateEvent(
-        id=task_id,
+        taskId=task_id,
+        contextId=task_id,
         status=TaskStatus(state=TaskState.COMPLETED, timestamp=_now()),
         final=True,
     )
-    yield _sse("TaskStatusUpdateEvent", final_status.model_dump())
+    yield _sse_rpc(rpc_id, final_status.model_dump())
 
 
 async def _run_search(query: str, metadata: Optional[Dict[str, Any]]) -> List[Artifact]:
@@ -348,6 +355,7 @@ async def _run_search(query: str, metadata: Optional[Dict[str, Any]]) -> List[Ar
     ]
 
 
-def _sse(event_type: str, data: Dict[str, Any]) -> str:
-    """Format a server-sent event line."""
-    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+def _sse_rpc(rpc_id: Any, result: Dict[str, Any]) -> str:
+    """Format an SSE line as a JSON-RPC response envelope per the A2A spec."""
+    response = {"jsonrpc": "2.0", "id": rpc_id, "result": result}
+    return f"data: {json.dumps(response)}\n\n"
