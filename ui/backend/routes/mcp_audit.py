@@ -22,11 +22,14 @@ class McpAuditEntry(BaseModel):
     tool_name: str
     auth_type: str
     user_id: Optional[str] = None
+    user_email: Optional[str] = None
+    user_display_name: Optional[str] = None
     client_ip: Optional[str] = None
     duration_ms: Optional[float] = None
     status: str
     error_message: Optional[str] = None
     output_summary: Optional[str] = None
+    input_params: Optional[str] = None
 
 
 class McpAuditResponse(BaseModel):
@@ -71,12 +74,18 @@ async def list_mcp_audit(
     rows = await db.execute(
         text(
             f"""
-            SELECT id, created_at, protocol, tool_name, auth_type,
-                   user_id, client_ip, duration_ms, status,
-                   error_message, output_summary
-            FROM mcp_audit_log
+            SELECT
+                a.id, a.created_at, a.protocol, a.tool_name, a.auth_type,
+                a.user_id, a.client_ip, a.duration_ms, a.status,
+                a.error_message, a.output_summary, a.input_params,
+                u.email  AS user_email,
+                u.display_name AS user_display_name
+            FROM mcp_audit_log a
+            LEFT JOIN users u
+                ON u.id::text = a.user_id
+                AND a.user_id NOT IN ('', 'unknown', 'env_key')
             {where_sql}
-            ORDER BY created_at DESC
+            ORDER BY a.created_at DESC
             LIMIT :limit OFFSET :offset
             """
         ),
@@ -95,11 +104,14 @@ async def list_mcp_audit(
             tool_name=row.tool_name,
             auth_type=row.auth_type,
             user_id=row.user_id or None,
+            user_email=row.user_email,
+            user_display_name=row.user_display_name,
             client_ip=row.client_ip,
             duration_ms=row.duration_ms,
             status=row.status,
             error_message=row.error_message,
             output_summary=row.output_summary,
+            input_params=row.input_params,
         )
         for row in rows.mappings()
     ]

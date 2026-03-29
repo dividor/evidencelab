@@ -9,11 +9,14 @@ interface AuditEntry {
   tool_name: string;
   auth_type: string;
   user_id: string | null;
+  user_email: string | null;
+  user_display_name: string | null;
   client_ip: string | null;
   duration_ms: number | null;
   status: 'ok' | 'error';
   error_message: string | null;
   output_summary: string | null;
+  input_params: string | null;
 }
 
 interface AuditResponse {
@@ -51,6 +54,22 @@ const badge = (style: React.CSSProperties, label: string) => (
   </span>
 );
 
+const fmtJson = (raw: string | null): string => {
+  if (!raw) return '';
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+};
+
+const userLabel = (row: AuditEntry): string => {
+  if (row.user_email) return row.user_display_name ? `${row.user_display_name} (${row.user_email})` : row.user_email;
+  if (row.user_id === 'env_key') return 'Master API key';
+  if (row.user_id && row.user_id !== 'unknown' && row.user_id !== '') return row.user_id;
+  return '—';
+};
+
 const McpAuditLog: React.FC = () => {
   const [rows, setRows] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -60,6 +79,7 @@ const McpAuditLog: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const fetchAudit = useCallback(async () => {
     setLoading(true);
@@ -82,7 +102,6 @@ const McpAuditLog: React.FC = () => {
     fetchAudit();
   }, [fetchAudit]);
 
-  // Reset to page 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [protocol, statusFilter]);
@@ -97,15 +116,20 @@ const McpAuditLog: React.FC = () => {
   const fmtMs = (ms: number | null) =>
     ms == null ? '—' : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 
+  const toggleExpand = (id: number) => setExpandedId((prev) => (prev === id ? null : id));
+
+  const thStyle: React.CSSProperties = { padding: '8px 12px', color: '#374151', fontWeight: 600, textAlign: 'left' };
+  const tdStyle: React.CSSProperties = { padding: '8px 12px' };
+
   return (
     <div className="admin-section">
       <h3>MCP / A2A Audit Log</h3>
       <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
-        All MCP tool calls and A2A task executions. Refreshes on filter change.
+        All MCP tool calls and A2A task executions. Click a row to see full request/response detail.
       </p>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <div>
           <label style={{ fontSize: 12, color: '#6b7280', marginRight: 6 }}>Protocol</label>
           <select
@@ -130,9 +154,9 @@ const McpAuditLog: React.FC = () => {
             <option value="error">Error</option>
           </select>
         </div>
-        <div style={{ marginLeft: 'auto', fontSize: 13, color: '#6b7280', alignSelf: 'center' }}>
+        <span style={{ marginLeft: 'auto', fontSize: 13, color: '#6b7280' }}>
           {total.toLocaleString()} entries
-        </div>
+        </span>
       </div>
 
       {error && (
@@ -150,46 +174,83 @@ const McpAuditLog: React.FC = () => {
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Date</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Protocol</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Tool / Method</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Auth</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>User</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>IP</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Duration</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Status</th>
-                <th style={{ padding: '8px 12px', color: '#374151', fontWeight: 600 }}>Summary / Error</th>
+              <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                <th style={thStyle}>Date</th>
+                <th style={thStyle}>Protocol</th>
+                <th style={thStyle}>Tool / Method</th>
+                <th style={thStyle}>Auth</th>
+                <th style={thStyle}>User</th>
+                <th style={thStyle}>IP</th>
+                <th style={thStyle}>Duration</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Summary</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr
-                  key={row.id}
-                  style={{
-                    borderBottom: '1px solid #f3f4f6',
-                    background: i % 2 === 0 ? '#fff' : '#fafafa',
-                  }}
-                >
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: '#6b7280' }}>{fmtDate(row.created_at)}</td>
-                  <td style={{ padding: '8px 12px' }}>{badge(PROTOCOL_BADGE[row.protocol] || {}, row.protocol)}</td>
-                  <td style={{ padding: '8px 12px', fontFamily: 'monospace' }}>{row.tool_name}</td>
-                  <td style={{ padding: '8px 12px', color: '#6b7280' }}>{row.auth_type}</td>
-                  <td style={{ padding: '8px 12px', color: '#6b7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.user_id || '—'}</td>
-                  <td style={{ padding: '8px 12px', color: '#6b7280', fontFamily: 'monospace', fontSize: 12 }}>{row.client_ip || '—'}</td>
-                  <td style={{ padding: '8px 12px', color: '#6b7280', whiteSpace: 'nowrap' }}>{fmtMs(row.duration_ms)}</td>
-                  <td style={{ padding: '8px 12px' }}>{badge(STATUS_BADGE[row.status] || {}, row.status)}</td>
-                  <td style={{ padding: '8px 12px', color: row.error_message ? '#b91c1c' : '#6b7280', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {row.error_message || row.output_summary || '—'}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((row, i) => {
+                const isExpanded = expandedId === row.id;
+                const rowBg = i % 2 === 0 ? '#fff' : '#fafafa';
+                return (
+                  <React.Fragment key={row.id}>
+                    <tr
+                      onClick={() => toggleExpand(row.id)}
+                      style={{
+                        borderBottom: isExpanded ? 'none' : '1px solid #f3f4f6',
+                        background: isExpanded ? '#f0f9ff' : rowBg,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap', color: '#6b7280' }}>{fmtDate(row.created_at)}</td>
+                      <td style={tdStyle}>{badge(PROTOCOL_BADGE[row.protocol] || {}, row.protocol)}</td>
+                      <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{row.tool_name}</td>
+                      <td style={{ ...tdStyle, color: '#6b7280' }}>{row.auth_type}</td>
+                      <td style={{ ...tdStyle, color: '#6b7280', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {userLabel(row)}
+                      </td>
+                      <td style={{ ...tdStyle, color: '#6b7280', fontFamily: 'monospace', fontSize: 12 }}>{row.client_ip || '—'}</td>
+                      <td style={{ ...tdStyle, color: '#6b7280', whiteSpace: 'nowrap' }}>{fmtMs(row.duration_ms)}</td>
+                      <td style={tdStyle}>{badge(STATUS_BADGE[row.status] || {}, row.status)}</td>
+                      <td style={{ ...tdStyle, color: row.error_message ? '#b91c1c' : '#6b7280', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {row.error_message || row.output_summary || '—'}
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr style={{ background: '#f0f9ff', borderBottom: '2px solid #bae6fd' }}>
+                        <td colSpan={9} style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#0369a1', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Request (input_params)
+                              </div>
+                              <pre style={{ margin: 0, fontSize: 12, background: '#fff', border: '1px solid #bae6fd', borderRadius: 4, padding: '8px 10px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#1e3a5f' }}>
+                                {fmtJson(row.input_params) || '—'}
+                              </pre>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: '#0369a1', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Response (output_summary)
+                              </div>
+                              <pre style={{ margin: 0, fontSize: 12, background: '#fff', border: '1px solid #bae6fd', borderRadius: 4, padding: '8px 10px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#1e3a5f' }}>
+                                {row.output_summary || '—'}
+                              </pre>
+                              {row.error_message && (
+                                <pre style={{ margin: '8px 0 0', fontSize: 12, background: '#fff', border: '1px solid #fca5a5', borderRadius: 4, padding: '8px 10px', overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#b91c1c' }}>
+                                  {row.error_message}
+                                </pre>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div style={{ display: 'flex', gap: 8, marginTop: 16, alignItems: 'center', justifyContent: 'center' }}>
           <button className="btn-sm btn-secondary" onClick={() => setPage(1)} disabled={page === 1}>«</button>
