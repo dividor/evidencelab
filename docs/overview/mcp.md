@@ -66,6 +66,16 @@ For synthesised narrative answers with citations — rather than raw search pass
 | `worldbank` | World Bank Integrity Vice Presidency investigation reports |
 | `unmandates` | ~4,000 UN General Assembly, Security Council, and ECOSOC resolutions |
 
+## Testing with MCP Inspector
+
+You can test and explore the Evidence Lab MCP server interactively using the [MCP Inspector](https://github.com/modelcontextprotocol/inspector):
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Connect to `https://evidencelab.ai/mcp` and authenticate with your API key (`X-API-Key` header) to browse available tools and run queries.
+
 ## Authentication
 
 Evidence Lab uses OAuth 2.0. When you add the connector, Claude and ChatGPT will prompt you to log in via the Evidence Lab login page. Your session is stored securely — you will not be asked again unless your session expires.

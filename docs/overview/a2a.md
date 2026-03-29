@@ -80,18 +80,17 @@ Tasks are submitted as JSON-RPC over HTTP. To specify which skill to use, either
 ```http
 POST https://evidencelab.ai/a2a
 Content-Type: application/json
-Authorization: Bearer <token>
+X-API-Key: <key>
 
 {
   "jsonrpc": "2.0",
   "id": "req-1",
-  "method": "tasks/send",
+  "method": "message/send",
   "params": {
-    "id": "task-001",
     "message": {
       "role": "user",
-      "parts": [{"type": "text", "text": "What does the evidence say about cash transfer programs?"}],
-      "metadata": {"data_source": "uneg"}
+      "parts": [{"kind": "text", "text": "What does the evidence say about cash transfer programs?"}],
+      "metadata": {"skill": "research", "data_source": "uneg"}
     }
   }
 }
@@ -103,26 +102,25 @@ Authorization: Bearer <token>
 POST https://evidencelab.ai/a2a
 Content-Type: application/json
 Accept: text/event-stream
-Authorization: Bearer <token>
+X-API-Key: <key>
 
 {
   "jsonrpc": "2.0",
   "id": "req-2",
-  "method": "tasks/sendSubscribe",
+  "method": "message/stream",
   "params": {
-    "id": "task-002",
     "message": {
       "role": "user",
-      "parts": [{"type": "text", "text": "Compare gender mainstreaming across UNDP and UNICEF evaluations"}],
-      "metadata": {"deep_research": true}
+      "parts": [{"kind": "text", "text": "Compare gender mainstreaming across UNDP and UNICEF evaluations"}],
+      "metadata": {"skill": "research", "deep_research": true}
     }
   }
 }
 ```
 
-Streaming returns a sequence of SSE events:
-- `TaskStatusUpdateEvent` — state changes (submitted → working → completed)
-- `TaskArtifactUpdateEvent` — token-by-token text as it is generated
+Streaming returns a sequence of JSON-RPC SSE events:
+- `status-update` — state changes (submitted → working → completed)
+- `artifact-update` — token-by-token text as it is generated
 
 ## Authentication
 
@@ -130,6 +128,16 @@ All A2A requests require authentication. The same methods as MCP are supported:
 
 - **API Key** — `X-API-Key: <key>` header
 - **Bearer token** — `Authorization: Bearer <token>` header (JWT or OAuth access token)
+
+## Testing with A2A Inspector
+
+You can test the Evidence Lab A2A agent interactively using the [A2A Inspector](https://github.com/a2aproject/a2a-inspector):
+
+```bash
+npx a2a-inspector
+```
+
+Connect to `https://evidencelab.ai/.well-known/agent.json` and set the `X-API-Key` header with your API key. The inspector will load the Agent Card, display available skills, and let you send tasks and inspect responses.
 
 ## Relationship to MCP
 

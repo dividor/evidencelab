@@ -64,6 +64,7 @@ async def handle_task(task_id: str, message: Message) -> Task:
 
         return Task(
             id=task_id,
+            contextId=task_id,
             status=TaskStatus(state=TaskState.COMPLETED, timestamp=_now()),
             artifacts=artifacts,
             history=[message],
@@ -72,6 +73,7 @@ async def handle_task(task_id: str, message: Message) -> Task:
         logger.error("A2A task %s failed: %s", task_id, exc)
         return Task(
             id=task_id,
+            contextId=task_id,
             status=TaskStatus(
                 state=TaskState.FAILED,
                 timestamp=_now(),
@@ -181,7 +183,6 @@ async def _run_research(
                     "references": response.references,
                     "sources": response.sources,
                 },
-                mimeType="application/json",
             )
         )
 
@@ -190,7 +191,6 @@ async def _run_research(
             name="research_response",
             description="Synthesised research answer with citations",
             parts=parts,
-            lastChunk=True,
         )
     ]
 
@@ -238,9 +238,6 @@ async def _run_research_streaming(
                 chunk_artifact = Artifact(
                     name="research_response",
                     parts=[TextPart(text=token)],
-                    index=0,
-                    append=True,
-                    lastChunk=False,
                 )
                 chunk_event = TaskArtifactUpdateEvent(
                     taskId=task_id, contextId=task_id, artifact=chunk_artifact
@@ -279,12 +276,8 @@ async def _run_research_streaming(
                     "references": references,
                     "sources": sources,
                 },
-                mimeType="application/json",
             ),
         ],
-        index=0,
-        append=False,
-        lastChunk=True,
     )
     final_artifact_event = TaskArtifactUpdateEvent(
         taskId=task_id, contextId=task_id, artifact=final_artifact
@@ -347,10 +340,8 @@ async def _run_search(query: str, metadata: Optional[Dict[str, Any]]) -> List[Ar
                         "citations": [c.model_dump() for c in response.citations],
                         "references": response.references,
                     },
-                    mimeType="application/json",
                 ),
             ],
-            lastChunk=True,
         )
     ]
 

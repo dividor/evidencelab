@@ -26,10 +26,9 @@ class TestTextPart:
 
 class TestDataPart:
     def test_basic(self):
-        p = DataPart(data={"key": "val"}, mimeType="application/json")
+        p = DataPart(data={"key": "val"})
         assert p.type == "data"
         assert p.data["key"] == "val"
-        assert p.mimeType == "application/json"
 
 
 class TestMessage:
@@ -57,14 +56,14 @@ class TestTaskStatus:
 
 class TestArtifact:
     def test_text_artifact(self):
-        a = Artifact(parts=[TextPart(text="Some answer")], lastChunk=True)
+        a = Artifact(parts=[TextPart(text="Some answer")])
         assert len(a.parts) == 1
-        assert a.lastChunk is True
+        assert a.artifactId is not None
 
-    def test_append_chunk(self):
-        a = Artifact(parts=[TextPart(text="token")], append=True, lastChunk=False)
-        assert a.append is True
-        assert a.lastChunk is False
+    def test_artifact_with_name(self):
+        a = Artifact(parts=[TextPart(text="token")], name="chunk")
+        assert a.name == "chunk"
+        assert a.artifactId is not None
 
 
 class TestJSONRPCRequest:

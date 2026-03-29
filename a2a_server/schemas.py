@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -23,7 +24,6 @@ class DataPart(BaseModel):
     type: str = "data"
     kind: str = "data"
     data: Dict[str, Any]
-    mimeType: Optional[str] = None
 
 
 Part = Union[TextPart, DataPart]
@@ -71,12 +71,10 @@ class TaskStatus(BaseModel):
 
 
 class Artifact(BaseModel):
+    artifactId: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: Optional[str] = None
     description: Optional[str] = None
     parts: List[Part]
-    index: int = 0
-    append: bool = False
-    lastChunk: bool = True
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -88,7 +86,7 @@ class Artifact(BaseModel):
 class Task(BaseModel):
     kind: str = "task"
     id: str
-    contextId: Optional[str] = None
+    contextId: str
     sessionId: Optional[str] = None
     status: TaskStatus
     artifacts: Optional[List[Artifact]] = None
