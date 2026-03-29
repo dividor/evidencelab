@@ -8,7 +8,8 @@
         { "title": "Getting Started", "path": "overview/getting-started.md" },
         { "title": "Technical Info", "path": "overview/tech.md" },
         { "title": "Data Sources", "path": "overview/data.md" },
-        { "title": "Using in AI Platforms", "path": "overview/mcp.md" }
+        { "title": "Using in AI Platforms", "path": "overview/mcp.md" },
+        { "title": "Agent-to-Agent (A2A) Server", "path": "overview/a2a.md" }
       ]
     },
     {
@@ -29,7 +30,8 @@
         { "title": "User Administration", "path": "admin/user-administration.md" },
         { "title": "API", "path": "admin/api-keys.md" },
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
-        { "title": "MCP Server", "path": "admin/mcp-server.md" }
+        { "title": "MCP Server", "path": "admin/mcp-server.md" },
+        { "title": "A2A Server", "path": "admin/a2a-server.md" }
       ]
     }
   ]
