@@ -251,6 +251,7 @@ async def search(
     auth_info: dict = request_auth.get()
     status = "ok"
     error_msg = None
+    result = None
 
     try:
         result = await mcp_search(
@@ -276,6 +277,15 @@ async def search(
         raise
     finally:
         duration_ms = (time.monotonic() - t0) * 1000
+        if result is not None:
+            top_titles = [r.title for r in (result.results or [])[:3]]
+            output_summary = (
+                f"{result.total} results. Top: {'; '.join(top_titles)}"
+                if top_titles
+                else f"{result.total} results"
+            )
+        else:
+            output_summary = f"status={status}"
         log_mcp_call(
             tool_name="search",
             auth_info=auth_info,
@@ -286,7 +296,7 @@ async def search(
                 "limit": limit,
                 "filters": filters,
             },
-            output_summary=f"status={status}",
+            output_summary=output_summary,
             duration_ms=duration_ms,
             status=status,
             error_message=error_msg,
@@ -335,6 +345,7 @@ async def get_document(
     auth_info: dict = request_auth.get()
     status = "ok"
     error_msg = None
+    result = None
 
     try:
         result = await mcp_get_document(doc_id=doc_id, data_source=data_source)
@@ -345,12 +356,16 @@ async def get_document(
         raise
     finally:
         duration_ms = (time.monotonic() - t0) * 1000
+        if result is not None:
+            output_summary = result.title or f"doc_id={doc_id}"
+        else:
+            output_summary = f"status={status}"
         log_mcp_call(
             tool_name="get_document",
             auth_info=auth_info,
             client_ip=request_client_ip.get(),
             input_params={"doc_id": doc_id, "data_source": data_source},
-            output_summary=f"status={status}",
+            output_summary=output_summary,
             duration_ms=duration_ms,
             status=status,
             error_message=error_msg,
