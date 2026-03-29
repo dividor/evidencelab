@@ -70,6 +70,7 @@ Evidence Lab document processing pipeline includes the following features:
 
 3. AI platform integrations
 
+- **REST API** — full programmatic access to search, documents, and admin functions. Protected by API key authentication. Interactive docs at `/api/docs` (Swagger UI). See [API docs](docs/admin/api-keys.md)
 - **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server allowing Claude, ChatGPT, and other AI assistants to search Evidence Lab documents as tools. Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT. Tools: `search` (semantic search with filters, facets, and citations) and `get_document` (full document metadata)
 - **A2A Agent** — [Agent-to-Agent protocol](https://google.github.io/A2A/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, etc.). Exposes a `research` skill (full assistant synthesis with streaming) and `search` skill. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`
 - Both protocols share OAuth 2.0 authentication (or `X-API-Key` header), rate limiting, and audit logging
