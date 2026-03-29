@@ -74,11 +74,18 @@ Evidence Lab includes an optional user module that adds authentication and data-
 
 The module is built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) for industry-standard authentication patterns and is designed with future MFA support in mind.
 
+### AI platform integrations
+
+Evidence Lab integrates with external AI systems via two open protocols:
+
+- **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude, ChatGPT, and other AI assistants call Evidence Lab as a tool directly from within your AI platform. Tools: `search` (semantic search with filters and citations) and `get_document` (full document metadata). Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT.
+- **A2A Agent** — [Agent-to-Agent protocol](https://a2a-protocol.org/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, Azure AI Foundry, etc.). Exposes a `research` skill — the same assistant as the UI — that returns synthesised answers with citations, and a `search` skill for raw evidence retrieval. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`.
+
+Both protocols share API key authentication, rate limiting, and audit logging. See [Using in AI Platforms](/docs/overview/mcp) for connection instructions.
+
 ### REST API
 
 Evidence Lab provides a full REST API for programmatic access. All data endpoints are protected by API key authentication. Interactive API documentation is available via Swagger UI at `/api/docs`. Administrators can generate API keys from the **API Keys** tab in the admin panel. See [API](/docs/admin/api-keys) for details.
-
-More features will be added soon, focused on document evidence analysis and MCP (Model Context Protocol) support.
 
 For more detailed information on how the above features have been implemented, mosey on over to [Tech](/tech).
 
