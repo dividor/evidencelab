@@ -169,12 +169,20 @@ def interactive_setup():
     # 3. Qdrant API key
     env_vars["QDRANT_API_KEY"] = prompt_qdrant_key()
 
-    # 4. Auto-generate API_SECRET_KEY and AUTH_SECRET_KEY
+    # 4. Auto-generate secrets
     env_vars["API_SECRET_KEY"] = secrets.token_hex(32)
     env_vars["AUTH_SECRET_KEY"] = secrets.token_hex(32)
     # Keep REACT_APP_API_KEY in sync with API_SECRET_KEY
     env_vars["REACT_APP_API_KEY"] = env_vars["API_SECRET_KEY"]
-    print("  Auto-generated API_SECRET_KEY and AUTH_SECRET_KEY")
+    # Fernet key for at-rest encryption of admin-managed API key values
+    from cryptography.fernet import Fernet
+
+    env_vars["KEY_ENCRYPTION_KEY"] = Fernet.generate_key().decode()
+    # Strong random Postgres password (no default fallback in docker-compose)
+    env_vars["POSTGRES_PASSWORD"] = secrets.token_hex(16)
+    print(
+        "  Auto-generated API_SECRET_KEY, AUTH_SECRET_KEY, KEY_ENCRYPTION_KEY, POSTGRES_PASSWORD"
+    )
 
     # 5. Confirmation
     print()
@@ -182,7 +190,13 @@ def interactive_setup():
     print("  Configuration summary:")
     print(f"  Provider:        {combo['name']}")
     for key, val in env_vars.items():
-        if key in ("API_SECRET_KEY", "AUTH_SECRET_KEY", "REACT_APP_API_KEY"):
+        if key in (
+            "API_SECRET_KEY",
+            "AUTH_SECRET_KEY",
+            "REACT_APP_API_KEY",
+            "KEY_ENCRYPTION_KEY",
+            "POSTGRES_PASSWORD",
+        ):
             print(f"  {key + ':':23s} [auto-generated]")
         elif key == "QDRANT_API_KEY" and len(val) == 64:
             print(f"  {key + ':':23s} [auto-generated]")

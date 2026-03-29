@@ -33,6 +33,20 @@ openssl rand -hex 32
 
 If `API_SECRET_KEY` is not set, the API starts with a warning and all unauthenticated requests are rejected.
 
+#### Encryption Key for Admin-Managed Keys
+
+Admin-generated API keys are stored encrypted in the database. Set `KEY_ENCRYPTION_KEY` in `.env`:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+```env
+KEY_ENCRYPTION_KEY=<output from command above>
+```
+
+This key must remain stable — rotating it requires re-encrypting existing key values in the database. If it is missing, the admin panel cannot display existing keys (they will show as unavailable).
+
 #### Admin-Generated API Key
 
 Administrators can generate an API key from the admin panel:
@@ -75,7 +89,8 @@ curl -H "X-API-Key: your-key-here" \
 | Aspect | Implementation |
 |--------|---------------|
 | Key format | `el_` prefix + 32 bytes of `secrets.token_urlsafe` |
-| Storage | SHA-256 hash only — plaintext is never stored |
+| Storage | SHA-256 hash for authentication lookups; full key encrypted at rest with Fernet (AES-128-CBC + HMAC-SHA256) so admins can retrieve it from the panel |
+| Encryption key | `KEY_ENCRYPTION_KEY` env var (Fernet key) — required for admin panel to display keys. Generate with: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | Lookup | In-memory cache of active hashes, invalidated on create/revoke |
 | Access control | Superuser-only (admin panel) |
 | Audit logging | Key creation and revocation events are logged |
