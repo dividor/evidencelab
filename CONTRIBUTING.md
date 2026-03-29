@@ -8,6 +8,7 @@ Thank you for your interest in contributing to Evidence Lab! This document provi
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Pre-commit Hooks](#pre-commit-hooks)
+- [CLAUDE.md (AI Assistant Context)](#claudemd-ai-assistant-context)
 - [Security](#security)
 - [Making Changes](#making-changes)
 - [Commit Guidelines](#commit-guidelines)
@@ -136,6 +137,25 @@ python scripts/quality/code_metrics.py --skip-js-cognitive
 ```
 
 Note: CI installs Node.js and frontend dependencies so JS/TS metrics run there.
+
+## 🤖 CLAUDE.md (AI Assistant Context)
+
+The project includes a [`CLAUDE.md`](CLAUDE.md) file at the repository root that provides project context to AI coding assistants (Claude Code, Cursor, etc.). This file contains architecture overview, build/test/deploy commands, project rules, security protocols, code patterns, and non-obvious gotchas.
+
+### Keeping CLAUDE.md Current
+
+When making significant changes to the project — new subsystems, changed commands, new conventions, or architectural shifts — update `CLAUDE.md` to reflect them. The file should stay concise and actionable; it is not a replacement for full documentation but a quick-reference for AI assistants working on the codebase.
+
+### Auditing with the CLAUDE.md Improver
+
+You can audit and improve the `CLAUDE.md` using the [CLAUDE.md Improver skill](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management/skills/claude-md-improver) in Claude Code. It evaluates the file across six dimensions (commands/workflows, architecture clarity, non-obvious patterns, conciseness, currency, actionability) and proposes targeted updates:
+
+```bash
+# In Claude Code, run:
+/claude-md-improver
+```
+
+The skill will discover all CLAUDE.md files in the repo, score them, produce a quality report, and suggest improvements for review before applying changes.
 
 ## 🔒 Security
 
