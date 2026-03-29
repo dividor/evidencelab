@@ -65,8 +65,10 @@ The MCP server supports three authentication methods:
 ### 1. API Key
 
 Clients can authenticate by passing an API key in the `X-API-Key` header. This matches either:
-- The `API_SECRET_KEY` environment variable (master key)
-- An admin-generated API key stored in the database
+- The `API_SECRET_KEY` environment variable (master key) — takes effect immediately across all services
+- An admin-generated key managed via the Admin → API Keys screen
+
+> **Note:** Admin-generated keys are cached in-memory per service process with a 60-second TTL. After generating or revoking a key in the admin screen, allow up to 60 seconds before it takes effect in the MCP and A2A servers. The `API_SECRET_KEY` env var is always effective immediately.
 
 ### 2. OAuth 2.0 (for Claude and ChatGPT)
 

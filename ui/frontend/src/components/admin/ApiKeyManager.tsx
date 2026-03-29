@@ -111,7 +111,9 @@ const ApiKeyManager: React.FC = () => {
     <div className="admin-section">
       <h3>API Key</h3>
       <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
-        Use this key to authenticate API and MCP requests via the <code>X-API-Key</code> header.
+        Use this key to authenticate API, MCP, and A2A requests via the <code>X-API-Key</code> header.
+        After generating a new key, allow up to 60 seconds before using it with MCP or A2A — those
+        services cache key hashes and refresh on a 60-second cycle.
       </p>
 
       {error && (
@@ -167,7 +169,8 @@ const ApiKeyManager: React.FC = () => {
         <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #e5e7eb' }}>
           <h4 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>Legacy API Key (env)</h4>
           <p style={{ color: '#6b7280', fontSize: 13, marginBottom: 12 }}>
-            Set via the <code>API_KEY</code> environment variable. This key continues to work alongside any generated keys above.
+            Set via the <code>API_SECRET_KEY</code> environment variable. Works alongside any generated keys
+            above and takes effect immediately across all services.
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 600 }}>
             <input

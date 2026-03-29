@@ -72,7 +72,8 @@ Evidence Lab document processing pipeline includes the following features:
 
 - **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server allowing Claude, ChatGPT, and other AI assistants to search Evidence Lab documents as tools. Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT. Tools: `search` (semantic search with filters, facets, and citations) and `get_document` (full document metadata)
 - **A2A Agent** — [Agent-to-Agent protocol](https://google.github.io/A2A/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, etc.). Exposes a `research` skill (full assistant synthesis with streaming) and `search` skill. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`
-- Both protocols share OAuth 2.0 authentication, rate limiting, and audit logging
+- Both protocols share OAuth 2.0 authentication (or `X-API-Key` header), rate limiting, and audit logging
+- API keys are managed via Admin → API Keys. After generating a new key, allow up to 60 seconds before using it with MCP or A2A (key hashes are cached per-process on a 60-second TTL). The `API_SECRET_KEY` env var takes effect immediately.
 
 4. User authentication & permissions (opt-in)
 
