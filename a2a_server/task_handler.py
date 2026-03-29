@@ -219,17 +219,17 @@ async def _run_research(
 
     parts: List[Any] = [TextPart(text=response.answer)]
 
-    # Include structured citation data as a data part
-    if response.citations:
-        parts.append(
-            DataPart(
-                data={
-                    "citations": [c.model_dump() for c in response.citations],
-                    "references": response.references,
-                    "sources": response.sources,
-                },
-            )
+    # Always include a structured data part so callers can inspect citation metadata.
+    # The citations list may be empty when no matching documents were found.
+    parts.append(
+        DataPart(
+            data={
+                "citations": [c.model_dump() for c in response.citations],
+                "references": response.references,
+                "sources": response.sources,
+            },
         )
+    )
 
     return [
         Artifact(
