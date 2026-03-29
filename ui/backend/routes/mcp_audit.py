@@ -79,7 +79,10 @@ async def list_mcp_audit(
                 a.user_id, a.client_ip, a.duration_ms, a.status,
                 a.error_message, a.output_summary, a.input_params,
                 u.email  AS user_email,
-                u.display_name AS user_display_name
+                NULLIF(
+                    TRIM(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')),
+                    ''
+                ) AS user_display_name
             FROM mcp_audit_log a
             LEFT JOIN users u
                 ON u.id::text = a.user_id
