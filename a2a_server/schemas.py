@@ -13,12 +13,15 @@ from pydantic import BaseModel, Field
 
 
 class TextPart(BaseModel):
+    # Accept both 'type' (old spec) and 'kind' (new spec)
     type: str = "text"
+    kind: str = "text"
     text: str
 
 
 class DataPart(BaseModel):
     type: str = "data"
+    kind: str = "data"
     data: Dict[str, Any]
     mimeType: Optional[str] = None
 

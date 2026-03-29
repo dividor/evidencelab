@@ -96,9 +96,10 @@ async def handle_a2a_request(scope, receive, send) -> None:
     logger.info("A2A RPC id=%s method=%s", rpc_id, method)
 
     try:
-        if method == "tasks/send":
+        # Support both old spec (tasks/*) and new spec (message/*) method names
+        if method in ("tasks/send", "message/send"):
             await _handle_tasks_send(rpc_id, params, send)
-        elif method == "tasks/sendSubscribe":
+        elif method in ("tasks/sendSubscribe", "message/stream"):
             await _handle_tasks_send_subscribe(rpc_id, params, scope, send)
         elif method == "tasks/get":
             await _handle_tasks_get(rpc_id, params, send)
@@ -119,14 +120,15 @@ async def handle_a2a_request(scope, receive, send) -> None:
 
 
 async def _handle_tasks_send(rpc_id: Any, params: Any, send) -> None:
-    """tasks/send — execute task and return completed Task."""
+    """tasks/send / message/send — execute task and return completed Task."""
     try:
         send_params = TaskSendParams.model_validate(params)
     except Exception as exc:
         await _send_error(send, rpc_id, JSONRPC_INVALID_PARAMS, str(exc))
         return
 
-    task_id = send_params.id or str(uuid.uuid4())
+    # params.id (old spec) or fall back to rpc_id (new spec) or uuid
+    task_id = send_params.id or (str(rpc_id) if rpc_id else None) or str(uuid.uuid4())
     task = await handle_task(task_id, send_params.message)
     _tasks[task_id] = task
     if len(_tasks) > _MAX_TASKS:
@@ -140,7 +142,7 @@ async def _handle_tasks_send(rpc_id: Any, params: Any, send) -> None:
 async def _handle_tasks_send_subscribe(
     rpc_id: Any, params: Any, scope: dict, send
 ) -> None:
-    """tasks/sendSubscribe — stream task events as SSE."""
+    """tasks/sendSubscribe / message/stream — stream task events as SSE."""
     try:
         send_params = TaskSendParams.model_validate(params)
     except Exception as exc:
@@ -159,7 +161,7 @@ async def _handle_tasks_send_subscribe(
         )
         return
 
-    task_id = send_params.id or str(uuid.uuid4())
+    task_id = send_params.id or (str(rpc_id) if rpc_id else None) or str(uuid.uuid4())
 
     await send(
         {
