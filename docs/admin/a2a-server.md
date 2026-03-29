@@ -31,6 +31,46 @@ The A2A server (`a2a_server/`) imports the same tool modules as MCP — no dupli
 | `/.well-known/agent.json` | GET | No | Agent Card (capability descriptor) |
 | `/a2a` | POST | Yes | JSON-RPC task endpoint |
 
+### Agent Card
+
+The Agent Card is served at `/.well-known/agent.json` and is generated at runtime from `config.json` — the `name`, `description`, and skill descriptions reflect the datasources actually configured.
+
+```bash
+curl https://evidencelab.ai/.well-known/agent.json | jq .
+```
+
+Example response (fields vary by instance configuration):
+
+```json
+{
+  "name": "Evidence Lab Research Agent",
+  "description": "AI research agent for UN Humanitarian Evaluation Reports, World Bank Fraud and Integrity Reports, and UN Mandates Registry. Searches document collections and synthesises answers with source citations.",
+  "url": "https://evidencelab.ai/a2a",
+  "version": "1.0.0",
+  "protocolVersion": "1.0",
+  "preferredTransport": "JSONRPC",
+  "capabilities": { "streaming": true, "pushNotifications": false },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "authentication": { "schemes": ["Bearer", "ApiKey"] },
+  "documentationUrl": "https://evidencelab.ai/docs",
+  "skills": [
+    {
+      "id": "research",
+      "name": "Research Evaluations",
+      "description": "Answer research questions across: UN Humanitarian Evaluation Reports; World Bank Fraud and Integrity Reports; UN Mandates Registry. Returns a synthesised answer with inline citations and links to source documents.",
+      "tags": ["research", "evaluations", "evidence"]
+    },
+    {
+      "id": "search",
+      "name": "Search Evaluation Documents",
+      "description": "Semantic search over document chunks. Returns ranked text passages with metadata.",
+      "tags": ["search", "evaluations", "semantic"]
+    }
+  ]
+}
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -73,12 +113,14 @@ location /.well-known/agent.json {
 
 ## JSON-RPC Methods
 
-| Method | Description |
-|--------|-------------|
-| `tasks/send` | Submit a task and wait for the completed result (synchronous) |
-| `tasks/sendSubscribe` | Submit a task and receive streaming SSE events |
-| `tasks/get` | Retrieve a previously submitted task by ID |
-| `tasks/cancel` | Cancel a task (only tasks that have not yet completed) |
+Both A2A v1.0 and legacy method names are accepted:
+
+| v1.0 method | Legacy method | Description |
+|-------------|---------------|-------------|
+| `message/send` | `tasks/send` | Submit a task and wait for the completed result (synchronous) |
+| `message/stream` | `tasks/sendSubscribe` | Submit a task and receive streaming SSE events |
+| — | `tasks/get` | Retrieve a previously submitted task by ID |
+| — | `tasks/cancel` | Cancel a task (only tasks that have not yet completed) |
 
 ### Error codes
 
@@ -135,17 +177,23 @@ Runs the same hybrid semantic search as the MCP `search` tool. Returns raw passa
 | `model_combo` | string | `"Azure Foundry"` | Model configuration |
 | `skill` | string | auto | Set to `"search"` to force this skill |
 
-## Streaming (tasks/sendSubscribe)
+## Streaming (message/stream)
 
-For long-running research tasks, use `tasks/sendSubscribe` with `Accept: text/event-stream`. The server emits:
+For long-running research tasks, use `message/stream` with `Accept: text/event-stream`. Each SSE line is a full JSON-RPC response envelope:
 
-1. `TaskStatusUpdateEvent` with `state: "working"` immediately on receipt
-2. `TaskArtifactUpdateEvent` with `append: true, lastChunk: false` for each token as it streams
-3. `TaskArtifactUpdateEvent` with `append: false, lastChunk: true` with the complete answer + citation data
-4. `TaskStatusUpdateEvent` with `state: "completed", final: true`
+```
+data: {"jsonrpc":"2.0","id":"<rpc_id>","result":{"kind":"status-update","taskId":"...","contextId":"...","status":{"state":"working"},"final":false}}
+```
+
+Event sequence:
+
+1. `kind: "status-update"`, `state: "working"`, `final: false` — immediately on receipt
+2. `kind: "artifact-update"` — one event per token as the answer streams
+3. `kind: "artifact-update"` — final event with complete answer + citation `DataPart`
+4. `kind: "status-update"`, `state: "completed"`, `final: true`
 
 On error:
-- `TaskStatusUpdateEvent` with `state: "failed", final: true` and an error message
+- `kind: "status-update"`, `state: "failed"`, `final: true` with an error message in the status message field
 
 ## Authentication
 
