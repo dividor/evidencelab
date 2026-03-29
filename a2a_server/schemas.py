@@ -35,8 +35,12 @@ Part = Union[TextPart, DataPart]
 
 
 class Message(BaseModel):
+    kind: str = "message"
     role: str  # "user" or "agent"
     parts: List[Part]
+    messageId: Optional[str] = None
+    taskId: Optional[str] = None
+    contextId: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -82,7 +86,9 @@ class Artifact(BaseModel):
 
 
 class Task(BaseModel):
+    kind: str = "task"
     id: str
+    contextId: Optional[str] = None
     sessionId: Optional[str] = None
     status: TaskStatus
     artifacts: Optional[List[Artifact]] = None
