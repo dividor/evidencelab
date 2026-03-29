@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 revision = "0023_add_key_value_to_api_keys"  # pragma: allowlist secret
-down_revision = "2a4d7830d56f"  # pragma: allowlist secret
+down_revision = "0022_create_mcp_audit_log"  # pragma: allowlist secret
 branch_labels = None
 depends_on = None
 
