@@ -366,7 +366,10 @@ class MCPApp:
             return
 
         # A2A Agent Card
-        if path == "/.well-known/agent.json" and method == "GET":
+        if (
+            path in ("/.well-known/agent.json", "/.well-known/agent-card.json")
+            and method == "GET"
+        ):
             await handle_agent_card(send)
             return
 

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import API_BASE_URL, { API_KEY as LEGACY_API_KEY } from '../../config';
+import API_BASE_URL from '../../config';
+import ConfirmModal from './ConfirmModal';
 
 interface ApiKeyItem {
   id: string;
@@ -16,36 +17,7 @@ interface CreatedKey extends ApiKeyItem {
   key: string;
 }
 
-const MASK = '**************************************';
-
-const CopyButton: React.FC<{ value: string | null | undefined; label?: string }> = ({ value, label = 'Copy' }) => {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleCopy = async () => {
-    if (!value) return;
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError('Failed to copy');
-      setTimeout(() => setError(''), 2000);
-    }
-  };
-
-  return (
-    <button
-      className="btn-sm btn-primary"
-      onClick={handleCopy}
-      disabled={!value}
-      title={value ? 'Copy to clipboard' : 'Nothing to copy'}
-      style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
-    >
-      {error || (copied ? 'Copied!' : label)}
-    </button>
-  );
-};
+const MASK = '••••••••••••••••••••••••••••••••••••••••';
 
 const ApiKeyManager: React.FC = () => {
   const [currentKey, setCurrentKey] = useState<ApiKeyItem | null>(null);
@@ -53,6 +25,8 @@ const ApiKeyManager: React.FC = () => {
   const [error, setError] = useState('');
   const [generating, setGenerating] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const fetchKey = useCallback(async () => {
     try {
@@ -73,7 +47,11 @@ const ApiKeyManager: React.FC = () => {
   const generateKey = async () => {
     setError('');
     setGenerating(true);
+    setCopied(false);
     try {
+      if (currentKey) {
+        await axios.delete(`${API_BASE_URL}/api-keys/${currentKey.id}`);
+      }
       const resp = await axios.post<CreatedKey>(`${API_BASE_URL}/api-keys/`, { label: 'API Key' });
       setRevealedKey(resp.data.key);
       await fetchKey();
@@ -84,16 +62,27 @@ const ApiKeyManager: React.FC = () => {
     }
   };
 
+  const handleCopy = async () => {
+    const value = revealedKey || currentKey?.key_prefix || '';
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Failed to copy to clipboard');
+    }
+  };
+
   if (loading) return <p>Loading...</p>;
 
   const displayValue = revealedKey || (currentKey ? `${currentKey.key_prefix}${MASK}` : '');
-  const copyValue = revealedKey || currentKey?.key_prefix || null;
 
   return (
     <div className="admin-section">
-      <h3>API Keys</h3>
+      <h3>API Key</h3>
       <p style={{ color: '#6b7280', fontSize: 14, marginBottom: 16 }}>
-        Use these keys to authenticate API and MCP requests via the <code>X-API-Key</code> header.
+        Use this key to authenticate API and MCP requests via the <code>X-API-Key</code> header.
       </p>
 
       {error && (
@@ -103,77 +92,63 @@ const ApiKeyManager: React.FC = () => {
         </div>
       )}
 
-      {/* DB-backed key */}
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Generated Key</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 600 }}>
-          <input
-            type="text"
-            readOnly
-            value={displayValue}
-            placeholder="No API key generated yet"
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              border: '1px solid #d1d5db',
-              borderRadius: 4,
-              fontSize: 14,
-              fontFamily: 'monospace',
-              background: '#f9fafb',
-              color: revealedKey ? '#111827' : '#6b7280',
-            }}
-          />
-          <CopyButton value={copyValue} />
-          {!currentKey && (
-            <button
-              className="btn-sm btn-primary"
-              onClick={generateKey}
-              disabled={generating}
-              style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              {generating ? 'Generating...' : 'Generate'}
-            </button>
-          )}
-        </div>
-        {revealedKey && (
-          <p style={{ color: '#d97706', fontSize: 13, marginTop: 8 }}>
-            Copy this key now — the full key will not be shown again after you leave this page.
-          </p>
-        )}
-        {currentKey && !revealedKey && (
-          <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
-            Showing key prefix only. Created {new Date(currentKey.created_at).toLocaleDateString()}
-            {currentKey.created_by_email && ` by ${currentKey.created_by_email}`}
-          </p>
-        )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 600 }}>
+        <input
+          type="text"
+          readOnly
+          value={displayValue}
+          placeholder="No API key generated"
+          style={{
+            flex: 1,
+            padding: '8px 12px',
+            border: '1px solid #d1d5db',
+            borderRadius: 4,
+            fontSize: 14,
+            fontFamily: 'monospace',
+            background: '#f9fafb',
+            color: revealedKey ? '#111827' : '#6b7280',
+          }}
+        />
+        <button
+          className="btn-sm btn-primary"
+          onClick={handleCopy}
+          disabled={!currentKey && !revealedKey}
+          title="Copy key"
+          style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        <button
+          className="btn-sm btn-primary"
+          onClick={() => currentKey ? setShowConfirm(true) : generateKey()}
+          disabled={generating}
+          style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          {generating ? 'Generating...' : currentKey ? 'Regenerate' : 'Generate'}
+        </button>
       </div>
 
-      {/* Legacy env-based key */}
-      {LEGACY_API_KEY && (
-        <div>
-          <p style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Legacy Key</p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: 600 }}>
-            <input
-              type="text"
-              readOnly
-              value={LEGACY_API_KEY}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: 4,
-                fontSize: 14,
-                fontFamily: 'monospace',
-                background: '#f9fafb',
-                color: '#111827',
-              }}
-            />
-            <CopyButton value={LEGACY_API_KEY} />
-          </div>
-          <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
-            Static key set via <code>REACT_APP_API_KEY</code> in environment config.
-          </p>
-        </div>
+      {revealedKey && (
+        <p style={{ color: '#d97706', fontSize: 13, marginTop: 8 }}>
+          Copy this key now — it will not be shown again after you leave this page.
+        </p>
+      )}
+
+      {currentKey && (
+        <p style={{ color: '#9ca3af', fontSize: 12, marginTop: 8 }}>
+          Created {new Date(currentKey.created_at).toLocaleDateString()}
+          {currentKey.created_by_email && ` by ${currentKey.created_by_email}`}
+        </p>
+      )}
+
+      {showConfirm && (
+        <ConfirmModal
+          title="Regenerate API Key"
+          message="This will revoke the current key and generate a new one. Any applications using the current key will lose access. Continue?"
+          confirmLabel="Regenerate"
+          onConfirm={() => { setShowConfirm(false); generateKey(); }}
+          onCancel={() => setShowConfirm(false)}
+        />
       )}
     </div>
   );
