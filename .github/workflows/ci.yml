@@ -247,6 +247,10 @@ jobs:
     needs: code-quality
     env:
       HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+      API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
+      AUTH_SECRET_KEY: ${{ secrets.AUTH_SECRET_KEY }}
+      KEY_ENCRYPTION_KEY: ${{ secrets.KEY_ENCRYPTION_KEY }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
 
@@ -298,6 +302,8 @@ jobs:
       SHORT_QUERY_DENSE_WEIGHT: ${{ vars.SHORT_QUERY_DENSE_WEIGHT }}
       HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
       AUTH_SECRET_KEY: ${{ secrets.AUTH_SECRET_KEY }}
+      KEY_ENCRYPTION_KEY: ${{ secrets.KEY_ENCRYPTION_KEY }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
 
@@ -341,6 +347,8 @@ jobs:
           SHORT_QUERY_DENSE_WEIGHT=${SHORT_QUERY_DENSE_WEIGHT:-0.25}
           HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY}
           AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
+          KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY}
+          POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
           EOF
         working-directory: ${{ github.workspace }}
 

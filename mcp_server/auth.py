@@ -80,8 +80,12 @@ async def _check_api_key(key: str) -> dict | None:
                 "user_id": f"managed:{key_hash[:16]}",
                 "key_hash": key_hash[:16],
             }
+    except ImportError:
+        # User module not installed — admin-managed keys unavailable
+        logger.debug("Admin key cache not available (user module not installed)")
     except Exception:
-        logger.debug("Admin key cache unavailable", exc_info=True)
+        # DB or cache error — log at WARNING so it surfaces in monitoring
+        logger.warning("Admin key cache lookup failed", exc_info=True)
 
     return None
 

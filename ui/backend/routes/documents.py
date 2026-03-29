@@ -837,7 +837,14 @@ async def serve_file(file_path: str):
         }
         media_type = media_types.get(suffix, "application/octet-stream")
 
-        return FileResponse(str(full_path), media_type=media_type)
+        # SVG files can contain embedded scripts and must not be rendered inline
+        # by the browser — force download to prevent stored XSS via injected SVG.
+        headers = {}
+        if suffix == ".svg":
+            headers["Content-Disposition"] = f'attachment; filename="{full_path.name}"'
+            headers["X-Content-Type-Options"] = "nosniff"
+
+        return FileResponse(str(full_path), media_type=media_type, headers=headers)
     except HTTPException:
         raise
     except Exception as e:

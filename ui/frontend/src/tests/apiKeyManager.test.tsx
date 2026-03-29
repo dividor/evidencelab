@@ -34,11 +34,12 @@ describe('ApiKeyManager', () => {
     expect(screen.getByText('Copy')).toBeDisabled();
   });
 
-  test('shows key prefix, enabled Copy, and Regenerate when key exists', async () => {
+  test('shows key prefix, disabled Copy, and Regenerate when key exists (full key not available)', async () => {
     mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
     render(<ApiKeyManager />);
     await waitFor(() => expect(screen.getByText('Regenerate')).toBeInTheDocument());
-    expect(screen.getByText('Copy')).not.toBeDisabled();
+    // Copy is disabled — full key is only available immediately after generation, not on subsequent loads
+    expect(screen.getByText('Copy')).toBeDisabled();
     expect(screen.getByDisplayValue(/el_abc12ab/)).toBeInTheDocument();
   });
 

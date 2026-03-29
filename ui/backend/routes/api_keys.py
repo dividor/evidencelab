@@ -6,7 +6,7 @@ import secrets
 import uuid
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,18 +16,34 @@ from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import ApiKey, User
 from ui.backend.auth.schemas import ApiKeyCreate, ApiKeyCreated, ApiKeyRead
 from ui.backend.auth.users import current_superuser
+from ui.backend.utils.app_limits import limiter
+from utils.encryption import decrypt_value, encrypt_value
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 def _key_to_read(key: ApiKey, email: str | None = None) -> ApiKeyRead:
-    """Convert an ApiKey ORM object to an ApiKeyRead schema."""
+    """Convert an ApiKey ORM object to an ApiKeyRead schema.
+
+    Decrypts ``key_value`` if it was stored encrypted.  Legacy plaintext
+    values (pre-encryption) are returned as-is with a warning logged.
+    """
+    decrypted: str | None = None
+    if key.key_value:
+        try:
+            decrypted = decrypt_value(key.key_value)
+        except Exception:
+            logger.error(
+                "Failed to decrypt key_value for key id=%s — "
+                "value may be corrupted. Returning None.",
+                key.id,
+            )
     return ApiKeyRead(
         id=key.id,
         label=key.label,
         key_prefix=key.key_prefix,
-        key_value=key.key_value,
+        key_value=decrypted,
         is_active=key.is_active,
         created_at=key.created_at,
         created_by_email=email,
@@ -51,7 +67,9 @@ async def list_api_keys(
 
 
 @router.post("/", response_model=ApiKeyCreated, status_code=201)
+@limiter.limit("10/hour")
 async def create_api_key(
+    request: Request,
     body: ApiKeyCreate,
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
@@ -59,13 +77,17 @@ async def create_api_key(
     """Generate a new API key (admin only). The full key is returned once."""
     raw_key = "el_" + secrets.token_urlsafe(32)
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-    key_prefix = raw_key[:10]
+    # Derive prefix from the key's hash — NOT from the key itself — so the
+    # displayed prefix cannot be used to narrow a brute-force search space.
+    # 7 hex chars gives 28-bit uniqueness; collision probability is negligible
+    # for the small number of keys any deployment will have.
+    key_prefix = "el_" + key_hash[:7]
 
     api_key = ApiKey(
         label=body.label,
         key_hash=key_hash,
         key_prefix=key_prefix,
-        key_value=raw_key,
+        key_value=encrypt_value(raw_key),
         created_by_user_id=admin.id,
     )
     session.add(api_key)

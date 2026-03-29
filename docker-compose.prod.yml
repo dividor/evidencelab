@@ -54,7 +54,7 @@ services:
     environment:
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
       - ${DB_DATA_MOUNT:-/mnt/data/db}/postgres:/var/lib/postgresql/data:z
     restart: unless-stopped
@@ -161,7 +161,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - DATA_MOUNT_PATH=/app/data
       - PYTHONPATH=/app
       - API_SECRET_KEY=${API_SECRET_KEY}
@@ -217,7 +217,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - DATA_MOUNT_PATH=/app/data
       - PYTHONPATH=/app
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
