@@ -13,7 +13,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from mcp_server.audit import log_mcp_call
+from mcp_server.audit import log_mcp_call, request_auth, request_client_ip
 from mcp_server.schemas import MCPDocumentResponse, MCPSearchResponse
 
 logger = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ async def search(
     from mcp_server.tools.search import mcp_search
 
     t0 = time.monotonic()
-    auth_info: dict = {"type": "unknown", "user_id": "unknown"}
+    auth_info: dict = request_auth.get()
     status = "ok"
     error_msg = None
 
@@ -279,7 +279,7 @@ async def search(
         log_mcp_call(
             tool_name="search",
             auth_info=auth_info,
-            client_ip="unknown",
+            client_ip=request_client_ip.get(),
             input_params={
                 "query": query,
                 "data_source": data_source,
@@ -332,7 +332,7 @@ async def get_document(
     from mcp_server.tools.document import mcp_get_document
 
     t0 = time.monotonic()
-    auth_info: dict = {"type": "unknown", "user_id": "unknown"}
+    auth_info: dict = request_auth.get()
     status = "ok"
     error_msg = None
 
@@ -348,7 +348,7 @@ async def get_document(
         log_mcp_call(
             tool_name="get_document",
             auth_info=auth_info,
-            client_ip="unknown",
+            client_ip=request_client_ip.get(),
             input_params={"doc_id": doc_id, "data_source": data_source},
             output_summary=f"status={status}",
             duration_ms=duration_ms,

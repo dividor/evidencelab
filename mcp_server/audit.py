@@ -11,9 +11,17 @@ import asyncio
 import json
 import logging
 import os
+from contextvars import ContextVar
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
+
+# Per-request auth context — set in http_server.py after auth passes,
+# read in app.py tool handlers so audit rows carry the real auth info.
+request_auth: ContextVar[Dict[str, Any]] = ContextVar(
+    "request_auth", default={"type": "unknown", "user_id": "unknown"}
+)
+request_client_ip: ContextVar[str] = ContextVar("request_client_ip", default="unknown")
 
 # Lazy-initialised asyncpg connection pool
 _pool = None
