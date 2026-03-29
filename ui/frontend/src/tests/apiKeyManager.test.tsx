@@ -6,14 +6,12 @@ import axios from 'axios';
 jest.mock('../config', () => ({
   __esModule: true,
   default: '/api',
+  API_KEY: undefined,
 }));
 
 // Mock axios
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
-if (!mockedAxios.delete) {
-  (mockedAxios as any).delete = jest.fn();
-}
 
 import ApiKeyManager from '../components/admin/ApiKeyManager';
 
@@ -38,22 +36,24 @@ describe('ApiKeyManager', () => {
     expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
-  test('shows Generate button when no key exists', async () => {
+  test('shows Generate button and disabled Copy when no key exists', async () => {
     mockedAxios.get.mockResolvedValue({ data: [] });
     render(<ApiKeyManager />);
     await waitFor(() => {
       expect(screen.getByText('Generate')).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText('No API key generated')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('No API key generated yet')).toBeInTheDocument();
+    expect(screen.getByText('Copy')).toBeDisabled();
   });
 
-  test('shows masked key and Regenerate button when key exists', async () => {
+  test('shows key prefix and enabled Copy when key exists, no Regenerate', async () => {
     mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
     render(<ApiKeyManager />);
     await waitFor(() => {
-      expect(screen.getByText('Regenerate')).toBeInTheDocument();
+      expect(screen.getByText('Copy')).not.toBeDisabled();
     });
-    const input = screen.getByDisplayValue(/\*{6,}/);
+    expect(screen.queryByText('Regenerate')).not.toBeInTheDocument();
+    const input = screen.getByDisplayValue(/el_abc12ab/);
     expect(input).toBeInTheDocument();
   });
 
@@ -79,21 +79,6 @@ describe('ApiKeyManager', () => {
     });
   });
 
-  test('shows confirmation dialog before regenerating', async () => {
-    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Regenerate')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByText('Regenerate'));
-
-    expect(screen.getByText('Regenerate API Key')).toBeInTheDocument();
-    expect(
-      screen.getByText(/This will revoke the current key/)
-    ).toBeInTheDocument();
-  });
-
   test('shows revealed key with copy warning after generation', async () => {
     const createdKey = {
       ...mockActiveKey,
@@ -112,19 +97,8 @@ describe('ApiKeyManager', () => {
     fireEvent.click(screen.getByText('Generate'));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/will not be shown again/)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/will not be shown again/)).toBeInTheDocument();
     });
-  });
-
-  test('Copy button disabled when no revealed key', async () => {
-    mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
-    render(<ApiKeyManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Copy')).toBeInTheDocument();
-    });
-    expect(screen.getByText('Copy')).toBeDisabled();
   });
 
   test('shows error on fetch failure', async () => {
@@ -142,12 +116,10 @@ describe('ApiKeyManager', () => {
       expect(screen.getByText('Failed to load API key')).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText('\u00d7'));
-    expect(
-      screen.queryByText('Failed to load API key')
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Failed to load API key')).not.toBeInTheDocument();
   });
 
-  test('shows creation date when key exists', async () => {
+  test('shows creation date and email when key exists', async () => {
     mockedAxios.get.mockResolvedValue({ data: [mockActiveKey] });
     render(<ApiKeyManager />);
     await waitFor(() => {
@@ -155,4 +127,5 @@ describe('ApiKeyManager', () => {
     });
     expect(screen.getByText(/admin@test.com/)).toBeInTheDocument();
   });
+
 });
