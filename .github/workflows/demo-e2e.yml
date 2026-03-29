@@ -176,7 +176,7 @@ jobs:
       # Step 6: Smoke tests
       # ----------------------------------------------------------------
       - name: Run smoke tests
-        run: python scripts/demo/smoke_test.py
+        run: python tests/integration/demo_smoke_test.py
         env:
           API_URL: http://localhost:8000
           MCP_URL: http://localhost:8001
