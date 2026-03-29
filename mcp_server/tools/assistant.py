@@ -30,7 +30,7 @@ async def mcp_ask_assistant(
     query: str,
     data_source: Optional[str] = None,
     deep_research: bool = False,
-    model_combo: str = "Azure Foundry",
+    model_combo: Optional[str] = None,
 ) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
 
@@ -55,9 +55,10 @@ async def mcp_ask_assistant(
 
     async def _consume_stream():
         nonlocal answer_text, sources
-        from pipeline.db import UI_MODEL_COMBOS
+        from pipeline.db import UI_MODEL_COMBOS, get_default_model_combo
 
-        combo = UI_MODEL_COMBOS.get(model_combo, {})
+        resolved = model_combo or get_default_model_combo()
+        combo = UI_MODEL_COMBOS.get(resolved, {})
         assistant_cfg = combo.get("assistant_model") or {}
         model_key = (
             assistant_cfg.get("model")

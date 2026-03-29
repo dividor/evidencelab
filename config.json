@@ -187,6 +187,7 @@
   },
   "ui_model_combos": {
     "Azure Foundry": {
+      "default": true,
       "embedding_model": "azure_small",
       "sparse_model": "bm25",
       "summarization_model": {

@@ -161,6 +161,18 @@ def _resolve_default_dense_model(
     return "e5_large"
 
 
+def get_default_model_combo() -> str:
+    """Return the name of the default ui_model_combo.
+
+    Prefers whichever combo has ``"default": true`` in config.json;
+    falls back to the first defined combo.
+    """
+    for name, combo in UI_MODEL_COMBOS.items():
+        if combo.get("default"):
+            return name
+    return next(iter(UI_MODEL_COMBOS), "")
+
+
 def refresh_config() -> None:
     """Reload config-driven settings for vectors and LLMs."""
     global _config, _app_config, _search_config, _datasources_config

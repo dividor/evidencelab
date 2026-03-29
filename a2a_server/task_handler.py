@@ -156,7 +156,7 @@ async def _run_research(
     meta = metadata or {}
     data_source = meta.get("data_source")
     deep_research = bool(meta.get("deep_research", False))
-    model_combo = meta.get("model_combo", "Azure Foundry")
+    model_combo = meta.get("model_combo")
 
     response = await mcp_ask_assistant(
         query=query,
@@ -196,15 +196,16 @@ async def _run_research_streaming(
     metadata: Optional[Dict[str, Any]],
 ) -> AsyncGenerator[str, None]:
     """Stream tokens from the assistant, yielding SSE events."""
-    from pipeline.db import UI_MODEL_COMBOS
+    from pipeline.db import UI_MODEL_COMBOS, get_default_model_combo
     from ui.backend.services.assistant_service import stream_research_response
 
     meta = metadata or {}
     data_source = meta.get("data_source")
     deep_research = bool(meta.get("deep_research", False))
-    model_combo = meta.get("model_combo", "Azure Foundry")
+    model_combo = meta.get("model_combo")
 
-    combo = UI_MODEL_COMBOS.get(model_combo, {})
+    resolved_combo = model_combo or get_default_model_combo()
+    combo = UI_MODEL_COMBOS.get(resolved_combo, {})
     assistant_cfg = combo.get("assistant_model") or {}
     model_key = (
         assistant_cfg.get("model") if isinstance(assistant_cfg, dict) else assistant_cfg
@@ -300,7 +301,7 @@ async def _run_search(query: str, metadata: Optional[Dict[str, Any]]) -> List[Ar
     data_source = meta.get("data_source")
     limit = int(meta.get("limit", 10))
     filters = meta.get("filters")
-    model_combo = meta.get("model_combo", "Azure Foundry")
+    model_combo = meta.get("model_combo")
 
     if isinstance(filters, str):
         filters = json.loads(filters)

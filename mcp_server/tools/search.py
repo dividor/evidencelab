@@ -59,7 +59,7 @@ async def mcp_search(
     rerank: bool = True,
     recency_boost: bool = False,
     field_boost: bool = True,
-    model_combo: str = "Azure Foundry",
+    model_combo: Optional[str] = None,
     include_facets: bool = False,
 ) -> MCPSearchResponse:
     """Run search using the same code path as the API search endpoint."""
@@ -76,9 +76,10 @@ async def mcp_search(
     loop = asyncio.get_running_loop()
 
     def _run():
-        from pipeline.db import UI_MODEL_COMBOS
+        from pipeline.db import UI_MODEL_COMBOS, get_default_model_combo
 
-        combo = UI_MODEL_COMBOS.get(model_combo, {})
+        resolved = model_combo or get_default_model_combo()
+        combo = UI_MODEL_COMBOS.get(resolved, {})
         dense_model = combo.get("embedding_model")
         rerank_model = combo.get("reranker_model") if rerank else None
 
