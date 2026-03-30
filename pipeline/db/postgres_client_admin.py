@@ -129,6 +129,7 @@ class PostgresAdminMixin:
         self.ensure_doc_raw_metadata_column()
         self.ensure_sys_status_columns()
         self.ensure_chunk_tag_section_type()
+        self.ensure_ocr_columns()
 
         # Create indexes after columns exist
         with self._get_conn() as conn:
@@ -152,6 +153,18 @@ class PostgresAdminMixin:
         query = f"""
             ALTER TABLE {self.chunks_table}
                 ADD COLUMN IF NOT EXISTS tag_section_type TEXT
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+            conn.commit()
+
+    def ensure_ocr_columns(self) -> None:
+        """Add OCR-fallback columns if missing (tables created before migration 0020)."""
+        query = f"""
+            ALTER TABLE {self.docs_table}
+                ADD COLUMN IF NOT EXISTS sys_parsed_folder TEXT,
+                ADD COLUMN IF NOT EXISTS sys_ocr_applied BOOLEAN DEFAULT FALSE
         """
         with self._get_conn() as conn:
             with conn.cursor() as cur:
