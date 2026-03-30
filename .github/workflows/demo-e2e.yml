@@ -106,7 +106,11 @@ jobs:
 
       - name: Run database migrations
         run: |
-          docker compose exec -T pipeline /bin/bash -lc "alembic upgrade head"
+          # Run alembic directly on the host — alembic is installed by the
+          # "Install Python dependencies" step and postgres is bound to host
+          # port 5432. Running on the host avoids a race condition where the
+          # pipeline container is still waiting for embedding-server health.
+          POSTGRES_HOST=localhost alembic upgrade heads
 
       - name: Wait for embedding server
         run: |
