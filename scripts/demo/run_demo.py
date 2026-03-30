@@ -205,6 +205,12 @@ def interactive_setup(ci_mode=False):
         env_vars["QDRANT_API_KEY"] = os.environ.get(
             "QDRANT_API_KEY"
         ) or secrets.token_hex(32)
+
+        # 4. Docker service hostname — inside containers postgres is reachable
+        #    via the service name "postgres", not "localhost".  Writing this to
+        #    .env ensures docker-compose expands ${POSTGRES_HOST:-postgres}
+        #    correctly even when .env.example has POSTGRES_HOST=localhost.
+        env_vars["POSTGRES_HOST"] = "postgres"
     else:
         # 1. Provider selection
         combo = prompt_provider()
