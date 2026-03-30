@@ -104,14 +104,14 @@ def main():
     # 4. Search returns results
     # ------------------------------------------------------------------
     print("[4/5] Search API...")
-    status, body = _post_json(
-        f"{API_URL}/api/search",
-        {"query": "corruption investigation", "datasource": DEMO_DATA_SOURCE},
+    status, body = _get(
+        f"{API_URL}/search?q=corruption+investigation&data_source={DEMO_DATA_SOURCE}",
         headers=auth,
     )
     check("Search returns 200", status == 200, f"status={status}")
     if status == 200:
-        results = body.get("results", [])
+        body_json = json.loads(body) if isinstance(body, str) and body else {}
+        results = body_json.get("results", [])
         check(
             "Search returns at least 1 result",
             len(results) > 0,
