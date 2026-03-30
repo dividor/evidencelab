@@ -1,6 +1,6 @@
 """Add protocol column to mcp_audit_log to distinguish MCP vs A2A calls.
 
-Revision ID: 0024_add_protocol_to_mcp_audit_log
+Revision ID: 0024_mcp_audit_protocol
 Revises: 0023_add_key_value_to_api_keys
 Create Date: 2026-03-29
 """
@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision = "0024_add_protocol_to_mcp_audit_log"
+revision = "0024_mcp_audit_protocol"
 down_revision = "0023_add_key_value_to_api_keys"
 branch_labels = None
 depends_on = None
