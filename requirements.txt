@@ -48,7 +48,7 @@ deep-translator==1.11.4
 # NLP and summarization
 nltk==3.9.2
 numpy
-transformers==4.57.1
+transformers==4.57.6
 huggingface-hub>=0.20.0
 
 # Optional: Mistral models support (install only if using Mistral models)
