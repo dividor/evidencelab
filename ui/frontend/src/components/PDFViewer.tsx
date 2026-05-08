@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import API_BASE_URL, { PDF_SEMANTIC_HIGHLIGHTS } from '../config';
+import API_BASE_URL, { PDF_SEMANTIC_HIGHLIGHTS, PDF_SEARCH_SEMANTIC_CUTOFF } from '../config';
 import { HighlightBox, SummaryModelConfig } from '../types/api';
-import { findAllMatches, findSemanticMatches } from '../utils/textHighlighting';
+import { findAllMatches, findSemanticMatches, TextMatch } from '../utils/textHighlighting';
 import TocModal from './TocModal';
 
 // PDF.js types
@@ -89,15 +89,16 @@ interface PDFViewerProps {
   // Search settings inherited from main search
   searchDenseWeight?: number;
   rerankEnabled?: boolean;
-  recencyBoostEnabled?: boolean;
-  recencyWeight?: number;
-  recencyScaleDays?: number;
   sectionTypes?: string[];
   keywordBoostShortQueries?: boolean;
   minChunkSize?: number;
   minScore?: number;
   rerankModel?: string | null;
+  rerankModelPageSize?: number | null;
   searchModel?: string | null;
+  deduplicateEnabled?: boolean;
+  fieldBoostEnabled?: boolean;
+  fieldBoostFields?: Record<string, number>;
 }
 
 const ESTIMATED_PAGE_HEIGHT = 1200; // Approximate height per page for scrollbar
@@ -118,8 +119,13 @@ type PhraseRange = {
   overlayColor: string;
 };
 
-const normalizePdfText = (text: string): string =>
+// NFC normalization collapses decomposed Unicode forms (e.g., n + combining
+// tilde U+0303) into their precomposed equivalents (\u00F1, U+00F1). Without it,
+// PDFs that store diacritics in decomposed form silently fail to match
+// search terms typed in precomposed form (and vice versa).
+export const normalizePdfText = (text: string): string =>
   text
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[\u2018\u2019]/g, "'")
@@ -131,8 +137,9 @@ const normalizePdfText = (text: string): string =>
     .replace(/\s*-\s*/g, '-')
     .trim();
 
-const normalizePdfTextNoSpaces = (text: string): string =>
+export const normalizePdfTextNoSpaces = (text: string): string =>
   text
+    .normalize('NFC')
     .toLowerCase()
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/[\u2018\u2019]/g, "'")
@@ -274,7 +281,10 @@ const appendSpanGroups = (
     highlightOverlay.style.backgroundColor = overlayColor;
     highlightOverlay.style.borderRadius = '2px';
     highlightOverlay.style.pointerEvents = 'none';
-    highlightOverlay.style.zIndex = '5';
+    // 11 sits above the chunk-box (.highlight-overlay z-index 10) so the
+    // orange phrase highlights are not muted by the chunk box's animated
+    // blue tint. Below the affordance pills at 12.
+    highlightOverlay.style.zIndex = '11';
     container.appendChild(highlightOverlay);
   });
 };
@@ -285,7 +295,10 @@ const buildPageTextMap = (items: any[]): { fullText: string; charMap: CharMappin
   let fullText = '';
   const charMap: CharMapping[] = [];
   for (let i = 0; i < items.length; i++) {
-    const str = items[i].str || '';
+    // NFC-normalize each item's text so charMap positions and the search
+    // term operate on the same Unicode form. computeItemEdge (below) uses
+    // the same normalized length to keep bbox math consistent.
+    const str = (items[i].str || '').normalize('NFC');
     for (let c = 0; c < str.length; c++) {
       charMap.push({ itemIdx: i, charIdx: c });
     }
@@ -293,7 +306,7 @@ const buildPageTextMap = (items: any[]): { fullText: string; charMap: CharMappin
     // Insert a synthetic space between adjacent items that lack whitespace,
     // preventing false cross-item matches (e.g. "of"+"MOH" → "ofMOH" matching "fmoh")
     if (i < items.length - 1 && str.length > 0 && !str.endsWith(' ') && !str.endsWith('\n')) {
-      const nextStr = items[i + 1]?.str || '';
+      const nextStr = (items[i + 1]?.str || '').normalize('NFC');
       if (nextStr.length > 0 && !nextStr.startsWith(' ')) {
         fullText += ' ';
         charMap.push({ itemIdx: -1, charIdx: -1 });
@@ -310,7 +323,11 @@ const computeItemEdge = (
 ): number => {
   const ix = item.transform[4];
   const iw = item.width || 0;
-  const cw = item.str.length > 0 ? iw / item.str.length : 0;
+  // Use NFC-normalized length so it matches the charMap positions stored by
+  // buildPageTextMap. Otherwise bbox math drifts on items with decomposed
+  // diacritics (different char count between original and normalized).
+  const normalizedStr = (item.str || '').normalize('NFC');
+  const cw = normalizedStr.length > 0 ? iw / normalizedStr.length : 0;
   if (side === 'left') return ix + charIdx * cw;
   return ix + (charIdx + 1) * cw;
 };
@@ -363,7 +380,42 @@ const parseBBoxItem = (
   return { page, bbox: { l: coords[0], b: coords[1], r: coords[2], t: coords[3] } };
 };
 
-const findTextMatchesOnPage = (
+// A synthetic space was inserted between PDF items that lack their own
+// whitespace. A match that lands on such a position is only illegitimate
+// when the search term doesn't ALSO have a space at that offset — that's
+// the false-positive case ("of"+"MOH" → matching "fmoh"). When the user's
+// term has a space here, the synthetic space lines up with their intent
+// and the match is real (e.g. "el niño" spanning split items).
+const hasIllegalGapCross = (
+  charMap: CharMapping[],
+  pos: number,
+  endPos: number,
+  normalizedSearchTerm: string
+): boolean => {
+  for (let p = pos; p <= endPos; p++) {
+    if (charMap[p].itemIdx < 0 && normalizedSearchTerm[p - pos] !== ' ') {
+      return true;
+    }
+  }
+  return false;
+};
+
+// Synthetic positions (itemIdx < 0) have no items to read width from, so we
+// narrow inward to the first/last real positions for bbox computation.
+const narrowToRealItemPositions = (
+  charMap: CharMapping[],
+  pos: number,
+  endPos: number
+): { start: number; end: number } | null => {
+  let start = pos;
+  while (start <= endPos && charMap[start].itemIdx < 0) start++;
+  let end = endPos;
+  while (end >= start && charMap[end].itemIdx < 0) end--;
+  if (end < start) return null;
+  return { start, end };
+};
+
+export const findTextMatchesOnPage = (
   items: any[],
   searchTerm: string,
   pageNum: number
@@ -372,27 +424,33 @@ const findTextMatchesOnPage = (
 
   const { fullText, charMap } = buildPageTextMap(items);
   const lowerText = fullText.toLowerCase();
+  // NFC-normalize the search term to match buildPageTextMap's normalization.
+  // Otherwise a query with precomposed ñ won't find PDF text that uses the
+  // decomposed form (or vice versa).
+  const normalizedSearchTerm = searchTerm.normalize('NFC');
   const matches: HighlightBox[] = [];
   let pos = 0;
-
   let skipped = 0;
-  while ((pos = lowerText.indexOf(searchTerm, pos)) !== -1) {
-    const endPos = pos + searchTerm.length - 1;
+
+  while ((pos = lowerText.indexOf(normalizedSearchTerm, pos)) !== -1) {
+    const endPos = pos + normalizedSearchTerm.length - 1;
     if (endPos >= charMap.length) break;
 
-    // Skip matches that span a synthetic space (false cross-item match)
-    let crossesGap = false;
-    for (let p = pos; p <= endPos; p++) {
-      if (charMap[p].itemIdx < 0) { crossesGap = true; break; }
+    if (hasIllegalGapCross(charMap, pos, endPos, normalizedSearchTerm)) {
+      skipped++;
+      pos += 1;
+      continue;
     }
-    if (crossesGap) { skipped++; pos += 1; continue; }
 
-    const bbox = computeMatchBBox(items, charMap[pos], charMap[endPos]);
+    const real = narrowToRealItemPositions(charMap, pos, endPos);
+    if (!real) { pos += 1; continue; }
+
+    const bbox = computeMatchBBox(items, charMap[real.start], charMap[real.end]);
     if (bbox) {
       matches.push({
         page: pageNum,
         bbox,
-        text: fullText.substring(pos, pos + searchTerm.length),
+        text: fullText.substring(pos, pos + normalizedSearchTerm.length),
         isTextMatch: true
       });
     }
@@ -400,10 +458,256 @@ const findTextMatchesOnPage = (
   }
 
   if (skipped > 0) {
-    console.log(`[Text Search] Page ${pageNum}: skipped ${skipped} false cross-item matches for "${searchTerm}"`);
+    console.log(`[Text Search] Page ${pageNum}: skipped ${skipped} false cross-item matches for "${normalizedSearchTerm}"`);
   }
 
   return matches;
+};
+
+// === Phrase-highlight cache types & helpers ===
+//
+// The previous implementation used a `Set<bboxKey>` "checklist" that was
+// ticked off the first time any render asked the LLM about a bbox. That gate
+// is write-once per render cycle, so a second cascading render (which wipes
+// pageContainer.innerHTML) would skip the LLM call and leave the chunk with
+// its overlay erased. Result: chunk box visible, phrase highlights missing.
+//
+// New design: a query-aware Map. Each entry tracks which query produced its
+// matches; if a later render asks about the same bbox under a different
+// query, we treat it as a miss and re-fire the LLM. After matches arrive we
+// can re-draw them on every subsequent render from the cache directly.
+
+type PhraseCacheEntry =
+  | { status: 'pending'; query: string }
+  | { status: 'done'; query: string; matches: TextMatch[] }
+  | { status: 'failed'; query: string };
+
+const bboxKeyFor = (
+  pageNumber: number,
+  bbox: { l: number; b: number; r: number; t: number }
+): string => `${pageNumber}-${bbox.l}-${bbox.t}-${bbox.r}-${bbox.b}`;
+
+type PixelRect = { left: number; right: number; top: number; bottom: number };
+
+const computeBBoxPixelRect = (
+  bbox: { l: number; b: number; r: number; t: number },
+  scale: number,
+  viewportHeight: number
+): PixelRect => ({
+  left: bbox.l * scale,
+  right: bbox.r * scale,
+  top: viewportHeight - bbox.t * scale,
+  bottom: viewportHeight - bbox.b * scale
+});
+
+const findSpansInPixelRect = (
+  spans: NodeListOf<Element>,
+  pageContainer: HTMLElement,
+  rect: PixelRect
+): HTMLElement[] => {
+  const containerRect = pageContainer.getBoundingClientRect();
+  const result: HTMLElement[] = [];
+  spans.forEach((span) => {
+    const el = span as HTMLElement;
+    const sRect = el.getBoundingClientRect();
+    const sLeft = sRect.left - containerRect.left;
+    const sRight = sRect.right - containerRect.left;
+    const sTop = sRect.top - containerRect.top;
+    const sBottom = sRect.bottom - containerRect.top;
+    const overlaps = !(
+      sRight < rect.left || sLeft > rect.right ||
+      sBottom < rect.top || sTop > rect.bottom
+    );
+    if (overlaps) result.push(el);
+  });
+  return result;
+};
+
+// Returns the number of phrase overlays actually appended to the DOM. The
+// caller uses this to decide whether to show the no-match affordance: even
+// when matches is non-empty, a phrase may fail to align with PDF.js's
+// extracted text (whitespace/ligature differences) and end up drawing zero
+// overlays. In that case the user should still get visual feedback.
+const drawPhraseOverlaysFromMatches = (
+  pageContainer: HTMLElement,
+  bboxKey: string,
+  spansInBox: HTMLElement[],
+  matches: TextMatch[]
+): number => {
+  // Remove any pre-existing overlays for this bbox to avoid duplicates on
+  // re-render (zoom, page redraw, etc.). Also remove any no-match pill —
+  // we're about to draw real overlays, so the "no specific phrase" message
+  // would be a lie. (If we end up drawing zero, the caller restores it.)
+  pageContainer
+    .querySelectorAll(`.phrase-highlight-overlay[data-bbox="${bboxKey}"]`)
+    .forEach((el) => el.remove());
+  removeNoMatchAffordance(pageContainer, bboxKey);
+
+  if (spansInBox.length === 0 || matches.length === 0) return 0;
+
+  const pdfTextForMatching = spansInBox.map((s) => s.textContent || '').join('');
+  const normalizedPdfText = normalizePdfText(pdfTextForMatching);
+  const highlightedRanges: { start: number; end: number }[] = [];
+  let drawn = 0;
+
+  matches.forEach((match) => {
+    const range = findPhraseRange(normalizedPdfText, pdfTextForMatching, match.matchedText);
+    if (!range) return;
+    const overlaps = highlightedRanges.some(
+      (prev) => range.start < prev.end && range.end > prev.start
+    );
+    if (overlaps) return;
+    highlightedRanges.push({ start: range.start, end: range.end });
+
+    const spanMap = buildSpanMap(spansInBox);
+    const matchedSpans = findMatchedSpans(spanMap, range.start, range.end);
+    if (matchedSpans.length === 0) return;
+
+    const sortedSpans = sortSpansByPosition(matchedSpans);
+    const containerRect = pageContainer.getBoundingClientRect();
+    const spanGroups = groupSpansByLine(sortedSpans, containerRect);
+    appendSpanGroups(spanGroups, pageContainer, bboxKey, range.overlayColor);
+    drawn += spanGroups.length;
+  });
+
+  return drawn;
+};
+
+const COMPUTING_AFFORDANCE_CLASS = 'phrase-highlight-pending';
+
+const removeComputingAffordance = (
+  pageContainer: HTMLElement,
+  bboxKey: string
+): void => {
+  pageContainer
+    .querySelectorAll(`.${COMPUTING_AFFORDANCE_CLASS}[data-bbox="${bboxKey}"]`)
+    .forEach((el) => el.remove());
+};
+
+const drawComputingAffordance = (
+  pageContainer: HTMLElement,
+  bboxKey: string,
+  pixelRect: PixelRect
+): void => {
+  removeComputingAffordance(pageContainer, bboxKey);
+  const indicator = document.createElement('div');
+  indicator.className = COMPUTING_AFFORDANCE_CLASS;
+  indicator.setAttribute('data-bbox', bboxKey);
+  indicator.textContent = 'Computing highlights…';
+  Object.assign(indicator.style, {
+    position: 'absolute',
+    top: `${Math.max(0, pixelRect.top - 22)}px`,
+    left: `${pixelRect.left}px`,
+    background: 'rgba(0, 102, 204, 0.85)',
+    color: 'white',
+    fontSize: '10px',
+    fontWeight: '500',
+    padding: '2px 6px',
+    borderRadius: '3px',
+    pointerEvents: 'none',
+    zIndex: '12',
+    whiteSpace: 'nowrap'
+  } as Partial<CSSStyleDeclaration>);
+  pageContainer.appendChild(indicator);
+};
+
+// Affordance shown after the LLM completes but returns zero phrases worth
+// highlighting. Conveys "this chunk IS relevant per retrieval, but the LLM
+// couldn't pick a specific quotable phrase". Visually similar to
+// drawComputingAffordance (same position above the chunk box) but greyed
+// out so the user immediately distinguishes "still computing" from "done,
+// nothing to show".
+const NO_MATCH_AFFORDANCE_CLASS = 'phrase-highlight-no-match';
+
+const removeNoMatchAffordance = (
+  pageContainer: HTMLElement,
+  bboxKey: string
+): void => {
+  pageContainer
+    .querySelectorAll(`.${NO_MATCH_AFFORDANCE_CLASS}[data-bbox="${bboxKey}"]`)
+    .forEach((el) => el.remove());
+};
+
+const drawNoMatchAffordance = (
+  pageContainer: HTMLElement,
+  bboxKey: string,
+  pixelRect: PixelRect
+): void => {
+  // Always remove any prior pending affordance — this transition is
+  // "Computing…" → "Topic match — no specific phrase".
+  removeComputingAffordance(pageContainer, bboxKey);
+  removeNoMatchAffordance(pageContainer, bboxKey);
+  const indicator = document.createElement('div');
+  indicator.className = NO_MATCH_AFFORDANCE_CLASS;
+  indicator.setAttribute('data-bbox', bboxKey);
+  indicator.textContent = 'Topic match — no specific phrase';
+  Object.assign(indicator.style, {
+    position: 'absolute',
+    top: `${Math.max(0, pixelRect.top - 22)}px`,
+    left: `${pixelRect.left}px`,
+    background: 'rgba(110, 110, 110, 0.85)',
+    color: 'white',
+    fontSize: '10px',
+    fontWeight: '500',
+    padding: '2px 6px',
+    borderRadius: '3px',
+    pointerEvents: 'none',
+    zIndex: '12',
+    whiteSpace: 'nowrap'
+  } as Partial<CSSStyleDeclaration>);
+  pageContainer.appendChild(indicator);
+};
+
+const drawChunkBoxAndIndicator = (
+  pageContainer: HTMLElement,
+  highlight: HighlightBox,
+  scale: number,
+  viewportHeight: number
+): { pixelRect: PixelRect; chunkBoxElement: HTMLDivElement } => {
+  const { bbox } = highlight;
+  const x = bbox.l * scale;
+  const y = (viewportHeight / scale - bbox.t) * scale;
+  const width = (bbox.r - bbox.l) * scale;
+  const height = (bbox.t - bbox.b) * scale;
+  const padding = 5;
+
+  const div = document.createElement('div');
+  div.className = highlight.isTextMatch ? 'text-match-overlay' : 'highlight-overlay';
+  Object.assign(div.style, {
+    position: 'absolute',
+    pointerEvents: 'none',
+    zIndex: highlight.isTextMatch ? '15' : '10',
+    left: `${x - padding}px`,
+    top: `${y - padding}px`,
+    width: `${width + padding * 2}px`,
+    height: `${height + padding * 2}px`,
+    borderRadius: '4px',
+    ...(highlight.isTextMatch
+      ? { background: 'rgba(255, 165, 0, 0.4)', border: '2px solid rgba(255, 140, 0, 0.8)' }
+      : { background: 'var(--pdf-highlight-bg)', border: 'var(--pdf-highlight-border)' })
+  });
+  div.title = (highlight.text || '').substring(0, 100);
+  pageContainer.appendChild(div);
+
+  const indicator = document.createElement('div');
+  indicator.className = 'highlight-indicator';
+  Object.assign(indicator.style, {
+    position: 'absolute',
+    pointerEvents: 'none',
+    backgroundColor: highlight.isTextMatch ? 'rgba(255, 140, 0, 0.9)' : 'rgba(0, 102, 204, 0.8)',
+    zIndex: '10',
+    right: '0',
+    top: `${y}px`,
+    width: '12px',
+    height: `${height}px`,
+    borderRadius: '6px 0 0 6px'
+  });
+  pageContainer.appendChild(indicator);
+
+  return {
+    pixelRect: { left: x, right: x + width, top: y, bottom: y + height },
+    chunkBoxElement: div
+  };
 };
 
 export const PDFViewer: React.FC<PDFViewerProps> = ({
@@ -420,15 +724,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   onOpenMetadata,
   searchDenseWeight = 0.8,
   rerankEnabled = true,
-  recencyBoostEnabled = false,
-  recencyWeight = 0.15,
-  recencyScaleDays = 365,
   sectionTypes = [],
   keywordBoostShortQueries = true,
   minChunkSize = 100,
   minScore = 0,
   rerankModel = null,
+  rerankModelPageSize = null,
   searchModel = null,
+  deduplicateEnabled = true,
+  fieldBoostEnabled = true,
+  fieldBoostFields = {},
 }) => {
   // Extract fields from metadata (check multiple possible field locations)
   const webUrl = metadata.report_url || metadata.map_report_url || metadata.src_doc_raw_metadata?.report_url;
@@ -466,7 +771,17 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const lastProgrammaticScrollTime = useRef(0);
   const hasSnappedToHighlight = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const processedBBoxesRef = useRef<Set<string>>(new Set()); // Track which bboxes have been semantically highlighted
+  // Phrase-highlight cache: query-aware, per-bbox. Survives re-renders so we
+  // can redraw cached overlays after pageContainer.innerHTML wipes (zoom,
+  // force re-render). See PhraseCacheEntry above for the state machine.
+  const phraseCacheRef = useRef<Map<string, PhraseCacheEntry>>(new Map());
+  // In-flight LLM requests, keyed by bboxKey. We abort prior requests when
+  // the user changes the in-doc query so stale responses don't paint over a
+  // newer query's overlays.
+  const inFlightControllersRef = useRef<Map<string, AbortController>>(new Map());
+  // IntersectionObservers, keyed by bboxKey. Each observer fires once when
+  // the chunk box becomes visible, then disconnects.
+  const phraseObserversRef = useRef<Map<string, IntersectionObserver>>(new Map());
 
   // Calculate scale based on viewport width for mobile
   useEffect(() => {
@@ -476,10 +791,21 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     return () => window.removeEventListener('resize', updateScale);
   }, []);
 
+  // Tear down all phrase-highlight state. Aborts in-flight LLM requests so
+  // their late responses don't paint over a fresher query, disconnects all
+  // pending IntersectionObservers, and clears the cache.
+  const clearAllPhraseState = () => {
+    inFlightControllersRef.current.forEach((c) => c.abort());
+    inFlightControllersRef.current.clear();
+    phraseObserversRef.current.forEach((o) => o.disconnect());
+    phraseObserversRef.current.clear();
+    phraseCacheRef.current.clear();
+  };
+
   // Reset snap state when document/chunk changes
   useEffect(() => {
     hasSnappedToHighlight.current = false;
-    processedBBoxesRef.current.clear(); // Clear processed bboxes when doc/chunk/page changes
+    clearAllPhraseState();
     // Always enable programmatic scrolling when doc/chunk/page changes
     isScrollingProgrammatically.current = true;
     // Navigate to the requested page (useState only captures the initial
@@ -490,6 +816,14 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     setInPdfSearchQuery('');
     setCurrentMatchIndex(0);
   }, [docId, chunkId, pageNum]);
+
+  // Component unmount cleanup: abort any in-flight requests and disconnect
+  // observers so we don't leak resources or paint into a torn-down DOM.
+  useEffect(() => {
+    return () => {
+      clearAllPhraseState();
+    };
+  }, []);
 
   // Load PDF
   useEffect(() => {
@@ -797,6 +1131,212 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     return container;
   };
 
+  // Async LLM round-trip + DOM update for a single bbox. Caches its result on
+  // success / failure, draws a "Computing highlights…" affordance while the
+  // request is in flight, and aborts cleanly if the user fires a new query.
+  const runSemanticHighlightForBBox = async (
+    bboxKey: string,
+    pageNumber: number,
+    bbox: HighlightBox['bbox'],
+    chunkText: string,
+    effectiveQuery: string,
+    pixelRect: PixelRect
+  ): Promise<void> => {
+    const initialContainer = document.getElementById(`pdf-page-${pageNumber}`) as HTMLDivElement | null;
+    if (!initialContainer) return;
+
+    // Cancel any prior in-flight request for this bbox before starting a new one
+    const prior = inFlightControllersRef.current.get(bboxKey);
+    if (prior) prior.abort();
+
+    const controller = new AbortController();
+    inFlightControllersRef.current.set(bboxKey, controller);
+    phraseCacheRef.current.set(bboxKey, { status: 'pending', query: effectiveQuery });
+    drawComputingAffordance(initialContainer, bboxKey, pixelRect);
+
+    try {
+      console.log(`[Text Layer] [BBox ${bboxKey}] Starting semantic match for query: "${effectiveQuery}"`);
+      const matches = await findSemanticMatches(
+        chunkText,
+        effectiveQuery,
+        0.4,
+        semanticHighlightModelConfig,
+        controller.signal
+      );
+
+      // The page DOM may have changed during the await. Re-fetch by id.
+      const currentContainer = document.getElementById(`pdf-page-${pageNumber}`) as HTMLDivElement | null;
+      if (!currentContainer) {
+        phraseCacheRef.current.delete(bboxKey);
+        return;
+      }
+      removeComputingAffordance(currentContainer, bboxKey);
+
+      // Cache the LLM result FIRST, before any paint attempt. If the page
+      // DOM is in transition (e.g., fast navigation triggered a
+      // renderVisiblePages cleanup mid-flight), the cache stays correct and
+      // schedulePhraseHighlightForBBox's cache-hit path will paint on the
+      // next renderPage cycle. Caching as 'failed' here would silently
+      // swallow a perfectly valid empty-matches result.
+      phraseCacheRef.current.set(bboxKey, { status: 'done', query: effectiveQuery, matches });
+      console.log(`[Text Layer] [BBox ${bboxKey}] ✅ done with ${matches.length} matches`);
+
+      // The no-match affordance only depends on pageContainer and pixelRect
+      // — NOT on the text layer or spans. Paint it immediately when the LLM
+      // returns nothing, regardless of whether the textLayer is currently
+      // present. Otherwise the user sees "Computing highlights…" disappear
+      // with no replacement when the LLM resolves while the DOM is mid-
+      // rebuild.
+      if (matches.length === 0) {
+        // The chunk made it through retrieval (it IS topically relevant) but
+        // the LLM extractor found no specific phrase to highlight.
+        drawNoMatchAffordance(currentContainer, bboxKey, pixelRect);
+        return;
+      }
+
+      // We have matches; try to paint the phrase overlays.
+      const textLayerEl = currentContainer.querySelector('.textLayer');
+      if (!textLayerEl) {
+        // textLayer is transient — wait for the next render's cache-hit path
+        // to retry rather than show a misleading no-match pill now.
+        return;
+      }
+      const spans = textLayerEl.querySelectorAll('span');
+      const spansInBox = findSpansInPixelRect(spans, currentContainer, pixelRect);
+      const drawnCount =
+        spansInBox.length > 0
+          ? drawPhraseOverlaysFromMatches(currentContainer, bboxKey, spansInBox, matches)
+          : 0;
+
+      if (drawnCount === 0) {
+        // The LLM found phrases but we couldn't paint any visible overlay.
+        // Causes: spansInBox empty, or every phrase failed to align with the
+        // PDF.js text extraction (whitespace/hyphenation/ligature drift).
+        // Either way the user sees no inline highlight, so they need an
+        // explanation — fall back to the no-match affordance.
+        console.log(
+          `[Text Layer] [BBox ${bboxKey}] LLM returned ${matches.length} phrases but 0 overlays drew → no-match`
+        );
+        drawNoMatchAffordance(currentContainer, bboxKey, pixelRect);
+      }
+    } catch (err) {
+      const ctn = document.getElementById(`pdf-page-${pageNumber}`) as HTMLElement | null;
+      if (ctn) removeComputingAffordance(ctn, bboxKey);
+
+      if ((err as { name?: string })?.name === 'AbortError') {
+        // Aborted (e.g. query changed). Drop the entry so the next query
+        // sees a clean miss and re-runs the LLM.
+        phraseCacheRef.current.delete(bboxKey);
+        console.log(`[Text Layer] [BBox ${bboxKey}] aborted`);
+      } else {
+        // LLM threw (network, server 500, etc.). Two things matter for UX:
+        //   1. Show the user *something* — silently leaving the chunk box
+        //      blank looks like the system stalled. We draw the no-match
+        //      affordance for immediate feedback.
+        //   2. Delete the cache entry instead of marking 'failed'. On the
+        //      next renderPage cycle, schedulePhraseHighlightForBBox sees a
+        //      cache miss and re-attaches an observer — so the LLM is
+        //      auto-retried when the user navigates away and back.
+        console.error(`[Text Layer] [BBox ${bboxKey}] semantic match failed:`, err);
+        if (ctn) drawNoMatchAffordance(ctn, bboxKey, pixelRect);
+        phraseCacheRef.current.delete(bboxKey);
+      }
+    } finally {
+      // Only delete if we're still the current controller for this bbox.
+      if (inFlightControllersRef.current.get(bboxKey) === controller) {
+        inFlightControllersRef.current.delete(bboxKey);
+      }
+    }
+  };
+
+  // Decide what to do for a chunk highlight on render: redraw cached overlays,
+  // show pending affordance, skip (failed/in-flight under same query), or
+  // attach an IntersectionObserver that fires the LLM when the chunk box
+  // scrolls into view. This is the heart of the visibility-gated rewrite.
+  const schedulePhraseHighlightForBBox = (
+    pageContainer: HTMLDivElement,
+    pageNumber: number,
+    highlight: HighlightBox,
+    chunkBoxElement: HTMLDivElement,
+    pixelRect: PixelRect,
+    textSpans: NodeListOf<Element>,
+    effectiveQuery: string
+  ): void => {
+    const { bbox, text: chunkText } = highlight;
+    if (!chunkText) return;
+
+    const bboxKey = bboxKeyFor(pageNumber, bbox);
+    const cached = phraseCacheRef.current.get(bboxKey);
+
+    // Cache hit for the current query — skip the network entirely.
+    if (cached && cached.query === effectiveQuery) {
+      if (cached.status === 'done') {
+        if (cached.matches.length === 0) {
+          drawNoMatchAffordance(pageContainer, bboxKey, pixelRect);
+          console.log(`[Text Layer] [BBox ${bboxKey}] cache hit: done with 0 matches → no-match affordance`);
+          return;
+        }
+        const spansInBox = findSpansInPixelRect(textSpans, pageContainer, pixelRect);
+        const drawnCount =
+          spansInBox.length > 0
+            ? drawPhraseOverlaysFromMatches(pageContainer, bboxKey, spansInBox, cached.matches)
+            : 0;
+        if (drawnCount === 0) {
+          // LLM had phrases but they didn't paint as overlays (alignment /
+          // span-overlap failure). Show the no-match pill so the user always
+          // gets feedback when there's no visible inline highlight.
+          drawNoMatchAffordance(pageContainer, bboxKey, pixelRect);
+          console.log(`[Text Layer] [BBox ${bboxKey}] cache hit: done with ${cached.matches.length} matches but 0 overlays drew → no-match`);
+        } else {
+          console.log(`[Text Layer] [BBox ${bboxKey}] cache hit: ${drawnCount} overlay group(s) drawn`);
+        }
+        return;
+      }
+      if (cached.status === 'pending') {
+        // An in-flight LLM call from a prior render of this page will resolve
+        // and paint into the (possibly fresh) DOM container. Show the
+        // affordance again because innerHTML was wiped.
+        drawComputingAffordance(pageContainer, bboxKey, pixelRect);
+        console.log(`[Text Layer] [BBox ${bboxKey}] cache hit: pending → Computing affordance`);
+        return;
+      }
+      // status === 'failed' — fall through to the cache-miss path so a fresh
+      // observer is attached and the LLM is re-tried. This handles two cases:
+      //   - Stale 'failed' entries from a previous code version that may
+      //     persist in memory (HMR keeps refs alive).
+      //   - Genuine retry: if the LLM was transiently broken last time,
+      //     give it another shot on the next visit.
+      console.log(`[Text Layer] [BBox ${bboxKey}] cache hit: failed → falling through to retry`);
+    }
+
+    // Cache miss or stale-query (or stale 'failed') — fire on visibility, not eagerly.
+    // Disconnect any prior observer for this bbox key (e.g. previous render).
+    const priorObserver = phraseObserversRef.current.get(bboxKey);
+    if (priorObserver) priorObserver.disconnect();
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          observer.disconnect();
+          phraseObserversRef.current.delete(bboxKey);
+          console.log(`[Text Layer] [BBox ${bboxKey}] observer fired → starting LLM call`);
+          void runSemanticHighlightForBBox(
+            bboxKey,
+            pageNumber,
+            bbox,
+            chunkText,
+            effectiveQuery,
+            pixelRect
+          );
+        }
+      },
+      { threshold: 0.1 }
+    );
+    observer.observe(chunkBoxElement);
+    phraseObserversRef.current.set(bboxKey, observer);
+    console.log(`[Text Layer] [BBox ${bboxKey}] observer attached, awaiting visibility`);
+  };
+
   const renderPage = async (pageNumber: number) => {
     if (!pdfDoc || !pagesContainerRef.current) return;
 
@@ -880,229 +1420,43 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       const effectiveSearchQuery = inPdfSearchQuery || searchQuery;
       const pageHighlights = highlights.filter(h => h.page === pageNumber);
 
-      // Render chunk highlights (always render these, even if text layer highlighting fails)
-      // Draw bounding boxes AFTER text layer is transparent (like test script)
+      // Phase 1: Draw chunk boxes synchronously. These appear immediately and
+      // never depend on the LLM. Capture each box's element so we can attach
+      // an IntersectionObserver to it for visibility-gated phrase highlighting.
       console.log(`[Chunk Highlights] Rendering ${pageHighlights.length} chunk highlights for page ${pageNumber}`);
-      pageHighlights.forEach(highlight => {
-        const { bbox } = highlight;
-        const scale = viewport.scale;
-        const x = bbox.l * scale;
-        const y = (viewport.height / scale - bbox.t) * scale;
-        const width = (bbox.r - bbox.l) * scale;
-        const height = (bbox.t - bbox.b) * scale;
-
-        // Add padding margin (5px on each side)
-        const padding = 5;
-
-        const div = document.createElement('div');
-        div.className = highlight.isTextMatch ? 'text-match-overlay' : 'highlight-overlay';
-        Object.assign(div.style, {
-          position: 'absolute',
-          pointerEvents: 'none',
-          zIndex: highlight.isTextMatch ? '15' : '10',
-          left: `${x - padding}px`,
-          top: `${y - padding}px`,
-          width: `${width + padding * 2}px`,
-          height: `${height + padding * 2}px`,
-          borderRadius: '4px',
-          ...(highlight.isTextMatch
-            ? { background: 'rgba(255, 165, 0, 0.4)', border: '2px solid rgba(255, 140, 0, 0.8)' }
-            : { background: 'var(--pdf-highlight-bg)', border: 'var(--pdf-highlight-border)' })
-        });
-        div.title = highlight.text.substring(0, 100);
-        pageContainer.appendChild(div);
-
-        // Add a vertical indicator line on the right edge of the page
-        const indicator = document.createElement('div');
-        indicator.className = 'highlight-indicator';
-        Object.assign(indicator.style, {
-          position: 'absolute',
-          pointerEvents: 'none',
-          backgroundColor: highlight.isTextMatch ? 'rgba(255, 140, 0, 0.9)' : 'rgba(0, 102, 204, 0.8)',
-          zIndex: '10',
-          right: '0',
-          top: `${y}px`,
-          width: '12px',
-          height: `${height}px`,
-          borderRadius: '6px 0 0 6px'
-        });
-        pageContainer.appendChild(indicator);
-      });
+      const drawnChunkBoxes = pageHighlights.map((highlight) => ({
+        highlight,
+        ...drawChunkBoxAndIndicator(pageContainer, highlight, scale, viewport.height)
+      }));
 
       console.log(`[Text Layer]Page ${pageNumber}: searchQuery = '${effectiveSearchQuery}', inPdfSearchQuery = '${inPdfSearchQuery}', highlights = ${pageHighlights.length}`);
-      // Highlight matching text in text layer (if search query exists)
-      // IMPORTANT: Only highlight text that falls within the chunk bounding boxes
-      if (effectiveSearchQuery && effectiveSearchQuery.trim() && pageHighlights.length > 0) {
-        console.log(`[Text Layer] Starting text layer highlighting for page ${pageNumber} with query: "${effectiveSearchQuery}"`);
 
-        // Get all text spans in the text layer
+      // Phase 2: Visibility-gated phrase highlighting. The LLM call is only
+      // fired when a chunk box scrolls into the viewport. Cached matches are
+      // re-drawn immediately (no network round-trip on zoom / re-render).
+      const semanticEnabled =
+        PDF_SEMANTIC_HIGHLIGHTS &&
+        Boolean(effectiveSearchQuery && effectiveSearchQuery.trim()) &&
+        pageHighlights.length > 0;
+
+      if (semanticEnabled) {
         const textSpans = textLayer.querySelectorAll('span');
-        console.log('[Text Layer] Text spans found:', textSpans.length);
-
         if (textSpans.length === 0) {
           console.warn('[Text Layer] No text spans found! Text layer may not be ready.');
-          return;
-        }
-
-        // For each chunk highlight, find and highlight matching text within its bounding box
-        pageHighlights.forEach(highlight => {
-          const { bbox, text: chunkText } = highlight;
-          console.log(`[Text Layer] Processing highlight: bbox=${JSON.stringify(bbox)}, chunkText length=${chunkText?.length || 0}`);
-
-          // Convert bbox to viewport coordinates
-          const bboxLeft = bbox.l * scale;
-          const bboxRight = bbox.r * scale;
-          const bboxTop = (viewport.height / scale - bbox.t) * scale;
-          const bboxBottom = (viewport.height / scale - bbox.b) * scale;
-
-          console.log(`[Text Layer] Processing chunk bbox: left = ${bboxLeft}, right = ${bboxRight}, top = ${bboxTop}, bottom = ${bboxBottom} `);
-
-          // Find all spans that fall within this bounding box
-          const spansInBox: HTMLElement[] = [];
-          textSpans.forEach(span => {
-            const spanElement = span as HTMLElement;
-            const spanRect = spanElement.getBoundingClientRect();
-            const containerRect = pageContainer.getBoundingClientRect();
-
-            // Get span position relative to page container
-            const spanLeft = spanRect.left - containerRect.left;
-            const spanRight = spanRect.right - containerRect.left;
-            const spanTop = spanRect.top - containerRect.top;
-            const spanBottom = spanRect.bottom - containerRect.top;
-
-            // Check if span overlaps with bounding box
-            const overlaps = !(spanRight < bboxLeft || spanLeft > bboxRight ||
-              spanBottom < bboxTop || spanTop > bboxBottom);
-
-            if (overlaps) {
-              spansInBox.push(spanElement);
-            }
+        } else {
+          drawnChunkBoxes.forEach(({ highlight, chunkBoxElement, pixelRect }) => {
+            schedulePhraseHighlightForBBox(
+              pageContainer,
+              pageNumber,
+              highlight,
+              chunkBoxElement,
+              pixelRect,
+              textSpans,
+              effectiveSearchQuery
+            );
           });
-
-          console.log(`[Text Layer] Found ${spansInBox.length} spans within chunk bbox`);
-
-          if (spansInBox.length === 0) {
-            return;
-          }
-
-          // Use chunk text from database (same as search results) for semantic matching
-          // This ensures we get the EXACT same semantic matches as search results
-          const bboxText = chunkText || '';
-
-          if (!bboxText) {
-            console.log(`[Text Layer] No chunk text available for bbox, skipping semantic highlighting`);
-            return;
-          }
-
-          // Build text from PDF spans (for matching phrases in PDF)
-          const pdfText = spansInBox.map(span => span.textContent || '').join('');
-
-          console.log(`[Text Layer] Chunk text length: ${bboxText.length} chars`);
-          console.log(`[Text Layer] PDF box text length: ${pdfText.length} chars`);
-
-          // Run semantic matching on chunk text - ONLY ONCE per bbox (ONLY if feature is enabled)
-          // Create unique key for this bbox to prevent re-running on re-renders
-          const bboxKey = `${pageNumber}-${bbox.l}-${bbox.t}-${bbox.r}-${bbox.b}`;
-
-          if (!PDF_SEMANTIC_HIGHLIGHTS) {
-            console.log(`[Text Layer] PDF_SEMANTIC_HIGHLIGHTS is disabled, skipping semantic matching`);
-            return;
-          }
-
-          if (processedBBoxesRef.current.has(bboxKey)) {
-            console.log(`[Text Layer] BBox ${bboxKey} already processed, skipping semantic matching`);
-            return;
-          }
-
-          // Mark as processed IMMEDIATELY to prevent duplicate calls
-          processedBBoxesRef.current.add(bboxKey);
-
-          // Run semantic matching in background - ONCE
-          (async () => {
-            try {
-              console.log(`[Text Layer] [BBox ${bboxKey}] Starting ONE-TIME semantic matching with query: "${effectiveSearchQuery}"`);
-              const semanticMatches = await findSemanticMatches(
-                bboxText,
-                effectiveSearchQuery,
-                0.4,
-                semanticHighlightModelConfig
-              );
-              console.log(`[Text Layer] [BBox ${bboxKey}] Found ${semanticMatches.length} semantic matches`);
-
-              if (semanticMatches.length === 0) {
-                return;
-              }
-
-              // Get current page container
-              const currentPageContainer = document.getElementById(`pdf-page-${pageNumber}`) as HTMLDivElement;
-              if (!currentPageContainer) {
-                console.log(`[Text Layer] [BBox ${bboxKey}] Page container ${pageNumber} no longer exists`);
-                return;
-              }
-
-              // Clear existing overlays for THIS bbox only
-              const oldOverlays = currentPageContainer.querySelectorAll(`.phrase-highlight-overlay[data-bbox="${bboxKey}"]`);
-              oldOverlays.forEach(overlay => overlay.remove());
-
-              // Use the spans we already found (spansInBox) - these are within the bounding box
-              // Build PDF text from these spans for matching
-              const pdfTextForMatching = spansInBox.map(span => span.textContent || '').join('');
-              const normalizedPdfText = normalizePdfText(pdfTextForMatching);
-
-              // Track highlighted ranges to avoid stacking overlays for
-              // the same phrase appearing at multiple positions in chunk text
-              // but mapping to the same first occurrence in PDF text.
-              const highlightedRanges: { start: number; end: number }[] = [];
-
-              semanticMatches.forEach((match, phraseIdx) => {
-                const phrase = match.matchedText;
-                const range = findPhraseRange(normalizedPdfText, pdfTextForMatching, phrase);
-                if (!range) {
-                  console.log(`[Text Layer] ✗ Phrase ${phraseIdx + 1} NOT FOUND in PDF text`);
-                  return;
-                }
-
-                // Skip if this PDF range was already highlighted by a previous match
-                const alreadyHighlighted = highlightedRanges.some(
-                  (prev) => range.start < prev.end && range.end > prev.start
-                );
-                if (alreadyHighlighted) {
-                  console.log(`[Text Layer] ⏭ Phrase ${phraseIdx + 1} overlaps existing highlight, skipping`);
-                  return;
-                }
-                highlightedRanges.push({ start: range.start, end: range.end });
-
-                console.log(
-                  `[Text Layer] Phrase ${phraseIdx + 1} (${range.normalizedPhrase.length} chars): "${range.normalizedPhrase.substring(0, 80)}..."`
-                );
-
-                const spanMap = buildSpanMap(spansInBox);
-                const matchedSpans = findMatchedSpans(spanMap, range.start, range.end);
-                if (matchedSpans.length === 0) {
-                  return;
-                }
-
-                const sortedSpans = sortSpansByPosition(matchedSpans);
-                const containerRect = currentPageContainer.getBoundingClientRect();
-                const spanGroups = groupSpansByLine(sortedSpans, containerRect);
-                appendSpanGroups(spanGroups, currentPageContainer, bboxKey, range.overlayColor);
-
-                console.log(
-                  `[Text Layer] ✓ Matched phrase ${phraseIdx + 1}: "${phrase.substring(0, 60)}..." (${sortedSpans.length} spans, ${spanGroups.length} continuous overlay${spanGroups.length > 1 ? 's' : ''})`
-                );
-              });
-
-              console.log(`[Text Layer] [BBox ${bboxKey}] ✅ ONE-TIME highlighting complete with ${semanticMatches.length} matches`);
-            } catch (error) {
-              console.error(`[Text Layer] [BBox ${bboxKey}] Semantic matching failed:`, error);
-              // Remove from processed set so it can be retried if needed
-              processedBBoxesRef.current.delete(bboxKey);
-            }
-          })();
-        });
+        }
       }
-
-
 
       // Page label
       const label = document.createElement('div');
@@ -1174,13 +1528,33 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       setInPdfSearchResults([]);
       setCurrentMatchIndex(0);
       setHighlights([]);
-      processedBBoxesRef.current.clear();
+      clearAllPhraseState();
       return;
     }
 
     setIsSearching(true);
     try {
       // --- Semantic search via API ---
+      // Recency parameters (recency_boost, recency_weight, recency_scale_days)
+      // are intentionally NOT sent: in-doc search is filtered to a single
+      // document via `title`, so any recency boost has nothing to compare
+      // against and would be dead weight on the request.
+      //
+      // auto_min_score is always enabled for in-doc search. Without it the
+      // API returns up to `limit` (100) chunks regardless of relevance, which
+      // pads the "X of N" counter with the long tail of barely-related
+      // chunks. The server-side 30th-percentile filter drops them before
+      // they reach the client. (Regular search has this as an opt-in toggle
+      // because cross-doc result sets can be more varied; in-doc, where
+      // we're scoped to a single document, always-on is the safer default.)
+      // Build params. We intentionally inherit ranker / dedupe / boost
+      // settings from the parent (so group-level overrides apply), and we
+      // enforce both a percentile filter (auto_min_score) and an absolute
+      // relevance cutoff (min_score = PDF_SEARCH_SEMANTIC_CUTOFF). Chunks
+      // whose stored text contains the query verbatim bypass the cutoff
+      // (include_exact_matches=true) so literal hits are always reachable.
+      // Recency_* params are intentionally omitted — meaningless when the
+      // result set is filtered to a single document via `title`.
       const params: any = {
         q: query,
         limit: 100,
@@ -1188,10 +1562,12 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         data_source: dataSource,
         dense_weight: searchDenseWeight.toString(),
         rerank: rerankEnabled.toString(),
-        recency_boost: recencyBoostEnabled.toString(),
-        recency_weight: recencyWeight.toString(),
-        recency_scale_days: recencyScaleDays.toString(),
         keyword_boost_short_queries: keywordBoostShortQueries.toString(),
+        auto_min_score: 'true',
+        deduplicate: deduplicateEnabled.toString(),
+        field_boost: fieldBoostEnabled.toString(),
+        min_score: PDF_SEARCH_SEMANTIC_CUTOFF.toString(),
+        include_exact_matches: 'true',
       };
       if (sectionTypes && sectionTypes.length > 0) {
         params.section_types = sectionTypes.join(',');
@@ -1202,61 +1578,84 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       if (rerankModel) {
         params.rerank_model = rerankModel;
       }
+      if (rerankModelPageSize != null && rerankModelPageSize > 0) {
+        params.rerank_model_page_size = rerankModelPageSize.toString();
+      }
       if (searchModel) {
         params.model = searchModel;
+      }
+      if (fieldBoostEnabled && Object.keys(fieldBoostFields).length > 0) {
+        params.field_boost_fields = Object.entries(fieldBoostFields)
+          .map(([f, w]) => `${f}:${w}`)
+          .join(',');
       }
 
       const response = await axios.get(`${API_BASE_URL}/search`, { params });
       const data = response.data as { results?: any[] };
       let docResults = data.results || [];
       if (minScore > 0) {
+        // User's regular-search minScore slider is layered on top of the
+        // backend cutoff (defense in depth). Backend already enforces
+        // PDF_SEARCH_SEMANTIC_CUTOFF; this catches anything stricter.
         docResults = docResults.filter((r: any) => (r.score || 0) >= minScore);
       }
 
-      // Build semantic chunk highlights from API results
-      const allHighlights: HighlightBox[] = [];
-      const chunkNavPoints: HighlightBox[] = [];
-
+      // Build chunk highlights and nav points from the API results. The
+      // backend already filtered by relevance + exact-match exemption; we
+      // just need to flatten bboxes per chunk and SORT BY DOCUMENT POSITION
+      // so that Next/Prev navigation goes top-to-bottom through the doc
+      // rather than relevance-first.
+      type ChunkData = { highlights: HighlightBox[]; navAnchor: HighlightBox };
+      const chunks: ChunkData[] = [];
       docResults.forEach((result: any) => {
         const chunkBoxes: HighlightBox[] = [];
         if (result.bbox && Array.isArray(result.bbox)) {
           result.bbox.forEach((bboxItem: any) => {
             const parsed = parseBBoxItem(bboxItem, result.page_num);
             if (parsed) {
-              const h: HighlightBox = { page: parsed.page, bbox: parsed.bbox, text: result.text };
-              chunkBoxes.push(h);
-              allHighlights.push(h);
+              chunkBoxes.push({ page: parsed.page, bbox: parsed.bbox, text: result.text });
             }
           });
         }
-        if (chunkBoxes.length > 0) {
-          chunkBoxes.sort((a, b) => a.page !== b.page ? a.page - b.page : b.bbox.t - a.bbox.t);
-          chunkNavPoints.push(chunkBoxes[0]);
-        }
+        if (chunkBoxes.length === 0) return;
+        // Sort within-chunk so the topmost bbox is the nav anchor.
+        chunkBoxes.sort((a, b) =>
+          a.page !== b.page ? a.page - b.page : b.bbox.t - a.bbox.t
+        );
+        chunks.push({ highlights: chunkBoxes, navAnchor: chunkBoxes[0] });
       });
 
-      // Local text search for literal keyword matches (used for navigation)
-      const textNavPoints: HighlightBox[] = [];
-      if (pdfDoc) {
-        const searchTerm = query.toLowerCase();
-        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-          const pg = await pdfDoc.getPage(pageNum);
-          const textContent = await pg.getTextContent();
-          const textMatches = findTextMatchesOnPage(textContent.items, searchTerm, pageNum);
-          textMatches.forEach(m => {
-            allHighlights.push(m);
-            textNavPoints.push(m);
-          });
+      // Sort across chunks by document position (page asc, then top-to-
+      // bottom — PDF y-axis: larger t = higher on page).
+      chunks.sort((a, b) => {
+        if (a.navAnchor.page !== b.navAnchor.page) {
+          return a.navAnchor.page - b.navAnchor.page;
         }
-      }
+        return b.navAnchor.bbox.t - a.navAnchor.bbox.t;
+      });
 
-      // Navigate by text matches when available (they contain the literal term);
-      // fall back to semantic chunks only if no literal matches found
-      const navPoints = textNavPoints.length > 0 ? textNavPoints : chunkNavPoints;
+      const allHighlights: HighlightBox[] = chunks.flatMap((c) => c.highlights);
+      const chunkNavPoints: HighlightBox[] = chunks.map((c) => c.navAnchor);
 
-      console.log(`[In-PDF Search] ${docResults.length} API chunks, ${textNavPoints.length} text matches, ${allHighlights.length} total highlights`);
+      // Navigation points are the semantic chunks the retrieval API
+      // returned, in reading order — one stop per chunk that holds content
+      // relevant to the query. Literal text matches (e.g., the verbatim
+      // phrase appearing in a figure caption that's not part of any chunk)
+      // are intentionally NOT navigable: the counter "X of N" should reflect
+      // chunks with semantic highlights, not every literal occurrence.
+      // Within each navigated-to chunk, the LLM extracts and highlights the
+      // relevant phrases on demand via the visibility-gated path.
+      // findTextMatchesOnPage is kept (and tested) for potential future use.
+      const navPoints = chunkNavPoints;
 
-      processedBBoxesRef.current.clear();
+      console.log(
+        `[In-PDF Search] ${docResults.length} semantic chunks → ${navPoints.length} nav points`
+      );
+
+      // Tear down all phrase-highlight state before applying new results so
+      // any in-flight LLM calls for the previous query are aborted (their
+      // late responses cannot paint into the new query's overlays).
+      clearAllPhraseState();
       setInPdfSearchResults(navPoints);
       setHighlights(mergeSequentialHighlights(allHighlights));
       setCurrentMatchIndex(0);

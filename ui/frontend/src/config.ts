@@ -26,6 +26,20 @@ export const SEARCH_SEMANTIC_HIGHLIGHTS = config.application.features.semantic_h
 // Default 0.4 = 40% similarity required for highlighting
 export const SEMANTIC_HIGHLIGHT_THRESHOLD = config.application.search.highlight_threshold;
 
+// In-doc PDF search relevance cutoff. Chunks with retrieval score below this
+// value are dropped from in-doc search results UNLESS they contain the query
+// as a verbatim substring (those exact-match chunks are always kept).
+// Tune per ranker — typical values 0.3–0.5 for the WFP Vertex/Gemini stack.
+// Default 0.4 if env var unset.
+const _PDF_SEARCH_SEMANTIC_CUTOFF_RAW = parseFloat(
+  process.env.REACT_APP_PDF_SEARCH_SEMANTIC_CUTOFF || '0.4'
+);
+export const PDF_SEARCH_SEMANTIC_CUTOFF: number = Number.isFinite(
+  _PDF_SEARCH_SEMANTIC_CUTOFF_RAW
+)
+  ? _PDF_SEARCH_SEMANTIC_CUTOFF_RAW
+  : 0.4;
+
 // AI Summary feature flag (defaults to false)
 export const AI_SUMMARY_ON = config.application.ai_summary.enabled;
 

@@ -9,18 +9,20 @@ interface PdfPreviewOverlayProps {
   semanticHighlightModelConfig?: SummaryModelConfig | null;
   onClose: () => void;
   onOpenMetadata?: (metadata: Record<string, any>) => void;
-  // Search settings
+  // Search settings (recency_* are intentionally omitted — they're meaningless
+  // when in-doc search filters to a single document).
   searchDenseWeight: number;
   rerankEnabled: boolean;
-  recencyBoostEnabled: boolean;
-  recencyWeight: number;
-  recencyScaleDays: number;
   sectionTypes: string[];
   keywordBoostShortQueries: boolean;
   minChunkSize: number;
   minScore: number;
   rerankModel: string | null;
+  rerankModelPageSize: number | null;
   searchModel: string | null;
+  deduplicateEnabled: boolean;
+  fieldBoostEnabled: boolean;
+  fieldBoostFields: Record<string, number>;
 }
 
 const buildInitialBBox = (selectedDoc: SearchResult) => {
@@ -56,15 +58,16 @@ export const PdfPreviewOverlay: React.FC<PdfPreviewOverlayProps> = ({
   onOpenMetadata,
   searchDenseWeight,
   rerankEnabled,
-  recencyBoostEnabled,
-  recencyWeight,
-  recencyScaleDays,
   sectionTypes,
   keywordBoostShortQueries,
   minChunkSize,
   minScore,
   rerankModel,
+  rerankModelPageSize,
   searchModel,
+  deduplicateEnabled,
+  fieldBoostEnabled,
+  fieldBoostFields,
 }) => {
   if (!selectedDoc) {
     return null;
@@ -87,15 +90,16 @@ export const PdfPreviewOverlay: React.FC<PdfPreviewOverlayProps> = ({
           onOpenMetadata={onOpenMetadata}
           searchDenseWeight={searchDenseWeight}
           rerankEnabled={rerankEnabled}
-          recencyBoostEnabled={recencyBoostEnabled}
-          recencyWeight={recencyWeight}
-          recencyScaleDays={recencyScaleDays}
           sectionTypes={sectionTypes}
           keywordBoostShortQueries={keywordBoostShortQueries}
           minChunkSize={minChunkSize}
           minScore={minScore}
           rerankModel={rerankModel}
+          rerankModelPageSize={rerankModelPageSize}
           searchModel={searchModel}
+          deduplicateEnabled={deduplicateEnabled}
+          fieldBoostEnabled={fieldBoostEnabled}
+          fieldBoostFields={fieldBoostFields}
         />
       </div>
     </div>

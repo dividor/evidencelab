@@ -4,7 +4,9 @@ import { render } from '@testing-library/react';
 import { SearchResult } from '../types/api';
 import {
   findExactPhraseMatches,
+  findSemanticMatches,
   findWordMatches,
+  highlightTextWithAPI,
   parseSuperscripts,
   renderHighlightedText,
   renderTextWithInlineReferences,
@@ -75,5 +77,64 @@ describe('textHighlighting utilities', () => {
     const highlights = container.querySelectorAll('mark.search-highlight');
     expect(highlights).toHaveLength(1);
     expect(highlights[0].textContent).toContain('Health and safety');
+  });
+
+  describe('AbortSignal support', () => {
+    let originalFetch: typeof global.fetch;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+    });
+
+    test('highlightTextWithAPI forwards AbortSignal to fetch', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ highlighted_text: 'x', matches: [] })
+      });
+      global.fetch = mockFetch as unknown as typeof global.fetch;
+
+      const controller = new AbortController();
+      await highlightTextWithAPI('some text', 'query', 'semantic', 0.4, null, controller.signal);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      const fetchInit = mockFetch.mock.calls[0][1];
+      expect(fetchInit.signal).toBe(controller.signal);
+    });
+
+    test('highlightTextWithAPI re-throws AbortError so callers can detect cancellation', async () => {
+      const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+      global.fetch = jest.fn().mockRejectedValue(abortError) as unknown as typeof global.fetch;
+
+      await expect(
+        highlightTextWithAPI('text', 'query', 'semantic', 0.4)
+      ).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
+    test('highlightTextWithAPI swallows non-abort errors and returns empty', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('network down')) as unknown as typeof global.fetch;
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await highlightTextWithAPI('text', 'query');
+      expect(result).toEqual({ highlighted_text: 'text', matches: [] });
+    });
+
+    test('findSemanticMatches threads AbortSignal through to highlightTextWithAPI', async () => {
+      const mockFetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ matches: [] })
+      });
+      global.fetch = mockFetch as unknown as typeof global.fetch;
+
+      const controller = new AbortController();
+      await findSemanticMatches('text', 'query', 0.4, null, controller.signal);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch.mock.calls[0][1].signal).toBe(controller.signal);
+    });
   });
 });

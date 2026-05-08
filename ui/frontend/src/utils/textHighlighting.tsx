@@ -178,13 +178,16 @@ export const findAllMatches = (text: string, query: string): TextMatch[] => {
 const normalizeAlphanumeric = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Unified highlighting using backend API
-// Returns the full response object now
+// Returns the full response object now. Pass an AbortSignal via `signal` to
+// cancel an in-flight request (e.g. when the user changes query before the
+// previous highlight call resolves).
 export const highlightTextWithAPI = async (
   text: string,
   query: string,
   highlightType: 'keyword' | 'semantic' | 'both' = 'both',
   threshold: number = 0.4,
-  semanticModelConfig?: SummaryModelConfig | null
+  semanticModelConfig?: SummaryModelConfig | null,
+  signal?: AbortSignal
 ): Promise<any> => {
   if (!query.trim() || !text.trim()) return { highlighted_text: text, matches: [] };
 
@@ -204,7 +207,8 @@ export const highlightTextWithAPI = async (
         highlight_type: highlightType,
         semantic_threshold: threshold,
         semantic_model_config: semanticModelConfig || undefined
-      })
+      }),
+      signal
     });
 
     if (!response.ok) {
@@ -216,6 +220,11 @@ export const highlightTextWithAPI = async (
     console.log('Backend Highlight Response:', data);
     return data;
   } catch (error) {
+    // Re-throw AbortError so callers can detect cancellation explicitly
+    // (vs treating it as a "no matches" outcome that should be cached).
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw error;
+    }
     console.error('Highlighting error:', error);
     return { highlighted_text: text, matches: [] };
   }
@@ -420,17 +429,21 @@ export const findSemanticMatches = async (
   text: string,
   query: string,
   threshold: number = 0.4,
-  semanticModelConfig?: SummaryModelConfig | null
+  semanticModelConfig?: SummaryModelConfig | null,
+  signal?: AbortSignal
 ): Promise<TextMatch[]> => {
   if (!query.trim() || !text.trim()) return [];
 
-  // Get full response from API
+  // Get full response from API. AbortSignal propagates through to fetch so
+  // callers can cancel the underlying request when, e.g., the user changes
+  // their in-doc search query before the previous one resolves.
   const responseData = await highlightTextWithAPI(
     text,
     query,
     'semantic',
     threshold,
-    semanticModelConfig
+    semanticModelConfig,
+    signal
   );
 
   if (!responseData || !responseData.matches || !Array.isArray(responseData.matches)) {

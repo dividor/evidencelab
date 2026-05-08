@@ -543,6 +543,42 @@ def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     return built
 
 
+def _apply_min_score_filter(
+    results: List,
+    min_score: float,
+    include_exact_matches: bool,
+    query: str,
+) -> List:
+    """Drop results with score below `min_score`. When `include_exact_matches`
+    is True, results whose chunk text contains the query as a verbatim
+    substring (case-insensitive) are exempt from the filter — they always
+    pass through. Used by in-doc PDF search to enforce a relevance floor
+    while guaranteeing that any chunk literally containing the search phrase
+    is reachable, regardless of its retrieval score.
+    """
+    if min_score <= 0:
+        return results
+    query_lower = query.strip().lower()
+    has_query = bool(query_lower)
+    kept = []
+    for r in results:
+        if (getattr(r, "score", 0) or 0) >= min_score:
+            kept.append(r)
+            continue
+        if include_exact_matches and has_query:
+            text = getattr(r, "text", None) or ""
+            if query_lower in text.lower():
+                kept.append(r)
+    logger.info(
+        "[MIN_SCORE] cutoff=%.3f kept=%d/%d (include_exact_matches=%s)",
+        min_score,
+        len(kept),
+        len(results),
+        include_exact_matches,
+    )
+    return kept
+
+
 def _apply_post_retrieval_boosts(
     results: List,
     query: str,
@@ -550,10 +586,13 @@ def _apply_post_retrieval_boosts(
     field_boost_fields: Optional[str],
     auto_min_score: bool,
     deduplicate: bool,
+    min_score: float,
+    include_exact_matches: bool,
     db,
     source: Optional[str],
 ) -> List:
-    """Apply field boost, auto min score, and deduplication."""
+    """Apply field boost, auto min score, deduplication, and (optional)
+    absolute min_score filter with exact-match exemption."""
     boost_cfg = (
         _parse_boost_fields(field_boost_fields) if field_boost and query.strip() else {}
     )
@@ -564,6 +603,10 @@ def _apply_post_retrieval_boosts(
         results = _apply_auto_min_score_filter(results)
     if deduplicate:
         results = _deduplicate_results(results)
+    if min_score > 0:
+        results = _apply_min_score_filter(
+            results, min_score, include_exact_matches, query
+        )
     return results
 
 
@@ -667,6 +710,19 @@ async def search(
         description="Comma-separated core field names to boost (e.g. 'country,organization'). "
         "Each field gets a 0.5 weight multiplier.",
     ),
+    min_score: float = Query(
+        0.0,
+        ge=0.0,
+        le=1.0,
+        description="Absolute relevance floor (0.0–1.0). Results with score below "
+        "this value are dropped. Default 0 = no filtering.",
+    ),
+    include_exact_matches: bool = Query(
+        False,
+        description="When true (and min_score > 0), results whose chunk text contains "
+        "the query as a verbatim substring (case-insensitive) bypass the min_score "
+        "filter and are always returned. Used by in-doc PDF search.",
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -742,6 +798,8 @@ async def search(
             field_boost_fields,
             auto_min_score,
             deduplicate,
+            min_score,
+            include_exact_matches,
             db,
             source,
         )

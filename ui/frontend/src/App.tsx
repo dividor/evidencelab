@@ -3016,15 +3016,16 @@ function App() {
         onOpenMetadata={handleOpenMetadata}
         searchDenseWeight={searchDenseWeight}
         rerankEnabled={rerankEnabled}
-        recencyBoostEnabled={recencyBoostEnabled}
-        recencyWeight={recencyWeight}
-        recencyScaleDays={recencyScaleDays}
         sectionTypes={sectionTypes}
         keywordBoostShortQueries={keywordBoostShortQueries}
         minChunkSize={minChunkSize}
         minScore={minScore}
         rerankModel={rerankModel}
+        rerankModelPageSize={rerankModelPageSize}
         searchModel={searchModel}
+        deduplicateEnabled={deduplicateEnabled}
+        fieldBoostEnabled={fieldBoostEnabled}
+        fieldBoostFields={fieldBoostFields}
       />
 
       {/* MetadataModal rendered first so TocModal/SummaryModal stack above it */}

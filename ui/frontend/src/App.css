@@ -6169,14 +6169,17 @@ li.ai-fact-active::before {
   }
 }
 
-/* Continuous highlight overlay for semantic phrases */
+/* Continuous highlight overlay for semantic phrases.
+   z-index 11 sits above the chunk box (.highlight-overlay, z-index 10) so
+   the orange phrase highlights aren't muted by the chunk box's animated
+   blue tint. Affordance pills (.phrase-highlight-pending / -no-match) sit
+   higher still at 12. */
 .phrase-highlight-overlay {
   position: absolute;
   background-color: rgba(255, 165, 0, 0.6);
   border-radius: 2px;
   pointer-events: none;
-  z-index: 5;
-  /* Above text layer (z-index 2), below bounding boxes (z-index 10) - matches test script */
+  z-index: 11;
 }
 
 .textLayer ::selection {
