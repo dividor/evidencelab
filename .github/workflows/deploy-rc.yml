@@ -88,29 +88,48 @@ jobs:
           echo "Workflow: ${{ github.workflow }}"
 
       # The runner clones into its own _work dir; the actual prod working
-      # tree lives at ``$HOME/projects/evidencelab`` (the script defaults
-      # to its own grandparent). We only need the checkout for the script
-      # itself — the script then operates on the prod dir.
+      # tree lives at ``$DEPLOY_DIR`` (set via the EVIDENCELAB_DEPLOY_DIR
+      # secret). We only need the checkout for the script itself — the
+      # script then operates on the prod dir.
+      #
+      # checkout is pinned to a commit SHA rather than the ``v4`` tag so a
+      # tag hijack on actions/checkout can't smuggle code onto the runner.
       - name: Checkout (release branch)
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           ref: ${{ needs.guard-latest-release.outputs.branch }}
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Make deploy script executable
         run: chmod +x scripts/deploy/redeploy_prod.sh
 
+      - name: Verify deployment secrets are present
+        # Fail fast and clearly if the operator-specific paths aren't
+        # configured, rather than silently deploying into a wrong dir.
+        # Both values live in Repo Settings → Secrets and variables →
+        # Actions → Secrets (never variables) so operator-specific paths
+        # don't leak into the public repo or into Actions logs.
+        env:
+          DEPLOY_DIR: ${{ secrets.EVIDENCELAB_DEPLOY_DIR }}
+          SUBREPO_DIR: ${{ secrets.EVIDENCELAB_SUBREPO_DIR }}
+        run: |
+          missing=()
+          [ -z "${DEPLOY_DIR:-}" ] && missing+=("EVIDENCELAB_DEPLOY_DIR")
+          [ -z "${SUBREPO_DIR:-}" ] && missing+=("EVIDENCELAB_SUBREPO_DIR")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error ::Missing required deployment secret(s): ${missing[*]}"
+            echo "Set them in Repo Settings → Secrets and variables → Actions → Secrets."
+            exit 1
+          fi
+
       - name: Run redeploy script
         env:
-          # Point the script at the persistent prod checkout, not the
-          # ephemeral runner workspace.
-          DEPLOY_DIR: ${{ vars.EVIDENCELAB_DEPLOY_DIR || '/home/ext_matthew_harris/projects/evidencelab' }}
-          # Point the script at the deployment sub-repo's actual location
-          # on this VM. The public default in the script is a placeholder
-          # — set EVIDENCELAB_SUBREPO_DIR in Repo Settings → Variables to
-          # the real path so the operator-specific name lives in config,
-          # not in the public repo.
-          SUBREPO_DIR: ${{ vars.EVIDENCELAB_SUBREPO_DIR }}
+          # Both values are operator-specific and live in repo Secrets
+          # (never Variables) so they don't appear in Actions logs or in
+          # the public source.
+          DEPLOY_DIR: ${{ secrets.EVIDENCELAB_DEPLOY_DIR }}
+          SUBREPO_DIR: ${{ secrets.EVIDENCELAB_SUBREPO_DIR }}
         run: |
           ./scripts/deploy/redeploy_prod.sh "${{ needs.guard-latest-release.outputs.branch }}"
 
