@@ -7,8 +7,9 @@
 #
 # Runs on a self-hosted runner installed on the deployment VM itself (so no
 # inbound SSH is required). The runner only needs outbound HTTPS to GitHub.
-# See pipeline/integration/wfp-evaluation-ai/evidencelab/deployment/README.md
-# for the one-time runner installation steps.
+# See the deployment sub-repo's evidencelab/deployment/README.md for the
+# one-time runner installation steps (path is operator-specific; set the
+# EVIDENCELAB_SUBREPO_DIR repo variable below to point at the real one).
 name: Deploy on RC merge
 
 on:
@@ -104,6 +105,12 @@ jobs:
           # Point the script at the persistent prod checkout, not the
           # ephemeral runner workspace.
           DEPLOY_DIR: ${{ vars.EVIDENCELAB_DEPLOY_DIR || '/home/ext_matthew_harris/projects/evidencelab' }}
+          # Point the script at the deployment sub-repo's actual location
+          # on this VM. The public default in the script is a placeholder
+          # — set EVIDENCELAB_SUBREPO_DIR in Repo Settings → Variables to
+          # the real path so the operator-specific name lives in config,
+          # not in the public repo.
+          SUBREPO_DIR: ${{ vars.EVIDENCELAB_SUBREPO_DIR }}
         run: |
           ./scripts/deploy/redeploy_prod.sh "${{ needs.guard-latest-release.outputs.branch }}"
 

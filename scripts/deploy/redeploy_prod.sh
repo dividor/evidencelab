@@ -32,8 +32,11 @@
 # Environment overrides:
 #   DEPLOY_DIR       — repo root to deploy from (default: this script's
 #                      grandparent dir, i.e. /home/.../projects/evidencelab)
-#   SUBREPO_DIR      — deployment sub-repo path
-#                      (default: $DEPLOY_DIR/pipeline/integration/wfp-evaluation-ai)
+#   SUBREPO_DIR      — deployment sub-repo path (operator-specific; the
+#                      public default is a placeholder — set this via the
+#                      EVIDENCELAB_SUBREPO_DIR repo variable in the
+#                      workflow so prod points at the real directory)
+#                      (default: $DEPLOY_DIR/pipeline/integration/client1)
 #   HEALTH_URL       — health endpoint to probe
 #                      (default: http://127.0.0.1:8000/health)
 #   HEALTH_RETRIES   — max retries (default: 30, ~90s with 3s delay)
@@ -48,7 +51,7 @@ BRANCH="${1:-${GITHUB_REF_NAME:-rc/v1.5.0}}"
 # the runner's working directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="${DEPLOY_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-SUBREPO_DIR="${SUBREPO_DIR:-$DEPLOY_DIR/pipeline/integration/wfp-evaluation-ai}"
+SUBREPO_DIR="${SUBREPO_DIR:-$DEPLOY_DIR/pipeline/integration/client1}"
 DEPLOY_DEPLOYMENT_DIR="$SUBREPO_DIR/evidencelab/deployment"
 
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8000/health}"
