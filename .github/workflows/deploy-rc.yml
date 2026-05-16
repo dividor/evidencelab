@@ -1,0 +1,120 @@
+# Auto-deploy on merge to the current release branch.
+#
+# Listens for pushes to any ``rc/v*`` branch but only proceeds when the
+# pushed branch is the *highest* semver among the remote ``rc/v*`` heads —
+# so a hotfix on an older release branch doesn't kick the prod VM that's
+# already running a newer release.
+#
+# Runs on a self-hosted runner installed on the deployment VM itself (so no
+# inbound SSH is required). The runner only needs outbound HTTPS to GitHub.
+# See pipeline/integration/wfp-evaluation-ai/evidencelab/deployment/README.md
+# for the one-time runner installation steps.
+name: Deploy on RC merge
+
+on:
+  push:
+    branches:
+      - 'rc/v*'
+  # Manual trigger for replays / dry-runs.
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Release branch to deploy (must be rc/vX.Y.Z)'
+        required: true
+        default: 'rc/v1.5.0'
+
+# A single deploy at a time. ``cancel-in-progress: false`` is critical —
+# aborting half-way through ``docker compose up --build`` leaves the stack
+# in an undefined state.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard-latest-release:
+    # Only deploy when the pushed (or chosen) branch is the highest rc/v* on origin.
+    # A hotfix merged to rc/v1.4.0 won't deploy if rc/v1.5.0 exists.
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.compare.outputs.should_deploy }}
+      branch: ${{ steps.compare.outputs.branch }}
+    steps:
+      - name: Resolve branch + latest rc
+        id: compare
+        env:
+          PUSHED: ${{ github.event.inputs.branch || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Discover all rc/v* heads on the remote and pick the highest semver.
+          LATEST="$(
+            git ls-remote --heads "https://github.com/${GITHUB_REPOSITORY}.git" 'rc/v*' \
+              | awk '{print $2}' \
+              | sed 's|refs/heads/||' \
+              | grep -E '^rc/v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n1
+          )"
+          echo "pushed=$PUSHED"
+          echo "latest=$LATEST"
+          if [[ "$PUSHED" == "$LATEST" ]]; then
+            echo "should_deploy=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice ::Skipping deploy — pushed $PUSHED but latest rc is $LATEST"
+          fi
+          echo "branch=$PUSHED" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: guard-latest-release
+    if: needs.guard-latest-release.outputs.should_deploy == 'true'
+    # ``self-hosted`` matches any self-hosted runner; ``evidencelab-prod`` is a
+    # custom label we set on the VM's runner so this job can't accidentally
+    # pick up some other runner the org installs in future.
+    runs-on: [self-hosted, evidencelab-prod]
+    # Hard ceiling: if compose rebuild + health check hasn't finished in 20m,
+    # something is wrong — fail loudly rather than wedge the runner forever.
+    timeout-minutes: 20
+    steps:
+      - name: Show context
+        run: |
+          echo "Branch  : ${{ needs.guard-latest-release.outputs.branch }}"
+          echo "Commit  : ${{ github.sha }}"
+          echo "Actor   : ${{ github.actor }}"
+          echo "Workflow: ${{ github.workflow }}"
+
+      # The runner clones into its own _work dir; the actual prod working
+      # tree lives at ``$HOME/projects/evidencelab`` (the script defaults
+      # to its own grandparent). We only need the checkout for the script
+      # itself — the script then operates on the prod dir.
+      - name: Checkout (release branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.guard-latest-release.outputs.branch }}
+          fetch-depth: 1
+
+      - name: Make deploy script executable
+        run: chmod +x scripts/deploy/redeploy_prod.sh
+
+      - name: Run redeploy script
+        env:
+          # Point the script at the persistent prod checkout, not the
+          # ephemeral runner workspace.
+          DEPLOY_DIR: ${{ vars.EVIDENCELAB_DEPLOY_DIR || '/home/ext_matthew_harris/projects/evidencelab' }}
+        run: |
+          ./scripts/deploy/redeploy_prod.sh "${{ needs.guard-latest-release.outputs.branch }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Deploy summary"
+            echo ""
+            echo "- Branch: \`${{ needs.guard-latest-release.outputs.branch }}\`"
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Triggered by: ${{ github.event_name }} (${{ github.actor }})"
+            echo "- Result: ${{ job.status }}"
+          } >> "$GITHUB_STEP_SUMMARY"
