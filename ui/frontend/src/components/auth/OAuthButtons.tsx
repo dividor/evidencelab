@@ -21,7 +21,12 @@ const OAuthButtons: React.FC<OAuthButtonsProps> = ({
 
   const handleOAuth = async (provider: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/${provider}/authorize`, {
+      // Round-trip the current path+query through the signed state JWT so the
+      // OAuth callback can redirect back here (the bare app root would lose it).
+      const returnTo = window.location.pathname + window.location.search;
+      const authorizeUrl =
+        `${API_BASE_URL}/auth/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
+      const res = await fetch(authorizeUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });

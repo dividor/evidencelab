@@ -2,6 +2,16 @@
 
 from unittest.mock import patch
 
+import pytest
+from fastapi_users.router.oauth import generate_state_token
+
+from ui.backend.auth.users import AUTH_SECRET
+from ui.backend.routes.auth import (
+    _APP_BASE_URL,
+    _is_safe_return_to,
+    _resolve_post_login_redirect,
+)
+
 
 class TestOAuthConfiguration:
     """Tests for OAuth client initialization."""
@@ -158,3 +168,86 @@ class TestOAuthExplicitScopes:
             scopes = mod.microsoft_oauth_client.base_scopes
             # 4 scopes: openid, email, profile, User.Read
             assert len(scopes) == 4
+
+
+class TestIsSafeReturnTo:
+    """Tests for the same-origin path validator used by the OAuth flow."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "/",
+            "/?q=foo",
+            "/?q=impact+of+climate+change&rerank=false&sections=findings",
+            "/admin?x=1",
+            "/admin/users?page=2&sort=name",
+            "/path/with/segments",
+        ],
+    )
+    def test_accepts_same_origin_paths(self, value):
+        assert _is_safe_return_to(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            None,
+            "",
+            "//evil.com",
+            "//evil.com/path",
+            "/\\evil.com",
+            "https://evil.com/",
+            "http://evil.com",
+            "javascript:alert(1)",
+            "relative/path",
+            "?q=foo",
+        ],
+    )
+    def test_rejects_unsafe_values(self, value):
+        assert _is_safe_return_to(value) is False
+
+    def test_rejects_overly_long_paths(self):
+        # 2049 chars — one over the cap
+        too_long = "/" + ("a" * 2048)
+        assert _is_safe_return_to(too_long) is False
+
+    def test_accepts_path_at_length_limit(self):
+        at_limit = "/" + ("a" * 2047)  # total length = 2048
+        assert _is_safe_return_to(at_limit) is True
+
+
+class TestResolvePostLoginRedirect:
+    """Tests that the OAuth callback redirect respects the signed state JWT."""
+
+    def test_returns_base_url_when_state_missing(self):
+        assert _resolve_post_login_redirect(None) == _APP_BASE_URL
+        assert _resolve_post_login_redirect("") == _APP_BASE_URL
+
+    def test_returns_base_url_when_state_is_garbage(self):
+        assert _resolve_post_login_redirect("not-a-jwt") == _APP_BASE_URL
+
+    def test_returns_base_url_when_signature_invalid(self):
+        # State signed with the wrong secret must not be trusted.
+        wrong_secret = "x" * 32  # length matches AUTH_SECRET strength, value differs
+        bad_state = generate_state_token({"return_to": "/?q=foo"}, wrong_secret)
+        assert _resolve_post_login_redirect(bad_state) == _APP_BASE_URL
+
+    def test_returns_base_url_when_return_to_missing(self):
+        state = generate_state_token({"sub": "127.0.0.1"}, AUTH_SECRET)
+        assert _resolve_post_login_redirect(state) == _APP_BASE_URL
+
+    def test_returns_base_url_when_return_to_unsafe(self):
+        # Even though state is signed, an unsafe return_to is still rejected
+        # (defense in depth).
+        state = generate_state_token({"return_to": "//evil.com"}, AUTH_SECRET)
+        assert _resolve_post_login_redirect(state) == _APP_BASE_URL
+
+    def test_appends_safe_return_to_to_base_url(self):
+        return_to = "/?q=impact+of+climate+change&rerank=false"
+        state = generate_state_token({"return_to": return_to}, AUTH_SECRET)
+        expected = _APP_BASE_URL.rstrip("/") + return_to
+        assert _resolve_post_login_redirect(state) == expected
+
+    def test_strips_trailing_slash_from_base_url(self):
+        with patch("ui.backend.routes.auth._APP_BASE_URL", "http://localhost:3000/"):
+            state = generate_state_token({"return_to": "/?q=foo"}, AUTH_SECRET)
+            assert _resolve_post_login_redirect(state) == "http://localhost:3000/?q=foo"

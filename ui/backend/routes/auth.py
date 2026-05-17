@@ -1,9 +1,12 @@
 """Authentication routes — login, register, verify, OAuth callbacks."""
 
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
+from fastapi_users.jwt import decode_jwt
+from fastapi_users.router.oauth import STATE_TOKEN_AUDIENCE, generate_state_token
 
 from ui.backend.auth.oauth import google_oauth_client, microsoft_oauth_client
 from ui.backend.auth.schemas import UserCreate, UserRead
@@ -23,6 +26,45 @@ _OAUTH_CALLBACK_BASE = os.environ.get(
 
 # Where to redirect the browser after a successful OAuth login.
 _APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
+
+# Cap on the post-login return path; long enough for typical search-state URLs.
+_MAX_RETURN_TO_LEN = 2048
+
+
+def _is_safe_return_to(return_to: Optional[str]) -> bool:
+    """True iff return_to is a same-origin path safe to redirect to.
+
+    Rejects protocol-relative URLs (`//evil.com`, `/\\evil.com`) and absolute
+    URLs that would redirect off-domain. Length-capped to guard against abuse.
+    """
+    if not return_to:
+        return False
+    if len(return_to) > _MAX_RETURN_TO_LEN:
+        return False
+    if not return_to.startswith("/"):
+        return False
+    if return_to.startswith("//") or return_to.startswith("/\\"):
+        return False
+    return True
+
+
+def _resolve_post_login_redirect(state: Optional[str]) -> str:
+    """Decode the OAuth state JWT and return a safe absolute redirect URL.
+
+    Falls back to _APP_BASE_URL when state is missing, invalid, or carries
+    an unsafe return_to — defense in depth, even though state is signed.
+    """
+    if not state:
+        return _APP_BASE_URL
+    try:
+        state_data = decode_jwt(state, AUTH_SECRET, [STATE_TOKEN_AUDIENCE])
+    except Exception:
+        return _APP_BASE_URL
+    return_to = state_data.get("return_to")
+    if not _is_safe_return_to(return_to):
+        return _APP_BASE_URL
+    return _APP_BASE_URL.rstrip("/") + return_to
+
 
 # When DISABLE_EMAIL_LOGIN is true, email/password login and registration
 # routes are not mounted at all — forcing users to sign in via OAuth only.
@@ -81,17 +123,22 @@ def _make_oauth_router(oauth_client, provider_name: str):
     cookie set.  We wrap it: the /authorize endpoint returns JSON with
     the authorization_url (consumed by the frontend), and the /callback
     endpoint authenticates the user, sets the httpOnly auth cookie, then
-    redirects the browser back to the application.
+    redirects the browser back to the application — preserving the path
+    and query string the user was on (carried through the signed state JWT).
     """
-    from fastapi_users.router.oauth import generate_state_token
-
     oauth_router = APIRouter()
 
     # --- /authorize --------------------------------------------------------
     @oauth_router.get("/authorize")
-    async def authorize(request: Request, scopes: list[str] = Query(None)):
+    async def authorize(
+        request: Request,
+        scopes: list[str] = Query(None),
+        return_to: Optional[str] = Query(None),
+    ):
         authorize_redirect_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
-        state_data = {"sub": str(request.client.host) if request.client else ""}
+        state_data: dict = {"sub": str(request.client.host) if request.client else ""}
+        if _is_safe_return_to(return_to):
+            state_data["return_to"] = return_to
         state = generate_state_token(state_data, AUTH_SECRET)
         authorization_url = await oauth_client.get_authorization_url(
             authorize_redirect_url,
@@ -156,8 +203,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
         # Log in via cookie backend — sets the httpOnly auth cookie
         login_response = await cookie_backend.login(strategy, user)
 
-        # Convert to a redirect, preserving the Set-Cookie header
-        redirect = RedirectResponse(url=_APP_BASE_URL, status_code=302)
+        # Convert to a redirect, preserving the Set-Cookie header. Land back
+        # on the URL the user was on before OAuth (carried in the signed
+        # state JWT), so search-state query params survive the round-trip.
+        redirect_target = _resolve_post_login_redirect(state)
+        redirect = RedirectResponse(url=redirect_target, status_code=302)
         for header_name, header_value in login_response.raw_headers:
             if header_name.lower() == b"set-cookie":
                 redirect.raw_headers.append((header_name, header_value))
