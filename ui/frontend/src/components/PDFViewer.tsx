@@ -1550,15 +1550,23 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       // Build params. We intentionally inherit ranker / dedupe / boost
       // settings from the parent (so group-level overrides apply), and we
       // enforce both a percentile filter (auto_min_score) and an absolute
-      // relevance cutoff (min_score = PDF_SEARCH_SEMANTIC_CUTOFF). Chunks
-      // whose stored text contains the query verbatim bypass the cutoff
-      // (include_exact_matches=true) so literal hits are always reachable.
+      // relevance cutoff. The cutoff is the max of PDF_SEARCH_SEMANTIC_CUTOFF
+      // (floor for in-doc search) and the user's minScore slider — so a
+      // stricter user setting still applies, but always through the backend
+      // path that honors `include_exact_matches`. Chunks whose stored text
+      // contains the query verbatim bypass the cutoff so literal hits are
+      // always reachable.
+      // Scoping is by `doc_id`, not `title`: `title` is a partial / tokenized
+      // match at the storage layer (MatchText on map_title), so two documents
+      // with overlapping title tokens would leak chunks into each other's
+      // in-doc search.
       // Recency_* params are intentionally omitted — meaningless when the
-      // result set is filtered to a single document via `title`.
+      // result set is filtered to a single document.
+      const effectiveMinScore = Math.max(PDF_SEARCH_SEMANTIC_CUTOFF, minScore || 0);
       const params: any = {
         q: query,
         limit: 100,
-        title: title,
+        doc_id: docId,
         data_source: dataSource,
         dense_weight: searchDenseWeight.toString(),
         rerank: rerankEnabled.toString(),
@@ -1566,7 +1574,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         auto_min_score: 'true',
         deduplicate: deduplicateEnabled.toString(),
         field_boost: fieldBoostEnabled.toString(),
-        min_score: PDF_SEARCH_SEMANTIC_CUTOFF.toString(),
+        min_score: effectiveMinScore.toString(),
         include_exact_matches: 'true',
       };
       if (sectionTypes && sectionTypes.length > 0) {
@@ -1592,13 +1600,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
       const response = await axios.get(`${API_BASE_URL}/search`, { params });
       const data = response.data as { results?: any[] };
-      let docResults = data.results || [];
-      if (minScore > 0) {
-        // User's regular-search minScore slider is layered on top of the
-        // backend cutoff (defense in depth). Backend already enforces
-        // PDF_SEARCH_SEMANTIC_CUTOFF; this catches anything stricter.
-        docResults = docResults.filter((r: any) => (r.score || 0) >= minScore);
-      }
+      const docResults = data.results || [];
+      // No client-side minScore re-filter here: the backend cutoff is set to
+      // max(PDF_SEARCH_SEMANTIC_CUTOFF, minScore) above and is the single
+      // authority. A client-side `r.score >= minScore` would silently drop
+      // exact-match-exempted chunks that the backend deliberately kept.
 
       // Build chunk highlights and nav points from the API results. The
       // backend already filtered by relevance + exact-match exemption; we

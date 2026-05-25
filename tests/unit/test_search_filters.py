@@ -80,6 +80,83 @@ def test_search_chunks_keyword_only_uses_sparse_query():
     assert isinstance(kwargs["query"], models.SparseVector)
 
 
+def _extract_doc_id_match_values(query_filter: models.Filter):
+    """Walk the must-conditions of a chunk-search filter and return the
+    set of doc_id values matched. ``build_doc_id_filter`` wraps the doc_id
+    condition in a nested ``Filter`` with two ``should`` arms (``doc_id``
+    OR ``sys_doc_id``); both arms reference the same match, so reading one
+    is enough.
+    """
+    values: set = set()
+    must = query_filter.must or []
+    if not isinstance(must, list):
+        must = [must]
+    for cond in must:
+        # Nested filter from build_doc_id_filter
+        if isinstance(cond, models.Filter) and cond.should:
+            shoulds = cond.should if isinstance(cond.should, list) else [cond.should]
+            for arm in shoulds:
+                if getattr(arm, "key", None) in {"doc_id", "sys_doc_id"}:
+                    match = arm.match
+                    if isinstance(match, models.MatchAny):
+                        values.update(match.any)
+                    elif isinstance(match, models.MatchValue):
+                        values.add(match.value)
+    return values
+
+
+def test_search_chunks_scopes_to_single_doc_id():
+    """In-doc PDF search relies on `doc_id` for strict scoping (not the
+    tokenized `title` filter, which would leak across documents whose
+    titles share tokens). Verify a single doc_id reaches the qdrant
+    `must` clause as an exact-match condition on `doc_id` (with the
+    `sys_doc_id` legacy alias OR'd in).
+    """
+    dense_model = _make_dense_model()
+    sparse_model = _make_sparse_model()
+    db = _make_db(points=[])
+
+    with patch(
+        "ui.backend.services.search.get_dense_model", return_value=dense_model
+    ), patch("ui.backend.services.search.get_sparse_model", return_value=sparse_model):
+        search_chunks(
+            query="monsoon flooding",
+            dense_weight=1.0,
+            filters={"doc_id": "doc-abc-123"},
+            db=db,
+        )
+
+    _, kwargs = db.client.query_points.call_args
+    query_filter = kwargs.get("query_filter")
+    assert query_filter is not None, "Expected a qdrant filter"
+    assert _extract_doc_id_match_values(query_filter) == {"doc-abc-123"}
+
+
+def test_search_chunks_scopes_to_multiple_doc_ids():
+    """A comma-separated `doc_id` value (e.g. ``"a,b,c"``) should become a
+    ``MatchAny`` so the chunk search returns rows for any of the listed
+    documents. Used internally when a title or language filter resolves to
+    multiple doc_ids."""
+    dense_model = _make_dense_model()
+    sparse_model = _make_sparse_model()
+    db = _make_db(points=[])
+
+    with patch(
+        "ui.backend.services.search.get_dense_model", return_value=dense_model
+    ), patch("ui.backend.services.search.get_sparse_model", return_value=sparse_model):
+        search_chunks(
+            query="monsoon flooding",
+            dense_weight=1.0,
+            filters={"doc_id": "doc-a,doc-b,doc-c"},
+            db=db,
+        )
+
+    _, kwargs = db.client.query_points.call_args
+    query_filter = kwargs.get("query_filter")
+    assert query_filter is not None
+    assert _extract_doc_id_match_values(query_filter) == {"doc-a", "doc-b", "doc-c"}
+
+
 def test_search_chunks_respects_min_chunk_size():
     dense_model = _make_dense_model()
     sparse_model = _make_sparse_model()

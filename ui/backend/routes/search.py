@@ -1,5 +1,6 @@
 import asyncio
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -543,6 +544,20 @@ def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     return built
 
 
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_for_exact_match(value: str) -> str:
+    """Collapse all runs of whitespace (incl. newlines, tabs) to a single
+    space and lowercase. Used so that the `include_exact_matches` exemption
+    in `_apply_min_score_filter` matches across line wraps and irregular
+    spacing in chunk text — e.g. a chunk storing ``"monsoon\\nflooding"``
+    should be treated as containing the verbatim phrase ``"monsoon
+    flooding"``.
+    """
+    return _WHITESPACE_RE.sub(" ", value).strip().lower()
+
+
 def _apply_min_score_filter(
     results: List,
     min_score: float,
@@ -551,15 +566,20 @@ def _apply_min_score_filter(
 ) -> List:
     """Drop results with score below `min_score`. When `include_exact_matches`
     is True, results whose chunk text contains the query as a verbatim
-    substring (case-insensitive) are exempt from the filter — they always
-    pass through. Used by in-doc PDF search to enforce a relevance floor
-    while guaranteeing that any chunk literally containing the search phrase
-    is reachable, regardless of its retrieval score.
+    substring (case-insensitive, whitespace-insensitive) are exempt from the
+    filter — they always pass through. Used by in-doc PDF search to enforce
+    a relevance floor while guaranteeing that any chunk literally containing
+    the search phrase is reachable, regardless of its retrieval score.
+
+    Whitespace normalization (newlines, tabs, multiple spaces → single space)
+    is applied to both sides before substring comparison. Without it, chunks
+    storing wrapped or hyphenated text would be incorrectly dropped despite
+    containing a verbatim hit.
     """
     if min_score <= 0:
         return results
-    query_lower = query.strip().lower()
-    has_query = bool(query_lower)
+    query_norm = _normalize_for_exact_match(query) if query else ""
+    has_query = bool(query_norm)
     kept = []
     for r in results:
         if (getattr(r, "score", 0) or 0) >= min_score:
@@ -567,7 +587,7 @@ def _apply_min_score_filter(
             continue
         if include_exact_matches and has_query:
             text = getattr(r, "text", None) or ""
-            if query_lower in text.lower():
+            if query_norm in _normalize_for_exact_match(text):
                 kept.append(r)
     logger.info(
         "[MIN_SCORE] cutoff=%.3f kept=%d/%d (include_exact_matches=%s)",
@@ -720,8 +740,18 @@ async def search(
     include_exact_matches: bool = Query(
         False,
         description="When true (and min_score > 0), results whose chunk text contains "
-        "the query as a verbatim substring (case-insensitive) bypass the min_score "
-        "filter and are always returned. Used by in-doc PDF search.",
+        "the query as a verbatim substring (case-insensitive, whitespace-insensitive) "
+        "bypass the min_score filter and are always returned. Used by in-doc PDF "
+        "search.",
+    ),
+    doc_id: Optional[str] = Query(
+        None,
+        description="Scope the search to a single document (or comma-separated list "
+        "of documents) by exact doc_id. Used by in-doc PDF search to avoid the "
+        "leakage that a partial-match `title` filter can cause when two documents "
+        "share title tokens. If both `doc_id` and `title` are passed, `title` "
+        "resolution wins for backward compatibility — callers wanting strict "
+        "scoping should send only `doc_id`.",
     ),
 ):
     """
@@ -746,6 +776,17 @@ async def search(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
+        # Explicit doc_id scoping (used by in-doc PDF search). Added BEFORE
+        # the language/title handlers so that:
+        #   - the language→doc_id converter no-ops when doc_id is already set
+        #     (its `if doc_ids:` guard means only language-resolved doc_ids
+        #     would overwrite — which we still allow as the intersect-or
+        #     behavior is non-trivial; an explicit doc_id alongside a
+        #     language filter is not a documented use case);
+        #   - if both `doc_id` and `title` are passed, `_handle_title_filter`
+        #     wins by design (see the param docstring above).
+        if doc_id:
+            core_filters["doc_id"] = doc_id
         # Language is doc-level only; convert to doc_id filter for chunk search
         _convert_language_to_doc_ids(core_filters, pg)
 
