@@ -423,6 +423,9 @@ async def test_search_endpoint(monkeypatch):
         deduplicate=True,
         field_boost=True,
         field_boost_fields=None,
+        min_score=0.0,
+        include_exact_matches=False,
+        doc_id=None,
     )
     assert result.total == 1
     assert result.results[0].doc_id == "doc-1"

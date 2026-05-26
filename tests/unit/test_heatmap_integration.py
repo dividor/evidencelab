@@ -322,6 +322,9 @@ async def test_heatmap_chunks_mode_with_query_and_organization():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total >= 1
@@ -381,6 +384,9 @@ async def test_heatmap_chunks_mode_with_query_and_year():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total >= 1
@@ -444,6 +450,9 @@ async def test_heatmap_chunks_mode_with_query_and_taxonomy():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total >= 1
@@ -501,6 +510,9 @@ async def test_heatmap_chunks_mode_with_mixed_filters():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total >= 1
@@ -565,6 +577,9 @@ async def test_heatmap_chunks_mode_with_section_types():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total >= 1
@@ -648,6 +663,9 @@ async def test_heatmap_chunks_mode_returns_empty_with_no_matches():
                     deduplicate=True,
                     field_boost=True,
                     field_boost_fields=None,
+                    min_score=0.0,
+                    include_exact_matches=False,
+                    doc_id=None,
                 )
 
     assert result.total == 0
