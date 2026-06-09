@@ -17,10 +17,11 @@ import {
   buildExportFilename,
   buildReferenceGroups,
   exportResultsToDocxBlob,
-  extractCitationNumbers,
   markdownToParagraphs,
   resolveResultLink,
 } from '../exportResultsToDocx';
+import type { CitationContext } from '../exportResultsToDocx';
+import { buildCitationSequenceMap } from '../citations';
 import type { SearchResult } from '../../types/api';
 
 const makeResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
@@ -118,15 +119,29 @@ describe('resolveResultLink', () => {
   });
 });
 
-describe('extractCitationNumbers', () => {
-  test('returns sorted unique numbers', () => {
-    expect(extractCitationNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
-  });
-  test('handles multi-citation brackets with whitespace', () => {
-    expect(extractCitationNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
-  });
-  test('returns [] when no citations present', () => {
-    expect(extractCitationNumbers('plain text with no marks')).toEqual([]);
+// Note: citation number parsing/extraction now lives in the shared
+// `utils/citations` module and is covered by `tests/citations.test.ts`.
+
+describe('inline citation rendering', () => {
+  test('renders the sequential number, not the original, so it matches the references', () => {
+    // doc_ids avoid the digits 1/3 so the only place those can appear in the
+    // serialised paragraph is the rendered citation itself.
+    const results = [
+      makeResult({ doc_id: 'docA', title: 'Alpha', year: undefined, page_num: undefined, text: 'x' }),
+      makeResult({ doc_id: 'docB', title: 'Beta', year: undefined, page_num: undefined, text: 'y' }),
+      makeResult({ doc_id: 'docC', title: 'Gamma', year: undefined, page_num: undefined, text: 'z' }),
+    ];
+    // Only [3] is cited, so it renumbers to a sequential 1.
+    const summary = 'The third source proves the point [3].';
+    const ctx: CitationContext = {
+      results,
+      siteOrigin: 'https://x.test',
+      sequence: buildCitationSequenceMap(summary),
+    };
+    const [paragraph] = markdownToParagraphs(summary, 1, ctx);
+    const json = JSON.stringify(paragraph);
+    expect(json).toContain('1'); // sequential number is rendered
+    expect(json).not.toContain('3'); // original number is never shown
   });
 });
 
