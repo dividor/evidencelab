@@ -99,7 +99,7 @@ const AiSummaryLoading = ({ expanded, summary }: { expanded: boolean; summary: s
 const AiSummaryBody = ({
   expanded,
   summary,
-  filteredResults,
+  summaryResults,
   onResultClick,
   contentRef,
   onDrilldown,
@@ -110,7 +110,7 @@ const AiSummaryBody = ({
 }: {
   expanded: boolean;
   summary: string;
-  filteredResults: SearchResult[];
+  summaryResults: SearchResult[];
   onResultClick: (result: SearchResult) => void;
   contentRef?: React.RefObject<HTMLDivElement | null>;
   onDrilldown?: (text: string, mode: DrilldownMode) => void;
@@ -127,7 +127,7 @@ const AiSummaryBody = ({
     <div className="ai-summary-markdown">
       <AiSummaryWithCitations
         summaryText={summary}
-        searchResults={filteredResults}
+        searchResults={summaryResults}
         onResultClick={onResultClick}
         onFindOutMore={onFindOutMore}
         findOutMoreLoading={findOutMoreLoading}
@@ -136,7 +136,7 @@ const AiSummaryBody = ({
     </div>
     <AiSummaryReferences
       summaryText={summary}
-      results={filteredResults}
+      results={summaryResults}
       onResultClick={onResultClick}
     />
     {onDrilldown && contentRef && !loading && (
@@ -153,7 +153,7 @@ const AiSummaryContent = ({
   expanded,
   loading,
   summary,
-  filteredResults,
+  summaryResults,
   onResultClick,
   contentRef,
   onDrilldown,
@@ -165,7 +165,7 @@ const AiSummaryContent = ({
   expanded: boolean;
   loading: boolean;
   summary: string;
-  filteredResults: SearchResult[];
+  summaryResults: SearchResult[];
   onResultClick: (result: SearchResult) => void;
   contentRef?: React.RefObject<HTMLDivElement | null>;
   onDrilldown?: (text: string, mode: DrilldownMode) => void;
@@ -181,7 +181,7 @@ const AiSummaryContent = ({
     <AiSummaryBody
       expanded={expanded}
       summary={summary}
-      filteredResults={filteredResults}
+      summaryResults={summaryResults}
       onResultClick={onResultClick}
       contentRef={contentRef}
       onDrilldown={onDrilldown}
@@ -708,7 +708,9 @@ export const AiSummaryPanel = ({
   aiSummaryExpanded,
   aiSummaryLoading,
   aiSummary,
-  minScore,
+  // `minScore` is part of the public props (callers still pass it) but is no longer
+  // used to filter the summary's result array — see the comment in the body below.
+  // It is intentionally left out of the destructuring to avoid an unused local.
   results,
   aiPrompt,
   showPromptModal,
@@ -837,7 +839,14 @@ export const AiSummaryPanel = ({
 
   if (!enabled) return null;
 
-  const filteredResults = results.filter((result) => result.score >= minScore);
+  // Citations in the summary text are 1-based indices into the exact result array
+  // that was sent to the LLM (`results`). The summary and references must therefore
+  // be resolved against that same array — identical to how the export resolves them
+  // (see exportResearch.ts) — so on-screen and downloaded citations always match.
+  // `minScore` is intentionally NOT applied here: filtering this array would shift the
+  // indices and break the citation mapping. Relevance filtering will be reintroduced
+  // upstream of summary generation in a follow-up (the `minScore` prop is retained for
+  // that work and for the results-list filtering owned by the parent).
   const displaySummary = translatedSummary || aiSummary;
   const selectedLang = translatedLang || 'en';
   const isDrilldown = (drilldownStackDepth || 0) > 0;
@@ -942,7 +951,7 @@ export const AiSummaryPanel = ({
               expanded={aiSummaryExpanded}
               loading={aiSummaryLoading}
               summary={displaySummary}
-              filteredResults={filteredResults}
+              summaryResults={results}
               onResultClick={onResultClick}
               contentRef={summaryContentRef}
               onDrilldown={onDrilldown}

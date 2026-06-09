@@ -1,6 +1,11 @@
 import React from 'react';
 import { SearchResult } from '../types/api';
 import { renderMarkdownText } from '../utils/textHighlighting';
+import {
+  buildCitationSequenceMap,
+  createCitationRegex,
+  parseCitationNumbers,
+} from '../utils/citations';
 
 interface AiSummaryWithCitationsProps {
   summaryText: string;
@@ -11,16 +16,14 @@ interface AiSummaryWithCitationsProps {
   findOutMoreActiveFact?: string | null;
 }
 
-const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
+// Used for splitting/stripping citation markers from text (stateless ops only).
+const CITATION_REGEX = createCitationRegex();
 const CITATION_ONLY_LINE = /^\[[\d,\s]+\]$/;
 const NUMBERED_LIST_REGEX = /^\d+[\.)]\s/;
 const BULLET_LIST_REGEX = /^[-*]\s/;
 const HEADING_REGEX = /^(#{1,4})\s+(.+)$/;
 const BOLD_HEADING_REGEX = /^\*\*(.+?)\*\*:?\s*$/;
 const PLAIN_HEADING_REGEX = /^([A-Z][A-Za-z\s]+):?\s*$/;
-
-const parseCitationNumbers = (rawNumbers: string): number[] =>
-  rawNumbers.split(',').map((item) => parseInt(item.trim(), 10));
 
 const extractKeyFacts = (summary: string): string[] => {
   const lines = summary.split('\n');
@@ -63,23 +66,6 @@ const extractSubHeadings = (summary: string): string[] => {
     }
   }
   return subHeadings;
-};
-
-const buildCitationMapping = (summaryText: string): Map<number, number> => {
-  const citedNumbers = new Set<number>();
-  let match;
-
-  while ((match = CITATION_REGEX.exec(summaryText)) !== null) {
-    const numbers = parseCitationNumbers(match[1]);
-    numbers.forEach((num) => citedNumbers.add(num));
-  }
-
-  const citationMapping = new Map<number, number>();
-  const sortedCitations = Array.from(citedNumbers).sort((a, b) => a - b);
-  sortedCitations.forEach((origNum, seqIdx) => {
-    citationMapping.set(origNum, seqIdx + 1);
-  });
-  return citationMapping;
 };
 
 /** Strip trailing Conclusion / Summary sections the LLM sometimes adds despite prompt instructions. */
@@ -327,7 +313,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
   findOutMoreActiveFact,
 }) => {
   const cleanedText = stripTrailingBoilerplate(summaryText);
-  const citationMapping = buildCitationMapping(cleanedText);
+  const citationMapping = buildCitationSequenceMap(cleanedText);
   const blocks = splitSummaryBlocks(cleanedText);
   // Track across all blocks so only the very first heading gets the button
   let isFirstHeadingGlobal = true;

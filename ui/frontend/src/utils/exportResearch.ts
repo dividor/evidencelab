@@ -1,5 +1,6 @@
 import { DrilldownNode, SearchResult } from '../types/api';
 import { buildGroupedReferences, DocumentGroup } from '../components/AiSummaryReferences';
+import { buildCitationSequenceMap } from './citations';
 
 /** Escape HTML special characters */
 const esc = (text: string): string =>
@@ -25,27 +26,25 @@ const resolveSourceUrl = (result: SearchResult): string =>
   result.metadata?.src_doc_raw_metadata?.pdf_url ||
   '';
 
-/** Build a map from original citation number to { url, sequential } */
+/**
+ * Build a map from original citation number to `{ url, seq }`.
+ *
+ * Sequential numbering is delegated to the shared `buildCitationSequenceMap` so the
+ * export renumbers citations identically to the on-screen summary. The URL is
+ * resolved here (export-specific) against the same result array the LLM was given.
+ */
 const buildCitationLinks = (
   summary: string,
   results: SearchResult[]
 ): Map<number, { url: string; seq: number }> => {
-  const cited = new Set<number>();
-  const regex = /\[(\d+(?:,\s*\d+)*)\]/g;
-  let match;
-  while ((match = regex.exec(summary)) !== null) {
-    match[1].split(',').forEach((n) => {
-      const num = parseInt(n.trim(), 10);
-      if (num >= 1 && num <= results.length) cited.add(num);
-    });
-  }
-  const sorted = Array.from(cited).sort((a, b) => a - b);
+  const sequenceMap = buildCitationSequenceMap(summary);
   const map = new Map<number, { url: string; seq: number }>();
-  sorted.forEach((origNum, idx) => {
+  sequenceMap.forEach((seq, origNum) => {
     const r = results[origNum - 1];
+    if (!r) return;
     let url = resolveSourceUrl(r);
     if (url && r.page_num) url += `#page=${r.page_num}`;
-    map.set(origNum, { url, seq: idx + 1 });
+    map.set(origNum, { url, seq });
   });
   return map;
 };
