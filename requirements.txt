@@ -79,7 +79,7 @@ langchain-google-vertexai>=3.0.0,<4.0.0
 
 # Google Cloud AI Platform (Vertex AI)
 google-cloud-aiplatform>=1.154.0
-google-cloud-discoveryengine>=0.13.0
+google-cloud-discoveryengine>=0.20.0
 
 
 # LangGraph agent framework
