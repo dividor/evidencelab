@@ -20,6 +20,7 @@ from pipeline.processors import (
     SummarizeProcessor,
     TaggerProcessor,
 )
+from pipeline.processors.parsing.parser_constants import resolve_data_mount_path
 from pipeline.utilities.embedding_service import EmbeddingService
 from pipeline.utilities.logging_utils import _log_context
 
@@ -218,7 +219,7 @@ def _generate_processing_log(doc_id: str, parsed_folder: Optional[str]) -> None:
         return
 
     try:
-        data_mount_path = os.getenv("DATA_MOUNT_PATH", "./data")
+        data_mount_path = resolve_data_mount_path()
         if parsed_folder.startswith("data/"):
             parsed_folder = os.path.join(data_mount_path, parsed_folder[5:])
 
@@ -362,7 +363,7 @@ def _init_embedding_service(
 def _init_parser(
     data_source: str, pipeline_config: Dict[str, Any] | None = None
 ) -> None:
-    base_data_dir = os.getenv("DATA_MOUNT_PATH", "./data")
+    base_data_dir = resolve_data_mount_path()
     data_dir = f"{base_data_dir}/{data_source}"
     parsed_dir = f"{data_dir}/parsed"
     parse_config = (pipeline_config or {}).get("parse", {})

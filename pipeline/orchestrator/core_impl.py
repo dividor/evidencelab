@@ -21,6 +21,7 @@ from pipeline.orchestrator.core_docs import (
 from pipeline.orchestrator.core_processing import mark_as_stopped, run_processing
 from pipeline.orchestrator.log_config import setup_logging
 from pipeline.processors import ScanProcessor
+from pipeline.processors.parsing.parser_constants import resolve_data_mount_path
 from pipeline.utilities.embedding_server import EmbeddingServerManager
 
 logger = setup_logging()
@@ -59,7 +60,7 @@ class PipelineOrchestrator:
         self.data_source = data_source
         self.doc_id = doc_id
         self.ocr_fallback = ocr_fallback
-        base_data_dir = os.getenv("DATA_MOUNT_PATH", "./data")
+        base_data_dir = resolve_data_mount_path()
         self.data_dir = f"{base_data_dir}/{data_source}"
         self.skip_download = skip_download
         self.skip_scan = skip_scan

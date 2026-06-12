@@ -49,8 +49,8 @@ from pipeline.processors.parsing.parser_chunking import (
 )
 from pipeline.processors.parsing.parser_constants import (
     DATA_PATH_PREFIX,
-    DEFAULT_DATA_MOUNT_PATH,
     PAGE_SEPARATOR,
+    resolve_data_mount_path,
 )
 from pipeline.processors.parsing.parser_core import parse_document_internal
 from pipeline.processors.parsing.parser_headings import (
@@ -446,7 +446,7 @@ class ParseProcessor(BaseProcessor):
 
     def _resolve_data_filepath(self, filepath: str) -> str:
         """Resolve stored data paths using DATA_MOUNT_PATH."""
-        data_mount_path = os.getenv("DATA_MOUNT_PATH", DEFAULT_DATA_MOUNT_PATH)
+        data_mount_path = resolve_data_mount_path()
         if filepath.startswith(DATA_PATH_PREFIX):
             return os.path.join(data_mount_path, filepath[len(DATA_PATH_PREFIX) :])
         return filepath

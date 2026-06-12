@@ -205,9 +205,12 @@ class SummarizeProcessor(BaseProcessor):
                 "Ensure the worker provides an EmbeddingService instance."
             )
 
-        # Get HuggingFace token
+        # HuggingFace token is only required when the LLM provider is
+        # HuggingFace. Other providers (Azure Foundry, Google Vertex) authenticate
+        # with their own credentials, so demanding an HF token here would block
+        # them needlessly (the token is otherwise unused).
         self._hf_token = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_TOKEN")
-        if not self._hf_token:
+        if self.provider == "huggingface" and not self._hf_token:
             raise ValueError(
                 "HUGGINGFACE_API_KEY or HF_TOKEN not found in environment. "
                 "Get your token at https://huggingface.co/settings/tokens"

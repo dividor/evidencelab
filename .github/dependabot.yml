@@ -4,7 +4,7 @@ updates:
   # Python dependencies
   - package-ecosystem: "pip"
     directory: "/"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
@@ -21,7 +21,7 @@ updates:
   # NPM dependencies for frontend
   - package-ecosystem: "npm"
     directory: "/ui/frontend"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 5
@@ -36,7 +36,7 @@ updates:
   # Docker dependencies - root directory
   - package-ecosystem: "docker"
     directory: "/"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     labels:
@@ -49,7 +49,7 @@ updates:
   # Docker dependencies - backend
   - package-ecosystem: "docker"
     directory: "/ui/backend"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     labels:
@@ -62,7 +62,7 @@ updates:
   # Docker dependencies - frontend
   - package-ecosystem: "docker"
     directory: "/ui/frontend"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     labels:
@@ -75,7 +75,7 @@ updates:
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "rc/v1.5.0"
+    target-branch: "rc/v1.6.0"
     schedule:
       interval: "monthly"
     labels:

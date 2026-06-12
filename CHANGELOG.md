@@ -2,6 +2,21 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.5.1] - 2026-06-11
+
+Evidence Lab v1.5.1 is a hotfix release that repairs the host-mode demo (`scripts/demo/run_demo.py --mode host`) following the README quickstart. Two bugs made a vanilla host run fail before any documents were indexed; both are now fixed and covered by regression tests.
+
+### Fixed
+- **Summarizer no longer requires a HuggingFace token for non-HuggingFace providers.** `SummarizeProcessor.setup()` demanded `HUGGINGFACE_API_KEY` unconditionally, even though the token is unused unless the LLM provider is HuggingFace. This blocked the demo's default **Azure Foundry** provider (and Google Vertex) for users supplying only their provider's own credentials. The requirement is now scoped to `provider == "huggingface"`.
+- **Empty `DATA_MOUNT_PATH` no longer breaks host-mode document scanning.** `.env.example` ships `DATA_MOUNT_PATH=` (empty); in host mode `os.getenv("DATA_MOUNT_PATH", "./data")` returned `""` (a present-but-empty var defeats the default), collapsing the scan path to an absolute `/<source>/pdfs` so no documents were found. Added `resolve_data_mount_path()` (treats empty as the `./data` default) and routed all host path-resolution sites through it. Docker mode was unaffected (it sets `DATA_MOUNT_PATH=/app/data` explicitly).
+
+### Tests
+- Added regression tests for `resolve_data_mount_path()` (empty/unset/set) and for the summarizer's provider-scoped HuggingFace requirement.
+
+**Full diff:** https://github.com/dividor/evidencelab/compare/v1.5.0...v1.5.1
+
+---
+
 ## [1.5.0] - 2026-06-11
 
 Evidence Lab v1.5.0 is a feature release focused on admin observability, research and assistant quality, and operational tooling. It adds LLM token/cost tracking and an admin usage dashboard, a page feedback button with screenshot capture, a polished Word export, sliding auth sessions, and a number of search/facet/research fixes.
