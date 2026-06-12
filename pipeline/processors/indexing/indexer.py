@@ -8,7 +8,6 @@ Includes document chunking using Docling's HybridChunker.
 
 import json
 import logging
-import os
 import shutil
 import time
 import uuid
@@ -35,6 +34,7 @@ from pipeline.db import (
 )
 from pipeline.processors.base import BaseProcessor
 from pipeline.processors.indexing.chunker import Chunker
+from pipeline.processors.parsing.parser_constants import resolve_data_mount_path
 from pipeline.utilities.embedding_service import EmbeddingService
 
 load_dotenv()
@@ -346,7 +346,7 @@ class IndexProcessor(BaseProcessor):
         }
 
     def _normalize_parsed_folder(self, parsed_folder: str) -> str:
-        data_mount_path = os.getenv("DATA_MOUNT_PATH", "./data")
+        data_mount_path = resolve_data_mount_path()
         logger.debug(
             "DEBUG_INDEXER: parsed_folder='%s', data_mount_path='%s'",
             parsed_folder,
