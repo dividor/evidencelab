@@ -282,17 +282,6 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     if (id) onSaved(id);
   };
 
-  const handleSaveAndRun = async () => {
-    const id = await save();
-    if (!id) return;
-    try {
-      await axios.post(`${API_BASE_URL}/testing/experiments/${id}/run`);
-      onSaved(id);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to start run');
-    }
-  };
-
   if (loading) return <div className="admin-loading">Loading...</div>;
 
   return (
@@ -380,13 +369,13 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
         <button className="btn-sm btn-cancel" onClick={onBack} disabled={saving}>
           Cancel
         </button>
-        <button className="btn-sm" onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save draft'}
-        </button>
-        <button className="btn-sm btn-primary" onClick={handleSaveAndRun} disabled={saving}>
-          {saving ? 'Saving...' : 'Save & run'}
+        <button className="btn-sm btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Save'}
         </button>
       </div>
+      <p className="text-muted" style={{ marginTop: '0.5rem' }}>
+        Run this experiment from the Experiments table once saved.
+      </p>
     </div>
   );
 };

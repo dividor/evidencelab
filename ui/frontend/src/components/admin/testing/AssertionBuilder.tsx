@@ -60,26 +60,31 @@ interface FieldInputProps {
 const FieldInput: React.FC<FieldInputProps> = ({ field, assertion, onSet }) => {
   if (field.type === 'boolean') {
     return (
-      <label className="testing-assertion-checkbox">
-        <input
-          type="checkbox"
-          checked={Boolean(assertion[field.key])}
-          onChange={(e) => onSet(field.key, e.target.checked)}
-        />
-        {field.label}
-      </label>
+      <div className="form-group testing-config-checkbox">
+        <label>
+          <input
+            type="checkbox"
+            checked={Boolean(assertion[field.key])}
+            onChange={(e) => onSet(field.key, e.target.checked)}
+          />{' '}
+          {field.label}
+        </label>
+      </div>
     );
   }
   return (
-    <label className="testing-assertion-field">
-      <span>{field.label}{field.required ? ' *' : ''}</span>
+    <div className="form-group">
+      <label>
+        {field.label}
+        {field.required ? ' *' : ''}
+      </label>
       <input
         type={field.type === 'number' ? 'number' : 'text'}
         value={valueToInput(field, assertion[field.key])}
         placeholder={field.placeholder}
         onChange={(e) => onSet(field.key, inputToValue(field, e.target.value))}
       />
-    </label>
+    </div>
   );
 };
 

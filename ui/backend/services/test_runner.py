@@ -108,6 +108,22 @@ async def _run_search(
     }
 
 
+def _default_summary_model() -> Optional[str]:
+    """Pick a sensible default summary model from config when none is set."""
+    try:
+        from pipeline.db.config import get_application_config
+
+        config = get_application_config()
+    except Exception:
+        logger.exception("Failed to load config for default summary model")
+        return None
+    for combo in (config.get("ui_model_combos") or {}).values():
+        sm = combo.get("summarization_model") if isinstance(combo, dict) else None
+        if isinstance(sm, dict) and sm.get("model"):
+            return sm["model"]
+    return next(iter(config.get("supported_llms") or {}), None)
+
+
 async def _run_summary(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
@@ -115,7 +131,7 @@ async def _run_summary(
 
     search_out = await _run_search(case_input, config, db, pg, source)
     cfg = config or {}
-    model_key = cfg.get("summary_model") or cfg.get("model")
+    model_key = cfg.get("summary_model") or cfg.get("model") or _default_summary_model()
     summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
         results=search_out["results"],

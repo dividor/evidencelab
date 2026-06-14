@@ -3,6 +3,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestDataset, TestExperiment } from '../../../types/testing';
 import { formatMs, formatPercent, formatScore, formatTimestamp } from './testingFormat';
+import ConfirmModal from '../ConfirmModal';
 
 interface ExperimentListProps {
   dataset?: TestDataset | null; // when set, scopes to one dataset and offers back
@@ -28,6 +29,8 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
   const [datasetNames, setDatasetNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TestExperiment | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchExperiments = useCallback(async () => {
@@ -77,6 +80,34 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
       }
     };
   }, [experiments, fetchExperiments]);
+
+  const handleRun = async (exp: TestExperiment) => {
+    setBusyId(exp.id);
+    setError('');
+    try {
+      await axios.post(`${API_BASE_URL}/testing/experiments/${exp.id}/run`);
+      await fetchExperiments();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to start run');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setBusyId(deleteTarget.id);
+    setError('');
+    try {
+      await axios.delete(`${API_BASE_URL}/testing/experiments/${deleteTarget.id}`);
+      setDeleteTarget(null);
+      await fetchExperiments();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to delete experiment');
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   if (loading) return <div className="admin-loading">Loading...</div>;
 
@@ -142,12 +173,32 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                 <td>{formatScore(stats?.mean_score)}</td>
                 <td>{formatMs(stats?.duration_ms)}</td>
                 <td>{formatTimestamp(exp.created_at)}</td>
-                <td onClick={(e) => e.stopPropagation()}>
-                  {exp.status === 'draft' && (
-                    <button className="btn-sm" onClick={() => onEdit(exp)}>
-                      Edit
-                    </button>
-                  )}
+                <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
+                  <button
+                    className="btn-sm btn-primary"
+                    onClick={() => handleRun(exp)}
+                    disabled={busyId === exp.id || isActive(exp)}
+                  >
+                    {busyId === exp.id
+                      ? 'Starting...'
+                      : exp.status === 'draft'
+                        ? 'Run'
+                        : 'Re-run'}
+                  </button>
+                  <button
+                    className="btn-sm"
+                    onClick={() => onEdit(exp)}
+                    disabled={busyId === exp.id || isActive(exp)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    className="btn-sm btn-danger"
+                    onClick={() => setDeleteTarget(exp)}
+                    disabled={busyId === exp.id || isActive(exp)}
+                  >
+                    Delete
+                  </button>
                 </td>
               </tr>
             );
@@ -159,6 +210,16 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
           )}
         </tbody>
       </table>
+
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete experiment"
+          message={`Delete experiment "${deleteTarget.name}" and all its results? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 };

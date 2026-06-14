@@ -11256,7 +11256,6 @@ a.admin-citation-clickable:hover {
 }
 
 .testing-field,
-.testing-assertion-field,
 .testing-case-label {
   display: flex;
   flex-direction: column;
@@ -11315,17 +11314,44 @@ a.admin-citation-clickable:hover {
   background: var(--color-surface, #fff);
 }
 
-.testing-assertion-row-header,
-.testing-assertion-fields {
+.testing-assertion-row-header {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-sm, 0.5rem);
-  align-items: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
-.testing-assertion-checkbox {
-  flex-direction: row;
+/* Assertion params: same responsive labelled grid as the run-config form, so
+   inputs share a consistent height/width instead of squishing in a flex row. */
+.testing-assertion-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-sm, 0.75rem);
+  align-items: end;
+}
+.testing-assertion-fields .form-group {
+  margin-bottom: 0;
+}
+
+/* Add-assertion control row: dropdown + button aligned on one baseline. */
+.testing-assertion-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.5rem);
   align-items: center;
+  margin-top: 0.6rem;
+}
+.testing-assertion-add select {
+  min-width: 14rem;
+}
+
+/* Per-row action buttons in the experiment table. */
+.testing-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  white-space: nowrap;
 }
 
 .testing-case-tags {

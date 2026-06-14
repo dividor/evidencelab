@@ -418,3 +418,17 @@ async def get_experiment(
     detail = TestExperimentDetail.model_validate(experiment)
     detail.results = [TestResultRead.model_validate(r) for r in results]
     return detail
+
+
+@router.delete("/experiments/{experiment_id}", status_code=204, tags=["testing"])
+@limiter.limit(_RL_DEFAULT)
+async def delete_experiment(
+    request: Request,
+    experiment_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> Response:
+    experiment = await _get_experiment(session, experiment_id)
+    await session.delete(experiment)
+    await session.commit()
+    return Response(status_code=204)

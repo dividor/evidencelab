@@ -167,7 +167,6 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
   const [caseInputs, setCaseInputs] = useState<Record<string, Record<string, unknown>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDetail = useCallback(async () => {
@@ -228,19 +227,6 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
     };
   }, [detail?.status, fetchDetail]);
 
-  const handleRun = async () => {
-    setRunning(true);
-    setError('');
-    try {
-      await axios.post(`${API_BASE_URL}/testing/experiments/${experimentId}/run`);
-      await fetchDetail();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to run experiment');
-    } finally {
-      setRunning(false);
-    }
-  };
-
   if (loading) return <div className="admin-loading">Loading...</div>;
   if (!detail) {
     return (
@@ -253,7 +239,6 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
 
   const results = detail.results || [];
   const active = isActive(detail.status);
-  const runLabel = detail.status === 'draft' ? 'Run' : 'Re-run';
 
   return (
     <div className="admin-section testing-section">
@@ -275,18 +260,11 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
           )}
         </div>
         <div className="testing-editor-header-actions" style={{ marginLeft: 'auto' }}>
-          {detail.status === 'draft' && (
-            <button className="btn-sm" onClick={() => onEdit(detail)} disabled={running}>
-              Edit draft
+          {!active && (
+            <button className="btn-sm" onClick={() => onEdit(detail)}>
+              Edit
             </button>
           )}
-          <button
-            className="btn-sm btn-primary"
-            onClick={handleRun}
-            disabled={running || active}
-          >
-            {running ? 'Starting...' : runLabel}
-          </button>
         </div>
       </div>
 
