@@ -11566,6 +11566,12 @@ a.admin-citation-clickable:hover {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.testing-judge-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-left: 0.25rem;
+}
 
 .testing-raw-toggle {
   align-self: flex-start;

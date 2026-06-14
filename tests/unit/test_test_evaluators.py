@@ -197,6 +197,15 @@ class TestLlmJudge:
         )
         assert res["rubric"] == "must cite Kenya"
 
+    def test_llm_judge_result_includes_judge_prompt(self):
+        res = ev.eval_llm_judge(
+            {"rubric": "must cite Kenya", "threshold": 0.5},
+            _summary_output("x"),
+            judge_fn=lambda t, r: (0.6, "ok", "SYSTEM: ...\nUSER: Rubric: ..."),
+        )
+        assert "judge_prompt" in res
+        assert res["judge_prompt"].startswith("SYSTEM:")
+
     def test_llm_judge_default_threshold_is_one(self):
         # No threshold given -> defaults to 1.0, so a 0.9 score fails.
         res = ev.eval_llm_judge(

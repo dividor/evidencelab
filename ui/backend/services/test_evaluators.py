@@ -226,8 +226,11 @@ def eval_llm_judge(
     rubric = str(a.get("rubric", ""))
     threshold = float(a.get("threshold", 1.0))
     verdict = judge_fn(_summary_text(output), rubric)
+    prompt = ""
     if isinstance(verdict, tuple):
-        score, reason = verdict[0], (verdict[1] if len(verdict) > 1 else "")
+        score = verdict[0]
+        reason = verdict[1] if len(verdict) > 1 else ""
+        prompt = verdict[2] if len(verdict) > 2 else ""
     else:
         score, reason = verdict, ""
     score = max(0.0, min(1.0, float(score)))
@@ -236,8 +239,10 @@ def eval_llm_judge(
     if reason:
         message += f" — {reason}"
     result = _result("llm_judge", passed, message, score=score)
-    # Surface the exact rubric the judge was given (shown in the UI per run).
+    # Surface the rubric + the exact prompt the judge was given (shown per run).
     result["rubric"] = rubric
+    if prompt:
+        result["judge_prompt"] = prompt
     return result
 
 

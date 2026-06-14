@@ -14,6 +14,7 @@ from ui.backend.services.test_runner import (
     _mirror_run_to_experiment,
     _parse_judgement,
     _resolve_case_plan,
+    effective_config,
     evaluate_case,
 )
 
@@ -71,6 +72,44 @@ async def test_parse_judgement_falls_back_to_first_number():
     score, reason = _parse_judgement("I would rate this 0.4 overall")
     assert score == 0.4
     assert "0.4" in reason
+
+
+async def test_effective_config_fills_models_from_combo(monkeypatch):
+    import pipeline.db.config as cfg
+
+    monkeypatch.setattr(
+        cfg,
+        "UI_MODEL_COMBOS",
+        {
+            "Combo X": {
+                "embedding_model": "emb-1",
+                "summarization_model": {"model": "sum-1"},
+                "reranker_model": "rank-1",
+            },
+        },
+    )
+    out = effective_config({"model_combo": "Combo X"})
+    assert out["embedding_model"] == "emb-1"
+    assert out["summary_model"] == "sum-1"
+    assert out["rerank_model"] == "rank-1"
+
+
+async def test_effective_config_explicit_value_overrides_combo(monkeypatch):
+    import pipeline.db.config as cfg
+
+    monkeypatch.setattr(
+        cfg,
+        "UI_MODEL_COMBOS",
+        {
+            "Combo X": {
+                "embedding_model": "emb-1",
+                "summarization_model": {"model": "sum-1"},
+            }
+        },
+    )
+    out = effective_config({"model_combo": "Combo X", "summary_model": "override"})
+    assert out["summary_model"] == "override"
+    assert out["embedding_model"] == "emb-1"
 
 
 async def test_mirror_run_to_experiment_copies_outcome_without_aliasing():

@@ -79,30 +79,47 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 /*  Per-assertion result row                                          */
 /* ------------------------------------------------------------------ */
 
-const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => (
-  <div className="testing-assertion-result">
-    <div className="testing-assertion-result-main">
-      <span
-        className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
-      >
-        {result.passed ? 'pass' : 'fail'}
-      </span>
-      <span className="testing-assertion-result-type">{result.type}</span>
-      {result.score !== undefined && (
-        <span className="testing-assertion-result-score">
-          score: {formatScore(result.score)}
+const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => {
+  const [showPrompt, setShowPrompt] = useState(false);
+  return (
+    <div className="testing-assertion-result">
+      <div className="testing-assertion-result-main">
+        <span
+          className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
+        >
+          {result.passed ? 'pass' : 'fail'}
         </span>
-      )}
-      <span className="testing-assertion-result-message">{result.message}</span>
-    </div>
-    {result.rubric && (
-      <div className="testing-assertion-rubric">
-        <span className="testing-case-label">Judge prompt</span>
-        <span>{result.rubric}</span>
+        <span className="testing-assertion-result-type">{result.type}</span>
+        {result.score !== undefined && (
+          <span className="testing-assertion-result-score">
+            score: {formatScore(result.score)}
+          </span>
+        )}
+        <span className="testing-assertion-result-message">{result.message}</span>
       </div>
-    )}
-  </div>
-);
+      {result.rubric && (
+        <div className="testing-assertion-rubric">
+          <span className="testing-case-label">Rubric</span>
+          <span>{result.rubric}</span>
+        </div>
+      )}
+      {result.judge_prompt && (
+        <div className="testing-judge-prompt">
+          <button
+            type="button"
+            className="testing-raw-toggle"
+            onClick={() => setShowPrompt((v) => !v)}
+          >
+            {showPrompt ? 'Hide full LLM prompt' : 'Show full LLM prompt'}
+          </button>
+          {showPrompt && (
+            <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /*  Human-friendly output: AI summary + sources, or search cards      */

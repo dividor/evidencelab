@@ -19,7 +19,6 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select, update
 
 from ui.backend.auth.db import async_session_factory
@@ -58,56 +57,70 @@ def _utcnow() -> datetime:
 # ---------------------------------------------------------------------------
 
 
-def _result_from_point(point: Any, chunk: Dict[str, Any]) -> Dict[str, Any]:
-    payload = dict(getattr(point, "payload", None) or {})
-    cid = str(point.id)
-    enriched = {
-        "id": cid,
-        "chunk_id": cid,
-        "score": float(getattr(point, "score", 0.0) or 0.0),
-        "doc_id": payload.get("doc_id") or chunk.get("doc_id"),
-        "text": chunk.get("text", ""),
-        "title": payload.get("map_title") or chunk.get("map_title"),
-        "organization": payload.get("map_organization")
-        or chunk.get("map_organization"),
-    }
-    enriched.update(payload)
-    return enriched
-
-
-def _enrich_points(points: List[Any], pg: Any) -> List[Dict[str, Any]]:
-    chunk_ids = [str(p.id) for p in points]
-    chunk_data: Dict[str, Dict[str, Any]] = {}
-    if chunk_ids and pg is not None:
-        try:
-            chunk_data = pg.fetch_chunks(chunk_ids)
-        except Exception:
-            logger.exception("fetch_chunks failed during eval enrichment")
-    return [_result_from_point(p, chunk_data.get(str(p.id), {})) for p in points]
+def _result_to_dict(r: Any) -> Dict[str, Any]:
+    if hasattr(r, "model_dump"):
+        return r.model_dump()
+    if hasattr(r, "dict"):
+        return r.dict()
+    return r if isinstance(r, dict) else dict(r)
 
 
 async def _run_search(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
-    from ui.backend.services.search import search_chunks
+    """Run search through the EXACT same pipeline as the UI ``/search`` route
+    (same retrieval, result building, field-boost/dedup post-processing), so an
+    experiment reproduces what a user sees in the app.
+
+    Parameters default to the ``/search`` endpoint's own defaults; the
+    experiment ``config`` overrides them (e.g. ``embedding_model``, ``rerank``,
+    ``field_boost_fields``, ``section_types``).
+    """
+    from ui.backend.routes.search import (
+        _apply_post_retrieval_boosts,
+        _fetch_and_build_results,
+        _parse_section_types,
+        _run_search_chunks,
+    )
 
     params = {**(config or {}), **(case_input.get("params") or {})}
-    points = await run_in_threadpool(
-        search_chunks,
-        case_input.get("query", ""),
-        limit=int(params.get("limit", 10)),
+    query = case_input.get("query", "")
+    limit = int(params.get("limit", 50))
+    min_chunk_size = int(params.get("min_chunk_size", 0))
+    raw = await _run_search_chunks(
+        query,
+        limit=limit,
+        dense_weight=params.get("dense_weight"),
         db=db,
-        data_source=source,
         filters=case_input.get("filters") or None,
         rerank=bool(params.get("rerank", False)),
-        dense_model=params.get("dense_model"),
+        recency_boost=bool(params.get("recency_boost", False)),
+        recency_weight=float(params.get("recency_weight", 0.15)),
+        recency_scale_days=int(params.get("recency_scale_days", 365)),
+        section_types=_parse_section_types(params.get("section_types")),
+        keyword_boost_short_queries=bool(
+            params.get("keyword_boost_short_queries", True)
+        ),
+        min_chunk_size=min_chunk_size,
+        dense_model=params.get("embedding_model") or params.get("dense_model"),
+        rerank_model=params.get("rerank_model"),
+        max_rerank_candidates=int(params.get("max_rerank_candidates") or 0),
     )
-    results = _enrich_points(points, pg)
-    return {
-        "query": case_input.get("query", ""),
-        "results": results,
-        "count": len(results),
-    }
+    built = _fetch_and_build_results(pg, raw, source, limit, min_chunk_size)
+    if not built:
+        return {"query": query, "results": [], "count": 0}
+    boosted = _apply_post_retrieval_boosts(
+        built,
+        query,
+        bool(params.get("field_boost", True)),
+        params.get("field_boost_fields"),
+        bool(params.get("auto_min_score", False)),
+        bool(params.get("deduplicate", True)),
+        db,
+        source,
+    )
+    results = [_result_to_dict(r) for r in boosted]
+    return {"query": query, "results": results, "count": len(results)}
 
 
 def _combo_summary_model(combo: Any) -> Optional[str]:
@@ -149,10 +162,11 @@ async def _run_summary(
 
     search_out = await _run_search(case_input, config, db, pg, source)
     cfg = config or {}
-    model_key = cfg.get("summary_model") or cfg.get("model") or _default_summary_model()
+    model_key = cfg.get("summary_model") or _default_summary_model()
     summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
         results=search_out["results"],
+        max_results=int(cfg.get("max_results", 20)),
         model_key=model_key,
         temperature=cfg.get("temperature"),
         max_tokens=cfg.get("max_tokens"),
@@ -163,6 +177,36 @@ async def _run_summary(
         "usage": usage,
         "search_results": search_out["results"],
     }
+
+
+def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
+    """Resolve a ui_model_combo (e.g. 'Google Vertex') to its embedding /
+    summarization / reranker models — the same mapping the search UI uses."""
+    if not name:
+        return {}
+    try:
+        from pipeline.db.config import UI_MODEL_COMBOS
+    except Exception:
+        logger.exception("Failed to import UI_MODEL_COMBOS")
+        return {}
+    combo = UI_MODEL_COMBOS.get(name) or {}
+    return {
+        "embedding_model": combo.get("embedding_model"),
+        "summary_model": _combo_summary_model(combo),
+        "rerank_model": combo.get("reranker_model"),
+    }
+
+
+def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge a chosen model combo into the run config so the harness uses the
+    same embedding/summary/reranker models as the UI. Explicit config values
+    take precedence over the combo's defaults."""
+    cfg = dict(config or {})
+    combo = _resolve_combo(cfg.get("model_combo"))
+    for key in ("embedding_model", "summary_model", "rerank_model"):
+        if not cfg.get(key) and combo.get(key):
+            cfg[key] = combo[key]
+    return cfg
 
 
 def build_case_runner(
@@ -246,30 +290,29 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     """
     cfg = config or {}
     model_key = (
-        cfg.get("judge_model")
-        or cfg.get("summary_model")
-        or cfg.get("model")
-        or _default_summary_model()
+        cfg.get("judge_model") or cfg.get("summary_model") or _default_summary_model()
     )
 
     async def factory(output, expectations):
         text = str(output.get("summary", "") or "")
-        verdicts: Dict[str, Tuple[float, str]] = {}
+        verdicts: Dict[str, Tuple[float, str, str]] = {}
         for assertion in expectations:
             if assertion.get("type") != "llm_judge":
                 continue
             rubric = str(assertion.get("rubric", ""))
             if rubric in verdicts:
                 continue
-            prompt = (
+            user_prompt = (
                 f"Rubric:\n{rubric}\n\nOutput to evaluate:\n{text}\n\n"
                 "Return ONLY the JSON object."
             )
+            full_prompt = f"SYSTEM:\n{_JUDGE_SYSTEM_PROMPT}\n\nUSER:\n{user_prompt}"
             logger.info("[LLM judge] model=%s rubric=%r", model_key, rubric[:300])
-            judged = await _judge_call(prompt, model_key)
+            judged = await _judge_call(user_prompt, model_key)
             logger.info("[LLM judge] response=%r", judged[:400])
-            verdicts[rubric] = _parse_judgement(judged)
-        return lambda _text, rubric: verdicts.get(str(rubric), (0.0, ""))
+            score, reason = _parse_judgement(judged)
+            verdicts[rubric] = (score, reason, full_prompt)
+        return lambda _text, rubric: verdicts.get(str(rubric), (0.0, "", ""))
 
     return factory
 
@@ -422,7 +465,9 @@ async def _execute(session, experiment: TestExperiment) -> None:
     if dataset is None:
         await _fail_run(session, experiment, run, "Dataset not found")
         return
-    config = experiment.config or {}
+    # Resolve the chosen model combo into concrete embedding/summary/reranker
+    # models so the run uses the same configuration as the search UI.
+    config = effective_config(experiment.config)
     try:
         runner = build_case_runner(dataset.capability, config, dataset.data_source)
     except Exception as exc:
