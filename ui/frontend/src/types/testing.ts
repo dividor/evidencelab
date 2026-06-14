@@ -1,8 +1,11 @@
 // Types for the admin Search & AI-Summary evaluation harness (superuser-only).
 
 export type TestCapability = 'search' | 'ai_summary';
-export type ExperimentStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | 'failed';
 export type ResultStatus = 'pass' | 'fail' | 'error';
+
+// Per-row assertions live on the experiment: test_case_id -> assertions.
+export type CaseExpectations = Record<string, Assertion[]>;
 
 export interface TestDataset {
   id: string;
@@ -25,11 +28,11 @@ export interface Assertion {
   [key: string]: unknown;
 }
 
+// A dataset row — inputs only (assertions live on the experiment).
 export interface TestCase {
   id: string;
   dataset_id: string;
   input: Record<string, unknown>;
-  expectations: Assertion[];
   tags?: string[] | null;
   notes?: string | null;
   created_at: string;
@@ -60,6 +63,7 @@ export interface TestExperiment {
   name: string;
   status: ExperimentStatus;
   config?: Record<string, unknown> | null;
+  case_expectations?: CaseExpectations | null;
   summary_stats?: SummaryStats | null;
   started_at?: string | null;
   finished_at?: string | null;

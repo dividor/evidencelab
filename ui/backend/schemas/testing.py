@@ -51,16 +51,18 @@ class TestDatasetRead(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# A per-row assertion map: test_case_id (str) -> list of assertion dicts.
+CaseExpectations = Dict[str, List[Dict[str, Any]]]
+
+
 class TestCaseCreate(BaseModel):
     input: Dict[str, Any]
-    expectations: List[Dict[str, Any]] = Field(default_factory=list)
     tags: Optional[List[str]] = None
     notes: Optional[str] = None
 
 
 class TestCaseUpdate(BaseModel):
     input: Optional[Dict[str, Any]] = None
-    expectations: Optional[List[Dict[str, Any]]] = None
     tags: Optional[List[str]] = None
     notes: Optional[str] = None
 
@@ -71,7 +73,6 @@ class TestCaseRead(BaseModel):
     id: uuid.UUID
     dataset_id: uuid.UUID
     input: Dict[str, Any]
-    expectations: List[Dict[str, Any]]
     tags: Optional[List[str]] = None
     notes: Optional[str] = None
     created_at: datetime
@@ -87,6 +88,13 @@ class TestExperimentCreate(BaseModel):
     dataset_id: uuid.UUID
     name: str = Field(min_length=1, max_length=255)
     config: Optional[Dict[str, Any]] = None
+    case_expectations: Optional[CaseExpectations] = None
+
+
+class TestExperimentUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    config: Optional[Dict[str, Any]] = None
+    case_expectations: Optional[CaseExpectations] = None
 
 
 class TestResultRead(BaseModel):
@@ -112,6 +120,7 @@ class TestExperimentRead(BaseModel):
     name: str
     status: str
     config: Optional[Dict[str, Any]] = None
+    case_expectations: Optional[CaseExpectations] = None
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

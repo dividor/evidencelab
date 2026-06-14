@@ -11421,3 +11421,51 @@ a.admin-citation-clickable:hover {
   background: #ddf4ff;
   color: #0969da;
 }
+.testing-status-draft {
+  background: var(--color-surface-alt, #eef1f4);
+  color: var(--color-text-muted, #57606a);
+}
+
+/* Selects / textareas inside form-groups — match the input styling. */
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gray-300, #d0d7de);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  background: var(--white, #fff);
+  font-family: inherit;
+}
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary, #5b8fa8);
+  box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.15);
+}
+
+/* Experiment run-config: responsive labelled grid of small inputs. */
+.testing-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-sm, 0.75rem);
+}
+.testing-config-grid .form-group {
+  margin-bottom: 0;
+}
+.testing-config-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+.testing-config-checkbox input {
+  width: auto;
+}
+
+/* Inline case editor wrapper (matches the case-card surface). */
+.testing-case-editor-wrap {
+  display: contents;
+}

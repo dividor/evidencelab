@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.testing_models import (
@@ -256,8 +256,13 @@ async def _execute(session, experiment: TestExperiment) -> None:
         await _mark_failed(session, experiment, "Dataset not found")
         return
     started = time.time()
+    # Clear any results from a previous run so re-runs reflect the latest pass.
+    await session.execute(
+        delete(TestResult).where(TestResult.experiment_id == experiment.id)
+    )
     experiment.status = EXPERIMENT_RUNNING
     experiment.started_at = _utcnow()
+    experiment.finished_at = None
     await session.commit()
     config = experiment.config or {}
     try:
@@ -267,11 +272,11 @@ async def _execute(session, experiment: TestExperiment) -> None:
         await _mark_failed(session, experiment, str(exc))
         return
     judge_factory = make_judge_factory(config)
+    case_expectations = experiment.case_expectations or {}
     case_results: List[Dict[str, Any]] = []
     for case in await _load_cases(session, dataset.id):
-        outcome = await evaluate_case(
-            case.input, case.expectations or [], runner, judge_factory
-        )
+        expectations = case_expectations.get(str(case.id), [])
+        outcome = await evaluate_case(case.input, expectations, runner, judge_factory)
         session.add(
             TestResult(experiment_id=experiment.id, test_case_id=case.id, **outcome)
         )

@@ -4,6 +4,7 @@ import API_BASE_URL from '../../../config';
 import type {
   AssertionResult,
   ExperimentDetail as ExperimentDetailType,
+  TestCase,
   TestResult,
 } from '../../../types/testing';
 import {
@@ -17,6 +18,7 @@ import {
 interface ExperimentDetailProps {
   experimentId: string;
   onBack: () => void;
+  onEdit: (experiment: ExperimentDetailType) => void;
 }
 
 const POLL_INTERVAL_MS = 2000;
@@ -63,7 +65,7 @@ const SummaryHeader: React.FC<{ detail: ExperimentDetailType }> = ({ detail }) =
         <span>{stats?.errored ?? '-'}</span>
       </div>
       <div className="testing-summary-stat">
-        <span className="testing-summary-label">Duration</span>
+        <span className="testing-summary-label">Duration (ms)</span>
         <span>{formatMs(stats?.duration_ms)}</span>
       </div>
       <div className="testing-summary-stat">
@@ -103,7 +105,10 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
 /*  Expandable result row                                             */
 /* ------------------------------------------------------------------ */
 
-const ResultRow: React.FC<{ result: TestResult }> = ({ result }) => {
+const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> }> = ({
+  result,
+  input,
+}) => {
   const [expanded, setExpanded] = useState(false);
   return (
     <>
@@ -122,6 +127,10 @@ const ResultRow: React.FC<{ result: TestResult }> = ({ result }) => {
         <tr className="testing-result-detail-row">
           <td colSpan={5}>
             <div className="testing-result-detail">
+              <div className="testing-case-block">
+                <span className="testing-case-label">Case input</span>
+                <pre className="testing-pre">{prettyJson(input ?? {})}</pre>
+              </div>
               <div className="testing-case-block">
                 <span className="testing-case-label">Assertions</span>
                 {(result.assertion_results || []).map((ar, i) => (
@@ -149,11 +158,16 @@ const ResultRow: React.FC<{ result: TestResult }> = ({ result }) => {
 /*  Main detail view                                                  */
 /* ------------------------------------------------------------------ */
 
-const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBack }) => {
+const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
+  experimentId,
+  onBack,
+  onEdit,
+}) => {
   const [detail, setDetail] = useState<ExperimentDetailType | null>(null);
+  const [caseInputs, setCaseInputs] = useState<Record<string, Record<string, unknown>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [rerunning, setRerunning] = useState(false);
+  const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDetail = useCallback(async () => {
@@ -162,8 +176,10 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
         `${API_BASE_URL}/testing/experiments/${experimentId}`,
       );
       setDetail(resp.data);
+      return resp.data;
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to load experiment');
+      return null;
     } finally {
       setLoading(false);
     }
@@ -172,6 +188,28 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
   useEffect(() => {
     fetchDetail();
   }, [fetchDetail]);
+
+  // Fetch the dataset's case inputs (for the expandable detail view).
+  useEffect(() => {
+    if (!detail?.dataset_id) return;
+    let cancelled = false;
+    axios
+      .get<TestCase[]>(`${API_BASE_URL}/testing/datasets/${detail.dataset_id}/cases`)
+      .then((resp) => {
+        if (cancelled) return;
+        const map: Record<string, Record<string, unknown>> = {};
+        resp.data.forEach((c) => {
+          map[c.id] = c.input || {};
+        });
+        setCaseInputs(map);
+      })
+      .catch(() => {
+        // Non-fatal: inputs simply won't be shown.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail?.dataset_id]);
 
   // Poll while pending/running.
   useEffect(() => {
@@ -190,16 +228,16 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
     };
   }, [detail?.status, fetchDetail]);
 
-  const handleRerun = async () => {
-    setRerunning(true);
+  const handleRun = async () => {
+    setRunning(true);
     setError('');
     try {
-      await axios.post(`${API_BASE_URL}/testing/experiments/${experimentId}/rerun`);
+      await axios.post(`${API_BASE_URL}/testing/experiments/${experimentId}/run`);
       await fetchDetail();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to rerun experiment');
+      setError(err.response?.data?.detail || 'Failed to run experiment');
     } finally {
-      setRerunning(false);
+      setRunning(false);
     }
   };
 
@@ -214,6 +252,8 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
   }
 
   const results = detail.results || [];
+  const active = isActive(detail.status);
+  const runLabel = detail.status === 'draft' ? 'Run' : 'Re-run';
 
   return (
     <div className="admin-section testing-section">
@@ -234,14 +274,20 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
             </p>
           )}
         </div>
-        <button
-          className="btn-sm btn-primary"
-          style={{ marginLeft: 'auto' }}
-          onClick={handleRerun}
-          disabled={rerunning || isActive(detail.status)}
-        >
-          {rerunning ? 'Rerunning...' : 'Rerun'}
-        </button>
+        <div className="testing-editor-header-actions" style={{ marginLeft: 'auto' }}>
+          {detail.status === 'draft' && (
+            <button className="btn-sm" onClick={() => onEdit(detail)} disabled={running}>
+              Edit draft
+            </button>
+          )}
+          <button
+            className="btn-sm btn-primary"
+            onClick={handleRun}
+            disabled={running || active}
+          >
+            {running ? 'Starting...' : runLabel}
+          </button>
+        </div>
       </div>
 
       {detail.summary_stats?.error && (
@@ -256,18 +302,18 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({ experimentId, onBac
             <th></th>
             <th>Status</th>
             <th>Score</th>
-            <th>Latency</th>
+            <th>Latency (ms)</th>
             <th>Error</th>
           </tr>
         </thead>
         <tbody>
           {results.map((r) => (
-            <ResultRow key={r.id} result={r} />
+            <ResultRow key={r.id} result={r} input={caseInputs[r.test_case_id]} />
           ))}
           {results.length === 0 && (
             <tr>
               <td colSpan={5} className="text-muted">
-                {isActive(detail.status) ? 'Running — results will appear shortly...' : 'No results.'}
+                {active ? 'Running — results will appear shortly...' : 'No results.'}
               </td>
             </tr>
           )}

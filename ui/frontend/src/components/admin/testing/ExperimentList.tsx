@@ -7,6 +7,8 @@ import { formatMs, formatPercent, formatScore, formatTimestamp } from './testing
 interface ExperimentListProps {
   dataset?: TestDataset | null; // when set, scopes to one dataset and offers back
   onOpen: (experiment: TestExperiment) => void;
+  onEdit: (experiment: TestExperiment) => void;
+  onCreate: () => void;
   onBack?: () => void;
 }
 
@@ -15,8 +17,15 @@ const POLL_INTERVAL_MS = 2000;
 const isActive = (e: TestExperiment): boolean =>
   e.status === 'pending' || e.status === 'running';
 
-const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack }) => {
+const ExperimentList: React.FC<ExperimentListProps> = ({
+  dataset,
+  onOpen,
+  onEdit,
+  onCreate,
+  onBack,
+}) => {
   const [experiments, setExperiments] = useState<TestExperiment[]>([]);
+  const [datasetNames, setDatasetNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -34,9 +43,23 @@ const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack
     }
   }, [dataset]);
 
+  const fetchDatasetNames = useCallback(async () => {
+    try {
+      const resp = await axios.get<TestDataset[]>(`${API_BASE_URL}/testing/datasets`);
+      const map: Record<string, string> = {};
+      resp.data.forEach((d) => {
+        map[d.id] = d.name;
+      });
+      setDatasetNames(map);
+    } catch {
+      // Non-fatal: fall back to showing dataset ids.
+    }
+  }, []);
+
   useEffect(() => {
     fetchExperiments();
-  }, [fetchExperiments]);
+    fetchDatasetNames();
+  }, [fetchExperiments, fetchDatasetNames]);
 
   // Poll while any experiment is still pending/running.
   useEffect(() => {
@@ -74,12 +97,15 @@ const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack
           {dataset ? `Experiments for "${dataset.name}"` : 'All experiments'} ·{' '}
           {experiments.length} total
         </p>
-        <button
-          className="btn-sm"
-          style={{ marginLeft: 'auto' }}
-          onClick={fetchExperiments}
-        >
+        <button className="btn-sm" onClick={fetchExperiments}>
           Refresh
+        </button>
+        <button
+          className="btn-sm btn-primary"
+          style={{ marginLeft: 'auto' }}
+          onClick={onCreate}
+        >
+          + New Experiment
         </button>
       </div>
 
@@ -87,11 +113,13 @@ const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack
         <thead>
           <tr>
             <th>Name</th>
+            <th>Dataset</th>
             <th>Status</th>
             <th>Pass rate</th>
             <th>Mean score</th>
-            <th>Duration</th>
+            <th>Duration (ms)</th>
             <th>Created</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -104,6 +132,7 @@ const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack
                 onClick={() => onOpen(exp)}
               >
                 <td>{exp.name}</td>
+                <td>{datasetNames[exp.dataset_id] || exp.dataset_id.slice(0, 8)}</td>
                 <td>
                   <span className={`testing-status testing-status-${exp.status}`}>
                     {exp.status}
@@ -113,12 +142,19 @@ const ExperimentList: React.FC<ExperimentListProps> = ({ dataset, onOpen, onBack
                 <td>{formatScore(stats?.mean_score)}</td>
                 <td>{formatMs(stats?.duration_ms)}</td>
                 <td>{formatTimestamp(exp.created_at)}</td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  {exp.status === 'draft' && (
+                    <button className="btn-sm" onClick={() => onEdit(exp)}>
+                      Edit
+                    </button>
+                  )}
+                </td>
               </tr>
             );
           })}
           {experiments.length === 0 && (
             <tr>
-              <td colSpan={6} className="text-muted">No experiments yet.</td>
+              <td colSpan={8} className="text-muted">No experiments yet.</td>
             </tr>
           )}
         </tbody>

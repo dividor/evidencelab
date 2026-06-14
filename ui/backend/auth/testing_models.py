@@ -27,7 +27,10 @@ CAPABILITY_SEARCH = "search"
 CAPABILITY_AI_SUMMARY = "ai_summary"
 VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY}
 
-# Experiment lifecycle states.
+# Experiment lifecycle states. An experiment is created as a ``draft`` (the
+# user defines per-row assertions + config), then ``run`` transitions it
+# through running -> completed/failed.
+EXPERIMENT_DRAFT = "draft"
 EXPERIMENT_PENDING = "pending"
 EXPERIMENT_RUNNING = "running"
 EXPERIMENT_COMPLETED = "completed"
@@ -73,7 +76,11 @@ class TestDataset(Base):
 
 
 class TestCase(Base):
-    """A single test case: input parameters and the assertions to evaluate."""
+    """A single dataset row — input parameters only (no assertions).
+
+    Assertions live on the experiment (``TestExperiment.case_expectations``),
+    so the same input dataset can be tested under different expectations.
+    """
 
     __tablename__ = "test_cases"
 
@@ -88,8 +95,6 @@ class TestCase(Base):
     )
     # input: {"query": str, "filters": {...}, "params": {...}}
     input: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    # expectations: [{"type": str, ...params}, ...]
-    expectations: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -118,10 +123,13 @@ class TestExperiment(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(
-        String(32), nullable=False, default=EXPERIMENT_PENDING
+        String(32), nullable=False, default=EXPERIMENT_DRAFT
     )
     # config: model/params used for the run (e.g. summary_model, rerank, limit)
     config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # case_expectations: {str(test_case_id): [{"type": str, ...params}, ...]}
+    # the per-row assertions evaluated when the experiment is run.
+    case_expectations: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # summary_stats: {passed, failed, errored, total, pass_rate, mean_score,
     #                 duration_ms}
     summary_stats: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

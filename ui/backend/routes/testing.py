@@ -26,7 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
 from ui.backend.auth.testing_models import (
+    EXPERIMENT_DRAFT,
     EXPERIMENT_PENDING,
+    EXPERIMENT_RUNNING,
     VALID_CAPABILITIES,
     TestCase,
     TestDataset,
@@ -44,6 +46,7 @@ from ui.backend.schemas.testing import (
     TestExperimentCreate,
     TestExperimentDetail,
     TestExperimentRead,
+    TestExperimentUpdate,
     TestResultRead,
 )
 from ui.backend.services.test_runner import run_experiment
@@ -254,7 +257,6 @@ async def create_case(
     case = TestCase(
         dataset_id=dataset_id,
         input=body.input,
-        expectations=body.expectations,
         tags=body.tags,
         notes=body.notes,
     )
@@ -276,8 +278,6 @@ async def update_case(
     case = await _get_case(session, case_id)
     if body.input is not None:
         case.input = body.input
-    if body.expectations is not None:
-        case.expectations = body.expectations
     if body.tags is not None:
         case.tags = body.tags
     if body.notes is not None:
@@ -306,43 +306,80 @@ async def delete_case(
 # ---------------------------------------------------------------------------
 
 
-async def _start_experiment(
-    session: AsyncSession,
-    background_tasks: BackgroundTasks,
-    dataset_id: uuid.UUID,
-    name: str,
-    config: Optional[dict],
-    admin: User,
+@router.post(
+    "/experiments", response_model=TestExperimentRead, status_code=201, tags=["testing"]
+)
+@limiter.limit(_RL_DEFAULT)
+async def create_experiment(
+    request: Request,
+    body: TestExperimentCreate,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
 ) -> TestExperiment:
-    await _get_dataset(session, dataset_id)
+    """Create a draft experiment (define dataset + per-row assertions); not run."""
+    await _get_dataset(session, body.dataset_id)
     experiment = TestExperiment(
-        dataset_id=dataset_id,
-        name=name,
-        status=EXPERIMENT_PENDING,
-        config=config,
+        dataset_id=body.dataset_id,
+        name=body.name,
+        status=EXPERIMENT_DRAFT,
+        config=body.config,
+        case_expectations=body.case_expectations,
         created_by_user_id=admin.id,
     )
     session.add(experiment)
     await session.commit()
     await session.refresh(experiment)
-    background_tasks.add_task(run_experiment, experiment.id)
+    return experiment
+
+
+@router.put(
+    "/experiments/{experiment_id}", response_model=TestExperimentRead, tags=["testing"]
+)
+@limiter.limit(_RL_DEFAULT)
+async def update_experiment(
+    request: Request,
+    experiment_id: uuid.UUID,
+    body: TestExperimentUpdate,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> TestExperiment:
+    """Edit an experiment's name / config / per-row assertions (not while running)."""
+    experiment = await _get_experiment(session, experiment_id)
+    if experiment.status == EXPERIMENT_RUNNING:
+        raise HTTPException(status_code=409, detail="Experiment is running")
+    if body.name is not None:
+        experiment.name = body.name
+    if body.config is not None:
+        experiment.config = body.config
+    if body.case_expectations is not None:
+        experiment.case_expectations = body.case_expectations
+    await session.commit()
+    await session.refresh(experiment)
     return experiment
 
 
 @router.post(
-    "/experiments", response_model=TestExperimentRead, status_code=201, tags=["testing"]
+    "/experiments/{experiment_id}/run",
+    response_model=TestExperimentRead,
+    tags=["testing"],
 )
 @limiter.limit(_RL_AI)
-async def create_experiment(
+async def run_experiment_endpoint(
     request: Request,
-    body: TestExperimentCreate,
+    experiment_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperiment:
-    return await _start_experiment(
-        session, background_tasks, body.dataset_id, body.name, body.config, admin
-    )
+    """Run (or re-run) the experiment in the background; the UI polls status."""
+    experiment = await _get_experiment(session, experiment_id)
+    if experiment.status == EXPERIMENT_RUNNING:
+        raise HTTPException(status_code=409, detail="Experiment is already running")
+    experiment.status = EXPERIMENT_PENDING
+    await session.commit()
+    await session.refresh(experiment)
+    background_tasks.add_task(run_experiment, experiment.id)
+    return experiment
 
 
 @router.get("/experiments", response_model=List[TestExperimentRead], tags=["testing"])
@@ -381,28 +418,3 @@ async def get_experiment(
     detail = TestExperimentDetail.model_validate(experiment)
     detail.results = [TestResultRead.model_validate(r) for r in results]
     return detail
-
-
-@router.post(
-    "/experiments/{experiment_id}/rerun",
-    response_model=TestExperimentRead,
-    status_code=201,
-    tags=["testing"],
-)
-@limiter.limit(_RL_AI)
-async def rerun_experiment(
-    request: Request,
-    experiment_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
-    admin: User = Depends(current_superuser),
-    session: AsyncSession = Depends(get_async_session),
-) -> TestExperiment:
-    original = await _get_experiment(session, experiment_id)
-    return await _start_experiment(
-        session,
-        background_tasks,
-        original.dataset_id,
-        f"{original.name} (rerun)",
-        original.config,
-        admin,
-    )

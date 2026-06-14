@@ -3,7 +3,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestCapability, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
-import { formatPercent, formatTimestamp } from './testingFormat';
+import { formatTimestamp } from './testingFormat';
 
 const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
 
@@ -164,9 +164,10 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
         </div>
       )}
       <div className="testing-controls">
-        <label className="testing-filter">
-          Capability:
+        <div className="form-group" style={{ margin: 0 }}>
+          <label htmlFor="ds-filter">Capability</label>
           <select
+            id="ds-filter"
             value={capabilityFilter}
             onChange={(e) => setCapabilityFilter(e.target.value as '' | TestCapability)}
           >
@@ -175,7 +176,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-        </label>
+        </div>
         <p className="text-muted" style={{ margin: 0 }}>
           {datasets.length} dataset{datasets.length !== 1 ? 's' : ''}
         </p>
@@ -195,8 +196,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
             <th>Capability</th>
             <th>Data source</th>
             <th># Cases</th>
-            <th>Last run</th>
-            <th>Last pass rate</th>
+            <th>Created</th>
             <th></th>
           </tr>
         </thead>
@@ -207,8 +207,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
               <td>{ds.capability}</td>
               <td>{ds.data_source}</td>
               <td>{ds.num_cases ?? 0}</td>
-              <td>{formatTimestamp(ds.last_run_at)}</td>
-              <td>{formatPercent(ds.last_pass_rate)}</td>
+              <td>{formatTimestamp(ds.created_at)}</td>
               <td onClick={(e) => e.stopPropagation()}>
                 <button
                   className="btn-sm btn-danger"
@@ -221,7 +220,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
           ))}
           {datasets.length === 0 && (
             <tr>
-              <td colSpan={7} className="text-muted">No datasets yet.</td>
+              <td colSpan={6} className="text-muted">No datasets yet.</td>
             </tr>
           )}
         </tbody>

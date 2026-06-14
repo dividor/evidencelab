@@ -39,7 +39,7 @@ def test_expected_routes_are_registered():
         "/cases/{case_id}",
         "/experiments",
         "/experiments/{experiment_id}",
-        "/experiments/{experiment_id}/rerun",
+        "/experiments/{experiment_id}/run",
     }
     for path in expected_paths:
         assert path in registered, f"missing route {path}"

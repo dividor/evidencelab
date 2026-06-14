@@ -24,6 +24,7 @@ const datasets = [
 beforeEach(() => {
   jest.clearAllMocks();
   mockedAxios.get.mockImplementation((url: string) => {
+    if (url.includes('/cases')) return Promise.resolve({ data: [] });
     if (url.includes('/testing/datasets')) return Promise.resolve({ data: datasets });
     if (url.includes('/testing/experiments')) return Promise.resolve({ data: [] });
     return Promise.resolve({ data: [] });
@@ -52,5 +53,15 @@ describe('TestingManager', () => {
         expect.anything()
       )
     );
+  });
+
+  test('opening "New Experiment" shows the draft editor (assertions live here)', async () => {
+    render(<TestingManager />);
+    await waitFor(() => screen.getByText('Search Smoke'));
+    fireEvent.click(screen.getByRole('button', { name: 'Experiments' }));
+    const newBtn = await screen.findByRole('button', { name: /New Experiment/i });
+    fireEvent.click(newBtn);
+    // The experiment editor (where per-row assertions + config live) renders.
+    await waitFor(() => expect(screen.getByText(/Result limit/i)).toBeInTheDocument());
   });
 });

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import type { TestDataset, TestExperiment } from '../../types/testing';
+import type { ExperimentDetail as ExperimentDetailType, TestDataset, TestExperiment } from '../../types/testing';
 import DatasetList from './testing/DatasetList';
 import DatasetEditor from './testing/DatasetEditor';
 import ExperimentList from './testing/ExperimentList';
+import ExperimentEditor from './testing/ExperimentEditor';
 import ExperimentDetail from './testing/ExperimentDetail';
 
 type SubView = 'datasets' | 'experiments';
@@ -31,8 +32,14 @@ const DatasetsView: React.FC<DatasetsViewProps> = ({ onViewExperiments }) => {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Experiments sub-view (list -> detail)                             */
+/*  Experiments sub-view (list -> editor / detail)                    */
 /* ------------------------------------------------------------------ */
+
+type ExpMode =
+  | { kind: 'list' }
+  | { kind: 'create' }
+  | { kind: 'edit'; experiment: TestExperiment }
+  | { kind: 'detail'; id: string };
 
 interface ExperimentsViewProps {
   dataset: TestDataset | null;
@@ -40,20 +47,37 @@ interface ExperimentsViewProps {
 }
 
 const ExperimentsView: React.FC<ExperimentsViewProps> = ({ dataset, onClearDataset }) => {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mode, setMode] = useState<ExpMode>({ kind: 'list' });
 
-  if (selectedId) {
+  const goList = () => setMode({ kind: 'list' });
+
+  if (mode.kind === 'create' || mode.kind === 'edit') {
     return (
-      <ExperimentDetail
-        experimentId={selectedId}
-        onBack={() => setSelectedId(null)}
+      <ExperimentEditor
+        experiment={mode.kind === 'edit' ? mode.experiment : null}
+        initialDatasetId={mode.kind === 'create' ? dataset?.id ?? null : null}
+        onBack={goList}
+        onSaved={(id) => setMode({ kind: 'detail', id })}
       />
     );
   }
+
+  if (mode.kind === 'detail') {
+    return (
+      <ExperimentDetail
+        experimentId={mode.id}
+        onBack={goList}
+        onEdit={(exp: ExperimentDetailType) => setMode({ kind: 'edit', experiment: exp })}
+      />
+    );
+  }
+
   return (
     <ExperimentList
       dataset={dataset}
-      onOpen={(exp: TestExperiment) => setSelectedId(exp.id)}
+      onOpen={(exp: TestExperiment) => setMode({ kind: 'detail', id: exp.id })}
+      onEdit={(exp: TestExperiment) => setMode({ kind: 'edit', experiment: exp })}
+      onCreate={() => setMode({ kind: 'create' })}
       onBack={dataset ? onClearDataset : undefined}
     />
   );

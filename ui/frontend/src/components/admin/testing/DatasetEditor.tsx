@@ -4,12 +4,10 @@ import API_BASE_URL from '../../../config';
 import type { TestCase, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
 import CaseEditor, {
-  CaseDraft,
   CasePayload,
   caseToDraft,
   emptyDraft,
 } from './CaseEditor';
-import RunExperimentModal from './RunExperimentModal';
 import { prettyJson } from './testingFormat';
 
 interface DatasetEditorProps {
@@ -19,7 +17,7 @@ interface DatasetEditorProps {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Read-only display of an existing case                             */
+/*  Read-only display of an existing case (inputs only)               */
 /* ------------------------------------------------------------------ */
 
 interface CaseCardProps {
@@ -45,10 +43,6 @@ const CaseCard: React.FC<CaseCardProps> = ({ testCase, onEdit, onDelete }) => (
       <span className="testing-case-label">Input</span>
       <pre className="testing-pre">{prettyJson(testCase.input)}</pre>
     </div>
-    <div className="testing-case-block">
-      <span className="testing-case-label">Expectations</span>
-      <pre className="testing-pre">{prettyJson(testCase.expectations)}</pre>
-    </div>
     {testCase.notes && (
       <div className="testing-case-block">
         <span className="testing-case-label">Notes</span>
@@ -59,7 +53,7 @@ const CaseCard: React.FC<CaseCardProps> = ({ testCase, onEdit, onDelete }) => (
 );
 
 /* ------------------------------------------------------------------ */
-/*  Dataset editor                                                    */
+/*  Dataset editor (manages input rows only)                          */
 /* ------------------------------------------------------------------ */
 
 const DatasetEditor: React.FC<DatasetEditorProps> = ({
@@ -74,7 +68,6 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TestCase | null>(null);
-  const [showRun, setShowRun] = useState(false);
 
   const fetchCases = useCallback(async () => {
     try {
@@ -136,15 +129,15 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
   const renderCase = (testCase: TestCase) => {
     if (editingId === testCase.id) {
       return (
-        <CaseEditor
-          key={testCase.id}
-          capability={dataset.capability}
-          initial={caseToDraft(testCase)}
-          saving={saving}
-          submitLabel="Save Case"
-          onSubmit={(payload) => updateCase(testCase.id, payload)}
-          onCancel={() => setEditingId(null)}
-        />
+        <div key={testCase.id} className="testing-case-editor-wrap">
+          <CaseEditor
+            initial={caseToDraft(testCase)}
+            saving={saving}
+            submitLabel="Save Case"
+            onSubmit={(payload) => updateCase(testCase.id, payload)}
+            onCancel={() => setEditingId(null)}
+          />
+        </div>
       );
     }
     return (
@@ -181,9 +174,6 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
           <button className="btn-sm" onClick={() => onViewExperiments(dataset)}>
             View experiments
           </button>
-          <button className="btn-sm btn-primary" onClick={() => setShowRun(true)}>
-            Run experiment
-          </button>
         </div>
       </div>
 
@@ -204,14 +194,15 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
         </div>
 
         {creating && (
-          <CaseEditor
-            capability={dataset.capability}
-            initial={emptyDraft() as CaseDraft}
-            saving={saving}
-            submitLabel="Create Case"
-            onSubmit={createCase}
-            onCancel={() => setCreating(false)}
-          />
+          <div className="testing-case-editor-wrap">
+            <CaseEditor
+              initial={emptyDraft()}
+              saving={saving}
+              submitLabel="Create Case"
+              onSubmit={createCase}
+              onCancel={() => setCreating(false)}
+            />
+          </div>
         )}
 
         {cases.map(renderCase)}
@@ -227,17 +218,6 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
           confirmLabel="Delete Case"
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
-        />
-      )}
-
-      {showRun && (
-        <RunExperimentModal
-          datasetId={dataset.id}
-          onLaunched={() => {
-            setShowRun(false);
-            onViewExperiments(dataset);
-          }}
-          onCancel={() => setShowRun(false)}
         />
       )}
     </div>
