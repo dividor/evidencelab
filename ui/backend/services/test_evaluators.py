@@ -235,7 +235,10 @@ def eval_llm_judge(
     message = f"judge score {score:.2f} (threshold {threshold:.2f})"
     if reason:
         message += f" — {reason}"
-    return _result("llm_judge", passed, message, score=score)
+    result = _result("llm_judge", passed, message, score=score)
+    # Surface the exact rubric the judge was given (shown in the UI per run).
+    result["rubric"] = rubric
+    return result
 
 
 # ---------------------------------------------------------------------------

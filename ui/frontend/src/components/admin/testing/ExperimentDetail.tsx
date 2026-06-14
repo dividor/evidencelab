@@ -81,20 +81,119 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 
 const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => (
   <div className="testing-assertion-result">
-    <span
-      className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
-    >
-      {result.passed ? 'pass' : 'fail'}
-    </span>
-    <span className="testing-assertion-result-type">{result.type}</span>
-    {result.score !== undefined && (
-      <span className="testing-assertion-result-score">
-        score: {formatScore(result.score)}
+    <div className="testing-assertion-result-main">
+      <span
+        className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
+      >
+        {result.passed ? 'pass' : 'fail'}
       </span>
+      <span className="testing-assertion-result-type">{result.type}</span>
+      {result.score !== undefined && (
+        <span className="testing-assertion-result-score">
+          score: {formatScore(result.score)}
+        </span>
+      )}
+      <span className="testing-assertion-result-message">{result.message}</span>
+    </div>
+    {result.rubric && (
+      <div className="testing-assertion-rubric">
+        <span className="testing-case-label">Judge prompt</span>
+        <span>{result.rubric}</span>
+      </div>
     )}
-    <span className="testing-assertion-result-message">{result.message}</span>
   </div>
 );
+
+/* ------------------------------------------------------------------ */
+/*  Human-friendly output: AI summary + sources, or search cards      */
+/* ------------------------------------------------------------------ */
+
+type OutputBlob = Record<string, unknown> | null | undefined;
+
+const asArray = (v: unknown): Record<string, unknown>[] =>
+  Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
+const SourceCard: React.FC<{ r: Record<string, unknown>; index: number }> = ({
+  r,
+  index,
+}) => {
+  const title =
+    str(r.title) || str(r.map_title) || str(r.doc_id) || `Result ${index + 1}`;
+  const org = str(r.organization) || str(r.map_organization);
+  const score = typeof r.score === 'number' ? r.score : undefined;
+  const text = str(r.text);
+  return (
+    <div className="testing-result-card">
+      <div className="testing-result-card-head">
+        <span className="testing-result-card-num">{index + 1}</span>
+        <span className="testing-result-card-title">{title}</span>
+        {score !== undefined && (
+          <span className="testing-result-card-score">{score.toFixed(3)}</span>
+        )}
+      </div>
+      {org && <div className="testing-result-card-org">{org}</div>}
+      {text && (
+        <div className="testing-result-card-snippet">
+          {text.length > 500 ? `${text.slice(0, 500)}…` : text}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
+  const [showRaw, setShowRaw] = useState(false);
+  if (!output) return <p className="text-muted" style={{ margin: 0 }}>No output.</p>;
+
+  const summary = str(output.summary);
+  const sources = asArray(output.search_results);
+  const searchResults = asArray(output.results);
+
+  return (
+    <div className="testing-output">
+      {summary ? (
+        <>
+          <span className="testing-case-label">AI summary</span>
+          <div className="testing-summary-text">{summary}</div>
+          {sources.length > 0 && (
+            <>
+              <span className="testing-case-label">Sources ({sources.length})</span>
+              <div className="testing-result-cards">
+                {sources.map((r, i) => (
+                  <SourceCard key={i} r={r} index={i} />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      ) : searchResults.length > 0 ? (
+        <>
+          <span className="testing-case-label">Search results ({searchResults.length})</span>
+          <div className="testing-result-cards">
+            {searchResults.map((r, i) => (
+              <SourceCard key={i} r={r} index={i} />
+            ))}
+          </div>
+        </>
+      ) : (
+        <pre className="testing-pre testing-pre-scroll">{prettyJson(output)}</pre>
+      )}
+
+      <button
+        type="button"
+        className="testing-raw-toggle"
+        onClick={() => setShowRaw((v) => !v)}
+      >
+        {showRaw ? 'Hide raw output' : 'Show raw output'}
+      </button>
+      {showRaw && (
+        <pre className="testing-pre testing-pre-scroll">{prettyJson(output)}</pre>
+      )}
+    </div>
+  );
+};
 
 /* ------------------------------------------------------------------ */
 /*  Expandable result row                                             */
@@ -123,8 +222,17 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
           <td colSpan={5}>
             <div className="testing-result-detail">
               <div className="testing-case-block">
-                <span className="testing-case-label">Case input</span>
-                <pre className="testing-pre">{prettyJson(input ?? {})}</pre>
+                <span className="testing-case-label">Query</span>
+                <div className="testing-query">{str(input?.query) || '(no query)'}</div>
+                {input && Object.keys(input).some((k) => k !== 'query') && (
+                  <pre className="testing-pre">
+                    {prettyJson(
+                      Object.fromEntries(
+                        Object.entries(input).filter(([k]) => k !== 'query'),
+                      ),
+                    )}
+                  </pre>
+                )}
               </div>
               <div className="testing-case-block">
                 <span className="testing-case-label">Assertions</span>
@@ -136,10 +244,8 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                 )}
               </div>
               <div className="testing-case-block">
-                <span className="testing-case-label">Raw actual output</span>
-                <pre className="testing-pre testing-pre-scroll">
-                  {prettyJson(result.actual_output)}
-                </pre>
+                <span className="testing-case-label">Output</span>
+                <ResultOutput output={result.actual_output} />
               </div>
             </div>
           </td>

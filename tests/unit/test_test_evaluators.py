@@ -189,6 +189,14 @@ class TestLlmJudge:
         assert res["passed"] is True and res["score"] == 0.8
         assert "covers the key points" in res["message"]
 
+    def test_llm_judge_result_includes_rubric(self):
+        res = ev.eval_llm_judge(
+            {"rubric": "must cite Kenya", "threshold": 0.5},
+            _summary_output("x"),
+            judge_fn=lambda t, r: (0.6, "ok"),
+        )
+        assert res["rubric"] == "must cite Kenya"
+
     def test_llm_judge_default_threshold_is_one(self):
         # No threshold given -> defaults to 1.0, so a 0.9 score fails.
         res = ev.eval_llm_judge(

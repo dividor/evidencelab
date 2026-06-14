@@ -11474,6 +11474,111 @@ a.admin-citation-clickable:hover {
   padding: 0.5rem 0.75rem 0.75rem;
 }
 
+/* ---- Human-friendly result output ---- */
+.testing-output {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.testing-query {
+  font-style: italic;
+  word-break: break-word;
+}
+.testing-summary-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+}
+.testing-result-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.testing-result-card {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: var(--color-surface, #fff);
+}
+.testing-result-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.testing-result-card-num {
+  flex: 0 0 auto;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1.4rem;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--color-surface-alt, #eef1f4);
+  font-size: 0.75rem;
+}
+.testing-result-card-title {
+  font-weight: 600;
+  word-break: break-word;
+  flex: 1 1 auto;
+}
+.testing-result-card-score {
+  flex: 0 0 auto;
+  color: var(--color-text-muted, #57606a);
+  font-variant-numeric: tabular-nums;
+}
+.testing-result-card-org {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-card-snippet {
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text, #1f2328);
+}
+
+/* Per-assertion result: a main row + an optional rubric line beneath. */
+.testing-assertion-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.testing-assertion-result-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+.testing-assertion-rubric {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+  padding-left: 0.25rem;
+}
+.testing-assertion-rubric span:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.testing-raw-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--brand-primary, #5b8fa8);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .testing-case-tags {
   display: flex;
   flex-wrap: wrap;
@@ -11516,14 +11621,7 @@ a.admin-citation-clickable:hover {
   color: var(--color-text-muted, #57606a);
 }
 
-/* Per-assertion result rows. */
-.testing-assertion-result {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: baseline;
-  font-size: 0.82rem;
-}
+/* Per-assertion result rows (layout defined above; main row is -main). */
 .testing-assertion-result-type {
   font-weight: 600;
 }

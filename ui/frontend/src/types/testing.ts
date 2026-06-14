@@ -54,6 +54,8 @@ export interface AssertionResult {
   passed: boolean;
   message: string;
   score?: number;
+  // For llm_judge: the exact rubric/prompt the judge was given.
+  rubric?: string;
 }
 
 export interface SummaryStats {

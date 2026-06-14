@@ -210,12 +210,39 @@ def _parse_judgement(text: str) -> Tuple[float, str]:
     return _parse_score(raw), raw.strip()
 
 
+_JUDGE_SYSTEM_PROMPT = (
+    "You are a meticulous, strict evaluator. You are given a rubric and an "
+    "output to evaluate. Judge ONLY how well the output literally and precisely "
+    "satisfies the rubric — do not invent extra criteria and do not reward the "
+    "output for anything the rubric did not ask for. Respond with ONLY a JSON "
+    'object {"score": <number 0.0-1.0>, "reason": "<one or two sentence '
+    'justification that refers to the rubric>"}.'
+)
+
+
+async def _judge_call(prompt: str, model_key: Optional[str]) -> str:
+    """Raw LLM completion for judging — deliberately NOT routed through the
+    AI-summary templates (which would reframe the rubric as a search query)."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    from utils.llm_factory import get_llm
+
+    llm = get_llm(model=model_key, temperature=0.0, max_tokens=300)
+    response = await llm.ainvoke(
+        [
+            SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
+            HumanMessage(content=prompt),
+        ]
+    )
+    return str(response.content)
+
+
 def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     """Return an async judge factory that scores ``llm_judge`` assertions.
 
     Always enabled: adding an ``llm_judge`` assertion is sufficient (no separate
-    config flag). Each distinct rubric is judged once per case, asking the LLM
-    for both a score and a short reason.
+    config flag). Each distinct rubric is judged once per case via a raw LLM
+    call, asking for both a score and a short reason.
     """
     cfg = config or {}
     model_key = (
@@ -226,8 +253,6 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     )
 
     async def factory(output, expectations):
-        from ui.backend.services.llm_service import generate_ai_summary_with_usage
-
         text = str(output.get("summary", "") or "")
         verdicts: Dict[str, Tuple[float, str]] = {}
         for assertion in expectations:
@@ -237,15 +262,12 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
             if rubric in verdicts:
                 continue
             prompt = (
-                "You are evaluating an AI-generated answer against a rubric.\n\n"
                 f"Rubric:\n{rubric}\n\nOutput to evaluate:\n{text}\n\n"
-                "Reply with ONLY a JSON object of the form "
-                '{"score": <number 0.0-1.0>, "reason": "<one or two sentence '
-                'justification>"} scoring how well the output satisfies the rubric.'
+                "Return ONLY the JSON object."
             )
-            judged, _usage = await generate_ai_summary_with_usage(
-                query=prompt, results=[], model_key=model_key, temperature=0.0
-            )
+            logger.info("[LLM judge] model=%s rubric=%r", model_key, rubric[:300])
+            judged = await _judge_call(prompt, model_key)
+            logger.info("[LLM judge] response=%r", judged[:400])
             verdicts[rubric] = _parse_judgement(judged)
         return lambda _text, rubric: verdicts.get(str(rubric), (0.0, ""))
 
