@@ -11354,6 +11354,82 @@ a.admin-citation-clickable:hover {
   white-space: nowrap;
 }
 
+/* ---- Assertion matrix (cases x assertions) ---- */
+.testing-matrix-wrap {
+  overflow-x: auto;
+}
+.testing-matrix th,
+.testing-matrix td {
+  vertical-align: middle;
+}
+.testing-matrix-case-col {
+  text-align: left;
+  min-width: 16rem;
+  max-width: 24rem;
+}
+.testing-matrix-assert-col {
+  min-width: 11rem;
+}
+.testing-matrix-col-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+.testing-matrix-col-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+/* Label + checkbox row; truncate long case/assertion text with a tooltip. */
+.testing-matrix-head-toggle,
+.testing-matrix-row-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.testing-matrix-head-toggle span,
+.testing-matrix-row-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22rem;
+}
+.testing-matrix-row-toggle {
+  font-weight: 400;
+}
+.testing-matrix-cell {
+  text-align: center;
+}
+.testing-matrix-cell input {
+  width: auto;
+}
+.testing-matrix-row-off {
+  opacity: 0.5;
+}
+.testing-matrix-add-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Inline add/edit-a-column form below the matrix. */
+.testing-column-form {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--color-surface, #fff);
+}
+.testing-column-form-header {
+  margin-bottom: 0.5rem;
+}
+.testing-column-form-actions {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  margin-top: 0.6rem;
+}
+
 .testing-case-tags {
   display: flex;
   flex-wrap: wrap;

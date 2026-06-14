@@ -4,8 +4,18 @@ export type TestCapability = 'search' | 'ai_summary';
 export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | 'failed';
 export type ResultStatus = 'pass' | 'fail' | 'error';
 
-// Per-row assertions live on the experiment: test_case_id -> assertions.
-export type CaseExpectations = Record<string, Assertion[]>;
+// Per-case enable flag + which assertion columns apply (aligned to columns).
+export interface CaseRowState {
+  active: boolean;
+  cols: boolean[];
+}
+
+// Assertions live on the experiment as a cases x assertions matrix: a set of
+// assertion columns plus, per test case, an active flag and per-column toggles.
+export interface AssertionMatrix {
+  columns: Assertion[];
+  cases: Record<string, CaseRowState>;
+}
 
 export interface TestDataset {
   id: string;
@@ -63,7 +73,7 @@ export interface TestExperiment {
   name: string;
   status: ExperimentStatus;
   config?: Record<string, unknown> | null;
-  case_expectations?: CaseExpectations | null;
+  case_expectations?: AssertionMatrix | null;
   summary_stats?: SummaryStats | null;
   started_at?: string | null;
   finished_at?: string | null;

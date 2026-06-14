@@ -2,14 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type {
-  Assertion,
-  CaseExpectations,
+  AssertionMatrix as MatrixValue,
+  CaseRowState,
   TestCase,
   TestDataset,
   TestExperiment,
 } from '../../../types/testing';
-import AssertionBuilder from './AssertionBuilder';
-import { prettyJson } from './testingFormat';
+import AssertionMatrix from './AssertionMatrix';
 
 interface ExperimentEditorProps {
   // When editing an existing draft, the experiment is provided.
@@ -147,11 +146,21 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ draft, onChange }) => {
 /*  Per-case assertion section                                        */
 /* ------------------------------------------------------------------ */
 
-const caseTitle = (testCase: TestCase): string => {
-  const input = testCase.input || {};
-  const query = (input as { query?: unknown }).query;
-  if (typeof query === 'string' && query.trim()) return query;
-  return `Case ${testCase.id.slice(0, 8)}`;
+// Ensure every displayed case has an explicit state before saving: cases the
+// user never touched default to active (so they run) with all columns padded.
+// Unlisted cases are treated as inactive by the runner, so this materialises
+// the editor's visible defaults into the persisted matrix.
+const normalizeMatrix = (matrix: MatrixValue, caseList: TestCase[]): MatrixValue => {
+  const ncols = matrix.columns.length;
+  const cases: Record<string, CaseRowState> = {};
+  caseList.forEach((c) => {
+    const prev = matrix.cases[c.id];
+    cases[c.id] = {
+      active: prev ? prev.active : true,
+      cols: Array.from({ length: ncols }, (_, i) => Boolean(prev?.cols?.[i])),
+    };
+  });
+  return { columns: matrix.columns, cases };
 };
 
 /* ------------------------------------------------------------------ */
@@ -172,8 +181,8 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     experiment?.dataset_id || initialDatasetId || '',
   );
   const [config, setConfig] = useState<ConfigDraft>(configToDraft(experiment?.config));
-  const [expectations, setExpectations] = useState<CaseExpectations>(
-    experiment?.case_expectations || {},
+  const [matrix, setMatrix] = useState<MatrixValue>(
+    experiment?.case_expectations || { columns: [], cases: {} },
   );
 
   const [cases, setCases] = useState<TestCase[]>([]);
@@ -226,21 +235,17 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
   const handleDatasetChange = (id: string) => {
     if (id !== datasetId) {
-      // Switching dataset invalidates the per-case assertions.
-      setExpectations({});
+      // Switching dataset invalidates the assertion matrix (different cases).
+      setMatrix({ columns: [], cases: {} });
     }
     setDatasetId(id);
-  };
-
-  const setCaseAssertions = (caseId: string, assertions: Assertion[]) => {
-    setExpectations((prev) => ({ ...prev, [caseId]: assertions }));
   };
 
   const buildBody = () => ({
     dataset_id: datasetId,
     name: name.trim(),
     config: draftToConfig(config),
-    case_expectations: expectations,
+    case_expectations: normalizeMatrix(matrix, cases),
   });
 
   // Save the draft (POST for new, PUT for existing). Returns the experiment id.
@@ -260,7 +265,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
         await axios.put(`${API_BASE_URL}/testing/experiments/${experiment.id}`, {
           name: name.trim(),
           config: draftToConfig(config),
-          case_expectations: expectations,
+          case_expectations: normalizeMatrix(matrix, cases),
         });
         return experiment.id;
       }
@@ -335,33 +340,24 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
       <div className="admin-section" style={{ marginTop: 0 }}>
         <h4>Assertions per test case</h4>
+        <p className="text-muted" style={{ marginTop: 0 }}>
+          Toggle a row to enable/disable a case; add assertion columns and use a
+          column&apos;s header checkbox to apply it to all cases. Only active cases and
+          checked assertions are run.
+        </p>
         {!selectedDataset && (
           <p className="text-muted">Select a dataset to define assertions for its cases.</p>
         )}
         {selectedDataset && casesLoading && (
           <div className="admin-loading">Loading cases...</div>
         )}
-        {selectedDataset && !casesLoading && cases.length === 0 && (
-          <p className="text-muted">
-            This dataset has no test cases yet. Add input rows in the dataset editor first.
-          </p>
-        )}
-        {selectedDataset && !casesLoading && cases.length > 0 && (
-          <div className="testing-cases">
-            {cases.map((testCase) => (
-              <div key={testCase.id} className="testing-case-card">
-                <div className="testing-case-block">
-                  <span className="testing-case-label">{caseTitle(testCase)}</span>
-                  <pre className="testing-pre">{prettyJson(testCase.input)}</pre>
-                </div>
-                <AssertionBuilder
-                  capability={selectedDataset.capability}
-                  assertions={expectations[testCase.id] || []}
-                  onChange={(assertions) => setCaseAssertions(testCase.id, assertions)}
-                />
-              </div>
-            ))}
-          </div>
+        {selectedDataset && !casesLoading && (
+          <AssertionMatrix
+            capability={selectedDataset.capability}
+            cases={cases}
+            value={matrix}
+            onChange={setMatrix}
+          />
         )}
       </div>
 

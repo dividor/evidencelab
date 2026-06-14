@@ -10,10 +10,62 @@ import pytest
 from ui.backend.services.test_runner import (
     _combo_summary_model,
     _default_summary_model,
+    _resolve_case_plan,
     evaluate_case,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+
+
+def _matrix():
+    return {
+        "columns": [
+            {"type": "min_results", "value": 1},
+            {"type": "max_results", "value": 5},
+        ],
+        "cases": {
+            "c1": {"active": True, "cols": [True, False]},
+            "c2": {"active": True, "cols": [True, True]},
+            "c3": {"active": False, "cols": [True, True]},
+        },
+    }
+
+
+async def test_resolve_case_plan_returns_only_checked_columns():
+    active, assertions = _resolve_case_plan(_matrix(), "c1")
+    assert active is True
+    assert assertions == [{"type": "min_results", "value": 1}]
+
+
+async def test_resolve_case_plan_returns_all_checked_columns():
+    active, assertions = _resolve_case_plan(_matrix(), "c2")
+    assert active is True
+    assert assertions == [
+        {"type": "min_results", "value": 1},
+        {"type": "max_results", "value": 5},
+    ]
+
+
+async def test_resolve_case_plan_inactive_case_is_skipped():
+    assert _resolve_case_plan(_matrix(), "c3") == (False, [])
+
+
+async def test_resolve_case_plan_unknown_case_is_skipped():
+    assert _resolve_case_plan(_matrix(), "missing") == (False, [])
+
+
+async def test_resolve_case_plan_empty_matrix_is_skipped():
+    assert _resolve_case_plan({}, "c1") == (False, [])
+
+
+async def test_resolve_case_plan_ignores_out_of_range_cols():
+    matrix = {
+        "columns": [{"type": "min_results", "value": 1}],
+        "cases": {"c1": {"active": True, "cols": [True, True, True]}},
+    }
+    active, assertions = _resolve_case_plan(matrix, "c1")
+    assert active is True
+    assert assertions == [{"type": "min_results", "value": 1}]
 
 
 async def test_combo_summary_model_extracts_nested_model():

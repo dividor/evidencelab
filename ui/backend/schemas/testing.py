@@ -51,8 +51,14 @@ class TestDatasetRead(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-# A per-row assertion map: test_case_id (str) -> list of assertion dicts.
-CaseExpectations = Dict[str, List[Dict[str, Any]]]
+# Assertion matrix (flexible JSON blob), shape:
+#   {
+#     "columns": [ {"type": ..., <params>}, ... ],   # ordered assertion columns
+#     "cases":   { "<case_id>": {"active": bool, "cols": [bool, ...]}, ... },
+#   }
+# A case runs only when its state is active; an assertion column applies to a
+# case only when its aligned ``cols[i]`` flag is true.
+CaseExpectations = Dict[str, Any]
 
 
 class TestCaseCreate(BaseModel):

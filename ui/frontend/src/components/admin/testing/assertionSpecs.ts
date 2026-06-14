@@ -1,5 +1,5 @@
 // Specs describing the available assertion types per capability and the
-// parameter fields each one needs. Used by the AssertionBuilder to render
+// parameter fields each one needs. Used by the assertion-column form to render
 // type-appropriate inputs and to summarise assertions for display.
 
 import type { TestCapability } from '../../../types/testing';

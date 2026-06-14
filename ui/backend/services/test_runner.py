@@ -16,7 +16,7 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import delete, select
@@ -275,6 +275,34 @@ async def _load_cases(session, dataset_id) -> List[TestCase]:
     return list(result.scalars().all())
 
 
+def _resolve_case_plan(
+    case_expectations: Dict[str, Any], case_id: str
+) -> Tuple[bool, List[Dict[str, Any]]]:
+    """From the assertion matrix, return ``(is_active, active_assertions)``.
+
+    Matrix shape::
+
+        {"columns": [assertion, ...],
+         "cases": {case_id: {"active": bool, "cols": [bool, ...]}}}
+
+    Inactive or unknown cases return ``(False, [])`` and are skipped by the
+    runner. Only assertion columns whose aligned ``cols`` flag is true (and that
+    reference a real column) are returned.
+    """
+    matrix = case_expectations or {}
+    columns = matrix.get("columns") or []
+    state = (matrix.get("cases") or {}).get(case_id)
+    if not isinstance(state, dict) or not state.get("active", False):
+        return False, []
+    cols = state.get("cols") or []
+    assertions = [
+        columns[i]
+        for i, enabled in enumerate(cols)
+        if enabled and i < len(columns) and isinstance(columns[i], dict)
+    ]
+    return True, assertions
+
+
 async def _mark_failed(session, experiment: TestExperiment, message: str) -> None:
     experiment.status = EXPERIMENT_FAILED
     experiment.finished_at = _utcnow()
@@ -304,11 +332,13 @@ async def _execute(session, experiment: TestExperiment) -> None:
         await _mark_failed(session, experiment, str(exc))
         return
     judge_factory = make_judge_factory(config)
-    case_expectations = experiment.case_expectations or {}
+    matrix = experiment.case_expectations or {}
     case_results: List[Dict[str, Any]] = []
     for case in await _load_cases(session, dataset.id):
-        expectations = case_expectations.get(str(case.id), [])
-        outcome = await evaluate_case(case.input, expectations, runner, judge_factory)
+        active, assertions = _resolve_case_plan(matrix, str(case.id))
+        if not active:
+            continue
+        outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         session.add(
             TestResult(experiment_id=experiment.id, test_case_id=case.id, **outcome)
         )
