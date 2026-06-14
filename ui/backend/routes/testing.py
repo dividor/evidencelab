@@ -34,6 +34,7 @@ from ui.backend.auth.testing_models import (
     TestCase,
     TestDataset,
     TestExperiment,
+    TestRun,
 )
 from ui.backend.auth.users import current_superuser
 from ui.backend.schemas.testing import (
@@ -407,18 +408,21 @@ async def get_experiment(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperimentDetail:
-    # Eager-load results so Pydantic's from_attributes serialization does not
-    # trigger an async lazy-load outside the greenlet (MissingGreenlet).
+    # Eager-load runs + their results so Pydantic's from_attributes
+    # serialization does not trigger an async lazy-load outside the greenlet
+    # (MissingGreenlet).
     stmt = (
         select(TestExperiment)
         .where(TestExperiment.id == experiment_id)
-        .options(selectinload(TestExperiment.results))
+        .options(selectinload(TestExperiment.runs).selectinload(TestRun.results))
     )
     experiment = (await session.execute(stmt)).scalar_one_or_none()
     if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
     detail = TestExperimentDetail.model_validate(experiment)
-    detail.results.sort(key=lambda r: r.created_at)
+    detail.runs.sort(key=lambda r: r.run_number, reverse=True)
+    for run in detail.runs:
+        run.results.sort(key=lambda r: r.created_at)
     return detail
 
 

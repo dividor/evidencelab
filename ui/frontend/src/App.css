@@ -11440,6 +11440,40 @@ a.admin-citation-clickable:hover {
   margin-top: 0.6rem;
 }
 
+/* ---- Run history (experiment detail) ---- */
+.testing-runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 0.5rem);
+}
+.testing-run {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.testing-run-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.testing-run-header:hover {
+  background: var(--color-surface, #fff);
+}
+.testing-run-caret {
+  color: var(--color-text-muted, #57606a);
+}
+.testing-run-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
 .testing-case-tags {
   display: flex;
   flex-wrap: wrap;

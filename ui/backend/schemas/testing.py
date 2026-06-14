@@ -108,6 +108,7 @@ class TestResultRead(BaseModel):
 
     id: uuid.UUID
     experiment_id: uuid.UUID
+    run_id: Optional[uuid.UUID] = None
     test_case_id: uuid.UUID
     status: str
     score: Optional[float] = None
@@ -116,6 +117,20 @@ class TestResultRead(BaseModel):
     latency_ms: Optional[int] = None
     error_message: Optional[str] = None
     created_at: datetime
+
+
+class TestRunRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    experiment_id: uuid.UUID
+    run_number: int
+    status: str
+    summary_stats: Optional[Dict[str, Any]] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+    results: List[TestResultRead] = Field(default_factory=list)
 
 
 class TestExperimentRead(BaseModel):
@@ -135,4 +150,4 @@ class TestExperimentRead(BaseModel):
 
 
 class TestExperimentDetail(TestExperimentRead):
-    results: List[TestResultRead] = Field(default_factory=list)
+    runs: List[TestRunRead] = Field(default_factory=list)

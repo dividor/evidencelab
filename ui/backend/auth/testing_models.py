@@ -1,10 +1,11 @@
 """SQLAlchemy ORM models for the admin Search & AI-Summary evaluation harness.
 
-Internal, superuser-only evaluation/regression tooling. Four tables:
+Internal, superuser-only evaluation/regression tooling. Five tables:
 
 - ``test_datasets``    — a reusable set of test cases for one capability.
 - ``test_cases``       — a single input + its expected assertions.
-- ``test_experiments`` — one run of a dataset against the live capability.
+- ``test_experiments`` — a dataset + assertions + config; may be run many times.
+- ``test_runs``        — one execution of an experiment (its own stats/results).
 - ``test_results``     — per-case outcome (status, score, raw output, asserts).
 
 Shares the single declarative ``Base`` from :mod:`ui.backend.auth.models` so
@@ -151,10 +152,55 @@ class TestExperiment(Base):
     results: Mapped[list["TestResult"]] = relationship(
         back_populates="experiment", cascade="all, delete-orphan"
     )
+    runs: Mapped[list["TestRun"]] = relationship(
+        back_populates="experiment", cascade="all, delete-orphan"
+    )
+
+
+class TestRun(Base):
+    """One execution of an experiment. An experiment may be run many times;
+    each run keeps its own per-case results and aggregate stats."""
+
+    __tablename__ = "test_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("test_experiments.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # 1-based, sequential within an experiment (newest = highest).
+    run_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=EXPERIMENT_PENDING
+    )
+    summary_stats: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    experiment: Mapped["TestExperiment"] = relationship(back_populates="runs")
+    results: Mapped[list["TestResult"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
 
 
 class TestResult(Base):
-    """Outcome of evaluating one test case within an experiment."""
+    """Outcome of evaluating one test case within a run of an experiment."""
 
     __tablename__ = "test_results"
 
@@ -165,6 +211,13 @@ class TestResult(Base):
         UUID(as_uuid=True),
         ForeignKey("test_experiments.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    # The run this result belongs to (nullable only for pre-runs legacy rows).
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("test_runs.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     test_case_id: Mapped[uuid.UUID] = mapped_column(
@@ -185,3 +238,4 @@ class TestResult(Base):
     )
 
     experiment: Mapped["TestExperiment"] = relationship(back_populates="results")
+    run: Mapped["TestRun"] = relationship(back_populates="results")

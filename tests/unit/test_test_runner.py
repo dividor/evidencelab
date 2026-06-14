@@ -7,9 +7,11 @@ without touching the live search/LLM services.
 
 import pytest
 
+from ui.backend.auth.testing_models import TestExperiment, TestRun
 from ui.backend.services.test_runner import (
     _combo_summary_model,
     _default_summary_model,
+    _mirror_run_to_experiment,
     _parse_judgement,
     _resolve_case_plan,
     evaluate_case,
@@ -69,6 +71,17 @@ async def test_parse_judgement_falls_back_to_first_number():
     score, reason = _parse_judgement("I would rate this 0.4 overall")
     assert score == 0.4
     assert "0.4" in reason
+
+
+async def test_mirror_run_to_experiment_copies_outcome_without_aliasing():
+    stats = {"pass_rate": 0.5, "total": 4}
+    run = TestRun(status="completed", summary_stats=stats)
+    experiment = TestExperiment()
+    _mirror_run_to_experiment(experiment, run)
+    assert experiment.status == "completed"
+    assert experiment.summary_stats == {"pass_rate": 0.5, "total": 4}
+    # Must be a copy so mutating one does not corrupt the other.
+    assert experiment.summary_stats is not run.summary_stats
 
 
 async def test_resolve_case_plan_ignores_out_of_range_cols():

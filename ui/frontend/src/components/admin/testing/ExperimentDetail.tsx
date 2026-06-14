@@ -6,6 +6,7 @@ import type {
   ExperimentDetail as ExperimentDetailType,
   TestCase,
   TestResult,
+  TestRun,
 } from '../../../types/testing';
 import {
   formatMs,
@@ -27,19 +28,13 @@ const isActive = (status?: string): boolean =>
   status === 'pending' || status === 'running';
 
 /* ------------------------------------------------------------------ */
-/*  Summary header — every number labelled with its unit              */
+/*  Per-run summary strip — every number labelled with its unit        */
 /* ------------------------------------------------------------------ */
 
-const SummaryHeader: React.FC<{ detail: ExperimentDetailType }> = ({ detail }) => {
-  const stats = detail.summary_stats;
+const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
+  const stats = run.summary_stats;
   return (
     <div className="testing-summary-header">
-      <div className="testing-summary-stat">
-        <span className="testing-summary-label">Status</span>
-        <span className={`testing-status testing-status-${detail.status}`}>
-          {detail.status}
-        </span>
-      </div>
       <div className="testing-summary-stat">
         <span className="testing-summary-label">Pass rate</span>
         <span>{formatPercent(stats?.pass_rate)}</span>
@@ -70,11 +65,11 @@ const SummaryHeader: React.FC<{ detail: ExperimentDetailType }> = ({ detail }) =
       </div>
       <div className="testing-summary-stat">
         <span className="testing-summary-label">Started</span>
-        <span>{formatTimestamp(detail.started_at)}</span>
+        <span>{formatTimestamp(run.started_at)}</span>
       </div>
       <div className="testing-summary-stat">
         <span className="testing-summary-label">Finished</span>
-        <span>{formatTimestamp(detail.finished_at)}</span>
+        <span>{formatTimestamp(run.finished_at)}</span>
       </div>
     </div>
   );
@@ -151,6 +146,68 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
         </tr>
       )}
     </>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/*  One run: collapsible header + its per-case results                */
+/* ------------------------------------------------------------------ */
+
+const RunSection: React.FC<{
+  run: TestRun;
+  caseInputs: Record<string, Record<string, unknown>>;
+  defaultOpen: boolean;
+}> = ({ run, caseInputs, defaultOpen }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  const stats = run.summary_stats;
+  const active = isActive(run.status);
+  const results = run.results || [];
+  return (
+    <div className="testing-run">
+      <button
+        type="button"
+        className="testing-run-header"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="testing-run-caret">{open ? '▾' : '▸'}</span>
+        <strong>Run #{run.run_number}</strong>
+        <span className={`testing-status testing-status-${run.status}`}>{run.status}</span>
+        <span className="text-muted">
+          pass {formatPercent(stats?.pass_rate)} · score {formatScore(stats?.mean_score)}
+          {' · '}
+          {formatMs(stats?.duration_ms)} · {formatTimestamp(run.finished_at || run.started_at)}
+        </span>
+      </button>
+      {open && (
+        <div className="testing-run-body">
+          {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
+          <RunStats run={run} />
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>Status</th>
+                <th>Score</th>
+                <th>Latency (ms)</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r) => (
+                <ResultRow key={r.id} result={r} input={caseInputs[r.test_case_id]} />
+              ))}
+              {results.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="text-muted">
+                    {active ? 'Running — results will appear shortly...' : 'No results.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -237,7 +294,7 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
     );
   }
 
-  const results = detail.results || [];
+  const runs = detail.runs || [];
   const active = isActive(detail.status);
 
   return (
@@ -268,35 +325,24 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
         </div>
       </div>
 
-      {detail.summary_stats?.error && (
-        <div className="auth-error">Run error: {detail.summary_stats.error}</div>
-      )}
-
-      <SummaryHeader detail={detail} />
-
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th></th>
-            <th>Status</th>
-            <th>Score</th>
-            <th>Latency (ms)</th>
-            <th>Error</th>
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((r) => (
-            <ResultRow key={r.id} result={r} input={caseInputs[r.test_case_id]} />
+      <h4 style={{ marginBottom: '0.5rem' }}>Runs ({runs.length})</h4>
+      {runs.length === 0 ? (
+        <p className="text-muted">
+          No runs yet. Use <strong>Run</strong> in the experiments table to run this
+          experiment.
+        </p>
+      ) : (
+        <div className="testing-runs">
+          {runs.map((run, idx) => (
+            <RunSection
+              key={run.id}
+              run={run}
+              caseInputs={caseInputs}
+              defaultOpen={idx === 0}
+            />
           ))}
-          {results.length === 0 && (
-            <tr>
-              <td colSpan={5} className="text-muted">
-                {active ? 'Running — results will appear shortly...' : 'No results.'}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 };

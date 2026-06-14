@@ -84,6 +84,7 @@ export interface TestExperiment {
 export interface TestResult {
   id: string;
   experiment_id: string;
+  run_id?: string | null;
   test_case_id: string;
   status: ResultStatus;
   score?: number | null;
@@ -94,6 +95,19 @@ export interface TestResult {
   created_at: string;
 }
 
-export interface ExperimentDetail extends TestExperiment {
+// One execution of an experiment, with its own stats and per-case results.
+export interface TestRun {
+  id: string;
+  experiment_id: string;
+  run_number: number;
+  status: ExperimentStatus;
+  summary_stats?: SummaryStats | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
   results: TestResult[];
+}
+
+export interface ExperimentDetail extends TestExperiment {
+  runs: TestRun[];
 }

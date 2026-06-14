@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import delete, select
+from sqlalchemy import func, select, update
 
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.testing_models import (
@@ -36,6 +36,7 @@ from ui.backend.auth.testing_models import (
     TestDataset,
     TestExperiment,
     TestResult,
+    TestRun,
 )
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.test_evaluators import evaluate_assertions
@@ -331,7 +332,47 @@ def _resolve_case_plan(
     return True, assertions
 
 
+async def _next_run_number(session, experiment_id) -> int:
+    result = await session.execute(
+        select(func.max(TestRun.run_number)).where(
+            TestRun.experiment_id == experiment_id
+        )
+    )
+    return int(result.scalar() or 0) + 1
+
+
+def _mirror_run_to_experiment(experiment: TestExperiment, run: TestRun) -> None:
+    """Reflect a run's outcome onto the experiment for the list/summary view."""
+    experiment.status = run.status
+    experiment.summary_stats = dict(run.summary_stats) if run.summary_stats else None
+    experiment.started_at = run.started_at
+    experiment.finished_at = run.finished_at
+
+
+async def _fail_run(
+    session, experiment: TestExperiment, run: TestRun, message: str
+) -> None:
+    run.status = EXPERIMENT_FAILED
+    run.finished_at = _utcnow()
+    run.summary_stats = {"error": message[:500]}
+    _mirror_run_to_experiment(experiment, run)
+    await session.commit()
+
+
 async def _mark_failed(session, experiment: TestExperiment, message: str) -> None:
+    """Catastrophic-failure path: fail the experiment and any running run."""
+    await session.execute(
+        update(TestRun)
+        .where(
+            TestRun.experiment_id == experiment.id,
+            TestRun.status == EXPERIMENT_RUNNING,
+        )
+        .values(
+            status=EXPERIMENT_FAILED,
+            finished_at=_utcnow(),
+            summary_stats={"error": message[:500]},
+        )
+    )
     experiment.status = EXPERIMENT_FAILED
     experiment.finished_at = _utcnow()
     experiment.summary_stats = {"error": message[:500]}
@@ -340,24 +381,31 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
 
 async def _execute(session, experiment: TestExperiment) -> None:
     dataset = await session.get(TestDataset, experiment.dataset_id)
-    if dataset is None:
-        await _mark_failed(session, experiment, "Dataset not found")
-        return
     started = time.time()
-    # Clear any results from a previous run so re-runs reflect the latest pass.
-    await session.execute(
-        delete(TestResult).where(TestResult.experiment_id == experiment.id)
+    # Each execution is a new run; prior runs and their results are preserved.
+    run = TestRun(
+        experiment_id=experiment.id,
+        run_number=await _next_run_number(session, experiment.id),
+        status=EXPERIMENT_RUNNING,
+        started_at=_utcnow(),
+        created_by_user_id=experiment.created_by_user_id,
     )
+    session.add(run)
     experiment.status = EXPERIMENT_RUNNING
-    experiment.started_at = _utcnow()
+    experiment.started_at = run.started_at
     experiment.finished_at = None
     await session.commit()
+    await session.refresh(run)
+
+    if dataset is None:
+        await _fail_run(session, experiment, run, "Dataset not found")
+        return
     config = experiment.config or {}
     try:
         runner = build_case_runner(dataset.capability, config, dataset.data_source)
     except Exception as exc:
         logger.exception("Failed to build case runner")
-        await _mark_failed(session, experiment, str(exc))
+        await _fail_run(session, experiment, run, str(exc))
         return
     judge_factory = make_judge_factory(config)
     matrix = experiment.case_expectations or {}
@@ -368,19 +416,25 @@ async def _execute(session, experiment: TestExperiment) -> None:
             continue
         outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         session.add(
-            TestResult(experiment_id=experiment.id, test_case_id=case.id, **outcome)
+            TestResult(
+                experiment_id=experiment.id,
+                run_id=run.id,
+                test_case_id=case.id,
+                **outcome,
+            )
         )
         case_results.append(outcome)
-    experiment.summary_stats = compute_summary_stats(
+    run.summary_stats = compute_summary_stats(
         case_results, int((time.time() - started) * 1000)
     )
-    experiment.status = EXPERIMENT_COMPLETED
-    experiment.finished_at = _utcnow()
+    run.status = EXPERIMENT_COMPLETED
+    run.finished_at = _utcnow()
+    _mirror_run_to_experiment(experiment, run)
     await session.commit()
 
 
 async def run_experiment(experiment_id, session_factory=None) -> None:
-    """Background entrypoint: load the experiment and execute it end-to-end."""
+    """Background entrypoint: load the experiment and execute one run of it."""
     factory = session_factory or async_session_factory
     async with factory() as session:
         experiment = await session.get(TestExperiment, experiment_id)
