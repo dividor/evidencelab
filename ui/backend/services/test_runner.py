@@ -108,20 +108,36 @@ async def _run_search(
     }
 
 
-def _default_summary_model() -> Optional[str]:
-    """Pick a sensible default summary model from config when none is set."""
-    try:
-        from pipeline.db.config import get_application_config
+def _combo_summary_model(combo: Any) -> Optional[str]:
+    sm = combo.get("summarization_model") if isinstance(combo, dict) else None
+    if isinstance(sm, dict) and sm.get("model"):
+        return sm["model"]
+    return None
 
-        config = get_application_config()
+
+def _default_summary_model() -> Optional[str]:
+    """Pick a sensible default summary model from the app's configured combos.
+
+    Mirrors how the UI resolves a model: prefer the default ui_model_combo's
+    summarization model, then any combo's, then the first supported LLM.
+    """
+    try:
+        from pipeline.db.config import (
+            SUPPORTED_LLMS,
+            UI_MODEL_COMBOS,
+            get_default_model_combo,
+        )
     except Exception:
-        logger.exception("Failed to load config for default summary model")
+        logger.exception("Failed to import config for default summary model")
         return None
-    for combo in (config.get("ui_model_combos") or {}).values():
-        sm = combo.get("summarization_model") if isinstance(combo, dict) else None
-        if isinstance(sm, dict) and sm.get("model"):
-            return sm["model"]
-    return next(iter(config.get("supported_llms") or {}), None)
+    default = _combo_summary_model(UI_MODEL_COMBOS.get(get_default_model_combo()))
+    if default:
+        return default
+    for combo in UI_MODEL_COMBOS.values():
+        model = _combo_summary_model(combo)
+        if model:
+            return model
+    return next(iter(SUPPORTED_LLMS), None)
 
 
 async def _run_summary(

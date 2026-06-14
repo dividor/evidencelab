@@ -22,6 +22,7 @@ from fastapi import (
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
@@ -33,7 +34,6 @@ from ui.backend.auth.testing_models import (
     TestCase,
     TestDataset,
     TestExperiment,
-    TestResult,
 )
 from ui.backend.auth.users import current_superuser
 from ui.backend.schemas.testing import (
@@ -47,7 +47,6 @@ from ui.backend.schemas.testing import (
     TestExperimentDetail,
     TestExperimentRead,
     TestExperimentUpdate,
-    TestResultRead,
 )
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
@@ -408,15 +407,18 @@ async def get_experiment(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperimentDetail:
-    experiment = await _get_experiment(session, experiment_id)
+    # Eager-load results so Pydantic's from_attributes serialization does not
+    # trigger an async lazy-load outside the greenlet (MissingGreenlet).
     stmt = (
-        select(TestResult)
-        .where(TestResult.experiment_id == experiment_id)
-        .order_by(TestResult.created_at.asc())
+        select(TestExperiment)
+        .where(TestExperiment.id == experiment_id)
+        .options(selectinload(TestExperiment.results))
     )
-    results = (await session.execute(stmt)).scalars().all()
+    experiment = (await session.execute(stmt)).scalar_one_or_none()
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
     detail = TestExperimentDetail.model_validate(experiment)
-    detail.results = [TestResultRead.model_validate(r) for r in results]
+    detail.results.sort(key=lambda r: r.created_at)
     return detail
 
 

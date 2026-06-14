@@ -7,9 +7,48 @@ without touching the live search/LLM services.
 
 import pytest
 
-from ui.backend.services.test_runner import evaluate_case
+from ui.backend.services.test_runner import (
+    _combo_summary_model,
+    _default_summary_model,
+    evaluate_case,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
+
+
+async def test_combo_summary_model_extracts_nested_model():
+    assert _combo_summary_model({"summarization_model": {"model": "m1"}}) == "m1"
+
+
+async def test_combo_summary_model_when_absent_then_none():
+    assert _combo_summary_model({}) is None
+    assert _combo_summary_model(None) is None
+    assert _combo_summary_model({"summarization_model": "not-a-dict"}) is None
+
+
+async def test_default_summary_model_prefers_default_combo(monkeypatch):
+    import pipeline.db.config as cfg
+
+    monkeypatch.setattr(
+        cfg,
+        "UI_MODEL_COMBOS",
+        {
+            "A": {"summarization_model": {"model": "default-model"}},
+            "B": {"summarization_model": {"model": "other-model"}},
+        },
+    )
+    monkeypatch.setattr(cfg, "SUPPORTED_LLMS", {"fallback": {}})
+    monkeypatch.setattr(cfg, "get_default_model_combo", lambda: "A")
+    assert _default_summary_model() == "default-model"
+
+
+async def test_default_summary_model_falls_back_to_supported_llm(monkeypatch):
+    import pipeline.db.config as cfg
+
+    monkeypatch.setattr(cfg, "UI_MODEL_COMBOS", {})
+    monkeypatch.setattr(cfg, "SUPPORTED_LLMS", {"only-llm": {}})
+    monkeypatch.setattr(cfg, "get_default_model_combo", lambda: "")
+    assert _default_summary_model() == "only-llm"
 
 
 async def test_evaluate_case_when_assertions_pass_then_status_pass():
