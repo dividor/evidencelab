@@ -1331,10 +1331,20 @@ def search_facet_values(
         else:
             hits = result.hits
 
+        # Split '; '-joined multi-value payloads (e.g. multi-country docs) so
+        # each constituent value becomes its own facet option, instead of a
+        # single combined "A; B; C" bucket.
+        from ui.backend.utils.facet_helpers import (  # noqa: PLC0415
+            _accumulate_raw_value,
+        )
+
+        counter: Counter = Counter()
+        for hit in hits:
+            if hit.value in (None, ""):
+                continue
+            _accumulate_raw_value(counter, hit.value, hit.count)
         facets_list = [
-            {"value": str(hit.value), "count": hit.count}
-            for hit in hits
-            if hit.value not in (None, "")
+            {"value": value, "count": count} for value, count in counter.most_common()
         ]
         if not query_value:
             return facets_list
