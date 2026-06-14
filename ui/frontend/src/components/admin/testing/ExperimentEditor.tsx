@@ -146,6 +146,23 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ draft, onChange }) => {
 /*  Per-case assertion section                                        */
 /* ------------------------------------------------------------------ */
 
+// Coerce a stored case_expectations blob into a valid matrix. Legacy drafts
+// used the old per-case shape ({caseId: [assertions]}) which has no
+// columns/cases keys; those are dropped (incompatible) and start empty.
+const toMatrix = (raw: unknown): MatrixValue => {
+  if (
+    raw &&
+    typeof raw === 'object' &&
+    Array.isArray((raw as MatrixValue).columns) &&
+    typeof (raw as MatrixValue).cases === 'object' &&
+    (raw as MatrixValue).cases !== null
+  ) {
+    const m = raw as MatrixValue;
+    return { columns: m.columns, cases: m.cases };
+  }
+  return { columns: [], cases: {} };
+};
+
 // Ensure every displayed case has an explicit state before saving: cases the
 // user never touched default to active (so they run) with all columns padded.
 // Unlisted cases are treated as inactive by the runner, so this materialises
@@ -182,7 +199,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   );
   const [config, setConfig] = useState<ConfigDraft>(configToDraft(experiment?.config));
   const [matrix, setMatrix] = useState<MatrixValue>(
-    experiment?.case_expectations || { columns: [], cases: {} },
+    toMatrix(experiment?.case_expectations),
   );
 
   const [cases, setCases] = useState<TestCase[]>([]);

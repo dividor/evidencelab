@@ -32,6 +32,14 @@ describe('AssertionMatrix', () => {
     expect(screen.getByText(/result_contains_id/)).toBeInTheDocument();
   });
 
+  test('does not crash on a legacy per-case value shape', () => {
+    // Old drafts stored {caseId: [assertions]} which has no columns/cases keys.
+    const legacy = { c1: [{ type: 'min_results', value: 1 }] } as unknown as MatrixValue;
+    render(<Harness initial={legacy} />);
+    expect(screen.getByText('alpha')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Assertion/i })).toBeInTheDocument();
+  });
+
   test('disabling a row marks it inactive and disables its cells', () => {
     const initial: MatrixValue = {
       columns: [{ type: 'min_results', value: 1 }],

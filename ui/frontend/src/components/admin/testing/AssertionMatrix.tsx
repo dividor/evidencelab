@@ -41,12 +41,14 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   value,
   onChange,
 }) => {
-  const { columns } = value;
+  // Be defensive: legacy/empty values may lack columns/cases.
+  const columns = Array.isArray(value.columns) ? value.columns : [];
+  const safeCases: Record<string, CaseRowState> = value.cases || {};
   const [adding, setAdding] = useState(false);
   const [editIndex, setEditIndex] = useState<number | null>(null);
 
   const rowOf = (caseId: string): CaseRowState =>
-    normalizedRow(value.cases[caseId], columns.length);
+    normalizedRow(safeCases[caseId], columns.length);
 
   // Rebuild every row's state over the current columns, applying `fn`.
   const mutateRows = (fn: (caseId: string, row: CaseRowState) => CaseRowState) => {
@@ -81,7 +83,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
     const last = nextColumns.length - 1;
     const next: Record<string, CaseRowState> = {};
     cases.forEach((c) => {
-      const row = normalizedRow(value.cases[c.id], nextColumns.length);
+      const row = normalizedRow(safeCases[c.id], nextColumns.length);
       row.cols[last] = true; // default: applies to all cases (select-all on)
       next[c.id] = row;
     });
@@ -92,7 +94,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   const editColumn = (index: number, assertion: Assertion) => {
     onChange({
       columns: columns.map((c, i) => (i === index ? assertion : c)),
-      cases: value.cases,
+      cases: safeCases,
     });
     setEditIndex(null);
   };
