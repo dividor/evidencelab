@@ -10,6 +10,7 @@ import pytest
 from ui.backend.services.test_runner import (
     _combo_summary_model,
     _default_summary_model,
+    _parse_judgement,
     _resolve_case_plan,
     evaluate_case,
 )
@@ -56,6 +57,18 @@ async def test_resolve_case_plan_unknown_case_is_skipped():
 
 async def test_resolve_case_plan_empty_matrix_is_skipped():
     assert _resolve_case_plan({}, "c1") == (False, [])
+
+
+async def test_parse_judgement_reads_json_score_and_reason():
+    score, reason = _parse_judgement('{"score": 0.75, "reason": "good but terse"}')
+    assert score == 0.75
+    assert reason == "good but terse"
+
+
+async def test_parse_judgement_falls_back_to_first_number():
+    score, reason = _parse_judgement("I would rate this 0.4 overall")
+    assert score == 0.4
+    assert "0.4" in reason
 
 
 async def test_resolve_case_plan_ignores_out_of_range_cols():

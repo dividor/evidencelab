@@ -2,8 +2,20 @@
 // Used by the assertion-column form in the experiment editor's matrix.
 
 import React from 'react';
-import type { Assertion } from '../../../types/testing';
-import { AssertionFieldSpec } from './assertionSpecs';
+import type { Assertion, TestCapability } from '../../../types/testing';
+import { AssertionFieldSpec, getAssertionSpec } from './assertionSpecs';
+
+// Build a fresh assertion of `type`, seeded with its fields' default values.
+export const defaultAssertion = (
+  capability: TestCapability,
+  type: string,
+): Assertion => {
+  const assertion: Assertion = { type };
+  getAssertionSpec(capability, type)?.fields.forEach((f) => {
+    if (f.default !== undefined) assertion[f.key] = f.default;
+  });
+  return assertion;
+};
 
 export const valueToInput = (field: AssertionFieldSpec, value: unknown): string => {
   if (value === null || value === undefined) return '';
@@ -54,6 +66,22 @@ export const FieldInput: React.FC<FieldInputProps> = ({ field, assertion, onSet 
           />{' '}
           {field.label}
         </label>
+      </div>
+    );
+  }
+  if (field.type === 'textarea') {
+    return (
+      <div className="form-group">
+        <label>
+          {field.label}
+          {field.required ? ' *' : ''}
+        </label>
+        <textarea
+          className="testing-judge-textarea"
+          value={valueToInput(field, assertion[field.key])}
+          placeholder={field.placeholder}
+          onChange={(e) => onSet(field.key, inputToValue(field, e.target.value))}
+        />
       </div>
     );
   }

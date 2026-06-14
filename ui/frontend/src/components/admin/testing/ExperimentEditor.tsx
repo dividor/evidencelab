@@ -30,7 +30,6 @@ interface ConfigDraft {
   rerank: boolean;
   temperature: string;
   max_tokens: string;
-  enable_llm_judge: boolean;
 }
 
 const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => {
@@ -42,7 +41,6 @@ const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => 
     rerank: Boolean(c.rerank),
     temperature: num(c.temperature),
     max_tokens: num(c.max_tokens),
-    enable_llm_judge: Boolean(c.enable_llm_judge),
   };
 };
 
@@ -56,7 +54,6 @@ const parseNumeric = (raw: string): number | undefined => {
 const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
   const config: Record<string, unknown> = {
     rerank: draft.rerank,
-    enable_llm_judge: draft.enable_llm_judge,
   };
   if (draft.summary_model.trim()) config.summary_model = draft.summary_model.trim();
   const parsedLimit = parseNumeric(draft.limit);
@@ -126,16 +123,6 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ draft, onChange }) => {
             onChange={(e) => set({ rerank: e.target.checked })}
           />{' '}
           Rerank results
-        </label>
-      </div>
-      <div className="form-group testing-config-checkbox">
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.enable_llm_judge}
-            onChange={(e) => set({ enable_llm_judge: e.target.checked })}
-          />{' '}
-          Enable LLM judge
         </label>
       </div>
     </div>

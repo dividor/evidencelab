@@ -4,7 +4,7 @@
 
 import type { TestCapability } from '../../../types/testing';
 
-export type AssertionFieldType = 'text' | 'number' | 'boolean' | 'csv';
+export type AssertionFieldType = 'text' | 'textarea' | 'number' | 'boolean' | 'csv';
 
 export interface AssertionFieldSpec {
   key: string;
@@ -12,6 +12,8 @@ export interface AssertionFieldSpec {
   type: AssertionFieldType;
   required?: boolean;
   placeholder?: string;
+  // Default value applied when a new assertion column of this type is created.
+  default?: string | number | boolean;
 }
 
 export interface AssertionTypeSpec {
@@ -107,8 +109,22 @@ const AI_SUMMARY_ASSERTIONS: AssertionTypeSpec[] = [
     type: 'llm_judge',
     label: 'LLM judge',
     fields: [
-      { key: 'rubric', label: 'Rubric', type: 'text', required: true },
-      { key: 'threshold', label: 'Threshold (0-1)', type: 'number', required: true },
+      {
+        key: 'rubric',
+        label: 'Judge prompt',
+        type: 'textarea',
+        required: true,
+        placeholder:
+          'Describe what a good answer must contain. The judge returns a 0-1 '
+          + 'score and a reason.',
+      },
+      {
+        key: 'threshold',
+        label: 'Threshold (0-1)',
+        type: 'number',
+        required: true,
+        default: 1,
+      },
     ],
   },
 ];

@@ -180,6 +180,22 @@ class TestLlmJudge:
         )
         assert res["score"] == 1.0
 
+    def test_llm_judge_includes_reason_from_tuple_verdict(self):
+        res = ev.eval_llm_judge(
+            {"rubric": "q", "threshold": 0.5},
+            _summary_output("x"),
+            judge_fn=lambda t, r: (0.8, "covers the key points"),
+        )
+        assert res["passed"] is True and res["score"] == 0.8
+        assert "covers the key points" in res["message"]
+
+    def test_llm_judge_default_threshold_is_one(self):
+        # No threshold given -> defaults to 1.0, so a 0.9 score fails.
+        res = ev.eval_llm_judge(
+            {"rubric": "q"}, _summary_output("x"), judge_fn=lambda t, r: 0.9
+        )
+        assert res["passed"] is False
+
 
 class TestDispatchAndAggregation:
     def test_evaluate_assertion_unknown_type_then_fails(self):

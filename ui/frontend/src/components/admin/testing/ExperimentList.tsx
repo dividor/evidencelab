@@ -179,11 +179,7 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                     onClick={() => handleRun(exp)}
                     disabled={busyId === exp.id || isActive(exp)}
                   >
-                    {busyId === exp.id
-                      ? 'Starting...'
-                      : exp.status === 'draft'
-                        ? 'Run'
-                        : 'Re-run'}
+                    {busyId === exp.id ? 'Starting...' : 'Run'}
                   </button>
                   <button
                     className="btn-sm"

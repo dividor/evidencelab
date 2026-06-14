@@ -21,7 +21,9 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 AssertionResult = Dict[str, Any]
-JudgeFn = Callable[[str, str], float]
+# A judge returns either a bare score, or a (score, reason) pair. The evaluator
+# tolerates both so injected fakes and the real LLM judge are interchangeable.
+JudgeFn = Callable[[str, str], Any]
 
 
 def _result(
@@ -222,16 +224,18 @@ def eval_llm_judge(
     if judge_fn is None:
         return _result("llm_judge", False, "llm_judge is disabled", score=0.0)
     rubric = str(a.get("rubric", ""))
-    threshold = float(a.get("threshold", 0.7))
-    score = float(judge_fn(_summary_text(output), rubric))
-    score = max(0.0, min(1.0, score))
+    threshold = float(a.get("threshold", 1.0))
+    verdict = judge_fn(_summary_text(output), rubric)
+    if isinstance(verdict, tuple):
+        score, reason = verdict[0], (verdict[1] if len(verdict) > 1 else "")
+    else:
+        score, reason = verdict, ""
+    score = max(0.0, min(1.0, float(score)))
     passed = score >= threshold
-    return _result(
-        "llm_judge",
-        passed,
-        f"judge score {score:.2f} (threshold {threshold:.2f})",
-        score=score,
-    )
+    message = f"judge score {score:.2f} (threshold {threshold:.2f})"
+    if reason:
+        message += f" — {reason}"
+    return _result("llm_judge", passed, message, score=score)
 
 
 # ---------------------------------------------------------------------------

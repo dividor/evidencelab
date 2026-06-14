@@ -12,6 +12,7 @@ fakes; ``run_experiment`` does the live wiring + DB orchestration. Experiments
 run as a background task (the route returns immediately; the UI polls status).
 """
 
+import json
 import logging
 import re
 import time
@@ -179,7 +180,7 @@ def build_case_runner(
 
 
 # ---------------------------------------------------------------------------
-# LLM judge (optional, config-gated)
+# LLM judge (always on — an ``llm_judge`` assertion is enough to enable it)
 # ---------------------------------------------------------------------------
 
 
@@ -190,35 +191,62 @@ def _parse_score(text: str) -> float:
     return max(0.0, min(1.0, float(match.group(0))))
 
 
-def make_judge_factory(config: Dict[str, Any]) -> Optional[JudgeFactory]:
-    """Return an async judge factory if ``enable_llm_judge`` is set, else None."""
-    if not (config or {}).get("enable_llm_judge"):
-        return None
+def _parse_judgement(text: str) -> Tuple[float, str]:
+    """Parse a judge reply into ``(score in [0, 1], reason)``.
+
+    Prefers a JSON object ``{"score": .., "reason": ..}``; falls back to the
+    first number for the score and the raw text as the reason.
+    """
+    raw = text or ""
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            score = max(0.0, min(1.0, float(data.get("score"))))
+            return score, str(data.get("reason", "")).strip()
+        except (ValueError, TypeError):
+            pass
+    return _parse_score(raw), raw.strip()
+
+
+def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
+    """Return an async judge factory that scores ``llm_judge`` assertions.
+
+    Always enabled: adding an ``llm_judge`` assertion is sufficient (no separate
+    config flag). Each distinct rubric is judged once per case, asking the LLM
+    for both a score and a short reason.
+    """
+    cfg = config or {}
     model_key = (
-        config.get("judge_model") or config.get("summary_model") or config.get("model")
+        cfg.get("judge_model")
+        or cfg.get("summary_model")
+        or cfg.get("model")
+        or _default_summary_model()
     )
 
     async def factory(output, expectations):
         from ui.backend.services.llm_service import generate_ai_summary_with_usage
 
         text = str(output.get("summary", "") or "")
-        scores: Dict[str, float] = {}
+        verdicts: Dict[str, Tuple[float, str]] = {}
         for assertion in expectations:
             if assertion.get("type") != "llm_judge":
                 continue
             rubric = str(assertion.get("rubric", ""))
-            if rubric in scores:
+            if rubric in verdicts:
                 continue
             prompt = (
-                f"Rubric: {rubric}\n\nOutput to evaluate:\n{text}\n\n"
-                "Score how well the output satisfies the rubric from 0.0 to 1.0. "
-                "Respond with ONLY the number."
+                "You are evaluating an AI-generated answer against a rubric.\n\n"
+                f"Rubric:\n{rubric}\n\nOutput to evaluate:\n{text}\n\n"
+                "Reply with ONLY a JSON object of the form "
+                '{"score": <number 0.0-1.0>, "reason": "<one or two sentence '
+                'justification>"} scoring how well the output satisfies the rubric.'
             )
             judged, _usage = await generate_ai_summary_with_usage(
                 query=prompt, results=[], model_key=model_key, temperature=0.0
             )
-            scores[rubric] = _parse_score(judged)
-        return lambda _text, rubric: scores.get(str(rubric), 0.0)
+            verdicts[rubric] = _parse_judgement(judged)
+        return lambda _text, rubric: verdicts.get(str(rubric), (0.0, ""))
 
     return factory
 

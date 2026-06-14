@@ -11334,6 +11334,16 @@ a.admin-citation-clickable:hover {
 .testing-assertion-fields .form-group {
   margin-bottom: 0;
 }
+/* Long-text inputs (e.g. the LLM judge prompt) span the full assertion grid. */
+.testing-assertion-fields .form-group:has(textarea) {
+  grid-column: 1 / -1;
+}
+.testing-judge-textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
 
 /* Add-assertion control row: dropdown + button aligned on one baseline. */
 .testing-assertion-add {
