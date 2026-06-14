@@ -11215,3 +11215,209 @@ a.admin-citation-clickable:hover {
     font-size: 2rem;
   }
 }
+
+/* ===================================================================== */
+/* Admin → Testing (evaluation harness) — superuser-only internal tool   */
+/* ===================================================================== */
+
+.testing-manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 1rem);
+}
+
+.testing-subnav {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  margin-bottom: var(--spacing-sm, 0.5rem);
+}
+
+.testing-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-controls,
+.testing-editor-header,
+.testing-editor-header-actions,
+.testing-case-card-header,
+.testing-case-card-actions,
+.testing-case-editor-actions,
+.testing-summary-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-editor-title {
+  font-weight: 600;
+}
+
+.testing-field,
+.testing-assertion-field,
+.testing-case-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.testing-filter {
+  min-width: 12rem;
+}
+
+/* Untruncated, scrollable raw output / inputs — NEVER ellipsize. */
+.testing-pre,
+.testing-json-textarea {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.testing-pre-scroll {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.testing-json-textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.testing-cases,
+.testing-assertion-list,
+.testing-result-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-case-card,
+.testing-case-editor,
+.testing-assertion-row,
+.testing-case-block,
+.testing-assertion-builder,
+.testing-result-detail-row {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.6rem;
+  background: var(--color-surface, #fff);
+}
+
+.testing-assertion-row-header,
+.testing-assertion-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.5rem);
+  align-items: flex-end;
+}
+
+.testing-assertion-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.testing-case-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.testing-tag {
+  background: var(--color-surface-alt, #eef1f4);
+  border-radius: 10px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.testing-notes {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+  word-break: break-word;
+}
+
+.testing-clickable-row {
+  cursor: pointer;
+}
+.testing-clickable-row:hover {
+  background: var(--color-surface-alt, #f6f8fa);
+}
+
+/* Summary stat header — each number is unit-labelled in the markup. */
+.testing-summary-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 7rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+}
+.testing-summary-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+}
+
+/* Per-assertion result rows. */
+.testing-assertion-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+.testing-assertion-result-type {
+  font-weight: 600;
+}
+.testing-assertion-result-message {
+  word-break: break-word;
+}
+.testing-assertion-result-score {
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-error {
+  color: #b42318;
+  word-break: break-word;
+}
+
+/* Status + pass/fail badges. */
+.testing-status,
+.testing-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.testing-badge-pass,
+.testing-status-completed {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+.testing-badge-fail,
+.testing-status-failed {
+  background: #ffebe9;
+  color: #b42318;
+}
+.testing-badge-error {
+  background: #fff1e5;
+  color: #9a6700;
+}
+.testing-status-running,
+.testing-status-pending {
+  background: #ddf4ff;
+  color: #0969da;
+}
