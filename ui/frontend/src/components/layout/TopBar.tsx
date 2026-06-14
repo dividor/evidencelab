@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ModelComboConfig } from '../../types/api';
-import { USER_MODULE } from '../../config';
+import { APP_BASE_PATH, USER_MODULE } from '../../config';
 import UserMenu from '../auth/UserMenu';
 import { ModelComboPanel } from './ModelComboPanel';
 
@@ -124,14 +124,41 @@ export const TopBar = ({
     return `calc(${charCount}ch + 1.5rem)`;
   }, [availableDomains, getDomainLabelText]);
 
+  // Clicking the logo/title returns the user to the home page.
+  const homeHref = `${APP_BASE_PATH}/`;
+  const handleBrandClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // Let modified clicks (new tab/window) and non-primary buttons behave
+    // natively so the underlying link still works as expected.
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    window.history.pushState(null, '', homeHref);
+    // Reuse the app's existing popstate routing to reset to the home view
+    // without a full page reload.
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   return (
     <header className="top-bar">
       <div className="top-bar-content">
         <div className="top-bar-left">
-          <div className="top-bar-brand">
+          <a
+            className="top-bar-brand"
+            href={homeHref}
+            onClick={handleBrandClick}
+            aria-label="Evidence Lab — go to home page"
+          >
             <img src="/logo.png" alt="Evidence Lab Logo" className="app-logo" />
             <h1 className="app-title">Evidence Lab</h1>
-          </div>
+          </a>
           <div className="top-bar-controls">
             <div className="dropdown-container">
             <button
