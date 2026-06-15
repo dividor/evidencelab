@@ -220,7 +220,7 @@ async def _run_summary(
     search_out = await _run_search(case_input, config, db, pg, source)
     cfg = config or {}
     model_key = cfg.get("summary_model") or _default_summary_model()
-    summary, usage = await generate_ai_summary_with_usage(
+    raw_summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
         results=search_out["results"],
         max_results=int(cfg.get("max_results", 20)),
@@ -228,12 +228,72 @@ async def _run_summary(
         temperature=cfg.get("temperature"),
         max_tokens=cfg.get("max_tokens"),
     )
+    # Resolve the inline [N] citation markers to their documents, exactly as the
+    # UI does, so the evaluated summary carries titles/links and assertions can
+    # test references. The full summary (raw text + References) is what is judged.
+    references = _build_references(raw_summary, search_out["results"])
+    full_summary = raw_summary + _references_text(references)
     return {
         "query": case_input.get("query", ""),
-        "summary": summary,
+        "summary": full_summary,
+        "raw_summary": raw_summary,
+        "references": references,
         "usage": usage,
         "search_results": search_out["results"],
     }
+
+
+# Inline citation markers in the summary, e.g. "[3]" or "[3, 4]".
+_CITATION_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
+
+
+def _build_references(
+    summary: str, results: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Map cited [N] markers to the Nth search result (the UI's citation model)."""
+    cited: List[int] = []
+    seen = set()
+    for match in _CITATION_RE.finditer(summary or ""):
+        for part in match.group(1).split(","):
+            try:
+                num = int(part.strip())
+            except ValueError:
+                continue
+            if num not in seen:
+                seen.add(num)
+                cited.append(num)
+    references: List[Dict[str, Any]] = []
+    for num in sorted(cited):
+        idx = num - 1
+        if not (0 <= idx < len(results)):
+            continue
+        r = results[idx] if isinstance(results[idx], dict) else {}
+        references.append(
+            {
+                "number": num,
+                "title": r.get("title") or r.get("map_title"),
+                "organization": r.get("organization") or r.get("map_organization"),
+                "year": r.get("year") or r.get("published_year"),
+                "country": r.get("country"),
+                "doc_id": r.get("doc_id"),
+                "url": r.get("url") or r.get("link"),
+            }
+        )
+    return references
+
+
+def _references_text(references: List[Dict[str, Any]]) -> str:
+    """Render references as an appended, human/LLM-readable section."""
+    if not references:
+        return ""
+    lines = ["", "", "## References"]
+    for r in references:
+        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
+        suffix = f" ({meta})" if meta else ""
+        url = f" — {r['url']}" if r.get("url") else ""
+        title = r.get("title") or r.get("doc_id") or "Unknown"
+        lines.append(f"[{r['number']}] {title}{suffix}{url}")
+    return "\n".join(lines)
 
 
 def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:

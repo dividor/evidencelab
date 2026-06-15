@@ -9,10 +9,12 @@ import pytest
 
 from ui.backend.auth.testing_models import TestExperiment, TestRun
 from ui.backend.services.test_runner import (
+    _build_references,
     _combo_summary_model,
     _default_summary_model,
     _mirror_run_to_experiment,
     _parse_judgement,
+    _references_text,
     _resolve_case_plan,
     _storable_output,
     effective_config,
@@ -111,6 +113,46 @@ async def test_effective_config_explicit_value_overrides_combo(monkeypatch):
     out = effective_config({"model_combo": "Combo X", "summary_model": "override"})
     assert out["summary_model"] == "override"
     assert out["embedding_model"] == "emb-1"
+
+
+async def test_build_references_maps_cited_markers_to_results():
+    results = [
+        {
+            "title": "Kenya SMP",
+            "organization": "WFP",
+            "published_year": 2018,
+            "doc_id": "d1",
+            "country": "Kenya",
+        },
+        {"title": "Uganda CSP", "organization": "WFP", "doc_id": "d2"},
+        {"title": "Kenya Education", "organization": "World Bank", "doc_id": "d3"},
+    ]
+    refs = _build_references("Enrolment rose [1] and gender parity [1, 3].", results)
+    # Only cited results (1 and 3), de-duplicated and ordered.
+    assert [r["number"] for r in refs] == [1, 3]
+    assert refs[0]["title"] == "Kenya SMP"
+    assert refs[1]["title"] == "Kenya Education"
+
+
+async def test_build_references_ignores_out_of_range_citations():
+    refs = _build_references("see [5]", [{"title": "only"}])
+    assert refs == []
+
+
+async def test_references_text_renders_appended_section():
+    text = _references_text(
+        [
+            {
+                "number": 1,
+                "title": "Kenya SMP",
+                "organization": "WFP",
+                "year": 2018,
+                "url": "http://x",
+            }
+        ]
+    )
+    assert "## References" in text
+    assert "[1] Kenya SMP (WFP, 2018) — http://x" in text
 
 
 async def test_storable_output_is_json_safe_and_trimmed():

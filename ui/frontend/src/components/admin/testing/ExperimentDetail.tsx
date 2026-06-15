@@ -160,11 +160,34 @@ const SourceCard: React.FC<{ r: Record<string, unknown>; index: number }> = ({
   );
 };
 
+const ReferenceItem: React.FC<{ entry: Record<string, unknown> }> = ({ entry }) => {
+  const title = str(entry.title) || str(entry.doc_id) || 'Unknown';
+  const org = str(entry.organization);
+  const year = entry.year !== null && entry.year !== undefined ? String(entry.year) : '';
+  const url = str(entry.url);
+  const meta = [org, year].filter(Boolean).join(', ');
+  const num = entry.number !== undefined ? String(entry.number) : '';
+  return (
+    <li className="testing-reference">
+      {num && <span className="testing-reference-num">[{num}]</span>}{' '}
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer">
+          {title}
+        </a>
+      ) : (
+        <span>{title}</span>
+      )}
+      {meta && <span className="text-muted"> — {meta}</span>}
+    </li>
+  );
+};
+
 const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
   const [showRaw, setShowRaw] = useState(false);
   if (!output) return <p className="text-muted" style={{ margin: 0 }}>No output.</p>;
 
   const summary = str(output.summary);
+  const references = asArray(output.references);
   const sources = asArray(output.search_results);
   const searchResults = asArray(output.results);
 
@@ -172,8 +195,20 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
     <div className="testing-output">
       {summary ? (
         <>
-          <span className="testing-case-label">AI summary</span>
+          <span className="testing-case-label">AI summary (with references)</span>
           <div className="testing-summary-text">{summary}</div>
+          {references.length > 0 && (
+            <>
+              <span className="testing-case-label">
+                Cited references ({references.length})
+              </span>
+              <ol className="testing-references">
+                {references.map((entry, i) => (
+                  <ReferenceItem key={i} entry={entry} />
+                ))}
+              </ol>
+            </>
+          )}
           {sources.length > 0 && (
             <>
               <span className="testing-case-label">Sources ({sources.length})</span>

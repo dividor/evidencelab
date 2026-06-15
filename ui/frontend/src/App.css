@@ -11499,6 +11499,22 @@ a.admin-citation-clickable:hover {
   flex-direction: column;
   gap: 0.4rem;
 }
+.testing-references {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.testing-reference {
+  word-break: break-word;
+}
+.testing-reference-num {
+  color: var(--color-text-muted, #57606a);
+  font-variant-numeric: tabular-nums;
+}
 .testing-result-card {
   border: 1px solid var(--color-border, #d0d7de);
   border-radius: 6px;
