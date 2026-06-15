@@ -25,17 +25,20 @@ interface ExperimentEditorProps {
 /* ------------------------------------------------------------------ */
 
 interface ConfigDraft {
+  model_combo: string;
   group_id: string;
 }
 
 const stringField = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => ({
+  model_combo: stringField((config || {}).model_combo),
   group_id: stringField((config || {}).group_id),
 });
 
 const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
   const config: Record<string, unknown> = {};
+  if (draft.model_combo.trim()) config.model_combo = draft.model_combo.trim();
   if (draft.group_id.trim()) config.group_id = draft.group_id.trim();
   return config;
 };
@@ -47,14 +50,37 @@ interface GroupOption {
 
 interface ConfigFormProps {
   draft: ConfigDraft;
+  modelCombos: string[];
   groups: GroupOption[];
   onChange: (draft: ConfigDraft) => void;
 }
 
-const ConfigForm: React.FC<ConfigFormProps> = ({ draft, groups, onChange }) => {
+const ConfigForm: React.FC<ConfigFormProps> = ({
+  draft,
+  modelCombos,
+  groups,
+  onChange,
+}) => {
   const set = (patch: Partial<ConfigDraft>) => onChange({ ...draft, ...patch });
   return (
     <div className="testing-config-grid">
+      <div className="form-group">
+        <label htmlFor="cfg-combo">Model combo</label>
+        <select
+          id="cfg-combo"
+          value={draft.model_combo}
+          onChange={(e) => set({ model_combo: e.target.value })}
+        >
+          {modelCombos.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <p className="text-muted" style={{ marginTop: '0.25rem' }}>
+          Embedding, summary and reranker models (same combos as the search UI).
+        </p>
+      </div>
       <div className="form-group">
         <label htmlFor="cfg-group">Run as group</label>
         <select
@@ -70,8 +96,7 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ draft, groups, onChange }) => {
           ))}
         </select>
         <p className="text-muted" style={{ marginTop: '0.25rem' }}>
-          The experiment runs with this group&apos;s search settings and summary
-          prompt — the same configuration its members use in the app.
+          Search settings + summary prompt from this group (rerank, sections, …).
         </p>
       </div>
     </div>
@@ -139,6 +164,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   );
 
   const [cases, setCases] = useState<TestCase[]>([]);
+  const [modelCombos, setModelCombos] = useState<string[]>([]);
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [casesLoading, setCasesLoading] = useState(false);
@@ -146,6 +172,30 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   const [error, setError] = useState('');
 
   const selectedDataset = datasets.find((d) => d.id === datasetId) || null;
+
+  // Load the model combos (same list the search UI uses) for the config form.
+  // New experiments default to the system default combo (the first one), so the
+  // run uses that combo's (fast, API-based) reranker rather than the heavy local
+  // default reranker.
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos`)
+      .then((resp) => {
+        if (cancelled) return;
+        const names = Object.keys(resp.data || {});
+        setModelCombos(names);
+        if (!isEdit && names.length > 0) {
+          setConfig((c) => (c.model_combo ? c : { ...c, model_combo: names[0] }));
+        }
+      })
+      .catch(() => {
+        // Non-fatal: the combo dropdown is empty if config can't be loaded.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit]);
 
   // Load user groups for the "Run as group" dropdown.
   useEffect(() => {
@@ -305,7 +355,12 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
       <div className="admin-section" style={{ marginTop: 0 }}>
         <h4>Run configuration</h4>
-        <ConfigForm draft={config} groups={groups} onChange={setConfig} />
+        <ConfigForm
+          draft={config}
+          modelCombos={modelCombos}
+          groups={groups}
+          onChange={setConfig}
+        />
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>
