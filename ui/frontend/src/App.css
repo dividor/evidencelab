@@ -11222,3 +11222,760 @@ a.admin-citation-clickable:hover {
     font-size: 2rem;
   }
 }
+
+/* ===================================================================== */
+/* Admin → Testing (evaluation harness) — superuser-only internal tool   */
+/* ===================================================================== */
+
+.testing-manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md, 1rem);
+}
+
+.testing-subnav {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  margin-bottom: var(--spacing-sm, 0.5rem);
+}
+
+.testing-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-controls,
+.testing-editor-header,
+.testing-editor-header-actions,
+.testing-case-card-header,
+.testing-case-card-actions,
+.testing-case-editor-actions,
+.testing-summary-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-editor-title {
+  font-weight: 600;
+}
+
+.testing-field,
+.testing-case-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+/* Section labels (Query, Output, Assertions, …) in dark grey for hierarchy. */
+.testing-case-label {
+  color: #3a4047;
+  font-weight: 600;
+}
+/* Collapsible section toggle (e.g. the Output panel). */
+.testing-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.testing-collapse-caret {
+  font-size: 0.95rem;
+  color: var(--color-text-muted, #57606a);
+}
+
+.testing-filter {
+  min-width: 12rem;
+}
+
+/* Untruncated, scrollable raw output / inputs — NEVER ellipsize. */
+.testing-pre,
+.testing-json-textarea {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.testing-pre-scroll {
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.testing-json-textarea {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.testing-cases,
+.testing-assertion-list,
+.testing-result-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm, 0.5rem);
+}
+
+.testing-case-card,
+.testing-case-editor,
+.testing-assertion-row,
+.testing-case-block,
+.testing-assertion-builder,
+.testing-result-detail-row {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.6rem;
+  background: var(--color-surface, #fff);
+}
+
+.testing-assertion-row-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.5rem);
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+/* Assertion params: same responsive labelled grid as the run-config form, so
+   inputs share a consistent height/width instead of squishing in a flex row. */
+.testing-assertion-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-sm, 0.75rem);
+  align-items: end;
+}
+.testing-assertion-fields .form-group {
+  margin-bottom: 0;
+}
+/* Long-text inputs (e.g. the LLM judge prompt) span the full assertion grid. */
+.testing-assertion-fields .form-group:has(textarea) {
+  grid-column: 1 / -1;
+}
+.testing-judge-textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* Add-assertion control row: dropdown + button aligned on one baseline. */
+.testing-assertion-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm, 0.5rem);
+  align-items: center;
+  margin-top: 0.6rem;
+}
+.testing-assertion-add select {
+  min-width: 14rem;
+}
+
+/* Per-row action buttons in the experiment table. */
+.testing-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+/* Dataset cases table — readable columns instead of raw JSON. */
+.testing-dataset-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+/* Upload CSV button with the sample-format link stacked directly beneath it. */
+.testing-upload-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+.testing-cases-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.testing-cases-query {
+  font-weight: 500;
+  word-break: break-word;
+}
+.testing-cases-extra code {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: 0.78rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+}
+.testing-cases-notes {
+  color: var(--color-text-muted, #57606a);
+  word-break: break-word;
+}
+
+/* ---- Assertion matrix (cases x assertions) ---- */
+.testing-matrix-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+}
+.testing-matrix {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0;
+}
+.testing-matrix th,
+.testing-matrix td {
+  vertical-align: middle;
+  border: 1px solid var(--color-border, #d0d7de);
+  padding: 0.5rem 0.6rem;
+}
+/* Obvious header row. */
+.testing-matrix thead th {
+  background: var(--color-surface-alt, #f1f3f5);
+  border-bottom: 2px solid var(--color-border, #d0d7de);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.testing-matrix tbody tr:nth-child(even) td {
+  background: var(--color-surface-alt, #fafbfc);
+}
+.testing-matrix-case-col {
+  text-align: left;
+  min-width: 16rem;
+  max-width: 24rem;
+}
+.testing-matrix-assert-col {
+  min-width: 11rem;
+}
+.testing-matrix-col-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+.testing-matrix-col-actions {
+  display: flex;
+  gap: 0.3rem;
+}
+/* Label + checkbox row; truncate long case/assertion text with a tooltip. */
+.testing-matrix-head-toggle,
+.testing-matrix-row-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.testing-matrix-head-toggle span,
+.testing-matrix-row-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22rem;
+}
+.testing-matrix-row-toggle {
+  font-weight: 400;
+}
+.testing-matrix-cell {
+  text-align: center;
+  vertical-align: top;
+}
+.testing-matrix-cell input {
+  width: auto;
+}
+/* Per-cell LLM-judge override prompt (long text). */
+.testing-matrix-override {
+  display: block;
+  width: 16rem;
+  min-height: 3rem;
+  margin: 0.3rem auto 0;
+  resize: vertical;
+  font-size: 0.78rem;
+  box-sizing: border-box;
+}
+.testing-matrix-row-off {
+  opacity: 0.5;
+}
+.testing-matrix-add-col {
+  width: 1%;
+  white-space: nowrap;
+}
+
+/* Inline add/edit-a-column form below the matrix. */
+.testing-column-form {
+  margin-top: 0.75rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.75rem;
+  background: var(--color-surface, #fff);
+}
+.testing-column-form-header {
+  margin-bottom: 0.5rem;
+}
+.testing-column-form-actions {
+  display: flex;
+  gap: var(--spacing-sm, 0.5rem);
+  margin-top: 0.6rem;
+}
+
+/* ---- Run history (experiment detail) ---- */
+.testing-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.testing-run {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-surface, #fff);
+}
+/* Emphasise the latest run. */
+.testing-run--latest {
+  border-color: var(--brand-primary, #5b8fa8);
+  box-shadow: 0 1px 5px rgba(91, 143, 168, 0.2);
+}
+.testing-run--latest .testing-run-header {
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
+}
+.testing-run-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.testing-run-header:hover {
+  background: #eceff2;
+}
+.testing-run-header--open {
+  border-bottom: 1px solid var(--color-border, #d0d7de);
+}
+.testing-run-caret {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  font-size: 1.25rem;
+  line-height: 1;
+  text-align: center;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-run-number {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  font-weight: 700;
+  font-size: 1rem;
+}
+/* Fixed-width status badge so the columns line up across runs. */
+.testing-run-status {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  text-align: center;
+}
+.testing-run-latest {
+  flex: 0 0 auto;
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-primary, #4a7c92);
+  background: rgba(91, 143, 168, 0.14);
+  border-radius: 10px;
+  padding: 0.12rem 0.5rem;
+}
+/* Right-aligned metric group: value over label, fixed widths so they line up. */
+.testing-run-metrics {
+  display: flex;
+  gap: 1.4rem;
+  margin-left: auto;
+}
+.testing-run-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 3.5rem;
+  line-height: 1.15;
+}
+.testing-run-metric strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.testing-run-metric-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-passrate--good {
+  color: #1a7f37;
+}
+.testing-passrate--warn {
+  color: #9a6700;
+}
+.testing-passrate--bad {
+  color: #b42318;
+}
+.testing-run-time {
+  flex: 0 0 auto;
+  min-width: 11rem;
+  text-align: right;
+  color: var(--color-text-muted, #57606a);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-case result rows inside a run. */
+.testing-result-caret {
+  width: 1.6rem;
+  font-size: 1.05rem;
+  text-align: center;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-case {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.testing-result-status {
+  min-width: 4.5rem;
+  text-align: center;
+}
+
+/* Experiment name + config badges on one row. */
+.testing-detail-titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+/* Run config shown as labelled badges instead of raw JSON. */
+.testing-config-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.testing-config-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+}
+.testing-config-badge-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+  font-weight: 600;
+}
+.testing-run-body {
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* ---- Human-friendly result output ---- */
+.testing-output {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.testing-query {
+  font-style: italic;
+  word-break: break-word;
+}
+.testing-summary-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-radius: 4px;
+  padding: 0.6rem 0.75rem;
+}
+.testing-result-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.testing-references {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.testing-reference {
+  word-break: break-word;
+}
+.testing-reference-num {
+  color: var(--color-text-muted, #57606a);
+  font-variant-numeric: tabular-nums;
+}
+.testing-result-card {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  background: var(--color-surface, #fff);
+}
+.testing-result-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.testing-result-card-num {
+  flex: 0 0 auto;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1.4rem;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--color-surface-alt, #eef1f4);
+  font-size: 0.75rem;
+}
+.testing-result-card-title {
+  font-weight: 600;
+  word-break: break-word;
+  flex: 1 1 auto;
+}
+.testing-result-card-score {
+  flex: 0 0 auto;
+  color: var(--color-text-muted, #57606a);
+  font-variant-numeric: tabular-nums;
+}
+.testing-result-card-org {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-card-snippet {
+  font-size: 0.85rem;
+  margin-top: 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text, #1f2328);
+}
+
+/* Per-assertion result: a main row + an optional rubric line beneath. */
+.testing-assertion-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.testing-assertion-result-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.82rem;
+}
+.testing-assertion-rubric {
+  display: flex;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+  padding-left: 0.25rem;
+}
+.testing-assertion-rubric span:last-child {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.testing-judge-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-left: 0.25rem;
+}
+/* The LLM-judge prompt/rubric actually evaluated for a case (incl. overrides). */
+.testing-judge-rubric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.testing-judge-rubric-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+}
+
+.testing-raw-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--brand-primary, #5b8fa8);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.testing-case-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.testing-tag {
+  background: var(--color-surface-alt, #eef1f4);
+  border-radius: 10px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.testing-notes {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #57606a);
+  word-break: break-word;
+}
+
+.testing-clickable-row {
+  cursor: pointer;
+}
+.testing-clickable-row:hover {
+  background: var(--color-surface-alt, #f6f8fa);
+}
+
+/* Summary stat header — each number is unit-labelled in the markup. */
+.testing-summary-stat {
+  display: flex;
+  flex-direction: column;
+  min-width: 7rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+}
+.testing-summary-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+}
+
+/* Per-assertion result rows (layout defined above; main row is -main). */
+.testing-assertion-result-type {
+  font-weight: 600;
+}
+.testing-assertion-result-message {
+  word-break: break-word;
+}
+.testing-assertion-result-score {
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-error {
+  color: #b42318;
+  word-break: break-word;
+}
+
+/* Status + pass/fail badges. */
+.testing-status,
+.testing-badge {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.testing-badge-pass,
+.testing-status-completed {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+.testing-badge-fail,
+.testing-status-failed {
+  background: #ffebe9;
+  color: #b42318;
+}
+.testing-badge-error {
+  background: #fff1e5;
+  color: #9a6700;
+}
+.testing-status-running,
+.testing-status-pending {
+  background: #ddf4ff;
+  color: #0969da;
+}
+.testing-status-draft {
+  background: var(--color-surface-alt, #eef1f4);
+  color: var(--color-text-muted, #57606a);
+}
+
+/* Selects / textareas inside form-groups — match the input styling. */
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gray-300, #d0d7de);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.9rem;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  background: var(--white, #fff);
+  font-family: inherit;
+}
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--brand-primary, #5b8fa8);
+  box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.15);
+}
+
+/* Experiment run-config: responsive labelled grid of small inputs. */
+.testing-config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--spacing-sm, 0.75rem);
+}
+.testing-config-grid .form-group {
+  margin-bottom: 0;
+}
+.testing-config-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 500;
+}
+.testing-config-checkbox input {
+  width: auto;
+}
+
+/* Inline case editor wrapper (matches the case-card surface). */
+.testing-case-editor-wrap {
+  display: contents;
+}

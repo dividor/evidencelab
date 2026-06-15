@@ -265,6 +265,12 @@ async def startup_event():
         )
         raise SystemExit(1)
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
+    # Recover test runs orphaned by a previous restart: their background task
+    # did not survive, so a "running" row on startup is always stale.
+    if USER_MODULE:
+        from ui.backend.services.test_runner import recover_orphaned_runs
+
+        await recover_orphaned_runs()
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
     elif USE_EMBEDDING_SERVER:
@@ -849,6 +855,7 @@ if USER_MODULE:
     from ui.backend.routes import mcp_audit as mcp_audit_routes
     from ui.backend.routes import ratings as ratings_routes
     from ui.backend.routes import research as research_routes
+    from ui.backend.routes import testing as testing_routes
 
     app.include_router(ratings_routes.router, prefix="/ratings", tags=["ratings"])
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
@@ -856,6 +863,7 @@ if USER_MODULE:
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])
+    app.include_router(testing_routes.router, prefix="/testing", tags=["testing"])
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 
     # Auto-promote first superuser on startup (if configured)
