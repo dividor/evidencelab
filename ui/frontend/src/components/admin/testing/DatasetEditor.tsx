@@ -98,11 +98,7 @@ const caseExtra = (testCase: TestCase): string => {
 /*  Dataset editor (manages input rows only)                          */
 /* ------------------------------------------------------------------ */
 
-const DatasetEditor: React.FC<DatasetEditorProps> = ({
-  dataset,
-  onBack,
-  onViewExperiments,
-}) => {
+const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
   const [cases, setCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -230,16 +226,24 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
       <div className="testing-editor-header">
         <button className="btn-sm" onClick={onBack}>&larr; Back to datasets</button>
         <div className="testing-editor-title">
-          <h3 style={{ margin: 0 }}>{dataset.name}</h3>
-          <p className="text-muted" style={{ margin: 0 }}>
-            {dataset.capability} &middot; {dataset.data_source}
-            {dataset.description ? ` — ${dataset.description}` : ''}
-          </p>
-        </div>
-        <div className="testing-editor-header-actions">
-          <button className="btn-sm" onClick={() => onViewExperiments(dataset)}>
-            View experiments
-          </button>
+          <div className="testing-detail-titlerow">
+            <h3 style={{ margin: 0 }}>{dataset.name}</h3>
+            <div className="testing-config-badges">
+              <span className="testing-config-badge">
+                <span className="testing-config-badge-label">Type</span>
+                {dataset.capability}
+              </span>
+              <span className="testing-config-badge">
+                <span className="testing-config-badge-label">Source</span>
+                {dataset.data_source}
+              </span>
+            </div>
+          </div>
+          {dataset.description && (
+            <p className="text-muted" style={{ margin: '0.25rem 0 0' }}>
+              {dataset.description}
+            </p>
+          )}
         </div>
       </div>
 
@@ -250,20 +254,22 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
           </p>
           {!creating && !editingCase && (
             <div className="testing-dataset-actions" style={{ marginLeft: 'auto' }}>
-              <button
-                className="btn-sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? 'Importing…' : 'Upload CSV'}
-              </button>
-              <button
-                type="button"
-                className="testing-raw-toggle"
-                onClick={downloadSampleCsv}
-              >
-                sample format
-              </button>
+              <div className="testing-upload-group">
+                <button
+                  className="btn-sm"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? 'Importing…' : 'Upload CSV'}
+                </button>
+                <button
+                  type="button"
+                  className="testing-raw-toggle"
+                  onClick={downloadSampleCsv}
+                >
+                  sample format
+                </button>
+              </div>
               <button
                 className="btn-sm btn-primary"
                 onClick={() => setCreating(true)}
