@@ -11501,20 +11501,29 @@ a.admin-citation-clickable:hover {
 .testing-runs {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm, 0.5rem);
+  gap: 0.6rem;
 }
 .testing-run {
   border: 1px solid var(--color-border, #d0d7de);
-  border-radius: 6px;
+  border-radius: 8px;
   overflow: hidden;
+  background: var(--color-surface, #fff);
+}
+/* Emphasise the latest run. */
+.testing-run--latest {
+  border-color: var(--brand-primary, #5b8fa8);
+  box-shadow: 0 1px 5px rgba(91, 143, 168, 0.2);
+}
+.testing-run--latest .testing-run-header {
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
 }
 .testing-run-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.85rem;
   width: 100%;
-  padding: 0.6rem 0.75rem;
+  padding: 0.7rem 0.9rem;
   background: var(--color-surface-alt, #f6f8fa);
   border: none;
   cursor: pointer;
@@ -11522,42 +11531,99 @@ a.admin-citation-clickable:hover {
   font: inherit;
 }
 .testing-run-header:hover {
-  background: var(--color-surface, #fff);
+  background: #eceff2;
+}
+.testing-run-header--open {
+  border-bottom: 1px solid var(--color-border, #d0d7de);
 }
 .testing-run-caret {
   flex: 0 0 auto;
-  width: 1.3rem;
-  font-size: 1.15rem;
+  width: 1.4rem;
+  font-size: 1.25rem;
   line-height: 1;
   text-align: center;
   color: var(--color-text-muted, #57606a);
 }
-/* Fixed-width columns so the per-run stats line up across runs. */
 .testing-run-number {
   flex: 0 0 auto;
-  min-width: 5rem;
-  font-weight: 600;
+  min-width: 5.5rem;
+  font-weight: 700;
+  font-size: 1rem;
 }
+/* Fixed-width status badge so the columns line up across runs. */
 .testing-run-status {
   flex: 0 0 auto;
-  min-width: 6rem;
+  min-width: 6.5rem;
   text-align: center;
 }
-.testing-run-stat {
+.testing-run-latest {
   flex: 0 0 auto;
-  min-width: 6.5rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text, #1f2328);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-primary, #4a7c92);
+  background: rgba(91, 143, 168, 0.14);
+  border-radius: 10px;
+  padding: 0.12rem 0.5rem;
 }
-.testing-run-stat-label {
+/* Right-aligned metric group: value over label, fixed widths so they line up. */
+.testing-run-metrics {
+  display: flex;
+  gap: 1.4rem;
+  margin-left: auto;
+}
+.testing-run-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 3.5rem;
+  line-height: 1.15;
+}
+.testing-run-metric strong {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.testing-run-metric-label {
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--color-text-muted, #57606a);
-  margin-right: 0.3rem;
+}
+.testing-passrate--good {
+  color: #1a7f37;
+}
+.testing-passrate--warn {
+  color: #9a6700;
+}
+.testing-passrate--bad {
+  color: #b42318;
 }
 .testing-run-time {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  min-width: 11rem;
   text-align: right;
   color: var(--color-text-muted, #57606a);
+  font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Per-case result rows inside a run. */
+.testing-result-caret {
+  width: 1.6rem;
+  font-size: 1.05rem;
+  text-align: center;
+  color: var(--color-text-muted, #57606a);
+}
+.testing-result-case {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.testing-result-status {
+  min-width: 4.5rem;
+  text-align: center;
 }
 
 /* Run config shown as labelled badges instead of raw JSON. */
@@ -11702,6 +11768,24 @@ a.admin-citation-clickable:hover {
   flex-direction: column;
   gap: 0.3rem;
   padding-left: 0.25rem;
+}
+/* The LLM-judge prompt/rubric actually evaluated for a case (incl. overrides). */
+.testing-judge-rubric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.testing-judge-rubric-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  background: var(--color-surface-alt, #f6f8fa);
+  border: 1px solid var(--color-border, #d0d7de);
+  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
 }
 
 .testing-raw-toggle {

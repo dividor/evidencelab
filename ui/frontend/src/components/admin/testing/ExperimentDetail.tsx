@@ -60,7 +60,7 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
         <span>{stats?.errored ?? '-'}</span>
       </div>
       <div className="testing-summary-stat">
-        <span className="testing-summary-label">Duration (ms)</span>
+        <span className="testing-summary-label">Duration</span>
         <span>{formatMs(stats?.duration_ms)}</span>
       </div>
       <div className="testing-summary-stat">
@@ -97,23 +97,25 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
         )}
         <span className="testing-assertion-result-message">{result.message}</span>
       </div>
-      {result.rubric && (
-        <div className="testing-assertion-rubric">
-          <span className="testing-case-label">Rubric</span>
-          <span>{result.rubric}</span>
-        </div>
-      )}
-      {result.judge_prompt && (
-        <div className="testing-judge-prompt">
-          <button
-            type="button"
-            className="testing-raw-toggle"
-            onClick={() => setShowPrompt((v) => !v)}
-          >
-            {showPrompt ? 'Hide full LLM prompt' : 'Show full LLM prompt'}
-          </button>
-          {showPrompt && (
-            <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
+      {result.type === 'llm_judge' && (
+        <div className="testing-judge-rubric">
+          <span className="testing-case-label">LLM judge prompt</span>
+          <div className="testing-judge-rubric-text">
+            {result.rubric || '(prompt not recorded for this run)'}
+          </div>
+          {result.judge_prompt && (
+            <>
+              <button
+                type="button"
+                className="testing-raw-toggle"
+                onClick={() => setShowPrompt((v) => !v)}
+              >
+                {showPrompt ? 'Hide full prompt sent to the LLM' : 'Show full prompt sent to the LLM'}
+              </button>
+              {showPrompt && (
+                <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
+              )}
+            </>
           )}
         </div>
       )}
@@ -258,10 +260,20 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
   const [expanded, setExpanded] = useState(false);
   return (
     <>
-      <tr className="testing-clickable-row" onClick={() => setExpanded((v) => !v)}>
-        <td>{expanded ? '▾' : '▸'}</td>
+      <tr
+        className="testing-clickable-row testing-result-row"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <td className="testing-result-caret" aria-hidden>
+          {expanded ? '▾' : '▸'}
+        </td>
+        <td className="testing-result-case" title={str(input?.query)}>
+          {str(input?.query) || '—'}
+        </td>
         <td>
-          <span className={`testing-badge testing-badge-${result.status}`}>
+          <span
+            className={`testing-badge testing-badge-${result.status} testing-result-status`}
+          >
             {result.status}
           </span>
         </td>
@@ -271,7 +283,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
       </tr>
       {expanded && (
         <tr className="testing-result-detail-row">
-          <td colSpan={5}>
+          <td colSpan={6}>
             <div className="testing-result-detail">
               <div className="testing-case-block">
                 <span className="testing-case-label">Query</span>
@@ -311,40 +323,55 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
 /*  One run: collapsible header + its per-case results                */
 /* ------------------------------------------------------------------ */
 
+const passRateLevel = (rate?: number | null): string => {
+  if (rate === null || rate === undefined) return 'none';
+  if (rate >= 1) return 'good';
+  if (rate > 0) return 'warn';
+  return 'bad';
+};
+
 const RunSection: React.FC<{
   run: TestRun;
   caseInputs: Record<string, Record<string, unknown>>;
   defaultOpen: boolean;
-}> = ({ run, caseInputs, defaultOpen }) => {
+  isLatest: boolean;
+}> = ({ run, caseInputs, defaultOpen, isLatest }) => {
   const [open, setOpen] = useState(defaultOpen);
   const stats = run.summary_stats;
   const active = isActive(run.status);
   const results = run.results || [];
+  const level = passRateLevel(stats?.pass_rate);
   return (
-    <div className="testing-run">
+    <div className={`testing-run${isLatest ? ' testing-run--latest' : ''}`}>
       <button
         type="button"
-        className="testing-run-header"
+        className={`testing-run-header${open ? ' testing-run-header--open' : ''}`}
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
       >
-        <span className="testing-run-caret">{open ? '▾' : '▸'}</span>
-        <span className="testing-run-number">Run #{run.run_number}</span>
+        <span className="testing-run-caret" aria-hidden>{open ? '▾' : '▸'}</span>
+        <span className="testing-run-number">Run&nbsp;#{run.run_number}</span>
         <span
           className={`testing-status testing-status-${run.status} testing-run-status`}
         >
           {run.status}
         </span>
-        <span className="testing-run-stat">
-          <span className="testing-run-stat-label">pass</span>
-          {formatPercent(stats?.pass_rate)}
-        </span>
-        <span className="testing-run-stat">
-          <span className="testing-run-stat-label">score</span>
-          {formatScore(stats?.mean_score)}
-        </span>
-        <span className="testing-run-stat">
-          <span className="testing-run-stat-label">dur</span>
-          {formatMs(stats?.duration_ms)} ms
+        {isLatest && <span className="testing-run-latest">Latest</span>}
+        <span className="testing-run-metrics">
+          <span className="testing-run-metric">
+            <strong className={`testing-passrate testing-passrate--${level}`}>
+              {formatPercent(stats?.pass_rate)}
+            </strong>
+            <span className="testing-run-metric-label">pass</span>
+          </span>
+          <span className="testing-run-metric">
+            <strong>{formatScore(stats?.mean_score)}</strong>
+            <span className="testing-run-metric-label">score</span>
+          </span>
+          <span className="testing-run-metric">
+            <strong>{formatMs(stats?.duration_ms)}</strong>
+            <span className="testing-run-metric-label">dur</span>
+          </span>
         </span>
         <span className="testing-run-time">
           {formatTimestamp(run.finished_at || run.started_at)}
@@ -357,10 +384,11 @@ const RunSection: React.FC<{
           <table className="admin-table">
             <thead>
               <tr>
-                <th></th>
+                <th aria-label="expand" />
+                <th>Case</th>
                 <th>Status</th>
                 <th>Score</th>
-                <th>Latency (ms)</th>
+                <th>Latency</th>
                 <th>Error</th>
               </tr>
             </thead>
@@ -370,7 +398,7 @@ const RunSection: React.FC<{
               ))}
               {results.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="text-muted">
+                  <td colSpan={6} className="text-muted">
                     {active ? 'Running — results will appear shortly...' : 'No results.'}
                   </td>
                 </tr>
@@ -557,6 +585,7 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
               run={run}
               caseInputs={caseInputs}
               defaultOpen={idx === 0}
+              isLatest={idx === 0}
             />
           ))}
         </div>
