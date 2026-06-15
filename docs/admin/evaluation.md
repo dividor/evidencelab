@@ -12,7 +12,7 @@ It runs the *real* search and AI‑summary code paths — the same retrieval pip
 
 Open the **Admin** panel and select the **Testing** tab. It has two sub‑views: **Datasets** and **Experiments**.
 
-![Admin → Testing tab](/docs/images/admin/eval/01-testing-tab.png)
+![Admin → Testing tab](/docs/images/admin/eval/testing-datasets.png)
 
 The typical workflow is:
 
@@ -33,7 +33,7 @@ In **Datasets**, click **New Dataset** and provide:
 - **Capability** — `search` or `ai_summary`.
 - **Data source** — which indexed collection to query (e.g. `wfp`).
 
-![Datasets list](/docs/images/admin/eval/02-datasets.png)
+![Create dataset](/docs/images/admin/eval/create-dataset.png)
 
 #### Add test cases
 
@@ -53,15 +53,13 @@ The CSV columns are:
 | `notes` | no | Free text. |
 | `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
 
-![Dataset test cases + Upload CSV](/docs/images/admin/eval/03-dataset-cases.png)
-
 ---
 
 ### 2. Create an experiment
 
 An **experiment** pairs a dataset with a **run configuration** and a set of **assertions**. In **Experiments**, click **New Experiment**.
 
-![Experiments table](/docs/images/admin/eval/04-experiments.png)
+![Experiments table](/docs/images/admin/eval/experiments.png)
 
 #### Run configuration
 
@@ -86,7 +84,7 @@ Available assertion types include (per capability):
 
 The **LLM judge** evaluates the full summary (including resolved citations/references) and is given the underlying search results, so you can write rubrics about **grounding** (e.g. *"every claim is supported by a cited Kenya document"*).
 
-![Experiment editor — combo, group, and assertion matrix](/docs/images/admin/eval/05-experiment-editor.png)
+![Experiment editor — combo, group, and assertion matrix](/docs/images/admin/eval/experiment-editor.png)
 
 Click **Save** to store the experiment as a draft.
 
@@ -108,7 +106,7 @@ Expand a run to see the per‑case results table, and expand a case to see:
 - each **assertion** result (pass/fail, score, and — for LLM judge — the exact prompt being judged and the reason), and
 - the **Output** (the AI summary with references, or the search result cards) — collapsed by default.
 
-![Run results and per‑case detail](/docs/images/admin/eval/06-run-results.png)
+![Run results and per‑case detail](/docs/images/admin/eval/run-results.png)
 
 ---
 
