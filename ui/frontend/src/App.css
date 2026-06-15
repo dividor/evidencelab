@@ -11393,10 +11393,30 @@ a.admin-citation-clickable:hover {
 /* ---- Assertion matrix (cases x assertions) ---- */
 .testing-matrix-wrap {
   overflow-x: auto;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+}
+.testing-matrix {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0;
 }
 .testing-matrix th,
 .testing-matrix td {
   vertical-align: middle;
+  border: 1px solid var(--color-border, #d0d7de);
+  padding: 0.5rem 0.6rem;
+}
+/* Obvious header row. */
+.testing-matrix thead th {
+  background: var(--color-surface-alt, #f1f3f5);
+  border-bottom: 2px solid var(--color-border, #d0d7de);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.testing-matrix tbody tr:nth-child(even) td {
+  background: var(--color-surface-alt, #fafbfc);
 }
 .testing-matrix-case-col {
   text-align: left;
@@ -11492,7 +11512,7 @@ a.admin-citation-clickable:hover {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.75rem;
   width: 100%;
   padding: 0.6rem 0.75rem;
   background: var(--color-surface-alt, #f6f8fa);
@@ -11505,7 +11525,65 @@ a.admin-citation-clickable:hover {
   background: var(--color-surface, #fff);
 }
 .testing-run-caret {
+  flex: 0 0 auto;
+  width: 1.3rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  text-align: center;
   color: var(--color-text-muted, #57606a);
+}
+/* Fixed-width columns so the per-run stats line up across runs. */
+.testing-run-number {
+  flex: 0 0 auto;
+  min-width: 5rem;
+  font-weight: 600;
+}
+.testing-run-status {
+  flex: 0 0 auto;
+  min-width: 6rem;
+  text-align: center;
+}
+.testing-run-stat {
+  flex: 0 0 auto;
+  min-width: 6.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text, #1f2328);
+}
+.testing-run-stat-label {
+  color: var(--color-text-muted, #57606a);
+  margin-right: 0.3rem;
+}
+.testing-run-time {
+  flex: 1 1 auto;
+  text-align: right;
+  color: var(--color-text-muted, #57606a);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Run config shown as labelled badges instead of raw JSON. */
+.testing-config-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+.testing-config-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 12px;
+  background: var(--color-surface, #fff);
+}
+.testing-config-badge-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+  font-weight: 600;
 }
 .testing-run-body {
   padding: 0.5rem 0.75rem 0.75rem;

@@ -328,12 +328,26 @@ const RunSection: React.FC<{
         onClick={() => setOpen((o) => !o)}
       >
         <span className="testing-run-caret">{open ? '▾' : '▸'}</span>
-        <strong>Run #{run.run_number}</strong>
-        <span className={`testing-status testing-status-${run.status}`}>{run.status}</span>
-        <span className="text-muted">
-          pass {formatPercent(stats?.pass_rate)} · score {formatScore(stats?.mean_score)}
-          {' · '}
-          {formatMs(stats?.duration_ms)} · {formatTimestamp(run.finished_at || run.started_at)}
+        <span className="testing-run-number">Run #{run.run_number}</span>
+        <span
+          className={`testing-status testing-status-${run.status} testing-run-status`}
+        >
+          {run.status}
+        </span>
+        <span className="testing-run-stat">
+          <span className="testing-run-stat-label">pass</span>
+          {formatPercent(stats?.pass_rate)}
+        </span>
+        <span className="testing-run-stat">
+          <span className="testing-run-stat-label">score</span>
+          {formatScore(stats?.mean_score)}
+        </span>
+        <span className="testing-run-stat">
+          <span className="testing-run-stat-label">dur</span>
+          {formatMs(stats?.duration_ms)} ms
+        </span>
+        <span className="testing-run-time">
+          {formatTimestamp(run.finished_at || run.started_at)}
         </span>
       </button>
       {open && (
@@ -370,6 +384,39 @@ const RunSection: React.FC<{
 };
 
 /* ------------------------------------------------------------------ */
+/*  Run config shown as friendly badges (group name + model combo)    */
+/* ------------------------------------------------------------------ */
+
+const ConfigBadges: React.FC<{
+  config?: Record<string, unknown> | null;
+  groups: Array<{ id: string; name: string }>;
+}> = ({ config, groups }) => {
+  const cfg = config || {};
+  const combo = typeof cfg.model_combo === 'string' ? cfg.model_combo : '';
+  const groupId = typeof cfg.group_id === 'string' ? cfg.group_id : '';
+  const groupName = groupId
+    ? groups.find((g) => g.id === groupId)?.name || `${groupId.slice(0, 8)}…`
+    : '';
+  if (!combo && !groupName) return null;
+  return (
+    <div className="testing-config-badges">
+      {combo && (
+        <span className="testing-config-badge">
+          <span className="testing-config-badge-label">Model</span>
+          {combo}
+        </span>
+      )}
+      {groupName && (
+        <span className="testing-config-badge">
+          <span className="testing-config-badge-label">Group</span>
+          {groupName}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
 /*  Main detail view                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -380,9 +427,26 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
 }) => {
   const [detail, setDetail] = useState<ExperimentDetailType | null>(null);
   const [caseInputs, setCaseInputs] = useState<Record<string, Record<string, unknown>>>({});
+  const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Group id -> name, so the config can show the group name instead of a UUID.
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<Array<{ id: string; name: string }>>(`${API_BASE_URL}/groups/`)
+      .then((resp) => {
+        if (!cancelled) setGroups(resp.data || []);
+      })
+      .catch(() => {
+        // Non-fatal: fall back to showing the group id.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -468,11 +532,7 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
         <button className="btn-sm" onClick={onBack}>&larr; Back</button>
         <div className="testing-editor-title">
           <h3 style={{ margin: 0 }}>{detail.name}</h3>
-          {detail.config && (
-            <p className="text-muted" style={{ margin: 0 }}>
-              Config: {prettyJson(detail.config)}
-            </p>
-          )}
+          <ConfigBadges config={detail.config} groups={groups} />
         </div>
         <div className="testing-editor-header-actions" style={{ marginLeft: 'auto' }}>
           {!active && (
