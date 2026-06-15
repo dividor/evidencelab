@@ -5,9 +5,13 @@ export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | '
 export type ResultStatus = 'pass' | 'fail' | 'error';
 
 // Per-case enable flag + which assertion columns apply (aligned to columns).
+// `ovr` (aligned to columns) holds an optional per-cell rubric override used for
+// llm_judge columns: a non-empty value runs that prompt for the row instead of
+// the column's default rubric.
 export interface CaseRowState {
   active: boolean;
   cols: boolean[];
+  ovr?: string[];
 }
 
 // Assertions live on the experiment as a cases x assertions matrix: a set of

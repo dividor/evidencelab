@@ -434,13 +434,35 @@ def _parse_judgement(text: str) -> Tuple[float, str]:
 
 
 _JUDGE_SYSTEM_PROMPT = (
-    "You are a meticulous, strict evaluator. You are given a rubric and an "
-    "output to evaluate. Judge ONLY how well the output literally and precisely "
-    "satisfies the rubric — do not invent extra criteria and do not reward the "
-    "output for anything the rubric did not ask for. Respond with ONLY a JSON "
-    'object {"score": <number 0.0-1.0>, "reason": "<one or two sentence '
-    'justification that refers to the rubric>"}.'
+    "You are a meticulous, strict evaluator. You are given a rubric, the summary "
+    "shown to the user, and the search results the summary was generated from. "
+    "Judge ONLY how well the summary satisfies the rubric, literally and "
+    "precisely — do not invent extra criteria. You may use the search results to "
+    "assess grounding (whether claims/citations in the summary are supported by "
+    "the sources). Respond with ONLY a JSON object "
+    '{"score": <number 0.0-1.0>, "reason": "<one or two sentence justification '
+    'that refers to the rubric>"}.'
 )
+
+# How much of each source to include as grounding context for the judge.
+_JUDGE_CONTEXT_MAX_RESULTS = 20
+_JUDGE_CONTEXT_TEXT_LIMIT = 1200
+
+
+def _format_judge_context(output: Dict[str, Any]) -> str:
+    """Render the search results the summary was built from, numbered to match
+    the inline [N] citations, so the judge can assess grounding."""
+    results = output.get("search_results") or output.get("results") or []
+    blocks = []
+    for i, r in enumerate(results[:_JUDGE_CONTEXT_MAX_RESULTS], start=1):
+        if not isinstance(r, dict):
+            continue
+        title = r.get("title") or r.get("map_title") or r.get("doc_id") or "Untitled"
+        org = r.get("organization") or r.get("map_organization") or ""
+        meta = f" ({org})" if org else ""
+        text = str(r.get("text") or "")[:_JUDGE_CONTEXT_TEXT_LIMIT]
+        blocks.append(f"[{i}] {title}{meta}\n{text}".strip())
+    return "\n\n".join(blocks) if blocks else "(no search results)"
 
 
 async def _judge_call(prompt: str, model_key: Optional[str]) -> str:
@@ -473,7 +495,8 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     )
 
     async def factory(output, expectations):
-        text = str(output.get("summary", "") or "")
+        summary = str(output.get("summary", "") or "")
+        context = _format_judge_context(output)
         verdicts: Dict[str, Tuple[float, str, str]] = {}
         for assertion in expectations:
             if assertion.get("type") != "llm_judge":
@@ -482,7 +505,10 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
             if rubric in verdicts:
                 continue
             user_prompt = (
-                f"Rubric:\n{rubric}\n\nOutput to evaluate:\n{text}\n\n"
+                f"Rubric:\n{rubric}\n\n"
+                f"Summary shown to the user:\n{summary}\n\n"
+                "Search results the summary was generated from "
+                f"(numbered to match the [N] citations):\n{context}\n\n"
                 "Return ONLY the JSON object."
             )
             full_prompt = f"SYSTEM:\n{_JUDGE_SYSTEM_PROMPT}\n\nUSER:\n{user_prompt}"
@@ -556,11 +582,13 @@ def _resolve_case_plan(
     Matrix shape::
 
         {"columns": [assertion, ...],
-         "cases": {case_id: {"active": bool, "cols": [bool, ...]}}}
+         "cases": {case_id: {"active": bool, "cols": [bool, ...],
+                             "ovr": [str, ...]}}}
 
     Inactive or unknown cases return ``(False, [])`` and are skipped by the
     runner. Only assertion columns whose aligned ``cols`` flag is true (and that
-    reference a real column) are returned.
+    reference a real column) are returned. For an ``llm_judge`` column, a
+    non-empty per-cell override in ``ovr`` replaces that case's rubric.
     """
     matrix = case_expectations or {}
     columns = matrix.get("columns") or []
@@ -568,11 +596,20 @@ def _resolve_case_plan(
     if not isinstance(state, dict) or not state.get("active", False):
         return False, []
     cols = state.get("cols") or []
-    assertions = [
-        columns[i]
-        for i, enabled in enumerate(cols)
-        if enabled and i < len(columns) and isinstance(columns[i], dict)
-    ]
+    overrides = state.get("ovr") or []
+    assertions: List[Dict[str, Any]] = []
+    for i, enabled in enumerate(cols):
+        if not enabled or i >= len(columns) or not isinstance(columns[i], dict):
+            continue
+        assertion = columns[i]
+        override = overrides[i] if i < len(overrides) else None
+        if (
+            assertion.get("type") == "llm_judge"
+            and isinstance(override, str)
+            and override.strip()
+        ):
+            assertion = {**assertion, "rubric": override.strip()}
+        assertions.append(assertion)
     return True, assertions
 
 

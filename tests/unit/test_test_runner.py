@@ -12,6 +12,7 @@ from ui.backend.services.test_runner import (
     _build_references,
     _combo_summary_model,
     _default_summary_model,
+    _format_judge_context,
     _group_settings_to_config,
     _mirror_run_to_experiment,
     _parse_judgement,
@@ -210,6 +211,49 @@ async def test_mirror_run_to_experiment_copies_outcome_without_aliasing():
     assert experiment.summary_stats == {"pass_rate": 0.5, "total": 4}
     # Must be a copy so mutating one does not corrupt the other.
     assert experiment.summary_stats is not run.summary_stats
+
+
+async def test_resolve_case_plan_applies_llm_judge_override():
+    matrix = {
+        "columns": [{"type": "llm_judge", "rubric": "default", "threshold": 1}],
+        "cases": {"c1": {"active": True, "cols": [True], "ovr": ["custom rubric"]}},
+    }
+    active, assertions = _resolve_case_plan(matrix, "c1")
+    assert active is True
+    assert assertions == [
+        {"type": "llm_judge", "rubric": "custom rubric", "threshold": 1}
+    ]
+
+
+async def test_resolve_case_plan_blank_override_keeps_default_rubric():
+    matrix = {
+        "columns": [{"type": "llm_judge", "rubric": "default", "threshold": 1}],
+        "cases": {"c1": {"active": True, "cols": [True], "ovr": ["   "]}},
+    }
+    _, assertions = _resolve_case_plan(matrix, "c1")
+    assert assertions[0]["rubric"] == "default"
+
+
+async def test_resolve_case_plan_override_only_affects_llm_judge():
+    matrix = {
+        "columns": [{"type": "min_results", "value": 1}],
+        "cases": {"c1": {"active": True, "cols": [True], "ovr": ["ignored"]}},
+    }
+    _, assertions = _resolve_case_plan(matrix, "c1")
+    assert assertions == [{"type": "min_results", "value": 1}]
+
+
+async def test_format_judge_context_numbers_sources():
+    out = {
+        "search_results": [
+            {"title": "Kenya SMP", "organization": "WFP", "text": "enrolment data"},
+            {"title": "Uganda", "text": "x"},
+        ]
+    }
+    ctx = _format_judge_context(out)
+    assert "[1] Kenya SMP (WFP)" in ctx
+    assert "enrolment data" in ctx
+    assert "[2] Uganda" in ctx
 
 
 async def test_resolve_case_plan_ignores_out_of_range_cols():

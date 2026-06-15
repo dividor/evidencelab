@@ -40,6 +40,32 @@ describe('AssertionMatrix', () => {
     expect(screen.getByRole('button', { name: /\+ Assertion/i })).toBeInTheDocument();
   });
 
+  test('typing an llm_judge override enables the cell and stores the text', () => {
+    const initial: MatrixValue = {
+      columns: [{ type: 'llm_judge', rubric: 'default', threshold: 1 }],
+      cases: {
+        c1: { active: true, cols: [false], ovr: [''] },
+        c2: { active: true, cols: [false], ovr: [''] },
+      },
+    };
+    const AiHarness: React.FC = () => {
+      const [value, setValue] = React.useState<MatrixValue>(initial);
+      return (
+        <AssertionMatrix
+          capability="ai_summary"
+          cases={cases}
+          value={value}
+          onChange={setValue}
+        />
+      );
+    };
+    render(<AiHarness />);
+    const overrides = screen.getAllByPlaceholderText(/Override prompt/i);
+    expect(overrides).toHaveLength(2); // one per case for the llm_judge column
+    fireEvent.change(overrides[0], { target: { value: 'check Kenya grounding' } });
+    expect((overrides[0] as HTMLTextAreaElement).value).toBe('check Kenya grounding');
+  });
+
   test('disabling a row marks it inactive and disables its cells', () => {
     const initial: MatrixValue = {
       columns: [{ type: 'min_results', value: 1 }],

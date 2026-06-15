@@ -136,6 +136,7 @@ const normalizeMatrix = (matrix: MatrixValue, caseList: TestCase[]): MatrixValue
     cases[c.id] = {
       active: prev ? prev.active : true,
       cols: Array.from({ length: ncols }, (_, i) => Boolean(prev?.cols?.[i])),
+      ovr: Array.from({ length: ncols }, (_, i) => prev?.ovr?.[i] ?? ''),
     };
   });
   return { columns: matrix.columns, cases };
@@ -173,20 +174,27 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
   const selectedDataset = datasets.find((d) => d.id === datasetId) || null;
 
-  // Load the model combos (same list the search UI uses) for the config form.
-  // New experiments default to the system default combo (the first one), so the
-  // run uses that combo's (fast, API-based) reranker rather than the heavy local
-  // default reranker.
+  // Load the model combos for the config form, filtered by the dataset's data
+  // source — mirroring the app's top model-combo menu. New experiments default
+  // to the first (system default) combo so the run uses that combo's fast,
+  // API-based reranker rather than the heavy local default reranker.
+  const comboDataSource = selectedDataset?.data_source;
   useEffect(() => {
+    if (!comboDataSource) return undefined;
     let cancelled = false;
+    const params = `?data_source=${encodeURIComponent(comboDataSource)}`;
     axios
-      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos`)
+      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos${params}`)
       .then((resp) => {
         if (cancelled) return;
         const names = Object.keys(resp.data || {});
         setModelCombos(names);
-        if (!isEdit && names.length > 0) {
-          setConfig((c) => (c.model_combo ? c : { ...c, model_combo: names[0] }));
+        if (!isEdit) {
+          setConfig((c) =>
+            c.model_combo && names.includes(c.model_combo)
+              ? c
+              : { ...c, model_combo: names[0] || '' },
+          );
         }
       })
       .catch(() => {
@@ -195,7 +203,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isEdit]);
+  }, [comboDataSource, isEdit]);
 
   // Load user groups for the "Run as group" dropdown.
   useEffect(() => {

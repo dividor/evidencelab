@@ -11437,9 +11437,20 @@ a.admin-citation-clickable:hover {
 }
 .testing-matrix-cell {
   text-align: center;
+  vertical-align: top;
 }
 .testing-matrix-cell input {
   width: auto;
+}
+/* Per-cell LLM-judge override prompt (long text). */
+.testing-matrix-override {
+  display: block;
+  width: 16rem;
+  min-height: 3rem;
+  margin: 0.3rem auto 0;
+  resize: vertical;
+  font-size: 0.78rem;
+  box-sizing: border-box;
 }
 .testing-matrix-row-off {
   opacity: 0.5;

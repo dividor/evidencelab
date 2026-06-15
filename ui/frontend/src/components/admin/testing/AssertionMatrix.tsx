@@ -29,11 +29,14 @@ const caseTitle = (testCase: TestCase): string => {
   return `Case ${testCase.id.slice(0, 8)}`;
 };
 
-// Build a fully-populated row state for a case, padding cols to `ncols`.
+// Build a fully-populated row state for a case, padding cols/ovr to `ncols`.
 const normalizedRow = (prev: CaseRowState | undefined, ncols: number): CaseRowState => ({
   active: prev ? prev.active : true,
   cols: Array.from({ length: ncols }, (_, i) => Boolean(prev?.cols?.[i])),
+  ovr: Array.from({ length: ncols }, (_, i) => prev?.ovr?.[i] ?? ''),
 });
+
+const isLlmJudge = (assertion: Assertion): boolean => assertion.type === 'llm_judge';
 
 const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
   capability,
@@ -72,6 +75,18 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
         : row,
     );
 
+  // Per-cell override prompt for an llm_judge column. Typing one also enables
+  // the cell, so "type an override -> that row runs that test".
+  const setCellOverride = (caseId: string, col: number, text: string) =>
+    mutateRows((id, row) => {
+      if (id !== caseId) return row;
+      const ovr = (row.ovr || []).map((v, i) => (i === col ? text : v));
+      const cols = text.trim()
+        ? row.cols.map((v, i) => (i === col ? true : v))
+        : row.cols;
+      return { ...row, ovr, cols };
+    });
+
   const setColumnAll = (col: number, on: boolean) =>
     mutateRows((_, row) => ({
       ...row,
@@ -103,7 +118,11 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
     const next: Record<string, CaseRowState> = {};
     cases.forEach((c) => {
       const row = rowOf(c.id);
-      next[c.id] = { active: row.active, cols: row.cols.filter((_, i) => i !== index) };
+      next[c.id] = {
+        active: row.active,
+        cols: row.cols.filter((_, i) => i !== index),
+        ovr: (row.ovr || []).filter((_, i) => i !== index),
+      };
     });
     onChange({ columns: columns.filter((_, i) => i !== index), cases: next });
   };
@@ -197,7 +216,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                     <span title={caseTitle(c)}>{caseTitle(c)}</span>
                   </label>
                 </td>
-                {columns.map((_, i) => (
+                {columns.map((col, i) => (
                   <td key={i} className="testing-matrix-cell">
                     <input
                       type="checkbox"
@@ -205,6 +224,15 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                       disabled={!row.active}
                       onChange={(e) => setCell(c.id, i, e.target.checked)}
                     />
+                    {isLlmJudge(col) && (
+                      <textarea
+                        className="testing-matrix-override"
+                        placeholder="Override prompt for this case (optional)"
+                        value={row.ovr?.[i] || ''}
+                        disabled={!row.active}
+                        onChange={(e) => setCellOverride(c.id, i, e.target.value)}
+                      />
+                    )}
                   </td>
                 ))}
                 <td className="testing-matrix-add-col" />
