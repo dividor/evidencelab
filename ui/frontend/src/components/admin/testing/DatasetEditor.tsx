@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL from '../../../config';
 import type { TestCase, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
@@ -8,6 +9,65 @@ import CaseEditor, {
   caseToDraft,
   emptyDraft,
 } from './CaseEditor';
+
+/* ------------------------------------------------------------------ */
+/*  CSV import helpers (columns: query, tags, notes, filters)         */
+/* ------------------------------------------------------------------ */
+
+const SAMPLE_CSV = [
+  'query,tags,notes,filters',
+  'girls education in Kenya,regression;baseline,Core evaluation question,',
+  'cash vs in-kind transfers in Kenya,regression,Comparison question,',
+  'nutrition outcomes for children,smoke,,"{""country"": ""Kenya""}"',
+].join('\n');
+
+// Map one parsed CSV row (header-keyed) to a case payload; null if no query.
+const rowToPayload = (row: Record<string, unknown>): CasePayload | null => {
+  const r: Record<string, string> = {};
+  Object.keys(row).forEach((k) => {
+    r[k.trim().toLowerCase()] = String(row[k] ?? '').trim();
+  });
+  const query = r.query;
+  if (!query) return null;
+  const input: Record<string, unknown> = { query };
+  if (r.filters) {
+    try {
+      const parsed = JSON.parse(r.filters);
+      if (parsed && typeof parsed === 'object') input.filters = parsed;
+    } catch {
+      // Ignore malformed filters JSON — keep the query-only case.
+    }
+  }
+  const tags = (r.tags || '')
+    .split(/[;,]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return {
+    input,
+    tags: tags.length > 0 ? tags : undefined,
+    notes: r.notes || undefined,
+  };
+};
+
+const parseCsvToPayloads = (text: string): CasePayload[] => {
+  const wb = XLSX.read(text, { type: 'string' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) return [];
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+  return rows.map(rowToPayload).filter((p): p is CasePayload => p !== null);
+};
+
+const downloadSampleCsv = () => {
+  const blob = new Blob([SAMPLE_CSV], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'test-cases-sample.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 interface DatasetEditorProps {
   dataset: TestDataset;
@@ -50,6 +110,9 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TestCase | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState('');
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const fetchCases = useCallback(async () => {
     try {
@@ -80,6 +143,49 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  // Import cases from a CSV file — appends to whatever is already in the dataset.
+  const handleCsvFile = async (file: File) => {
+    setError('');
+    setUploadMsg('');
+    let payloads: CasePayload[] = [];
+    try {
+      payloads = parseCsvToPayloads(await file.text());
+    } catch {
+      setError('Could not parse the CSV file.');
+      return;
+    }
+    if (payloads.length === 0) {
+      setError('No rows with a "query" column were found in the CSV.');
+      return;
+    }
+    setUploading(true);
+    let ok = 0;
+    for (const payload of payloads) {
+      try {
+        await axios.post(
+          `${API_BASE_URL}/testing/datasets/${dataset.id}/cases`,
+          payload,
+        );
+        ok += 1;
+      } catch {
+        // Continue importing the rest; the final count reflects failures.
+      }
+    }
+    await fetchCases();
+    setUploading(false);
+    setUploadMsg(
+      `Imported ${ok} of ${payloads.length} case${payloads.length === 1 ? '' : 's'}`
+        + (ok < payloads.length ? ` (${payloads.length - ok} failed)` : '')
+        + '.',
+    );
+  };
+
+  const onFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-uploading the same file
+    if (file) handleCsvFile(file);
   };
 
   const updateCase = async (caseId: string, payload: CasePayload) => {
@@ -143,15 +249,42 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
             {cases.length} test case{cases.length !== 1 ? 's' : ''}
           </p>
           {!creating && !editingCase && (
-            <button
-              className="btn-sm btn-primary"
-              style={{ marginLeft: 'auto' }}
-              onClick={() => setCreating(true)}
-            >
-              + Add case
-            </button>
+            <div className="testing-dataset-actions" style={{ marginLeft: 'auto' }}>
+              <button
+                className="btn-sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? 'Importing…' : 'Upload CSV'}
+              </button>
+              <button
+                type="button"
+                className="testing-raw-toggle"
+                onClick={downloadSampleCsv}
+              >
+                sample format
+              </button>
+              <button
+                className="btn-sm btn-primary"
+                onClick={() => setCreating(true)}
+              >
+                + Add case
+              </button>
+            </div>
           )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,text/csv"
+            style={{ display: 'none' }}
+            onChange={onFileSelected}
+          />
         </div>
+        {uploadMsg && (
+          <p className="text-muted" style={{ margin: '0 0 0.5rem' }}>
+            {uploadMsg}
+          </p>
+        )}
 
         {creating && (
           <div className="testing-case-editor-wrap">

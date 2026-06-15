@@ -11385,6 +11385,11 @@ a.admin-citation-clickable:hover {
 }
 
 /* Dataset cases table — readable columns instead of raw JSON. */
+.testing-dataset-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
 .testing-cases-table {
   table-layout: fixed;
   width: 100%;
