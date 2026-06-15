@@ -25,6 +25,7 @@ interface ExperimentEditorProps {
 /* ------------------------------------------------------------------ */
 
 interface ConfigDraft {
+  group_id: string;
   model_combo: string;
   summary_model: string;
   limit: string;
@@ -42,6 +43,7 @@ const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => 
   const c = config || {};
   const num = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
   return {
+    group_id: stringField(c.group_id),
     model_combo: stringField(c.model_combo),
     summary_model: stringField(c.summary_model),
     limit: num(c.limit),
@@ -65,6 +67,7 @@ const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
   const config: Record<string, unknown> = {
     rerank: draft.rerank,
   };
+  if (draft.group_id.trim()) config.group_id = draft.group_id.trim();
   if (draft.model_combo.trim()) config.model_combo = draft.model_combo.trim();
   if (draft.summary_model.trim()) config.summary_model = draft.summary_model.trim();
   if (draft.field_boost_fields.trim()) {
@@ -82,16 +85,37 @@ const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
   return config;
 };
 
+interface GroupOption {
+  id: string;
+  name: string;
+}
+
 interface ConfigFormProps {
   draft: ConfigDraft;
   modelCombos: string[];
+  groups: GroupOption[];
   onChange: (draft: ConfigDraft) => void;
 }
 
-const ConfigForm: React.FC<ConfigFormProps> = ({ draft, modelCombos, onChange }) => {
+const ConfigForm: React.FC<ConfigFormProps> = ({ draft, modelCombos, groups, onChange }) => {
   const set = (patch: Partial<ConfigDraft>) => onChange({ ...draft, ...patch });
   return (
     <div className="testing-config-grid">
+      <div className="form-group">
+        <label htmlFor="cfg-group">Run as group</label>
+        <select
+          id="cfg-group"
+          value={draft.group_id}
+          onChange={(e) => set({ group_id: e.target.value })}
+        >
+          <option value="">None (use config below)</option>
+          {groups.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.name}
+            </option>
+          ))}
+        </select>
+      </div>
       <div className="form-group">
         <label htmlFor="cfg-combo">Model combo</label>
         <select
@@ -254,6 +278,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
   const [cases, setCases] = useState<TestCase[]>([]);
   const [modelCombos, setModelCombos] = useState<string[]>([]);
+  const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [casesLoading, setCasesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -271,6 +296,22 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       })
       .catch(() => {
         // Non-fatal: the combo dropdown just falls back to "Default".
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load user groups for the "Run as group" dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<GroupOption[]>(`${API_BASE_URL}/groups/`)
+      .then((resp) => {
+        if (!cancelled) setGroups(resp.data || []);
+      })
+      .catch(() => {
+        // Non-fatal: groups may be unavailable (user module off) — dropdown empty.
       });
     return () => {
       cancelled = true;
@@ -419,7 +460,12 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
       <div className="admin-section" style={{ marginTop: 0 }}>
         <h4>Run configuration</h4>
-        <ConfigForm draft={config} modelCombos={modelCombos} onChange={setConfig} />
+        <ConfigForm
+          draft={config}
+          modelCombos={modelCombos}
+          groups={groups}
+          onChange={setConfig}
+        />
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>

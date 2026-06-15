@@ -8,7 +8,6 @@ import CaseEditor, {
   caseToDraft,
   emptyDraft,
 } from './CaseEditor';
-import { prettyJson } from './testingFormat';
 
 interface DatasetEditorProps {
   dataset: TestDataset;
@@ -17,40 +16,23 @@ interface DatasetEditorProps {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Read-only display of an existing case (inputs only)               */
+/*  Case field accessors for the table view                           */
 /* ------------------------------------------------------------------ */
 
-interface CaseCardProps {
-  testCase: TestCase;
-  onEdit: () => void;
-  onDelete: () => void;
-}
+const caseQuery = (testCase: TestCase): string => {
+  const q = (testCase.input as { query?: unknown }).query;
+  return typeof q === 'string' ? q : '';
+};
 
-const CaseCard: React.FC<CaseCardProps> = ({ testCase, onEdit, onDelete }) => (
-  <div className="testing-case-card">
-    <div className="testing-case-card-header">
-      <div className="testing-case-tags">
-        {(testCase.tags || []).map((t) => (
-          <span key={t} className="testing-tag">{t}</span>
-        ))}
-      </div>
-      <div className="testing-case-card-actions">
-        <button className="btn-sm" onClick={onEdit}>Edit</button>
-        <button className="btn-sm btn-danger" onClick={onDelete}>Delete</button>
-      </div>
-    </div>
-    <div className="testing-case-block">
-      <span className="testing-case-label">Input</span>
-      <pre className="testing-pre">{prettyJson(testCase.input)}</pre>
-    </div>
-    {testCase.notes && (
-      <div className="testing-case-block">
-        <span className="testing-case-label">Notes</span>
-        <p className="testing-notes">{testCase.notes}</p>
-      </div>
-    )}
-  </div>
-);
+// Everything in the case input except the query (filters/params), compacted.
+const caseExtra = (testCase: TestCase): string => {
+  const input = (testCase.input || {}) as Record<string, unknown>;
+  const rest: Record<string, unknown> = {};
+  Object.keys(input).forEach((k) => {
+    if (k !== 'query') rest[k] = input[k];
+  });
+  return Object.keys(rest).length > 0 ? JSON.stringify(rest) : '';
+};
 
 /* ------------------------------------------------------------------ */
 /*  Dataset editor (manages input rows only)                          */
@@ -126,29 +108,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
     }
   };
 
-  const renderCase = (testCase: TestCase) => {
-    if (editingId === testCase.id) {
-      return (
-        <div key={testCase.id} className="testing-case-editor-wrap">
-          <CaseEditor
-            initial={caseToDraft(testCase)}
-            saving={saving}
-            submitLabel="Save Case"
-            onSubmit={(payload) => updateCase(testCase.id, payload)}
-            onCancel={() => setEditingId(null)}
-          />
-        </div>
-      );
-    }
-    return (
-      <CaseCard
-        key={testCase.id}
-        testCase={testCase}
-        onEdit={() => setEditingId(testCase.id)}
-        onDelete={() => setDeleteTarget(testCase)}
-      />
-    );
-  };
+  const editingCase = cases.find((c) => c.id === editingId) || null;
 
   if (loading) return <div className="admin-loading">Loading...</div>;
 
@@ -182,7 +142,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
           <p className="text-muted" style={{ margin: 0 }}>
             {cases.length} test case{cases.length !== 1 ? 's' : ''}
           </p>
-          {!creating && (
+          {!creating && !editingCase && (
             <button
               className="btn-sm btn-primary"
               style={{ marginLeft: 'auto' }}
@@ -205,9 +165,70 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({
           </div>
         )}
 
-        {cases.map(renderCase)}
-        {cases.length === 0 && !creating && (
-          <p className="text-muted">No test cases yet.</p>
+        {editingCase && (
+          <div className="testing-case-editor-wrap">
+            <CaseEditor
+              initial={caseToDraft(editingCase)}
+              saving={saving}
+              submitLabel="Save Case"
+              onSubmit={(payload) => updateCase(editingCase.id, payload)}
+              onCancel={() => setEditingId(null)}
+            />
+          </div>
+        )}
+
+        {cases.length === 0 ? (
+          !creating && <p className="text-muted">No test cases yet.</p>
+        ) : (
+          <table className="admin-table testing-cases-table">
+            <thead>
+              <tr>
+                <th>Query</th>
+                <th>Filters / params</th>
+                <th>Tags</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {cases.map((testCase) => {
+                const extra = caseExtra(testCase);
+                return (
+                  <tr key={testCase.id}>
+                    <td className="testing-cases-query">{caseQuery(testCase) || '—'}</td>
+                    <td className="testing-cases-extra">
+                      {extra ? (
+                        <code title={extra}>{extra}</code>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="testing-case-tags">
+                        {(testCase.tags || []).map((t) => (
+                          <span key={t} className="testing-tag">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="testing-cases-notes">{testCase.notes || ''}</td>
+                    <td className="testing-row-actions">
+                      <button className="btn-sm" onClick={() => setEditingId(testCase.id)}>
+                        Edit
+                      </button>
+                      <button
+                        className="btn-sm btn-danger"
+                        onClick={() => setDeleteTarget(testCase)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
 

@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -227,6 +228,7 @@ async def _run_summary(
         model_key=model_key,
         temperature=cfg.get("temperature"),
         max_tokens=cfg.get("max_tokens"),
+        system_prompt_override=cfg.get("summary_prompt"),
     )
     # Resolve the inline [N] citation markers to their documents, exactly as the
     # UI does, so the evaluated summary carries titles/links and assertions can
@@ -312,6 +314,65 @@ def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
         "summary_model": _combo_summary_model(combo),
         "rerank_model": combo.get("reranker_model"),
     }
+
+
+# Group search_settings (camelCase) -> run-config keys consumed by _run_search.
+# Mirrors the frontend useGroupDefaults param mapping so "run as group" matches
+# what that group's members see in the search UI.
+_GROUP_SETTING_MAP = {
+    "denseWeight": "dense_weight",
+    "rerank": "rerank",
+    "recencyBoost": "recency_boost",
+    "recencyWeight": "recency_weight",
+    "recencyScaleDays": "recency_scale_days",
+    "keywordBoostShortQueries": "keyword_boost_short_queries",
+    "minChunkSize": "min_chunk_size",
+    "autoMinScore": "auto_min_score",
+    "deduplicate": "deduplicate",
+    "fieldBoost": "field_boost",
+}
+
+
+def _group_settings_to_config(settings: Any) -> Dict[str, Any]:
+    """Translate a group's ``search_settings`` blob into run-config keys."""
+    out: Dict[str, Any] = {}
+    if not isinstance(settings, dict):
+        return out
+    for camel, snake in _GROUP_SETTING_MAP.items():
+        if settings.get(camel) is not None:
+            out[snake] = settings[camel]
+    sections = settings.get("sectionTypes")
+    if isinstance(sections, list) and sections:
+        out["section_types"] = ",".join(str(s) for s in sections)
+    elif isinstance(sections, str) and sections:
+        out["section_types"] = sections
+    boost = settings.get("fieldBoostFields")
+    if isinstance(boost, dict) and boost:
+        out["field_boost_fields"] = ",".join(f"{k}:{v}" for k, v in boost.items())
+    elif isinstance(boost, str) and boost:
+        out["field_boost_fields"] = boost
+    return out
+
+
+async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
+    """If ``group_id`` is set, overlay that group's search settings + summary
+    prompt so the run reproduces that group's configured behaviour."""
+    group_id = config.get("group_id")
+    if not group_id:
+        return config
+    try:
+        from ui.backend.auth.models import UserGroup
+
+        group = await session.get(UserGroup, uuid.UUID(str(group_id)))
+    except Exception:
+        logger.exception("Failed to resolve group %s", group_id)
+        return config
+    if group is None:
+        return config
+    config.update(_group_settings_to_config(group.search_settings))
+    if group.summary_prompt:
+        config["summary_prompt"] = group.summary_prompt
+    return config
 
 
 def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -587,8 +648,9 @@ async def _execute(session, experiment: TestExperiment) -> None:
         await _fail_run(session, experiment, run, "Dataset not found")
         return
     # Resolve the chosen model combo into concrete embedding/summary/reranker
-    # models so the run uses the same configuration as the search UI.
-    config = effective_config(experiment.config)
+    # models, then overlay any "run as group" settings, so the run matches the
+    # search UI / that group's configuration.
+    config = await _apply_group(session, effective_config(experiment.config))
     try:
         runner = build_case_runner(dataset.capability, config, dataset.data_source)
     except Exception as exc:

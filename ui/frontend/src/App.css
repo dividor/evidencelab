@@ -11364,6 +11364,32 @@ a.admin-citation-clickable:hover {
   white-space: nowrap;
 }
 
+/* Dataset cases table — readable columns instead of raw JSON. */
+.testing-cases-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.testing-cases-query {
+  font-weight: 500;
+  word-break: break-word;
+}
+.testing-cases-extra code {
+  display: inline-block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: 0.78rem;
+  background: var(--color-surface-alt, #f6f8fa);
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+}
+.testing-cases-notes {
+  color: var(--color-text-muted, #57606a);
+  word-break: break-word;
+}
+
 /* ---- Assertion matrix (cases x assertions) ---- */
 .testing-matrix-wrap {
   overflow-x: auto;

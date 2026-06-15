@@ -12,6 +12,7 @@ from ui.backend.services.test_runner import (
     _build_references,
     _combo_summary_model,
     _default_summary_model,
+    _group_settings_to_config,
     _mirror_run_to_experiment,
     _parse_judgement,
     _references_text,
@@ -113,6 +114,27 @@ async def test_effective_config_explicit_value_overrides_combo(monkeypatch):
     out = effective_config({"model_combo": "Combo X", "summary_model": "override"})
     assert out["summary_model"] == "override"
     assert out["embedding_model"] == "emb-1"
+
+
+async def test_group_settings_to_config_maps_keys_and_serializes():
+    settings = {
+        "rerank": True,
+        "denseWeight": 0.7,
+        "sectionTypes": ["findings", "recommendations"],
+        "fieldBoostFields": {"country": 1, "organization": 0.5},
+        "minChunkSize": 100,
+    }
+    out = _group_settings_to_config(settings)
+    assert out["rerank"] is True
+    assert out["dense_weight"] == 0.7
+    assert out["min_chunk_size"] == 100
+    assert out["section_types"] == "findings,recommendations"
+    assert out["field_boost_fields"] == "country:1,organization:0.5"
+
+
+async def test_group_settings_to_config_ignores_unset_and_bad_input():
+    assert _group_settings_to_config(None) == {}
+    assert _group_settings_to_config({"rerank": None}) == {}
 
 
 async def test_build_references_maps_cited_markers_to_results():
