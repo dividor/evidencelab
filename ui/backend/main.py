@@ -265,6 +265,12 @@ async def startup_event():
         )
         raise SystemExit(1)
     logger.info("Max concurrent searches: %s", MAX_CONCURRENT_SEARCHES)
+    # Recover test runs orphaned by a previous restart: their background task
+    # did not survive, so a "running" row on startup is always stale.
+    if USER_MODULE:
+        from ui.backend.services.test_runner import recover_orphaned_runs
+
+        await recover_orphaned_runs()
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
     elif USE_EMBEDDING_SERVER:

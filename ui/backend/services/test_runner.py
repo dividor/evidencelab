@@ -28,6 +28,7 @@ from ui.backend.auth.testing_models import (
     CAPABILITY_SEARCH,
     EXPERIMENT_COMPLETED,
     EXPERIMENT_FAILED,
+    EXPERIMENT_PENDING,
     EXPERIMENT_RUNNING,
     RESULT_ERROR,
     RESULT_FAIL,
@@ -686,6 +687,40 @@ async def _execute(session, experiment: TestExperiment) -> None:
     run.finished_at = _utcnow()
     _mirror_run_to_experiment(experiment, run)
     await session.commit()
+
+
+async def recover_orphaned_runs(session_factory=None) -> None:
+    """Fail any runs/experiments still marked running/pending.
+
+    Runs execute as in-process background tasks that do NOT survive an api
+    restart (deploy, crash, OOM). On startup any such row is therefore orphaned
+    — mark it failed so the UI never shows a permanently "running" run.
+    """
+    factory = session_factory or async_session_factory
+    message = "api restarted mid-run (orphaned background task)"
+    active = [EXPERIMENT_RUNNING, EXPERIMENT_PENDING]
+    try:
+        async with factory() as session:
+            result = await session.execute(
+                update(TestRun)
+                .where(TestRun.status.in_(active))
+                .values(
+                    status=EXPERIMENT_FAILED,
+                    finished_at=_utcnow(),
+                    summary_stats={"error": message},
+                )
+            )
+            await session.execute(
+                update(TestExperiment)
+                .where(TestExperiment.status.in_(active))
+                .values(status=EXPERIMENT_FAILED)
+            )
+            await session.commit()
+            recovered = getattr(result, "rowcount", 0) or 0
+            if recovered:
+                logger.info("Recovered %s orphaned test run(s)", recovered)
+    except Exception:
+        logger.exception("Failed to recover orphaned test runs")
 
 
 async def run_experiment(experiment_id, session_factory=None) -> None:

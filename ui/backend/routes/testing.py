@@ -20,7 +20,7 @@ from fastapi import (
     Request,
     Response,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +28,7 @@ from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
 from ui.backend.auth.testing_models import (
     EXPERIMENT_DRAFT,
+    EXPERIMENT_FAILED,
     EXPERIMENT_PENDING,
     EXPERIMENT_RUNNING,
     VALID_CAPABILITIES,
@@ -379,6 +380,41 @@ async def run_experiment_endpoint(
     await session.commit()
     await session.refresh(experiment)
     background_tasks.add_task(run_experiment, experiment.id)
+    return experiment
+
+
+@router.post(
+    "/experiments/{experiment_id}/cancel",
+    response_model=TestExperimentRead,
+    tags=["testing"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def cancel_experiment(
+    request: Request,
+    experiment_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> TestExperiment:
+    """Cancel/clear a running experiment: mark its in-flight run + the
+    experiment as failed so it stops showing as running and can be re-run.
+
+    (The background task cannot be force-killed; this clears the stuck state.)
+    """
+    experiment = await _get_experiment(session, experiment_id)
+    active = [EXPERIMENT_RUNNING, EXPERIMENT_PENDING]
+    await session.execute(
+        update(TestRun)
+        .where(TestRun.experiment_id == experiment_id, TestRun.status.in_(active))
+        .values(
+            status=EXPERIMENT_FAILED,
+            finished_at=func.now(),
+            summary_stats={"error": "Cancelled by user"},
+        )
+    )
+    experiment.status = EXPERIMENT_FAILED
+    experiment.summary_stats = {"error": "Cancelled by user"}
+    await session.commit()
+    await session.refresh(experiment)
     return experiment
 
 

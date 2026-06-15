@@ -26,62 +26,17 @@ interface ExperimentEditorProps {
 
 interface ConfigDraft {
   group_id: string;
-  model_combo: string;
-  summary_model: string;
-  limit: string;
-  max_results: string;
-  rerank: boolean;
-  field_boost_fields: string;
-  section_types: string;
-  temperature: string;
-  max_tokens: string;
 }
 
 const stringField = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => {
-  const c = config || {};
-  const num = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
-  return {
-    group_id: stringField(c.group_id),
-    model_combo: stringField(c.model_combo),
-    summary_model: stringField(c.summary_model),
-    limit: num(c.limit),
-    max_results: num(c.max_results),
-    rerank: Boolean(c.rerank),
-    field_boost_fields: stringField(c.field_boost_fields),
-    section_types: stringField(c.section_types),
-    temperature: num(c.temperature),
-    max_tokens: num(c.max_tokens),
-  };
-};
-
-const parseNumeric = (raw: string): number | undefined => {
-  const trimmed = raw.trim();
-  if (trimmed === '') return undefined;
-  const n = Number(trimmed);
-  return Number.isNaN(n) ? undefined : n;
-};
+const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => ({
+  group_id: stringField((config || {}).group_id),
+});
 
 const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
-  const config: Record<string, unknown> = {
-    rerank: draft.rerank,
-  };
+  const config: Record<string, unknown> = {};
   if (draft.group_id.trim()) config.group_id = draft.group_id.trim();
-  if (draft.model_combo.trim()) config.model_combo = draft.model_combo.trim();
-  if (draft.summary_model.trim()) config.summary_model = draft.summary_model.trim();
-  if (draft.field_boost_fields.trim()) {
-    config.field_boost_fields = draft.field_boost_fields.trim();
-  }
-  if (draft.section_types.trim()) config.section_types = draft.section_types.trim();
-  const parsedLimit = parseNumeric(draft.limit);
-  if (parsedLimit !== undefined) config.limit = parsedLimit;
-  const parsedMaxResults = parseNumeric(draft.max_results);
-  if (parsedMaxResults !== undefined) config.max_results = parsedMaxResults;
-  const parsedTemp = parseNumeric(draft.temperature);
-  if (parsedTemp !== undefined) config.temperature = parsedTemp;
-  const parsedTokens = parseNumeric(draft.max_tokens);
-  if (parsedTokens !== undefined) config.max_tokens = parsedTokens;
   return config;
 };
 
@@ -92,12 +47,11 @@ interface GroupOption {
 
 interface ConfigFormProps {
   draft: ConfigDraft;
-  modelCombos: string[];
   groups: GroupOption[];
   onChange: (draft: ConfigDraft) => void;
 }
 
-const ConfigForm: React.FC<ConfigFormProps> = ({ draft, modelCombos, groups, onChange }) => {
+const ConfigForm: React.FC<ConfigFormProps> = ({ draft, groups, onChange }) => {
   const set = (patch: Partial<ConfigDraft>) => onChange({ ...draft, ...patch });
   return (
     <div className="testing-config-grid">
@@ -108,109 +62,17 @@ const ConfigForm: React.FC<ConfigFormProps> = ({ draft, modelCombos, groups, onC
           value={draft.group_id}
           onChange={(e) => set({ group_id: e.target.value })}
         >
-          <option value="">None (use config below)</option>
+          <option value="">Select a group...</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
             </option>
           ))}
         </select>
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-combo">Model combo</label>
-        <select
-          id="cfg-combo"
-          value={draft.model_combo}
-          onChange={(e) => set({ model_combo: e.target.value })}
-        >
-          <option value="">Default</option>
-          {modelCombos.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-model">Summary model override (optional)</label>
-        <input
-          id="cfg-model"
-          type="text"
-          value={draft.summary_model}
-          onChange={(e) => set({ summary_model: e.target.value })}
-          placeholder="from combo"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-field-boost">Field boost fields</label>
-        <input
-          id="cfg-field-boost"
-          type="text"
-          value={draft.field_boost_fields}
-          onChange={(e) => set({ field_boost_fields: e.target.value })}
-          placeholder="country:1,organization:0.5"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-sections">Section types</label>
-        <input
-          id="cfg-sections"
-          type="text"
-          value={draft.section_types}
-          onChange={(e) => set({ section_types: e.target.value })}
-          placeholder="findings,recommendations"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-maxresults">Max summary results</label>
-        <input
-          id="cfg-maxresults"
-          type="number"
-          value={draft.max_results}
-          onChange={(e) => set({ max_results: e.target.value })}
-          placeholder="20"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-limit">Result limit</label>
-        <input
-          id="cfg-limit"
-          type="number"
-          value={draft.limit}
-          onChange={(e) => set({ limit: e.target.value })}
-          placeholder="50"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-temp">Temperature</label>
-        <input
-          id="cfg-temp"
-          type="number"
-          step="0.1"
-          value={draft.temperature}
-          onChange={(e) => set({ temperature: e.target.value })}
-          placeholder="0"
-        />
-      </div>
-      <div className="form-group">
-        <label htmlFor="cfg-tokens">Max tokens</label>
-        <input
-          id="cfg-tokens"
-          type="number"
-          value={draft.max_tokens}
-          onChange={(e) => set({ max_tokens: e.target.value })}
-          placeholder="1024"
-        />
-      </div>
-      <div className="form-group testing-config-checkbox">
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.rerank}
-            onChange={(e) => set({ rerank: e.target.checked })}
-          />{' '}
-          Rerank results
-        </label>
+        <p className="text-muted" style={{ marginTop: '0.25rem' }}>
+          The experiment runs with this group&apos;s search settings and summary
+          prompt — the same configuration its members use in the app.
+        </p>
       </div>
     </div>
   );
@@ -277,7 +139,6 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   );
 
   const [cases, setCases] = useState<TestCase[]>([]);
-  const [modelCombos, setModelCombos] = useState<string[]>([]);
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [casesLoading, setCasesLoading] = useState(false);
@@ -285,22 +146,6 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
   const [error, setError] = useState('');
 
   const selectedDataset = datasets.find((d) => d.id === datasetId) || null;
-
-  // Load the model combos (same list the search UI uses) for the config form.
-  useEffect(() => {
-    let cancelled = false;
-    axios
-      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos`)
-      .then((resp) => {
-        if (!cancelled) setModelCombos(Object.keys(resp.data || {}));
-      })
-      .catch(() => {
-        // Non-fatal: the combo dropdown just falls back to "Default".
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Load user groups for the "Run as group" dropdown.
   useEffect(() => {
@@ -460,12 +305,7 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
 
       <div className="admin-section" style={{ marginTop: 0 }}>
         <h4>Run configuration</h4>
-        <ConfigForm
-          draft={config}
-          modelCombos={modelCombos}
-          groups={groups}
-          onChange={setConfig}
-        />
+        <ConfigForm draft={config} groups={groups} onChange={setConfig} />
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>

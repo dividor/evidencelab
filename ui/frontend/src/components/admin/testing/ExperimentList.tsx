@@ -94,6 +94,19 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
     }
   };
 
+  const handleCancel = async (exp: TestExperiment) => {
+    setBusyId(exp.id);
+    setError('');
+    try {
+      await axios.post(`${API_BASE_URL}/testing/experiments/${exp.id}/cancel`);
+      await fetchExperiments();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to cancel run');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setBusyId(deleteTarget.id);
@@ -174,13 +187,23 @@ const ExperimentList: React.FC<ExperimentListProps> = ({
                 <td>{formatMs(stats?.duration_ms)}</td>
                 <td>{formatTimestamp(exp.created_at)}</td>
                 <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
-                  <button
-                    className="btn-sm btn-primary"
-                    onClick={() => handleRun(exp)}
-                    disabled={busyId === exp.id || isActive(exp)}
-                  >
-                    {busyId === exp.id ? 'Starting...' : 'Run'}
-                  </button>
+                  {isActive(exp) ? (
+                    <button
+                      className="btn-sm btn-danger"
+                      onClick={() => handleCancel(exp)}
+                      disabled={busyId === exp.id}
+                    >
+                      {busyId === exp.id ? 'Cancelling...' : 'Cancel'}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-sm btn-primary"
+                      onClick={() => handleRun(exp)}
+                      disabled={busyId === exp.id}
+                    >
+                      {busyId === exp.id ? 'Starting...' : 'Run'}
+                    </button>
+                  )}
                   <button
                     className="btn-sm"
                     onClick={() => onEdit(exp)}

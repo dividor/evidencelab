@@ -62,6 +62,6 @@ describe('TestingManager', () => {
     const newBtn = await screen.findByRole('button', { name: /New Experiment/i });
     fireEvent.click(newBtn);
     // The experiment editor (where per-row assertions + config live) renders.
-    await waitFor(() => expect(screen.getByText(/Result limit/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Run as group/i)).toBeInTheDocument());
   });
 });
