@@ -11262,6 +11262,26 @@ a.admin-citation-clickable:hover {
   gap: 0.25rem;
   font-size: 0.85rem;
 }
+/* Section labels (Query, Output, Assertions, …) in dark grey for hierarchy. */
+.testing-case-label {
+  color: #3a4047;
+  font-weight: 600;
+}
+/* Collapsible section toggle (e.g. the Output panel). */
+.testing-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.testing-collapse-caret {
+  font-size: 0.95rem;
+  color: var(--color-text-muted, #57606a);
+}
 
 .testing-filter {
   min-width: 12rem;

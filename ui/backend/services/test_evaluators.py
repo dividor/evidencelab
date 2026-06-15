@@ -235,9 +235,9 @@ def eval_llm_judge(
         score, reason = verdict, ""
     score = max(0.0, min(1.0, float(score)))
     passed = score >= threshold
-    message = f"judge score {score:.2f} (threshold {threshold:.2f})"
-    if reason:
-        message += f" — {reason}"
+    # Message is just the judge's reason — the score/pass are shown separately,
+    # so don't duplicate them here.
+    message = reason or "(no reason provided)"
     result = _result("llm_judge", passed, message, score=score)
     # Surface the rubric + the exact prompt the judge was given (shown per run).
     result["rubric"] = rubric

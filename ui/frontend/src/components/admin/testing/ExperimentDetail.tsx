@@ -85,7 +85,6 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
     <div className="testing-assertion-result">
       {result.type === 'llm_judge' && (
         <div className="testing-judge-rubric">
-          <span className="testing-case-label">LLM judge prompt (what is being judged)</span>
           <div className="testing-judge-rubric-text">
             {result.rubric || '(prompt not recorded for this run)'}
           </div>
@@ -260,6 +259,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
   input,
 }) => {
   const [expanded, setExpanded] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
   return (
     <>
       <tr
@@ -310,8 +310,18 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                 )}
               </div>
               <div className="testing-case-block">
-                <span className="testing-case-label">Output</span>
-                <ResultOutput output={result.actual_output} />
+                <button
+                  type="button"
+                  className="testing-collapse-toggle"
+                  onClick={() => setShowOutput((v) => !v)}
+                  aria-expanded={showOutput}
+                >
+                  <span className="testing-collapse-caret" aria-hidden>
+                    {showOutput ? '▾' : '▸'}
+                  </span>
+                  <span className="testing-case-label">Output</span>
+                </button>
+                {showOutput && <ResultOutput output={result.actual_output} />}
               </div>
             </div>
           </td>
