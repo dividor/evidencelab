@@ -65,6 +65,63 @@ def _result_to_dict(r: Any) -> Dict[str, Any]:
     return r if isinstance(r, dict) else dict(r)
 
 
+def _json_safe(obj: Any) -> Any:
+    """Coerce an object graph to JSON-serialisable form (datetimes -> str, etc.)
+    so it can be stored in a JSONB column."""
+    return json.loads(json.dumps(obj, default=str))
+
+
+# Per-result fields worth keeping for display/assertions; the rest (and the bulk
+# of the payload) is dropped so stored ``actual_output`` stays small.
+_RESULT_TEXT_LIMIT = 2000
+_RESULT_KEEP = {
+    "id",
+    "chunk_id",
+    "doc_id",
+    "score",
+    "title",
+    "organization",
+    "map_title",
+    "map_organization",
+    "country",
+    "published_year",
+    "document_type",
+    "section_type",
+    "url",
+    "date",
+    "published_date",
+    "language",
+}
+
+
+def _compact_result(r: Any) -> Any:
+    if not isinstance(r, dict):
+        return r
+    compact: Dict[str, Any] = {}
+    for key, value in r.items():
+        if key == "text" and isinstance(value, str):
+            compact["text"] = value[:_RESULT_TEXT_LIMIT]
+        elif key in _RESULT_KEEP:
+            compact[key] = value
+    return compact
+
+
+def _storable_output(output: Any) -> Any:
+    """Build a compact, JSON-safe copy of a case's raw output for persistence.
+
+    Assertions have already run against the FULL output; this only shrinks what
+    is stored (trimming per-result text and dropping bulky fields) and makes it
+    JSON-serialisable.
+    """
+    if not isinstance(output, dict):
+        return _json_safe(output)
+    out = dict(output)
+    for key in ("search_results", "results"):
+        if isinstance(out.get(key), list):
+            out[key] = [_compact_result(r) for r in out[key]]
+    return _json_safe(out)
+
+
 async def _run_search(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
@@ -426,6 +483,10 @@ async def _fail_run(
 
 async def _mark_failed(session, experiment: TestExperiment, message: str) -> None:
     """Catastrophic-failure path: fail the experiment and any running run."""
+    # The triggering error may have left the session in a failed transaction;
+    # roll back so these status writes can commit.
+    await session.rollback()
+    experiment = await session.get(TestExperiment, experiment.id) or experiment
     await session.execute(
         update(TestRun)
         .where(
@@ -482,15 +543,20 @@ async def _execute(session, experiment: TestExperiment) -> None:
         if not active:
             continue
         outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
+        case_results.append(outcome)
+        # Persist a compact, JSON-safe copy (full output can carry datetimes and
+        # be megabytes large); assertions already ran against the full output.
+        stored = dict(outcome)
+        stored["actual_output"] = _storable_output(outcome.get("actual_output"))
+        stored["assertion_results"] = _json_safe(outcome.get("assertion_results"))
         session.add(
             TestResult(
                 experiment_id=experiment.id,
                 run_id=run.id,
                 test_case_id=case.id,
-                **outcome,
+                **stored,
             )
         )
-        case_results.append(outcome)
     run.summary_stats = compute_summary_stats(
         case_results, int((time.time() - started) * 1000)
     )

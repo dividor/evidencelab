@@ -14,6 +14,7 @@ from ui.backend.services.test_runner import (
     _mirror_run_to_experiment,
     _parse_judgement,
     _resolve_case_plan,
+    _storable_output,
     effective_config,
     evaluate_case,
 )
@@ -110,6 +111,30 @@ async def test_effective_config_explicit_value_overrides_combo(monkeypatch):
     out = effective_config({"model_combo": "Combo X", "summary_model": "override"})
     assert out["summary_model"] == "override"
     assert out["embedding_model"] == "emb-1"
+
+
+async def test_storable_output_is_json_safe_and_trimmed():
+    import json
+    from datetime import datetime, timezone
+
+    out = {
+        "summary": "s",
+        "search_results": [
+            {
+                "id": "1",
+                "title": "T",
+                "text": "x" * 5000,
+                "published_date": datetime(2020, 1, 1, tzinfo=timezone.utc),
+                "huge_field": "y" * 100000,
+            }
+        ],
+    }
+    safe = _storable_output(out)
+    json.dumps(safe)  # must not raise (was failing on datetime)
+    result = safe["search_results"][0]
+    assert len(result["text"]) == 2000
+    assert "huge_field" not in result  # bulky/unknown field dropped
+    assert isinstance(result["published_date"], str)
 
 
 async def test_mirror_run_to_experiment_copies_outcome_without_aliasing():
