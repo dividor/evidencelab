@@ -11626,12 +11626,18 @@ a.admin-citation-clickable:hover {
   text-align: center;
 }
 
+/* Experiment name + config badges on one row. */
+.testing-detail-titlerow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
 /* Run config shown as labelled badges instead of raw JSON. */
 .testing-config-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-top: 0.25rem;
 }
 .testing-config-badge {
   display: inline-flex;

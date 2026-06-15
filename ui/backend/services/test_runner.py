@@ -310,10 +310,16 @@ def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
         logger.exception("Failed to import UI_MODEL_COMBOS")
         return {}
     combo = UI_MODEL_COMBOS.get(name) or {}
+    sm = combo.get("summarization_model")
+    sm = sm if isinstance(sm, dict) else {}
     return {
         "embedding_model": combo.get("embedding_model"),
         "summary_model": _combo_summary_model(combo),
         "rerank_model": combo.get("reranker_model"),
+        # Use the combo's summary token budget + temperature so the summary is
+        # generated in full (not cut off by a small default max_tokens).
+        "max_tokens": sm.get("max_tokens"),
+        "temperature": sm.get("temperature"),
     }
 
 
@@ -382,8 +388,14 @@ def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     take precedence over the combo's defaults."""
     cfg = dict(config or {})
     combo = _resolve_combo(cfg.get("model_combo"))
-    for key in ("embedding_model", "summary_model", "rerank_model"):
-        if not cfg.get(key) and combo.get(key):
+    for key in (
+        "embedding_model",
+        "summary_model",
+        "rerank_model",
+        "max_tokens",
+        "temperature",
+    ):
+        if cfg.get(key) is None and combo.get(key) is not None:
             cfg[key] = combo[key]
     return cfg
 
@@ -434,19 +446,35 @@ def _parse_judgement(text: str) -> Tuple[float, str]:
 
 
 _JUDGE_SYSTEM_PROMPT = (
-    "You are a meticulous, strict evaluator. You are given a rubric, the summary "
-    "shown to the user, and the search results the summary was generated from. "
-    "Judge ONLY how well the summary satisfies the rubric, literally and "
-    "precisely — do not invent extra criteria. You may use the search results to "
-    "assess grounding (whether claims/citations in the summary are supported by "
-    "the sources). Respond with ONLY a JSON object "
-    '{"score": <number 0.0-1.0>, "reason": "<one or two sentence justification '
-    'that refers to the rubric>"}.'
+    "You are a meticulous, strict evaluator. The prompt has four clearly "
+    "delimited sections: the RUBRIC, the AI SUMMARY, the REFERENCES, and the "
+    "SEARCH RESULTS.\n"
+    "- You judge ONLY the AI SUMMARY against the RUBRIC, literally and precisely "
+    "— do not invent extra criteria.\n"
+    "- The REFERENCES (documents resolved from the summary's [N] citations) and "
+    "the SEARCH RESULTS (source passages the summary was generated from) are "
+    "CONTEXT ONLY — they are NOT part of the summary. Use them only to check "
+    "grounding (whether the summary's claims/citations are supported).\n"
+    'Respond with ONLY a JSON object {"score": <number 0.0-1.0>, '
+    '"reason": "<one or two sentence justification that refers to the rubric>"}.'
 )
 
 # How much of each source to include as grounding context for the judge.
 _JUDGE_CONTEXT_MAX_RESULTS = 20
 _JUDGE_CONTEXT_TEXT_LIMIT = 1200
+
+
+def _format_judge_references(references: List[Dict[str, Any]]) -> str:
+    """A plain numbered list of the cited documents (no markdown header)."""
+    if not references:
+        return "(no citations resolved in the summary)"
+    lines = []
+    for r in references:
+        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
+        suffix = f" ({meta})" if meta else ""
+        title = r.get("title") or r.get("doc_id") or "Unknown"
+        lines.append(f"[{r.get('number')}] {title}{suffix}")
+    return "\n".join(lines)
 
 
 def _format_judge_context(output: Dict[str, Any]) -> str:
@@ -495,7 +523,9 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     )
 
     async def factory(output, expectations):
-        summary = str(output.get("summary", "") or "")
+        # Judge the raw AI summary; references + search results are context only.
+        summary = str(output.get("raw_summary") or output.get("summary") or "")
+        refs_text = _format_judge_references(output.get("references") or [])
         context = _format_judge_context(output)
         verdicts: Dict[str, Tuple[float, str, str]] = {}
         for assertion in expectations:
@@ -505,11 +535,18 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
             if rubric in verdicts:
                 continue
             user_prompt = (
-                f"Rubric:\n{rubric}\n\n"
-                f"Summary shown to the user:\n{summary}\n\n"
-                "Search results the summary was generated from "
-                f"(numbered to match the [N] citations):\n{context}\n\n"
-                "Return ONLY the JSON object."
+                "Judge the AI SUMMARY below against the RUBRIC. The REFERENCES "
+                "and SEARCH RESULTS are context only (NOT part of the summary).\n\n"
+                "================== RUBRIC ==================\n"
+                f"{rubric}\n\n"
+                "============ AI SUMMARY (judge THIS) ============\n"
+                f"{summary}\n\n"
+                "==== REFERENCES (cited docs — NOT part of the summary) ====\n"
+                f"{refs_text}\n\n"
+                "== SEARCH RESULTS (sources for grounding — NOT the summary) ==\n"
+                f"{context}\n\n"
+                'Respond with ONLY the JSON object {"score": <0.0-1.0>, '
+                '"reason": "..."}.'
             )
             full_prompt = f"SYSTEM:\n{_JUDGE_SYSTEM_PROMPT}\n\nUSER:\n{user_prompt}"
             logger.info("[LLM judge] model=%s rubric=%r", model_key, rubric[:300])

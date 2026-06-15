@@ -88,7 +88,11 @@ async def test_effective_config_fills_models_from_combo(monkeypatch):
         {
             "Combo X": {
                 "embedding_model": "emb-1",
-                "summarization_model": {"model": "sum-1"},
+                "summarization_model": {
+                    "model": "sum-1",
+                    "max_tokens": 4000,
+                    "temperature": 0.2,
+                },
                 "reranker_model": "rank-1",
             },
         },
@@ -97,6 +101,9 @@ async def test_effective_config_fills_models_from_combo(monkeypatch):
     assert out["embedding_model"] == "emb-1"
     assert out["summary_model"] == "sum-1"
     assert out["rerank_model"] == "rank-1"
+    # The combo's summary token budget is applied so the summary isn't truncated.
+    assert out["max_tokens"] == 4000
+    assert out["temperature"] == 0.2
 
 
 async def test_effective_config_explicit_value_overrides_combo(monkeypatch):

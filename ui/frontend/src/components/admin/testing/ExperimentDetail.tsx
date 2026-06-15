@@ -83,6 +83,30 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
   const [showPrompt, setShowPrompt] = useState(false);
   return (
     <div className="testing-assertion-result">
+      {result.type === 'llm_judge' && (
+        <div className="testing-judge-rubric">
+          <span className="testing-case-label">LLM judge prompt (what is being judged)</span>
+          <div className="testing-judge-rubric-text">
+            {result.rubric || '(prompt not recorded for this run)'}
+          </div>
+          {result.judge_prompt && (
+            <>
+              <button
+                type="button"
+                className="testing-raw-toggle"
+                onClick={() => setShowPrompt((v) => !v)}
+              >
+                {showPrompt
+                  ? 'Hide full prompt sent to the LLM'
+                  : 'Show full prompt sent to the LLM'}
+              </button>
+              {showPrompt && (
+                <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div className="testing-assertion-result-main">
         <span
           className={`testing-badge testing-badge-${result.passed ? 'pass' : 'fail'}`}
@@ -97,28 +121,6 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
         )}
         <span className="testing-assertion-result-message">{result.message}</span>
       </div>
-      {result.type === 'llm_judge' && (
-        <div className="testing-judge-rubric">
-          <span className="testing-case-label">LLM judge prompt</span>
-          <div className="testing-judge-rubric-text">
-            {result.rubric || '(prompt not recorded for this run)'}
-          </div>
-          {result.judge_prompt && (
-            <>
-              <button
-                type="button"
-                className="testing-raw-toggle"
-                onClick={() => setShowPrompt((v) => !v)}
-              >
-                {showPrompt ? 'Hide full prompt sent to the LLM' : 'Show full prompt sent to the LLM'}
-              </button>
-              {showPrompt && (
-                <pre className="testing-pre testing-pre-scroll">{result.judge_prompt}</pre>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 };
@@ -559,8 +561,10 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
       <div className="testing-editor-header">
         <button className="btn-sm" onClick={onBack}>&larr; Back</button>
         <div className="testing-editor-title">
-          <h3 style={{ margin: 0 }}>{detail.name}</h3>
-          <ConfigBadges config={detail.config} groups={groups} />
+          <div className="testing-detail-titlerow">
+            <h3 style={{ margin: 0 }}>{detail.name}</h3>
+            <ConfigBadges config={detail.config} groups={groups} />
+          </div>
         </div>
         <div className="testing-editor-header-actions" style={{ marginLeft: 'auto' }}>
           {!active && (
