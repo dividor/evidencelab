@@ -6034,6 +6034,39 @@ li.ai-fact-active::before {
   border-top: 1px solid var(--gray-200);
 }
 
+.pdf-search-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.pdf-search-mode-button {
+  background: var(--white);
+  color: var(--gray-600);
+  border: none;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.2s;
+}
+
+.pdf-search-mode-button:not(:last-child) {
+  border-right: 1px solid var(--gray-300);
+}
+
+.pdf-search-mode-button:hover:not(.active) {
+  background: var(--gray-100);
+}
+
+.pdf-search-mode-button.active {
+  background: var(--primary-blue);
+  color: var(--white);
+}
+
 .pdf-search-input {
   flex: 1;
   min-width: 200px;
