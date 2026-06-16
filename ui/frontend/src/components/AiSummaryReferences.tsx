@@ -1,74 +1,12 @@
 import React from 'react';
 import { SearchResult } from '../types/api';
+import { buildGroupedReferences } from '../utils/citations';
 
 interface AiSummaryReferencesProps {
   summaryText: string;
   results: SearchResult[];
   onResultClick: (result: SearchResult) => void;
 }
-
-const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
-
-const parseCitationNumbers = (rawNumbers: string): number[] =>
-  rawNumbers.split(',').map((item) => parseInt(item.trim(), 10));
-
-const extractCitationNumbers = (summaryText: string): number[] => {
-  const citedNumbers = new Set<number>();
-  let match;
-
-  while ((match = CITATION_REGEX.exec(summaryText)) !== null) {
-    const numbers = parseCitationNumbers(match[1]);
-    numbers.forEach((num) => citedNumbers.add(num));
-  }
-
-  return Array.from(citedNumbers).sort((a, b) => a - b);
-};
-
-interface CitedRef {
-  sequential: number;
-  result: SearchResult;
-}
-
-export interface DocumentGroup {
-  title: string;
-  organization?: string;
-  year?: string;
-  refs: CitedRef[];
-}
-
-export const buildGroupedReferences = (
-  summaryText: string,
-  results: SearchResult[]
-): DocumentGroup[] => {
-  const sortedCitations = extractCitationNumbers(summaryText);
-  const groupMap = new Map<string, DocumentGroup>();
-  const groupOrder: string[] = [];
-
-  sortedCitations.forEach((origNum, seqIdx) => {
-    const resultIndex = origNum - 1;
-    if (resultIndex < 0 || resultIndex >= results.length) return;
-
-    const result = results[resultIndex];
-    const key = result.title;
-
-    if (!groupMap.has(key)) {
-      groupMap.set(key, {
-        title: result.title,
-        organization: result.organization,
-        year: result.year,
-        refs: [],
-      });
-      groupOrder.push(key);
-    }
-
-    groupMap.get(key)!.refs.push({
-      sequential: seqIdx + 1,
-      result,
-    });
-  });
-
-  return groupOrder.map((key) => groupMap.get(key)!);
-};
 
 export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
   summaryText,

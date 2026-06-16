@@ -28,6 +28,12 @@ import {
   convertInchesToTwip,
 } from 'docx';
 import type { SearchResult } from '../types/api';
+import {
+  buildCitationSequenceMap,
+  buildGroupedReferences,
+  parseCitationNumbers,
+  type DocumentGroup,
+} from './citations';
 
 export interface ExportOptions {
   query: string;
@@ -129,6 +135,10 @@ export interface CitationContext {
   results: SearchResult[];
   siteOrigin: string;
   dataSource?: string;
+  /** Maps each original `[N]` to its sequential display number, so inline
+   *  citations render the same renumbered value as the on-screen summary and
+   *  the References section. Built once from the full summary text. */
+  sequenceMap: Map<number, number>;
 }
 
 /** Build the inline children for a `[N]` / `[N, M]` citation marker. Each
@@ -140,27 +150,33 @@ const buildCitationRuns = (
   base: { size?: number },
   ctx: CitationContext,
 ): InlineChild[] => {
-  const nums = matched
-    .split(',')
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => Number.isFinite(n));
   const out: InlineChild[] = [new TextRun({ text: '[', size: base.size })];
-  nums.forEach((n, idx) => {
-    if (idx > 0) out.push(new TextRun({ text: ', ', size: base.size }));
+  let rendered = 0;
+  for (const n of parseCitationNumbers(matched)) {
+    // Render the sequential (renumbered) value so the inline marker matches
+    // the on-screen summary and this document's own References section. A
+    // number absent from the sequence map is not a real citation — mirror the
+    // on-screen renderer and drop it rather than show a misleading number.
+    const sequential = ctx.sequenceMap.get(n);
+    if (sequential === undefined) continue;
+    if (rendered > 0) out.push(new TextRun({ text: ', ', size: base.size }));
+    rendered += 1;
+    const display = String(sequential);
     const result = ctx.results[n - 1];
     if (!result) {
-      out.push(new TextRun({ text: String(n), size: base.size }));
-      return;
+      out.push(new TextRun({ text: display, size: base.size }));
+      continue;
     }
+    // The hyperlink still targets the original cited result.
     out.push(
       new ExternalHyperlink({
         link: resolveResultLink(result, ctx.siteOrigin, ctx.dataSource),
         children: [
-          new TextRun({ text: String(n), style: 'Hyperlink', size: base.size }),
+          new TextRun({ text: display, style: 'Hyperlink', size: base.size }),
         ],
       }),
     );
-  });
+  }
   out.push(new TextRun({ text: ']', size: base.size }));
   return out;
 };
@@ -310,71 +326,6 @@ export const markdownToParagraphs = (
 };
 
 // ---------------------------------------------------------------------------
-// References (citations parsed out of the AI summary)
-// ---------------------------------------------------------------------------
-
-/** Matches inline citations like `[1]`, `[1, 3]`, `[1,3,5]`. */
-const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
-
-/** Parse the unique, sorted citation numbers referenced in the AI summary. */
-export const extractCitationNumbers = (summaryText: string): number[] => {
-  const cited = new Set<number>();
-  let m: RegExpExecArray | null;
-  while ((m = CITATION_REGEX.exec(summaryText)) !== null) {
-    for (const part of m[1].split(',')) {
-      const n = parseInt(part.trim(), 10);
-      if (Number.isFinite(n)) cited.add(n);
-    }
-  }
-  return Array.from(cited).sort((a, b) => a - b);
-};
-
-interface CitedRef {
-  sequential: number;
-  result: SearchResult;
-}
-
-export interface ReferenceGroup {
-  title: string;
-  organization?: string;
-  year?: string;
-  refs: CitedRef[];
-}
-
-/** Build a list of grouped references from the AI summary citations.
- *
- *  Mirrors the in-app ``buildGroupedReferences`` (in ``AiSummaryReferences``):
- *  citations are renumbered into citation order, then grouped by document
- *  title so a single document appears once with all its cited pages listed. */
-export const buildReferenceGroups = (
-  summaryText: string,
-  results: SearchResult[],
-): ReferenceGroup[] => {
-  const sortedCitations = extractCitationNumbers(summaryText);
-  const groupMap = new Map<string, ReferenceGroup>();
-  const groupOrder: string[] = [];
-
-  sortedCitations.forEach((origNum, seqIdx) => {
-    const idx = origNum - 1;
-    if (idx < 0 || idx >= results.length) return;
-    const result = results[idx];
-    const key = result.title || `(untitled #${origNum})`;
-    if (!groupMap.has(key)) {
-      groupMap.set(key, {
-        title: key,
-        organization: result.organization,
-        year: result.year,
-        refs: [],
-      });
-      groupOrder.push(key);
-    }
-    groupMap.get(key)!.refs.push({ sequential: seqIdx + 1, result });
-  });
-
-  return groupOrder.map((key) => groupMap.get(key)!);
-};
-
-// ---------------------------------------------------------------------------
 // Builders — one per section of the docx
 // ---------------------------------------------------------------------------
 
@@ -413,7 +364,7 @@ const buildCoverParagraphs = (
 };
 
 const buildReferenceParagraphs = (
-  groups: ReferenceGroup[],
+  groups: DocumentGroup[],
   ctx: CitationContext,
 ): Paragraph[] => {
   if (groups.length === 0) return [];
@@ -474,12 +425,17 @@ const buildSummarySection = (
       spacing: { before: 240, after: 120 },
     }),
   );
-  const citations: CitationContext = { results, siteOrigin, dataSource };
+  const citations: CitationContext = {
+    results,
+    siteOrigin,
+    dataSource,
+    sequenceMap: buildCitationSequenceMap(summary),
+  };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
-  // body become clickable links.
+  // body become clickable links, renumbered to match the screen.
   out.push(...markdownToParagraphs(summary, 1, citations));
-  out.push(...buildReferenceParagraphs(buildReferenceGroups(summary, results), citations));
+  out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
   return out;
 };
 

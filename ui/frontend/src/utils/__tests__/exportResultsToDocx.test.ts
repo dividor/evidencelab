@@ -15,12 +15,11 @@ import { Paragraph } from 'docx';
 import {
   DOCX_MIME,
   buildExportFilename,
-  buildReferenceGroups,
   exportResultsToDocxBlob,
-  extractCitationNumbers,
   markdownToParagraphs,
   resolveResultLink,
 } from '../exportResultsToDocx';
+import { buildGroupedReferences, extractCitedNumbers } from '../citations';
 import type { SearchResult } from '../../types/api';
 
 const makeResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
@@ -118,19 +117,19 @@ describe('resolveResultLink', () => {
   });
 });
 
-describe('extractCitationNumbers', () => {
+describe('extractCitedNumbers', () => {
   test('returns sorted unique numbers', () => {
-    expect(extractCitationNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
+    expect(extractCitedNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
   });
   test('handles multi-citation brackets with whitespace', () => {
-    expect(extractCitationNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
+    expect(extractCitedNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
   });
   test('returns [] when no citations present', () => {
-    expect(extractCitationNumbers('plain text with no marks')).toEqual([]);
+    expect(extractCitedNumbers('plain text with no marks')).toEqual([]);
   });
 });
 
-describe('buildReferenceGroups', () => {
+describe('buildGroupedReferences', () => {
   test('groups by document title and renumbers in citation order', () => {
     // Mirrors AiSummaryReferences: citations are processed in *sorted
     // numeric* order, then renumbered into that order. So a summary that
@@ -140,7 +139,7 @@ describe('buildReferenceGroups', () => {
       makeResult({ title: 'Doc B', organization: 'OrgB', year: '2021', page_num: 1 }),
       makeResult({ title: 'Doc A', organization: 'OrgA', year: '2020', page_num: 9 }),
     ];
-    const groups = buildReferenceGroups('first [2], then [1] and [3]', results);
+    const groups = buildGroupedReferences('first [2], then [1] and [3]', results);
     expect(groups).toHaveLength(2);
     // Doc A is the first group encountered (citation [1] → results[0])
     expect(groups[0].title).toBe('Doc A');
@@ -152,12 +151,12 @@ describe('buildReferenceGroups', () => {
   });
   test('skips out-of-range citation numbers', () => {
     const results = [makeResult({ title: 'Only Doc' })];
-    const groups = buildReferenceGroups('claim [1] then bogus [99]', results);
+    const groups = buildGroupedReferences('claim [1] then bogus [99]', results);
     expect(groups).toHaveLength(1);
     expect(groups[0].refs).toHaveLength(1);
   });
   test('returns [] when summary has no citations', () => {
-    expect(buildReferenceGroups('no marks here', [makeResult()])).toEqual([]);
+    expect(buildGroupedReferences('no marks here', [makeResult()])).toEqual([]);
   });
 });
 
@@ -394,6 +393,39 @@ describe('exportResultsToDocxBlob', () => {
     expect(refsBlock).toMatch(/>3</);
     expect(refsBlock).toMatch(/p\.5/);
     expect(refsBlock).toMatch(/p\.11/);
+  });
+
+  test('inline [N] markers are renumbered sequentially, matching the screen and References', async () => {
+    // Regression for the citation discrepancy: when a summary cites
+    // non-contiguous result indices (#3 and #7), the on-screen summary
+    // renumbers them to [1] and [2]. The docx export must do the same for its
+    // inline body markers — previously it rendered the original 3 and 7,
+    // disagreeing with both the screen and its own References section.
+    const results = Array.from({ length: 7 }, (_, i) =>
+      makeResult({
+        chunk_id: `c${i + 1}`,
+        doc_id: `doc-${i + 1}`,
+        title: `Doc ${i + 1}`,
+        pdf_url: `https://example.org/doc-${i + 1}.pdf`,
+        page_num: i + 1,
+      }),
+    );
+    const opts = {
+      ...baseOpts,
+      aiSummary: '## Findings\n\nFirst point [3]. Second point [7].',
+      results,
+    };
+    const xml = await unzip(await exportResultsToDocxBlob(opts));
+    // Isolate the AI summary body (between its heading and the References
+    // heading) so we inspect only the inline markers, not page numbers or
+    // result-card numbering elsewhere in the document.
+    const body = xml.slice(xml.indexOf('Findings'), xml.indexOf('>References<'));
+    // Inline markers render the sequential display numbers...
+    expect(body).toMatch(/<w:t[^>]*>1<\/w:t>/);
+    expect(body).toMatch(/<w:t[^>]*>2<\/w:t>/);
+    // ...never the original cited indices.
+    expect(body).not.toMatch(/<w:t[^>]*>3<\/w:t>/);
+    expect(body).not.toMatch(/<w:t[^>]*>7<\/w:t>/);
   });
 
   test('omits References section when the summary has no citations', async () => {
