@@ -46,6 +46,27 @@ search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
 
 
+# Sentinel doc_id that matches no document. Used when a document-level filter
+# resolves to an empty set, so the filter yields zero results rather than being
+# silently dropped (which would return everything).
+_NO_MATCH_DOC_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def _intersect_doc_id_filter(core_filters: Dict[str, Any], doc_ids: List[str]) -> None:
+    """AND a doc_id constraint into ``core_filters``, intersecting any existing one.
+
+    Multiple document-level filters (e.g. region and language) each resolve to a
+    set of doc_ids; intersecting them makes the filters combine with AND. An
+    empty result collapses to ``_NO_MATCH_DOC_ID`` so no chunks are returned.
+    """
+    new_ids = {str(d) for d in doc_ids if d}
+    existing = core_filters.get("doc_id")
+    if existing is not None:
+        existing_ids = {d for d in str(existing).split(",") if d}
+        new_ids &= existing_ids
+    core_filters["doc_id"] = ",".join(sorted(new_ids)) if new_ids else _NO_MATCH_DOC_ID
+
+
 def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     """Replace language filter with doc_id filter (language not on chunks)."""
     lang = core_filters.pop("language", None)
@@ -57,6 +78,22 @@ def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
     if doc_ids:
         core_filters["doc_id"] = ",".join(doc_ids)
+
+
+def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
+    """Replace region filter with a doc_id filter (region is doc-level only).
+
+    Region metadata lives only on documents, not chunks, so a region selection
+    is resolved to its matching documents and applied as a doc_id constraint on
+    the chunk search. The constraint is intersected with any existing doc_id
+    filter (e.g. from a language filter) so document-level filters combine
+    with AND.
+    """
+    region = core_filters.pop("region", None)
+    if not region:
+        return
+    doc_ids = pg.fetch_doc_ids_by_region(region)
+    _intersect_doc_id_filter(core_filters, doc_ids)
 
 
 def _build_core_filters(
@@ -690,8 +727,10 @@ async def search(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Language is doc-level only; convert to doc_id filter for chunk search
+        # Language and region are doc-level only; convert to doc_id filters for
+        # chunk search (region intersects with any language-derived doc_ids).
         _convert_language_to_doc_ids(core_filters, pg)
+        _convert_region_to_doc_ids(core_filters, pg)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
