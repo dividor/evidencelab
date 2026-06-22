@@ -1,0 +1,11 @@
+/*
+ * Deployment theme overrides (CSS custom properties).
+ *
+ * This file is intentionally empty in the base repo. The deployment
+ * customization overlay replaces it at build time with
+ * custom/branding/theme.css (see docs/deployment/customization.md), which
+ * redefines the --brand-* tokens declared in App.css :root.
+ *
+ * It is imported in App.tsx immediately after App.css so the overrides win
+ * the cascade. Leave this empty here — do not put base colors in it.
+ */

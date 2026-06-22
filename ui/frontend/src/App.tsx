@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
+// Deployment theme overrides — must load after App.css so the customization
+// overlay's --brand-* tokens win the cascade. Empty in the base repo.
+import './custom-theme.css';
 import API_BASE_URL, {
   AI_SUMMARY_ON,
   API_KEY,

@@ -275,3 +275,13 @@ logs
 config.json
 *key.json
 .env copy
+
+# Deployment customization overlay (see docs/deployment/customization.md).
+# custom/ is populated from a separate repo via `make customize`. ALL of its
+# content is ignored except a single tracked .gitkeep, which keeps the dir in
+# git so the Docker build context always has it. This guarantees that syncing
+# a customization repo never dirties tracked files. The empty theme default
+# lives at ui/frontend/src/custom-theme.css; merge_config.py treats a missing
+# overlay as "no overlay", so a vanilla build needs nothing else here.
+/custom/*
+!/custom/.gitkeep
