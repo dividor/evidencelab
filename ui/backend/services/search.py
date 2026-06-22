@@ -351,7 +351,9 @@ def _build_filter_condition(
     )
 
 
-_DOC_ONLY_FIELDS = {"map_language", "sys_language"}
+# Document-level fields that are not stored on chunks. They are resolved to a
+# doc_id filter upstream (see routes.search), so the chunk filter skips them.
+_DOC_ONLY_FIELDS = {"map_language", "sys_language", "map_region"}
 _TEXT_MATCH_FIELDS = {"map_title"}
 
 
