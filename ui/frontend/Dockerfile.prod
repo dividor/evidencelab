@@ -21,15 +21,14 @@ COPY config.json ./src/config.json
 # Copy docs from project root (used by copy-docs script during build)
 COPY docs/ ./docs_source/
 
-# --- Deployment customization overlay -------------------------------------
-# `custom/` is a git-ignored overlay dir, populated from a separate repo such
-# as wfp-evidencelab-custom (see docs/admin/customization.md). A committed
-# skeleton makes this a no-op for vanilla builds: the script only copies assets
-# that are actually present, so an uncustomized build is byte-identical.
-COPY custom/ ./_overlay/
+# --- Branding customization (optional) ------------------------------------
+# The `customize` build context defaults to the stock ./customize folder; set
+# CUSTOMIZE_ASSETS=/path/to/your-branding to override (no `make`, no diff).
+# apply_branding.sh copies any present asset over the default, so a stock build
+# is byte-identical. See docs/admin/customization.md.
+COPY --from=customize . /customize/
 COPY scripts/custom/apply_branding.sh /tmp/apply_branding.sh
-RUN sh /tmp/apply_branding.sh ./_overlay ./public ./src \
-    && rm -rf ./_overlay /tmp/apply_branding.sh
+RUN sh /tmp/apply_branding.sh /customize ./public ./src && rm -f /tmp/apply_branding.sh
 
 # Build for production
 # API calls go to /api which Caddy proxies to the backend
@@ -68,14 +67,6 @@ FROM nginx:alpine AS production
 
 # Copy nginx config as template (API key injected at runtime)
 COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
-
-# Optional nginx override from the customization overlay (no-op if absent).
-# Most deployments should NOT ship one — the base nginx.conf is a superset.
-COPY custom/ /tmp/_overlay/
-RUN if [ -f /tmp/_overlay/deploy/nginx.conf ]; then \
-        cp /tmp/_overlay/deploy/nginx.conf /etc/nginx/conf.d/default.conf.template; \
-        echo "branding: applied custom deploy/nginx.conf"; \
-    fi && rm -rf /tmp/_overlay
 
 # Copy entrypoint script
 COPY ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh

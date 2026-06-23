@@ -242,6 +242,10 @@ services:
     build:
       context: .
       dockerfile: ui/frontend/Dockerfile.prod
+      # Optional branding overlay. Defaults to the stock ./customize folder;
+      # set CUSTOMIZE_ASSETS=/path/to/your-branding to override. No make/diff.
+      additional_contexts:
+        customize: ${CUSTOMIZE_ASSETS:-./customize}
       args:
         - REACT_APP_AI_SUMMARY_ON=${REACT_APP_AI_SUMMARY_ON:-false}
         - REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS:-true}
