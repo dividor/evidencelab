@@ -3,7 +3,6 @@ import { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import ActivityManager from './ActivityManager';
 import ApiKeyManager from './ApiKeyManager';
-import CustomizationManager from './CustomizationManager';
 import GroupManager from './GroupManager';
 import GroupSettingsManager from './GroupSettingsManager';
 import LlmUsageManager from './LlmUsageManager';
@@ -25,8 +24,7 @@ type AdminTab =
   | 'llm-usage'
   | 'mcp-audit'
   | 'api-keys'
-  | 'testing'
-  | 'customization';
+  | 'testing';
 
 const TAB_USERS: AdminTab = 'users';
 const TAB_GROUPS: AdminTab = 'groups';
@@ -37,7 +35,6 @@ const TAB_LLM_USAGE: AdminTab = 'llm-usage';
 const TAB_MCP_AUDIT: AdminTab = 'mcp-audit';
 const TAB_API_KEYS: AdminTab = 'api-keys';
 const TAB_TESTING: AdminTab = 'testing';
-const TAB_CUSTOMIZATION: AdminTab = 'customization';
 const ACTIVE_CLASS = 'admin-tab-active';
 
 const tabClass = (tab: AdminTab, current: AdminTab) =>
@@ -108,12 +105,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
           >
             Testing
           </button>
-          <button
-            className={tabClass(tab, TAB_CUSTOMIZATION)}
-            onClick={() => setTab(TAB_CUSTOMIZATION)}
-          >
-            Customization
-          </button>
         </div>
       </div>
       <div className="admin-tab-content">
@@ -126,7 +117,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
         {tab === TAB_MCP_AUDIT && <McpAuditLog />}
         {tab === TAB_API_KEYS && <ApiKeyManager />}
         {tab === TAB_TESTING && <TestingManager />}
-        {tab === TAB_CUSTOMIZATION && <CustomizationManager />}
       </div>
     </div>
   );

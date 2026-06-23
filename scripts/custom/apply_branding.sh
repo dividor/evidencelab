@@ -24,9 +24,13 @@ copy_if_present "$CUSTOMIZE/favicon.ico"   "$PUBLIC/favicon.ico"
 copy_if_present "$CUSTOMIZE/og-image.png"  "$PUBLIC/og-image.png"
 copy_if_present "$CUSTOMIZE/manifest.json" "$PUBLIC/manifest.json"
 
-# Theme: colors, fonts, header/footer — plain CSS. Imported after App.css via
-# src/custom-theme.css so the overrides win the cascade.
+# Theme: colors, fonts, header/footer styling — plain CSS. Imported after
+# App.css via src/custom-theme.css so the overrides win the cascade.
 copy_if_present "$CUSTOMIZE/theme.css"     "$SRC/custom-theme.css"
+
+# Footer override: a markdown file that replaces the default footer (served at
+# /footer.md, rendered by the AppFooter component).
+copy_if_present "$CUSTOMIZE/footer.md"     "$PUBLIC/footer.md"
 
 # Self-hosted fonts. They go under src/ so the bundler fingerprints them to
 # same-origin /static/media/ (CSP-safe: font-src 'self'). theme.css @font-face

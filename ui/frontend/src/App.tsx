@@ -34,6 +34,7 @@ import TocModal from './components/TocModal';
 import { MetadataModal } from './components/documents/MetadataModal';
 import { SummaryModal } from './components/documents/SummaryModal';
 import { TopBar } from './components/layout/TopBar';
+import AppFooter from './components/layout/AppFooter';
 import { NavTabs } from './components/layout/NavTabs';
 import { SearchBox } from './components/SearchBox';
 import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
@@ -2958,7 +2959,7 @@ function App() {
 
       <AdminPanel isActive={activeTab === 'admin'} />
 
-      <footer className="app-footer">
+      <AppFooter>
         <button
           type="button"
           className="app-footer-link"
@@ -2998,7 +2999,7 @@ function App() {
         <button type="button" className="app-footer-link" onClick={() => setContactModalOpen(true)}>
           Contact
         </button>
-      </footer>
+      </AppFooter>
 
       {contactModalOpen && (
         <div className="preview-overlay" onClick={() => setContactModalOpen(false)}>
