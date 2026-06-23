@@ -373,7 +373,8 @@ h6,
 }
 
 .dropdown-arrow {
-  font-size: 0.875rem;
+  font-size: 1.15rem;
+  line-height: 1;
   color: var(--gray-500);
   transition: transform 0.2s;
 }

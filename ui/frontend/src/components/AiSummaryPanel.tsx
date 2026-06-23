@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { SearchResult, DrilldownNode, SummaryModelConfig } from '../types/api';
 import API_BASE_URL from '../config';
 import { LANGUAGES } from '../constants';
@@ -92,7 +94,18 @@ const GeneratingText = () => (
 
 const AiSummaryLoading = ({ expanded, summary }: { expanded: boolean; summary: string }) => (
   <div className={`ai-summary-content ${expanded ? 'expanded' : ''}`}>
-    <p className="ai-summary-text">{summary || <GeneratingText />}</p>
+    {summary ? (
+      // Render markdown as the summary streams in (headings, bold, lists)
+      // rather than showing raw text. The citation-aware AiSummaryBody takes
+      // over once streaming completes.
+      <div className="ai-summary-markdown">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary}</ReactMarkdown>
+      </div>
+    ) : (
+      <p className="ai-summary-text">
+        <GeneratingText />
+      </p>
+    )}
   </div>
 );
 
