@@ -8,8 +8,10 @@ folder of static assets. No forking, no diff files, no `make`.
 > this only to restyle a deployment.
 
 > Datasources, models, and search settings are **not** branding — those live in
-> the top-level `config.json`, which a deployment edits directly. This page is
-> only about the visual skin.
+> the top-level `config.json`, which a deployment edits directly (or supplies
+> from outside the repo via `CONFIG_SRC` — see
+> [Deploying config & infra from outside the repo](#deploying-config--infra-from-outside-the-repo)).
+> The rest of this page is about the visual skin.
 
 ## Set it up (Docker-native)
 
@@ -139,3 +141,36 @@ my-branding/
 
 Stock builds (no `CUSTOMIZE_ASSETS`) copy nothing and are byte-identical to plain
 Evidence Lab.
+
+## Deploying config & infra from outside the repo
+
+Branding isn't the only thing a deployment overrides. The datasource/model
+`config.json`, the reverse-proxy `Caddyfile`, and the Vertex/Google service-
+account key are deployment-specific too. Rather than editing them in place (which
+leaves the app repo's working tree dirty), point at copies that live **outside**
+the repo — e.g. in a separate config repo — via env vars. Each defaults to the
+stock in-repo file, so **unset = byte-identical stock build**; a file is only
+used when its variable is set.
+
+| Env var | Asset | How it's consumed | Default (stock) |
+|---------|-------|-------------------|-----------------|
+| `CUSTOMIZE_ASSETS` | `branding/` | UI build context (branding overlay) | `./customize` |
+| `CONFIG_SRC` | folder with `config.json` | UI build context (baked into the bundle) **and** mounted into the api at `/app/config.json` by the deploy override | `.` (repo root) |
+| `CADDYFILE_PATH` | `Caddyfile` | bind-mounted into the reverse proxy by the deploy override | `./Caddyfile` |
+| `GCP_CREDS_PATH` | `gcp-creds.json` | bind-mounted read-only into the api at `/app/gcp-creds.json` by the deploy override | `./gcp-creds.json` |
+
+Set them in `.env` (see `.env.example`), then build/run as usual. The api reads
+`config.json` at runtime, so it's a runtime mount; the UI bakes it at build time,
+so it's a build context — both driven by the single `CONFIG_SRC`. The Caddyfile
+and creds mounts live in the deploy override (`docker-compose.prod.override.yml`),
+which a deployment can keep in its own repo and pass with a second `-f`.
+
+```bash
+# Example: all deployment files in /opt/my-deploy, nothing copied into the repo
+CONFIG_SRC=/opt/my-deploy \
+CUSTOMIZE_ASSETS=/opt/my-deploy/branding \
+CADDYFILE_PATH=/opt/my-deploy/Caddyfile \
+GCP_CREDS_PATH=/opt/my-deploy/gcp-creds.json \
+docker compose -f docker-compose.prod.yml \
+  -f /opt/my-deploy/docker-compose.prod.override.yml up -d --build
+```
