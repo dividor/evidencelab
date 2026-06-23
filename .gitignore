@@ -275,3 +275,11 @@ logs
 config.json
 *key.json
 .env copy
+
+# Local branding customization (see docs/admin/customization.md). The default
+# ./customize folder is the stock target of the `customize` build context
+# (CUSTOMIZE_ASSETS overrides it). Ignore anything dropped in it so local
+# branding never dirties the tree; only the stock README/.gitkeep are tracked.
+/customize/*
+!/customize/README.md
+!/customize/.gitkeep

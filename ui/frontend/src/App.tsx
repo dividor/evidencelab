@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
+// Deployment theme overrides — must load after App.css so the customization
+// overlay's --brand-* tokens win the cascade. Empty in the base repo.
+import './custom-theme.css';
 import API_BASE_URL, {
   AI_SUMMARY_ON,
   API_KEY,
@@ -31,6 +34,7 @@ import TocModal from './components/TocModal';
 import { MetadataModal } from './components/documents/MetadataModal';
 import { SummaryModal } from './components/documents/SummaryModal';
 import { TopBar } from './components/layout/TopBar';
+import AppFooter from './components/layout/AppFooter';
 import { NavTabs } from './components/layout/NavTabs';
 import { SearchBox } from './components/SearchBox';
 import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
@@ -2955,7 +2959,7 @@ function App() {
 
       <AdminPanel isActive={activeTab === 'admin'} />
 
-      <footer className="app-footer">
+      <AppFooter>
         <button
           type="button"
           className="app-footer-link"
@@ -2995,7 +2999,7 @@ function App() {
         <button type="button" className="app-footer-link" onClick={() => setContactModalOpen(true)}>
           Contact
         </button>
-      </footer>
+      </AppFooter>
 
       {contactModalOpen && (
         <div className="preview-overlay" onClick={() => setContactModalOpen(false)}>
