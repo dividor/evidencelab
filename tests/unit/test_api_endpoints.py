@@ -1,5 +1,4 @@
 import sys
-from collections import Counter
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
@@ -231,6 +230,32 @@ def _make_db_mock() -> Any:
     return db
 
 
+class _FakeGroupedPg:
+    """Fake pg returning queued grouped-count rows for corpus faceting."""
+
+    def __init__(self, results):
+        self.docs_table = "docs_uneg"
+        self._results = list(results)
+
+    def _get_conn(self):
+        return self
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, params=None):
+        self._current = self._results.pop(0) if self._results else []
+
+    def fetchall(self):
+        return self._current
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 def test_get_stats(monkeypatch):
     class PgMock:
         def fetch_status_counts(self):
@@ -441,36 +466,18 @@ async def test_search_facet_values(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_facets(monkeypatch):
+    # Facet counts are now computed from the Postgres docs table (one grouped
+    # query per field), so the endpoint needs a pg client. Each query returns
+    # the next queued row-list, in field order (organization, published_year).
+    pg = _FakeGroupedPg(
+        [
+            [("OrgA", 2), ("OrgB", 1)],
+            [("2021", 1), ("2020", 2)],
+        ]
+    )
     db = _make_db_mock()
-    db.get_all_documents_projection = lambda fields: [
-        {
-            "map_organization": "OrgA",
-            "map_published_year": "2020",
-            "map_document_type": "Eval",
-        },
-        {
-            "map_organization": "OrgA",
-            "map_published_year": "2020",
-            "map_document_type": "Eval",
-        },
-        {
-            "map_organization": "OrgB",
-            "map_published_year": "2021",
-            "map_document_type": "Eval",
-        },
-    ]
-
-    def facet_documents(key, filter_conditions=None, limit=2000, exact=False):
-        counts = Counter()
-        for row in db.get_all_documents_projection([key]):
-            value = row.get(key)
-            if value is None:
-                continue
-            counts[value] += 1
-        return dict(counts)
-
-    db.facet_documents = facet_documents
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
+    monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: pg)
     monkeypatch.setattr(
         main_module,
         "get_default_filter_fields",
@@ -487,7 +494,11 @@ async def test_get_facets(monkeypatch):
         data_source=None,
         q=None,
     )
+    # organization counts come straight from the grouped query (desc by count).
     assert result.facets["organization"][0].value == "OrgA"
+    assert result.facets["organization"][0].count == 2
+    # published_year is shaped into descending-year order.
+    assert [fv.value for fv in result.facets["published_year"]] == ["2021", "2020"]
 
 
 @pytest.mark.asyncio

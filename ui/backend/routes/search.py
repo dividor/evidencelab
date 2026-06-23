@@ -14,9 +14,8 @@ from pipeline.db import (
 )
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
-from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
+from ui.backend.schemas import Facets, SearchResponse, SearchResult
 from ui.backend.services.search import (
-    get_search_facets,
     scroll_filtered_chunks,
     search_chunks,
     search_facet_values,
@@ -29,15 +28,12 @@ from ui.backend.utils.document_utils import (
     map_core_field_to_storage,
     normalize_document_payload,
 )
-from ui.backend.utils.facet_helpers import build_facets_from_db
+from ui.backend.utils.facet_helpers import build_corpus_facets
 from ui.backend.utils.filter_helpers import (
     add_dynamic_filters,
     build_core_filters_from_params,
-    build_needed_fields,
-    collect_range_bounds,
     normalize_language_filter,
     resolve_storage_field,
-    split_filter_values,
 )
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
@@ -398,36 +394,6 @@ def _build_search_results(
             break
 
     return filtered_results
-
-
-def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
-    """Build a Qdrant filter from core filter fields for restricting facet counts."""
-    facet_conditions: List[qmodels.Condition] = []
-
-    for core_field, value in core_filters.items():
-        if not value or core_field.endswith("_min") or core_field.endswith("_max"):
-            continue
-        storage_field = resolve_storage_field(core_field, data_source)
-        if core_field == "published_year":
-            value = str(value)
-        multi_values = split_filter_values(value)
-        facet_conditions.append(
-            qmodels.FieldCondition(
-                key=storage_field,
-                match=(
-                    qmodels.MatchAny(any=multi_values)
-                    if multi_values
-                    else qmodels.MatchValue(value=value)
-                ),
-            )
-        )
-
-    for sf, bounds in collect_range_bounds(core_filters, data_source).items():
-        facet_conditions.append(
-            qmodels.FieldCondition(key=sf, range=qmodels.Range(**bounds))
-        )
-
-    return qmodels.Filter(must=facet_conditions) if facet_conditions else None
 
 
 @router.get("/search/titles")
@@ -1043,56 +1009,19 @@ async def get_facets(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        title_filter = core_filters.get("title")
-        if title_filter and q:
-            title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
-            if not title_doc_ids:
-                return Facets(
-                    facets={},
-                    filter_fields=filter_fields_config,
-                    range_fields={},
-                )
-            core_filters.pop("title", None)
-            core_filters["doc_id"] = title_doc_ids
 
-        if q:
-            facets_data_raw = get_search_facets(
-                query=q,
-                filters=core_filters,
-                data_source=source,
-            )
-            facets_data = {
-                field: [
-                    FacetValue(value=str(item["value"]), count=item["count"])
-                    for item in values
-                ]
-                for field, values in facets_data_raw.items()
-            }
-            # Range fields are data-global (not query-dependent), so we still
-            # need to compute them for the search-filtered facets path.
-            facet_filter = _build_facet_filter(core_filters, source)
-            _, range_fields = build_facets_from_db(
-                db,
-                filter_fields_config,
-                facet_filter,
-                resolve_storage_field,
-                pg=pg,
-                src_field_mapping=src_field_mapping,
-            )
-            return Facets(
-                facets=facets_data,
-                filter_fields=filter_fields_config,
-                range_fields=range_fields,
-            )
-
-        build_needed_fields(filter_fields_config, source)
-        facet_filter = _build_facet_filter(core_filters, source)
-        facets_result, range_fields = build_facets_from_db(
+        # Facet counts are query-independent: each value shows how many
+        # documents match the user's *other* active filters (exclude-self),
+        # computed from the Postgres docs table. The search query ``q`` is
+        # intentionally ignored here so the sidebar numbers never change when
+        # a search runs.
+        facets_result, range_fields = build_corpus_facets(
+            pg,
             db,
             filter_fields_config,
-            facet_filter,
+            core_filters,
             resolve_storage_field,
-            pg=pg,
+            source,
             src_field_mapping=src_field_mapping,
         )
         return Facets(

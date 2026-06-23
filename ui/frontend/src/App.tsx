@@ -45,7 +45,6 @@ import { useGroupDefaults } from './hooks/useGroupDefaults';
 import { useActivityLogging } from './hooks/useActivityLogging';
 import { buildContextualSearchQuery, serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
 import { generateUUID } from './utils/uuid';
-import { mergeFacetField } from './utils/facetMerge';
 import AdminPanel from './components/admin/AdminPanel';
 import { AssistantTab } from './components/assistant/AssistantTab';
 import { AuthGate } from './components/auth/AuthGate';
@@ -2157,8 +2156,10 @@ function App() {
         activitySearchIdRef.current = searchId;
       }
 
-      // Reload facets to reflect search result distribution (with query)
-      loadFacets({ includeQuery: true, queryValue: query });
+      // Note: facet counts are intentionally NOT reloaded after a search.
+      // They show how many documents match the active filters across the
+      // whole corpus and must stay stable when a search runs, so a value's
+      // count means the same thing before and after searching.
 
       handleAiSummaryForResults(data);
       handlePostSearchResults(data);
@@ -2658,39 +2659,17 @@ function App() {
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
   const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
-  // When search results are displayed, compute facet counts directly from
-  // the actual results (deduped by doc_id) so counts exactly match what the
-  // user sees.  All DB values from allFacets are preserved; values absent
-  // from the results get count 0 (the UI hides the number for those).
-  // Sidebar facet display:
-  //   - List of values comes from the unfiltered all-DB facets (so every
-  //     possible filter value is visible, even ones that don't appear in
-  //     the current results).
-  //   - Counts come from the backend's query-narrowed /facets response,
-  //     which is computed against ~500 ranked chunks. That's a bigger
-  //     lens than the ~50 the user can see on screen — values like a
-  //     French translation of a primarily-English topic still get a
-  //     real count, instead of dropping to 0 only to surface as 15
-  //     after the user clicks the filter.
-  //   - Falls back to the all-DB list when no query is active or the
-  //     query-narrowed response hasn't loaded yet.
+  // Sidebar facet counts are query-independent. The backend's /facets
+  // response already reports, for every value, how many documents match the
+  // user's *other* active filters (exclude-self), computed across the whole
+  // corpus — so the numbers never change when a search runs and multi-select
+  // within a field stays usable. We show the filter-aware response directly,
+  // falling back to the unfiltered all-DB list only while it loads.
   const displayFacets = React.useMemo(() => {
-    const all = allFacetsDataSource === dataSource ? allFacets : null;
-    if (!all) return facets;
-    if (!hasSearchRun || !query?.trim()) return all;
-    const queryNarrowed = facetsDataSource === dataSource ? facets : null;
-    if (!queryNarrowed) return all;
-
-    const mergedFacetEntries: Record<string, FacetValue[]> = {};
-    for (const [field, allValues] of Object.entries(all.facets)) {
-      const counts = new Map<string, number>();
-      for (const fv of queryNarrowed.facets?.[field] || []) {
-        counts.set(fv.value, fv.count);
-      }
-      mergedFacetEntries[field] = mergeFacetField(allValues, counts);
-    }
-    return { ...all, facets: mergedFacetEntries } as Facets;
-  }, [allFacets, allFacetsDataSource, facets, facetsDataSource, dataSource, hasSearchRun, query]);
+    if (facetsDataSource === dataSource && facets) return facets;
+    if (allFacetsDataSource === dataSource) return allFacets;
+    return facets;
+  }, [facets, facetsDataSource, allFacets, allFacetsDataSource, dataSource]);
 
   const requestHighlightHandler = resolveRequestHighlightHandler(
     SEARCH_SEMANTIC_HIGHLIGHTS,

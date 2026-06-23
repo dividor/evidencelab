@@ -377,3 +377,248 @@ def _get_raw_counts(
         ),
         core_field,
     )
+
+
+# ---------------------------------------------------------------------------
+# Filter-aware corpus facets (query-independent)
+#
+# These build facet counts directly from the Postgres docs table so the
+# search sidebar always shows how many *documents* fall under each value,
+# given the user's other active filters. The counts never depend on the
+# search query, so running a search no longer changes the numbers.
+#
+# "Exclude-self" semantics: a field's own selection does not constrain its
+# own value list, so multi-select within a dimension stays usable (e.g.
+# picking one country does not zero out the other countries).
+#
+# Known, intentional limitations (NOT silent fallbacks):
+#   * tag_* filters and numeric _min/_max range filters are not applied as
+#     constraints here — tag values live in the chunks collection, not the
+#     docs table. tag_* facet *counts* are still produced via the existing
+#     Qdrant chunk facet path so their display is unchanged.
+# ---------------------------------------------------------------------------
+
+_MULTI_VALUE_SEPARATORS = ("; ", " | ")
+
+
+def _is_safe_identifier(name: str) -> bool:
+    """Return True if *name* is a safe SQL identifier (alphanumerics + ``_``)."""
+    return bool(name) and name.replace("_", "").isalnum()
+
+
+def _split_selected_values(value: Any) -> List[str]:
+    """Split a comma-separated filter value into a clean list of strings."""
+    if isinstance(value, (list, tuple)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _facet_column_expr(
+    core_field: str,
+    storage_field: str,
+    src_field_mapping: Optional[Dict[str, str]],
+) -> Tuple[str, List[Any]]:
+    """Resolve a field to a ``(sql_expression, params)`` pair on the docs table.
+
+    ``src_*`` fields map to a ``src_doc_raw_metadata->>key`` JSONB lookup with
+    the raw key bound as a parameter (never interpolated). Every other field
+    maps to a validated physical column name.
+    """
+    if core_field.startswith("src_") and src_field_mapping:
+        raw_key = src_field_mapping.get(core_field) or src_field_mapping.get(
+            storage_field
+        )
+        if raw_key:
+            return "src_doc_raw_metadata->>%s", [raw_key]
+    if not _is_safe_identifier(storage_field):
+        raise ValueError(f"Unsafe facet column: {storage_field!r}")
+    return storage_field, []
+
+
+def _language_filter_values(col_expr: str, values: List[str]) -> List[str]:
+    """Map ISO language codes to display names when filtering ``map_language``.
+
+    Incoming language filters are normalised to ISO codes (``en``), but the
+    ``map_language`` column stores display names (``English``); translate so
+    the comparison matches.
+    """
+    if col_expr == "map_language":
+        return [LANGUAGE_NAMES.get(v, v) for v in values]
+    return values
+
+
+def _value_match_sql(
+    col_expr: str, col_params: List[Any], value: str
+) -> Tuple[str, List[Any]]:
+    """Build a multi-value-aware equality test for a single value.
+
+    Splits stored values on ``'; '`` or ``' | '`` so a document stored as
+    ``'Nepal; India'`` matches a filter on ``'Nepal'``.
+    """
+    clauses: List[str] = []
+    params: List[Any] = []
+    for sep in _MULTI_VALUE_SEPARATORS:
+        clauses.append(f"%s = ANY(string_to_array({col_expr}, %s))")
+        params.extend([value, *col_params, sep])
+    return "(" + " OR ".join(clauses) + ")", params
+
+
+def _field_filter_clause(
+    core_field: str,
+    col_expr: str,
+    col_params: List[Any],
+    values: List[str],
+) -> Tuple[str, List[Any]]:
+    """OR-combine value matches for one field (multi-select within a field)."""
+    if core_field == "title":
+        # Titles can legitimately contain the multi-value separators, so match
+        # them exactly rather than splitting.
+        params: List[Any] = []
+        for v in values:
+            params.extend([*col_params, v])
+        sql = " OR ".join(f"{col_expr} = %s" for _ in values)
+        return "(" + sql + ")", params
+    sub_sql: List[str] = []
+    params = []
+    for v in values:
+        clause, clause_params = _value_match_sql(col_expr, col_params, v)
+        sub_sql.append(clause)
+        params.extend(clause_params)
+    return "(" + " OR ".join(sub_sql) + ")", params
+
+
+def _is_skippable_filter(field: str, value: Any, exclude_field: Optional[str]) -> bool:
+    """Return True for filters that don't constrain the docs-table query."""
+    if field == exclude_field or not value:
+        return True
+    return field.startswith("tag_") or field.endswith("_min") or field.endswith("_max")
+
+
+def _build_corpus_where(
+    core_filters: Dict[str, Any],
+    exclude_field: Optional[str],
+    resolve_storage_field,
+    data_source: Optional[str],
+    src_field_mapping: Optional[Dict[str, str]],
+) -> Tuple[str, List[Any]]:
+    """Build a SQL ``WHERE`` fragment ANDing all active filters except *exclude_field*.
+
+    Returns ``("", [])`` when no constraints apply. tag_* and range filters
+    are intentionally skipped (see module note).
+    """
+    clauses: List[str] = []
+    params: List[Any] = []
+    for field, value in core_filters.items():
+        if _is_skippable_filter(field, value, exclude_field):
+            continue
+        storage_field = resolve_storage_field(field, data_source)
+        col_expr, col_params = _facet_column_expr(
+            field, storage_field, src_field_mapping
+        )
+        values = _split_selected_values(value)
+        if field == "language":
+            values = _language_filter_values(col_expr, values)
+        if not values:
+            continue
+        clause, clause_params = _field_filter_clause(
+            field, col_expr, col_params, values
+        )
+        clauses.append(clause)
+        params.extend(clause_params)
+    return " AND ".join(clauses), params
+
+
+def _corpus_field_counts(
+    pg,
+    core_field: str,
+    storage_field: str,
+    core_filters: Dict[str, Any],
+    resolve_storage_field,
+    data_source: Optional[str],
+    src_field_mapping: Optional[Dict[str, str]],
+) -> Dict[str, int]:
+    """Count documents per value of *core_field*, honouring the other filters."""
+    col_expr, col_params = _facet_column_expr(
+        core_field, storage_field, src_field_mapping
+    )
+    where_sql, where_params = _build_corpus_where(
+        core_filters, core_field, resolve_storage_field, data_source, src_field_mapping
+    )
+    inner = f"SELECT {col_expr} AS v FROM {pg.docs_table}"
+    params: List[Any] = list(col_params)
+    if where_sql:
+        inner += f" WHERE {where_sql}"
+        params.extend(where_params)
+    sql = (
+        f"SELECT v, COUNT(*) AS c FROM ({inner}) sub "
+        "WHERE v IS NOT NULL AND v != '' GROUP BY v ORDER BY c DESC"
+    )
+    with pg._get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return {str(row[0]): int(row[1]) for row in cur.fetchall()}
+
+
+def _route_corpus_counts(
+    core_field: str,
+    raw_counts: Dict[str, int],
+    facets_result: Dict[str, List[FacetValue]],
+    range_fields: Dict[str, RangeInfo],
+) -> None:
+    """Apply language/year shaping then route counts to facets or ranges."""
+    if core_field == "language":
+        raw_counts = {LANGUAGE_NAMES.get(k, k): v for k, v in raw_counts.items()}
+    if core_field == "published_year":
+        facets_result[core_field] = build_year_facets(raw_counts)
+        return
+    _validate_and_route_field(core_field, raw_counts, facets_result, range_fields)
+
+
+def build_corpus_facets(
+    pg,
+    db,
+    filter_fields_config: Dict[str, str],
+    core_filters: Dict[str, Any],
+    resolve_storage_field,
+    data_source: Optional[str],
+    src_field_mapping: Optional[Dict[str, str]] = None,
+) -> Tuple[Dict[str, List[FacetValue]], Dict[str, RangeInfo]]:
+    """Build query-independent, filter-aware facet counts from the docs table.
+
+    For every filter field the count reflects the documents matching all of
+    the user's *other* active filters (exclude-self), so the search query
+    never changes the numbers and multi-select stays usable. ``tag_*`` fields
+    keep their existing chunk-based facet source.
+
+    Returns:
+        Tuple of (facets dict, range_fields dict).
+    """
+    facets_result: Dict[str, List[FacetValue]] = {}
+    range_fields: Dict[str, RangeInfo] = {}
+    for core_field in filter_fields_config.keys():
+        if core_field == "title":
+            facets_result[core_field] = []
+            continue
+        if core_field.startswith("tag_"):
+            raw_counts = _safe_facet_query(
+                lambda cf=core_field: _facet_tag_field(db, cf), core_field
+            )
+        else:
+            storage_field = resolve_storage_field(core_field, data_source)
+            raw_counts = _safe_facet_query(
+                lambda cf=core_field, sf=storage_field: _corpus_field_counts(
+                    pg,
+                    cf,
+                    sf,
+                    core_filters,
+                    resolve_storage_field,
+                    data_source,
+                    src_field_mapping,
+                ),
+                core_field,
+            )
+        if raw_counts is None:
+            facets_result[core_field] = []
+            continue
+        _route_corpus_counts(core_field, raw_counts, facets_result, range_fields)
+    return facets_result, range_fields

@@ -539,6 +539,7 @@ async def get_facets(
     q: Optional[str] = None,
 ):
     search_routes.get_db_for_source = get_db_for_source
+    search_routes.get_pg_for_source = get_pg_for_source
     search_routes.get_default_filter_fields = get_default_filter_fields
     return await _get_facets(
         request=request,
