@@ -1,7 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { APP_BASE_PATH } from '../../config';
+
+// Footer markdown links: open external (http/https) links in a new tab;
+// internal links (e.g. /privacy) stay in the same tab.
+const footerComponents: Components = {
+  a: ({ href, children }) => {
+    const external = !!href && /^https?:\/\//i.test(href);
+    return external ? (
+      <a href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    ) : (
+      <a href={href}>{children}</a>
+    );
+  },
+};
 
 interface AppFooterProps {
   // The default footer content, rendered when no footer.md override is present.
@@ -40,7 +55,9 @@ const AppFooter: React.FC<AppFooterProps> = ({ children }) => {
   if (custom) {
     return (
       <footer className="app-footer app-footer-custom">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{custom}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={footerComponents}>
+          {custom}
+        </ReactMarkdown>
       </footer>
     );
   }
