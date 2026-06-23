@@ -23,7 +23,7 @@ COPY docs/ ./docs_source/
 
 # --- Deployment customization overlay -------------------------------------
 # `custom/` is a git-ignored overlay dir, populated from a separate repo such
-# as wfp-evidencelab-custom (see docs/deployment/customization.md). A committed
+# as wfp-evidencelab-custom (see docs/admin/customization.md). A committed
 # skeleton makes this a no-op for vanilla builds: the script only copies assets
 # that are actually present, so an uncustomized build is byte-identical.
 COPY custom/ ./_overlay/

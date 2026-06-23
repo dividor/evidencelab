@@ -5,7 +5,7 @@
 # means "no override for that asset" — the intended no-op for an uncustomized
 # build, not a silent fallback hiding a bug. The committed skeleton under
 # ./custom keeps this a no-op for vanilla builds. See
-# docs/deployment/customization.md.
+# docs/admin/customization.md.
 #
 # Usage: apply_branding.sh <overlay-dir> <public-dir> <src-dir>
 set -eu

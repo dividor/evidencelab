@@ -1,7 +1,7 @@
 """Deep-merge a customization overlay onto the base ``config.json``.
 
 Part of the deployment customization overlay (see
-``docs/deployment/customization.md``). The overlay file holds ONLY deltas; this
+``docs/admin/customization.md``). The overlay file holds ONLY deltas; this
 renders the fully-resolved config that the frontend build bundles and the API
 mounts at runtime, so a deployment never copies the whole ``config.json`` and
 therefore never drifts behind the base.

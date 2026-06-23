@@ -9,7 +9,7 @@
   /* ============================================
      BRAND TYPOGRAPHY - Change these to rebrand
      (overlay via custom/branding/theme.css; ship fonts in
-      custom/branding/fonts/ — see docs/deployment/customization.md)
+      custom/branding/fonts/ — see docs/admin/customization.md)
      ============================================ */
   --font-body: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   --font-heading: 'Poppins', sans-serif;

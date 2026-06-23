@@ -1,13 +1,48 @@
-# Deployment Customization & Branding
+# Customization & Branding
 
 Evidence Lab supports **per-deployment customization** — config deltas, branding
-(colors, logo, favicon), and deploy files (Caddyfile, compose override, `.env`) —
-without forking the repo or leaving untracked files lying around.
+(colors, fonts, logo, favicon), and deploy files (Caddyfile, compose override,
+`.env`) — without forking the repo or leaving untracked files lying around.
+
+> **Customization is optional.** Out of the box Evidence Lab runs on built-in
+> defaults — you need none of this to stand up a working instance. With no
+> overlay applied, the build is byte-identical to stock Evidence Lab. Reach for
+> it only when you want to override defaults for your deployment.
 
 All customization lives in a single **git-ignored overlay directory**, `custom/`,
 which is populated from a separate repo (for example `wfp-evidencelab-custom`).
 The build and runtime layer that overlay on top of the base; the tracked source
 tree is never modified.
+
+## Quick start
+
+1. Create a customization repo (or clone an existing one). Its layout is in
+   [Customization repo structure](#customization-repo-structure) below — start
+   with just the one or two files you want to override; everything else falls
+   back to defaults.
+2. On the deployment host, point the base repo at it:
+
+   ```bash
+   make customize CUSTOM=/path/to/your-evidencelab-custom   # sync + render config
+   make prod-up   CUSTOM=/path/to/your-evidencelab-custom   # build + run with the overlay
+   ```
+
+3. That's it. To change a default later, edit the file in your customization
+   repo and re-run the two commands.
+
+## What you can override (and where)
+
+Each row is independent — set only what you need; omit the rest to keep defaults.
+
+| Want to change… | Put it in the customization repo at… | How |
+|-----------------|--------------------------------------|-----|
+| Datasources, models, search/app settings | `config.overlay.json` | deep-merged onto base `config.json` (see [merge rules](#configoverlayjson-merge-rules)) |
+| Brand **colors** | `branding/theme.css` | redefine the `--brand-*` tokens |
+| **Fonts** | `branding/theme.css` + `branding/fonts/` | redefine `--font-*` tokens; ship woff2 |
+| **Logo** / favicon / OG image / PWA manifest | `branding/{logo.png,favicon.ico,og-image.png,manifest.json}` | replaces the base asset |
+| Reverse proxy | `deploy/Caddyfile` | bind-mounted at runtime |
+| Infra (mounts, mem, extra services) | `deploy/docker-compose.override.yml` | layered compose override |
+| Env / feature flags / secrets paths | `env/.env` | `--env-file` at build + runtime |
 
 ## Why an overlay
 
