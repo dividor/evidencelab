@@ -32,3 +32,12 @@ copy_if_present "$OVERLAY/branding/manifest.json" "$PUBLIC/manifest.json"
 
 # Theme: CSS variable overrides, imported after App.css via src/custom-theme.css.
 copy_if_present "$OVERLAY/branding/theme.css"     "$SRC/custom-theme.css"
+
+# Self-hosted branding fonts. They go under src/ so the bundler fingerprints
+# them to same-origin /static/media/ (CSP-safe: font-src 'self'). theme.css
+# @font-face rules reference them relatively, e.g. url('./fonts/<file>').
+if [ -d "$OVERLAY/branding/fonts" ]; then
+    mkdir -p "$SRC/fonts"
+    cp -R "$OVERLAY/branding/fonts/." "$SRC/fonts/"
+    echo "branding: applied fonts -> $SRC/fonts/"
+fi

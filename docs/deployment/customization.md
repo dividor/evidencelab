@@ -28,6 +28,7 @@ Each customization is applied where it is actually consumed:
 | `config.json` (frontend) | build | deep-merged from `config.overlay.json`, bundled into the UI |
 | `config.json` (backend) | runtime | resolved file mounted at `/app/config.json` (no API rebuild) |
 | Colors | build | `branding/theme.css` redefines the `--brand-*` tokens from `App.css`, imported after it as `src/custom-theme.css` so it wins the cascade |
+| Fonts | build | `branding/theme.css` redefines `--font-*` tokens; self-hosted woff2 in `branding/fonts/` are bundled to same-origin `/static/media/` |
 | Logo / favicon / OG / manifest | build | copied over `ui/frontend/public/*` |
 | `nginx.conf` | build | overridden only if `deploy/nginx.conf` is present (rare — the base is a superset) |
 | `Caddyfile` | runtime | bind-mounted from `custom/deploy/Caddyfile` |
@@ -82,7 +83,8 @@ your-evidencelab-custom/
 ├── config.overlay.json             # DELTAS ONLY — deep-merged onto base config.json
 │
 ├── branding/
-│   ├── theme.css                    # redefines :root { --brand-* } (colors)
+│   ├── theme.css                    # redefines :root { --brand-* / --font-* } tokens
+│   ├── fonts/                       # optional self-hosted woff2 (referenced by theme.css)
 │   ├── logo.png                     # served at /logo.png
 │   ├── favicon.ico
 │   ├── og-image.png                 # optional (1200×627 social card)
@@ -132,10 +134,34 @@ them via `var()`, so the rest of the palette cascades automatically:
 
 ```css
 :root {
-  --brand-primary: #0A6EB4;
-  --brand-primary-dark: #084E7D;
-  --brand-accent: #F26A21;
+  --brand-primary: #2A93FC;
+  --brand-primary-dark: #037CF5;
+  --brand-accent: #1F6EBC;
   /* …leave a token out and it keeps the base value */
+}
+```
+
+### Fonts (`branding/fonts/` + `--font-*` tokens)
+
+Typography is tokenized the same way as colors. The base defines `--font-body`,
+`--font-heading`, and `--font-mono` in `App.css :root`; every `font-family`
+declaration resolves through them. To rebrand the typeface:
+
+1. Drop self-hostable font files (woff2) in `branding/fonts/`. At build time
+   `apply_branding.sh` copies them under `src/fonts/`, so the bundler
+   fingerprints them to same-origin `/static/media/` — **CSP-safe**
+   (`font-src 'self'`); no external Google-Fonts request, no CSP change.
+2. In `branding/theme.css`, declare the faces (reference files **relatively**,
+   `./fonts/<file>`) and point the tokens at them:
+
+```css
+@font-face {
+  font-family: 'Lato'; font-weight: 400; font-display: swap;
+  src: url('./fonts/Lato-400.woff2') format('woff2');
+}
+:root {
+  --font-body: 'Lato', -apple-system, sans-serif;
+  --font-heading: 'Lato', -apple-system, sans-serif;
 }
 ```
 
