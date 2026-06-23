@@ -39,6 +39,12 @@ jest.mock('../components/admin/TestingManager', () => {
   };
 });
 
+jest.mock('../components/admin/CustomizationManager', () => {
+  return function MockCustomizationManager() {
+    return <div data-testid="customization-manager">CustomizationManager</div>;
+  };
+});
+
 import AdminPanel from '../components/admin/AdminPanel';
 
 describe('AdminPanel', () => {
@@ -106,6 +112,13 @@ describe('AdminPanel', () => {
     render(<AdminPanel isActive={true} />);
     fireEvent.click(screen.getByText('Testing'));
     expect(screen.getByTestId('testing-manager')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
+  });
+
+  test('switches to Customization tab on click', () => {
+    render(<AdminPanel isActive={true} />);
+    fireEvent.click(screen.getByText('Customization'));
+    expect(screen.getByTestId('customization-manager')).toBeInTheDocument();
     expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
   });
 
