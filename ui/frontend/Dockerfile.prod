@@ -15,8 +15,13 @@ RUN npm ci --legacy-peer-deps
 # Copy source files from ui/frontend
 COPY ui/frontend/. .
 
-# Copy config.json from root (after source files)
-COPY config.json ./src/config.json
+# config.json from the `config` build context (declared in
+# docker-compose.prod.yml as `config: ${CONFIG_SRC:-.}`). Defaults to this repo
+# root => stock config.json; a deployment sets CONFIG_SRC to bake its own.
+# Uses RUN --mount (like the branding overlay below) so hadolint's DL3022 isn't
+# tripped and a stock build stays byte-identical.
+RUN --mount=type=bind,from=config,target=/config-src \
+    cp /config-src/config.json ./src/config.json
 
 # Copy docs from project root (used by copy-docs script during build)
 COPY docs/ ./docs_source/

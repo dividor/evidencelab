@@ -244,8 +244,13 @@ services:
       dockerfile: ui/frontend/Dockerfile.prod
       # Optional branding overlay. Defaults to the stock ./customize folder;
       # set CUSTOMIZE_ASSETS=/path/to/your-branding to override. No make/diff.
+      #
+      # Optional config overlay. Defaults to this repo root (stock config.json);
+      # set CONFIG_SRC=/path/to/deployment to bake a deployment's config.json
+      # into the UI build instead. Unset => byte-identical to stock.
       additional_contexts:
         customize: ${CUSTOMIZE_ASSETS:-./customize}
+        config: ${CONFIG_SRC:-.}
       args:
         - REACT_APP_AI_SUMMARY_ON=${REACT_APP_AI_SUMMARY_ON:-false}
         - REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS:-true}
