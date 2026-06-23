@@ -283,3 +283,8 @@ config.json
 /customize/*
 !/customize/README.md
 !/customize/.gitkeep
+
+# Vertex service-account key (deployment secret) — mounted at runtime, never committed.
+/gcp-creds.json
+/gcp.key.json
+/gcp.key.json.vertex
