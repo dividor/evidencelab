@@ -328,6 +328,7 @@ h6,
 .dropdown-trigger-help {
   border: none;
   background: transparent;
+  font-size: 1.265625rem; /* match larger header nav (0.9375rem × 1.35) */
   padding: 0.5rem 0.5rem;
   box-shadow: none;
   width: auto;
@@ -549,7 +550,7 @@ h6,
 
 .nav-tab {
   padding: 1.25rem 2rem;
-  font-size: 0.9375rem;
+  font-size: 1.265625rem; /* 0.9375rem × 1.35 — larger header nav items */
   font-weight: 500;
   font-family: var(--font-heading);
   color: var(--gray-600);
