@@ -89,12 +89,19 @@ jobs:
       - name: Create data directory
         run: mkdir -p data/demo
 
-      - name: Start all services
-        run: docker compose up -d
+      # ----------------------------------------------------------------
+      # Step 3: Start Postgres and migrate BEFORE the app services.
+      # The api container's start command also runs `alembic upgrade head`.
+      # If it starts concurrently with the host migration below, both call
+      # alembic's _ensure_version_table and race to `CREATE TABLE
+      # alembic_version` — Postgres rejects the loser with a duplicate
+      # pg_type_typname_nsp_index unique violation. Migrating to head while
+      # Postgres is the only running service means api's later upgrade finds
+      # the version table already present and is a clean no-op.
+      # ----------------------------------------------------------------
+      - name: Start Postgres
+        run: docker compose up -d postgres
 
-      # ----------------------------------------------------------------
-      # Step 3: Wait for infrastructure
-      # ----------------------------------------------------------------
       - name: Wait for Postgres
         run: |
           echo "Waiting for Postgres..."
@@ -111,9 +118,14 @@ jobs:
         run: |
           # Run alembic directly on the host — alembic is installed by the
           # "Install Python dependencies" step and postgres is bound to host
-          # port 5432. Running on the host avoids a race condition where the
-          # pipeline container is still waiting for embedding-server health.
+          # port 5432. Running on the host (not in a container) avoids a race
+          # with the pipeline container still waiting for embedding-server
+          # health. Postgres is the only service up at this point, so no
+          # container can race us to create alembic_version.
           POSTGRES_HOST=localhost alembic upgrade heads
+
+      - name: Start all services
+        run: docker compose up -d
 
       - name: Wait for embedding server
         run: |
