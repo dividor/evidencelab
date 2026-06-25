@@ -5,17 +5,29 @@ isolation, pass/fail classification, latency capture, judge wiring — is tested
 without touching the live search/LLM services.
 """
 
+import uuid
+
 import pytest
 
-from ui.backend.auth.testing_models import TestExperiment, TestRun
+import ui.backend.services.test_runner as test_runner
+from ui.backend.auth.testing_models import (
+    TestCase,
+    TestDataset,
+    TestExperiment,
+    TestRun,
+)
 from ui.backend.services.test_runner import (
+    _active_case_plan,
     _build_references,
+    _build_result_row,
     _combo_summary_model,
     _default_summary_model,
+    _execute,
     _format_judge_context,
     _group_settings_to_config,
     _mirror_run_to_experiment,
     _parse_judgement,
+    _progress_stats,
     _references_text,
     _resolve_case_plan,
     _storable_output,
@@ -349,6 +361,149 @@ async def test_evaluate_case_when_no_assertions_then_passes():
 
     outcome = await evaluate_case({}, [], runner)
     assert outcome["status"] == "pass" and outcome["score"] == 1.0
+
+
+async def test_progress_stats_reports_completed_and_total():
+    assert _progress_stats(3, 10) == {"progress": {"completed": 3, "total": 10}}
+
+
+async def test_active_case_plan_keeps_only_active_cases_with_assertions():
+    cases = [
+        TestCase(id=uuid.UUID("00000000-0000-0000-0000-000000000001"), input={}),
+        TestCase(id=uuid.UUID("00000000-0000-0000-0000-000000000002"), input={}),
+        TestCase(id=uuid.UUID("00000000-0000-0000-0000-000000000003"), input={}),
+    ]
+    matrix = {
+        "columns": [{"type": "min_results", "value": 1}],
+        "cases": {
+            "00000000-0000-0000-0000-000000000001": {"active": True, "cols": [True]},
+            "00000000-0000-0000-0000-000000000002": {"active": False, "cols": [True]},
+            # case 3 not in matrix -> inactive
+        },
+    }
+    plan = _active_case_plan(matrix, cases)
+    # Only the active case 1 is planned; total drives the progress denominator.
+    assert len(plan) == 1
+    planned_case, assertions = plan[0]
+    assert planned_case is cases[0]
+    assert assertions == [{"type": "min_results", "value": 1}]
+
+
+async def test_active_case_plan_empty_when_no_cases_active():
+    cases = [TestCase(id=uuid.uuid4(), input={})]
+    assert _active_case_plan({}, cases) == []
+
+
+async def test_build_result_row_compacts_output_and_sets_keys():
+    experiment = TestExperiment(id=uuid.uuid4())
+    run = TestRun(id=uuid.uuid4())
+    case = TestCase(id=uuid.uuid4(), input={"query": "x"})
+    outcome = {
+        "status": "pass",
+        "score": 1.0,
+        "latency_ms": 12,
+        "error_message": None,
+        "actual_output": {"results": [{"id": "1", "text": "y" * 5000}]},
+        "assertion_results": [{"type": "min_results", "passed": True}],
+    }
+    row = _build_result_row(experiment, run, case, outcome)
+    assert row.experiment_id == experiment.id
+    assert row.run_id == run.id
+    assert row.test_case_id == case.id
+    assert row.status == "pass"
+    # Output is compacted: per-result text is trimmed to the storage limit.
+    assert len(row.actual_output["results"][0]["text"]) == 2000
+
+
+class _FakeResult:
+    def scalar(self):
+        return 0
+
+
+class _FakeSession:
+    """Minimal async-session stand-in that records summary_stats at each commit,
+    so a test can assert progress is published incrementally."""
+
+    def __init__(self, dataset):
+        self._dataset = dataset
+        self._run = None
+        self.commits = []  # snapshot of run.summary_stats per commit
+        self.added = []
+
+    async def get(self, _model, _ident):
+        return self._dataset
+
+    async def execute(self, _stmt):
+        return _FakeResult()
+
+    def add(self, obj):
+        self.added.append(obj)
+        if isinstance(obj, TestRun):
+            self._run = obj
+
+    async def commit(self):
+        self.commits.append(self._run.summary_stats if self._run else None)
+
+    async def refresh(self, _obj):
+        return None
+
+    async def rollback(self):
+        return None
+
+
+async def test_execute_publishes_incremental_progress(monkeypatch):
+    async def fake_runner(_case_input):
+        return {"results": [{"id": "A", "doc_id": "A"}], "count": 1}
+
+    async def fake_factory(_output, _expectations):
+        return lambda _text, _rubric: 0.0
+
+    c1, c2 = uuid.uuid4(), uuid.uuid4()
+    cases = [
+        TestCase(id=c1, input={"query": "a"}),
+        TestCase(id=c2, input={"query": "b"}),
+    ]
+
+    monkeypatch.setattr(test_runner, "build_case_runner", lambda *a, **k: fake_runner)
+    monkeypatch.setattr(test_runner, "make_judge_factory", lambda _cfg: fake_factory)
+
+    async def fake_load_cases(_session, _dataset_id):
+        return cases
+
+    monkeypatch.setattr(test_runner, "_load_cases", fake_load_cases)
+
+    dataset_id = uuid.uuid4()
+    dataset = TestDataset(id=dataset_id, capability="search", data_source="uneg")
+    experiment = TestExperiment(
+        id=uuid.uuid4(),
+        dataset_id=dataset_id,
+        status="pending",
+        config=None,
+        case_expectations={
+            "columns": [{"type": "min_results", "value": 1}],
+            "cases": {
+                str(c1): {"active": True, "cols": [True]},
+                str(c2): {"active": True, "cols": [True]},
+            },
+        },
+    )
+    session = _FakeSession(dataset)
+
+    await _execute(session, experiment)
+
+    progress = [c["progress"] for c in session.commits if c and "progress" in c]
+    # 0/2 at start, then 1/2 and 2/2 as each case finishes.
+    assert {"completed": 0, "total": 2} in progress
+    assert {"completed": 1, "total": 2} in progress
+    assert {"completed": 2, "total": 2} in progress
+    # Final commit carries the real aggregate stats, not a progress marker.
+    final = session.commits[-1]
+    assert "progress" not in final
+    assert final["pass_rate"] == 1.0 and final["total"] == 2
+    assert experiment.status == "completed"
+    # One persisted result row per active case.
+    result_rows = [o for o in session.added if o.__class__.__name__ == "TestResult"]
+    assert len(result_rows) == 2
 
 
 async def test_evaluate_case_uses_injected_judge_factory():

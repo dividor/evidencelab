@@ -11553,20 +11553,15 @@ a.admin-citation-clickable:hover {
 }
 
 /* Inline add/edit-a-column form below the matrix. */
-.testing-column-form {
-  margin-top: 0.75rem;
-  border: 1px solid var(--color-border, #d0d7de);
-  border-radius: 6px;
-  padding: 0.75rem;
-  background: var(--color-surface, #fff);
-}
-.testing-column-form-header {
-  margin-bottom: 0.5rem;
+/* Assertion add/edit form is presented in a modal (see AssertionColumnForm). */
+.testing-assertion-modal {
+  max-width: 540px;
 }
 .testing-column-form-actions {
   display: flex;
+  justify-content: flex-end;
   gap: var(--spacing-sm, 0.5rem);
-  margin-top: 0.6rem;
+  margin-top: 1rem;
 }
 
 /* ---- Run history (experiment detail) ---- */
@@ -11731,6 +11726,40 @@ a.admin-citation-clickable:hover {
 }
 .testing-run-body {
   padding: 0.5rem 0.75rem 0.75rem;
+}
+
+/* ---- Live run progress (in-flight runs) ---- */
+.testing-run-progress {
+  margin-bottom: 0.6rem;
+}
+.testing-run-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #57606a);
+  margin-bottom: 0.3rem;
+}
+.testing-run-progress-pct {
+  font-weight: 600;
+  color: var(--brand-primary, #5b8fa8);
+}
+.testing-run-progress-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-surface-alt, #eef1f4);
+  overflow: hidden;
+}
+.testing-run-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--brand-primary, #5b8fa8);
+  transition: width 0.3s ease;
+}
+/* Compact "k/N cases" shown in the run header while it is running. */
+.testing-run-progress-of {
+  color: var(--color-text-muted, #57606a);
+  font-weight: 400;
 }
 
 /* ---- Human-friendly result output ---- */

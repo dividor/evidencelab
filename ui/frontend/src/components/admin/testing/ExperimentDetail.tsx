@@ -4,6 +4,7 @@ import API_BASE_URL from '../../../config';
 import type {
   AssertionResult,
   ExperimentDetail as ExperimentDetailType,
+  RunProgress,
   TestCase,
   TestResult,
   TestRun,
@@ -342,6 +343,43 @@ const passRateLevel = (rate?: number | null): string => {
   return 'bad';
 };
 
+/* Live progress for an in-flight run: "k of N cases (z%)" plus a bar. The
+   backend publishes `progress` on summary_stats while running and replaces it
+   with the real stats on completion. */
+const RunProgressBar: React.FC<{ progress?: RunProgress | null }> = ({ progress }) => {
+  if (!progress) {
+    return (
+      <div className="testing-run-progress" role="status">
+        <span className="testing-run-progress-label">Starting…</span>
+      </div>
+    );
+  }
+  const { completed, total } = progress;
+  const fraction = total > 0 ? completed / total : 0;
+  return (
+    <div className="testing-run-progress" role="status">
+      <div className="testing-run-progress-label">
+        <span>
+          {completed} of {total} {total === 1 ? 'case' : 'cases'} processed
+        </span>
+        <span className="testing-run-progress-pct">{formatPercent(fraction)}</span>
+      </div>
+      <div
+        className="testing-run-progress-track"
+        role="progressbar"
+        aria-valuenow={completed}
+        aria-valuemin={0}
+        aria-valuemax={total}
+      >
+        <div
+          className="testing-run-progress-fill"
+          style={{ width: `${Math.round(fraction * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
 const RunSection: React.FC<{
   run: TestRun;
   caseInputs: Record<string, Record<string, unknown>>;
@@ -369,22 +407,34 @@ const RunSection: React.FC<{
           {run.status}
         </span>
         {isLatest && <span className="testing-run-latest">Latest</span>}
-        <span className="testing-run-metrics">
-          <span className="testing-run-metric">
-            <strong className={`testing-passrate testing-passrate--${level}`}>
-              {formatPercent(stats?.pass_rate)}
-            </strong>
-            <span className="testing-run-metric-label">pass</span>
+        {active && stats?.progress ? (
+          <span className="testing-run-metrics">
+            <span className="testing-run-metric">
+              <strong>
+                {stats.progress.completed}
+                <span className="testing-run-progress-of">/{stats.progress.total}</span>
+              </strong>
+              <span className="testing-run-metric-label">cases</span>
+            </span>
           </span>
-          <span className="testing-run-metric">
-            <strong>{formatScore(stats?.mean_score)}</strong>
-            <span className="testing-run-metric-label">score</span>
+        ) : (
+          <span className="testing-run-metrics">
+            <span className="testing-run-metric">
+              <strong className={`testing-passrate testing-passrate--${level}`}>
+                {formatPercent(stats?.pass_rate)}
+              </strong>
+              <span className="testing-run-metric-label">pass</span>
+            </span>
+            <span className="testing-run-metric">
+              <strong>{formatScore(stats?.mean_score)}</strong>
+              <span className="testing-run-metric-label">score</span>
+            </span>
+            <span className="testing-run-metric">
+              <strong>{formatMs(stats?.duration_ms)}</strong>
+              <span className="testing-run-metric-label">dur</span>
+            </span>
           </span>
-          <span className="testing-run-metric">
-            <strong>{formatMs(stats?.duration_ms)}</strong>
-            <span className="testing-run-metric-label">dur</span>
-          </span>
-        </span>
+        )}
         <span className="testing-run-time">
           {formatTimestamp(run.finished_at || run.started_at)}
         </span>
@@ -392,6 +442,7 @@ const RunSection: React.FC<{
       {open && (
         <div className="testing-run-body">
           {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
+          {active && <RunProgressBar progress={stats?.progress} />}
           <RunStats run={run} />
           <table className="admin-table">
             <thead>
@@ -411,7 +462,7 @@ const RunSection: React.FC<{
               {results.length === 0 && (
                 <tr>
                   <td colSpan={6} className="text-muted">
-                    {active ? 'Running — results will appear shortly...' : 'No results.'}
+                    {active ? 'Running — results appear here as each case finishes…' : 'No results.'}
                   </td>
                 </tr>
               )}

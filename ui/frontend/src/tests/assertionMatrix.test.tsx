@@ -9,6 +9,8 @@ const cases: TestCase[] = [
   { id: 'c2', dataset_id: 'd1', input: { query: 'beta' }, created_at: '', updated_at: '' },
 ];
 
+const MODAL_OVERLAY = '.modal-overlay';
+
 const Harness: React.FC<{ initial: MatrixValue }> = ({ initial }) => {
   const [value, setValue] = React.useState<MatrixValue>(initial);
   return (
@@ -30,6 +32,36 @@ describe('AssertionMatrix', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add column/i }));
     // The new column's header summarises the assertion type (default first spec).
     expect(screen.getByText(/result_contains_id/)).toBeInTheDocument();
+  });
+
+  test('clicking + Assertion opens the form in a modal', () => {
+    const { container } = render(<Harness initial={{ columns: [], cases: {} }} />);
+    expect(container.querySelector(MODAL_OVERLAY)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /\+ Assertion/i }));
+    // The add form is presented in a modal overlay, not inline in the matrix.
+    expect(container.querySelector(MODAL_OVERLAY)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Add assertion column/i })).toBeInTheDocument();
+  });
+
+  test('cancelling the assertion modal closes it', () => {
+    const { container } = render(<Harness initial={{ columns: [], cases: {} }} />);
+    fireEvent.click(screen.getByRole('button', { name: /\+ Assertion/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    expect(container.querySelector(MODAL_OVERLAY)).toBeNull();
+  });
+
+  test('editing an existing column opens the modal in edit mode', () => {
+    const initial: MatrixValue = {
+      columns: [{ type: 'min_results', value: 1 }],
+      cases: {
+        c1: { active: true, cols: [true] },
+        c2: { active: true, cols: [true] },
+      },
+    };
+    const { container } = render(<Harness initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
+    expect(container.querySelector(MODAL_OVERLAY)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Edit assertion/i })).toBeInTheDocument();
   });
 
   test('does not crash on a legacy per-case value shape', () => {
