@@ -279,7 +279,7 @@ const FilterCheckboxList = ({
                 }}
               />
               <div className="filter-checkbox-text">
-                <span className="filter-checkbox-label" title={isTag || stacked ? displayValue : undefined}>
+                <span className="filter-checkbox-label" title={displayValue}>
                   {displayValue}
                 </span>
                 {stacked && (item.organization || item.published_year) && (

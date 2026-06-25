@@ -7906,6 +7906,9 @@ li.ai-fact-active::before {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .heatmap-filter-select-all {
