@@ -701,6 +701,51 @@ async def _mark_failed(session, experiment: TestExperiment, message: str) -> Non
     await session.commit()
 
 
+def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
+    """A lightweight progress marker stored in a run's ``summary_stats`` while it
+    is in flight, so the polling UI can show "completed of total cases".
+
+    It is replaced by the real aggregate stats (``compute_summary_stats``) once
+    the run finishes, so a running run never carries pass/score numbers.
+    """
+    return {"progress": {"completed": completed, "total": total}}
+
+
+def _active_case_plan(
+    matrix: Dict[str, Any], cases: List[TestCase]
+) -> List[Tuple[TestCase, List[Dict[str, Any]]]]:
+    """Resolve the cases that will actually run and the assertions each needs.
+
+    Building the plan up front lets the runner publish a total case count for
+    progress reporting before it starts executing.
+    """
+    plan: List[Tuple[TestCase, List[Dict[str, Any]]]] = []
+    for case in cases:
+        active, assertions = _resolve_case_plan(matrix, str(case.id))
+        if active:
+            plan.append((case, assertions))
+    return plan
+
+
+def _build_result_row(
+    experiment: TestExperiment, run: TestRun, case: TestCase, outcome: Dict[str, Any]
+) -> TestResult:
+    """Build a compact, JSON-safe ``TestResult`` for one evaluated case.
+
+    The full output can carry datetimes and be megabytes large; assertions have
+    already run against it, so only a trimmed, serialisable copy is persisted.
+    """
+    stored = dict(outcome)
+    stored["actual_output"] = _storable_output(outcome.get("actual_output"))
+    stored["assertion_results"] = _json_safe(outcome.get("assertion_results"))
+    return TestResult(
+        experiment_id=experiment.id,
+        run_id=run.id,
+        test_case_id=case.id,
+        **stored,
+    )
+
+
 async def _execute(session, experiment: TestExperiment) -> None:
     dataset = await session.get(TestDataset, experiment.dataset_id)
     started = time.time()
@@ -734,26 +779,24 @@ async def _execute(session, experiment: TestExperiment) -> None:
         return
     judge_factory = make_judge_factory(config)
     matrix = experiment.case_expectations or {}
+
+    # Resolve the active cases up front so the total is known, then publish
+    # progress (and stream each result) as the run advances. Committing per case
+    # — safe because the session is created with expire_on_commit=False — lets
+    # the polling UI report how far along the run is instead of a blind "running".
+    plan = _active_case_plan(matrix, await _load_cases(session, dataset.id))
+    total = len(plan)
+    run.summary_stats = _progress_stats(0, total)
+    await session.commit()
+
     case_results: List[Dict[str, Any]] = []
-    for case in await _load_cases(session, dataset.id):
-        active, assertions = _resolve_case_plan(matrix, str(case.id))
-        if not active:
-            continue
+    for completed, (case, assertions) in enumerate(plan, start=1):
         outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         case_results.append(outcome)
-        # Persist a compact, JSON-safe copy (full output can carry datetimes and
-        # be megabytes large); assertions already ran against the full output.
-        stored = dict(outcome)
-        stored["actual_output"] = _storable_output(outcome.get("actual_output"))
-        stored["assertion_results"] = _json_safe(outcome.get("assertion_results"))
-        session.add(
-            TestResult(
-                experiment_id=experiment.id,
-                run_id=run.id,
-                test_case_id=case.id,
-                **stored,
-            )
-        )
+        session.add(_build_result_row(experiment, run, case, outcome))
+        run.summary_stats = _progress_stats(completed, total)
+        await session.commit()
+
     run.summary_stats = compute_summary_stats(
         case_results, int((time.time() - started) * 1000)
     )

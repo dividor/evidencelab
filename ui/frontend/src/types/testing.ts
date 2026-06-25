@@ -63,6 +63,13 @@ export interface AssertionResult {
   judge_prompt?: string;
 }
 
+// Emitted only while a run is in flight, so the UI can show how far it has
+// progressed. Replaced by the aggregate fields below once the run completes.
+export interface RunProgress {
+  completed: number;
+  total: number;
+}
+
 export interface SummaryStats {
   total: number;
   passed: number;
@@ -72,6 +79,7 @@ export interface SummaryStats {
   mean_score?: number | null;
   duration_ms: number;
   error?: string;
+  progress?: RunProgress | null;
 }
 
 export interface TestExperiment {
