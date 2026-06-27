@@ -402,21 +402,28 @@ async def generate_brief_outline(
     temperature: float | None = None,
     max_tokens: int | None = None,
     sources: Optional[List[Dict[str, Any]]] = None,
+    instructions: str | None = None,
+    num_headings: int | None = None,
 ) -> tuple[str, List[Dict[str, Any]]]:
-    """Generate a research-brief outline (title + headings) from a question.
+    """Generate research-brief section headings for a topic.
 
-    ``sources`` is an optional sample of the most relevant corpus material
-    (``{title, organization, year, snippet}``); when provided, the outline is
-    grounded in the themes actually present in the corpus. Prompts live in
+    ``question`` is the brief topic. ``instructions`` is optional author
+    guidance, ``num_headings`` the desired number of top-level sections, and
+    ``sources`` an optional sample of the most relevant corpus material
+    (``{title, organization, year, snippet}``) so the headings are grounded in
+    the themes actually present in the corpus. Prompts live in
     ``prompts/brief_outline_*.j2``.
 
-    Returns ``(brief_title, headings)`` where each heading is
-    ``{"title": str, "level": 1 | 2}``. Levels express a two-level hierarchy
-    of sections and sub-sections.
+    Returns ``(title, headings)``; ``title`` falls back to the topic when the
+    model does not supply one (callers typically force the title to the topic).
+    Each heading is ``{"title": str, "level": 1 | 2}``.
     """
     system_prompt = _brief_outline_system_template.render()
     user_prompt = _brief_outline_user_template.render(
-        question=question.strip(), sources=sources or []
+        topic=question.strip(),
+        instructions=(instructions or "").strip() or None,
+        num_headings=num_headings or 6,
+        sources=sources or [],
     )
     llm = get_llm(
         model=model_key,

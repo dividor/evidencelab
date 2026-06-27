@@ -186,9 +186,12 @@ class BriefSourceSample(BaseModel):
 
 
 class BriefOutlineRequest(BaseModel):
-    question: str
+    question: str  # the brief topic; the response title echoes this
     data_source: str
     model: Optional[str] = None
+    # Optional author guidance and desired section count that steer the headings.
+    instructions: Optional[str] = None
+    num_headings: Optional[int] = None
     # Optional sample of the most relevant corpus material (from a prior /search)
     # so the outline reflects what the system actually contains.
     sources: Optional[List[BriefSourceSample]] = None

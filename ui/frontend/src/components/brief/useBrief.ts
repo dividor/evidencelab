@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
 import {
   BriefActivityEvent,
+  BriefSourceSample,
   requestBriefOutline,
   researchBriefSection,
-  searchCorpusForOutline,
+  runDeepResearch,
 } from '../../utils/briefStream';
 import {
   BRIEF_HISTORY_KEY,
@@ -36,8 +36,6 @@ export interface UseBriefOptions {
   // both outline generation and per-section research so the Brief tab uses the
   // same LLM as the rest of the system.
   assistantModelConfig?: SummaryModelConfig | null;
-  rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
 }
 
 const loadHistory = (): SavedBrief[] => {
@@ -83,13 +81,13 @@ export const useBrief = ({
   apiBaseUrl,
   dataSource,
   assistantModelConfig,
-  rerankerModel,
-  searchSettings,
 }: UseBriefOptions) => {
   const [stage, setStage] = useState<BriefStage>('seed');
   const [briefTitle, setBriefTitle] = useState('Evidence Brief');
   const [sections, setSections] = useState<BriefSection[]>([]);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(''); // the brief topic
+  const [instructions, setInstructions] = useState('');
+  const [numHeadings, setNumHeadings] = useState(6);
   const [newHeading, setNewHeading] = useState('');
   const [regenFor, setRegenFor] = useState<string | null>(null);
   const [regenText, setRegenText] = useState('');
@@ -97,6 +95,8 @@ export const useBrief = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outlineLoading, setOutlineLoading] = useState(false);
+  // Live activity for the outline-generation deep-research survey.
+  const [generatingActivity, setGeneratingActivity] = useState<BriefActivityEvent[]>([]);
 
   const briefIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -150,29 +150,70 @@ export const useBrief = ({
   }, [briefTitle, query, history, persist]);
 
   // ---- outline ----
+  // Generate headings by first running a deep-research survey of the corpus for
+  // the topic (streaming the same SCAN/READ activity as section research), then
+  // asking the model for headings grounded in what that survey found.
   const generateOutline = useCallback(async () => {
+    const topic = query.trim();
+    if (!topic) return;
     setError(null);
     setOutlineLoading(true);
+    setGeneratingActivity([]);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const guidance = instructions.trim();
+    let gathered: BriefSourceSample[] = [];
     try {
-      // Ground the outline in what the corpus actually contains.
-      const sources = await searchCorpusForOutline({ apiBaseUrl, dataSource, question: query });
+      const surveyQuery = guidance
+        ? `Survey the evidence in the corpus relevant to: ${topic}. ${guidance}`
+        : `Survey the evidence in the corpus relevant to: ${topic}.`;
+      await runDeepResearch({
+        apiBaseUrl,
+        dataSource,
+        query: surveyQuery,
+        doneLabel: 'Corpus surveyed',
+        assistantModelConfig,
+        signal: controller.signal,
+        handlers: {
+          onActivity: (ev) => setGeneratingActivity((prev) => [ev, ...prev].slice(0, 40)),
+          onProgress: () => {},
+          onToken: () => {},
+          onSources: (srcs) => {
+            gathered = srcs.map((s) => ({
+              title: s.title,
+              snippet: (s.text || '').slice(0, 240),
+            }));
+          },
+          onDone: () => {},
+          onError: (m) => setError(m),
+        },
+      });
+      if (controller.signal.aborted) return;
+      setGeneratingActivity((prev) =>
+        [{ tag: 'DRAFT' as const, text: 'Drafting outline' }, ...prev].slice(0, 40),
+      );
       const outline = await requestBriefOutline({
         apiBaseUrl,
         dataSource,
-        question: query,
+        topic,
+        instructions: guidance || null,
+        numHeadings,
         model: assistantModelConfig?.model ?? null,
-        sources,
+        sources: gathered,
+        signal: controller.signal,
       });
       briefIdRef.current = uid();
-      setBriefTitle(outline.title);
+      setBriefTitle(topic);
       setSections(outline.headings.filter((h) => h.title).map((h) => makeSection(h.title, h.level)));
       setStage('outline');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not generate an outline.');
+      if (!controller.signal.aborted) {
+        setError(e instanceof Error ? e.message : 'Could not generate an outline.');
+      }
     } finally {
       setOutlineLoading(false);
     }
-  }, [apiBaseUrl, dataSource, query, assistantModelConfig]);
+  }, [apiBaseUrl, dataSource, query, instructions, numHeadings, assistantModelConfig]);
 
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
@@ -239,8 +280,6 @@ export const useBrief = ({
         heading: section.title,
         context,
         assistantModelConfig,
-        rerankerModel,
-        searchSettings,
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),
@@ -256,15 +295,7 @@ export const useBrief = ({
         },
       }).catch(() => updateSection(id, { status: 'pending', progress: 0 }));
     },
-    [
-      apiBaseUrl,
-      dataSource,
-      assistantModelConfig,
-      rerankerModel,
-      searchSettings,
-      updateSection,
-      pushActivity,
-    ],
+    [apiBaseUrl, dataSource, assistantModelConfig, updateSection, pushActivity],
   );
 
   const startResearch = useCallback(async () => {
@@ -305,6 +336,20 @@ export const useBrief = ({
     [stage, researchOne, finishIfComplete],
   );
 
+  // Research a single (typically pending) section on demand — lets the user
+  // build a brief section by section rather than all at once.
+  const researchSection = useCallback(
+    async (id: string) => {
+      setError(null);
+      if (stage === 'outline') setStage('research');
+      const controller = abortRef.current ?? new AbortController();
+      abortRef.current = controller;
+      await researchOne(id, null, controller.signal);
+      finishIfComplete();
+    },
+    [stage, researchOne, finishIfComplete],
+  );
+
   // ---- history ----
   const loadBrief = useCallback((entry: SavedBrief) => {
     abortRef.current?.abort();
@@ -334,6 +379,11 @@ export const useBrief = ({
     setQuery('');
   }, []);
 
+  // Persist a title edit made after the brief was first saved (done stage).
+  const commitTitle = useCallback(() => {
+    if (stage === 'done' && briefIdRef.current) saveCurrent();
+  }, [stage, saveCurrent]);
+
   // ---- derived ----
   const numbers = useMemo(() => computeNumbers(sections), [sections]);
   const references = useMemo(() => computeReferences(sections), [sections]);
@@ -354,6 +404,9 @@ export const useBrief = ({
     numbers,
     references,
     query,
+    instructions,
+    numHeadings,
+    generatingActivity,
     newHeading,
     regenFor,
     regenText,
@@ -366,6 +419,8 @@ export const useBrief = ({
     totalSources,
     // setters / actions
     setQuery,
+    setInstructions,
+    setNumHeadings,
     setNewHeading,
     setBriefTitle,
     setRegenText,
@@ -379,6 +434,7 @@ export const useBrief = ({
     indentSection,
     editTitle,
     startResearch,
+    researchSection,
     regenerate,
     openRegen: (id: string) => {
       setRegenFor(id);
@@ -390,6 +446,7 @@ export const useBrief = ({
     },
     loadBrief,
     reset,
+    commitTitle,
   };
 };
 

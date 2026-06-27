@@ -14,6 +14,7 @@ interface SectionViewProps {
 
 const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief }) => {
   const regenOpen = brief.regenFor === section.id;
+  const anyResearching = brief.sections.some((s) => s.status === 'researching');
   return (
     <section className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}>
       <div className="brief-doc-section-head">
@@ -56,6 +57,14 @@ const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief }) =
       {section.status === 'pending' && (
         <div className="brief-pending">
           <span className="brief-pending-dot" /> Awaiting deep research
+          {!anyResearching && (
+            <button
+              className="brief-btn brief-btn-secondary brief-research-one-btn"
+              onClick={() => brief.researchSection(section.id)}
+            >
+              ✦ Research this section
+            </button>
+          )}
         </div>
       )}
 
@@ -116,7 +125,13 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief }) => {
     <div className="brief-doc">
       <div className="brief-doc-header">
         <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-        <h1 className="brief-doc-title">{brief.briefTitle}</h1>
+        <input
+          className="brief-doc-title-input"
+          value={brief.briefTitle}
+          onChange={(e) => brief.setBriefTitle(e.target.value)}
+          onBlur={brief.commitTitle}
+          aria-label="Brief title"
+        />
         <div className="brief-doc-meta">
           <span>{sections.length} sections</span>
           <span>·</span>

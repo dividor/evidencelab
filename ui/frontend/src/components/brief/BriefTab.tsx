@@ -1,7 +1,6 @@
 import React, { useCallback } from 'react';
 import API_BASE_URL from '../../config';
 import { SummaryModelConfig } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefOutlineRail } from './BriefOutlineRail';
@@ -11,8 +10,6 @@ import './brief.css';
 
 interface BriefTabProps {
   dataSource: string;
-  rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
   // The configured chat / deep-research model, used for outline + section research.
   assistantModelConfig?: SummaryModelConfig | null;
 }
@@ -35,19 +32,8 @@ const briefToMarkdown = (brief: ReturnType<typeof useBrief>): string => {
   return lines.join('\n');
 };
 
-export const BriefTab: React.FC<BriefTabProps> = ({
-  dataSource,
-  rerankerModel,
-  searchSettings,
-  assistantModelConfig,
-}) => {
-  const brief = useBrief({
-    apiBaseUrl: API_BASE_URL,
-    dataSource,
-    assistantModelConfig,
-    rerankerModel,
-    searchSettings,
-  });
+export const BriefTab: React.FC<BriefTabProps> = ({ dataSource, assistantModelConfig }) => {
+  const brief = useBrief({ apiBaseUrl: API_BASE_URL, dataSource, assistantModelConfig });
 
   const handleExport = useCallback(() => {
     const md = briefToMarkdown(brief);
@@ -71,14 +57,14 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         <>
           <div className="brief-toolbar">
             <button className="brief-link-btn" onClick={brief.reset}>
-              ＋ New brief
+              <span className="brief-icon">＋</span> New brief
             </button>
             <button
               className="brief-link-btn"
               onClick={() => brief.setHistoryOpen(true)}
               disabled={brief.history.length === 0}
             >
-              ⟲ Saved briefs
+              <span className="brief-icon">⟲</span> Saved briefs
               {brief.history.length > 0 && (
                 <span className="brief-count-badge">{brief.history.length}</span>
               )}

@@ -169,6 +169,91 @@
   font-size: 13.5px;
   margin-top: 10px;
 }
+
+/* Icon glyphs render small inline; bump them up and align. */
+.brief-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+}
+
+/* Seed form: instructions + number-of-sections + a flex'd load button */
+.brief-label-spaced {
+  margin-top: 16px;
+}
+.brief-label-hint {
+  font-weight: 400;
+  color: var(--brand-text-tertiary);
+}
+.brief-textarea-sm {
+  font-size: 14px;
+}
+.brief-seed-num {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.brief-seed-num .brief-label {
+  margin-bottom: 0;
+}
+.brief-number {
+  width: 72px;
+  border: 1px solid var(--brand-border);
+  padding: 9px 10px;
+  font-size: 15px;
+  color: var(--brand-text-primary);
+  outline: none;
+  font-family: inherit;
+}
+.brief-number:focus {
+  border-color: var(--brand-primary);
+}
+.brief-seed-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Outline-generation activity panel (seed view) */
+.brief-generating {
+  background: #f6f9fa;
+  border: 1px solid var(--brand-border);
+  padding: 18px 20px;
+  margin-top: 20px;
+}
+.brief-generating .brief-activity {
+  margin-top: 12px;
+}
+
+/* Editable brief title in the document header */
+.brief-doc-title-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: none;
+  outline: none;
+  padding: 1px 0;
+  margin: 0 0 14px;
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  line-height: 1.2;
+}
+.brief-doc-title-input:hover {
+  border-bottom-color: var(--brand-border-light);
+}
+.brief-doc-title-input:focus {
+  border-bottom-color: var(--brand-border);
+}
+
+/* Per-section "research this section" action */
+.brief-research-one-btn {
+  font-size: 13px;
+  padding: 7px 13px;
+  margin-left: 6px;
+}
 .brief-error-banner {
   margin: 0 0 16px;
   padding: 10px 14px;
@@ -431,6 +516,7 @@
 .brief-pending {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   color: var(--brand-text-tertiary);
   font-size: 14px;

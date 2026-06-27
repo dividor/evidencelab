@@ -1,13 +1,14 @@
 // Brief tab data layer.
 //
-// Outline generation hits the thin /brief/outline endpoint; per-section
-// "deep research" reuses the existing deep-research assistant
-// (streamAssistantChat) and maps its phase/plan/search/sources/token events
-// onto the Brief's simpler activity-log + content + sources callbacks.
+// Outline generation hits the thin /brief/outline endpoint; per-section "deep
+// research" — and the corpus survey that grounds the outline — reuse the
+// existing deep-research assistant (streamAssistantChat) and map its
+// phase/plan/search/sources/token events onto the Brief's simpler
+// activity-log + content + sources callbacks. Briefs never rerank (the local
+// cross-encoder runs on CPU and is far too slow for multi-query research).
 
 import { API_KEY } from '../config';
 import { SourceReference, SummaryModelConfig } from '../types/api';
-import { SearchSettings } from '../types/auth';
 import { streamAssistantChat } from './assistantStream';
 
 const getCsrfToken = (): string | null => {
@@ -40,62 +41,12 @@ export interface BriefSourceSample {
   snippet?: string;
 }
 
-// Search the corpus for the question and return a de-duplicated sample of the
-// most relevant documents, used to ground outline generation in real content.
-export const searchCorpusForOutline = async ({
-  apiBaseUrl,
-  dataSource,
-  question,
-  signal,
-}: {
-  apiBaseUrl: string;
-  dataSource: string;
-  question: string;
-  signal?: AbortSignal;
-}): Promise<BriefSourceSample[]> => {
-  // Grounding only needs representative content, so skip the (slow, CPU-bound)
-  // reranker and use fast hybrid retrieval ordered by score.
-  const params = new URLSearchParams({
-    q: question,
-    data_source: dataSource,
-    limit: '24',
-    rerank: 'false',
-  });
-  let data: { results?: unknown[] };
-  try {
-    const res = await fetch(`${apiBaseUrl}/search?${params.toString()}`, {
-      method: 'GET',
-      headers: buildHeaders(),
-      credentials: 'include',
-      signal,
-    });
-    if (!res.ok) return [];
-    data = await res.json();
-  } catch {
-    return []; // grounding is best-effort; outline still generates without it
-  }
-  const results = Array.isArray(data.results) ? data.results : [];
-  const seen = new Set<string>();
-  const out: BriefSourceSample[] = [];
-  for (const r of results as Record<string, unknown>[]) {
-    const title = String(r.document_title || r.title || '').trim();
-    if (!title || seen.has(title)) continue;
-    seen.add(title);
-    out.push({
-      title,
-      organization: (r.organization as string) || undefined,
-      year: (r.year as string) || undefined,
-      snippet: typeof r.text === 'string' ? r.text.slice(0, 240) : undefined,
-    });
-    if (out.length >= 16) break;
-  }
-  return out;
-};
-
 export interface RequestOutlineOptions {
   apiBaseUrl: string;
   dataSource: string;
-  question: string;
+  topic: string;
+  instructions?: string | null;
+  numHeadings?: number | null;
   model?: string | null;
   sources?: BriefSourceSample[];
   signal?: AbortSignal;
@@ -104,7 +55,9 @@ export interface RequestOutlineOptions {
 export const requestBriefOutline = async ({
   apiBaseUrl,
   dataSource,
-  question,
+  topic,
+  instructions,
+  numHeadings,
   model,
   sources,
   signal,
@@ -114,9 +67,11 @@ export const requestBriefOutline = async ({
     headers: buildHeaders(),
     credentials: 'include',
     body: JSON.stringify({
-      question,
+      question: topic,
       data_source: dataSource,
       model: model ?? null,
+      instructions: instructions ?? null,
+      num_headings: numHeadings ?? null,
       sources: sources ?? null,
     }),
     signal,
@@ -133,7 +88,7 @@ export const requestBriefOutline = async ({
   }
   const data = await response.json();
   return {
-    title: typeof data.title === 'string' ? data.title : 'Evidence Brief',
+    title: typeof data.title === 'string' ? data.title : topic,
     headings: Array.isArray(data.headings)
       ? data.headings.map((h: BriefOutlineHeading) => ({
           title: String(h.title || '').trim(),
@@ -159,20 +114,8 @@ export interface BriefSectionHandlers {
   onError: (message: string) => void;
 }
 
-export interface ResearchSectionOptions {
-  apiBaseUrl: string;
-  dataSource: string;
-  heading: string;
-  context?: string | null;
-  assistantModelConfig?: SummaryModelConfig | null;
-  rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
-  handlers: BriefSectionHandlers;
-  signal?: AbortSignal;
-}
-
 // Map the assistant's coarse phases onto an approximate progress percentage so
-// the section shows steady movement before tokens start streaming.
+// the UI shows steady movement before tokens start streaming.
 const PHASE_PROGRESS: Record<string, number> = {
   planning: 12,
   searching: 30,
@@ -181,27 +124,30 @@ const PHASE_PROGRESS: Record<string, number> = {
   reflecting: 80,
 };
 
+export interface RunDeepResearchOptions {
+  apiBaseUrl: string;
+  dataSource: string;
+  query: string;
+  doneLabel?: string;
+  assistantModelConfig?: SummaryModelConfig | null;
+  handlers: BriefSectionHandlers;
+  signal?: AbortSignal;
+}
+
 /**
- * Research a single brief section by running one deep-research assistant turn
- * for the heading (plus optional focus context). Citations and sources come
- * straight from the assistant; activity events are derived from its stream.
+ * Run one deep-research assistant turn for an arbitrary query, mapping its
+ * stream onto the Brief activity/content/sources callbacks. Reranking is
+ * disabled (briefs never rerank).
  */
-export const researchBriefSection = async ({
+export const runDeepResearch = async ({
   apiBaseUrl,
   dataSource,
-  heading,
-  context,
+  query,
+  doneLabel = 'Section complete',
   assistantModelConfig,
-  rerankerModel,
-  searchSettings,
   handlers,
   signal,
-}: ResearchSectionOptions): Promise<void> => {
-  const focus = (context || '').trim();
-  const query = focus
-    ? `Write the "${heading}" section of an evidence brief. Focus: ${focus}`
-    : `Write the "${heading}" section of an evidence brief.`;
-
+}: RunDeepResearchOptions): Promise<void> => {
   let latestContent = '';
   let latestSources: SourceReference[] = [];
 
@@ -211,8 +157,8 @@ export const researchBriefSection = async ({
     dataSource,
     deepResearch: true,
     assistantModelConfig: assistantModelConfig ?? null,
-    rerankerModel: rerankerModel ?? null,
-    searchSettings: searchSettings ?? null,
+    rerankerModel: null, // briefs never rerank — the CPU reranker is too slow
+    searchSettings: null,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -220,16 +166,11 @@ export const researchBriefSection = async ({
         if (phase === 'planning') {
           handlers.onActivity({ tag: 'SCAN', text: 'Planning corpus searches' });
         } else if (phase === 'synthesizing') {
-          handlers.onActivity({ tag: 'DRAFT', text: 'Drafting section' });
+          handlers.onActivity({ tag: 'DRAFT', text: 'Synthesising findings' });
         }
       },
       onPlan: (queries) => {
-        if (queries.length) {
-          handlers.onActivity({
-            tag: 'SCAN',
-            text: `Searching corpus: ${queries.slice(0, 2).join('; ')}`,
-          });
-        }
+        queries.forEach((q) => handlers.onActivity({ tag: 'SCAN', text: `Query: ${q}` }));
       },
       onSearchStatus: (calls) => {
         calls.forEach((call) => {
@@ -250,11 +191,49 @@ export const researchBriefSection = async ({
       },
       onDone: () => {
         handlers.onProgress(100);
-        handlers.onActivity({ tag: 'DONE', text: 'Section complete' });
+        handlers.onActivity({ tag: 'DONE', text: doneLabel });
         handlers.onDone({ content: latestContent, sources: latestSources });
       },
       onError: (message) => handlers.onError(message),
     },
+    signal,
+  });
+};
+
+export interface ResearchSectionOptions {
+  apiBaseUrl: string;
+  dataSource: string;
+  heading: string;
+  context?: string | null;
+  assistantModelConfig?: SummaryModelConfig | null;
+  handlers: BriefSectionHandlers;
+  signal?: AbortSignal;
+}
+
+/**
+ * Research a single brief section by running one deep-research turn for the
+ * heading (plus optional focus context). Citations and sources come straight
+ * from the assistant; activity events are derived from its stream.
+ */
+export const researchBriefSection = ({
+  apiBaseUrl,
+  dataSource,
+  heading,
+  context,
+  assistantModelConfig,
+  handlers,
+  signal,
+}: ResearchSectionOptions): Promise<void> => {
+  const focus = (context || '').trim();
+  const query = focus
+    ? `Write the "${heading}" section of an evidence brief. Focus: ${focus}`
+    : `Write the "${heading}" section of an evidence brief.`;
+  return runDeepResearch({
+    apiBaseUrl,
+    dataSource,
+    query,
+    assistantModelConfig,
+    handlers,
     signal,
   });
 };

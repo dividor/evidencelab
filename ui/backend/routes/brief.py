@@ -100,11 +100,16 @@ async def generate_outline(
 
     try:
         llm_service = _get_llm_service()
-        title, headings = await llm_service.generate_brief_outline(
-            question=question, model_key=model_key, sources=sources
+        _title, headings = await llm_service.generate_brief_outline(
+            question=question,
+            model_key=model_key,
+            sources=sources,
+            instructions=body.instructions,
+            num_headings=body.num_headings,
         )
+        # The brief title is the user's topic, per product spec.
         return BriefOutlineResponse(
-            title=title,
+            title=question,
             headings=[BriefHeading(**h) for h in headings],
         )
     except Exception:

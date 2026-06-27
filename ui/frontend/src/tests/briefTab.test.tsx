@@ -12,10 +12,12 @@ jest.mock('../config', () => ({
 // Mock the data layer so the tab never hits the network.
 const mockRequestOutline = jest.fn();
 const mockResearchSection = jest.fn();
+const mockRunDeepResearch = jest.fn();
 jest.mock('../utils/briefStream', () => ({
   __esModule: true,
   requestBriefOutline: (...args: unknown[]) => mockRequestOutline(...args),
   researchBriefSection: (...args: unknown[]) => mockResearchSection(...args),
+  runDeepResearch: (...args: unknown[]) => mockRunDeepResearch(...args),
 }));
 
 import { BriefTab } from '../components/brief/BriefTab';
@@ -24,11 +26,17 @@ describe('BriefTab (Document Builder)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    // Default: the deep-research survey resolves immediately with no sources.
+    mockRunDeepResearch.mockImplementation(async ({ handlers }: any) => {
+      handlers.onSources([]);
+      handlers.onDone({ content: '', sources: [] });
+    });
   });
 
-  test('renders the seed screen with generate action and examples', () => {
+  test('renders the seed screen with topic input, generate action and examples', () => {
     render(<BriefTab dataSource="wfp" />);
-    expect(screen.getByText('Turn a question into a research brief')).toBeInTheDocument();
+    expect(screen.getByText('Turn a topic into a research brief')).toBeInTheDocument();
+    expect(screen.getByLabelText('Topic')).toBeInTheDocument();
     expect(screen.getByText('✦ Generate outline')).toBeInTheDocument();
     expect(screen.getByText('Write my own headings')).toBeInTheDocument();
     expect(
@@ -36,12 +44,11 @@ describe('BriefTab (Document Builder)', () => {
     ).toBeInTheDocument();
   });
 
-  test('clicking an example fills the question textarea', () => {
+  test('clicking an example fills the topic field', () => {
     render(<BriefTab dataSource="wfp" />);
     const example = 'How effective are anticipatory action programmes for floods?';
     fireEvent.click(screen.getByText(example));
-    const textarea = screen.getByLabelText('What is the brief about?') as HTMLTextAreaElement;
-    expect(textarea.value).toBe(example);
+    expect((screen.getByLabelText('Topic') as HTMLTextAreaElement).value).toBe(example);
   });
 
   test('"Write my own headings" enters the outline stage with starter sections', () => {
@@ -49,28 +56,26 @@ describe('BriefTab (Document Builder)', () => {
     fireEvent.click(screen.getByText('Write my own headings'));
     expect(screen.getByText('Outline')).toBeInTheDocument();
     expect(screen.getByText('Start deep research →')).toBeInTheDocument();
-    // Starter section titles appear as editable inputs in the document.
     const titles = screen.getAllByDisplayValue(/Background & definitions|Key findings|Recommendations/);
     expect(titles.length).toBeGreaterThanOrEqual(3);
   });
 
-  test('"Generate outline" calls the API and renders returned headings', async () => {
+  test('"Generate outline" surveys the corpus then renders grounded headings', async () => {
     mockRequestOutline.mockResolvedValue({
-      title: 'Cash Assistance Brief',
+      title: 'cash assistance',
       headings: [
         { title: 'Background', level: 1 },
         { title: 'Food security', level: 2 },
       ],
     });
     render(<BriefTab dataSource="wfp" />);
+    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'cash assistance' } });
     fireEvent.click(screen.getByText('✦ Generate outline'));
 
-    await waitFor(() => {
-      expect(screen.getByText('Cash Assistance Brief')).toBeInTheDocument();
-    });
-    expect(mockRequestOutline).toHaveBeenCalledTimes(1);
-    expect(mockRequestOutline.mock.calls[0][0]).toMatchObject({ dataSource: 'wfp' });
-    expect(screen.getByDisplayValue('Background')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByDisplayValue('Background')).toBeInTheDocument());
+    expect(mockRunDeepResearch).toHaveBeenCalled(); // visible deep-research survey
+    expect(mockRequestOutline).toHaveBeenCalled();
+    expect(mockRequestOutline.mock.calls[0][0]).toMatchObject({ dataSource: 'wfp', topic: 'cash assistance' });
     expect(screen.getByDisplayValue('Food security')).toBeInTheDocument();
   });
 });

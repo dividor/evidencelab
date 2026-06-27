@@ -2944,22 +2944,7 @@ function App() {
           />
         }
         briefTab={
-          <BriefTab
-            dataSource={dataSource}
-            assistantModelConfig={assistantModelConfig}
-            rerankerModel={rerankModel}
-            searchSettings={{
-              denseWeight: searchDenseWeight,
-              recencyBoost: recencyBoostEnabled,
-              recencyWeight,
-              recencyScaleDays,
-              sectionTypes,
-              keywordBoostShortQueries,
-              minChunkSize,
-              fieldBoost: fieldBoostEnabled,
-              fieldBoostFields,
-            }}
-          />
+          <BriefTab dataSource={dataSource} assistantModelConfig={assistantModelConfig} />
         }
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
