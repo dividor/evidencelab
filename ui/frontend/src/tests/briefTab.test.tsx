@@ -7,6 +7,12 @@ jest.mock('../config', () => ({
   default: '/api',
   API_KEY: 'test-key',
   BRIEF_ENABLED: true,
+  USER_MODULE: false,
+}));
+
+// Brief reads auth to scope saved-brief history; anonymous in tests.
+jest.mock('../hooks/useAuth', () => ({
+  useAuth: () => ({ user: null }),
 }));
 
 // Mock the data layer so the tab never hits the network.

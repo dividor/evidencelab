@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
-import API_BASE_URL from '../../config';
-import { SummaryModelConfig } from '../../types/api';
+import API_BASE_URL, { USER_MODULE } from '../../config';
+import { useAuth } from '../../hooks/useAuth';
+import { SearchResult, SummaryModelConfig } from '../../types/api';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefOutlineRail } from './BriefOutlineRail';
@@ -12,6 +13,8 @@ interface BriefTabProps {
   dataSource: string;
   // The configured chat / deep-research model, used for outline + section research.
   assistantModelConfig?: SummaryModelConfig | null;
+  // Opens the document preview (citations/footnotes click through to it).
+  onResultClick?: (result: SearchResult) => void;
 }
 
 // Build a portable Markdown rendering of the current brief for export/download.
@@ -32,8 +35,15 @@ const briefToMarkdown = (brief: ReturnType<typeof useBrief>): string => {
   return lines.join('\n');
 };
 
-export const BriefTab: React.FC<BriefTabProps> = ({ dataSource, assistantModelConfig }) => {
-  const brief = useBrief({ apiBaseUrl: API_BASE_URL, dataSource, assistantModelConfig });
+export const BriefTab: React.FC<BriefTabProps> = ({
+  dataSource,
+  assistantModelConfig,
+  onResultClick,
+}) => {
+  const auth = useAuth();
+  // Logged-in users get their own saved-briefs bucket; anonymous users share one.
+  const userKey = USER_MODULE && auth.user ? String(auth.user.id) : null;
+  const brief = useBrief({ apiBaseUrl: API_BASE_URL, dataSource, assistantModelConfig, userKey });
 
   const handleExport = useCallback(() => {
     const md = briefToMarkdown(brief);
@@ -73,7 +83,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({ dataSource, assistantModelCo
           {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
           <div className="brief-builder">
             <BriefOutlineRail brief={brief} onExport={handleExport} />
-            <BriefDocument brief={brief} />
+            <BriefDocument brief={brief} onResultClick={onResultClick} />
           </div>
         </>
       )}

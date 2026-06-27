@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
+import { extractCitedNumbers } from '../citations/CitedContent';
 import {
   BriefActivityEvent,
   BriefSourceSample,
@@ -18,7 +19,7 @@ import {
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
 
-const makeSection = (title: string, level = 1): BriefSection => ({
+const makeSection = (title: string, level = 1, sample = false): BriefSection => ({
   id: uid(),
   title,
   level: level === 2 ? 2 : 1,
@@ -27,6 +28,7 @@ const makeSection = (title: string, level = 1): BriefSection => ({
   content: '',
   sources: [],
   activity: [],
+  sample,
 });
 
 export interface UseBriefOptions {
@@ -36,11 +38,14 @@ export interface UseBriefOptions {
   // both outline generation and per-section research so the Brief tab uses the
   // same LLM as the rest of the system.
   assistantModelConfig?: SummaryModelConfig | null;
+  // Identifier for the logged-in user; saved briefs are scoped to it. When
+  // absent (anonymous), the shared default bucket is used.
+  userKey?: string | null;
 }
 
-const loadHistory = (): SavedBrief[] => {
+const loadHistory = (key: string): SavedBrief[] => {
   try {
-    const raw = localStorage.getItem(BRIEF_HISTORY_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as SavedBrief[]) : [];
   } catch {
     return [];
@@ -62,16 +67,26 @@ const computeNumbers = (sections: BriefSection[]): string[] => {
   });
 };
 
+// Compiled footnotes: the actually-cited sources across done sections, one
+// entry per document (grouped/deduped), like the search summary's references.
 const computeReferences = (sections: BriefSection[]): BriefReference[] => {
   const seen = new Set<string>();
   const refs: BriefReference[] = [];
   sections.forEach((s) => {
     if (s.status !== 'done') return;
+    const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src: SourceReference) => {
-      const key = `${src.docId}|${src.title}`;
+      if (src.index == null || !cited.has(src.index)) return;
+      const key = src.docId || src.title;
       if (seen.has(key)) return;
       seen.add(key);
-      refs.push({ n: refs.length + 1, title: src.title, page: src.page, section: s.title });
+      refs.push({
+        n: refs.length + 1,
+        title: src.title,
+        page: src.page,
+        section: s.title,
+        source: src,
+      });
     });
   });
   return refs;
@@ -81,7 +96,9 @@ export const useBrief = ({
   apiBaseUrl,
   dataSource,
   assistantModelConfig,
+  userKey,
 }: UseBriefOptions) => {
+  const historyKey = userKey ? `${BRIEF_HISTORY_KEY}_u_${userKey}` : BRIEF_HISTORY_KEY;
   const [stage, setStage] = useState<BriefStage>('seed');
   const [briefTitle, setBriefTitle] = useState('Evidence Brief');
   const [sections, setSections] = useState<BriefSection[]>([]);
@@ -103,7 +120,7 @@ export const useBrief = ({
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
 
-  useEffect(() => setHistory(loadHistory()), []);
+  useEffect(() => setHistory(loadHistory(historyKey)), [historyKey]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const updateSection = useCallback((id: string, patch: Partial<BriefSection>) => {
@@ -118,14 +135,22 @@ export const useBrief = ({
     );
   }, []);
 
-  const persist = useCallback((next: SavedBrief[]) => {
-    setHistory(next);
-    try {
-      localStorage.setItem(BRIEF_HISTORY_KEY, JSON.stringify(next));
-    } catch {
-      /* storage may be unavailable; non-fatal */
-    }
-  }, []);
+  const persist = useCallback(
+    (next: SavedBrief[]) => {
+      setHistory(next);
+      try {
+        localStorage.setItem(historyKey, JSON.stringify(next));
+      } catch {
+        /* storage may be unavailable; non-fatal */
+      }
+    },
+    [historyKey],
+  );
+
+  const deleteBrief = useCallback(
+    (id: string) => persist(history.filter((e) => e.id !== id)),
+    [history, persist],
+  );
 
   const saveCurrent = useCallback(() => {
     const id = briefIdRef.current;
@@ -165,8 +190,8 @@ export const useBrief = ({
     let gathered: BriefSourceSample[] = [];
     try {
       const surveyQuery = guidance
-        ? `Survey the evidence in the corpus relevant to: ${topic}. ${guidance}`
-        : `Survey the evidence in the corpus relevant to: ${topic}.`;
+        ? `Research the corpus to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
+        : `Research the corpus to inform an evidence brief on "${topic}".`;
       await runDeepResearch({
         apiBaseUrl,
         dataSource,
@@ -219,8 +244,9 @@ export const useBrief = ({
     briefIdRef.current = uid();
     setBriefTitle('Evidence Brief');
     setSections(
+      // Placeholder samples: research stays disabled until the user edits them.
       ['Background & definitions', 'Key findings', 'Recommendations'].map((t) =>
-        makeSection(t),
+        makeSection(t, 1, true),
       ),
     );
     setStage('outline');
@@ -257,8 +283,14 @@ export const useBrief = ({
     });
   }, []);
 
+  // Editing a heading clears its "sample" flag (it's now the user's own).
   const editTitle = useCallback(
-    (id: string, title: string) => updateSection(id, { title }),
+    (id: string, title: string) => updateSection(id, { title, sample: false }),
+    [updateSection],
+  );
+
+  const editContent = useCallback(
+    (id: string, content: string) => updateSection(id, { content }),
     [updateSection],
   );
 
@@ -323,28 +355,18 @@ export const useBrief = ({
     }
   }, [saveCurrent]);
 
+  // Research (or re-research) a single section with optional guidance. Used for
+  // both pending sections (build one at a time) and done sections (regenerate).
   const regenerate = useCallback(
     async (id: string, context: string | null) => {
       setRegenFor(null);
       setRegenText('');
-      if (stage === 'outline') setStage('research');
-      const controller = abortRef.current ?? new AbortController();
-      abortRef.current = controller;
-      await researchOne(id, context, controller.signal);
-      finishIfComplete();
-    },
-    [stage, researchOne, finishIfComplete],
-  );
-
-  // Research a single (typically pending) section on demand — lets the user
-  // build a brief section by section rather than all at once.
-  const researchSection = useCallback(
-    async (id: string) => {
       setError(null);
       if (stage === 'outline') setStage('research');
-      const controller = abortRef.current ?? new AbortController();
+      let controller = abortRef.current;
+      if (!controller || controller.signal.aborted) controller = new AbortController();
       abortRef.current = controller;
-      await researchOne(id, null, controller.signal);
+      await researchOne(id, context, controller.signal);
       finishIfComplete();
     },
     [stage, researchOne, finishIfComplete],
@@ -379,8 +401,8 @@ export const useBrief = ({
     setQuery('');
   }, []);
 
-  // Persist a title edit made after the brief was first saved (done stage).
-  const commitTitle = useCallback(() => {
+  // Persist a title/content edit made after the brief was first saved (done).
+  const commitEdits = useCallback(() => {
     if (stage === 'done' && briefIdRef.current) saveCurrent();
   }, [stage, saveCurrent]);
 
@@ -433,8 +455,8 @@ export const useBrief = ({
     moveSection,
     indentSection,
     editTitle,
+    editContent,
     startResearch,
-    researchSection,
     regenerate,
     openRegen: (id: string) => {
       setRegenFor(id);
@@ -445,8 +467,9 @@ export const useBrief = ({
       setRegenText('');
     },
     loadBrief,
+    deleteBrief,
     reset,
-    commitTitle,
+    commitEdits,
   };
 };
 

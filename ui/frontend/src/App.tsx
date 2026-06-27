@@ -2944,7 +2944,11 @@ function App() {
           />
         }
         briefTab={
-          <BriefTab dataSource={dataSource} assistantModelConfig={assistantModelConfig} />
+          <BriefTab
+            dataSource={dataSource}
+            assistantModelConfig={assistantModelConfig}
+            onResultClick={handleResultClick}
+          />
         }
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}

@@ -601,6 +601,21 @@
   background: var(--brand-success);
 }
 
+.brief-edit-textarea {
+  width: 100%;
+  border: 1px solid var(--brand-border);
+  padding: 14px 16px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--brand-text-primary);
+  resize: vertical;
+  outline: none;
+}
+.brief-edit-textarea:focus {
+  border-color: var(--brand-primary);
+}
+
 .brief-doc-content {
   font-size: 15.5px;
   color: var(--brand-text-primary);
@@ -679,6 +694,16 @@
   font-size: 13.5px;
   line-height: 1.5;
 }
+.brief-footnote-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--brand-text-secondary);
+}
+.brief-footnote-link:hover .brief-footnote-text {
+  text-decoration: underline;
+}
 .brief-footnote-n {
   color: var(--brand-primary);
   font-weight: 700;
@@ -753,17 +778,36 @@
   padding: 10px;
 }
 .brief-modal-row {
-  width: 100%;
-  text-align: left;
-  background: var(--brand-surface);
+  display: flex;
+  align-items: stretch;
   border: 1px solid var(--brand-border-light);
-  padding: 13px 15px;
   margin-bottom: 8px;
-  cursor: pointer;
-  display: block;
 }
 .brief-modal-row:hover {
   border-color: var(--brand-border);
+}
+.brief-modal-row-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: var(--brand-surface);
+  border: none;
+  padding: 13px 15px;
+  cursor: pointer;
+}
+.brief-modal-row-del {
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  background: var(--brand-surface);
+  color: var(--brand-text-tertiary);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 14px;
+  cursor: pointer;
+}
+.brief-modal-row-del:hover {
+  color: var(--brand-error);
+  background: rgba(239, 68, 68, 0.06);
 }
 .brief-modal-row-title {
   font-family: var(--font-heading);

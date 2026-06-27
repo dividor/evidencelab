@@ -13,6 +13,9 @@ export interface BriefSection {
   content: string; // markdown (may contain [n] citation markers)
   sources: SourceReference[];
   activity: BriefActivityEvent[]; // most-recent-first, capped
+  // True for unedited placeholder headings from "write my own headings"; the
+  // per-section research action stays disabled until the user edits them.
+  sample?: boolean;
 }
 
 export interface BriefReference {
@@ -20,6 +23,7 @@ export interface BriefReference {
   title: string;
   page?: number;
   section: string;
+  source: SourceReference; // for click-through to the document preview
 }
 
 export interface SavedBriefSection {

@@ -41,17 +41,24 @@ export const BriefHistoryModal: React.FC<BriefHistoryModalProps> = ({ brief }) =
         ) : (
           <div className="brief-modal-list">
             {history.map((entry) => (
-              <button
-                key={entry.id}
-                className="brief-modal-row"
-                onClick={() => brief.loadBrief(entry)}
-              >
-                <div className="brief-modal-row-title">{entry.title}</div>
-                <div className="brief-modal-row-query">{entry.query}</div>
-                <div className="brief-modal-row-meta">
-                  {entry.sectionCount} sections · {entry.sourceCount} sources · {formatWhen(entry.date)}
-                </div>
-              </button>
+              <div key={entry.id} className="brief-modal-row">
+                <button className="brief-modal-row-main" onClick={() => brief.loadBrief(entry)}>
+                  <div className="brief-modal-row-title">{entry.title}</div>
+                  <div className="brief-modal-row-query">{entry.query}</div>
+                  <div className="brief-modal-row-meta">
+                    {entry.sectionCount} sections · {entry.sourceCount} sources ·{' '}
+                    {formatWhen(entry.date)}
+                  </div>
+                </button>
+                <button
+                  className="brief-modal-row-del"
+                  title="Delete this brief"
+                  aria-label="Delete this brief"
+                  onClick={() => brief.deleteBrief(entry.id)}
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
         )}
