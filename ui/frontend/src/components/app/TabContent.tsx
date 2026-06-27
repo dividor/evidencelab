@@ -5,13 +5,14 @@ import { GA_MEASUREMENT_ID } from '../../config';
 import { getGaConsent, setGaConsent } from '../CookieConsent';
 import DocsPage from '../docs/DocsPage';
 
-type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
+type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
 interface TabContentProps {
   activeTab: TabName;
   hasSearched: boolean;
   searchTab: React.ReactNode;
   assistantTab?: React.ReactNode;
+  briefTab?: React.ReactNode;
   heatmapTab: React.ReactNode;
   documentsTab: React.ReactNode;
   statsTab: React.ReactNode;
@@ -130,6 +131,7 @@ export const TabContent: React.FC<TabContentProps> = ({
   hasSearched,
   searchTab,
   assistantTab,
+  briefTab,
   heatmapTab,
   documentsTab,
   statsTab,
@@ -151,6 +153,8 @@ export const TabContent: React.FC<TabContentProps> = ({
       case 'search':
         return hasSearched ? <>{searchTab}</> : null;
       case 'assistant':
+        return null; // handled by the always-mounted wrapper below
+      case 'brief':
         return null; // handled by the always-mounted wrapper below
       case 'heatmap':
         return <>{heatmapTab}</>;
@@ -183,6 +187,12 @@ export const TabContent: React.FC<TabContentProps> = ({
       {assistantTab && (
         <div style={{ display: activeTab === 'assistant' ? 'block' : 'none' }}>
           {assistantTab}
+        </div>
+      )}
+      {/* BriefTab stays mounted (hidden when inactive) to preserve brief state */}
+      {briefTab && (
+        <div style={{ display: activeTab === 'brief' ? 'block' : 'none' }}>
+          {briefTab}
         </div>
       )}
       {activeContent}

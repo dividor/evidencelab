@@ -162,3 +162,38 @@ class TocUpdate(BaseModel):
 
 class DocumentMetadataUpdate(BaseModel):
     toc_approved: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# Brief tab — research-brief outline generation
+# ---------------------------------------------------------------------------
+
+
+class BriefHeading(BaseModel):
+    """A single outline heading. ``level`` is 1 (section) or 2 (sub-section)."""
+
+    title: str
+    level: int = 1
+
+
+class BriefSourceSample(BaseModel):
+    """A trimmed corpus result used to ground outline generation in real content."""
+
+    title: Optional[str] = None
+    organization: Optional[str] = None
+    year: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+class BriefOutlineRequest(BaseModel):
+    question: str
+    data_source: str
+    model: Optional[str] = None
+    # Optional sample of the most relevant corpus material (from a prior /search)
+    # so the outline reflects what the system actually contains.
+    sources: Optional[List[BriefSourceSample]] = None
+
+
+class BriefOutlineResponse(BaseModel):
+    title: str
+    headings: List[BriefHeading]

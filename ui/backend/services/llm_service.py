@@ -2,6 +2,7 @@
 LLM Service for generating AI summaries using LangChain
 """
 
+import json
 import logging
 import os
 import re
@@ -117,6 +118,8 @@ jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=Tr
 # Load templates at module level
 _system_template = jinja_env.get_template("ai_summary_system.j2")
 _user_template = jinja_env.get_template("ai_summary_user.j2")
+_brief_outline_system_template = jinja_env.get_template("brief_outline_system.j2")
+_brief_outline_user_template = jinja_env.get_template("brief_outline_user.j2")
 
 
 def render_prompt(
@@ -339,6 +342,95 @@ async def generate_ai_summary_with_usage(
     except Exception as e:
         logger.error(f"Error generating AI summary: {e}", exc_info=True)
         raise
+
+
+def parse_brief_outline(
+    raw: str, fallback_title: str = "Evidence Brief"
+) -> tuple[str, List[Dict[str, Any]]]:
+    """Parse an LLM outline response into ``(title, headings)``.
+
+    Tolerant of code fences and stray prose around the JSON object. Each
+    heading is normalised to ``{"title": str, "level": 1 | 2}``. Falls back to
+    parsing a numbered/bulleted list, then to a single-section outline, so the
+    caller always receives at least one heading with a level-1 first item.
+    """
+    text = (raw or "").strip()
+    # Strip Markdown code fences if the model wrapped the JSON.
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+        text = re.sub(r"\n?```$", "", text).strip()
+
+    obj: Any = None
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            obj = json.loads(text[start : end + 1])
+        except (ValueError, TypeError):
+            obj = None
+
+    title = (fallback_title or "Evidence Brief").strip() or "Evidence Brief"
+    headings: List[Dict[str, Any]] = []
+    if isinstance(obj, dict):
+        if isinstance(obj.get("title"), str) and obj["title"].strip():
+            title = obj["title"].strip()
+        for h in obj.get("headings") or []:
+            raw_title = (h.get("title") if isinstance(h, dict) else str(h)) or ""
+            clean = raw_title.strip()
+            if not clean:
+                continue
+            level = h.get("level", 1) if isinstance(h, dict) else 1
+            headings.append({"title": clean[:120], "level": 2 if level == 2 else 1})
+
+    if not headings and not isinstance(obj, dict):
+        # No JSON object at all — fall back to treating each non-empty line as
+        # a level-1 heading. (A parsed-but-empty object uses the Overview
+        # fallback below rather than line-parsing surrounding prose.)
+        for line in text.splitlines():
+            clean = re.sub(r"^[\s\-\*•\d\.\)]+", "", line).strip()
+            if clean and len(clean) <= 120:
+                headings.append({"title": clean, "level": 1})
+
+    if not headings:
+        headings = [{"title": "Overview", "level": 1}]
+    headings[0]["level"] = 1  # first item is always a top-level section
+    return title, headings[:24]
+
+
+async def generate_brief_outline(
+    question: str,
+    model_key: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    sources: Optional[List[Dict[str, Any]]] = None,
+) -> tuple[str, List[Dict[str, Any]]]:
+    """Generate a research-brief outline (title + headings) from a question.
+
+    ``sources`` is an optional sample of the most relevant corpus material
+    (``{title, organization, year, snippet}``); when provided, the outline is
+    grounded in the themes actually present in the corpus. Prompts live in
+    ``prompts/brief_outline_*.j2``.
+
+    Returns ``(brief_title, headings)`` where each heading is
+    ``{"title": str, "level": 1 | 2}``. Levels express a two-level hierarchy
+    of sections and sub-sections.
+    """
+    system_prompt = _brief_outline_system_template.render()
+    user_prompt = _brief_outline_user_template.render(
+        question=question.strip(), sources=sources or []
+    )
+    llm = get_llm(
+        model=model_key,
+        temperature=temperature if temperature is not None else 0.2,
+        max_tokens=max_tokens or 700,
+    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    raw = str(response.content).strip()
+    logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
+    return parse_brief_outline(raw, fallback_title=question.strip())
 
 
 async def translate_text(

@@ -1,0 +1,11 @@
+Question: {{ question }}
+{% if sources %}
+Most relevant material currently in the corpus (use these themes to drive the outline):
+{% for s in sources %}
+- {{ s.title or 'Untitled' }}{% if s.organization %} — {{ s.organization }}{% endif %}{% if s.year %} ({{ s.year }}){% endif %}{% if s.snippet %}: {{ s.snippet }}{% endif %}
+{% endfor %}
+
+Base the outline on the themes and evidence actually present in this material.
+{% else %}
+(No corpus sample was available — base the outline on the question alone.)
+{% endif %}

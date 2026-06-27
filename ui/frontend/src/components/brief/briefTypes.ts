@@ -1,0 +1,49 @@
+import { SourceReference } from '../../types/api';
+import { BriefActivityEvent } from '../../utils/briefStream';
+
+export type BriefStage = 'seed' | 'outline' | 'research' | 'done';
+export type SectionStatus = 'pending' | 'researching' | 'done';
+
+export interface BriefSection {
+  id: string;
+  title: string;
+  level: number; // 1 = section, 2 = sub-section
+  status: SectionStatus;
+  progress: number; // 0-100
+  content: string; // markdown (may contain [n] citation markers)
+  sources: SourceReference[];
+  activity: BriefActivityEvent[]; // most-recent-first, capped
+}
+
+export interface BriefReference {
+  n: number;
+  title: string;
+  page?: number;
+  section: string;
+}
+
+export interface SavedBriefSection {
+  title: string;
+  level: number;
+  status: SectionStatus;
+  content: string;
+  sources: SourceReference[];
+}
+
+export interface SavedBrief {
+  id: string;
+  title: string;
+  query: string;
+  date: number;
+  sectionCount: number;
+  sourceCount: number;
+  sections: SavedBriefSection[];
+}
+
+export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
+
+export const BRIEF_EXAMPLES = [
+  'What works in cash and voucher assistance in humanitarian crises?',
+  'How effective are anticipatory action programmes for floods?',
+  'What are the impacts of school feeding on attendance and nutrition?',
+];
