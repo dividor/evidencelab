@@ -102,6 +102,26 @@ describe('BriefTab (Document Builder)', () => {
     expect(nums).toContain('1');
   });
 
+  test('adding a sub-heading prompts for a name and only adds it once entered', () => {
+    render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(screen.getByText('Write my own headings'));
+
+    fireEvent.click(screen.getAllByLabelText('Add a sub-heading')[0]);
+    const input = screen.getByLabelText('New sub-heading name');
+    expect(input).toBeInTheDocument();
+
+    // Empty + blur adds nothing.
+    fireEvent.blur(input);
+    expect(screen.queryByLabelText('New sub-heading name')).toBeNull();
+
+    // Re-open, type a name, press Enter — now it's added.
+    fireEvent.click(screen.getAllByLabelText('Add a sub-heading')[0]);
+    const input2 = screen.getByLabelText('New sub-heading name');
+    fireEvent.change(input2, { target: { value: 'Enrolment trends' } });
+    fireEvent.keyDown(input2, { key: 'Enter' });
+    expect(screen.getByDisplayValue('Enrolment trends')).toBeInTheDocument();
+  });
+
   test('"Add heading" appends a new editable heading to the document', () => {
     render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText('Write my own headings'));

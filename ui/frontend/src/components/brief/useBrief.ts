@@ -350,15 +350,17 @@ export const useBrief = ({
     setSections((prev) => [...prev, makeSection('New heading', 1, true)]);
   }, []);
 
-  // Insert a new sub-heading after the given heading and its existing children.
-  const addSubHeading = useCallback((parentId: string) => {
+  // Insert a named sub-heading after the given heading and its existing children.
+  const addSubHeading = useCallback((parentId: string, title: string) => {
+    const name = title.trim();
+    if (!name) return;
     setSections((prev) => {
       const idx = prev.findIndex((s) => s.id === parentId);
       if (idx < 0) return prev;
       let insertAt = idx + 1;
       while (insertAt < prev.length && prev[insertAt].level === 2) insertAt++;
       const next = [...prev];
-      next.splice(insertAt, 0, makeSection('New sub-heading', 2, true));
+      next.splice(insertAt, 0, makeSection(name, 2, false));
       return next;
     });
   }, []);

@@ -18,6 +18,9 @@ interface BriefHistoryRailProps {
   brief: UseBriefReturn;
 }
 
+// How many briefs the fixed-height rail shows before offering "See more".
+const VISIBLE_CAP = 5;
+
 /**
  * Left rail in the builder: the user's brief history. Searchable; each row opens
  * that brief, clones it, or deletes it. The footer button starts a fresh brief
@@ -64,7 +67,7 @@ export const BriefHistoryRail: React.FC<BriefHistoryRailProps> = ({ brief }) => 
         ) : filtered.length === 0 ? (
           <div className="brief-history-empty">No briefs match “{query.trim()}”.</div>
         ) : (
-          filtered.map((entry) => (
+          filtered.slice(0, VISIBLE_CAP).map((entry) => (
             <div
               key={entry.id}
               className={`brief-history-item${
@@ -97,6 +100,12 @@ export const BriefHistoryRail: React.FC<BriefHistoryRailProps> = ({ brief }) => 
           ))
         )}
       </div>
+
+      {filtered.length > VISIBLE_CAP && (
+        <button className="brief-see-more" onClick={() => brief.setHistoryOpen(true)}>
+          See all {filtered.length} briefs
+        </button>
+      )}
 
       <div className="brief-rail-foot">
         <button className="brief-btn brief-btn-primary brief-btn-block" onClick={brief.reset}>

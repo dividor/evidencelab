@@ -162,26 +162,8 @@ interface BriefDocumentProps {
   brief: UseBriefReturn;
   onResultClick?: (result: SearchResult) => void;
   onExportWord?: () => void;
-  onExportMarkdown?: () => void;
   exportBusy?: boolean;
 }
-
-// Compact on/off switch for heading numbers, shown to the right of the title.
-const NumberHeadingsToggle: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
-  <button
-    type="button"
-    className="brief-num-toggle-inline"
-    role="switch"
-    aria-checked={brief.numberHeadings}
-    onClick={() => brief.setNumberHeadings(!brief.numberHeadings)}
-    title="Show numbering before each heading"
-  >
-    <span className={`brief-switch${brief.numberHeadings ? ' brief-switch-on' : ''}`}>
-      <span className="brief-switch-thumb" />
-    </span>
-    Number headings
-  </button>
-);
 
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
@@ -193,7 +175,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   brief,
   onResultClick,
   onExportWord,
-  onExportMarkdown,
   exportBusy,
 }) => {
   const { sections, numbers } = brief;
@@ -229,44 +210,29 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <div className="brief-doc-header">
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-          <div className="brief-doc-export-actions">
-            {onExportMarkdown && (
-              <button
-                className="brief-export-md"
-                onClick={onExportMarkdown}
-                disabled={!sections.length}
-                title="Download this brief as Markdown"
-              >
-                <IconDownload /> .md
-              </button>
-            )}
-            {onExportWord && (
-              <button
-                className="brief-export-word"
-                onClick={onExportWord}
-                disabled={!sections.length || exportBusy}
-                title="Export this brief to Word, with citations linked to the source documents"
-              >
-                {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-              </button>
-            )}
-          </div>
+          {onExportWord && (
+            <button
+              className="brief-export-word"
+              onClick={onExportWord}
+              disabled={!sections.length || exportBusy}
+              title="Export this brief to Word, with citations linked to the source documents"
+            >
+              {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
+            </button>
+          )}
         </div>
-        <div className="brief-doc-title-row">
-          <textarea
-            ref={titleRef}
-            className="brief-doc-title-input"
-            value={brief.briefTitle}
-            onChange={(e) => {
-              brief.setBriefTitle(e.target.value);
-              autoSizeTitle(e.target);
-            }}
-            onBlur={brief.commitEdits}
-            rows={1}
-            aria-label="Brief title"
-          />
-          <NumberHeadingsToggle brief={brief} />
-        </div>
+        <textarea
+          ref={titleRef}
+          className="brief-doc-title-input"
+          value={brief.briefTitle}
+          onChange={(e) => {
+            brief.setBriefTitle(e.target.value);
+            autoSizeTitle(e.target);
+          }}
+          onBlur={brief.commitEdits}
+          rows={1}
+          aria-label="Brief title"
+        />
         <div className="brief-doc-meta">
           <span>{sections.length} sections</span>
           <span>·</span>

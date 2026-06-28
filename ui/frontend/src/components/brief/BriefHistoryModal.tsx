@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { IconCopy, IconSearch } from './BriefIcons';
 import { UseBriefReturn } from './useBrief';
 
 const formatWhen = (ts: number): string => {
@@ -18,8 +19,19 @@ interface BriefHistoryModalProps {
 }
 
 export const BriefHistoryModal: React.FC<BriefHistoryModalProps> = ({ brief }) => {
-  if (!brief.historyOpen) return null;
   const { history } = brief;
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter(
+      (e) => e.title.toLowerCase().includes(q) || (e.query || '').toLowerCase().includes(q),
+    );
+  }, [history, query]);
+
+  if (!brief.historyOpen) return null;
+
   return (
     <div className="brief-modal-overlay" onClick={() => brief.setHistoryOpen(false)}>
       <div className="brief-modal" onClick={(e) => e.stopPropagation()}>
@@ -34,13 +46,29 @@ export const BriefHistoryModal: React.FC<BriefHistoryModalProps> = ({ brief }) =
             ×
           </button>
         </div>
+
+        {history.length > 0 && (
+          <div className="brief-modal-search">
+            <IconSearch size={15} />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search briefs…"
+              aria-label="Search briefs"
+            />
+          </div>
+        )}
+
         {history.length === 0 ? (
           <div className="brief-modal-empty">
             No saved briefs yet. Generate and research a brief — it’ll appear here automatically.
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="brief-modal-empty">No briefs match “{query.trim()}”.</div>
         ) : (
           <div className="brief-modal-list">
-            {history.map((entry) => (
+            {filtered.map((entry) => (
               <div key={entry.id} className="brief-modal-row">
                 <button className="brief-modal-row-main" onClick={() => brief.loadBrief(entry)}>
                   <div className="brief-modal-row-title">{entry.title}</div>
@@ -49,6 +77,14 @@ export const BriefHistoryModal: React.FC<BriefHistoryModalProps> = ({ brief }) =
                     {entry.sectionCount} sections · {entry.sourceCount} sources ·{' '}
                     {formatWhen(entry.date)}
                   </div>
+                </button>
+                <button
+                  className="brief-modal-row-act"
+                  title="Duplicate this brief"
+                  aria-label="Duplicate this brief"
+                  onClick={() => brief.cloneBrief(entry)}
+                >
+                  <IconCopy size={14} />
                 </button>
                 <button
                   className="brief-modal-row-del"

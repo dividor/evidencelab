@@ -7,7 +7,7 @@ import {
   buildExportFilename,
   exportResultsToDocxBlob,
 } from '../../utils/exportResultsToDocx';
-import { buildGlobalCitations, stripLeadingTitle } from './briefCitations';
+import { buildGlobalCitations } from './briefCitations';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
@@ -71,26 +71,6 @@ interface BriefTabProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
-// Build a portable Markdown rendering of the current brief for export/download.
-const briefToMarkdown = (brief: ReturnType<typeof useBrief>): string => {
-  const lines: string[] = [`# ${brief.briefTitle}`, ''];
-  brief.sections.forEach((s, i) => {
-    const hashes = s.level === 2 ? '###' : '##';
-    const prefix = brief.numberHeadings ? `${brief.numbers[i]}. ` : '';
-    lines.push(`${hashes} ${prefix}${s.title}`, '');
-    const body = stripLeadingTitle(s.content, s.title);
-    if (body) lines.push(body, '');
-  });
-  if (brief.references.length) {
-    lines.push('## Footnotes', '');
-    brief.references.forEach((r) => {
-      const pageSuffix = r.page ? ` (p. ${r.page})` : '';
-      lines.push(`${r.n}. ${r.title}${pageSuffix}. _${r.section}_`);
-    });
-  }
-  return lines.join('\n');
-};
-
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -128,20 +108,6 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     }
   }, [exportBusy, brief, dataSource]);
 
-  const handleExport = useCallback(() => {
-    const md = briefToMarkdown(brief);
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const slug = brief.briefTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    a.href = url;
-    a.download = `${slug || 'evidence-brief'}.md`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [brief]);
-
   return (
     <div className="brief-tab">
       {brief.stage === 'seed' ? (
@@ -155,7 +121,6 @@ export const BriefTab: React.FC<BriefTabProps> = ({
               brief={brief}
               onResultClick={onResultClick}
               onExportWord={handleExportWord}
-              onExportMarkdown={handleExport}
               exportBusy={exportBusy}
             />
           </div>
