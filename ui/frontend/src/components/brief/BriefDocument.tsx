@@ -68,7 +68,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   return (
     <section className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}>
       <div className="brief-doc-section-head">
-        <span className="brief-doc-section-num">{num}</span>
+        {num && <span className="brief-doc-section-num">{num}</span>}
         <input
           className="brief-doc-section-title"
           value={section.title}
@@ -271,7 +271,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         <BriefSectionView
           key={s.id}
           section={s}
-          num={numbers[i]}
+          num={brief.numberHeadings ? numbers[i] : ''}
           brief={brief}
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}

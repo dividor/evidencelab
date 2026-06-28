@@ -112,6 +112,9 @@ export const useBrief = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outlineLoading, setOutlineLoading] = useState(false);
+  // Show "1.", "2.1" numbering before heading titles. Off by default; the user
+  // toggles it from the outline rail. Persisted with the brief.
+  const [numberHeadings, setNumberHeadings] = useState(false);
   // Live activity for the outline-generation deep-research survey.
   const [generatingActivity, setGeneratingActivity] = useState<BriefActivityEvent[]>([]);
 
@@ -128,6 +131,8 @@ export const useBrief = ({
   queryRef.current = query;
   const instructionsRef = useRef(instructions);
   instructionsRef.current = instructions;
+  const numberHeadingsRef = useRef(numberHeadings);
+  numberHeadingsRef.current = numberHeadings;
   const historyRef = useRef(history);
   historyRef.current = history;
 
@@ -188,6 +193,7 @@ export const useBrief = ({
         };
       }),
       outlineLog: outlineLogRef.current,
+      numberHeadings: numberHeadingsRef.current,
     };
     persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
   }, [persist]);
@@ -198,7 +204,7 @@ export const useBrief = ({
     if (stage === 'seed' || !briefIdRef.current) return;
     const t = setTimeout(() => saveCurrent(), 500);
     return () => clearTimeout(t);
-  }, [stage, briefTitle, sections, saveCurrent]);
+  }, [stage, briefTitle, sections, numberHeadings, saveCurrent]);
 
   // ---- outline ----
   // Generate headings by first running a deep-research survey of the document
@@ -431,6 +437,7 @@ export const useBrief = ({
       })),
     );
     setGeneratingActivity(entry.outlineLog || []);
+    setNumberHeadings(entry.numberHeadings ?? false);
     setStage('done');
     setHistoryOpen(false);
   }, []);
@@ -443,6 +450,7 @@ export const useBrief = ({
     setRegenFor(null);
     setError(null);
     setQuery('');
+    setNumberHeadings(false);
   }, []);
 
   // Persist a title/content edit immediately (any non-seed stage).
@@ -472,6 +480,7 @@ export const useBrief = ({
     query,
     instructions,
     numHeadings,
+    numberHeadings,
     generatingActivity,
     newHeading,
     regenFor,
@@ -487,6 +496,7 @@ export const useBrief = ({
     setQuery,
     setInstructions,
     setNumHeadings,
+    setNumberHeadings,
     setNewHeading,
     setBriefTitle,
     setRegenText,

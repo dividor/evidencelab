@@ -53,7 +53,8 @@ const assembleBriefForExport = (
     // below it. The exporter demotes markdown headings by one, so `#` → H2 and
     // `##` → H3 — keeping sections in the Table of Contents (levels 1–2).
     const hashes = s.level === 2 ? '##' : '#';
-    lines.push(`${hashes} ${brief.numbers[i]}. ${s.title}`, '');
+    const prefix = brief.numberHeadings ? `${brief.numbers[i]}. ` : '';
+    lines.push(`${hashes} ${prefix}${s.title}`, '');
     const d = display.get(s.id);
     if (d?.content) lines.push(d.content, '');
   });
@@ -75,7 +76,8 @@ const briefToMarkdown = (brief: ReturnType<typeof useBrief>): string => {
   const lines: string[] = [`# ${brief.briefTitle}`, ''];
   brief.sections.forEach((s, i) => {
     const hashes = s.level === 2 ? '###' : '##';
-    lines.push(`${hashes} ${brief.numbers[i]}. ${s.title}`, '');
+    const prefix = brief.numberHeadings ? `${brief.numbers[i]}. ` : '';
+    lines.push(`${hashes} ${prefix}${s.title}`, '');
     if (s.content) lines.push(s.content, '');
   });
   if (brief.references.length) {

@@ -44,6 +44,8 @@ export interface SavedBrief {
   sections: SavedBriefSection[];
   // The outline-generation activity log (queries run, sources read).
   outlineLog?: BriefActivityEvent[];
+  // Whether heading numbers ("1.", "2.1") are shown (default off).
+  numberHeadings?: boolean;
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';

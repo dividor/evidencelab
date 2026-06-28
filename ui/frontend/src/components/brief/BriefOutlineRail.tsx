@@ -32,6 +32,19 @@ export const BriefOutlineRail: React.FC<BriefOutlineRailProps> = ({ brief, onExp
         <span className="brief-rail-count">{sections.length} sections</span>
       </div>
 
+      <button
+        type="button"
+        className="brief-num-toggle"
+        role="switch"
+        aria-checked={brief.numberHeadings}
+        onClick={() => brief.setNumberHeadings(!brief.numberHeadings)}
+      >
+        <span className={`brief-switch${brief.numberHeadings ? ' brief-switch-on' : ''}`}>
+          <span className="brief-switch-thumb" />
+        </span>
+        Number headings
+      </button>
+
       <div className="brief-rail-list">
         {sections.map((s, i) => (
           <div
@@ -40,7 +53,8 @@ export const BriefOutlineRail: React.FC<BriefOutlineRailProps> = ({ brief, onExp
           >
             <span className={dotClass(s.status)} />
             <span className="brief-rail-item-title">
-              {numbers[i]}. {s.title}
+              {brief.numberHeadings ? `${numbers[i]}. ` : ''}
+              {s.title}
             </span>
             {isOutline && (
               <span className="brief-rail-controls">
