@@ -583,15 +583,27 @@ const buildResultCard = (
     );
   }
 
+  // Render the FULL excerpt (never truncated) inside a single bordered, shaded
+  // box at a smaller font. One paragraph guarantees a single continuous box
+  // that still flows across page breaks; blank lines separate any sub-blocks.
   const excerpt = normaliseExcerpt(String(r.text || ''));
-  const blocks = excerpt.split(/\n{2,}/);
-  for (const block of blocks) {
-    const inner = block.split('\n').join(' ').trim();
-    if (!inner) continue;
+  const blocks = excerpt
+    .split(/\n{2,}/)
+    .map((b) => b.split('\n').join(' ').trim())
+    .filter(Boolean);
+  if (blocks.length) {
+    const excerptRuns: TextRun[] = [];
+    blocks.forEach((b, i) => {
+      if (i > 0) excerptRuns.push(new TextRun({ break: 2 }));
+      excerptRuns.push(new TextRun({ text: b, italics: true, size: 18, color: '3A3A3A' }));
+    });
+    const boxSide = { style: BorderStyle.SINGLE, size: 4, color: 'D7DCE1', space: 8 };
     out.push(
       new Paragraph({
-        spacing: { after: 120 },
-        children: [new TextRun({ text: inner, italics: true })],
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F6F8FA' },
+        border: { top: boxSide, bottom: boxSide, left: boxSide, right: boxSide },
+        spacing: { after: 160, line: 252 },
+        children: excerptRuns,
       }),
     );
   }

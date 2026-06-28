@@ -357,7 +357,10 @@ class SearchTracker:
                 "chunkId": r.get("chunk_id", ""),
                 "docId": r.get("doc_id", ""),
                 "title": r.get("title", ""),
-                "text": (text[:200] + "...") if len(text) > 200 else text,
+                # Full chunk text (not truncated): the on-screen citation panels
+                # show title/page only, while the Brief's Word export renders the
+                # complete excerpt for each cited source.
+                "text": text,
                 "score": r.get("score", 0.0),
                 "page": r.get("page"),
                 "index": r.get("global_index"),

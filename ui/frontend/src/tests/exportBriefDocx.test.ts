@@ -61,14 +61,21 @@ describe('brief Word export', () => {
     expect(settings).not.toContain('updateFields');
   });
 
-  test('reference excerpt is italicised', async () => {
+  test('reference excerpt is a full, italic, smaller-font run inside a bordered box', async () => {
     const xml = await documentXml(BRIEF_OPTS);
-    // The full excerpt sentence renders inside an italic run (<w:i/>).
+    // The full excerpt sentence renders inside an italic, sized-down run…
     const runMatch = xml.match(
       /<w:r>[^]*?Full excerpt sentence two that should appear in italics[^]*?<\/w:r>/,
     );
     expect(runMatch).not.toBeNull();
     expect(runMatch![0]).toContain('<w:i');
+    expect(runMatch![0]).toMatch(/<w:sz w:val="18"\/>/); // smaller font (9pt)
+    // …and the excerpt's paragraph is a shaded, bordered box.
+    const paraMatch = xml.match(
+      /<w:p>[^]*?Full excerpt sentence two that should appear in italics[^]*?<\/w:p>/,
+    );
+    expect(paraMatch![0]).toContain('<w:pBdr>');
+    expect(paraMatch![0]).toMatch(/<w:shd[^>]*w:fill="F6F8FA"/);
   });
 
   test('reference line shows ", p.N" and an unbolded title', async () => {
