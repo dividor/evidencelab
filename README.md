@@ -48,13 +48,14 @@ Evidence Lab document processing pipeline includes the following features:
 
 2. User interface
 
-| Search | Research Assistant | Heatmapper | Pipeline |
-|:---:|:---:|:---:|:---:|
-| <img src="docs/images/search-guide/search-results-full.png" alt="Search" height="200"> | <img src="docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="docs/images/heatmapper-overview.png" alt="Heatmapper" height="200"> | <img src="docs/images/monitor/pipeline-view.png" alt="Pipeline" height="200"> |
+| Search | Research Assistant | Brief | Heatmapper | Pipeline |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="docs/images/search-guide/search-results-full.png" alt="Search" height="200"> | <img src="docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="docs/images/brief/brief-workspace.png" alt="Brief" height="200"> | <img src="docs/images/heatmapper-overview.png" alt="Heatmapper" height="200"> | <img src="docs/images/monitor/pipeline-view.png" alt="Pipeline" height="200"> |
 
 - Hybrid search with AI summary and reranking
 - **Research Assistant** — chat-based AI agent that searches, analyzes, and synthesizes findings with inline citations and multi-turn conversations with thread history
 - **Deep Research mode** — coordinator/researcher sub-agent architecture using [deepagents](https://github.com/krrome/deepagents) for thorough multi-step investigations with real-time streaming progress
+- **Brief** — turn a topic into a structured, evidence-backed research brief: generate an outline grounded in the document library, add/move/remove/rename headings in a drag-and-drop table of contents, research each heading into cited prose with AI, then export a branded Word document with a clickable contents page and citations linked to source documents. See [Brief](docs/using-evidence-lab/brief.md)
 - **Star ratings** — rate search results, AI summaries, and assistant responses with 1–5 stars and optional comments
 - **Drilldown research** — highlight text or click "Find out more" to drill into sub-topics, building an explorable research tree with query inheritance and PDF export
 - Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
@@ -67,6 +68,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic language translation
 - PDF preview with in-document search
 - Built-in searchable documentation area with sidebar navigation
+- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review. See [Evaluation Harness](docs/admin/evaluation.md)
 - Administration views to track pipeline, documents, performance and errors
 
 3. AI platform integrations
