@@ -52,6 +52,39 @@ const loadHistory = (key: string): SavedBrief[] => {
   }
 };
 
+// Move a heading up/down among its same-level siblings. A level-1 heading
+// carries its sub-headings with it; a level-2 heading swaps only with an
+// adjacent level-2 sibling under the same parent (never crossing a heading).
+export const moveSectionInLevel = (
+  sections: BriefSection[],
+  id: string,
+  dir: -1 | 1,
+): BriefSection[] => {
+  const i = sections.findIndex((s) => s.id === id);
+  if (i < 0) return sections;
+  if (sections[i].level === 2) {
+    const j = i + dir;
+    if (j < 0 || j >= sections.length || sections[j].level !== 2) return sections;
+    const arr = [...sections];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    return arr;
+  }
+  // Level 1: the block is the heading plus its trailing level-2 children.
+  let end = i + 1;
+  while (end < sections.length && sections[end].level === 2) end++;
+  const block = sections.slice(i, end);
+  if (dir === -1) {
+    let p = i - 1;
+    while (p >= 0 && sections[p].level === 2) p--;
+    if (p < 0) return sections;
+    return [...sections.slice(0, p), ...block, ...sections.slice(p, i), ...sections.slice(end)];
+  }
+  if (end >= sections.length) return sections;
+  let n = end + 1;
+  while (n < sections.length && sections[n].level === 2) n++;
+  return [...sections.slice(0, i), ...sections.slice(end, n), ...block, ...sections.slice(n)];
+};
+
 // Hierarchical numbering: 1, 2, 2.1, 2.2, 3, …
 const computeNumbers = (sections: BriefSection[]): string[] => {
   let major = 0;
@@ -292,19 +325,31 @@ export const useBrief = ({
     setNewHeading('');
   }, [newHeading]);
 
+  // Append a new top-level heading (sample until the user names it, so its
+  // per-section research stays disabled until edited).
+  const addHeading = useCallback(() => {
+    setSections((prev) => [...prev, makeSection('New heading', 1, true)]);
+  }, []);
+
+  // Insert a new sub-heading after the given heading and its existing children.
+  const addSubHeading = useCallback((parentId: string) => {
+    setSections((prev) => {
+      const idx = prev.findIndex((s) => s.id === parentId);
+      if (idx < 0) return prev;
+      let insertAt = idx + 1;
+      while (insertAt < prev.length && prev[insertAt].level === 2) insertAt++;
+      const next = [...prev];
+      next.splice(insertAt, 0, makeSection('New sub-heading', 2, true));
+      return next;
+    });
+  }, []);
+
   const removeSection = useCallback((id: string) => {
     setSections((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
   const moveSection = useCallback((id: string, dir: -1 | 1) => {
-    setSections((prev) => {
-      const arr = [...prev];
-      const i = arr.findIndex((s) => s.id === id);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= arr.length) return prev;
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-      return arr;
-    });
+    setSections((prev) => moveSectionInLevel(prev, id, dir));
   }, []);
 
   const indentSection = useCallback((id: string) => {
@@ -474,6 +519,7 @@ export const useBrief = ({
     // state
     stage,
     briefTitle,
+    currentBriefId: briefIdRef.current,
     sections,
     numbers,
     references,
@@ -505,6 +551,8 @@ export const useBrief = ({
     generateOutline,
     startManual,
     addSection,
+    addHeading,
+    addSubHeading,
     removeSection,
     moveSection,
     indentSection,

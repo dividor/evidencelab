@@ -57,32 +57,42 @@ describe('BriefTab (Document Builder)', () => {
     expect((screen.getByLabelText('Topic') as HTMLTextAreaElement).value).toBe(example);
   });
 
-  test('"Write my own headings" enters the outline stage with starter sections', () => {
+  test('"Write my own headings" enters the builder with starter sections and a saved-briefs rail', () => {
     render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText('Write my own headings'));
-    expect(screen.getByText('Outline')).toBeInTheDocument();
+    // Left rail now shows saved briefs; the document carries the structural actions.
+    expect(screen.getByText('Saved briefs')).toBeInTheDocument();
+    expect(screen.getByText('Add heading')).toBeInTheDocument();
     expect(screen.getByText('Start deep research →')).toBeInTheDocument();
     const titles = screen.getAllByDisplayValue(/Background & definitions|Key findings|Recommendations/);
     expect(titles.length).toBeGreaterThanOrEqual(3);
   });
 
-  test('heading numbers are off by default and can be toggled on from the rail', () => {
-    render(<BriefTab dataSource="wfp" />);
+  test('heading numbers are off by default and can be toggled on by the title-row switch', () => {
+    const { container } = render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText('Write my own headings'));
-
-    const railTitle = (el: Element | null): boolean =>
-      el?.className === 'brief-rail-item-title';
-    const numbered = (_: string, el: Element | null): boolean =>
-      railTitle(el) && /^\s*1\.\s/.test(el?.textContent || '');
 
     const toggle = screen.getByRole('switch', { name: /number headings/i });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
-    // No "1." prefix on the first outline item by default.
-    expect(screen.queryByText(numbered)).toBeNull();
+    // No number badge rendered before the headings by default.
+    expect(container.querySelector('.brief-doc-section-num')).toBeNull();
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText(numbered)).toBeInTheDocument();
+    const nums = Array.from(container.querySelectorAll('.brief-doc-section-num')).map(
+      (n) => n.textContent,
+    );
+    expect(nums).toContain('1');
+  });
+
+  test('"Add heading" appends a new editable heading to the document', () => {
+    render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(screen.getByText('Write my own headings'));
+    const before = screen.getAllByDisplayValue(/.+/).length;
+    fireEvent.click(screen.getByText('Add heading'));
+    expect(screen.getByDisplayValue('New heading')).toBeInTheDocument();
+    const after = screen.getAllByDisplayValue(/.+/).length;
+    expect(after).toBe(before + 1);
   });
 
   test('"Generate outline" surveys the document library then renders grounded headings', async () => {

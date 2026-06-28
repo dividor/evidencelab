@@ -1054,3 +1054,250 @@
   font-size: 11.5px;
   color: var(--brand-text-tertiary);
 }
+
+/* ============================================================
+   Builder restructure: history rail + in-document editing
+   ============================================================ */
+
+/* ---------- left history rail ---------- */
+.brief-rail {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+}
+.brief-history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.brief-history-empty {
+  padding: 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-item {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--brand-border-light);
+  overflow: hidden;
+}
+.brief-history-item-active {
+  border-color: var(--brand-primary);
+  background: #f0f6ff;
+}
+.brief-history-item-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 9px 10px;
+}
+.brief-history-item-main:hover {
+  background: #f7f9fa;
+}
+.brief-history-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brief-history-item-meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-del {
+  flex: none;
+  width: 30px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-history-del:hover {
+  color: #c0392b;
+  background: #f7f9fa;
+}
+
+/* ---------- document header: exports + title-row toggle ---------- */
+.brief-doc-export-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brief-export-md {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--brand-surface);
+  color: var(--brand-text-secondary);
+  border: 1px solid var(--brand-border);
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.brief-export-md:hover:not(:disabled) {
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+}
+.brief-export-md:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-doc-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.brief-doc-title-row .brief-doc-title-input {
+  flex: 1;
+  width: auto;
+  margin-bottom: 0;
+}
+.brief-num-toggle-inline {
+  flex: none;
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  white-space: nowrap;
+  color: var(--brand-text-secondary);
+}
+.brief-num-toggle-inline:hover {
+  color: var(--brand-text-primary);
+}
+
+/* ---------- in-document research progress ---------- */
+.brief-doc-progress {
+  margin-top: 14px;
+}
+.brief-doc-progress-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  margin-bottom: 6px;
+}
+
+/* ---------- per-heading structural controls ---------- */
+.brief-move-controls {
+  flex: none;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.brief-move-btn {
+  width: 20px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-move-btn:first-child {
+  border-bottom: none;
+}
+.brief-move-btn:hover:not(:disabled) {
+  color: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+.brief-move-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.brief-section-struct {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.brief-section-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--brand-border-light);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.brief-section-act:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+.brief-section-act .brief-icon {
+  width: 12px;
+  height: 12px;
+}
+.brief-section-del {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-section-del:hover {
+  color: #c0392b;
+  border-color: #c0392b;
+}
+
+/* ---------- bottom "add heading" / "start research" bar ---------- */
+.brief-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0 4px;
+}
+.brief-add-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px dashed var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.brief-add-heading:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+.brief-add-heading .brief-icon {
+  width: 14px;
+  height: 14px;
+}

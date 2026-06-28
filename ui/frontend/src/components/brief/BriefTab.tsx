@@ -10,7 +10,7 @@ import {
 import { buildGlobalCitations } from './briefCitations';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
-import { BriefOutlineRail } from './BriefOutlineRail';
+import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefSeed } from './BriefSeed';
 import { useBrief } from './useBrief';
 import './brief.css';
@@ -149,11 +149,12 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         <>
           {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
           <div className="brief-builder">
-            <BriefOutlineRail brief={brief} onExport={handleExport} />
+            <BriefHistoryRail brief={brief} />
             <BriefDocument
               brief={brief}
               onResultClick={onResultClick}
               onExportWord={handleExportWord}
+              onExportMarkdown={handleExport}
               exportBusy={exportBusy}
             />
           </div>

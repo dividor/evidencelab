@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
-import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
+import { IconDownload, IconEdit, IconPlus, IconRefresh, IconSparkle } from './BriefIcons';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
@@ -11,6 +11,8 @@ const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase
 interface SectionViewProps {
   section: BriefSection;
   num: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   brief: UseBriefReturn;
   onSourceClick: (source: SourceReference) => void;
   // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
@@ -53,6 +55,8 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
+  canMoveUp,
+  canMoveDown,
   brief,
   onSourceClick,
   display,
@@ -61,6 +65,8 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const panelOpen = brief.regenFor === section.id;
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
   const isDone = section.status === 'done';
+  // Structural edits (reorder/add/remove) are locked while a research pass runs.
+  const canEditStructure = !anyResearching;
   // View/evidence use the globally-renumbered content; editing uses the raw text.
   const viewContent = display?.content ?? section.content;
   const viewSources = display?.sources ?? section.sources;
@@ -68,6 +74,26 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   return (
     <section className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}>
       <div className="brief-doc-section-head">
+        {canEditStructure && (
+          <span className="brief-move-controls" title="Reorder among same-level headings">
+            <button
+              className="brief-move-btn"
+              aria-label="Move up"
+              disabled={!canMoveUp}
+              onClick={() => brief.moveSection(section.id, -1)}
+            >
+              ↑
+            </button>
+            <button
+              className="brief-move-btn"
+              aria-label="Move down"
+              disabled={!canMoveDown}
+              onClick={() => brief.moveSection(section.id, 1)}
+            >
+              ↓
+            </button>
+          </span>
+        )}
         {num && <span className="brief-doc-section-num">{num}</span>}
         <input
           className="brief-doc-section-title"
@@ -84,6 +110,27 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
               <IconRefresh /> Regenerate
             </button>
           </>
+        )}
+        {canEditStructure && (
+          <span className="brief-section-struct">
+            {section.level === 1 && (
+              <button
+                className="brief-section-act"
+                title="Add a sub-heading under this heading"
+                onClick={() => brief.addSubHeading(section.id)}
+              >
+                <IconPlus /> Sub-heading
+              </button>
+            )}
+            <button
+              className="brief-section-del"
+              title="Delete this heading"
+              aria-label="Delete this heading"
+              onClick={() => brief.removeSection(section.id)}
+            >
+              ×
+            </button>
+          </span>
         )}
       </div>
 
@@ -160,8 +207,26 @@ interface BriefDocumentProps {
   brief: UseBriefReturn;
   onResultClick?: (result: SearchResult) => void;
   onExportWord?: () => void;
+  onExportMarkdown?: () => void;
   exportBusy?: boolean;
 }
+
+// Compact on/off switch for heading numbers, shown to the right of the title.
+const NumberHeadingsToggle: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
+  <button
+    type="button"
+    className="brief-num-toggle-inline"
+    role="switch"
+    aria-checked={brief.numberHeadings}
+    onClick={() => brief.setNumberHeadings(!brief.numberHeadings)}
+    title="Show numbering before each heading"
+  >
+    <span className={`brief-switch${brief.numberHeadings ? ' brief-switch-on' : ''}`}>
+      <span className="brief-switch-thumb" />
+    </span>
+    Number headings
+  </button>
+);
 
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
@@ -173,6 +238,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   brief,
   onResultClick,
   onExportWord,
+  onExportMarkdown,
   exportBusy,
 }) => {
   const { sections, numbers } = brief;
@@ -182,6 +248,21 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
+
+  // Can this section move among its same-level siblings? (Mirrors the level-aware
+  // logic in moveSectionInLevel so the arrows disable at the ends.)
+  const canMoveUp = (i: number): boolean => {
+    const s = sections[i];
+    if (s.level === 2) return sections[i - 1]?.level === 2;
+    return sections.slice(0, i).some((x) => x.level === 1);
+  };
+  const canMoveDown = (i: number): boolean => {
+    const s = sections[i];
+    if (s.level === 2) return sections[i + 1]?.level === 2;
+    let e = i + 1;
+    while (e < sections.length && sections[e].level === 2) e++;
+    return e < sections.length;
+  };
 
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
@@ -205,29 +286,44 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <div className="brief-doc-header">
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-          {onExportWord && (
-            <button
-              className="brief-export-word"
-              onClick={onExportWord}
-              disabled={!sections.length || exportBusy}
-              title="Export this brief to Word, with citations linked to the source documents"
-            >
-              {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-            </button>
-          )}
+          <div className="brief-doc-export-actions">
+            {onExportMarkdown && (
+              <button
+                className="brief-export-md"
+                onClick={onExportMarkdown}
+                disabled={!sections.length}
+                title="Download this brief as Markdown"
+              >
+                <IconDownload /> .md
+              </button>
+            )}
+            {onExportWord && (
+              <button
+                className="brief-export-word"
+                onClick={onExportWord}
+                disabled={!sections.length || exportBusy}
+                title="Export this brief to Word, with citations linked to the source documents"
+              >
+                {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
+              </button>
+            )}
+          </div>
         </div>
-        <textarea
-          ref={titleRef}
-          className="brief-doc-title-input"
-          value={brief.briefTitle}
-          onChange={(e) => {
-            brief.setBriefTitle(e.target.value);
-            autoSizeTitle(e.target);
-          }}
-          onBlur={brief.commitEdits}
-          rows={1}
-          aria-label="Brief title"
-        />
+        <div className="brief-doc-title-row">
+          <textarea
+            ref={titleRef}
+            className="brief-doc-title-input"
+            value={brief.briefTitle}
+            onChange={(e) => {
+              brief.setBriefTitle(e.target.value);
+              autoSizeTitle(e.target);
+            }}
+            onBlur={brief.commitEdits}
+            rows={1}
+            aria-label="Brief title"
+          />
+          <NumberHeadingsToggle brief={brief} />
+        </div>
         <div className="brief-doc-meta">
           <span>{sections.length} sections</span>
           <span>·</span>
@@ -250,6 +346,19 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             </span>
           )}
         </div>
+        {brief.stage === 'research' && (
+          <div className="brief-doc-progress">
+            <div className="brief-doc-progress-row">
+              <span>Researching…</span>
+              <span>
+                {brief.doneCount}/{sections.length}
+              </span>
+            </div>
+            <div className="brief-progress-track">
+              <div className="brief-progress-fill" style={{ width: `${brief.totalProgress}%` }} />
+            </div>
+          </div>
+        )}
         {logOpen && hasOutlineLog && (
           <div className="brief-outline-log">
             <div className="brief-outline-log-head">
@@ -272,11 +381,28 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           key={s.id}
           section={s}
           num={brief.numberHeadings ? numbers[i] : ''}
+          canMoveUp={canMoveUp(i)}
+          canMoveDown={canMoveDown(i)}
           brief={brief}
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}
         />
       ))}
+
+      <div className="brief-doc-actions">
+        <button className="brief-add-heading" onClick={brief.addHeading}>
+          <IconPlus /> Add heading
+        </button>
+        {brief.stage === 'outline' && (
+          <button
+            className="brief-btn brief-btn-primary"
+            onClick={brief.startResearch}
+            disabled={!sections.length}
+          >
+            Start deep research →
+          </button>
+        )}
+      </div>
 
       {references.length > 0 && (
         <section className="brief-footnotes">
