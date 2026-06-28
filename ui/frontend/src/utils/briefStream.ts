@@ -1,8 +1,8 @@
 // Brief tab data layer.
 //
 // Outline generation hits the thin /brief/outline endpoint; per-section "deep
-// research" — and the corpus survey that grounds the outline — reuse the
-// existing deep-research assistant (streamAssistantChat) and map its
+// research" — and the document-library survey that grounds the outline — reuse
+// the existing deep-research assistant (streamAssistantChat) and map its
 // phase/plan/search/sources/token events onto the Brief's simpler
 // activity-log + content + sources callbacks. Briefs never rerank (the local
 // cross-encoder runs on CPU and is far too slow for multi-query research).
@@ -164,7 +164,7 @@ export const runDeepResearch = async ({
         const pct = PHASE_PROGRESS[phase];
         if (pct) handlers.onProgress(pct);
         if (phase === 'planning') {
-          handlers.onActivity({ tag: 'SCAN', text: 'Planning corpus searches' });
+          handlers.onActivity({ tag: 'SCAN', text: 'Planning document-library searches' });
         } else if (phase === 'synthesizing') {
           handlers.onActivity({ tag: 'DRAFT', text: 'Synthesising findings' });
         }
@@ -205,29 +205,79 @@ export interface ResearchSectionOptions {
   dataSource: string;
   heading: string;
   context?: string | null;
+  // Overall brief subject — situates the section and steers its searches.
+  briefTopic?: string | null;
+  // Author guidance that shaped the outline; also steers section research.
+  briefInstructions?: string | null;
+  // For sub-sections (level 2): the parent section title, so the section stays
+  // scoped to its parent and the generated queries reflect that context.
+  parentTitle?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
 
 /**
+ * Build the deep-research instruction for one brief section. The brief topic,
+ * the parent section (for sub-sections) and the author's brief-level guidance
+ * are all woven in so the assistant's generated search queries — and the prose
+ * it writes — stay relevant to where this section sits in the document.
+ */
+export const buildSectionQuery = ({
+  heading,
+  briefTopic,
+  briefInstructions,
+  parentTitle,
+  context,
+}: {
+  heading: string;
+  briefTopic?: string | null;
+  briefInstructions?: string | null;
+  parentTitle?: string | null;
+  context?: string | null;
+}): string => {
+  const topic = (briefTopic || '').trim();
+  const parent = (parentTitle || '').trim();
+  const guidance = (briefInstructions || '').trim();
+  const focus = (context || '').trim();
+  const parts: string[] = [];
+  parts.push(
+    topic
+      ? `Write the "${heading}" section of an evidence brief on "${topic}".`
+      : `Write the "${heading}" section of an evidence brief.`,
+  );
+  if (parent) {
+    parts.push(
+      `This section sits under the parent section "${parent}" — keep it specifically about that aspect of the brief and avoid repeating material that belongs in sibling sections.`,
+    );
+  }
+  parts.push(
+    'Search the document library for evidence relevant to this specific section and cite a source for every claim.',
+  );
+  if (guidance) parts.push(`Overall brief guidance: ${guidance}`);
+  if (focus) parts.push(`Focus for this section: ${focus}`);
+  return parts.join(' ');
+};
+
+/**
  * Research a single brief section by running one deep-research turn for the
- * heading (plus optional focus context). Citations and sources come straight
- * from the assistant; activity events are derived from its stream.
+ * heading (plus its place in the brief and any focus context). Citations and
+ * sources come straight from the assistant; activity events derive from its
+ * stream.
  */
 export const researchBriefSection = ({
   apiBaseUrl,
   dataSource,
   heading,
   context,
+  briefTopic,
+  briefInstructions,
+  parentTitle,
   assistantModelConfig,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
-  const focus = (context || '').trim();
-  const query = focus
-    ? `Write the "${heading}" section of an evidence brief. Focus: ${focus}`
-    : `Write the "${heading}" section of an evidence brief.`;
+  const query = buildSectionQuery({ heading, briefTopic, briefInstructions, parentTitle, context });
   return runDeepResearch({
     apiBaseUrl,
     dataSource,

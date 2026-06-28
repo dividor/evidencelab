@@ -126,6 +126,8 @@ export const useBrief = ({
   briefTitleRef.current = briefTitle;
   const queryRef = useRef(query);
   queryRef.current = query;
+  const instructionsRef = useRef(instructions);
+  instructionsRef.current = instructions;
   const historyRef = useRef(history);
   historyRef.current = history;
 
@@ -321,8 +323,21 @@ export const useBrief = ({
   // ---- research engine ----
   const researchOne = useCallback(
     (id: string, context: string | null, signal: AbortSignal): Promise<void> => {
-      const section = sectionsRef.current.find((s) => s.id === id);
+      const list = sectionsRef.current;
+      const idx = list.findIndex((s) => s.id === id);
+      const section = list[idx];
       if (!section) return Promise.resolve();
+      // For a sub-section (level 2), find the nearest preceding level-1 heading
+      // so its research stays scoped to the right parent.
+      let parentTitle: string | null = null;
+      if (section.level === 2) {
+        for (let i = idx - 1; i >= 0; i--) {
+          if (list[i].level === 1) {
+            parentTitle = list[i].title;
+            break;
+          }
+        }
+      }
       updateSection(id, {
         status: 'researching',
         progress: 4,
@@ -330,11 +345,15 @@ export const useBrief = ({
         sources: [],
         activity: [],
       });
+      const briefTopic = queryRef.current.trim() || briefTitleRef.current;
       return researchBriefSection({
         apiBaseUrl,
         dataSource,
         heading: section.title,
         context,
+        briefTopic,
+        briefInstructions: instructionsRef.current.trim() || null,
+        parentTitle,
         assistantModelConfig,
         signal,
         handlers: {
