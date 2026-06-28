@@ -266,6 +266,13 @@
   display: flex;
   gap: 12px;
   margin-bottom: 16px;
+  /* Match the outline rail width (grid column below), so the two equal-width
+     buttons together span exactly the headings panel beneath them. */
+  width: 308px;
+}
+.brief-toolbar .brief-link-btn {
+  flex: 1;
+  justify-content: center;
 }
 .brief-builder {
   display: grid;
