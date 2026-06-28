@@ -7,7 +7,7 @@ import {
   buildExportFilename,
   exportResultsToDocxBlob,
 } from '../../utils/exportResultsToDocx';
-import { buildGlobalCitations } from './briefCitations';
+import { buildGlobalCitations, stripLeadingTitle } from './briefCitations';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
@@ -78,7 +78,8 @@ const briefToMarkdown = (brief: ReturnType<typeof useBrief>): string => {
     const hashes = s.level === 2 ? '###' : '##';
     const prefix = brief.numberHeadings ? `${brief.numbers[i]}. ` : '';
     lines.push(`${hashes} ${prefix}${s.title}`, '');
-    if (s.content) lines.push(s.content, '');
+    const body = stripLeadingTitle(s.content, s.title);
+    if (body) lines.push(body, '');
   });
   if (brief.references.length) {
     lines.push('## Footnotes', '');

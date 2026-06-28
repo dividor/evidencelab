@@ -4,6 +4,36 @@ import { BriefSection } from './briefTypes';
 
 const CITATION_RE = /\[(\d+(?:,\s*\d+)*)\]/g;
 
+// Normalise a line to compare it against a heading title: drop markdown heading
+// hashes, leading "1." / "2.1" numbering, and emphasis markers.
+const normaliseHeadingLine = (s: string): string =>
+  s
+    .replace(/^#{1,6}\s+/, '')
+    .replace(/^\d+(\.\d+)*\.?\s+/, '')
+    .replace(/[*_`]/g, '')
+    .trim()
+    .toLowerCase();
+
+/**
+ * Remove a section's leading title line so it isn't shown twice — the brief
+ * already renders the section's own (editable) heading above the prose. Strips
+ * the first non-blank line when it is a markdown heading, or when it simply
+ * repeats the section title, then drops the blank line(s) that followed.
+ */
+export const stripLeadingTitle = (md: string, title: string): string => {
+  const lines = md.replace(/\r\n/g, '\n').split('\n');
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === '') i++;
+  if (i >= lines.length) return md;
+  const first = lines[i];
+  const isHeading = /^#{1,6}\s+/.test(first);
+  const repeatsTitle = !!title && normaliseHeadingLine(first) === normaliseHeadingLine(title);
+  if (!isHeading && !repeatsTitle) return md;
+  i++;
+  while (i < lines.length && lines[i].trim() === '') i++;
+  return lines.slice(i).join('\n');
+};
+
 export interface GlobalRef {
   n: number;
   title: string;
@@ -57,7 +87,7 @@ export const buildGlobalCitations = (
         sources.push({ ...src, index: g });
       }
     });
-    const content = s.content.replace(CITATION_RE, (_m, nums: string) => {
+    const content = stripLeadingTitle(s.content, s.title).replace(CITATION_RE, (_m, nums: string) => {
       const mapped = Array.from(
         new Set(
           nums

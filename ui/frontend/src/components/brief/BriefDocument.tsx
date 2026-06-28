@@ -79,17 +79,18 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onChange={(e) => brief.editTitle(section.id, e.target.value)}
           onBlur={brief.commitEdits}
         />
-        {isDone && (
-          <>
-            <button className="brief-regen-btn" onClick={() => setEditing((v) => !v)}>
-              <IconEdit /> {editing ? 'Done' : 'Edit text'}
-            </button>
-            <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
-              <IconRefresh /> Regenerate
-            </button>
-          </>
-        )}
       </div>
+
+      {isDone && (
+        <div className="brief-doc-section-tools">
+          <button className="brief-regen-btn" onClick={() => setEditing((v) => !v)}>
+            <IconEdit /> {editing ? 'Done' : 'Edit text'}
+          </button>
+          <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
+            <IconRefresh /> Regenerate
+          </button>
+        </div>
+      )}
 
       {panelOpen && <GuidancePanel section={section} brief={brief} />}
 

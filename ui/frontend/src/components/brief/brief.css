@@ -618,6 +618,12 @@
   cursor: pointer;
   white-space: nowrap;
 }
+/* Edit text / Regenerate sit on their own row beneath the section title. */
+.brief-doc-section-tools {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 16px;
+}
 .brief-regen-btn .brief-icon {
   font-size: 14px;
 }

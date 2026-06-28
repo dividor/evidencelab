@@ -1,4 +1,4 @@
-import { buildGlobalCitations } from '../components/brief/briefCitations';
+import { buildGlobalCitations, stripLeadingTitle } from '../components/brief/briefCitations';
 import { BriefSection } from '../components/brief/briefTypes';
 import { SourceReference } from '../types/api';
 
@@ -86,5 +86,37 @@ describe('buildGlobalCitations', () => {
     const { refs, display } = buildGlobalCitations(sections);
     expect(refs).toHaveLength(0);
     expect(display.size).toBe(0);
+  });
+
+  test('drops a leading title the model repeated at the top of the section', () => {
+    const sections: BriefSection[] = [
+      section({
+        id: 'a',
+        title: 'Access to schooling',
+        content: '## Access to schooling\n\nEnrolment rose [1].',
+        sources: [src({ index: 1, docId: 'd1', title: 'Doc', page: 2 })],
+      }),
+    ];
+    const { display } = buildGlobalCitations(sections);
+    // The duplicated heading is removed; only the prose (renumbered) remains.
+    expect(display.get('a')?.content).toBe('Enrolment rose [1].');
+  });
+});
+
+describe('stripLeadingTitle', () => {
+  test('strips a leading markdown heading', () => {
+    expect(stripLeadingTitle('## Access\n\nBody text.', 'Access')).toBe('Body text.');
+    expect(stripLeadingTitle('# Anything\n\nBody.', 'Different')).toBe('Body.');
+  });
+
+  test('strips a leading plain or bold line that repeats the title', () => {
+    expect(stripLeadingTitle('Access to schooling\n\nBody.', 'Access to schooling')).toBe('Body.');
+    expect(stripLeadingTitle('**Access to schooling**\nBody.', 'Access to schooling')).toBe('Body.');
+  });
+
+  test('leaves prose that does not start with a title untouched', () => {
+    expect(stripLeadingTitle('Kenya has improved enrolment.', 'Access')).toBe(
+      'Kenya has improved enrolment.',
+    );
   });
 });
