@@ -16,18 +16,19 @@
  */
 import {
   AlignmentType,
+  Bookmark,
   BorderStyle,
   Document,
   ExternalHyperlink,
   Footer,
   HeadingLevel,
+  InternalHyperlink,
   LevelFormat,
   Packer,
   PageBreak,
   PageNumber,
   Paragraph,
   ShadingType,
-  TableOfContents,
   TextRun,
   convertInchesToTwip,
 } from 'docx';
@@ -63,8 +64,9 @@ export interface ExportOptions {
    *  directly under the metadata line. The Brief export uses it to flag that
    *  the content is AI-generated and must be verified. */
   infoBox?: string;
-  /** When true, insert a clickable Table of Contents (heading levels 1–2)
-   *  after the cover and prompt Word to populate it on open. */
+  /** When true, insert a clickable Table of Contents after the cover. It is
+   *  built from real content (internal links to heading bookmarks), not a Word
+   *  field, so opening the document never prompts to update fields. */
   tableOfContents?: boolean;
 }
 
@@ -261,16 +263,19 @@ const matchBlockParagraph = (
   line: string,
   headingShift: number,
   citations?: CitationContext,
+  bookmarkId?: string,
 ): Paragraph | null => {
   const h = /^(#{1,6})\s+(.*)$/.exec(line);
   if (h) {
     const depth = Math.min(6, Math.max(1, h[1].length + headingShift));
     const heading = HEADING_LEVELS_BY_DEPTH[depth] ?? HeadingLevel.HEADING_6;
     // Headings stay text-only — rendering hyperlinks inside a heading
-    // confuses Word's outline view, so omit the citation context here.
+    // confuses Word's outline view, so omit the citation context here. When a
+    // bookmarkId is supplied, wrap the runs so the manual TOC can link here.
+    const runs = inlineRuns(h[2]);
     return new Paragraph({
       heading,
-      children: inlineRuns(h[2]),
+      children: bookmarkId ? [new Bookmark({ id: bookmarkId, children: runs })] : runs,
       spacing: { before: 200, after: 120 },
     });
   }
@@ -312,6 +317,7 @@ export const markdownToParagraphs = (
   md: string,
   headingShift = 0,
   citations?: CitationContext,
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   const lines = md.replace(/\r\n/g, '\n').split('\n');
@@ -327,13 +333,17 @@ export const markdownToParagraphs = (
     }
   };
 
+  let headingIdx = 0;
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (line === '') {
       flushParagraph();
       continue;
     }
-    const block = matchBlockParagraph(line, headingShift, citations);
+    // Bookmark headings in document order so the manual TOC's links resolve.
+    const bookmarkId =
+      bookmarkPrefix && /^#{1,6}\s+/.test(line) ? `${bookmarkPrefix}${headingIdx++}` : undefined;
+    const block = matchBlockParagraph(line, headingShift, citations, bookmarkId);
     if (block) {
       flushParagraph();
       paragraphs.push(block);
@@ -343,6 +353,16 @@ export const markdownToParagraphs = (
   }
   flushParagraph();
   return paragraphs;
+};
+
+/** Extract markdown headings (text + depth), in document order, for the TOC. */
+const extractMarkdownHeadings = (md: string): { text: string; depth: number }[] => {
+  const out: { text: string; depth: number }[] = [];
+  for (const raw of md.replace(/\r\n/g, '\n').split('\n')) {
+    const m = /^(#{1,6})\s+(.*)$/.exec(raw.trimEnd());
+    if (m) out.push({ text: m[2].trim(), depth: m[1].length });
+  }
+  return out;
 };
 
 // ---------------------------------------------------------------------------
@@ -399,20 +419,35 @@ const buildCoverParagraphs = (
   return children;
 };
 
-/** A clickable Table of Contents (heading levels 1–2) on its own page. Word
- *  populates it on open when the document's ``updateFields`` flag is set. */
-const buildTableOfContents = (): (Paragraph | TableOfContents)[] => [
-  new Paragraph({
-    heading: HeadingLevel.HEADING_1,
-    children: [new TextRun({ text: 'Contents' })],
-    spacing: { after: 120 },
-  }),
-  new TableOfContents('Table of Contents', {
-    hyperlink: true,
-    headingStyleRange: '1-2',
-  }),
-  new Paragraph({ children: [new PageBreak()] }),
-];
+/** A clickable Table of Contents built from real content (not a Word field, so
+ *  opening the document never prompts to "update fields"). Each entry is an
+ *  internal hyperlink to a bookmark placed on the matching heading; the heading
+ *  bookmarks are emitted by {@link markdownToParagraphs} in the same order. */
+const buildManualToc = (summary: string, bookmarkPrefix: string): Paragraph[] => {
+  const out: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: 'Contents' })],
+      spacing: { after: 120 },
+    }),
+  ];
+  extractMarkdownHeadings(summary).forEach((h, i) => {
+    out.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        indent: h.depth > 1 ? { left: convertInchesToTwip(0.3 * (h.depth - 1)) } : undefined,
+        children: [
+          new InternalHyperlink({
+            anchor: `${bookmarkPrefix}${i}`,
+            children: [new TextRun({ text: h.text, style: 'Hyperlink' })],
+          }),
+        ],
+      }),
+    );
+  });
+  out.push(new Paragraph({ children: [new PageBreak()] }));
+  return out;
+};
 
 const buildReferenceParagraphs = (
   groups: DocumentGroup[],
@@ -468,6 +503,7 @@ const buildSummarySection = (
   siteOrigin: string,
   dataSource?: string,
   heading = 'AI Summary',
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
@@ -486,8 +522,9 @@ const buildSummarySection = (
   };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
-  // body become clickable links, renumbered to match the screen.
-  out.push(...markdownToParagraphs(summary, 1, citations));
+  // body become clickable links, renumbered to match the screen. When a
+  // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
+  out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
   out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
   return out;
 };
@@ -605,15 +642,17 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
-  const body: (Paragraph | TableOfContents)[] = [
+  const tocBookmarkPrefix = 'briefheading';
+  const body: Paragraph[] = [
     ...buildCoverParagraphs(opts, now),
-    ...(opts.tableOfContents ? buildTableOfContents() : []),
+    ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
     ...buildSummarySection(
       opts.aiSummary ?? '',
       opts.results,
       siteOrigin,
       opts.dataSource,
       opts.summaryHeading,
+      opts.tableOfContents ? tocBookmarkPrefix : undefined,
     ),
     ...buildResultsSection(
       opts.results,
@@ -625,8 +664,6 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
 
   return new Document({
     creator: 'Evidence Lab',
-    // Prompt Word to populate the Table of Contents field on open.
-    features: { updateFields: !!opts.tableOfContents },
     title: opts.documentTitle ? opts.documentTitle : `Evidence Lab Search — ${opts.query}`,
     description: `Export of ${opts.results.length} search results` +
       (opts.aiSummary ? ' and the AI summary' : ''),

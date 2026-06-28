@@ -47,14 +47,18 @@ describe('brief Word export', () => {
     expect(xml).not.toContain('Evidence Lab — Search Export');
   });
 
-  test('includes a Table of Contents and prompts Word to update fields', async () => {
+  test('includes a clickable manual TOC (bookmarks, no field, no update prompt)', async () => {
     const xml = await documentXml(BRIEF_OPTS);
     expect(xml).toContain('Contents');
-    expect(xml).toMatch(/<w:instrText[^>]*>TOC /); // heading-based TOC field instruction
-    expect(xml).toContain('&quot;1-2&quot;'); // covering heading levels 1–2
+    // TOC entry links internally to a heading bookmark…
+    expect(xml).toMatch(/w:anchor="briefheading0"/);
+    // …and that bookmark exists on the matching heading.
+    expect(xml).toMatch(/<w:bookmarkStart[^>]*w:name="briefheading0"/);
+    // No Word TOC field, so Word never prompts to update fields on open.
+    expect(xml).not.toMatch(/<w:instrText[^>]*>TOC/);
     const settings = await JSZip.loadAsync(await Packer.toBuffer(buildExportDocument(BRIEF_OPTS)))
       .then((z) => z.file('word/settings.xml')!.async('string'));
-    expect(settings).toContain('updateFields');
+    expect(settings).not.toContain('updateFields');
   });
 
   test('reference excerpt is italicised', async () => {
