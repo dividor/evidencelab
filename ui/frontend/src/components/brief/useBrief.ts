@@ -121,6 +121,13 @@ export const useBrief = ({
   sectionsRef.current = sections;
   const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
   outlineLogRef.current = generatingActivity;
+  // Refs so saveCurrent is a stable callback (safe to call from effects/timers).
+  const briefTitleRef = useRef(briefTitle);
+  briefTitleRef.current = briefTitle;
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  const historyRef = useRef(history);
+  historyRef.current = history;
 
   useEffect(() => setHistory(loadHistory(historyKey)), [historyKey]);
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -160,8 +167,8 @@ export const useBrief = ({
     if (!id || !snap.length) return;
     const entry: SavedBrief = {
       id,
-      title: briefTitle,
-      query,
+      title: briefTitleRef.current,
+      query: queryRef.current,
       date: Date.now(),
       sectionCount: snap.length,
       sourceCount: snap.reduce((a, s) => a + s.sources.length, 0),
@@ -180,8 +187,16 @@ export const useBrief = ({
       }),
       outlineLog: outlineLogRef.current,
     };
-    persist([entry, ...history.filter((e) => e.id !== id)].slice(0, 10));
-  }, [briefTitle, query, history, persist]);
+    persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
+  }, [persist]);
+
+  // Auto-save once a brief exists (outline generated or manual start) so it
+  // appears in Saved Briefs right away and keeps tracking title/content edits.
+  useEffect(() => {
+    if (stage === 'seed' || !briefIdRef.current) return;
+    const t = setTimeout(() => saveCurrent(), 500);
+    return () => clearTimeout(t);
+  }, [stage, briefTitle, sections, saveCurrent]);
 
   // ---- outline ----
   // Generate headings by first running a deep-research survey of the corpus for
@@ -411,9 +426,9 @@ export const useBrief = ({
     setQuery('');
   }, []);
 
-  // Persist a title/content edit made after the brief was first saved (done).
+  // Persist a title/content edit immediately (any non-seed stage).
   const commitEdits = useCallback(() => {
-    if (stage === 'done' && briefIdRef.current) saveCurrent();
+    if (stage !== 'seed' && briefIdRef.current) saveCurrent();
   }, [stage, saveCurrent]);
 
   // ---- derived ----

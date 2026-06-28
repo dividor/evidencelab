@@ -68,7 +68,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief, onS
               {editing ? '✓ Done' : '✎ Edit text'}
             </button>
             <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
-              ↻ Regenerate
+              <span className="brief-icon">↻</span> Regenerate
             </button>
           </>
         )}
@@ -146,6 +146,8 @@ const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief, onS
 interface BriefDocumentProps {
   brief: UseBriefReturn;
   onResultClick?: (result: SearchResult) => void;
+  onExportWord?: () => void;
+  exportBusy?: boolean;
 }
 
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
@@ -154,7 +156,12 @@ const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
-export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultClick }) => {
+export const BriefDocument: React.FC<BriefDocumentProps> = ({
+  brief,
+  onResultClick,
+  onExportWord,
+  exportBusy,
+}) => {
   const { sections, numbers, references } = brief;
   const [logOpen, setLogOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
@@ -182,7 +189,19 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultCli
   return (
     <div className="brief-doc">
       <div className="brief-doc-header">
-        <div className="brief-eyebrow">EVIDENCE BRIEF</div>
+        <div className="brief-doc-header-top">
+          <div className="brief-eyebrow">EVIDENCE BRIEF</div>
+          {onExportWord && (
+            <button
+              className="brief-export-word"
+              onClick={onExportWord}
+              disabled={!sections.length || exportBusy}
+              title="Export this brief to Word, with citations linked to the source documents"
+            >
+              {exportBusy ? 'Exporting…' : '⤓ Export to Word'}
+            </button>
+          )}
+        </div>
         <textarea
           ref={titleRef}
           className="brief-doc-title-input"
@@ -207,7 +226,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultCli
                 onClick={() => setLogOpen((v) => !v)}
                 aria-expanded={logOpen}
               >
-                Brief outline sources
+                Generated outline analysis
               </button>
             </>
           )}
@@ -241,7 +260,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultCli
 
       {references.length > 0 && (
         <section className="brief-footnotes">
-          <h2 className="brief-footnotes-title">Footnotes</h2>
+          <h2 className="brief-footnotes-title">References</h2>
           <div className="brief-footnotes-sub">
             All {references.length} cited documents, compiled across sections
           </div>
