@@ -803,6 +803,10 @@
   margin-top: 16px;
   background: #fafbfb;
   border: 1px solid var(--brand-border-light);
+  /* Reset the base .ai-summary-references top padding + border-top: they add
+     space only at the top of our bordered box, pushing the toggle off-centre. */
+  padding-top: 0;
+  border-top: 1px solid var(--brand-border-light);
 }
 .brief-evidence .assistant-refs-toggle {
   display: flex;

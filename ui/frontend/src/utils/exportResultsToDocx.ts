@@ -16,14 +16,18 @@
  */
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   ExternalHyperlink,
   Footer,
   HeadingLevel,
   LevelFormat,
   Packer,
+  PageBreak,
   PageNumber,
   Paragraph,
+  ShadingType,
+  TableOfContents,
   TextRun,
   convertInchesToTwip,
 } from 'docx';
@@ -49,6 +53,19 @@ export interface ExportOptions {
   /** Heading for the per-result excerpts section (default "Search Results").
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
+  /** Cover-page document title (default "Evidence Lab — Search Export").
+   *  The Brief export passes "AI-generated Research Brief". */
+  documentTitle?: string;
+  /** Heading for the AI-prose section (default "AI Summary"). The Brief export
+   *  passes the brief topic so the prose sits under its own subject heading. */
+  summaryHeading?: string;
+  /** Optional disclaimer rendered as a bordered call-out box on the cover,
+   *  directly under the metadata line. The Brief export uses it to flag that
+   *  the content is AI-generated and must be verified. */
+  infoBox?: string;
+  /** When true, insert a clickable Table of Contents (heading levels 1–2)
+   *  after the cover and prompt Word to populate it on open. */
+  tableOfContents?: boolean;
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -341,7 +358,9 @@ const buildCoverParagraphs = (
     new Paragraph({
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.LEFT,
-      children: [new TextRun({ text: 'Evidence Lab — Search Export', bold: true })],
+      children: [
+        new TextRun({ text: opts.documentTitle || 'Evidence Lab — Search Export', bold: true }),
+      ],
     }),
   );
   // Demoted to H2 so the document has exactly two H1s — "AI Summary" and
@@ -360,11 +379,40 @@ const buildCoverParagraphs = (
   children.push(
     new Paragraph({
       children: [new TextRun({ text: meta.join('  ·  '), size: 20, color: '555555' })],
-      spacing: { after: 360 },
+      spacing: { after: opts.infoBox ? 120 : 360 },
     }),
   );
+  if (opts.infoBox && opts.infoBox.trim()) {
+    // A single bordered, lightly-shaded paragraph reads as a call-out box.
+    const side = { style: BorderStyle.SINGLE, size: 6, color: 'E0C36A', space: 8 };
+    children.push(
+      new Paragraph({
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'FBF4DD' },
+        border: { top: side, bottom: side, left: side, right: side },
+        spacing: { before: 60, after: 360, line: 276 },
+        children: [
+          new TextRun({ text: opts.infoBox.trim(), italics: true, size: 20, color: '6B5B2E' }),
+        ],
+      }),
+    );
+  }
   return children;
 };
+
+/** A clickable Table of Contents (heading levels 1–2) on its own page. Word
+ *  populates it on open when the document's ``updateFields`` flag is set. */
+const buildTableOfContents = (): (Paragraph | TableOfContents)[] => [
+  new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    children: [new TextRun({ text: 'Contents' })],
+    spacing: { after: 120 },
+  }),
+  new TableOfContents('Table of Contents', {
+    hyperlink: true,
+    headingStyleRange: '1-2',
+  }),
+  new Paragraph({ children: [new PageBreak()] }),
+];
 
 const buildReferenceParagraphs = (
   groups: DocumentGroup[],
@@ -381,8 +429,9 @@ const buildReferenceParagraphs = (
   );
   // Each entry is a plain (non-bulleted) paragraph led by the document's
   // citation numbers in brackets, mirroring how citations appear inline:
-  //   [1, 3]  Doc title — Org, 2020   p.4   p.9
-  // Each [N] is a clickable hyperlink to that specific result's page.
+  //   [1, 3] Doc title — Org, 2020, p.4, p.9
+  // Each [N] is a clickable hyperlink to that specific result's page. The
+  // title is unbolded so it reads as a reference line, not a heading.
   for (const group of groups) {
     const meta: string[] = [];
     if (group.organization) meta.push(group.organization);
@@ -401,10 +450,10 @@ const buildReferenceParagraphs = (
       );
     });
     children.push(new TextRun({ text: '] ' }));
-    children.push(new TextRun({ text: group.title + titleSuffix, bold: true }));
+    children.push(new TextRun({ text: group.title + titleSuffix }));
     for (const { result } of group.refs) {
       if (typeof result.page_num === 'number') {
-        children.push(new TextRun({ text: '   p.' + result.page_num, color: '555555' }));
+        children.push(new TextRun({ text: ', p.' + result.page_num, color: '555555' }));
       }
     }
 
@@ -418,13 +467,14 @@ const buildSummarySection = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource?: string,
+  heading = 'AI Summary',
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: 'AI Summary' })],
+      children: [new TextRun({ text: heading })],
       spacing: { before: 240, after: 120 },
     }),
   );
@@ -504,7 +554,7 @@ const buildResultCard = (
     out.push(
       new Paragraph({
         spacing: { after: 120 },
-        children: [new TextRun({ text: inner })],
+        children: [new TextRun({ text: inner, italics: true })],
       }),
     );
   }
@@ -555,9 +605,16 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
-  const body: Paragraph[] = [
+  const body: (Paragraph | TableOfContents)[] = [
     ...buildCoverParagraphs(opts, now),
-    ...buildSummarySection(opts.aiSummary ?? '', opts.results, siteOrigin, opts.dataSource),
+    ...(opts.tableOfContents ? buildTableOfContents() : []),
+    ...buildSummarySection(
+      opts.aiSummary ?? '',
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.summaryHeading,
+    ),
     ...buildResultsSection(
       opts.results,
       siteOrigin,
@@ -568,7 +625,9 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
 
   return new Document({
     creator: 'Evidence Lab',
-    title: `Evidence Lab Search — ${opts.query}`,
+    // Prompt Word to populate the Table of Contents field on open.
+    features: { updateFields: !!opts.tableOfContents },
+    title: opts.documentTitle ? opts.documentTitle : `Evidence Lab Search — ${opts.query}`,
     description: `Export of ${opts.results.length} search results` +
       (opts.aiSummary ? ' and the AI summary' : ''),
     // Match the web app's typography: Open Sans for body, Poppins for
