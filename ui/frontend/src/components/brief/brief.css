@@ -497,6 +497,20 @@
   max-height: 280px;
   overflow-y: auto;
 }
+.brief-edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 4px;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--brand-text-tertiary);
+}
+.brief-edit-hint .brief-icon {
+  font-size: 13px;
+  font-style: normal;
+}
+
 .brief-doc-section {
   padding: 28px 0;
   border-bottom: 1px solid var(--brand-border-light);

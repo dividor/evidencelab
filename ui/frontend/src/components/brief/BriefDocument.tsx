@@ -248,6 +248,12 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         )}
       </div>
 
+      {sections.length > 0 && (
+        <div className="brief-edit-hint">
+          <span className="brief-icon">✎</span> Click on titles to edit research topics
+        </div>
+      )}
+
       {sections.map((s, i) => (
         <BriefSectionView
           key={s.id}
