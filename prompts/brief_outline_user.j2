@@ -2,12 +2,12 @@ Topic: {{ topic }}
 {% if instructions %}Author instructions: {{ instructions }}
 {% endif %}Target number of top-level sections: {{ num_headings }}
 {% if sources %}
-Most relevant material currently in the corpus (use these themes to drive the headings):
+Most relevant material currently in the document library (use these themes to drive the headings):
 {% for s in sources %}
 - {{ s.title or 'Untitled' }}{% if s.organization %} — {{ s.organization }}{% endif %}{% if s.year %} ({{ s.year }}){% endif %}{% if s.snippet %}: {{ s.snippet }}{% endif %}
 {% endfor %}
 
 Base the headings on the themes and evidence actually present in this material.
 {% else %}
-(No corpus sample was available — base the headings on the topic and instructions.)
+(No document library sample was available — base the headings on the topic and instructions.)
 {% endif %}

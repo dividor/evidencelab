@@ -199,9 +199,9 @@ export const useBrief = ({
   }, [stage, briefTitle, sections, saveCurrent]);
 
   // ---- outline ----
-  // Generate headings by first running a deep-research survey of the corpus for
-  // the topic (streaming the same SCAN/READ activity as section research), then
-  // asking the model for headings grounded in what that survey found.
+  // Generate headings by first running a deep-research survey of the document
+  // library for the topic (streaming the same SCAN/READ activity as section
+  // research), then asking the model for headings grounded in what it found.
   const generateOutline = useCallback(async () => {
     const topic = query.trim();
     if (!topic) return;
@@ -214,13 +214,13 @@ export const useBrief = ({
     let gathered: BriefSourceSample[] = [];
     try {
       const surveyQuery = guidance
-        ? `Research the corpus to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
-        : `Research the corpus to inform an evidence brief on "${topic}".`;
+        ? `Research the document library to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
+        : `Research the document library to inform an evidence brief on "${topic}".`;
       await runDeepResearch({
         apiBaseUrl,
         dataSource,
         query: surveyQuery,
-        doneLabel: 'Corpus surveyed',
+        doneLabel: 'Document library surveyed',
         assistantModelConfig,
         signal: controller.signal,
         handlers: {

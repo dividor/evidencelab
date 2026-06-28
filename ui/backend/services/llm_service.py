@@ -409,9 +409,9 @@ async def generate_brief_outline(
 
     ``question`` is the brief topic. ``instructions`` is optional author
     guidance, ``num_headings`` the desired number of top-level sections, and
-    ``sources`` an optional sample of the most relevant corpus material
-    (``{title, organization, year, snippet}``) so the headings are grounded in
-    the themes actually present in the corpus. Prompts live in
+    ``sources`` an optional sample of the most relevant document-library
+    material (``{title, organization, year, snippet}``) so the headings are
+    grounded in the themes actually present in the library. Prompts live in
     ``prompts/brief_outline_*.j2``.
 
     Returns ``(title, headings)``; ``title`` falls back to the topic when the

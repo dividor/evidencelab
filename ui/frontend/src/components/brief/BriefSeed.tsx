@@ -30,7 +30,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
         <div className="brief-eyebrow">EVIDENCE BRIEF</div>
         <h2 className="brief-seed-title">Researching “{query.trim()}”</h2>
         <p className="brief-seed-lede">
-          Surveying the corpus to shape an outline grounded in what the system contains…
+          Surveying the document library to shape an outline grounded in what the system contains…
         </p>
         <div className="brief-generating">
           <div className="brief-researching-head">
@@ -55,8 +55,9 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
       <div className="brief-eyebrow">EVIDENCE BRIEF</div>
       <h2 className="brief-seed-title">Turn a topic into a research brief</h2>
       <p className="brief-seed-lede">
-        Give a topic and guidance, and Evidence Lab will run deep research across the corpus to
-        draft an outline — then research each section into cited text you can verify and regenerate.
+        Enter a topic to automatically generate a brief outline based on the documents library, or
+        enter the outline yourself. Then in the next screen you can have Evidence Lab research each
+        heading to generate a brief with citations.
       </p>
 
       <div className="brief-seed-card">
