@@ -590,6 +590,9 @@
 .brief-doc-section {
   padding: 28px 0;
   border-bottom: 1px solid var(--brand-border-light);
+  /* Fallback offset for TOC jumps so the heading clears the sticky top bar;
+     BriefToc refines this from the bar's measured height at click time. */
+  scroll-margin-top: 88px;
 }
 .brief-doc-section-sub {
   padding: 20px 0 20px 22px;

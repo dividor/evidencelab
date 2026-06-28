@@ -21,9 +21,13 @@ import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
 const scrollToSection = (id: string): void => {
-  document
-    .getElementById(`brief-section-${id}`)
-    ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const el = document.getElementById(`brief-section-${id}`);
+  if (!el) return;
+  // Offset for the app's sticky top bar so the heading isn't hidden under it.
+  const bar = document.querySelector('.top-bar');
+  const offset = (bar instanceof HTMLElement ? bar.offsetHeight : 0) + 16;
+  el.style.scrollMarginTop = `${offset}px`;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 interface TocRowProps {
