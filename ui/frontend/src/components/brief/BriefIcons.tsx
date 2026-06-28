@@ -61,3 +61,11 @@ export const IconSparkle: React.FC<IconProps> = ({ size = 14 }) => (
     <path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17l-1.9-5.1L4.5 10l5.6-1.4z" />
   </svg>
 );
+
+export const IconGrip: React.FC<IconProps> = ({ size = 14 }) => (
+  <svg {...svgProps(size)}>
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <line x1="3" y1="12" x2="21" y2="12" />
+    <line x1="3" y1="18" x2="21" y2="18" />
+  </svg>
+);

@@ -1,6 +1,5 @@
 import React from 'react';
 import { IconHistory, IconSparkle } from './BriefIcons';
-import { BRIEF_EXAMPLES } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
@@ -123,17 +122,6 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
               <span className="brief-count-badge">{brief.history.length}</span>
             )}
           </button>
-        </div>
-      </div>
-
-      <div className="brief-examples">
-        <div className="brief-section-label">Try a topic</div>
-        <div className="brief-example-list">
-          {BRIEF_EXAMPLES.map((ex) => (
-            <button key={ex} className="brief-example" onClick={() => setQuery(ex)}>
-              {ex}
-            </button>
-          ))}
         </div>
       </div>
     </div>

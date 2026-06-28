@@ -39,22 +39,14 @@ describe('BriefTab (Document Builder)', () => {
     });
   });
 
-  test('renders the seed screen with topic input, generate action and examples', () => {
+  test('renders the seed screen with topic input and generate action', () => {
     render(<BriefTab dataSource="wfp" />);
     expect(screen.getByText('Turn a topic into a research brief')).toBeInTheDocument();
     expect(screen.getByLabelText('Topic')).toBeInTheDocument();
     expect(screen.getByText('Generate outline')).toBeInTheDocument();
     expect(screen.getByText('Write my own headings')).toBeInTheDocument();
-    expect(
-      screen.getByText('What works in cash and voucher assistance in humanitarian crises?'),
-    ).toBeInTheDocument();
-  });
-
-  test('clicking an example fills the topic field', () => {
-    render(<BriefTab dataSource="wfp" />);
-    const example = 'How effective are anticipatory action programmes for floods?';
-    fireEvent.click(screen.getByText(example));
-    expect((screen.getByLabelText('Topic') as HTMLTextAreaElement).value).toBe(example);
+    // The "Try a topic" examples section was removed.
+    expect(screen.queryByText('Try a topic')).toBeNull();
   });
 
   test('"Write my own headings" enters the builder with starter sections and a saved-briefs rail', () => {

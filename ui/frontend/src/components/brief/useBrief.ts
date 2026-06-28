@@ -52,37 +52,56 @@ const loadHistory = (key: string): SavedBrief[] => {
   }
 };
 
-// Move a heading up/down among its same-level siblings. A level-1 heading
-// carries its sub-headings with it; a level-2 heading swaps only with an
-// adjacent level-2 sibling under the same parent (never crossing a heading).
-export const moveSectionInLevel = (
+// Index of the nearest preceding top-level heading (the parent), or -1.
+const parentIndexOf = (sections: BriefSection[], i: number): number => {
+  for (let k = i - 1; k >= 0; k--) {
+    if (sections[k].level === 1) return k;
+  }
+  return -1;
+};
+
+// Reorder by drag-and-drop: move the dragged heading to the target heading's
+// position, but only among true siblings (same level, and — for sub-headings —
+// the same parent). A top-level heading carries its sub-headings as a block.
+// Dropping while moving down lands the heading after the target (and its
+// children); moving up lands it before. Invalid drops are no-ops.
+export const reorderSiblingSections = (
   sections: BriefSection[],
-  id: string,
-  dir: -1 | 1,
+  draggedId: string,
+  targetId: string,
 ): BriefSection[] => {
-  const i = sections.findIndex((s) => s.id === id);
-  if (i < 0) return sections;
-  if (sections[i].level === 2) {
-    const j = i + dir;
-    if (j < 0 || j >= sections.length || sections[j].level !== 2) return sections;
-    const arr = [...sections];
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-    return arr;
+  if (draggedId === targetId) return sections;
+  const di = sections.findIndex((s) => s.id === draggedId);
+  const ti = sections.findIndex((s) => s.id === targetId);
+  if (di < 0 || ti < 0) return sections;
+  const dragged = sections[di];
+  const target = sections[ti];
+  if (dragged.level !== target.level) return sections;
+  if (dragged.level === 2 && parentIndexOf(sections, di) !== parentIndexOf(sections, ti)) {
+    return sections;
   }
-  // Level 1: the block is the heading plus its trailing level-2 children.
-  let end = i + 1;
-  while (end < sections.length && sections[end].level === 2) end++;
-  const block = sections.slice(i, end);
-  if (dir === -1) {
-    let p = i - 1;
-    while (p >= 0 && sections[p].level === 2) p--;
-    if (p < 0) return sections;
-    return [...sections.slice(0, p), ...block, ...sections.slice(p, i), ...sections.slice(end)];
+
+  let dEnd = di + 1;
+  if (dragged.level === 1) {
+    while (dEnd < sections.length && sections[dEnd].level === 2) dEnd++;
   }
-  if (end >= sections.length) return sections;
-  let n = end + 1;
-  while (n < sections.length && sections[n].level === 2) n++;
-  return [...sections.slice(0, i), ...sections.slice(end, n), ...block, ...sections.slice(n)];
+  const block = sections.slice(di, dEnd);
+  const rest = [...sections.slice(0, di), ...sections.slice(dEnd)];
+
+  let insertIdx = rest.findIndex((s) => s.id === targetId);
+  if (di < ti) {
+    // Moving down: insert after the target (and, for a heading, its children).
+    if (target.level === 1) {
+      let tEnd = insertIdx + 1;
+      while (tEnd < rest.length && rest[tEnd].level === 2) tEnd++;
+      insertIdx = tEnd;
+    } else {
+      insertIdx += 1;
+    }
+  }
+  const out = [...rest];
+  out.splice(insertIdx, 0, ...block);
+  return out;
 };
 
 // Hierarchical numbering: 1, 2, 2.1, 2.2, 3, …
@@ -348,8 +367,8 @@ export const useBrief = ({
     setSections((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
-  const moveSection = useCallback((id: string, dir: -1 | 1) => {
-    setSections((prev) => moveSectionInLevel(prev, id, dir));
+  const reorderSiblings = useCallback((draggedId: string, targetId: string) => {
+    setSections((prev) => reorderSiblingSections(prev, draggedId, targetId));
   }, []);
 
   const indentSection = useCallback((id: string) => {
@@ -554,7 +573,7 @@ export const useBrief = ({
     addHeading,
     addSubHeading,
     removeSection,
-    moveSection,
+    reorderSiblings,
     indentSection,
     editTitle,
     editContent,

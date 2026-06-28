@@ -49,9 +49,3 @@ export interface SavedBrief {
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
-
-export const BRIEF_EXAMPLES = [
-  'What works in cash and voucher assistance in humanitarian crises?',
-  'How effective are anticipatory action programmes for floods?',
-  'What are the impacts of school feeding on attendance and nutrition?',
-];
