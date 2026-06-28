@@ -115,7 +115,6 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
           <button
             className="brief-btn brief-btn-secondary brief-seed-load"
             onClick={() => brief.setHistoryOpen(true)}
-            disabled={brief.history.length === 0}
           >
             <span className="brief-icon">⟲</span> Load a saved brief
             {brief.history.length > 0 && (
