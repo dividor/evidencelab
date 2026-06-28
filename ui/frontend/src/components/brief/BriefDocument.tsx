@@ -133,7 +133,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief, onS
             content={section.content}
             sources={section.sources}
             onSourceClick={onSourceClick}
-            collapsible={false}
+            collapsible
+            labelPrefix="Evidence"
+            className="brief-evidence"
           />
         </>
       )}

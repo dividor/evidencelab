@@ -674,6 +674,49 @@
   color: var(--brand-text-tertiary);
 }
 
+/* ---------- per-section evidence (subtle, collapsible supporting metadata) ----
+   The authoritative cited list is the compiled Footnotes below; this panel is
+   informational only, so it reads as muted metadata and collapses by default. */
+.brief-evidence {
+  margin-top: 16px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+}
+.brief-evidence .assistant-refs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 9px 14px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+}
+.brief-evidence .assistant-refs-toggle-icon {
+  font-size: 10px;
+}
+.brief-evidence .assistant-refs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 14px 12px;
+}
+.brief-evidence .ai-summary-ref-group {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--brand-text-secondary);
+}
+.brief-evidence .ai-summary-ref-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 /* ---------- footnotes ---------- */
 .brief-footnotes {
   padding: 28px 0 0;

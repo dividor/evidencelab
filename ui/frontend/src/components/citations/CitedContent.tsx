@@ -216,11 +216,23 @@ export const CitedReferences: React.FC<{
   sources: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
   collapsible?: boolean;
-}> = ({ content, sources, onSourceClick, collapsible = true }) => {
+  labelPrefix?: string;
+  className?: string;
+}> = ({
+  content,
+  sources,
+  onSourceClick,
+  collapsible = true,
+  labelPrefix = 'References',
+  className = '',
+}) => {
   const [expanded, setExpanded] = useState(!collapsible);
   const groups = useMemo(() => groupCitedSourcesByDoc(content, sources), [content, sources]);
   if (groups.length === 0) return null;
 
+  const containerClass = className
+    ? `ai-summary-references ${className}`
+    : 'ai-summary-references';
   const list = (
     <div className="assistant-refs-list">
       {groups.map((group) => (
@@ -234,13 +246,13 @@ export const CitedReferences: React.FC<{
     </div>
   );
 
-  if (!collapsible) return <div className="ai-summary-references">{list}</div>;
+  if (!collapsible) return <div className={containerClass}>{list}</div>;
 
   return (
-    <div className="ai-summary-references">
+    <div className={containerClass}>
       <button className="assistant-refs-toggle" onClick={() => setExpanded(!expanded)}>
         <span className="assistant-refs-toggle-icon">{expanded ? '▾' : '▸'}</span>
-        References ({groups.length} documents)
+        {labelPrefix} ({groups.length} {groups.length === 1 ? 'document' : 'documents'})
       </button>
       {expanded && list}
     </div>
