@@ -4501,6 +4501,12 @@ li.ai-fact-active::before {
   display: none;
 }
 
+/* Brief tab: pin the footer to the bottom so short/changing content (e.g. the
+   outline-generation activity panel) can never pull it up the page. */
+.app[data-active-tab="brief"] .app-footer {
+  margin-top: auto;
+}
+
 .app-footer a,
 .app-footer-link {
   color: var(--gray-600);
