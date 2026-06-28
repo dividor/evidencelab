@@ -271,7 +271,15 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         {logOpen && hasOutlineLog && (
           <div className="brief-outline-log">
             <div className="brief-outline-log-head">
-              Outline research — queries run and sources read
+              <span>Outline research — queries run and sources read</span>
+              <button
+                className="brief-outline-log-close"
+                onClick={() => setLogOpen(false)}
+                title="Close"
+                aria-label="Close outline analysis"
+              >
+                ×
+              </button>
             </div>
             <div className="brief-activity">
               {brief.generatingActivity.map((ev, i) => (

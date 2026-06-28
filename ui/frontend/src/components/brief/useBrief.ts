@@ -19,6 +19,10 @@ import {
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
 
+// Capitalise the first letter of each word, leaving the rest as-is so existing
+// capitalisation / acronyms (e.g. WFP) survive. Used on generated brief titles.
+const toTitleCase = (s: string): string => s.replace(/\b[a-zA-Z]/g, (c) => c.toUpperCase());
+
 const makeSection = (title: string, level = 1, sample = false): BriefSection => ({
   id: uid(),
   title,
@@ -312,8 +316,12 @@ export const useBrief = ({
         signal: controller.signal,
       });
       briefIdRef.current = uid();
-      setBriefTitle(topic);
-      setSections(outline.headings.filter((h) => h.title).map((h) => makeSection(h.title, h.level)));
+      setBriefTitle(toTitleCase(topic));
+      setSections(
+        outline.headings
+          .filter((h) => h.title)
+          .map((h) => makeSection(toTitleCase(h.title), h.level)),
+      );
       setStage('outline');
     } catch (e) {
       if (!controller.signal.aborted) {
@@ -344,10 +352,11 @@ export const useBrief = ({
     setNewHeading('');
   }, [newHeading]);
 
-  // Append a new top-level heading (sample until the user names it, so its
-  // per-section research stays disabled until edited).
-  const addHeading = useCallback(() => {
-    setSections((prev) => [...prev, makeSection('New heading', 1, true)]);
+  // Append a named top-level heading (the TOC prompts for the name first).
+  const addHeading = useCallback((title: string) => {
+    const name = title.trim();
+    if (!name) return;
+    setSections((prev) => [...prev, makeSection(name, 1, false)]);
   }, []);
 
   // Insert a named sub-heading after the given heading and its existing children.

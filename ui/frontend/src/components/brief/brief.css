@@ -521,18 +521,23 @@
   flex-wrap: wrap;
   align-items: center;
 }
+/* Subtle pill button so it doesn't compete with the brief content. */
 .brief-meta-link {
-  background: none;
-  border: none;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
+  padding: 2px 9px;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 600;
-  color: var(--brand-primary);
+  color: var(--brand-text-secondary);
 }
 .brief-meta-link:hover {
-  text-decoration: underline;
+  border-color: var(--brand-border);
+  color: var(--brand-text-primary);
 }
 .brief-outline-log {
   margin-top: 14px;
@@ -541,12 +546,28 @@
   padding: 12px 14px;
 }
 .brief-outline-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--brand-text-tertiary);
   margin-bottom: 10px;
+}
+.brief-outline-log-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-outline-log-close:hover {
+  color: var(--brand-text-primary);
 }
 .brief-outline-log .brief-activity {
   max-height: 280px;
@@ -1081,9 +1102,10 @@
   flex-direction: column;
 }
 .brief-history-list {
-  /* Fixed height (≈ 5 rows) so the panel doesn't resize while searching. */
-  height: 286px;
-  overflow: hidden;
+  /* Fixed height so the panel doesn't resize while searching; up to 10 rows
+     scroll within it. */
+  height: 420px;
+  overflow-y: auto;
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1259,6 +1281,9 @@
   font-family: inherit;
   font-size: 13px;
   color: var(--brand-text-primary);
+}
+.brief-toc-heading-input {
+  margin-top: 10px;
 }
 .brief-toc-grip {
   flex: none;

@@ -122,32 +122,59 @@ describe('BriefTab (Document Builder)', () => {
     expect(screen.getByDisplayValue('Enrolment trends')).toBeInTheDocument();
   });
 
-  test('"Add heading" appends a new editable heading to the document', () => {
+  test('"Add heading" prompts for a name and only adds it once entered', () => {
     render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText('Write my own headings'));
-    const before = screen.getAllByDisplayValue(/.+/).length;
+
     fireEvent.click(screen.getByText('Add heading'));
-    expect(screen.getByDisplayValue('New heading')).toBeInTheDocument();
-    const after = screen.getAllByDisplayValue(/.+/).length;
-    expect(after).toBe(before + 1);
+    const input = screen.getByLabelText('New heading name');
+    // Empty + blur adds nothing.
+    fireEvent.blur(input);
+    expect(screen.queryByLabelText('New heading name')).toBeNull();
+
+    fireEvent.click(screen.getByText('Add heading'));
+    const input2 = screen.getByLabelText('New heading name');
+    fireEvent.change(input2, { target: { value: 'Annexes' } });
+    fireEvent.keyDown(input2, { key: 'Enter' });
+    expect(screen.getByDisplayValue('Annexes')).toBeInTheDocument();
   });
 
-  test('"Generate outline" surveys the document library then renders grounded headings', async () => {
+  test('the brief currently open cannot be deleted from History', () => {
+    localStorage.setItem(
+      'evidencelab_brief_history_v1',
+      JSON.stringify([
+        { id: 'x1', title: 'Open me', query: 'q', date: 1, sectionCount: 0, sourceCount: 0, sections: [] },
+      ]),
+    );
+    render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(screen.getByText('Write my own headings'));
+    // A different (manual) brief is open, so x1 still has a delete control.
+    expect(screen.getByLabelText('Delete this brief')).toBeInTheDocument();
+    // Open x1 — now it is the current brief and loses its delete control.
+    fireEvent.click(screen.getByText('Open me'));
+    expect(screen.queryByLabelText('Delete this brief')).toBeNull();
+  });
+
+  test('"Generate outline" title-cases the brief name and headings', async () => {
     mockRequestOutline.mockResolvedValue({
       title: 'cash assistance',
       headings: [
-        { title: 'Background', level: 1 },
-        { title: 'Food security', level: 2 },
+        { title: 'background information', level: 1 },
+        { title: 'food security', level: 2 },
       ],
     });
     render(<BriefTab dataSource="wfp" />);
     fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'cash assistance' } });
     fireEvent.click(screen.getByText('Generate outline'));
 
-    await waitFor(() => expect(screen.getByDisplayValue('Background')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('Background Information')).toBeInTheDocument(),
+    );
     expect(mockRunDeepResearch).toHaveBeenCalled(); // visible deep-research survey
     expect(mockRequestOutline).toHaveBeenCalled();
     expect(mockRequestOutline.mock.calls[0][0]).toMatchObject({ dataSource: 'wfp', topic: 'cash assistance' });
-    expect(screen.getByDisplayValue('Food security')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Food Security')).toBeInTheDocument();
+    // Brief name is capitalised too.
+    expect(screen.getByDisplayValue('Cash Assistance')).toBeInTheDocument();
   });
 });

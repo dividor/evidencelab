@@ -86,14 +86,16 @@ export const BriefHistoryModal: React.FC<BriefHistoryModalProps> = ({ brief }) =
                 >
                   <IconCopy size={14} />
                 </button>
-                <button
-                  className="brief-modal-row-del"
-                  title="Delete this brief"
-                  aria-label="Delete this brief"
-                  onClick={() => brief.deleteBrief(entry.id)}
-                >
-                  ×
-                </button>
+                {entry.id !== brief.currentBriefId && (
+                  <button
+                    className="brief-modal-row-del"
+                    title="Delete this brief"
+                    aria-label="Delete this brief"
+                    onClick={() => brief.deleteBrief(entry.id)}
+                  >
+                    ×
+                  </button>
+                )}
               </div>
             ))}
           </div>

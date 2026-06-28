@@ -139,6 +139,17 @@ interface BriefTocProps {
  */
 export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
   const { sections, numbers, numberHeadings } = brief;
+  const [addingHeading, setAddingHeading] = useState(false);
+  const [headingName, setHeadingName] = useState('');
+  const closeHeading = (): void => {
+    setHeadingName('');
+    setAddingHeading(false);
+  };
+  const commitHeading = (): void => {
+    const name = headingName.trim();
+    if (name) brief.addHeading(name);
+    closeHeading();
+  };
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     // Press-and-hold to drag on touch, so a plain tap/scroll is unaffected.
@@ -185,11 +196,27 @@ export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
           </div>
         </SortableContext>
       </DndContext>
-      {canEdit && (
-        <button type="button" className="brief-toc-add" onClick={brief.addHeading}>
-          <IconPlus size={14} /> Add heading
-        </button>
-      )}
+      {canEdit &&
+        (addingHeading ? (
+          <input
+            // eslint-disable-next-line jsx-a11y/no-autofocus
+            autoFocus
+            className="brief-toc-sub-input brief-toc-heading-input"
+            value={headingName}
+            placeholder="Heading name, then Enter…"
+            aria-label="New heading name"
+            onChange={(e) => setHeadingName(e.target.value)}
+            onBlur={closeHeading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitHeading();
+              else if (e.key === 'Escape') closeHeading();
+            }}
+          />
+        ) : (
+          <button type="button" className="brief-toc-add" onClick={() => setAddingHeading(true)}>
+            <IconPlus size={14} /> Add heading
+          </button>
+        ))}
     </nav>
   );
 };

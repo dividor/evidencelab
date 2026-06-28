@@ -18,8 +18,8 @@ interface BriefHistoryRailProps {
   brief: UseBriefReturn;
 }
 
-// How many briefs the fixed-height rail shows before offering "See more".
-const VISIBLE_CAP = 5;
+// How many briefs the rail shows before offering "See more".
+const VISIBLE_CAP = 10;
 
 /**
  * Left rail in the builder: the user's brief history. Searchable; each row opens
@@ -88,14 +88,16 @@ export const BriefHistoryRail: React.FC<BriefHistoryRailProps> = ({ brief }) => 
               >
                 <IconCopy size={13} />
               </button>
-              <button
-                className="brief-history-del"
-                title="Delete this brief"
-                aria-label="Delete this brief"
-                onClick={() => brief.deleteBrief(entry.id)}
-              >
-                ×
-              </button>
+              {entry.id !== currentBriefId && (
+                <button
+                  className="brief-history-del"
+                  title="Delete this brief"
+                  aria-label="Delete this brief"
+                  onClick={() => brief.deleteBrief(entry.id)}
+                >
+                  ×
+                </button>
+              )}
             </div>
           ))
         )}
@@ -103,7 +105,7 @@ export const BriefHistoryRail: React.FC<BriefHistoryRailProps> = ({ brief }) => 
 
       {filtered.length > VISIBLE_CAP && (
         <button className="brief-see-more" onClick={() => brief.setHistoryOpen(true)}>
-          See all {filtered.length} briefs
+          See more
         </button>
       )}
 
