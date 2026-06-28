@@ -506,6 +506,21 @@ export const useBrief = ({
     setHistoryOpen(false);
   }, []);
 
+  // Duplicate a saved brief under a new id and open the copy.
+  const cloneBrief = useCallback(
+    (entry: SavedBrief) => {
+      const copy: SavedBrief = {
+        ...entry,
+        id: uid(),
+        title: `${entry.title} (copy)`,
+        date: Date.now(),
+      };
+      persist([copy, ...historyRef.current].slice(0, 10));
+      loadBrief(copy);
+    },
+    [persist, loadBrief],
+  );
+
   const reset = useCallback(() => {
     abortRef.current?.abort();
     briefIdRef.current = null;
@@ -588,6 +603,7 @@ export const useBrief = ({
       setRegenText('');
     },
     loadBrief,
+    cloneBrief,
     deleteBrief,
     reset,
     commitEdits,

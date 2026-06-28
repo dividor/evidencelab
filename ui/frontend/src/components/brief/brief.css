@@ -310,7 +310,8 @@
 .brief-rail-title {
   font-family: var(--font-heading);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--brand-primary);
 }
 .brief-rail-count {
   font-size: 12px;
@@ -1170,80 +1171,134 @@
   margin-bottom: 6px;
 }
 
-/* ---------- per-heading structural controls ---------- */
-.brief-drag-handle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 26px;
-  color: var(--brand-text-tertiary);
-  cursor: grab;
-}
-.brief-drag-handle:hover {
-  color: var(--brand-primary);
-}
-.brief-drag-handle:active {
-  cursor: grabbing;
-}
-.brief-doc-section-dragging {
-  opacity: 0.45;
-}
-.brief-doc-section-dragover {
-  box-shadow: inset 0 2px 0 0 var(--brand-primary);
-}
-.brief-section-struct {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.brief-section-act {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: 1px solid var(--brand-border-light);
-  color: var(--brand-text-secondary);
-  font-size: 12px;
-  padding: 5px 9px;
-  cursor: pointer;
-}
-.brief-section-act:hover {
-  border-color: var(--brand-primary);
-  color: var(--brand-primary);
-}
-.brief-section-act .brief-icon {
-  width: 12px;
-  height: 12px;
-}
-.brief-section-del {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: 1px solid var(--brand-border-light);
-  color: var(--brand-text-tertiary);
-  font-size: 17px;
-  line-height: 1;
-  cursor: pointer;
-}
-.brief-section-del:hover {
-  color: #c0392b;
-  border-color: #c0392b;
-}
-
-/* ---------- bottom "add heading" / "start research" bar ---------- */
+/* ---------- "start research" bar ---------- */
 .brief-doc-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 24px 0 4px;
 }
-.brief-add-heading {
+
+/* ---------- table of contents (top of the brief) ---------- */
+.brief-toc {
+  margin: 4px 0 28px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  padding: 12px 14px 14px;
+}
+.brief-toc-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+  margin-bottom: 10px;
+}
+.brief-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brief-toc-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+}
+.brief-toc-row:hover {
+  background: #f1f4f5;
+}
+.brief-toc-row-sub {
+  margin-left: 22px;
+}
+.brief-toc-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 30px;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  cursor: grab;
+  /* Let the touch sensor own the gesture on the handle (no page scroll). */
+  touch-action: none;
+}
+.brief-toc-grip:active {
+  cursor: grabbing;
+}
+.brief-toc-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 2px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--brand-text-primary);
+}
+.brief-toc-jump:hover {
+  color: var(--brand-primary);
+}
+.brief-toc-num {
+  flex: none;
+  font-weight: 700;
+  color: var(--brand-text-tertiary);
+}
+.brief-toc-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.brief-toc-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-border);
+}
+.brief-toc-dot-researching {
+  background: var(--brand-primary);
+}
+.brief-toc-dot-done {
+  background: #2e9e5b;
+}
+.brief-toc-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.brief-toc-act,
+.brief-toc-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+}
+.brief-toc-del {
+  font-size: 17px;
+  line-height: 1;
+}
+.brief-toc-act:hover {
+  color: var(--brand-primary);
+}
+.brief-toc-del:hover {
+  color: #c0392b;
+}
+.brief-toc-add {
+  margin-top: 10px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1251,16 +1306,50 @@
   border: 1px dashed var(--brand-border);
   color: var(--brand-text-secondary);
   font-family: var(--font-heading);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
-  padding: 10px 16px;
+  padding: 8px 14px;
   cursor: pointer;
 }
-.brief-add-heading:hover {
+.brief-toc-add:hover {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
 }
-.brief-add-heading .brief-icon {
-  width: 14px;
-  height: 14px;
+
+/* ---------- history search + clone ---------- */
+.brief-history-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 8px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--brand-text-primary);
+}
+.brief-history-act {
+  flex: none;
+  width: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+}
+.brief-history-act:hover {
+  color: var(--brand-primary);
+  background: #f7f9fa;
 }

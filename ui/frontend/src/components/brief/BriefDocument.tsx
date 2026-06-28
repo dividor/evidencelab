@@ -2,26 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
-import { IconDownload, IconEdit, IconGrip, IconPlus, IconRefresh, IconSparkle } from './BriefIcons';
+import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
+import { BriefToc } from './BriefToc';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
-interface SectionDnd {
-  draggingId: string | null;
-  dragOverId: string | null;
-  onDragStart: (id: string) => void;
-  onDragOver: (id: string) => void;
-  onDrop: (id: string) => void;
-  onDragEnd: () => void;
-}
-
 interface SectionViewProps {
   section: BriefSection;
   num: string;
-  hasSiblings: boolean;
-  dnd: SectionDnd;
   brief: UseBriefReturn;
   onSourceClick: (source: SourceReference) => void;
   // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
@@ -64,70 +54,24 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
-  hasSiblings,
-  dnd,
   brief,
   onSourceClick,
   display,
 }) => {
   const [editing, setEditing] = useState(false);
-  const sectionRef = useRef<HTMLElement>(null);
   const panelOpen = brief.regenFor === section.id;
-  const anyResearching = brief.sections.some((s) => s.status === 'researching');
   const isDone = section.status === 'done';
-  // Structural edits (reorder/add/remove) are locked while a research pass runs.
-  const canEditStructure = !anyResearching;
-  const draggable = canEditStructure && hasSiblings;
-  const isDragging = dnd.draggingId === section.id;
-  const isDragOver =
-    !!dnd.draggingId && dnd.dragOverId === section.id && dnd.draggingId !== section.id;
+  const anyResearching = brief.sections.some((s) => s.status === 'researching');
   // View/evidence use the globally-renumbered content; editing uses the raw text.
   const viewContent = display?.content ?? section.content;
   const viewSources = display?.sources ?? section.sources;
 
-  const sectionClass =
-    `brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}` +
-    `${isDragging ? ' brief-doc-section-dragging' : ''}` +
-    `${isDragOver ? ' brief-doc-section-dragover' : ''}`;
-
   return (
     <section
-      ref={sectionRef}
-      className={sectionClass}
-      onDragOver={
-        canEditStructure
-          ? (e) => {
-              e.preventDefault();
-              dnd.onDragOver(section.id);
-            }
-          : undefined
-      }
-      onDrop={
-        canEditStructure
-          ? (e) => {
-              e.preventDefault();
-              dnd.onDrop(section.id);
-            }
-          : undefined
-      }
+      id={`brief-section-${section.id}`}
+      className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}
     >
       <div className="brief-doc-section-head">
-        {draggable && (
-          <span
-            className="brief-drag-handle"
-            draggable
-            title="Drag to reorder"
-            aria-label="Drag to reorder heading"
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = 'move';
-              if (sectionRef.current) e.dataTransfer.setDragImage(sectionRef.current, 16, 16);
-              dnd.onDragStart(section.id);
-            }}
-            onDragEnd={dnd.onDragEnd}
-          >
-            <IconGrip />
-          </span>
-        )}
         {num && <span className="brief-doc-section-num">{num}</span>}
         <input
           className="brief-doc-section-title"
@@ -144,27 +88,6 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
               <IconRefresh /> Regenerate
             </button>
           </>
-        )}
-        {canEditStructure && (
-          <span className="brief-section-struct">
-            {section.level === 1 && (
-              <button
-                className="brief-section-act"
-                title="Add a sub-heading under this heading"
-                onClick={() => brief.addSubHeading(section.id)}
-              >
-                <IconPlus /> Sub-heading
-              </button>
-            )}
-            <button
-              className="brief-section-del"
-              title="Delete this heading"
-              aria-label="Delete this heading"
-              onClick={() => brief.removeSection(section.id)}
-            >
-              ×
-            </button>
-          </span>
         )}
       </div>
 
@@ -278,49 +201,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const hasOutlineLog = brief.generatingActivity.length > 0;
   const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
 
-  // Drag-and-drop reordering state (which heading is being dragged / hovered).
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
-  const parentIdxOf = (i: number): number => {
-    for (let k = i - 1; k >= 0; k--) {
-      if (sections[k].level === 1) return k;
-    }
-    return -1;
-  };
-
-  // Show a drag handle only when the heading has at least one sibling to swap
-  // with: another top-level heading, or another sub-heading under the same parent.
-  const hasSiblings = (i: number): boolean => {
-    const s = sections[i];
-    if (s.level === 1) return sections.filter((x) => x.level === 1).length > 1;
-    const pi = parentIdxOf(i);
-    let count = 0;
-    sections.forEach((x, k) => {
-      if (x.level === 2 && parentIdxOf(k) === pi) count += 1;
-    });
-    return count > 1;
-  };
-
-  const handleDrop = (targetId: string) => {
-    if (draggingId && draggingId !== targetId) brief.reorderSiblings(draggingId, targetId);
-    setDraggingId(null);
-    setDragOverId(null);
-  };
-
-  const dnd = {
-    draggingId,
-    dragOverId,
-    onDragStart: setDraggingId,
-    onDragOver: setDragOverId,
-    onDrop: handleDrop,
-    onDragEnd: () => {
-      setDraggingId(null);
-      setDragOverId(null);
-    },
-  };
+  // Structural edits (reorder/add/remove via the TOC) lock while research runs.
+  const canEditStructure = !sections.some((s) => s.status === 'researching');
 
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
@@ -434,24 +318,21 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         )}
       </div>
 
+      {sections.length > 0 && <BriefToc brief={brief} canEdit={canEditStructure} />}
+
       {sections.map((s, i) => (
         <BriefSectionView
           key={s.id}
           section={s}
           num={brief.numberHeadings ? numbers[i] : ''}
-          hasSiblings={hasSiblings(i)}
-          dnd={dnd}
           brief={brief}
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}
         />
       ))}
 
-      <div className="brief-doc-actions">
-        <button className="brief-add-heading" onClick={brief.addHeading}>
-          <IconPlus /> Add heading
-        </button>
-        {brief.stage === 'outline' && (
+      {brief.stage === 'outline' && (
+        <div className="brief-doc-actions">
           <button
             className="brief-btn brief-btn-primary"
             onClick={brief.startResearch}
@@ -459,8 +340,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           >
             Start deep research →
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {references.length > 0 && (
         <section className="brief-footnotes">
