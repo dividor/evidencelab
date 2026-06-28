@@ -119,6 +119,8 @@ export const useBrief = ({
   const abortRef = useRef<AbortController | null>(null);
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
+  const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
+  outlineLogRef.current = generatingActivity;
 
   useEffect(() => setHistory(loadHistory(historyKey)), [historyKey]);
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -163,13 +165,20 @@ export const useBrief = ({
       date: Date.now(),
       sectionCount: snap.length,
       sourceCount: snap.reduce((a, s) => a + s.sources.length, 0),
-      sections: snap.map((s) => ({
-        title: s.title,
-        level: s.level,
-        status: s.status,
-        content: s.content,
-        sources: s.sources,
-      })),
+      // Persist only completed sections' content; a section that was mid- or
+      // un-researched reverts to its last stable (pending) state on reload —
+      // never a stuck "Researching…".
+      sections: snap.map((s) => {
+        const done = s.status === 'done';
+        return {
+          title: s.title,
+          level: s.level,
+          status: done ? 'done' : 'pending',
+          content: done ? s.content : '',
+          sources: done ? s.sources : [],
+        };
+      }),
+      outlineLog: outlineLogRef.current,
     };
     persist([entry, ...history.filter((e) => e.id !== id)].slice(0, 10));
   }, [briefTitle, query, history, persist]);
@@ -381,12 +390,13 @@ export const useBrief = ({
     setSections(
       entry.sections.map((h) => ({
         ...makeSection(h.title, h.level),
-        status: h.status || 'done',
+        status: h.status === 'done' ? 'done' : 'pending',
         progress: h.status === 'done' ? 100 : 0,
-        content: h.content,
-        sources: h.sources || [],
+        content: h.status === 'done' ? h.content : '',
+        sources: h.status === 'done' ? h.sources || [] : [],
       })),
     );
+    setGeneratingActivity(entry.outlineLog || []);
     setStage('done');
     setHistoryOpen(false);
   }, []);

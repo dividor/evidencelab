@@ -228,6 +228,7 @@
 
 /* Editable brief title in the document header */
 .brief-doc-title-input {
+  display: block;
   width: 100%;
   border: none;
   border-bottom: 1px solid transparent;
@@ -239,7 +240,12 @@
   font-size: 30px;
   font-weight: 600;
   color: var(--brand-text-primary);
-  line-height: 1.2;
+  line-height: 1.25;
+  /* Wrap long titles across lines (it's a textarea that auto-grows in JS). */
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 .brief-doc-title-input:hover {
   border-bottom-color: var(--brand-border-light);
@@ -431,6 +437,38 @@
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
+}
+.brief-meta-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-primary);
+}
+.brief-meta-link:hover {
+  text-decoration: underline;
+}
+.brief-outline-log {
+  margin-top: 14px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  padding: 12px 14px;
+}
+.brief-outline-log-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+  margin-bottom: 10px;
+}
+.brief-outline-log .brief-activity {
+  max-height: 280px;
+  overflow-y: auto;
 }
 .brief-doc-section {
   padding: 28px 0;

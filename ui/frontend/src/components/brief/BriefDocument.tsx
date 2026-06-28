@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { BriefSection } from './briefTypes';
@@ -148,8 +148,19 @@ interface BriefDocumentProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
+const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+};
+
 export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultClick }) => {
   const { sections, numbers, references } = brief;
+  const [logOpen, setLogOpen] = useState(false);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const hasOutlineLog = brief.generatingActivity.length > 0;
+
+  useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
@@ -172,18 +183,50 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({ brief, onResultCli
     <div className="brief-doc">
       <div className="brief-doc-header">
         <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-        <input
+        <textarea
+          ref={titleRef}
           className="brief-doc-title-input"
           value={brief.briefTitle}
-          onChange={(e) => brief.setBriefTitle(e.target.value)}
+          onChange={(e) => {
+            brief.setBriefTitle(e.target.value);
+            autoSizeTitle(e.target);
+          }}
           onBlur={brief.commitEdits}
+          rows={1}
           aria-label="Brief title"
         />
         <div className="brief-doc-meta">
           <span>{sections.length} sections</span>
           <span>·</span>
           <span>{brief.totalSources} sources synthesised</span>
+          {hasOutlineLog && (
+            <>
+              <span>·</span>
+              <button
+                className="brief-meta-link"
+                onClick={() => setLogOpen((v) => !v)}
+                aria-expanded={logOpen}
+              >
+                Brief outline sources
+              </button>
+            </>
+          )}
         </div>
+        {logOpen && hasOutlineLog && (
+          <div className="brief-outline-log">
+            <div className="brief-outline-log-head">
+              Outline research — queries run and sources read
+            </div>
+            <div className="brief-activity">
+              {brief.generatingActivity.map((ev, i) => (
+                <div className="brief-activity-row" key={`${ev.tag}-${i}`}>
+                  <span className={tagClass(ev.tag)}>{ev.tag}</span>
+                  <span>{ev.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {sections.map((s, i) => (

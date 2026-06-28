@@ -42,6 +42,8 @@ export interface SavedBrief {
   sectionCount: number;
   sourceCount: number;
   sections: SavedBriefSection[];
+  // The outline-generation activity log (queries run, sources read).
+  outlineLog?: BriefActivityEvent[];
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
