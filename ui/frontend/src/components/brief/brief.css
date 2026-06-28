@@ -295,6 +295,18 @@
   border: 1px solid var(--brand-border);
   align-self: start;
 }
+.brief-rail-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--brand-border-light);
+}
+.brief-rail-actions .brief-link-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 6px;
+  font-size: 12.5px;
+}
 .brief-rail-head {
   padding: 16px 18px;
   border-bottom: 1px solid var(--brand-border-light);
@@ -498,10 +510,10 @@
   overflow-y: auto;
 }
 .brief-edit-hint {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin: 6px 0 4px;
+  gap: 5px;
+  margin-left: auto;
   font-size: 12.5px;
   font-style: italic;
   color: var(--brand-text-tertiary);

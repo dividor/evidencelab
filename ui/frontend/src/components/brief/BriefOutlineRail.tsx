@@ -15,6 +15,17 @@ export const BriefOutlineRail: React.FC<BriefOutlineRailProps> = ({ brief, onExp
 
   return (
     <aside className="brief-rail">
+      <div className="brief-rail-actions">
+        <button className="brief-link-btn" onClick={brief.reset}>
+          <span className="brief-icon">＋</span> New brief
+        </button>
+        <button className="brief-link-btn" onClick={() => brief.setHistoryOpen(true)}>
+          <span className="brief-icon">⟲</span> Saved briefs
+          {brief.history.length > 0 && (
+            <span className="brief-count-badge">{brief.history.length}</span>
+          )}
+        </button>
+      </div>
       <div className="brief-rail-head">
         <span className="brief-rail-title">Outline</span>
         <span className="brief-rail-count">{sections.length} sections</span>

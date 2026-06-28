@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
+import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
@@ -11,6 +12,8 @@ interface SectionViewProps {
   num: string;
   brief: UseBriefReturn;
   onSourceClick: (source: SourceReference) => void;
+  // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
+  display?: SectionDisplay;
 }
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
@@ -46,11 +49,20 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
   );
 };
 
-const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief, onSourceClick }) => {
+const BriefSectionView: React.FC<SectionViewProps> = ({
+  section,
+  num,
+  brief,
+  onSourceClick,
+  display,
+}) => {
   const [editing, setEditing] = useState(false);
   const panelOpen = brief.regenFor === section.id;
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
   const isDone = section.status === 'done';
+  // View/evidence use the globally-renumbered content; editing uses the raw text.
+  const viewContent = display?.content ?? section.content;
+  const viewSources = display?.sources ?? section.sources;
 
   return (
     <section className={`brief-doc-section${section.level === 2 ? ' brief-doc-section-sub' : ''}`}>
@@ -123,15 +135,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({ section, num, brief, onS
           ) : (
             <div className="brief-doc-content">
               <CitedMarkdown
-                content={section.content}
-                sources={section.sources}
+                content={viewContent}
+                sources={viewSources}
                 onSourceClick={onSourceClick}
               />
             </div>
           )}
           <CitedReferences
-            content={section.content}
-            sources={section.sources}
+            content={viewContent}
+            sources={viewSources}
             onSourceClick={onSourceClick}
             collapsible
             labelPrefix="Evidence"
@@ -162,10 +174,11 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   onExportWord,
   exportBusy,
 }) => {
-  const { sections, numbers, references } = brief;
+  const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
+  const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
@@ -226,9 +239,14 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
                 onClick={() => setLogOpen((v) => !v)}
                 aria-expanded={logOpen}
               >
-                Generated outline analysis
+                Outline analysis
               </button>
             </>
+          )}
+          {sections.length > 0 && (
+            <span className="brief-edit-hint">
+              <span className="brief-icon">✎</span> Click on titles to edit research topics
+            </span>
           )}
         </div>
         {logOpen && hasOutlineLog && (
@@ -248,12 +266,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         )}
       </div>
 
-      {sections.length > 0 && (
-        <div className="brief-edit-hint">
-          <span className="brief-icon">✎</span> Click on titles to edit research topics
-        </div>
-      )}
-
       {sections.map((s, i) => (
         <BriefSectionView
           key={s.id}
@@ -261,6 +273,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           num={numbers[i]}
           brief={brief}
           onSourceClick={handleSourceClick}
+          display={display.get(s.id)}
         />
       ))}
 

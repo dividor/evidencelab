@@ -7,14 +7,13 @@ import {
   buildExportFilename,
   exportResultsToDocxBlob,
 } from '../../utils/exportResultsToDocx';
+import { buildGlobalCitations } from './briefCitations';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefOutlineRail } from './BriefOutlineRail';
 import { BriefSeed } from './BriefSeed';
 import { useBrief } from './useBrief';
 import './brief.css';
-
-const CITATION_RE = /\[(\d+(?:,\s*\d+)*)\]/g;
 
 const sourceToResult = (src: SourceReference, dataSource: string): SearchResult => ({
   chunk_id: src.chunkId,
@@ -31,43 +30,25 @@ const sourceToResult = (src: SourceReference, dataSource: string): SearchResult 
 
 /**
  * Flatten the brief into one Markdown body + a global SearchResult[] so it can
- * reuse the search summary's .docx exporter. Each section's per-section citation
- * numbers are remapped to global numbers (deduped by chunk) so `[n]` in the body
- * lines up with the global references list, and citations link to the source
- * document at the cited page.
+ * reuse the search summary's .docx exporter. Uses the same global citation
+ * model as the on-screen render (combined by document), so `[n]` in the body
+ * lines up with the references list and citations link to the source document
+ * at the cited page.
  */
 const assembleBriefForExport = (
   brief: ReturnType<typeof useBrief>,
   dataSource: string,
 ): { summary: string; results: SearchResult[] } => {
-  const results: SearchResult[] = [];
-  const keyToGlobal = new Map<string, number>();
+  const { refs, display } = buildGlobalCitations(brief.sections);
   const lines: string[] = [];
   brief.sections.forEach((s, i) => {
     const hashes = s.level === 2 ? '###' : '##';
     lines.push(`${hashes} ${brief.numbers[i]}. ${s.title}`, '');
-    if (s.status !== 'done' || !s.content) return;
-    const localToGlobal = new Map<number, number>();
-    s.sources.forEach((src) => {
-      if (src.index == null) return;
-      const key = src.chunkId || `${src.docId}:${src.index}`;
-      let global = keyToGlobal.get(key);
-      if (global == null) {
-        results.push(sourceToResult(src, dataSource));
-        global = results.length;
-        keyToGlobal.set(key, global);
-      }
-      localToGlobal.set(src.index, global);
-    });
-    const rewritten = s.content.replace(CITATION_RE, (_m, nums: string) => {
-      const mapped = nums
-        .split(',')
-        .map((x) => localToGlobal.get(parseInt(x.trim(), 10)))
-        .filter((g): g is number => g != null);
-      return mapped.length ? `[${mapped.join(', ')}]` : '';
-    });
-    lines.push(rewritten, '');
+    const d = display.get(s.id);
+    if (d?.content) lines.push(d.content, '');
   });
+  // refs are ordered by global number, so results[n-1] is the source for `[n]`.
+  const results = refs.map((r) => sourceToResult(r.source, dataSource));
   return { summary: lines.join('\n'), results };
 };
 
@@ -149,21 +130,6 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         <BriefSeed brief={brief} />
       ) : (
         <>
-          <div className="brief-toolbar">
-            <button className="brief-link-btn" onClick={brief.reset}>
-              <span className="brief-icon">＋</span> New brief
-            </button>
-            <button
-              className="brief-link-btn"
-              onClick={() => brief.setHistoryOpen(true)}
-              disabled={brief.history.length === 0}
-            >
-              <span className="brief-icon">⟲</span> Saved briefs
-              {brief.history.length > 0 && (
-                <span className="brief-count-badge">{brief.history.length}</span>
-              )}
-            </button>
-          </div>
           {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
           <div className="brief-builder">
             <BriefOutlineRail brief={brief} onExport={handleExport} />
