@@ -111,12 +111,23 @@
 
 /* ---------- buttons ---------- */
 .brief-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font-family: var(--font-heading);
   font-weight: 600;
   font-size: 15px;
-  padding: 13px 24px;
+  padding: 13px 22px;
   cursor: pointer;
   border: none;
+}
+/* Keep inline SVG icons crisp and aligned inside buttons. */
+.brief-btn svg,
+.brief-link-btn svg,
+.brief-regen-btn svg,
+.brief-export-word svg {
+  flex-shrink: 0;
 }
 .brief-btn-primary {
   background: var(--brand-accent);
@@ -130,6 +141,11 @@
   background: var(--brand-surface);
   color: var(--brand-text-primary);
   border: 1px solid var(--brand-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.brief-btn-secondary:hover:not(:disabled) {
+  background: var(--brand-border-light);
+  border-color: var(--brand-text-tertiary);
 }
 .brief-btn-secondary:disabled {
   opacity: 0.5;
@@ -144,7 +160,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: none;
+  background: var(--brand-surface);
   border: 1px solid var(--brand-border);
   color: var(--brand-text-secondary);
   font-family: var(--font-heading);
@@ -152,6 +168,12 @@
   font-weight: 600;
   padding: 8px 13px;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.brief-link-btn:hover:not(:disabled) {
+  background: var(--brand-border-light);
+  border-color: var(--brand-text-tertiary);
+  color: var(--brand-text-primary);
 }
 .brief-link-btn:disabled {
   opacity: 0.5;
@@ -686,8 +708,11 @@
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #fff;
-  padding: 1px 5px;
+  padding: 2px 5px;
   flex-shrink: 0;
+  min-width: 56px;
+  text-align: center;
+  box-sizing: border-box;
 }
 .brief-tag-scan {
   background: var(--brand-text-tertiary);
@@ -782,21 +807,27 @@
 .brief-evidence .assistant-refs-toggle {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 9px 14px;
+  padding: 10px 14px;
   font-family: var(--font-heading);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
+  line-height: 1;
   text-transform: uppercase;
   color: var(--brand-text-tertiary);
 }
 .brief-evidence .assistant-refs-toggle-icon {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  font-size: 12px;
+  line-height: 1;
 }
 .brief-evidence .assistant-refs-list {
   display: flex;
@@ -859,6 +890,7 @@
 }
 .brief-footnote-text {
   color: var(--brand-text-secondary);
+  font-weight: 400;
 }
 .brief-footnote-section {
   color: var(--brand-text-tertiary);

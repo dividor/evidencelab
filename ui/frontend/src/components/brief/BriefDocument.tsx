@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
+import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
@@ -77,10 +78,10 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         {isDone && (
           <>
             <button className="brief-regen-btn" onClick={() => setEditing((v) => !v)}>
-              {editing ? '✓ Done' : '✎ Edit text'}
+              <IconEdit /> {editing ? 'Done' : 'Edit text'}
             </button>
             <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
-              <span className="brief-icon">↻</span> Regenerate
+              <IconRefresh /> Regenerate
             </button>
           </>
         )}
@@ -98,7 +99,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
               disabled={section.sample}
               title={section.sample ? 'Edit this heading before researching it' : undefined}
             >
-              ✦ Research this section
+              <IconSparkle /> Research this section
             </button>
           )}
         </div>
@@ -211,7 +212,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
               disabled={!sections.length || exportBusy}
               title="Export this brief to Word, with citations linked to the source documents"
             >
-              {exportBusy ? 'Exporting…' : '⤓ Export to Word'}
+              {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
             </button>
           )}
         </div>
@@ -280,9 +281,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       {references.length > 0 && (
         <section className="brief-footnotes">
           <h2 className="brief-footnotes-title">References</h2>
-          <div className="brief-footnotes-sub">
-            All {references.length} cited documents, compiled across sections
-          </div>
           <div className="brief-footnotes-list">
             {references.map((r) => (
               <div className="brief-footnote-row" key={r.n}>
@@ -299,7 +297,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
                   </span>
                   <span className="brief-footnote-text">
                     {r.title}
-                    {r.page ? ` p.${r.page}` : ''}
+                    {r.page ? `, p.${r.page}` : ''}
                   </span>
                 </a>
               </div>

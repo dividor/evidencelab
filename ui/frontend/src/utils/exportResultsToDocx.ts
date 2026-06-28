@@ -46,6 +46,9 @@ export interface ExportOptions {
   siteOrigin?: string;
   /** Injectable clock for deterministic tests. */
   now?: () => Date;
+  /** Heading for the per-result excerpts section (default "Search Results").
+   *  The Brief export passes "Reference Excerpts". */
+  resultsSectionTitle?: string;
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -525,12 +528,13 @@ const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource?: string,
+  sectionTitle = 'Search Results',
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: `Search Results (${results.length})` })],
+      children: [new TextRun({ text: `${sectionTitle} (${results.length})` })],
       spacing: { before: 360, after: 120 },
     }),
   );
@@ -554,7 +558,12 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   const body: Paragraph[] = [
     ...buildCoverParagraphs(opts, now),
     ...buildSummarySection(opts.aiSummary ?? '', opts.results, siteOrigin, opts.dataSource),
-    ...buildResultsSection(opts.results, siteOrigin, opts.dataSource),
+    ...buildResultsSection(
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.resultsSectionTitle,
+    ),
   ];
 
   return new Document({

@@ -1,4 +1,5 @@
 import React from 'react';
+import { IconDownload, IconHistory, IconPlus } from './BriefIcons';
 import { UseBriefReturn } from './useBrief';
 
 interface BriefOutlineRailProps {
@@ -17,10 +18,10 @@ export const BriefOutlineRail: React.FC<BriefOutlineRailProps> = ({ brief, onExp
     <aside className="brief-rail">
       <div className="brief-rail-actions">
         <button className="brief-link-btn" onClick={brief.reset}>
-          <span className="brief-icon">＋</span> New brief
+          <IconPlus /> New brief
         </button>
         <button className="brief-link-btn" onClick={() => brief.setHistoryOpen(true)}>
-          <span className="brief-icon">⟲</span> Saved briefs
+          <IconHistory /> Saved briefs
           {brief.history.length > 0 && (
             <span className="brief-count-badge">{brief.history.length}</span>
           )}
@@ -103,7 +104,7 @@ export const BriefOutlineRail: React.FC<BriefOutlineRailProps> = ({ brief, onExp
         )}
         {stage === 'done' && (
           <button className="brief-btn brief-btn-secondary brief-btn-block" onClick={onExport}>
-            ⤓ Export brief
+            <IconDownload /> Export brief
           </button>
         )}
       </div>

@@ -99,6 +99,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         aiSummary: summary,
         results,
         dataSource,
+        resultsSectionTitle: 'Reference Excerpts',
         siteOrigin:
           typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
       });

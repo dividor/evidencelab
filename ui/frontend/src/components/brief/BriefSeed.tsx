@@ -1,4 +1,5 @@
 import React from 'react';
+import { IconHistory, IconSparkle } from './BriefIcons';
 import { BRIEF_EXAMPLES } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
@@ -107,7 +108,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
             onClick={generateOutline}
             disabled={!query.trim()}
           >
-            ✦ Generate outline
+            <IconSparkle /> Generate outline
           </button>
           <button className="brief-btn brief-btn-secondary" onClick={startManual}>
             Write my own headings
@@ -116,7 +117,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
             className="brief-btn brief-btn-secondary brief-seed-load"
             onClick={() => brief.setHistoryOpen(true)}
           >
-            <span className="brief-icon">⟲</span> Load a saved brief
+            <IconHistory /> Load a saved brief
             {brief.history.length > 0 && (
               <span className="brief-count-badge">{brief.history.length}</span>
             )}
