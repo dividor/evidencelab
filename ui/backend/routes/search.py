@@ -120,6 +120,21 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
             doc_ids_from_pg_field(pg, "sys_language", str(language).split(",")),
         )
 
+    _convert_src_fields_to_doc_ids(core_filters, pg, source)
+
+
+def _convert_src_fields_to_doc_ids(
+    core_filters: Dict[str, Any], pg, source: str
+) -> None:
+    """Resolve ``src_*`` filters to a ``doc_id`` constraint.
+
+    ``src_*`` field values live in the ``docs.src_doc_raw_metadata`` JSONB, not on
+    chunks nor in the Qdrant document payload (they are only sparsely stamped onto
+    chunks, so a chunk/payload filter silently drops most matching documents). Both
+    chunk search (``/search``) and document search (``/docsearch``) must therefore
+    resolve them to the matching doc_ids — the same source the facet counts come
+    from — and AND them with any existing doc_id constraint.
+    """
     src_field_mapping = get_src_field_mapping(source) or {}
     for core_field in list(core_filters.keys()):
         if not core_field.startswith("src_"):
@@ -766,10 +781,13 @@ async def search(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Language and region are doc-level only; convert to doc_id filters for
-        # chunk search (region intersects with any language-derived doc_ids).
+        # Language, region and src_* fields are doc-level only (src_* is only
+        # sparsely stamped onto chunks); convert each to a doc_id filter for the
+        # chunk search so they intersect (AND) rather than dropping documents
+        # whose chunks lack the value.
         _convert_language_to_doc_ids(core_filters, pg)
         _convert_region_to_doc_ids(core_filters, pg)
+        _convert_src_fields_to_doc_ids(core_filters, pg, source)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
