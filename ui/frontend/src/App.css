@@ -3815,7 +3815,6 @@ h6,
   font-size: 0.8125rem;
   line-height: 1.5;
   color: var(--gray-700);
-  white-space: pre-wrap;
 }
 
 .citation-doc-group {
