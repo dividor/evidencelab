@@ -23,9 +23,9 @@ The typical workflow is:
 
 ---
 
-### Quick path: create a dataset + experiment from one CSV
+### Quickstart: Load dataset and experiment in one file
 
-If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** assertion per row, where each row is judged against its own expected answer.
+If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Dataset and Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** assertion per row, where each row is judged against its own expected answer.
 
 The CSV is the **same format as the dataset upload** (see [Add test cases](#add-test-cases)) plus one extra column:
 
@@ -37,7 +37,7 @@ The CSV is the **same format as the dataset upload** (see [Add test cases](#add-
 | `notes` | no | Free text. |
 | `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
 
-In the **Create Experiment** dialog you provide:
+In the **Create Dataset and Experiment** dialog you provide:
 
 - **Name** — saved as `<name>_dataset` and `<name>_experiment`.
 - **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** assertion, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
@@ -46,9 +46,13 @@ In the **Create Experiment** dialog you provide:
 
 Each row's question and expectation stay paired at the row level. The import is atomic — if anything fails part‑way, the partially‑created dataset is removed so you can retry cleanly. Once created, run it from the **Experiments** table like any other experiment ([Run an experiment](#3-run-an-experiment)).
 
-> Prefer to define assertions by hand, or build a `search` experiment? Use the manual flow below instead.
+> Prefer to define assertions by hand, or build a `search` experiment? Use the manual path below instead.
 
 ---
+
+### Manual path: build a dataset and experiment step by step
+
+Create the **dataset** and the **experiment** separately — use this when you want to define assertions by hand or build a `search` experiment. The steps below cover the full workflow.
 
 ### 1. Create a dataset
 

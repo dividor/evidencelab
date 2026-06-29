@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestCapability } from '../../../types/testing';
-import { parseQaCsv, SAMPLE_QA_CSV, QaCsvRow } from './csv';
+import { parseQaCsv, QaCsvRow } from './csv';
 import { DEFAULT_THRESHOLD, importDatasetWithExperiment } from './experimentImport';
 import {
   ConfigDraft,
@@ -16,18 +16,6 @@ interface CreateDatasetWithExperimentModalProps {
   onCreated: () => void;
   onCancel: () => void;
 }
-
-const downloadSampleCsv = () => {
-  const blob = new Blob([SAMPLE_QA_CSV], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'qa-experiment-sample.csv';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-};
 
 const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
 
@@ -157,11 +145,8 @@ const CreateDatasetWithExperimentModal: React.FC<
         <div className="modal-body">
           {error && <div className="auth-error">{error}</div>}
           <p className="text-muted" style={{ marginTop: 0 }}>
-            Upload a CSV in the regular dataset format (
-            <code>query, tags, notes, filters</code>) plus one{' '}
-            <strong>expectation</strong> column. This creates a dataset of the
-            questions and a draft experiment with one LLM-judge assertion per
-            row, each judged against that row&apos;s expectation.
+            Upload dataset and expectation to create experiment. See the parent
+            page for a link to a sample sheet.
           </p>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
@@ -175,10 +160,6 @@ const CreateDatasetWithExperimentModal: React.FC<
                 onChange={(e) => setName(e.target.value)}
                 placeholder="My evaluation set"
               />
-              <small className="text-muted">
-                Saved as <code>{`${name || 'name'}_dataset`}</code> and{' '}
-                <code>{`${name || 'name'}_experiment`}</code>.
-              </small>
             </div>
             <div className="form-group">
               <label htmlFor="cde-desc">Description (optional)</label>
@@ -246,13 +227,6 @@ const CreateDatasetWithExperimentModal: React.FC<
                   onClick={() => fileRef.current?.click()}
                 >
                   {fileName || 'Choose CSV…'}
-                </button>
-                <button
-                  type="button"
-                  className="testing-raw-toggle"
-                  onClick={downloadSampleCsv}
-                >
-                  sample format
                 </button>
               </div>
               <input

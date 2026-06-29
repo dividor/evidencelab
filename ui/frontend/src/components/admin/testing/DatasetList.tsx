@@ -5,8 +5,21 @@ import type { TestCapability, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
 import CreateDatasetWithExperimentModal from './CreateDatasetWithExperimentModal';
 import { formatTimestamp } from './testingFormat';
+import { SAMPLE_DATASET_CSV, SAMPLE_QA_CSV } from './csv';
 
 const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
+
+const downloadCsv = (content: string, filename: string) => {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
 
 /* ------------------------------------------------------------------ */
 /*  Create-dataset modal                                              */
@@ -186,18 +199,44 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
           className="testing-dataset-actions"
           style={{ marginLeft: 'auto' }}
         >
-          <button
-            className="btn-sm btn-primary"
-            onClick={() => setShowCreate(true)}
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
           >
-            + Create Dataset
-          </button>
-          <button
-            className="btn-sm btn-primary"
-            onClick={() => setShowImport(true)}
+            <button
+              className="btn-sm btn-primary"
+              onClick={() => setShowCreate(true)}
+            >
+              + Create Dataset
+            </button>
+            <button
+              type="button"
+              className="testing-raw-toggle"
+              onClick={() =>
+                downloadCsv(SAMPLE_DATASET_CSV, 'test-cases-sample.csv')
+              }
+            >
+              sample format
+            </button>
+          </div>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
           >
-            + Create Experiment
-          </button>
+            <button
+              className="btn-sm btn-primary"
+              onClick={() => setShowImport(true)}
+            >
+              + Create Dataset and Experiment
+            </button>
+            <button
+              type="button"
+              className="testing-raw-toggle"
+              onClick={() =>
+                downloadCsv(SAMPLE_QA_CSV, 'qa-experiment-sample.csv')
+              }
+            >
+              sample format
+            </button>
+          </div>
         </div>
       </div>
 

@@ -78,6 +78,15 @@ export const parseQaCsv = (data: ArrayBuffer | string): QaCsvRow[] => {
 };
 
 // Same columns as the regular dataset CSV plus an "expectation" column.
+// Regular dataset sample (query, tags, notes, filters). The QA sample below is
+// the same shape plus one extra `expectation` column.
+export const SAMPLE_DATASET_CSV = [
+  'query,tags,notes,filters',
+  'girls education in Kenya,regression;baseline,Core evaluation question,',
+  'cash vs in-kind transfers in Kenya,regression,Comparison question,',
+  'nutrition outcomes for children,smoke,,"{""country"": ""Kenya""}"',
+].join('\n');
+
 export const SAMPLE_QA_CSV = [
   'query,tags,notes,filters,expectation',
   '"What were the effects of COVID-19 on WFP activities?",covid,Core question,,'
