@@ -210,16 +210,28 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <div className="brief-doc-header">
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-          {onExportWord && (
-            <button
-              className="brief-export-word"
-              onClick={onExportWord}
-              disabled={!sections.length || exportBusy}
-              title="Export this brief to Word, with citations linked to the source documents"
-            >
-              {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-            </button>
-          )}
+          <div className="brief-doc-header-actions">
+            {sections.length > 0 && (
+              <button
+                className="brief-regen-all"
+                onClick={brief.startResearch}
+                disabled={!canEditStructure}
+                title="Re-research every section from scratch"
+              >
+                <IconRefresh /> Regenerate all
+              </button>
+            )}
+            {onExportWord && (
+              <button
+                className="brief-export-word"
+                onClick={onExportWord}
+                disabled={!sections.length || exportBusy}
+                title="Export this brief to Word, with citations linked to the source documents"
+              >
+                {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
+              </button>
+            )}
+          </div>
         </div>
         <textarea
           ref={titleRef}

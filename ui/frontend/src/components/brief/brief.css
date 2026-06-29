@@ -485,6 +485,33 @@
   justify-content: space-between;
   gap: 16px;
 }
+.brief-doc-header-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brief-regen-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--brand-surface);
+  color: var(--brand-text-secondary);
+  border: 1px solid var(--brand-border);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.brief-regen-all:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+.brief-regen-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .brief-export-word {
   flex-shrink: 0;
   display: inline-flex;
