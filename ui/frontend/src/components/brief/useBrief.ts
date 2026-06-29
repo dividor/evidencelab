@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
+import { SearchSettings } from '../../types/auth';
 import { extractCitedNumbers } from '../citations/CitedContent';
 import {
   BriefActivityEvent,
@@ -42,6 +43,11 @@ export interface UseBriefOptions {
   // both outline generation and per-section research so the Brief tab uses the
   // same LLM as the rest of the system.
   assistantModelConfig?: SummaryModelConfig | null;
+  // Group search settings to apply to brief searches (reranker + search
+  // settings). Passed only for logged-in users so briefs search like the rest
+  // of the app; null for anonymous users (no rerank).
+  rerankerModel?: string | null;
+  searchSettings?: Partial<SearchSettings> | null;
   // Identifier for the logged-in user; saved briefs are scoped to it. When
   // absent (anonymous), the shared default bucket is used.
   userKey?: string | null;
@@ -152,6 +158,8 @@ export const useBrief = ({
   apiBaseUrl,
   dataSource,
   assistantModelConfig,
+  rerankerModel,
+  searchSettings,
   userKey,
 }: UseBriefOptions) => {
   const historyKey = userKey ? `${BRIEF_HISTORY_KEY}_u_${userKey}` : BRIEF_HISTORY_KEY;
@@ -191,6 +199,12 @@ export const useBrief = ({
   numberHeadingsRef.current = numberHeadings;
   const historyRef = useRef(history);
   historyRef.current = history;
+  // Group search settings, read at research time so the research callbacks stay
+  // stable as the (per-render) settings object changes.
+  const rerankerModelRef = useRef(rerankerModel);
+  rerankerModelRef.current = rerankerModel;
+  const searchSettingsRef = useRef(searchSettings);
+  searchSettingsRef.current = searchSettings;
 
   useEffect(() => setHistory(loadHistory(historyKey)), [historyKey]);
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -286,6 +300,8 @@ export const useBrief = ({
         query: surveyQuery,
         doneLabel: 'Document library surveyed',
         assistantModelConfig,
+        rerankerModel: rerankerModelRef.current,
+        searchSettings: searchSettingsRef.current,
         signal: controller.signal,
         handlers: {
           onActivity: (ev) => setGeneratingActivity((prev) => [ev, ...prev].slice(0, 40)),
@@ -436,6 +452,8 @@ export const useBrief = ({
         briefInstructions: instructionsRef.current.trim() || null,
         parentTitle,
         assistantModelConfig,
+        rerankerModel: rerankerModelRef.current,
+        searchSettings: searchSettingsRef.current,
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),
