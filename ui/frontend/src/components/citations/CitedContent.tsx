@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SourceReference } from '../../types/api';
+import { parseAndRenderSuperscripts } from '../../utils/textHighlighting';
 
 const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
 
@@ -80,7 +81,11 @@ const InlineCitation: React.FC<{
             {typeof source.page === 'number' && (
               <div className="citation-hover-meta">Page {source.page}</div>
             )}
-            {source.text && <div className="citation-hover-excerpt">{source.text}</div>}
+            {source.text && (
+              <div className="citation-hover-excerpt">
+                {parseAndRenderSuperscripts(source.text)}
+              </div>
+            )}
           </div>,
           document.body,
         )}
