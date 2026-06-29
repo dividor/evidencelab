@@ -3816,6 +3816,14 @@ h6,
   line-height: 1.5;
   color: var(--gray-700);
 }
+/* Heading breadcrumb shown as an italic section path at the top of the excerpt. */
+.citation-hover-section {
+  margin-bottom: 6px;
+  font-style: italic;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--gray-500);
+}
 
 .citation-doc-group {
   display: inline-block;
