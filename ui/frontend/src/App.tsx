@@ -2947,6 +2947,18 @@ function App() {
           <BriefTab
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
+            rerankerModel={rerankModel}
+            searchSettings={{
+              denseWeight: searchDenseWeight,
+              recencyBoost: recencyBoostEnabled,
+              recencyWeight,
+              recencyScaleDays,
+              sectionTypes,
+              keywordBoostShortQueries,
+              minChunkSize,
+              fieldBoost: fieldBoostEnabled,
+              fieldBoostFields,
+            }}
             onResultClick={handleResultClick}
           />
         }

@@ -9,6 +9,7 @@
 
 import { API_KEY } from '../config';
 import { SourceReference, SummaryModelConfig } from '../types/api';
+import { SearchSettings } from '../types/auth';
 import { streamAssistantChat } from './assistantStream';
 
 const getCsrfToken = (): string | null => {
@@ -130,14 +131,18 @@ export interface RunDeepResearchOptions {
   query: string;
   doneLabel?: string;
   assistantModelConfig?: SummaryModelConfig | null;
+  // Reranker + search settings. Logged-in briefs pass the group's settings so
+  // they search like the rest of the app; otherwise these are null (no rerank —
+  // the default CPU cross-encoder is too slow for multi-query research).
+  rerankerModel?: string | null;
+  searchSettings?: Partial<SearchSettings> | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
 
 /**
  * Run one deep-research assistant turn for an arbitrary query, mapping its
- * stream onto the Brief activity/content/sources callbacks. Reranking is
- * disabled (briefs never rerank).
+ * stream onto the Brief activity/content/sources callbacks.
  */
 export const runDeepResearch = async ({
   apiBaseUrl,
@@ -145,6 +150,8 @@ export const runDeepResearch = async ({
   query,
   doneLabel = 'Section complete',
   assistantModelConfig,
+  rerankerModel = null,
+  searchSettings = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -157,8 +164,8 @@ export const runDeepResearch = async ({
     dataSource,
     deepResearch: true,
     assistantModelConfig: assistantModelConfig ?? null,
-    rerankerModel: null, // briefs never rerank — the CPU reranker is too slow
-    searchSettings: null,
+    rerankerModel: rerankerModel ?? null,
+    searchSettings: searchSettings ?? null,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -213,6 +220,8 @@ export interface ResearchSectionOptions {
   // scoped to its parent and the generated queries reflect that context.
   parentTitle?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
+  rerankerModel?: string | null;
+  searchSettings?: Partial<SearchSettings> | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -274,6 +283,8 @@ export const researchBriefSection = ({
   briefInstructions,
   parentTitle,
   assistantModelConfig,
+  rerankerModel,
+  searchSettings,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -283,6 +294,8 @@ export const researchBriefSection = ({
     dataSource,
     query,
     assistantModelConfig,
+    rerankerModel,
+    searchSettings,
     handlers,
     signal,
   });

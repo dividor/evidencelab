@@ -3,6 +3,7 @@ import React, { useCallback, useState } from 'react';
 import API_BASE_URL, { USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
+import { SearchSettings } from '../../types/auth';
 import {
   buildExportFilename,
   exportResultsToDocxBlob,
@@ -67,6 +68,10 @@ interface BriefTabProps {
   dataSource: string;
   // The configured chat / deep-research model, used for outline + section research.
   assistantModelConfig?: SummaryModelConfig | null;
+  // The app's active reranker + search settings (group-seeded for logged-in
+  // users). Applied to brief searches only when logged in.
+  rerankerModel?: string | null;
+  searchSettings?: Partial<SearchSettings> | null;
   // Opens the document preview (citations/footnotes click through to it).
   onResultClick?: (result: SearchResult) => void;
 }
@@ -74,12 +79,24 @@ interface BriefTabProps {
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
+  rerankerModel,
+  searchSettings,
   onResultClick,
 }) => {
   const auth = useAuth();
   // Logged-in users get their own saved-briefs bucket; anonymous users share one.
   const userKey = USER_MODULE && auth.user ? String(auth.user.id) : null;
-  const brief = useBrief({ apiBaseUrl: API_BASE_URL, dataSource, assistantModelConfig, userKey });
+  const loggedIn = userKey != null;
+  const brief = useBrief({
+    apiBaseUrl: API_BASE_URL,
+    dataSource,
+    assistantModelConfig,
+    // Use the group's search settings only when logged in; anonymous briefs run
+    // without reranking (the default cross-encoder is too slow for many queries).
+    rerankerModel: loggedIn ? rerankerModel ?? null : null,
+    searchSettings: loggedIn ? searchSettings ?? null : null,
+    userKey,
+  });
   const [exportBusy, setExportBusy] = useState(false);
 
   const handleExportWord = useCallback(async () => {
