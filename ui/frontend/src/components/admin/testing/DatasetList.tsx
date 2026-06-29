@@ -3,6 +3,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestCapability, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
+import CreateDatasetWithExperimentModal from './CreateDatasetWithExperimentModal';
 import { formatTimestamp } from './testingFormat';
 
 const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
@@ -122,6 +123,7 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
   const [error, setError] = useState('');
   const [capabilityFilter, setCapabilityFilter] = useState<'' | TestCapability>('');
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TestDataset | null>(null);
 
   const fetchDatasets = useCallback(async () => {
@@ -180,13 +182,23 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
         <p className="text-muted" style={{ margin: 0 }}>
           {datasets.length} dataset{datasets.length !== 1 ? 's' : ''}
         </p>
-        <button
-          className="btn-sm btn-primary"
-          onClick={() => setShowCreate(true)}
+        <div
+          className="testing-dataset-actions"
           style={{ marginLeft: 'auto' }}
         >
-          + Create Dataset
-        </button>
+          <button
+            className="btn-sm btn-primary"
+            onClick={() => setShowCreate(true)}
+          >
+            + Create Dataset
+          </button>
+          <button
+            className="btn-sm btn-primary"
+            onClick={() => setShowImport(true)}
+          >
+            + Create Experiment
+          </button>
+        </div>
       </div>
 
       <table className="admin-table">
@@ -243,6 +255,16 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
             fetchDatasets();
           }}
           onCancel={() => setShowCreate(false)}
+        />
+      )}
+
+      {showImport && (
+        <CreateDatasetWithExperimentModal
+          onCreated={() => {
+            setShowImport(false);
+            fetchDatasets();
+          }}
+          onCancel={() => setShowImport(false)}
         />
       )}
     </div>

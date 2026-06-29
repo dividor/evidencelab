@@ -24,26 +24,28 @@ interface ExperimentEditorProps {
 /*  Config form                                                       */
 /* ------------------------------------------------------------------ */
 
-interface ConfigDraft {
+export interface ConfigDraft {
   model_combo: string;
   group_id: string;
 }
 
 const stringField = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-const configToDraft = (config?: Record<string, unknown> | null): ConfigDraft => ({
+export const configToDraft = (
+  config?: Record<string, unknown> | null,
+): ConfigDraft => ({
   model_combo: stringField((config || {}).model_combo),
   group_id: stringField((config || {}).group_id),
 });
 
-const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
+export const draftToConfig = (draft: ConfigDraft): Record<string, unknown> => {
   const config: Record<string, unknown> = {};
   if (draft.model_combo.trim()) config.model_combo = draft.model_combo.trim();
   if (draft.group_id.trim()) config.group_id = draft.group_id.trim();
   return config;
 };
 
-interface GroupOption {
+export interface GroupOption {
   id: string;
   name: string;
 }
@@ -53,13 +55,16 @@ interface ConfigFormProps {
   modelCombos: string[];
   groups: GroupOption[];
   onChange: (draft: ConfigDraft) => void;
+  // Show the per-field helper captions (hidden in the compact create modal).
+  showHints?: boolean;
 }
 
-const ConfigForm: React.FC<ConfigFormProps> = ({
+export const ConfigForm: React.FC<ConfigFormProps> = ({
   draft,
   modelCombos,
   groups,
   onChange,
+  showHints = true,
 }) => {
   const set = (patch: Partial<ConfigDraft>) => onChange({ ...draft, ...patch });
   return (
@@ -77,9 +82,11 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
             </option>
           ))}
         </select>
-        <p className="text-muted" style={{ marginTop: '0.25rem' }}>
-          Embedding, summary and reranker models (same combos as the search UI).
-        </p>
+        {showHints && (
+          <p className="text-muted" style={{ marginTop: '0.25rem' }}>
+            Embedding, summary and reranker models (same combos as the search UI).
+          </p>
+        )}
       </div>
       <div className="form-group">
         <label htmlFor="cfg-group">Run as group</label>
@@ -95,9 +102,11 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
             </option>
           ))}
         </select>
-        <p className="text-muted" style={{ marginTop: '0.25rem' }}>
-          Search settings + summary prompt from this group (rerank, sections, …).
-        </p>
+        {showHints && (
+          <p className="text-muted" style={{ marginTop: '0.25rem' }}>
+            Search settings + summary prompt from this group (rerank, sections, …).
+          </p>
+        )}
       </div>
     </div>
   );
