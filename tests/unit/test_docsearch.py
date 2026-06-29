@@ -12,6 +12,7 @@ from qdrant_client.http import models as qmodels
 from ui.backend.routes.search import (
     _build_docsearch_filters,
     _build_metadata_filter_condition,
+    _convert_src_fields_to_doc_ids,
     _format_document_result,
     _get_indexed_doc_ids,
     _resolve_pg_filter_fields,
@@ -539,6 +540,88 @@ def test_resolve_pg_filter_fields_src_field_to_jsonb_doc_ids():
     assert core_filters["document_type"] == "Activity"  # Qdrant field untouched
     # Resolved against the configured raw JSONB key.
     assert mock_jsonb.call_args.args[1] == "Evaluation category"
+
+
+# ---------------------------------------------------------------------------
+# _convert_src_fields_to_doc_ids — used by BOTH /docsearch (attribute mode) and
+# /search (query mode). src_* values are doc-level (only sparsely stamped onto
+# chunks), so query-mode chunk search must resolve them to doc_ids rather than
+# filter the chunk payload — regression for "evaluation category × year with a
+# search string returns very few documents".
+# ---------------------------------------------------------------------------
+
+
+def test_convert_src_fields_resolves_src_field_to_doc_id_constraint():
+    core_filters = {"src_evaluation_category": "CE", "published_year": "2023"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch(
+            "ui.backend.routes.search.doc_ids_from_pg_jsonb",
+            return_value=["a", "b"],
+        ) as mock_jsonb:
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert "src_evaluation_category" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"a", "b"}
+    # published_year stays a Qdrant payload filter (it lives on chunks).
+    assert core_filters["published_year"] == "2023"
+    assert mock_jsonb.call_args.args[1] == "Evaluation category"
+
+
+def test_convert_src_fields_intersects_with_existing_doc_id():
+    """A src_* constraint ANDs with an existing doc_id set (e.g. from language),
+    rather than overwriting it."""
+    core_filters = {"src_evaluation_category": "CE", "doc_id": "a,b,c"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch(
+            "ui.backend.routes.search.doc_ids_from_pg_jsonb",
+            return_value=["b", "c", "d"],
+        ):
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert set(core_filters["doc_id"].split(",")) == {"b", "c"}
+
+
+def test_convert_src_fields_empty_resolution_yields_no_match():
+    """When a src_* value matches no documents, the filter must collapse to the
+    no-match sentinel (return nothing) rather than be dropped (return all)."""
+    from ui.backend.routes.search import _NO_MATCH_DOC_ID
+
+    core_filters = {"src_evaluation_category": "ZZ"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch("ui.backend.routes.search.doc_ids_from_pg_jsonb", return_value=[]):
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert core_filters["doc_id"] == _NO_MATCH_DOC_ID
+
+
+def test_convert_src_fields_leaves_non_src_and_unmapped_fields_untouched():
+    core_filters = {
+        "published_year": "2023",
+        "document_type": "Activity",
+        "src_unmapped": "X",
+    }
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch("ui.backend.routes.search.doc_ids_from_pg_jsonb") as mock_jsonb:
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    # No configured mapping for src_unmapped → left as-is, no doc_id added.
+    mock_jsonb.assert_not_called()
+    assert core_filters["src_unmapped"] == "X"
+    assert core_filters["published_year"] == "2023"
+    assert core_filters["document_type"] == "Activity"
+    assert "doc_id" not in core_filters
 
 
 @pytest.mark.asyncio
