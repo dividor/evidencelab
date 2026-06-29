@@ -68,7 +68,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
           className="brief-textarea"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Type your topic and guidance here"
+          placeholder="Enter your brief title here"
           rows={2}
         />
 

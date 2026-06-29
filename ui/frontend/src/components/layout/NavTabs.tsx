@@ -40,7 +40,7 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
           className={`nav-tab ${activeTab === 'assistant' ? ACTIVE_CLASS : ''}`}
           onClick={() => onTabChange('assistant')}
         >
-          Assistant
+          Chat
         </button>
       )}
       {BRIEF_ENABLED && (
@@ -55,7 +55,7 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
         className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('heatmap')}
       >
-        Heatmapper
+        Heatmap
       </button>
       <div className="dropdown-container nav-dropdown">
         <button
