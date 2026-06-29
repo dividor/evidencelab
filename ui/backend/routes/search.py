@@ -100,9 +100,7 @@ def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     _intersect_doc_id_filter(core_filters, doc_ids)
 
 
-def _resolve_pg_filter_fields(
-    core_filters: Dict[str, Any], pg, source: Optional[str]
-) -> None:
+def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> None:
     """Resolve filter fields whose data lives in PostgreSQL — not the Qdrant
     document payload — to a ``doc_id`` constraint.
 
