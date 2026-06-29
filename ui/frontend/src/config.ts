@@ -36,9 +36,6 @@ export const ASSISTANT_ENABLED = (config.application as any).assistant?.enabled 
 export const ASSISTANT_MAX_SEARCH_RESULTS = (config.application as any).assistant?.max_search_results ?? 20;
 export const ASSISTANT_MAX_ITERATIONS = (config.application as any).assistant?.max_iterations ?? 3;
 
-// Brief tab feature flag (defaults to false; enable via config.application.brief.enabled)
-export const BRIEF_ENABLED = (config.application as any).brief?.enabled ?? false;
-
 // Search results page size (defaults to 50)
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
