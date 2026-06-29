@@ -39,11 +39,17 @@ export const buildJudgeMatrix = (
 };
 
 export interface ImportParams {
+  // Base name; saved as `<name>_dataset` and `<name>_experiment`.
   name: string;
   description?: string;
+  // What is tested: "search" | "ai_summary". The llm_judge assertion built from
+  // the expectation column only applies to ai_summary.
+  capability: string;
   dataSource: string;
-  experimentName?: string;
   threshold: number;
+  // Run configuration (model combo / run-as-group); same shape as the
+  // experiment editor's config. Omitted keys fall back to run defaults.
+  config?: Record<string, unknown>;
   rows: QaCsvRow[];
 }
 
@@ -65,9 +71,9 @@ const createCases = async (
   for (const row of rows) {
     const resp = await axios.post<{ id: string }>(
       `${API_BASE_URL}/testing/datasets/${datasetId}/cases`,
-      { input: { query: row.query }, tags: row.tags, notes: row.notes },
+      { input: row.input, tags: row.tags, notes: row.notes },
     );
-    created.push({ caseId: resp.data.id, expectedAnswer: row.expectedAnswer });
+    created.push({ caseId: resp.data.id, expectedAnswer: row.expectation });
   }
   return created;
 };
@@ -78,22 +84,27 @@ const createCases = async (
 export const importDatasetWithExperiment = async (
   params: ImportParams,
 ): Promise<string> => {
+  const base = params.name.trim();
   const datasetResp = await axios.post<{ id: string }>(
     `${API_BASE_URL}/testing/datasets`,
     {
-      name: params.name.trim(),
+      name: `${base}_dataset`,
       description: params.description?.trim() || undefined,
-      capability: 'ai_summary',
+      capability: params.capability,
       data_source: params.dataSource.trim(),
     },
   );
   const datasetId = datasetResp.data.id;
   try {
     const created = await createCases(datasetId, params.rows);
+    const config =
+      params.config && Object.keys(params.config).length > 0
+        ? params.config
+        : null;
     await axios.post(`${API_BASE_URL}/testing/experiments`, {
       dataset_id: datasetId,
-      name: params.experimentName?.trim() || `${params.name.trim()} — LLM judge`,
-      config: null,
+      name: `${base}_experiment`,
+      config,
       case_expectations: buildJudgeMatrix(created, params.threshold),
     });
     return datasetId;

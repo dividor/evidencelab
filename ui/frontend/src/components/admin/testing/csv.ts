@@ -1,32 +1,21 @@
-// CSV parsing for the "Create Dataset + Experiment" import. Each row pairs a
-// question (the test-case input) with an expected answer (the per-row LLM-judge
-// rubric). Mirrors the lightweight xlsx-based parsing used by DatasetEditor.
+// CSV parsing for the "Create Dataset + Experiment" import. The format mirrors
+// the regular dataset CSV upload (columns: query, tags, notes, filters) with one
+// extra column, "expectation", whose value becomes that row's LLM-judge rubric.
 
 import * as XLSX from 'xlsx-js-style';
 
 export interface QaCsvRow {
-  query: string;
-  expectedAnswer: string;
+  // Same shape as the regular dataset CSV case input: { query, filters? }.
+  input: Record<string, unknown>;
   tags?: string[];
   notes?: string;
+  // Becomes the per-row llm_judge rubric (the "expected answer").
+  expectation: string;
 }
 
-// Header aliases, compared case-insensitively after trimming. The example
-// export uses "Question" and "Unpacking Question / Probing"; the more generic
-// spreadsheet headers people tend to use are accepted too.
-const QUESTION_KEYS = ['question', 'query'];
-const EXPECTED_KEYS = [
-  'unpacking question / probing',
-  'expected_answer',
-  'expected answer',
-  'expected_result',
-  'expected result',
-  'expected',
-  'rubric',
-  'probing',
-];
-const TAGS_KEYS = ['tags'];
-const NOTES_KEYS = ['notes'];
+// Header aliases, compared case-insensitively after trimming.
+const QUERY_KEYS = ['query', 'question'];
+const EXPECTATION_KEYS = ['expectation', 'expected_answer', 'expected_result'];
 
 // First non-empty value among the given header aliases.
 const pick = (row: Record<string, string>, keys: string[]): string => {
@@ -49,24 +38,31 @@ const normaliseRow = (raw: Record<string, unknown>): Record<string, string> => {
 
 const toQaRow = (raw: Record<string, unknown>): QaCsvRow | null => {
   const row = normaliseRow(raw);
-  const query = pick(row, QUESTION_KEYS);
+  const query = pick(row, QUERY_KEYS);
   if (!query) return null;
-  const tags = pick(row, TAGS_KEYS)
+  const input: Record<string, unknown> = { query };
+  if (row.filters) {
+    try {
+      const parsed = JSON.parse(row.filters);
+      if (parsed && typeof parsed === 'object') input.filters = parsed;
+    } catch {
+      // Ignore malformed filters JSON — keep the query-only case.
+    }
+  }
+  const tags = (row.tags || '')
     .split(/[;,]/)
     .map((tag) => tag.trim())
     .filter(Boolean);
-  const notes = pick(row, NOTES_KEYS);
   return {
-    query,
-    expectedAnswer: pick(row, EXPECTED_KEYS),
+    input,
     tags: tags.length > 0 ? tags : undefined,
-    notes: notes || undefined,
+    notes: row.notes || undefined,
+    expectation: pick(row, EXPECTATION_KEYS),
   };
 };
 
-// Parse CSV bytes or text into question/expected-answer rows. Rows without a
-// question column are dropped. xlsx handles quoted, multi-line cells and detects
-// the file's code page (the sample export is Windows-1252, not UTF-8), so raw
+// Parse CSV bytes or text into rows. Rows without a query column are dropped.
+// xlsx handles quoted, multi-line cells and detects the file's code page, so raw
 // bytes are preferred over a UTF-8 text decode.
 export const parseQaCsv = (data: ArrayBuffer | string): QaCsvRow[] => {
   const workbook =
@@ -81,12 +77,13 @@ export const parseQaCsv = (data: ArrayBuffer | string): QaCsvRow[] => {
   return rows.map(toQaRow).filter((row): row is QaCsvRow => row !== null);
 };
 
+// Same columns as the regular dataset CSV plus an "expectation" column.
 export const SAMPLE_QA_CSV = [
-  'Question,Unpacking Question / Probing,tags,notes',
-  '"What were the effects of COVID-19 on WFP activities?",'
-    + '"Retrieve the most commonly cited ways in which WFP programmes changed '
-    + 'after the pandemic, and the results of those changes.",covid,Core question',
-  '"How timely was WFP in responding to COVID-19 needs?",'
-    + '"Was WFP able to respond in due time despite COVID-induced constraints? '
-    + 'Did the actions come at the appropriate time?",timeliness,',
+  'query,tags,notes,filters,expectation',
+  '"What were the effects of COVID-19 on WFP activities?",covid,Core question,,'
+    + '"The summary should cover the most commonly cited ways WFP programmes '
+    + 'changed after the pandemic and the results of those changes."',
+  '"How timely was WFP in responding to COVID-19 needs?",timeliness,,,'
+    + '"Whether WFP responded in due time despite COVID constraints and whether '
+    + 'the actions came at the appropriate time."',
 ].join('\n');

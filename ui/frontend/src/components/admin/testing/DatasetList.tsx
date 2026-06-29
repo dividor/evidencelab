@@ -186,14 +186,17 @@ const DatasetList: React.FC<DatasetListProps> = ({ onOpen }) => {
           className="testing-dataset-actions"
           style={{ marginLeft: 'auto' }}
         >
-          <button className="btn-sm" onClick={() => setShowImport(true)}>
-            + Create Dataset + Experiment
-          </button>
           <button
             className="btn-sm btn-primary"
             onClick={() => setShowCreate(true)}
           >
             + Create Dataset
+          </button>
+          <button
+            className="btn-sm btn-primary"
+            onClick={() => setShowImport(true)}
+          >
+            + Create Experiment
           </button>
         </div>
       </div>

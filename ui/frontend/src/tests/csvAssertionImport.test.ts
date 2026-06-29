@@ -10,48 +10,63 @@ jest.mock('../config', () => ({ __esModule: true, default: '/api' }));
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-const HEADER = 'Question,Unpacking Question / Probing';
+const HEADER = 'query,tags,notes,filters,expectation';
+const NAME = 'My set';
+const SOURCE = 'uneg';
+const EXP_PATH = '/experiments';
+const CAP = 'ai_summary';
 
 describe('parseQaCsv', () => {
-  test('maps the Question and Unpacking columns to query and expected answer', () => {
+  test('mirrors the regular dataset columns plus an expectation column', () => {
     const csv = [
       HEADER,
-      'What changed after COVID?,Retrieve the most commonly cited changes.',
+      'What changed after COVID?,covid;baseline,A note,,Retrieve the cited changes.',
     ].join('\n');
     const rows = parseQaCsv(csv);
     expect(rows).toHaveLength(1);
-    expect(rows[0].query).toBe('What changed after COVID?');
-    expect(rows[0].expectedAnswer).toBe('Retrieve the most commonly cited changes.');
-  });
-
-  test('accepts generic header aliases and parses tags/notes', () => {
-    const csv = [
-      'query,expected_answer,tags,notes',
-      'How timely was WFP?,Respond in due time.,timeliness;covid,A note',
-    ].join('\n');
-    const rows = parseQaCsv(csv);
-    expect(rows[0].query).toBe('How timely was WFP?');
-    expect(rows[0].expectedAnswer).toBe('Respond in due time.');
-    expect(rows[0].tags).toEqual(['timeliness', 'covid']);
+    expect(rows[0].input).toEqual({ query: 'What changed after COVID?' });
+    expect(rows[0].tags).toEqual(['covid', 'baseline']);
     expect(rows[0].notes).toBe('A note');
+    expect(rows[0].expectation).toBe('Retrieve the cited changes.');
   });
 
-  test('keeps quoted multi-line expected answers intact', () => {
-    const csv = `${HEADER}\nQ1,"line one\n\nline two"`;
-    const rows = parseQaCsv(csv);
-    expect(rows[0].expectedAnswer).toContain('line one');
-    expect(rows[0].expectedAnswer).toContain('line two');
-  });
-
-  test('drops rows without a question', () => {
+  test('parses a filters JSON column into the case input', () => {
     const csv = [
       HEADER,
-      ',orphan expected answer',
-      'Real question,Real expected',
+      'nutrition outcomes,,,"{""country"": ""Kenya""}",Expected text',
     ].join('\n');
     const rows = parseQaCsv(csv);
+    expect(rows[0].input).toEqual({
+      query: 'nutrition outcomes',
+      filters: { country: 'Kenya' },
+    });
+    expect(rows[0].expectation).toBe('Expected text');
+  });
+
+  test('accepts header aliases (question / expected_answer)', () => {
+    const csv = [
+      'question,expected_answer',
+      'How timely was WFP?,Respond in due time.',
+    ].join('\n');
+    const rows = parseQaCsv(csv);
+    expect(rows[0].input).toEqual({ query: 'How timely was WFP?' });
+    expect(rows[0].expectation).toBe('Respond in due time.');
+  });
+
+  test('keeps quoted multi-line expectations intact', () => {
+    const csv = `${HEADER}\nQ1,,,,"line one\n\nline two"`;
+    const rows = parseQaCsv(csv);
+    expect(rows[0].expectation).toContain('line one');
+    expect(rows[0].expectation).toContain('line two');
+  });
+
+  test('drops rows without a query', () => {
+    const csv = [HEADER, ',,,,orphan expectation', 'Real question,,,,Real'].join(
+      '\n',
+    );
+    const rows = parseQaCsv(csv);
     expect(rows).toHaveLength(1);
-    expect(rows[0].query).toBe('Real question');
+    expect(rows[0].input).toEqual({ query: 'Real question' });
   });
 });
 
@@ -78,8 +93,8 @@ describe('buildJudgeMatrix', () => {
 
 describe('importDatasetWithExperiment', () => {
   const rows = [
-    { query: 'Q1', expectedAnswer: 'E1' },
-    { query: 'Q2', expectedAnswer: 'E2' },
+    { input: { query: 'Q1' }, expectation: 'E1' },
+    { input: { query: 'Q2' }, expectation: 'E2' },
   ];
 
   beforeEach(() => {
@@ -100,11 +115,12 @@ describe('importDatasetWithExperiment', () => {
     });
   };
 
-  test('creates the dataset, a case per row, and the paired experiment', async () => {
+  test('names dataset/experiment with suffixes and pairs expectations', async () => {
     wireSuccess();
     const datasetId = await importDatasetWithExperiment({
-      name: 'My set',
-      dataSource: 'uneg',
+      name: NAME,
+      capability: CAP,
+      dataSource: SOURCE,
       threshold: 0.7,
       rows,
     });
@@ -114,19 +130,58 @@ describe('importDatasetWithExperiment', () => {
       /\/testing\/datasets$/.test(url as string),
     );
     expect(datasetCall?.[1]).toMatchObject({
-      capability: 'ai_summary',
+      capability: CAP,
       data_source: 'uneg',
-      name: 'My set',
+      name: 'My set_dataset',
     });
 
+    const caseCall = mockedAxios.post.mock.calls.find(([url]) =>
+      (url as string).includes('/cases'),
+    );
+    expect(caseCall?.[1]).toMatchObject({ input: { query: 'Q1' } });
+
     const expCall = mockedAxios.post.mock.calls.find(([url]) =>
-      (url as string).includes('/experiments'),
+      (url as string).includes(EXP_PATH),
     );
     const body = expCall?.[1] as any;
-    expect(body.dataset_id).toBe('ds1');
-    expect(body.name).toBe('My set — LLM judge');
+    expect(body.name).toBe('My set_experiment');
     expect(body.case_expectations.cases.c1.ovr).toEqual(['E1']);
     expect(body.case_expectations.cases.c2.ovr).toEqual(['E2']);
+  });
+
+  test('passes model_combo / group_id config through to the experiment', async () => {
+    wireSuccess();
+    await importDatasetWithExperiment({
+      name: NAME,
+      capability: CAP,
+      dataSource: SOURCE,
+      threshold: 0.7,
+      config: { model_combo: 'Azure Foundry', group_id: 'g1' },
+      rows,
+    });
+    const expCall = mockedAxios.post.mock.calls.find(([url]) =>
+      (url as string).includes(EXP_PATH),
+    );
+    expect((expCall?.[1] as any).config).toEqual({
+      model_combo: 'Azure Foundry',
+      group_id: 'g1',
+    });
+  });
+
+  test('sends null config when none is supplied', async () => {
+    wireSuccess();
+    await importDatasetWithExperiment({
+      name: NAME,
+      capability: CAP,
+      dataSource: SOURCE,
+      threshold: 0.7,
+      config: {},
+      rows,
+    });
+    const expCall = mockedAxios.post.mock.calls.find(([url]) =>
+      (url as string).includes(EXP_PATH),
+    );
+    expect((expCall?.[1] as any).config).toBeNull();
   });
 
   test('deletes the dataset and rethrows when case creation fails', async () => {
@@ -138,8 +193,9 @@ describe('importDatasetWithExperiment', () => {
 
     await expect(
       importDatasetWithExperiment({
-        name: 'My set',
-        dataSource: 'uneg',
+        name: NAME,
+        capability: CAP,
+        dataSource: SOURCE,
         threshold: 0.7,
         rows,
       }),

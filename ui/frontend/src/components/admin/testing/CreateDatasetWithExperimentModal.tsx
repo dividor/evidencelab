@@ -1,6 +1,16 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import axios from 'axios';
+import API_BASE_URL from '../../../config';
+import type { TestCapability } from '../../../types/testing';
 import { parseQaCsv, SAMPLE_QA_CSV, QaCsvRow } from './csv';
 import { DEFAULT_THRESHOLD, importDatasetWithExperiment } from './experimentImport';
+import {
+  ConfigDraft,
+  ConfigForm,
+  GroupOption,
+  configToDraft,
+  draftToConfig,
+} from './ExperimentEditor';
 
 interface CreateDatasetWithExperimentModalProps {
   onCreated: () => void;
@@ -18,6 +28,8 @@ const downloadSampleCsv = () => {
   link.remove();
   URL.revokeObjectURL(url);
 };
+
+const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
 
 const clampThreshold = (value: number): number => {
   if (Number.isNaN(value)) return DEFAULT_THRESHOLD;
@@ -46,13 +58,56 @@ const CreateDatasetWithExperimentModal: React.FC<
 > = ({ onCreated, onCancel }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [capability, setCapability] = useState<TestCapability>('ai_summary');
   const [dataSource, setDataSource] = useState('');
-  const [experimentName, setExperimentName] = useState('');
   const [threshold, setThreshold] = useState(DEFAULT_THRESHOLD);
+  const [config, setConfig] = useState<ConfigDraft>(configToDraft(null));
+  const [modelCombos, setModelCombos] = useState<string[]>([]);
+  const [groups, setGroups] = useState<GroupOption[]>([]);
   const [fileName, setFileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  // Load all model combos on mount so the dropdown is populated; default to the
+  // first (system default) combo, mirroring the experiment editor.
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos`)
+      .then((resp) => {
+        if (cancelled) return;
+        const names = Object.keys(resp.data || {});
+        setModelCombos(names);
+        setConfig((c) =>
+          c.model_combo && names.includes(c.model_combo)
+            ? c
+            : { ...c, model_combo: names[0] || '' },
+        );
+      })
+      .catch(() => {
+        // Non-fatal: the combo dropdown stays empty if config can't load.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Load user groups for the "Run as group" dropdown.
+  useEffect(() => {
+    let cancelled = false;
+    axios
+      .get<GroupOption[]>(`${API_BASE_URL}/groups/`)
+      .then((resp) => {
+        if (!cancelled) setGroups(resp.data || []);
+      })
+      .catch(() => {
+        // Non-fatal: groups may be unavailable (user module off) — dropdown empty.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,9 +127,10 @@ const CreateDatasetWithExperimentModal: React.FC<
       await importDatasetWithExperiment({
         name,
         description,
+        capability,
         dataSource,
-        experimentName,
         threshold,
+        config: draftToConfig(config),
         rows,
       });
       onCreated();
@@ -101,15 +157,15 @@ const CreateDatasetWithExperimentModal: React.FC<
         <div className="modal-body">
           {error && <div className="auth-error">{error}</div>}
           <p className="text-muted" style={{ marginTop: 0 }}>
-            Upload a CSV with a <strong>Question</strong> column and an{' '}
-            <strong>Unpacking Question / Probing</strong> column (the expected
-            answer). This creates an AI-summary dataset of the questions and a
-            draft experiment with one LLM-judge assertion per row, each judged
-            against that row&apos;s expected answer.
+            Upload a CSV in the regular dataset format (
+            <code>query, tags, notes, filters</code>) plus one{' '}
+            <strong>expectation</strong> column. This creates a dataset of the
+            questions and a draft experiment with one LLM-judge assertion per
+            row, each judged against that row&apos;s expectation.
           </p>
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="cde-name">Dataset name</label>
+              <label htmlFor="cde-name">Name</label>
               <input
                 id="cde-name"
                 type="text"
@@ -119,6 +175,10 @@ const CreateDatasetWithExperimentModal: React.FC<
                 onChange={(e) => setName(e.target.value)}
                 placeholder="My evaluation set"
               />
+              <small className="text-muted">
+                Saved as <code>{`${name || 'name'}_dataset`}</code> and{' '}
+                <code>{`${name || 'name'}_experiment`}</code>.
+              </small>
             </div>
             <div className="form-group">
               <label htmlFor="cde-desc">Description (optional)</label>
@@ -131,6 +191,23 @@ const CreateDatasetWithExperimentModal: React.FC<
               />
             </div>
             <div className="form-group">
+              <label htmlFor="cde-capability">What to test</label>
+              <select
+                id="cde-capability"
+                value={capability}
+                onChange={(e) => setCapability(e.target.value as TestCapability)}
+              >
+                {CAPABILITIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <small className="text-muted">
+                The expectation column builds an LLM-judge assertion, which
+                evaluates the AI summary — choose <code>ai_summary</code> for it
+                to apply.
+              </small>
+            </div>
+            <div className="form-group">
               <label htmlFor="cde-source">Data source</label>
               <input
                 id="cde-source"
@@ -141,16 +218,13 @@ const CreateDatasetWithExperimentModal: React.FC<
                 placeholder="e.g. uneg"
               />
             </div>
-            <div className="form-group">
-              <label htmlFor="cde-exp-name">Experiment name (optional)</label>
-              <input
-                id="cde-exp-name"
-                type="text"
-                value={experimentName}
-                onChange={(e) => setExperimentName(e.target.value)}
-                placeholder="Defaults to “<dataset> — LLM judge”"
-              />
-            </div>
+            <ConfigForm
+              draft={config}
+              modelCombos={modelCombos}
+              groups={groups}
+              onChange={setConfig}
+              showHints={false}
+            />
             <div className="form-group">
               <label htmlFor="cde-threshold">Judge threshold (0–1)</label>
               <input
