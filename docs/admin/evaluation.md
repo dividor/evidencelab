@@ -23,6 +23,33 @@ The typical workflow is:
 
 ---
 
+### Quick path: create a dataset + experiment from one CSV
+
+If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** assertion per row, where each row is judged against its own expected answer.
+
+The CSV is the **same format as the dataset upload** (see [Add test cases](#add-test-cases)) plus one extra column:
+
+| Column | Required | Notes |
+|--------|----------|-------|
+| `query` | yes | The question / search query. |
+| `expectation` | yes | Free text describing the expected answer. Becomes that row's **LLM‑judge rubric** (per‑case override). |
+| `tags` | no | Separated by `;` within the cell. |
+| `notes` | no | Free text. |
+| `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
+
+In the **Create Experiment** dialog you provide:
+
+- **Name** — saved as `<name>_dataset` and `<name>_experiment`.
+- **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** assertion, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
+- **Data source**, **Model combo**, **Run as group**, and the **judge threshold** (default `0.7`) — the same run configuration as a normal experiment (see [Run configuration](#run-configuration)).
+- The **CSV file** (a **sample format** download is provided).
+
+Each row's question and expectation stay paired at the row level. The import is atomic — if anything fails part‑way, the partially‑created dataset is removed so you can retry cleanly. Once created, run it from the **Experiments** table like any other experiment ([Run an experiment](#3-run-an-experiment)).
+
+> Prefer to define assertions by hand, or build a `search` experiment? Use the manual flow below instead.
+
+---
+
 ### 1. Create a dataset
 
 A **dataset** is a reusable set of **test cases** for one capability. Datasets hold *inputs only* — the assertions live on the experiment, so the same dataset can be evaluated under different expectations.

@@ -68,6 +68,7 @@ Evidence Lab document processing pipeline includes the following features:
 - PDF preview with in-document search
 - Built-in searchable documentation area with sidebar navigation
 - Administration views to track pipeline, documents, performance and errors
+- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row). See [Evaluation Harness](docs/admin/evaluation.md)
 
 3. AI platform integrations
 
