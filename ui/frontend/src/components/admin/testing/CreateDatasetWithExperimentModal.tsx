@@ -57,12 +57,21 @@ const CreateDatasetWithExperimentModal: React.FC<
   const [error, setError] = useState('');
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // Load all model combos on mount so the dropdown is populated; default to the
-  // first (system default) combo, mirroring the experiment editor.
+  // Load model combos filtered to the entered data source (mirroring the
+  // experiment editor + the search UI) so only combos actually configured for
+  // this environment appear — not every combo in config.json. Re-fetches as the
+  // data source changes; defaults to the first combo, which also auto-selects it
+  // when the data source has only one configured combo.
   useEffect(() => {
+    const source = dataSource.trim();
+    if (!source) {
+      setModelCombos([]);
+      return undefined;
+    }
     let cancelled = false;
+    const params = `?data_source=${encodeURIComponent(source)}`;
     axios
-      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos`)
+      .get<Record<string, unknown>>(`${API_BASE_URL}/config/model-combos${params}`)
       .then((resp) => {
         if (cancelled) return;
         const names = Object.keys(resp.data || {});
@@ -79,7 +88,7 @@ const CreateDatasetWithExperimentModal: React.FC<
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dataSource]);
 
   // Load user groups for the "Run as group" dropdown.
   useEffect(() => {
