@@ -9,17 +9,13 @@ import CaseEditor, {
   caseToDraft,
   emptyDraft,
 } from './CaseEditor';
+import { SAMPLE_DATASET_CSV } from './csv';
 
 /* ------------------------------------------------------------------ */
 /*  CSV import helpers (columns: query, tags, notes, filters)         */
 /* ------------------------------------------------------------------ */
 
-const SAMPLE_CSV = [
-  'query,tags,notes,filters',
-  'girls education in Kenya,regression;baseline,Core evaluation question,',
-  'cash vs in-kind transfers in Kenya,regression,Comparison question,',
-  'nutrition outcomes for children,smoke,,"{""country"": ""Kenya""}"',
-].join('\n');
+const SAMPLE_CSV = SAMPLE_DATASET_CSV;
 
 // Map one parsed CSV row (header-keyed) to a case payload; null if no query.
 const rowToPayload = (row: Record<string, unknown>): CasePayload | null => {
