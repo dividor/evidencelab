@@ -231,7 +231,9 @@ class TestSearchTracker:
         assert sources[0]["index"] == 1
         assert sources[1]["index"] == 2
 
-    def test_get_sources_truncates_long_text(self):
+    def test_get_sources_keeps_full_text(self):
+        # Sources carry the complete chunk text (no truncation) so the Brief's
+        # Word export can render the full excerpt for each cited source.
         _mock_search_fn.reset_mock()
         _mock_search_fn.side_effect = None
         long_text = "x" * 300
@@ -243,8 +245,8 @@ class TestSearchTracker:
         tracker.search("query")
         sources = tracker.get_sources()
 
-        assert len(sources[0]["text"]) < 300
-        assert sources[0]["text"].endswith("...")
+        assert sources[0]["text"] == long_text
+        assert not sources[0]["text"].endswith("...")
 
     def test_global_result_numbering_across_searches(self):
         """Results should have globally unique indices across multiple searches."""

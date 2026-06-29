@@ -52,6 +52,7 @@ import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
 import AdminPanel from './components/admin/AdminPanel';
 import { AssistantTab } from './components/assistant/AssistantTab';
+import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary, AiSummaryUsage } from './utils/aiSummaryStream';
@@ -108,7 +109,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'assistant', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'terms', 'stats', 'admin', 'docs'] as const;
+const VALID_TABS = ['search', 'assistant', 'brief', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'terms', 'stats', 'admin', 'docs'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -2939,6 +2940,13 @@ function App() {
               fieldBoostFields,
             }}
             exampleQueries={currentDataSourceConfig?.example_queries}
+            onResultClick={handleResultClick}
+          />
+        }
+        briefTab={
+          <BriefTab
+            dataSource={dataSource}
+            assistantModelConfig={assistantModelConfig}
             onResultClick={handleResultClick}
           />
         }

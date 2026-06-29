@@ -288,3 +288,5 @@ config.json
 /gcp-creds.json
 /gcp.key.json
 /gcp.key.json.vertex
+/gcp.key.*.json
+/gcp.key.*

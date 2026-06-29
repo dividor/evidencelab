@@ -16,14 +16,19 @@
  */
 import {
   AlignmentType,
+  Bookmark,
+  BorderStyle,
   Document,
   ExternalHyperlink,
   Footer,
   HeadingLevel,
+  InternalHyperlink,
   LevelFormat,
   Packer,
+  PageBreak,
   PageNumber,
   Paragraph,
+  ShadingType,
   TextRun,
   convertInchesToTwip,
 } from 'docx';
@@ -46,6 +51,23 @@ export interface ExportOptions {
   siteOrigin?: string;
   /** Injectable clock for deterministic tests. */
   now?: () => Date;
+  /** Heading for the per-result excerpts section (default "Search Results").
+   *  The Brief export passes "Reference Excerpts". */
+  resultsSectionTitle?: string;
+  /** Cover-page document title (default "Evidence Lab — Search Export").
+   *  The Brief export passes "AI-generated Research Brief". */
+  documentTitle?: string;
+  /** Heading for the AI-prose section (default "AI Summary"). The Brief export
+   *  passes the brief topic so the prose sits under its own subject heading. */
+  summaryHeading?: string;
+  /** Optional disclaimer rendered as a bordered call-out box on the cover,
+   *  directly under the metadata line. The Brief export uses it to flag that
+   *  the content is AI-generated and must be verified. */
+  infoBox?: string;
+  /** When true, insert a clickable Table of Contents after the cover. It is
+   *  built from real content (internal links to heading bookmarks), not a Word
+   *  field, so opening the document never prompts to update fields. */
+  tableOfContents?: boolean;
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -241,16 +263,19 @@ const matchBlockParagraph = (
   line: string,
   headingShift: number,
   citations?: CitationContext,
+  bookmarkId?: string,
 ): Paragraph | null => {
   const h = /^(#{1,6})\s+(.*)$/.exec(line);
   if (h) {
     const depth = Math.min(6, Math.max(1, h[1].length + headingShift));
     const heading = HEADING_LEVELS_BY_DEPTH[depth] ?? HeadingLevel.HEADING_6;
     // Headings stay text-only — rendering hyperlinks inside a heading
-    // confuses Word's outline view, so omit the citation context here.
+    // confuses Word's outline view, so omit the citation context here. When a
+    // bookmarkId is supplied, wrap the runs so the manual TOC can link here.
+    const runs = inlineRuns(h[2]);
     return new Paragraph({
       heading,
-      children: inlineRuns(h[2]),
+      children: bookmarkId ? [new Bookmark({ id: bookmarkId, children: runs })] : runs,
       spacing: { before: 200, after: 120 },
     });
   }
@@ -292,6 +317,7 @@ export const markdownToParagraphs = (
   md: string,
   headingShift = 0,
   citations?: CitationContext,
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   const lines = md.replace(/\r\n/g, '\n').split('\n');
@@ -307,13 +333,17 @@ export const markdownToParagraphs = (
     }
   };
 
+  let headingIdx = 0;
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (line === '') {
       flushParagraph();
       continue;
     }
-    const block = matchBlockParagraph(line, headingShift, citations);
+    // Bookmark headings in document order so the manual TOC's links resolve.
+    const bookmarkId =
+      bookmarkPrefix && /^#{1,6}\s+/.test(line) ? `${bookmarkPrefix}${headingIdx++}` : undefined;
+    const block = matchBlockParagraph(line, headingShift, citations, bookmarkId);
     if (block) {
       flushParagraph();
       paragraphs.push(block);
@@ -323,6 +353,16 @@ export const markdownToParagraphs = (
   }
   flushParagraph();
   return paragraphs;
+};
+
+/** Extract markdown headings (text + depth), in document order, for the TOC. */
+const extractMarkdownHeadings = (md: string): { text: string; depth: number }[] => {
+  const out: { text: string; depth: number }[] = [];
+  for (const raw of md.replace(/\r\n/g, '\n').split('\n')) {
+    const m = /^(#{1,6})\s+(.*)$/.exec(raw.trimEnd());
+    if (m) out.push({ text: m[2].trim(), depth: m[1].length });
+  }
+  return out;
 };
 
 // ---------------------------------------------------------------------------
@@ -338,7 +378,9 @@ const buildCoverParagraphs = (
     new Paragraph({
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.LEFT,
-      children: [new TextRun({ text: 'Evidence Lab — Search Export', bold: true })],
+      children: [
+        new TextRun({ text: opts.documentTitle || 'Evidence Lab — Search Export', bold: true }),
+      ],
     }),
   );
   // Demoted to H2 so the document has exactly two H1s — "AI Summary" and
@@ -357,10 +399,54 @@ const buildCoverParagraphs = (
   children.push(
     new Paragraph({
       children: [new TextRun({ text: meta.join('  ·  '), size: 20, color: '555555' })],
-      spacing: { after: 360 },
+      spacing: { after: opts.infoBox ? 120 : 360 },
     }),
   );
+  if (opts.infoBox && opts.infoBox.trim()) {
+    // A single bordered, lightly-shaded paragraph reads as a call-out box.
+    const side = { style: BorderStyle.SINGLE, size: 6, color: 'E0C36A', space: 8 };
+    children.push(
+      new Paragraph({
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'FBF4DD' },
+        border: { top: side, bottom: side, left: side, right: side },
+        spacing: { before: 60, after: 360, line: 276 },
+        children: [
+          new TextRun({ text: opts.infoBox.trim(), italics: true, size: 20, color: '6B5B2E' }),
+        ],
+      }),
+    );
+  }
   return children;
+};
+
+/** A clickable Table of Contents built from real content (not a Word field, so
+ *  opening the document never prompts to "update fields"). Each entry is an
+ *  internal hyperlink to a bookmark placed on the matching heading; the heading
+ *  bookmarks are emitted by {@link markdownToParagraphs} in the same order. */
+const buildManualToc = (summary: string, bookmarkPrefix: string): Paragraph[] => {
+  const out: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: 'Contents' })],
+      spacing: { after: 120 },
+    }),
+  ];
+  extractMarkdownHeadings(summary).forEach((h, i) => {
+    out.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        indent: h.depth > 1 ? { left: convertInchesToTwip(0.3 * (h.depth - 1)) } : undefined,
+        children: [
+          new InternalHyperlink({
+            anchor: `${bookmarkPrefix}${i}`,
+            children: [new TextRun({ text: h.text, style: 'Hyperlink' })],
+          }),
+        ],
+      }),
+    );
+  });
+  out.push(new Paragraph({ children: [new PageBreak()] }));
+  return out;
 };
 
 const buildReferenceParagraphs = (
@@ -378,8 +464,9 @@ const buildReferenceParagraphs = (
   );
   // Each entry is a plain (non-bulleted) paragraph led by the document's
   // citation numbers in brackets, mirroring how citations appear inline:
-  //   [1, 3]  Doc title — Org, 2020   p.4   p.9
-  // Each [N] is a clickable hyperlink to that specific result's page.
+  //   [1, 3] Doc title — Org, 2020, p.4, p.9
+  // Each [N] is a clickable hyperlink to that specific result's page. The
+  // title is unbolded so it reads as a reference line, not a heading.
   for (const group of groups) {
     const meta: string[] = [];
     if (group.organization) meta.push(group.organization);
@@ -398,10 +485,10 @@ const buildReferenceParagraphs = (
       );
     });
     children.push(new TextRun({ text: '] ' }));
-    children.push(new TextRun({ text: group.title + titleSuffix, bold: true }));
+    children.push(new TextRun({ text: group.title + titleSuffix }));
     for (const { result } of group.refs) {
       if (typeof result.page_num === 'number') {
-        children.push(new TextRun({ text: '   p.' + result.page_num, color: '555555' }));
+        children.push(new TextRun({ text: ', p.' + result.page_num, color: '555555' }));
       }
     }
 
@@ -415,13 +502,15 @@ const buildSummarySection = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource?: string,
+  heading = 'AI Summary',
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: 'AI Summary' })],
+      children: [new TextRun({ text: heading })],
       spacing: { before: 240, after: 120 },
     }),
   );
@@ -433,8 +522,9 @@ const buildSummarySection = (
   };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
-  // body become clickable links, renumbered to match the screen.
-  out.push(...markdownToParagraphs(summary, 1, citations));
+  // body become clickable links, renumbered to match the screen. When a
+  // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
+  out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
   out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
   return out;
 };
@@ -493,15 +583,27 @@ const buildResultCard = (
     );
   }
 
+  // Render the FULL excerpt (never truncated) inside a single bordered, shaded
+  // box at a smaller font. One paragraph guarantees a single continuous box
+  // that still flows across page breaks; blank lines separate any sub-blocks.
   const excerpt = normaliseExcerpt(String(r.text || ''));
-  const blocks = excerpt.split(/\n{2,}/);
-  for (const block of blocks) {
-    const inner = block.split('\n').join(' ').trim();
-    if (!inner) continue;
+  const blocks = excerpt
+    .split(/\n{2,}/)
+    .map((b) => b.split('\n').join(' ').trim())
+    .filter(Boolean);
+  if (blocks.length) {
+    const excerptRuns: TextRun[] = [];
+    blocks.forEach((b, i) => {
+      if (i > 0) excerptRuns.push(new TextRun({ break: 2 }));
+      excerptRuns.push(new TextRun({ text: b, italics: true, size: 18, color: '3A3A3A' }));
+    });
+    const boxSide = { style: BorderStyle.SINGLE, size: 4, color: 'D7DCE1', space: 8 };
     out.push(
       new Paragraph({
-        spacing: { after: 120 },
-        children: [new TextRun({ text: inner })],
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F6F8FA' },
+        border: { top: boxSide, bottom: boxSide, left: boxSide, right: boxSide },
+        spacing: { after: 160, line: 252 },
+        children: excerptRuns,
       }),
     );
   }
@@ -525,12 +627,13 @@ const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource?: string,
+  sectionTitle = 'Search Results',
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: `Search Results (${results.length})` })],
+      children: [new TextRun({ text: `${sectionTitle} (${results.length})` })],
       spacing: { before: 360, after: 120 },
     }),
   );
@@ -551,15 +654,29 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
+  const tocBookmarkPrefix = 'briefheading';
   const body: Paragraph[] = [
     ...buildCoverParagraphs(opts, now),
-    ...buildSummarySection(opts.aiSummary ?? '', opts.results, siteOrigin, opts.dataSource),
-    ...buildResultsSection(opts.results, siteOrigin, opts.dataSource),
+    ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
+    ...buildSummarySection(
+      opts.aiSummary ?? '',
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.summaryHeading,
+      opts.tableOfContents ? tocBookmarkPrefix : undefined,
+    ),
+    ...buildResultsSection(
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.resultsSectionTitle,
+    ),
   ];
 
   return new Document({
     creator: 'Evidence Lab',
-    title: `Evidence Lab Search — ${opts.query}`,
+    title: opts.documentTitle ? opts.documentTitle : `Evidence Lab Search — ${opts.query}`,
     description: `Export of ${opts.results.length} search results` +
       (opts.aiSummary ? ' and the AI summary' : ''),
     // Match the web app's typography: Open Sans for body, Poppins for

@@ -1,0 +1,1497 @@
+/* Brief tab — Document Builder.
+   Recreated from the Claude Design handoff (Direction A). Colours/typography use
+   the app brand tokens (App.css :root), which match the handoff palette and
+   adapt to per-deployment branding. */
+
+.brief-tab {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 32px 80px;
+  font-family: var(--font-body);
+  color: var(--brand-text-primary);
+}
+
+.brief-eyebrow {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--brand-primary);
+  margin-bottom: 8px;
+}
+
+/* ---------- seed ---------- */
+.brief-seed {
+  max-width: 720px;
+  margin: 28px auto 0;
+}
+.brief-seed-title {
+  font-family: var(--font-heading);
+  font-size: 34px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  margin: 0 0 12px;
+  line-height: 1.15;
+}
+.brief-seed-lede {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--brand-text-secondary);
+  margin: 0 0 28px;
+  max-width: 600px;
+}
+.brief-seed-card {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06);
+  padding: 22px;
+}
+.brief-label {
+  display: block;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-secondary);
+  margin-bottom: 8px;
+}
+.brief-textarea {
+  width: 100%;
+  border: 2px solid var(--brand-border);
+  padding: 14px;
+  font-size: 16px;
+  color: var(--brand-text-primary);
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+  font-family: inherit;
+}
+.brief-textarea:focus {
+  border-color: var(--brand-primary);
+}
+.brief-seed-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.brief-seed-load {
+  margin-left: auto;
+}
+
+/* ---------- buttons ---------- */
+.brief-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 13px 22px;
+  cursor: pointer;
+  border: none;
+}
+/* Keep inline SVG icons crisp and aligned inside buttons. */
+.brief-btn svg,
+.brief-link-btn svg,
+.brief-regen-btn svg,
+.brief-export-word svg {
+  flex-shrink: 0;
+}
+.brief-btn-primary {
+  background: var(--brand-accent);
+  color: #fff;
+}
+.brief-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.brief-btn-secondary {
+  background: var(--brand-surface);
+  color: var(--brand-text-primary);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.brief-btn-secondary:hover:not(:disabled) {
+  background: var(--brand-border-light);
+  border-color: var(--brand-text-tertiary);
+}
+.brief-btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-btn-block {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brief-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 13px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.brief-link-btn:hover:not(:disabled) {
+  background: var(--brand-border-light);
+  border-color: var(--brand-text-tertiary);
+  color: var(--brand-text-primary);
+}
+.brief-link-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-count-badge {
+  background: var(--brand-primary);
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 6px;
+  font-weight: 700;
+}
+.brief-error {
+  color: var(--brand-error);
+  font-size: 13.5px;
+  margin-top: 10px;
+}
+
+/* Icon glyphs render small inline; bump them up and align. */
+.brief-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+}
+
+/* Seed form: instructions + number-of-sections + a flex'd load button */
+.brief-label-spaced {
+  margin-top: 16px;
+}
+.brief-label-hint {
+  font-weight: 400;
+  color: var(--brand-text-tertiary);
+}
+.brief-textarea-sm {
+  font-size: 14px;
+}
+.brief-seed-num {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.brief-seed-num .brief-label {
+  margin-bottom: 0;
+}
+.brief-number {
+  width: 72px;
+  border: 1px solid var(--brand-border);
+  padding: 9px 10px;
+  font-size: 15px;
+  color: var(--brand-text-primary);
+  outline: none;
+  font-family: inherit;
+}
+.brief-number:focus {
+  border-color: var(--brand-primary);
+}
+.brief-seed-load {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Outline-generation activity panel (seed view) */
+.brief-generating {
+  background: #f6f9fa;
+  border: 1px solid var(--brand-border);
+  padding: 18px 20px;
+  margin-top: 20px;
+}
+.brief-generating .brief-activity {
+  margin-top: 12px;
+}
+
+/* Editable brief title in the document header */
+.brief-doc-title-input {
+  display: block;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: none;
+  outline: none;
+  padding: 1px 0;
+  margin: 0 0 14px;
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  line-height: 1.25;
+  /* Wrap long titles across lines (it's a textarea that auto-grows in JS). */
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.brief-doc-title-input:hover {
+  border-bottom-color: var(--brand-border-light);
+}
+.brief-doc-title-input:focus {
+  border-bottom-color: var(--brand-border);
+}
+
+/* Per-section "research this section" action */
+.brief-research-one-btn {
+  font-size: 13px;
+  padding: 7px 13px;
+  margin-left: 6px;
+}
+.brief-error-banner {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* ---------- builder layout ---------- */
+.brief-toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  /* Match the outline rail width (grid column below), so the two equal-width
+     buttons together span exactly the headings panel beneath them. */
+  width: 308px;
+}
+.brief-toolbar .brief-link-btn {
+  flex: 1;
+  justify-content: center;
+}
+.brief-builder {
+  display: grid;
+  grid-template-columns: 308px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+/* ---------- outline rail ---------- */
+.brief-rail {
+  position: sticky;
+  top: 16px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  align-self: start;
+}
+.brief-rail-actions {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--brand-border-light);
+}
+.brief-rail-actions .brief-link-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 6px;
+  font-size: 12.5px;
+}
+.brief-rail-head {
+  /* Top padding matches .brief-doc so HISTORY lines up with EVIDENCE BRIEF;
+     left padding matches the SELECTED label below so the two line up. */
+  padding: 24px 18px 16px 10px;
+  border-bottom: 1px solid var(--brand-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.brief-rail-title {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+.brief-rail-count {
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+/* ---------- heading-number toggle ---------- */
+.brief-num-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 18px;
+  border: none;
+  border-bottom: 1px solid var(--brand-border-light);
+  background: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+.brief-num-toggle:hover {
+  color: var(--brand-text-primary);
+}
+.brief-switch {
+  flex: none;
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 9px;
+  background: var(--brand-border-light);
+  border: 1px solid var(--brand-border-light);
+  transition: background 0.15s ease;
+}
+.brief-switch-on {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+.brief-switch-thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease;
+}
+.brief-switch-on .brief-switch-thumb {
+  transform: translateX(13px);
+}
+.brief-rail-list {
+  padding: 8px;
+}
+.brief-rail-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px;
+  border-left: 3px solid transparent;
+}
+.brief-rail-item-sub {
+  padding-left: 24px;
+}
+.brief-rail-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+  background: var(--brand-text-tertiary);
+}
+.brief-rail-dot-researching {
+  background: var(--brand-primary);
+}
+.brief-rail-dot-done {
+  background: var(--brand-success);
+}
+.brief-rail-item-title {
+  flex: 1;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--brand-text-primary);
+}
+.brief-rail-item-sub .brief-rail-item-title {
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+.brief-rail-controls {
+  display: flex;
+  gap: 1px;
+  opacity: 0.6;
+}
+.brief-rail-controls button {
+  background: none;
+  border: none;
+  color: var(--brand-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 3px;
+  line-height: 1;
+}
+.brief-rail-add {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 14px;
+  border-top: 1px solid var(--brand-border-light);
+}
+.brief-rail-add input {
+  flex: 1;
+  border: 1px solid var(--brand-border);
+  padding: 9px 10px;
+  font-size: 13px;
+  color: var(--brand-text-primary);
+  outline: none;
+  font-family: inherit;
+}
+.brief-rail-add button {
+  background: var(--brand-border-light);
+  border: none;
+  color: var(--brand-text-primary);
+  font-weight: 700;
+  padding: 0 12px;
+  cursor: pointer;
+}
+.brief-rail-foot {
+  padding: 14px;
+  border-top: 1px solid var(--brand-border-light);
+}
+.brief-rail-foot .brief-btn {
+  font-size: 14px;
+  padding: 12px;
+}
+.brief-rail-progress-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  margin-bottom: 6px;
+}
+.brief-progress-track {
+  height: 5px;
+  background: var(--brand-border-light);
+}
+.brief-progress-fill {
+  height: 5px;
+  background: var(--brand-primary);
+  transition: width 0.4s;
+}
+
+/* ---------- document ---------- */
+.brief-doc {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  /* Top padding matches .brief-rail-head so EVIDENCE BRIEF lines up with HISTORY. */
+  padding: 24px 64px 64px;
+  max-width: 840px;
+}
+.brief-doc-header {
+  border-bottom: 1px solid var(--brand-border-light);
+  padding-bottom: 24px;
+  margin-bottom: 8px;
+}
+.brief-doc-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brief-doc-header-actions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.brief-regen-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--brand-surface);
+  color: var(--brand-text-secondary);
+  border: 1px solid var(--brand-border);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.brief-regen-all:hover:not(:disabled) {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+.brief-regen-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-export-word {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--brand-surface);
+  color: var(--brand-accent);
+  border: 1px solid var(--brand-border);
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.brief-export-word:hover:not(:disabled) {
+  border-color: var(--brand-accent);
+}
+.brief-export-word:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-doc-title {
+  font-family: var(--font-heading);
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  margin: 0 0 14px;
+  line-height: 1.2;
+}
+.brief-doc-meta {
+  font-size: 14px;
+  color: var(--brand-text-tertiary);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+/* Subtle pill button so it doesn't compete with the brief content. */
+.brief-meta-link {
+  display: inline-flex;
+  align-items: center;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
+  padding: 2px 9px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-text-secondary);
+}
+.brief-meta-link:hover {
+  border-color: var(--brand-border);
+  color: var(--brand-text-primary);
+}
+.brief-outline-log {
+  margin-top: 14px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  padding: 12px 14px;
+}
+.brief-outline-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+  margin-bottom: 10px;
+}
+.brief-outline-log-close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-outline-log-close:hover {
+  color: var(--brand-text-primary);
+}
+.brief-outline-log .brief-activity {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.brief-edit-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--brand-text-tertiary);
+}
+.brief-edit-hint .brief-icon {
+  font-size: 13px;
+  font-style: normal;
+}
+
+.brief-doc-section {
+  padding: 28px 0;
+  border-bottom: 1px solid var(--brand-border-light);
+  /* Fallback offset for TOC jumps so the heading clears the sticky top bar;
+     BriefToc refines this from the bar's measured height at click time. */
+  scroll-margin-top: 88px;
+}
+.brief-doc-section-sub {
+  padding: 20px 0 20px 22px;
+  border-left: 2px solid var(--brand-border-light);
+  margin-left: 8px;
+}
+.brief-doc-section-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.brief-doc-section-num {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--brand-text-tertiary);
+  flex-shrink: 0;
+}
+.brief-doc-section-title {
+  flex: 1;
+  border: none;
+  border-bottom: 1px solid transparent;
+  background: none;
+  outline: none;
+  padding: 1px 0;
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  line-height: 1.3;
+}
+.brief-doc-section-sub .brief-doc-section-title {
+  font-size: 16.5px;
+  color: var(--brand-text-secondary);
+}
+.brief-doc-section-title:focus {
+  border-bottom-color: var(--brand-border);
+}
+.brief-regen-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* Edit text / Regenerate sit on their own row beneath the section title. */
+.brief-doc-section-tools {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 16px;
+}
+.brief-regen-btn .brief-icon {
+  font-size: 14px;
+}
+.brief-regen-panel {
+  margin: 0 0 16px;
+  background: #f6f9fa;
+  border: 1px solid var(--brand-primary);
+  padding: 14px 16px;
+}
+.brief-regen-title {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary-dark);
+  margin-bottom: 8px;
+}
+.brief-regen-panel textarea {
+  width: 100%;
+  border: 1px solid var(--brand-border);
+  padding: 10px;
+  font-size: 13.5px;
+  color: var(--brand-text-primary);
+  resize: none;
+  outline: none;
+  line-height: 1.5;
+  background: #fff;
+  font-family: inherit;
+}
+.brief-regen-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.brief-regen-actions .brief-btn {
+  font-size: 13px;
+  padding: 9px 16px;
+}
+
+.brief-pending {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--brand-text-tertiary);
+  font-size: 14px;
+  font-style: italic;
+}
+.brief-pending-dot {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--brand-text-tertiary);
+  border-radius: 50%;
+}
+
+.brief-researching {
+  background: #f6f9fa;
+  border-left: 3px solid var(--brand-primary);
+  padding: 14px 16px;
+}
+.brief-researching-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.brief-researching-label {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-primary-dark);
+}
+.brief-researching-pct {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #cdddE3;
+  border-top-color: var(--brand-primary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: briefSpin 0.8s linear infinite;
+}
+@keyframes briefSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.brief-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.brief-activity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+.brief-tag {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  padding: 2px 5px;
+  flex-shrink: 0;
+  min-width: 56px;
+  text-align: center;
+  box-sizing: border-box;
+}
+.brief-tag-scan {
+  background: var(--brand-text-tertiary);
+}
+.brief-tag-read {
+  background: var(--brand-primary);
+}
+.brief-tag-extract {
+  background: var(--brand-warning);
+}
+.brief-tag-draft {
+  background: var(--brand-primary-dark);
+}
+.brief-tag-done {
+  background: var(--brand-success);
+}
+
+.brief-edit-textarea {
+  width: 100%;
+  border: 1px solid var(--brand-border);
+  padding: 14px 16px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--brand-text-primary);
+  resize: vertical;
+  outline: none;
+}
+.brief-edit-textarea:focus {
+  border-color: var(--brand-primary);
+}
+
+.brief-doc-content {
+  font-size: 15.5px;
+  color: var(--brand-text-primary);
+  line-height: 1.72;
+}
+.brief-doc-content p {
+  margin: 0 0 14px;
+}
+.brief-doc-content sup {
+  color: var(--brand-primary);
+  font-weight: 700;
+}
+
+.brief-sources {
+  margin-top: 16px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  padding: 12px 16px;
+}
+.brief-sources-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--brand-text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.brief-sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.brief-source-row {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.brief-source-n {
+  color: var(--brand-primary);
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 16px;
+}
+.brief-source-text {
+  color: var(--brand-text-secondary);
+}
+.brief-source-page {
+  color: var(--brand-text-tertiary);
+}
+
+/* ---------- per-section evidence (subtle, collapsible supporting metadata) ----
+   The authoritative cited list is the compiled Footnotes below; this panel is
+   informational only, so it reads as muted metadata and collapses by default. */
+.brief-evidence {
+  margin-top: 16px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  /* Reset the base .ai-summary-references top padding + border-top: they add
+     space only at the top of our bordered box, pushing the toggle off-centre. */
+  padding-top: 0;
+  border-top: 1px solid var(--brand-border-light);
+}
+.brief-evidence .assistant-refs-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+}
+.brief-evidence .assistant-refs-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  font-size: 12px;
+  line-height: 1;
+}
+.brief-evidence .assistant-refs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 2px 14px 12px;
+}
+.brief-evidence .ai-summary-ref-group {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--brand-text-secondary);
+}
+.brief-evidence .ai-summary-ref-link {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* ---------- footnotes ---------- */
+.brief-footnotes {
+  padding: 28px 0 0;
+}
+.brief-footnotes-title {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  margin: 0 0 4px;
+}
+.brief-footnotes-sub {
+  font-size: 13px;
+  color: var(--brand-text-tertiary);
+  margin-bottom: 16px;
+}
+.brief-footnotes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+.brief-footnote-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.brief-footnote-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--brand-text-secondary);
+}
+.brief-footnote-link:hover .brief-footnote-text {
+  text-decoration: underline;
+}
+.brief-footnote-n {
+  color: var(--brand-primary);
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 18px;
+}
+.brief-footnote-text {
+  color: var(--brand-text-secondary);
+  font-weight: 400;
+}
+.brief-footnote-section {
+  color: var(--brand-text-tertiary);
+  font-style: italic;
+}
+
+/* ---------- history modal ---------- */
+.brief-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 37, 47, 0.45);
+  z-index: 150;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 96px 20px 40px;
+}
+.brief-modal {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.15);
+  width: 100%;
+  max-width: 560px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+.brief-modal-head {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--brand-border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  background: var(--brand-surface);
+}
+.brief-modal-title {
+  font-family: var(--font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.brief-modal-sub {
+  font-size: 12.5px;
+  color: var(--brand-text-tertiary);
+  margin-top: 2px;
+}
+.brief-modal-close {
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+.brief-modal-empty {
+  padding: 44px 22px;
+  text-align: center;
+  color: var(--brand-text-tertiary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.brief-modal-list {
+  padding: 10px;
+}
+.brief-modal-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--brand-border-light);
+  margin-bottom: 8px;
+}
+.brief-modal-row:hover {
+  border-color: var(--brand-border);
+}
+.brief-modal-row-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: var(--brand-surface);
+  border: none;
+  padding: 13px 15px;
+  cursor: pointer;
+}
+.brief-modal-row-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  background: var(--brand-surface);
+  color: var(--brand-text-tertiary);
+  padding: 0 12px;
+  cursor: pointer;
+}
+.brief-modal-row-act:hover {
+  color: var(--brand-primary);
+}
+.brief-modal-row-del {
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  background: var(--brand-surface);
+  color: var(--brand-text-tertiary);
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 14px;
+  cursor: pointer;
+}
+.brief-modal-row-del:hover {
+  color: var(--brand-error);
+  background: rgba(239, 68, 68, 0.06);
+}
+.brief-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 22px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  color: var(--brand-text-tertiary);
+}
+.brief-modal-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--brand-text-primary);
+}
+.brief-modal-row-title {
+  font-family: var(--font-heading);
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  margin-bottom: 4px;
+}
+.brief-modal-row-query {
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  line-height: 1.4;
+  margin-bottom: 5px;
+}
+.brief-modal-row-meta {
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+
+/* ============================================================
+   Builder restructure: history rail + in-document editing
+   ============================================================ */
+
+/* ---------- left history rail ---------- */
+.brief-rail {
+  display: flex;
+  flex-direction: column;
+}
+/* The currently-open brief, pinned above the list with its own label and a
+   separator line so it reads as distinct from the history below. */
+.brief-history-selected {
+  padding: 10px 8px 12px;
+  border-bottom: 1px solid var(--brand-border-light);
+}
+.brief-history-selected-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+  margin: 0 2px 6px;
+}
+.brief-history-list {
+  /* Fixed height so the panel doesn't resize while searching; up to 10 rows
+     scroll within it. */
+  height: 360px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.brief-see-more {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--brand-border-light);
+  color: var(--brand-primary);
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 10px;
+  cursor: pointer;
+}
+.brief-see-more:hover {
+  text-decoration: underline;
+}
+.brief-history-empty {
+  padding: 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-item {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--brand-border-light);
+  overflow: hidden;
+}
+.brief-history-item-active {
+  border-color: var(--brand-primary);
+  background: #f0f6ff;
+}
+.brief-history-item-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 9px 10px;
+}
+.brief-history-item-main:hover {
+  background: #f7f9fa;
+}
+.brief-history-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.brief-history-item-meta {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-del {
+  flex: none;
+  width: 30px;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-history-del:hover {
+  color: #c0392b;
+  background: #f7f9fa;
+}
+
+/* ---------- heading-number toggle (in the TOC header row) ---------- */
+.brief-num-toggle-inline {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--brand-text-secondary);
+}
+.brief-num-toggle-inline:hover {
+  color: var(--brand-text-primary);
+}
+
+/* ---------- in-document research progress ---------- */
+.brief-doc-progress {
+  margin-top: 14px;
+}
+.brief-doc-progress-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  margin-bottom: 6px;
+}
+.brief-doc-progress-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.brief-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: #c0392b;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.brief-stop-btn:hover {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.06);
+}
+
+/* ---------- "start research" bar ---------- */
+.brief-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 0 4px;
+}
+
+/* ---------- table of contents (top of the brief) ---------- */
+.brief-toc {
+  margin: 4px 0 28px;
+  background: #fafbfb;
+  border: 1px solid var(--brand-border-light);
+  padding: 12px 14px 14px;
+}
+.brief-toc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.brief-toc-head-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+}
+.brief-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.brief-toc-row {
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+}
+.brief-toc-row-sub {
+  margin-left: 22px;
+}
+.brief-toc-row-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 4px;
+}
+.brief-toc-row-line:hover {
+  background: #f1f4f5;
+}
+.brief-toc-subadd {
+  padding: 2px 2px 8px 30px;
+}
+.brief-toc-sub-input {
+  width: 100%;
+  border: 1px solid var(--brand-primary);
+  border-radius: 4px;
+  outline: none;
+  padding: 6px 9px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--brand-text-primary);
+}
+.brief-toc-heading-input {
+  margin-top: 10px;
+}
+.brief-toc-grip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 30px;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  cursor: grab;
+  /* Let the touch sensor own the gesture on the handle (no page scroll). */
+  touch-action: none;
+}
+.brief-toc-grip:active {
+  cursor: grabbing;
+}
+.brief-toc-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 6px 2px;
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--brand-text-primary);
+}
+.brief-toc-jump:hover {
+  color: var(--brand-primary);
+}
+.brief-toc-num {
+  flex: none;
+  font-weight: 700;
+  color: var(--brand-text-tertiary);
+}
+.brief-toc-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.brief-toc-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand-border);
+}
+.brief-toc-dot-researching {
+  background: var(--brand-primary);
+}
+.brief-toc-dot-done {
+  background: #2e9e5b;
+}
+.brief-toc-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.brief-toc-act,
+.brief-toc-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+}
+.brief-toc-del {
+  font-size: 17px;
+  line-height: 1;
+}
+.brief-toc-act:hover {
+  color: var(--brand-primary);
+}
+.brief-toc-del:hover {
+  color: #c0392b;
+}
+.brief-toc-add {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px dashed var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.brief-toc-add:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+/* ---------- history search + clone ---------- */
+.brief-history-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 8px 0;
+  padding: 7px 10px;
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  color: var(--brand-text-tertiary);
+}
+.brief-history-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--brand-text-primary);
+}
+.brief-history-act {
+  flex: none;
+  width: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--brand-border-light);
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+}
+.brief-history-act:hover {
+  color: var(--brand-primary);
+  background: #f7f9fa;
+}

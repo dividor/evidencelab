@@ -29,6 +29,7 @@ from pipeline.db import (
 )
 from pipeline.utilities.tasks import app as celery_app
 from ui.backend.routes import assistant as assistant_routes
+from ui.backend.routes import brief as brief_routes
 from ui.backend.routes import config as config_routes
 from ui.backend.routes import documents as documents_routes
 from ui.backend.routes import highlight as highlight_routes
@@ -831,6 +832,7 @@ app.include_router(highlight_routes.router)
 app.include_router(stats_routes.router)
 app.include_router(search_routes.router)
 app.include_router(assistant_routes.router, tags=["assistant"])
+app.include_router(brief_routes.router, tags=["brief"])
 app.include_router(documents_routes.router)
 
 # User authentication & permissions module (opt-in via USER_MODULE env var)

@@ -2,6 +2,7 @@
 LLM Service for generating AI summaries using LangChain
 """
 
+import json
 import logging
 import os
 import re
@@ -117,6 +118,8 @@ jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=Tr
 # Load templates at module level
 _system_template = jinja_env.get_template("ai_summary_system.j2")
 _user_template = jinja_env.get_template("ai_summary_user.j2")
+_brief_outline_system_template = jinja_env.get_template("brief_outline_system.j2")
+_brief_outline_user_template = jinja_env.get_template("brief_outline_user.j2")
 
 
 def render_prompt(
@@ -339,6 +342,136 @@ async def generate_ai_summary_with_usage(
     except Exception as e:
         logger.error(f"Error generating AI summary: {e}", exc_info=True)
         raise
+
+
+_FENCE_OPEN_RE = re.compile(r"^```[a-zA-Z]*\n?")
+_FENCE_CLOSE_RE = re.compile(r"\n?```$")
+_LIST_PREFIX_RE = re.compile(r"^[\s\-\*•\d\.\)]+")
+
+
+def _strip_code_fences(text: str) -> str:
+    """Drop Markdown code fences the model may have wrapped the JSON in."""
+    if text.startswith("```"):
+        text = _FENCE_OPEN_RE.sub("", text)
+        text = _FENCE_CLOSE_RE.sub("", text).strip()
+    return text
+
+
+def _extract_json_object(text: str) -> Any:
+    """Best-effort parse of the first ``{...}`` object in ``text``, else None."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return None
+
+
+def _clean_heading(value: Any) -> tuple[str, int]:
+    """Normalise one heading entry (dict or str) to ``(title, level)``."""
+    if isinstance(value, dict):
+        raw_title = value.get("title") or ""
+        level = 2 if value.get("level") == 2 else 1
+    else:
+        raw_title = str(value)
+        level = 1
+    return raw_title.strip()[:120], level
+
+
+def _headings_from_obj(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build the heading list from a parsed ``{"headings": [...]}`` object."""
+    headings: List[Dict[str, Any]] = []
+    for h in obj.get("headings") or []:
+        clean, level = _clean_heading(h)
+        if clean:
+            headings.append({"title": clean, "level": level})
+    return headings
+
+
+def _headings_from_lines(text: str) -> List[Dict[str, Any]]:
+    """Fallback: treat each non-empty (de-bulleted) line as a level-1 heading."""
+    headings: List[Dict[str, Any]] = []
+    for line in text.splitlines():
+        clean = _LIST_PREFIX_RE.sub("", line).strip()
+        if clean and len(clean) <= 120:
+            headings.append({"title": clean, "level": 1})
+    return headings
+
+
+def parse_brief_outline(
+    raw: str, fallback_title: str = "Evidence Brief"
+) -> tuple[str, List[Dict[str, Any]]]:
+    """Parse an LLM outline response into ``(title, headings)``.
+
+    Tolerant of code fences and stray prose around the JSON object. Each
+    heading is normalised to ``{"title": str, "level": 1 | 2}``. Falls back to
+    parsing a numbered/bulleted list, then to a single-section outline, so the
+    caller always receives at least one heading with a level-1 first item.
+    """
+    text = _strip_code_fences((raw or "").strip())
+    obj = _extract_json_object(text)
+
+    title = (fallback_title or "Evidence Brief").strip() or "Evidence Brief"
+    headings: List[Dict[str, Any]] = []
+    if isinstance(obj, dict):
+        if isinstance(obj.get("title"), str) and obj["title"].strip():
+            title = obj["title"].strip()
+        headings = _headings_from_obj(obj)
+
+    # No JSON object at all — line-parse the prose. (A parsed-but-empty object
+    # uses the Overview fallback below instead of line-parsing.)
+    if not headings and not isinstance(obj, dict):
+        headings = _headings_from_lines(text)
+
+    if not headings:
+        headings = [{"title": "Overview", "level": 1}]
+    headings[0]["level"] = 1  # first item is always a top-level section
+    return title, headings[:24]
+
+
+async def generate_brief_outline(
+    question: str,
+    model_key: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    sources: Optional[List[Dict[str, Any]]] = None,
+    instructions: str | None = None,
+    num_headings: int | None = None,
+) -> tuple[str, List[Dict[str, Any]]]:
+    """Generate research-brief section headings for a topic.
+
+    ``question`` is the brief topic. ``instructions`` is optional author
+    guidance, ``num_headings`` the desired number of top-level sections, and
+    ``sources`` an optional sample of the most relevant document-library
+    material (``{title, organization, year, snippet}``) so the headings are
+    grounded in the themes actually present in the library. Prompts live in
+    ``prompts/brief_outline_*.j2``.
+
+    Returns ``(title, headings)``; ``title`` falls back to the topic when the
+    model does not supply one (callers typically force the title to the topic).
+    Each heading is ``{"title": str, "level": 1 | 2}``.
+    """
+    system_prompt = _brief_outline_system_template.render()
+    user_prompt = _brief_outline_user_template.render(
+        topic=question.strip(),
+        instructions=(instructions or "").strip() or None,
+        num_headings=num_headings or 6,
+        sources=sources or [],
+    )
+    llm = get_llm(
+        model=model_key,
+        temperature=temperature if temperature is not None else 0.2,
+        max_tokens=max_tokens or 700,
+    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    raw = str(response.content).strip()
+    logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
+    return parse_brief_outline(raw, fallback_title=question.strip())
 
 
 async def translate_text(

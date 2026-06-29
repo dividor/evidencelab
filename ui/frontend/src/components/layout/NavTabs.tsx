@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { ASSISTANT_ENABLED } from '../../config';
+import { ASSISTANT_ENABLED, BRIEF_ENABLED } from '../../config';
 
-type TabName = 'search' | 'assistant' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
+type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
 interface NavTabsProps {
   activeTab: TabName;
@@ -40,14 +40,22 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
           className={`nav-tab ${activeTab === 'assistant' ? ACTIVE_CLASS : ''}`}
           onClick={() => onTabChange('assistant')}
         >
-          Assistant
+          Chat
+        </button>
+      )}
+      {BRIEF_ENABLED && (
+        <button
+          className={`nav-tab ${activeTab === 'brief' ? ACTIVE_CLASS : ''}`}
+          onClick={() => onTabChange('brief')}
+        >
+          Brief
         </button>
       )}
       <button
         className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
         onClick={() => onTabChange('heatmap')}
       >
-        Heatmapper
+        Map
       </button>
       <div className="dropdown-container nav-dropdown">
         <button
