@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -16,9 +17,11 @@ from ui.backend.routes.activity import (
     _build_activity_items,
     _build_export_row,
     _count_search_results,
+    _find_existing_activity,
     _merge_filters_update,
     _ms_to_seconds,
     _resolve_cost,
+    log_activity,
 )
 
 # ---------------------------------------------------------------------------
@@ -575,3 +578,92 @@ class TestMergeFiltersUpdate:
         body = SimpleNamespace(summary_duration_ms=None, drilldown_tree=None)
         _merge_filters_update(activity, body)
         assert activity.filters is original
+
+
+def _brief_body(search_id, **overrides):
+    """A POST /activity body for a Brief save (type='brief')."""
+    defaults = {
+        "search_id": str(search_id),
+        "query": "Brief Title",
+        "filters": {"type": "brief"},
+        "search_results": [{"doc_id": "d1"}],
+        "ai_summary": "## Heading\n\nBody",
+        "url": "http://app/brief",
+        "session_id": "sess-1",
+        "llm_model": None,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "cost_usd": None,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _fake_session():
+    return SimpleNamespace(add=Mock(), commit=AsyncMock(), refresh=AsyncMock())
+
+
+@pytest.mark.unit
+class TestLogActivityUpsert:
+    """POST /activity/ upserts by (owner, search_id) — the Brief tab relies on
+    this to keep one activity row per brief, refreshed on each save."""
+
+    @pytest.mark.asyncio
+    async def test_updates_existing_row_in_place(self):
+        sid = uuid.uuid4()
+        existing = _make_activity(search_id=sid, query="old", filters=None)
+        body = _brief_body(sid)
+        session = _fake_session()
+        with patch(
+            "ui.backend.routes.activity._find_existing_activity",
+            new=AsyncMock(return_value=existing),
+        ):
+            await log_activity(body, user=None, session=session)
+        # Row mutated in place, no new row inserted.
+        assert existing.query == "Brief Title"
+        assert existing.filters == {"type": "brief"}
+        assert existing.ai_summary == "## Heading\n\nBody"
+        session.add.assert_not_called()
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_inserts_when_no_existing_row(self):
+        body = _brief_body(uuid.uuid4())
+        session = _fake_session()
+        with patch(
+            "ui.backend.routes.activity._find_existing_activity",
+            new=AsyncMock(return_value=None),
+        ), patch("ui.backend.routes.activity._activity_to_read", return_value="ok"):
+            result = await log_activity(body, user=None, session=session)
+        session.add.assert_called_once()
+        session.commit.assert_awaited_once()
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_does_not_blank_summary_when_omitted(self):
+        sid = uuid.uuid4()
+        existing = _make_activity(search_id=sid, ai_summary="keep me")
+        body = _brief_body(sid, ai_summary=None)
+        session = _fake_session()
+        with patch(
+            "ui.backend.routes.activity._find_existing_activity",
+            new=AsyncMock(return_value=existing),
+        ):
+            await log_activity(body, user=None, session=session)
+        assert existing.ai_summary == "keep me"
+
+    @pytest.mark.asyncio
+    async def test_find_existing_returns_none_without_owner(self):
+        session = SimpleNamespace(execute=AsyncMock())
+        result = await _find_existing_activity(
+            session, user=None, session_id=None, search_uuid=uuid.uuid4()
+        )
+        assert result is None
+        session.execute.assert_not_called()
+
+
+@pytest.mark.unit
+def test_brief_is_a_valid_activity_type():
+    from ui.backend.routes.llm_usage import _VALID_ACTIVITY_TYPES
+
+    assert "brief" in _VALID_ACTIVITY_TYPES

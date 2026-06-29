@@ -58,6 +58,7 @@ _VALID_ACTIVITY_TYPES = {
     "chat",
     "assistant-basic",
     "assistant-deep-research",
+    "brief",
 }
 
 _DEFAULT_RANGE_DAYS = 30

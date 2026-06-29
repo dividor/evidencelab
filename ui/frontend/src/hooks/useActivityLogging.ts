@@ -135,7 +135,55 @@ export function useActivityLogging() {
     [],
   );
 
-  return { logSearch, updateSummary };
+  /**
+   * Upsert a Brief activity record (type "brief"). Unlike logSearch this does
+   * NOT dedupe — it is called on each brief save with a stable activityId so
+   * the backend (which upserts by search_id) keeps a single activity row per
+   * brief, refreshed with the latest title, prose and cited sources.
+   */
+  const logBrief = useCallback(
+    (
+      activityId: string,
+      title: string,
+      summaryMarkdown: string,
+      sources: Array<{
+        chunkId?: string;
+        docId?: string;
+        title?: string;
+        score?: number;
+        page?: number;
+        text?: string;
+      }>,
+    ) => {
+      if (!activityId) return;
+      const richResults = (sources || []).slice(0, 50).map((s) => ({
+        chunk_id: s.chunkId || '',
+        doc_id: s.docId || '',
+        title: s.title || '',
+        score: s.score || 0,
+        page_num: s.page || null,
+        chunk_text: s.text || '',
+        link: '',
+      }));
+
+      axios
+        .post(`${API_BASE_URL}/activity/`, {
+          search_id: activityId,
+          query: title,
+          filters: { type: 'brief' },
+          search_results: richResults,
+          url: window.location.href,
+          session_id: getSessionId(),
+          ...(summaryMarkdown ? { ai_summary: summaryMarkdown } : {}),
+        })
+        .catch((err) => {
+          console.debug('Brief activity logging failed (non-critical):', err?.message);
+        });
+    },
+    [],
+  );
+
+  return { logSearch, updateSummary, logBrief };
 }
 
 export default useActivityLogging;

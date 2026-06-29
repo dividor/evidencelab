@@ -46,6 +46,9 @@ export interface SavedBrief {
   outlineLog?: BriefActivityEvent[];
   // Whether heading numbers ("1.", "2.1") are shown (default off).
   numberHeadings?: boolean;
+  // Stable UUID used as the Activity-log search_id, so each save updates the
+  // same activity row instead of creating duplicates.
+  activityId?: string;
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
