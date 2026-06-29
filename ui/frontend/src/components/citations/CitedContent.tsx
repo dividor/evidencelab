@@ -29,6 +29,39 @@ export const extractCitedNumbers = (text: string): number[] => {
   return Array.from(cited).sort((a, b) => a - b);
 };
 
+// A leading "-- h1 > h2 > h3 --" line is a heading breadcrumb embedded in the
+// chunk text. Split it off so the excerpt can show it as an italic section path
+// (without the -- markers) above the body.
+const SECTION_BREADCRUMB_RE = /^\s*--\s*(.+?)\s*--\s*$/;
+
+export const parseSectionBreadcrumb = (
+  text: string,
+): { section: string | null; body: string } => {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  let i = 0;
+  while (i < lines.length && lines[i].trim() === '') i++;
+  const match = i < lines.length ? SECTION_BREADCRUMB_RE.exec(lines[i].trim()) : null;
+  if (match && match[1].includes(' > ')) {
+    const body = lines
+      .slice(i + 1)
+      .join('\n')
+      .replace(/^\n+/, '');
+    return { section: match[1].trim(), body };
+  }
+  return { section: null, body: text };
+};
+
+const renderCitationExcerpt = (text: string): React.ReactNode => {
+  const { section, body } = parseSectionBreadcrumb(text);
+  if (!section) return parseAndRenderSuperscripts(text);
+  return (
+    <>
+      <div className="citation-hover-section">{section}</div>
+      {body.trim() && <div>{parseAndRenderSuperscripts(body)}</div>}
+    </>
+  );
+};
+
 const InlineCitation: React.FC<{
   num: number;
   source?: SourceReference;
@@ -82,9 +115,7 @@ const InlineCitation: React.FC<{
               <div className="citation-hover-meta">Page {source.page}</div>
             )}
             {source.text && (
-              <div className="citation-hover-excerpt">
-                {parseAndRenderSuperscripts(source.text)}
-              </div>
+              <div className="citation-hover-excerpt">{renderCitationExcerpt(source.text)}</div>
             )}
           </div>,
           document.body,
