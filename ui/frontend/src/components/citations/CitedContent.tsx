@@ -3,7 +3,8 @@
 // references list grouped by document. Used by the Research Assistant
 // (ChatMessage) and the Brief tab so both render citations identically.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SourceReference } from '../../types/api';
@@ -32,19 +33,58 @@ const InlineCitation: React.FC<{
   source?: SourceReference;
   onClick?: (source: SourceReference) => void;
 }> = ({ num, source, onClick }) => {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [card, setCard] = useState<{ top: number; left: number } | null>(null);
+
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     if (source && onClick) onClick(source);
   };
+
+  const show = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    if (!source) return;
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    // Position below the badge, clamped so the card stays in the viewport.
+    const CARD_W = 360;
+    setCard({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - CARD_W - 12) });
+  };
+  const scheduleHide = () => {
+    hideTimer.current = setTimeout(() => setCard(null), 120);
+  };
+
   return (
-    <a
-      href="#"
-      className="ai-summary-citation"
-      onClick={handleClick}
-      title={source?.title || `Source ${num}`}
-    >
-      {num}
-    </a>
+    <>
+      <a
+        ref={ref}
+        href="#"
+        className="ai-summary-citation"
+        onClick={handleClick}
+        onMouseEnter={show}
+        onMouseLeave={scheduleHide}
+      >
+        {num}
+      </a>
+      {card &&
+        source &&
+        createPortal(
+          <div
+            className="citation-hover-card"
+            style={{ top: card.top, left: card.left }}
+            onMouseEnter={show}
+            onMouseLeave={scheduleHide}
+          >
+            <div className="citation-hover-title">{source.title || `Source ${num}`}</div>
+            {typeof source.page === 'number' && (
+              <div className="citation-hover-meta">Page {source.page}</div>
+            )}
+            {source.text && <div className="citation-hover-excerpt">{source.text}</div>}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 

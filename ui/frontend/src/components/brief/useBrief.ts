@@ -471,6 +471,20 @@ export const useBrief = ({
     }
   }, [researchOne, saveCurrent]);
 
+  // Abort all in-flight research and return to a stable, editable state: any
+  // section mid-research reverts to pending; completed sections are kept.
+  const stopResearch = useCallback(() => {
+    abortRef.current?.abort();
+    setSections((prev) =>
+      prev.map((s) =>
+        s.status === 'researching'
+          ? { ...s, status: 'pending', progress: 0, activity: [] }
+          : s,
+      ),
+    );
+    setStage('outline');
+  }, []);
+
   const finishIfComplete = useCallback(() => {
     const all = sectionsRef.current.length > 0 && sectionsRef.current.every((s) => s.status === 'done');
     if (all) {
@@ -604,6 +618,7 @@ export const useBrief = ({
     editTitle,
     editContent,
     startResearch,
+    stopResearch,
     regenerate,
     openRegen: (id: string) => {
       setRegenFor(id);

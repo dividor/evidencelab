@@ -259,8 +259,15 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           <div className="brief-doc-progress">
             <div className="brief-doc-progress-row">
               <span>Researching…</span>
-              <span>
+              <span className="brief-doc-progress-right">
                 {brief.doneCount}/{sections.length}
+                <button
+                  className="brief-stop-btn"
+                  onClick={brief.stopResearch}
+                  title="Stop all research"
+                >
+                  ■ Stop
+                </button>
               </span>
             </div>
             <div className="brief-progress-track">

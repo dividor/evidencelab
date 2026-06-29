@@ -301,8 +301,9 @@
   font-size: 12.5px;
 }
 .brief-rail-head {
-  /* Top padding matches .brief-doc so HISTORY lines up with EVIDENCE BRIEF. */
-  padding: 24px 18px 16px;
+  /* Top padding matches .brief-doc so HISTORY lines up with EVIDENCE BRIEF;
+     left padding matches the SELECTED label below so the two line up. */
+  padding: 24px 18px 16px 10px;
   border-bottom: 1px solid var(--brand-border-light);
   display: flex;
   align-items: center;
@@ -1230,9 +1231,32 @@
 .brief-doc-progress-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 12.5px;
   color: var(--brand-text-secondary);
   margin-bottom: 6px;
+}
+.brief-doc-progress-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.brief-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: #c0392b;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.brief-stop-btn:hover {
+  border-color: #c0392b;
+  background: rgba(192, 57, 43, 0.06);
 }
 
 /* ---------- "start research" bar ---------- */
