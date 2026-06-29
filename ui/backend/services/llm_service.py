@@ -344,6 +344,61 @@ async def generate_ai_summary_with_usage(
         raise
 
 
+_FENCE_OPEN_RE = re.compile(r"^```[a-zA-Z]*\n?")
+_FENCE_CLOSE_RE = re.compile(r"\n?```$")
+_LIST_PREFIX_RE = re.compile(r"^[\s\-\*•\d\.\)]+")
+
+
+def _strip_code_fences(text: str) -> str:
+    """Drop Markdown code fences the model may have wrapped the JSON in."""
+    if text.startswith("```"):
+        text = _FENCE_OPEN_RE.sub("", text)
+        text = _FENCE_CLOSE_RE.sub("", text).strip()
+    return text
+
+
+def _extract_json_object(text: str) -> Any:
+    """Best-effort parse of the first ``{...}`` object in ``text``, else None."""
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(text[start : end + 1])
+    except (ValueError, TypeError):
+        return None
+
+
+def _clean_heading(value: Any) -> tuple[str, int]:
+    """Normalise one heading entry (dict or str) to ``(title, level)``."""
+    if isinstance(value, dict):
+        raw_title = value.get("title") or ""
+        level = 2 if value.get("level") == 2 else 1
+    else:
+        raw_title = str(value)
+        level = 1
+    return raw_title.strip()[:120], level
+
+
+def _headings_from_obj(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Build the heading list from a parsed ``{"headings": [...]}`` object."""
+    headings: List[Dict[str, Any]] = []
+    for h in obj.get("headings") or []:
+        clean, level = _clean_heading(h)
+        if clean:
+            headings.append({"title": clean, "level": level})
+    return headings
+
+
+def _headings_from_lines(text: str) -> List[Dict[str, Any]]:
+    """Fallback: treat each non-empty (de-bulleted) line as a level-1 heading."""
+    headings: List[Dict[str, Any]] = []
+    for line in text.splitlines():
+        clean = _LIST_PREFIX_RE.sub("", line).strip()
+        if clean and len(clean) <= 120:
+            headings.append({"title": clean, "level": 1})
+    return headings
+
+
 def parse_brief_outline(
     raw: str, fallback_title: str = "Evidence Brief"
 ) -> tuple[str, List[Dict[str, Any]]]:
@@ -354,41 +409,20 @@ def parse_brief_outline(
     parsing a numbered/bulleted list, then to a single-section outline, so the
     caller always receives at least one heading with a level-1 first item.
     """
-    text = (raw or "").strip()
-    # Strip Markdown code fences if the model wrapped the JSON.
-    if text.startswith("```"):
-        text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
-        text = re.sub(r"\n?```$", "", text).strip()
-
-    obj: Any = None
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            obj = json.loads(text[start : end + 1])
-        except (ValueError, TypeError):
-            obj = None
+    text = _strip_code_fences((raw or "").strip())
+    obj = _extract_json_object(text)
 
     title = (fallback_title or "Evidence Brief").strip() or "Evidence Brief"
     headings: List[Dict[str, Any]] = []
     if isinstance(obj, dict):
         if isinstance(obj.get("title"), str) and obj["title"].strip():
             title = obj["title"].strip()
-        for h in obj.get("headings") or []:
-            raw_title = (h.get("title") if isinstance(h, dict) else str(h)) or ""
-            clean = raw_title.strip()
-            if not clean:
-                continue
-            level = h.get("level", 1) if isinstance(h, dict) else 1
-            headings.append({"title": clean[:120], "level": 2 if level == 2 else 1})
+        headings = _headings_from_obj(obj)
 
+    # No JSON object at all — line-parse the prose. (A parsed-but-empty object
+    # uses the Overview fallback below instead of line-parsing.)
     if not headings and not isinstance(obj, dict):
-        # No JSON object at all — fall back to treating each non-empty line as
-        # a level-1 heading. (A parsed-but-empty object uses the Overview
-        # fallback below rather than line-parsing surrounding prose.)
-        for line in text.splitlines():
-            clean = re.sub(r"^[\s\-\*•\d\.\)]+", "", line).strip()
-            if clean and len(clean) <= 120:
-                headings.append({"title": clean, "level": 1})
+        headings = _headings_from_lines(text)
 
     if not headings:
         headings = [{"title": "Overview", "level": 1}]

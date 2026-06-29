@@ -1,11 +1,12 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-// Mock config so no real API base/key is needed.
+// Mock config so no real API base is needed. (briefStream is mocked below, so
+// the API key is never read here — omit it to avoid a detect-secrets false hit.)
 jest.mock('../config', () => ({
   __esModule: true,
   default: '/api',
-  API_KEY: 'test-key',
+  API_KEY: undefined,
   BRIEF_ENABLED: true,
   USER_MODULE: false,
 }));
