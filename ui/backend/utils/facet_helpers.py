@@ -133,6 +133,60 @@ def build_facets_from_pg(pg, storage_field: str) -> Dict[str, int]:
             return {str(row[0]): int(row[1]) for row in cur.fetchall()}
 
 
+# A storage column name must be a plain SQL identifier before it can be
+# interpolated (values are always parameterised). Storage fields come from the
+# config-derived field mapping, never raw user input.
+_SAFE_PG_FIELD_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+def doc_ids_from_pg_field(
+    pg, storage_field: str, values: List[str], limit: int = 50000
+) -> List[str]:
+    """doc_ids whose ``sys_*`` column matches any of the given values.
+
+    Counterpart to :func:`build_facets_from_pg` — used so document search
+    resolves PostgreSQL-sourced fields (e.g. ``sys_language``) the same way
+    their facet counts are computed, instead of filtering the Qdrant document
+    payload (which does not carry these fields).
+    """
+    vals = [v for v in values if v]
+    if not vals or not _SAFE_PG_FIELD_RE.match(storage_field):
+        return []
+    query = f"""
+        SELECT doc_id
+        FROM {pg.docs_table}
+        WHERE {storage_field} = ANY(%s)
+        LIMIT %s
+    """
+    with pg._get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (vals, limit))
+            return [str(row[0]) for row in cur.fetchall()]
+
+
+def doc_ids_from_pg_jsonb(
+    pg, raw_key: str, values: List[str], limit: int = 50000
+) -> List[str]:
+    """doc_ids whose ``src_doc_raw_metadata->>raw_key`` matches any given value.
+
+    Counterpart to :func:`build_facets_from_pg_jsonb`. ``raw_key`` comes from
+    the trusted ``src_field_mapping`` config and is passed as a parameter.
+    """
+    vals = [v for v in values if v]
+    if not vals:
+        return []
+    query = f"""
+        SELECT doc_id
+        FROM {pg.docs_table}
+        WHERE src_doc_raw_metadata->>%s = ANY(%s)
+        LIMIT %s
+    """
+    with pg._get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, (raw_key, vals, limit))
+            return [str(row[0]) for row in cur.fetchall()]
+
+
 def count_src_jsonb_field_for_doc_ids(pg, raw_key: str, doc_ids: List[str]) -> Counter:
     """Count distinct values of ``src_doc_raw_metadata->>raw_key`` across a
     specific set of docs.
