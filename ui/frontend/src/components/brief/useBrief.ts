@@ -281,7 +281,10 @@ export const useBrief = ({
     const activityId = briefActivityIdRef.current;
     if (activityId) {
       const markdown = snap
-        .map((s) => `## ${s.title}${s.content ? `\n\n${s.content}` : ''}`)
+        .map((s) => {
+          const body = s.content ? `\n\n${s.content}` : '';
+          return `## ${s.title}${body}`;
+        })
         .join('\n\n');
       const seen = new Set<string>();
       const sources = snap
