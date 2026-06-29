@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
+import { useActivityLogging } from '../../hooks/useActivityLogging';
 import { extractCitedNumbers } from '../citations/CitedContent';
 import {
   BriefActivityEvent,
@@ -19,6 +20,10 @@ import {
 
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
+
+// A real UUID for the Activity-log search_id (one stable id per brief).
+const newActivityId = (): string =>
+  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : uid();
 
 // Capitalise the first letter of each word, leaving the rest as-is so existing
 // capitalisation / acronyms (e.g. WFP) survive. Used on generated brief titles.
@@ -163,6 +168,7 @@ export const useBrief = ({
   userKey,
 }: UseBriefOptions) => {
   const historyKey = userKey ? `${BRIEF_HISTORY_KEY}_u_${userKey}` : BRIEF_HISTORY_KEY;
+  const { logBrief } = useActivityLogging();
   const [stage, setStage] = useState<BriefStage>('seed');
   const [briefTitle, setBriefTitle] = useState('Evidence Brief');
   const [sections, setSections] = useState<BriefSection[]>([]);
@@ -183,6 +189,8 @@ export const useBrief = ({
   const [generatingActivity, setGeneratingActivity] = useState<BriefActivityEvent[]>([]);
 
   const briefIdRef = useRef<string | null>(null);
+  // Stable Activity-log id for the current brief (one row per brief).
+  const briefActivityIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
@@ -264,9 +272,29 @@ export const useBrief = ({
       }),
       outlineLog: outlineLogRef.current,
       numberHeadings: numberHeadingsRef.current,
+      activityId: briefActivityIdRef.current ?? undefined,
     };
     persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
-  }, [persist]);
+
+    // Mirror the brief into the Activity log as a "brief" row, upserted on each
+    // save so there's one activity per brief reflecting its latest state.
+    const activityId = briefActivityIdRef.current;
+    if (activityId) {
+      const markdown = snap
+        .map((s) => `## ${s.title}${s.content ? `\n\n${s.content}` : ''}`)
+        .join('\n\n');
+      const seen = new Set<string>();
+      const sources = snap
+        .flatMap((s) => s.sources)
+        .filter((src) => {
+          const key = src.chunkId || src.docId;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      logBrief(activityId, briefTitleRef.current, markdown, sources);
+    }
+  }, [persist, logBrief]);
 
   // Auto-save once a brief exists (outline generated or manual start) so it
   // appears in Saved Briefs right away and keeps tracking title/content edits.
@@ -332,6 +360,7 @@ export const useBrief = ({
         signal: controller.signal,
       });
       briefIdRef.current = uid();
+      briefActivityIdRef.current = newActivityId();
       setBriefTitle(toTitleCase(topic));
       setSections(
         outline.headings
@@ -350,6 +379,7 @@ export const useBrief = ({
 
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
+    briefActivityIdRef.current = newActivityId();
     setBriefTitle('Evidence Brief');
     setSections(
       // Placeholder samples: research stays disabled until the user edits them.
@@ -532,6 +562,7 @@ export const useBrief = ({
   const loadBrief = useCallback((entry: SavedBrief) => {
     abortRef.current?.abort();
     briefIdRef.current = entry.id;
+    briefActivityIdRef.current = entry.activityId || newActivityId();
     setBriefTitle(entry.title);
     setQuery(entry.query);
     setSections(
@@ -557,6 +588,7 @@ export const useBrief = ({
         id: uid(),
         title: `${entry.title} (copy)`,
         date: Date.now(),
+        activityId: newActivityId(), // a clone is its own brief → its own activity row
       };
       persist([copy, ...historyRef.current].slice(0, 10));
       loadBrief(copy);
@@ -567,6 +599,7 @@ export const useBrief = ({
   const reset = useCallback(() => {
     abortRef.current?.abort();
     briefIdRef.current = null;
+    briefActivityIdRef.current = null;
     setStage('seed');
     setSections([]);
     setRegenFor(null);
