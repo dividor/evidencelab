@@ -7,7 +7,6 @@ jest.mock('../config', () => ({
   __esModule: true,
   default: '/api',
   API_KEY: undefined,
-  BRIEF_ENABLED: true,
   USER_MODULE: false,
 }));
 
