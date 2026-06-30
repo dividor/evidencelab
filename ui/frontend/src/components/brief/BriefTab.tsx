@@ -116,6 +116,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         resultsSectionTitle: 'Reference Excerpts',
         siteOrigin:
           typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
+        // Same API base the on-screen cards use to load table/figure
+        // screenshots, so the brief embeds those exact images.
+        fileBaseUrl: API_BASE_URL,
       });
       saveAs(blob, buildExportFilename(brief.briefTitle || 'evidence-brief', new Date()));
     } catch (err) {

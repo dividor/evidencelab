@@ -93,7 +93,7 @@ The exported `.docx` is a polished, branded document titled **AI-generated Resea
 - A clickable **table of contents** that jumps to each heading (no "update fields" prompt on open).
 - An information box noting the content is AI-generated and should be verified.
 - The brief topic as the heading, followed by each section's text.
-- Inline citations linked to the source documents (and the cited page), plus a **References** list and a **Reference Excerpts** section with the supporting passages.
+- Inline citations linked to the source documents (and the cited page), plus a **References** list and a **Reference Excerpts** section with the supporting passages. Any tables or figures in those passages are embedded as the same images shown on screen, so they keep their original layout.
 
 ![The exported Word document](/docs/images/brief/brief-word-doc.png)
 
