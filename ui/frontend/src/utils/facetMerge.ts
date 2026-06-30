@@ -96,3 +96,25 @@ export const mergeFacetField = (
   });
   return merged;
 };
+
+/** Core facet fields whose filter values are always displayed in
+ *  alphabetical order rather than by count. Country lists are long and
+ *  count order makes them hard to scan or to spot near-duplicate names,
+ *  so we sort A→Z instead. */
+const ALPHABETICAL_FACET_FIELDS = new Set(['country']);
+
+/** Order facet values for display.
+ *
+ *  For fields in {@link ALPHABETICAL_FACET_FIELDS} (currently `country`),
+ *  returns a new array sorted alphabetically by display value. All other
+ *  fields are returned unchanged, preserving the upstream (count-based)
+ *  order. Used as the final display gate so both the Search sidebar and
+ *  the Heatmapper filter modal — which share this code path — show
+ *  country filters alphabetically. */
+export const orderFacetValuesForDisplay = (
+  coreField: string,
+  values: FacetValue[],
+): FacetValue[] =>
+  ALPHABETICAL_FACET_FIELDS.has(coreField)
+    ? [...values].sort((a, b) => a.value.localeCompare(b.value))
+    : values;
