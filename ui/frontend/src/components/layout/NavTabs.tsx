@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
-import { ASSISTANT_ENABLED } from '../../config';
+import { ResolvedTab, TabKey, resolveTabs } from './tabConfig';
 
 type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
 interface NavTabsProps {
   activeTab: TabName;
   onTabChange: (tab: TabName) => void;
+  // Resolved per-group tab visibility/labels. When omitted, every main tab
+  // shows with its default label (stock behaviour).
+  tabs?: Record<TabKey, ResolvedTab>;
 }
 
 const ACTIVE_CLASS = 'nav-tab-active';
+const MAIN_TABS: TabKey[] = ['search', 'assistant', 'brief', 'heatmap'];
 
-export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
+export const NavTabs = ({ activeTab, onTabChange, tabs }: NavTabsProps) => {
+  const resolved = tabs ?? resolveTabs(undefined);
   const [monitorDropdownOpen, setMonitorDropdownOpen] = useState(false);
   const monitorActive = activeTab === 'documents' || activeTab === 'pipeline' || activeTab === 'processing' || activeTab === 'stats';
 
@@ -29,32 +34,17 @@ export const NavTabs = ({ activeTab, onTabChange }: NavTabsProps) => {
 
   return (
     <nav className="nav-tabs">
-      <button
-        className={`nav-tab ${activeTab === 'search' ? ACTIVE_CLASS : ''}`}
-        onClick={() => onTabChange('search')}
-      >
-        Search
-      </button>
-      {ASSISTANT_ENABLED && (
-        <button
-          className={`nav-tab ${activeTab === 'assistant' ? ACTIVE_CLASS : ''}`}
-          onClick={() => onTabChange('assistant')}
-        >
-          Chat
-        </button>
+      {MAIN_TABS.map((key) =>
+        resolved[key].enabled ? (
+          <button
+            key={key}
+            className={`nav-tab ${activeTab === key ? ACTIVE_CLASS : ''}`}
+            onClick={() => onTabChange(key)}
+          >
+            {resolved[key].label}
+          </button>
+        ) : null,
       )}
-      <button
-        className={`nav-tab ${activeTab === 'brief' ? ACTIVE_CLASS : ''}`}
-        onClick={() => onTabChange('brief')}
-      >
-        Brief
-      </button>
-      <button
-        className={`nav-tab ${activeTab === 'heatmap' ? ACTIVE_CLASS : ''}`}
-        onClick={() => onTabChange('heatmap')}
-      >
-        Map
-      </button>
       <div className="dropdown-container nav-dropdown">
         <button
           className={`nav-tab nav-tab-dropdown ${monitorActive ? ACTIVE_CLASS : ''}`}
