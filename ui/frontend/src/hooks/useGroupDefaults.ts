@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../config';
-import type { SearchSettings } from '../types/auth';
+import type { SearchSettings, EffectiveSettings } from '../types/auth';
 
 /** Custom event name dispatched when admin saves group settings. */
 export const GROUP_SETTINGS_UPDATED_EVENT = 'groupSettingsUpdated';
@@ -63,8 +63,8 @@ export function useGroupDefaults(
   userModuleEnabled: boolean,
   authState: AuthState,
   setters: Setters,
-): SearchSettings | undefined {
-  const [groupDefaults, setGroupDefaults] = useState<SearchSettings | undefined>(undefined);
+): EffectiveSettings | undefined {
+  const [groupDefaults, setGroupDefaults] = useState<EffectiveSettings | undefined>(undefined);
   /** Bumped to trigger a re-fetch (e.g. after admin saves group settings). */
   const [refreshKey, setRefreshKey] = useState(0);
   /** Fingerprint of the last applied defaults to avoid re-applying identical data. */
@@ -86,7 +86,7 @@ export function useGroupDefaults(
       return;
     }
     try {
-      const resp = await axios.get<SearchSettings>(`${API_BASE_URL}/users/me/effective-settings`);
+      const resp = await axios.get<EffectiveSettings>(`${API_BASE_URL}/users/me/effective-settings`);
       const settings = resp.data;
       if (settings && Object.keys(settings).length > 0) {
         setGroupDefaults(settings);

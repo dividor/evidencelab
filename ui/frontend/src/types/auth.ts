@@ -31,6 +31,16 @@ export interface SearchSettings {
   greetingMessage?: string;
 }
 
+/**
+ * The full /users/me/effective-settings payload: search settings plus the
+ * per-group feature-tab visibility/labels (merged across the user's groups by
+ * the backend; see components/layout/tabConfig.ts). Kept separate from
+ * SearchSettings so `tabs` doesn't leak into the search-defaults setters.
+ */
+export interface EffectiveSettings extends SearchSettings {
+  tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
+}
+
 export interface UserGroup {
   id: string;
   name: string;
