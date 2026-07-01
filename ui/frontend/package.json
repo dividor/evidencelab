@@ -8,7 +8,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "ajv": "^8.20.0",
     "ajv-keywords": "^5.1.0",
-    "axios": "^1.13.6",
+    "axios": "^1.18.1",
     "docx": "^9.7.1",
     "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
