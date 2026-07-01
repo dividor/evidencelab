@@ -9,7 +9,7 @@ webdriver-manager==4.0.2
 PyPDF2==3.0.1
 pypdf==3.17.4
 PyMuPDF==1.28.0
-pdfplumber==0.11.9
+pdfplumber==0.11.10
 
 # Docling for advanced PDF parsing with dependencies
 docling==2.58.0
