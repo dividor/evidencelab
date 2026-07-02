@@ -308,7 +308,7 @@ export const AiSummaryWithCitations: React.FC<AiSummaryWithCitationsProps> = ({
   findOutMoreActiveFact,
 }) => {
   const cleanedText = stripTrailingBoilerplate(summaryText);
-  const citationMapping = buildCitationSequenceMap(cleanedText);
+  const citationMapping = buildCitationSequenceMap(cleanedText, searchResults);
   const blocks = splitSummaryBlocks(cleanedText);
   // Track across all blocks so only the very first heading gets the button
   let isFirstHeadingGlobal = true;

@@ -518,7 +518,7 @@ const buildSummarySection = (
     results,
     siteOrigin,
     dataSource,
-    sequenceMap: buildCitationSequenceMap(summary),
+    sequenceMap: buildCitationSequenceMap(summary, results),
   };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
