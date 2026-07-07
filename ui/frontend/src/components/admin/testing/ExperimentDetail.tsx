@@ -16,6 +16,7 @@ import {
   formatTimestamp,
   prettyJson,
 } from './testingFormat';
+import RunPassRateChart from './RunPassRateChart';
 
 interface ExperimentDetailProps {
   experimentId: string;
@@ -643,17 +644,20 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
           experiment.
         </p>
       ) : (
-        <div className="testing-runs">
-          {runs.map((run, idx) => (
-            <RunSection
-              key={run.id}
-              run={run}
-              caseInputs={caseInputs}
-              defaultOpen={idx === 0}
-              isLatest={idx === 0}
-            />
-          ))}
-        </div>
+        <>
+          <RunPassRateChart runs={runs} />
+          <div className="testing-runs">
+            {runs.map((run, idx) => (
+              <RunSection
+                key={run.id}
+                run={run}
+                caseInputs={caseInputs}
+                defaultOpen={idx === 0}
+                isLatest={idx === 0}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

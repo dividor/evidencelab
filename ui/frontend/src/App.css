@@ -11632,6 +11632,23 @@ a.admin-citation-clickable:hover {
   flex-direction: column;
   gap: 0.6rem;
 }
+/* Pass-rate-by-run trend chart, shown above the runs list. */
+.testing-runs-chart {
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  padding: 0.8rem 0.9rem 0.4rem;
+  margin-bottom: 0.9rem;
+}
+.testing-runs-chart-title {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+}
 .testing-run {
   border: 1px solid var(--color-border, #d0d7de);
   border-radius: 8px;
