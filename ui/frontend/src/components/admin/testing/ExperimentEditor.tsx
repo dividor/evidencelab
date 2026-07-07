@@ -381,14 +381,14 @@ const ExperimentEditor: React.FC<ExperimentEditorProps> = ({
       </div>
 
       <div className="admin-section" style={{ marginTop: 0 }}>
-        <h4>Assertions per test case</h4>
+        <h4>Expectations per test case</h4>
         <p className="text-muted" style={{ marginTop: 0 }}>
-          Toggle a row to enable/disable a case; add assertion columns and use a
+          Toggle a row to enable/disable a case; add expectation columns and use a
           column&apos;s header checkbox to apply it to all cases. Only active cases and
-          checked assertions are run.
+          checked expectations are run.
         </p>
         {!selectedDataset && (
-          <p className="text-muted">Select a dataset to define assertions for its cases.</p>
+          <p className="text-muted">Select a dataset to define expectations for its cases.</p>
         )}
         {selectedDataset && casesLoading && (
           <div className="admin-loading">Loading cases...</div>

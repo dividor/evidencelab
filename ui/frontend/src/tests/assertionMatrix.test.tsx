@@ -23,12 +23,12 @@ describe('AssertionMatrix', () => {
     render(<Harness initial={{ columns: [], cases: {} }} />);
     expect(screen.getByText('alpha')).toBeInTheDocument();
     expect(screen.getByText('beta')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /\+ Assertion/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Expectation/i })).toBeInTheDocument();
   });
 
   test('adding an assertion column shows it as a header applied to cases', () => {
     render(<Harness initial={{ columns: [], cases: {} }} />);
-    fireEvent.click(screen.getByRole('button', { name: /\+ Assertion/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ Expectation/i }));
     fireEvent.click(screen.getByRole('button', { name: /Add column/i }));
     // The new column's header summarises the assertion type (default first spec).
     expect(screen.getByText(/result_contains_id/)).toBeInTheDocument();
@@ -37,15 +37,15 @@ describe('AssertionMatrix', () => {
   test('clicking + Assertion opens the form in a modal', () => {
     const { container } = render(<Harness initial={{ columns: [], cases: {} }} />);
     expect(container.querySelector(MODAL_OVERLAY)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /\+ Assertion/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ Expectation/i }));
     // The add form is presented in a modal overlay, not inline in the matrix.
     expect(container.querySelector(MODAL_OVERLAY)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Add assertion column/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Add expectation column/i })).toBeInTheDocument();
   });
 
   test('cancelling the assertion modal closes it', () => {
     const { container } = render(<Harness initial={{ columns: [], cases: {} }} />);
-    fireEvent.click(screen.getByRole('button', { name: /\+ Assertion/i }));
+    fireEvent.click(screen.getByRole('button', { name: /\+ Expectation/i }));
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
     expect(container.querySelector(MODAL_OVERLAY)).toBeNull();
   });
@@ -61,7 +61,7 @@ describe('AssertionMatrix', () => {
     const { container } = render(<Harness initial={initial} />);
     fireEvent.click(screen.getByRole('button', { name: /^Edit$/i }));
     expect(container.querySelector(MODAL_OVERLAY)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Edit assertion/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Edit expectation/i })).toBeInTheDocument();
   });
 
   test('does not crash on a legacy per-case value shape', () => {
@@ -69,7 +69,7 @@ describe('AssertionMatrix', () => {
     const legacy = { c1: [{ type: 'min_results', value: 1 }] } as unknown as MatrixValue;
     render(<Harness initial={legacy} />);
     expect(screen.getByText('alpha')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /\+ Assertion/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /\+ Expectation/i })).toBeInTheDocument();
   });
 
   test('typing an llm_judge override enables the cell and stores the text', () => {

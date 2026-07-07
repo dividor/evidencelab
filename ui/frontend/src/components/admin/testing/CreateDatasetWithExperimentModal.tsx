@@ -192,7 +192,7 @@ const CreateDatasetWithExperimentModal: React.FC<
                 ))}
               </select>
               <small className="text-muted">
-                The expectation column builds an LLM-judge assertion, which
+                The expectation column builds an LLM-judge expectation, which
                 evaluates the AI summary — choose <code>ai_summary</code> for it
                 to apply.
               </small>

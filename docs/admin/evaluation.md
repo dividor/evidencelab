@@ -1,6 +1,6 @@
 ## Evaluation Harness
 
-The **Evaluation Harness** is a superuser-only admin tool for testing the quality of Evidence Lab's **Search** and **AI‑Summary** capabilities. You define reusable **datasets** of test cases, build **experiments** that assert what a good result looks like, **run** them against the live system, and **review** per‑case pass/fail with full detail.
+The **Evaluation Harness** is a superuser-only admin tool for testing the quality of Evidence Lab's **Search** and **AI‑Summary** capabilities. You define reusable **datasets** of test cases, build **experiments** that define what a good result looks like, **run** them against the live system, and **review** per‑case pass/fail with full detail.
 
 It runs the *real* search and AI‑summary code paths — the same retrieval pipeline, model combos, and group settings users experience — so results reflect production behaviour.
 
@@ -17,7 +17,7 @@ Open the **Admin** panel and select the **Testing** tab. It has two sub‑views:
 The typical workflow is:
 
 1. **Create a dataset** of inputs (queries + optional filters).
-2. **Create an experiment** on that dataset — choose a model combo / group and define the assertions.
+2. **Create an experiment** on that dataset — choose a model combo / group and define the expectations.
 3. **Run** the experiment.
 4. **View** the runs and per‑case results.
 
@@ -25,7 +25,7 @@ The typical workflow is:
 
 ### Quickstart: Load dataset and experiment in one file
 
-If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Dataset and Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** assertion per row, where each row is judged against its own expected answer.
+If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Dataset and Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** expectation per row, where each row is judged against its own expected answer.
 
 The CSV is the **same format as the dataset upload** (see [Add test cases](#add-test-cases)) plus one extra column:
 
@@ -40,23 +40,23 @@ The CSV is the **same format as the dataset upload** (see [Add test cases](#add-
 In the **Create Dataset and Experiment** dialog you provide:
 
 - **Name** — saved as `<name>_dataset` and `<name>_experiment`.
-- **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** assertion, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
+- **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** expectation, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
 - **Data source**, **Model combo**, **Run as group**, and the **judge threshold** (default `0.7`) — the same run configuration as a normal experiment (see [Run configuration](#run-configuration)).
 - The **CSV file** (a **sample format** download is provided).
 
 Each row's question and expectation stay paired at the row level. The import is atomic — if anything fails part‑way, the partially‑created dataset is removed so you can retry cleanly. Once created, run it from the **Experiments** table like any other experiment ([Run an experiment](#3-run-an-experiment)).
 
-> Prefer to define assertions by hand, or build a `search` experiment? Use the manual path below instead.
+> Prefer to define expectations by hand, or build a `search` experiment? Use the manual path below instead.
 
 ---
 
 ### Manual path: build a dataset and experiment step by step
 
-Create the **dataset** and the **experiment** separately — use this when you want to define assertions by hand or build a `search` experiment. The steps below cover the full workflow.
+Create the **dataset** and the **experiment** separately — use this when you want to define expectations by hand or build a `search` experiment. The steps below cover the full workflow.
 
 ### 1. Create a dataset
 
-A **dataset** is a reusable set of **test cases** for one capability. Datasets hold *inputs only* — the assertions live on the experiment, so the same dataset can be evaluated under different expectations.
+A **dataset** is a reusable set of **test cases** for one capability. Datasets hold *inputs only* — the expectations live on the experiment, so the same dataset can be evaluated under different expectations.
 
 In **Datasets**, click **New Dataset** and provide:
 
@@ -88,7 +88,7 @@ The CSV columns are:
 
 ### 2. Create an experiment
 
-An **experiment** pairs a dataset with a **run configuration** and a set of **assertions**. In **Experiments**, click **New Experiment**.
+An **experiment** pairs a dataset with a **run configuration** and a set of **expectations**. In **Experiments**, click **New Experiment**.
 
 ![Experiments table](/docs/images/admin/eval/experiments.png)
 
@@ -99,23 +99,23 @@ An **experiment** pairs a dataset with a **run configuration** and a set of **as
 
 > Tip: pick the same **Model combo** and **Group** your users use so the experiment mirrors real behaviour.
 
-#### Assertions (cases × assertions matrix)
+#### Expectations (cases × expectations matrix)
 
-Assertions are defined as a matrix: **rows are the dataset's test cases**, **columns are assertions**.
+Expectations are defined as a matrix: **rows are the dataset's test cases**, **columns are expectations**.
 
 - Toggle a **row** on/off to include/exclude a case.
-- Add an **assertion column** with **+ Assertion**; each column's header has a "select all" checkbox to apply it to every case.
-- Each **cell** is a checkbox — whether that assertion applies to that case.
+- Add an **expectation column** with **+ Expectation**; each column's header has a "select all" checkbox to apply it to every case.
+- Each **cell** is a checkbox — whether that expectation applies to that case.
 - For an **LLM judge** column, each cell also has an **override** box: type a prompt to judge that specific case differently from the column's default.
 
-Available assertion types include (per capability):
+Available expectation types include (per capability):
 
 - **Search** — result contains id, result in top‑K, min/max results, ordering, field match.
 - **AI‑Summary** — contains / not‑contains text, regex match, min/max length, cites source, and **LLM judge** (a rubric scored 0–1 by an LLM, with a configurable threshold).
 
 The **LLM judge** evaluates the full summary (including resolved citations/references) and is given the underlying search results, so you can write rubrics about **grounding** (e.g. *"every claim is supported by a cited Kenya document"*).
 
-![Experiment editor — combo, group, and assertion matrix](/docs/images/admin/eval/experiment-editor.png)
+![Experiment editor — combo, group, and expectation matrix](/docs/images/admin/eval/experiment-editor.png)
 
 Click **Save** to store the experiment as a draft.
 
@@ -134,7 +134,7 @@ Open an experiment to see its **runs**, newest first (the **latest** run is high
 Expand a run to see the per‑case results table, and expand a case to see:
 
 - the **Query** and any filters,
-- each **assertion** result (pass/fail, score, and — for LLM judge — the exact prompt being judged and the reason), and
+- each **expectation** result (pass/fail, score, and — for LLM judge — the exact prompt being judged and the reason), and
 - the **Output** (the AI summary with references, or the search result cards) — collapsed by default.
 
 ![Run results and per‑case detail](/docs/images/admin/eval/run-results.png)
@@ -145,5 +145,5 @@ Expand a run to see the per‑case results table, and expand a case to see:
 
 - **Reproduce the app:** match the experiment's **Model combo** and **Run as group** to what users actually use.
 - **Re‑run freely:** runs accumulate as history, so you can compare quality across changes.
-- **Grounding rubrics:** because the LLM judge sees the sources, you can assert that the summary is supported by (and only cites) the right documents.
-- **Bulk authoring:** use **Upload CSV** to load many queries at once, then define assertions once on the experiment.
+- **Grounding rubrics:** because the LLM judge sees the sources, you can check that the summary is supported by (and only cites) the right documents.
+- **Bulk authoring:** use **Upload CSV** to load many queries at once, then define expectations once on the experiment.
