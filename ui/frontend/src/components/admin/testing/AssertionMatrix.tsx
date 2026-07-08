@@ -196,7 +196,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
                   setAdding(true);
                 }}
               >
-                + Assertion
+                + Expectation
               </button>
             </th>
           </tr>
@@ -244,7 +244,7 @@ const AssertionMatrix: React.FC<AssertionMatrixProps> = ({
 
       {columns.length === 0 && !adding && (
         <p className="text-muted">
-          No assertions yet. Use <strong>+ Assertion</strong> to add a column.
+          No expectations yet. Use <strong>+ Expectation</strong> to add a column.
         </p>
       )}
 

@@ -302,12 +302,12 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                 )}
               </div>
               <div className="testing-case-block">
-                <span className="testing-case-label">Assertions</span>
+                <span className="testing-case-label">Expectations</span>
                 {(result.assertion_results || []).map((ar, i) => (
                   <AssertionResultRow key={i} result={ar} />
                 ))}
                 {(result.assertion_results || []).length === 0 && (
-                  <p className="text-muted" style={{ margin: 0 }}>No assertion results.</p>
+                  <p className="text-muted" style={{ margin: 0 }}>No expectation results.</p>
                 )}
               </div>
               <div className="testing-case-block">

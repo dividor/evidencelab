@@ -32,7 +32,7 @@ const AssertionColumnForm: React.FC<AssertionColumnFormProps> = ({
   const setParam = (key: string, value: unknown) =>
     setAssertion((prev) => ({ ...prev, [key]: value }));
 
-  const title = isEdit ? 'Edit assertion' : 'Add assertion column';
+  const title = isEdit ? 'Edit expectation' : 'Add expectation column';
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
@@ -48,7 +48,7 @@ const AssertionColumnForm: React.FC<AssertionColumnFormProps> = ({
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label>Assertion type</label>
+            <label>Expectation type</label>
             <select
               value={assertion.type}
               onChange={(e) => setType(e.target.value)}
@@ -83,7 +83,7 @@ const AssertionColumnForm: React.FC<AssertionColumnFormProps> = ({
               onClick={() => onSubmit(assertion)}
               disabled={!assertion.type}
             >
-              {isEdit ? 'Save assertion' : 'Add column'}
+              {isEdit ? 'Save expectation' : 'Add column'}
             </button>
           </div>
         </div>
