@@ -15,6 +15,7 @@ import {
   countFieldValues,
   extractFieldValues,
   mergeFacetField,
+  orderFacetValuesForDisplay,
   resolveMetaKey,
 } from '../facetMerge';
 import type { FacetValue, SearchResult } from '../../types/api';
@@ -188,5 +189,47 @@ describe('mergeFacetField', () => {
       new Map([['Hit', 7]]),
     );
     expect(merged.map((m) => m.value)).toEqual(['Hit', 'Zero']);
+  });
+});
+
+describe('orderFacetValuesForDisplay', () => {
+  test('country values when count-ordered then alphabetised by value', () => {
+    const values: FacetValue[] = [
+      { value: 'Zimbabwe', count: 90 },
+      { value: 'Afghanistan', count: 50 },
+      { value: 'Kenya', count: 70 },
+    ];
+    const ordered = orderFacetValuesForDisplay('country', values);
+    expect(ordered.map((v) => v.value)).toEqual(['Afghanistan', 'Kenya', 'Zimbabwe']);
+  });
+
+  test('country alphabetising preserves each value count', () => {
+    const values: FacetValue[] = [
+      { value: 'Kenya', count: 70 },
+      { value: 'Afghanistan', count: 50 },
+    ];
+    const ordered = orderFacetValuesForDisplay('country', values);
+    expect(ordered).toEqual([
+      { value: 'Afghanistan', count: 50 },
+      { value: 'Kenya', count: 70 },
+    ]);
+  });
+
+  test('non-country field when called then order unchanged', () => {
+    const values: FacetValue[] = [
+      { value: 'Report', count: 90 },
+      { value: 'Evaluation', count: 50 },
+    ];
+    const ordered = orderFacetValuesForDisplay('document_type', values);
+    expect(ordered.map((v) => v.value)).toEqual(['Report', 'Evaluation']);
+  });
+
+  test('country sorting when given input then does not mutate it', () => {
+    const values: FacetValue[] = [
+      { value: 'Zimbabwe', count: 90 },
+      { value: 'Afghanistan', count: 50 },
+    ];
+    orderFacetValuesForDisplay('country', values);
+    expect(values.map((v) => v.value)).toEqual(['Zimbabwe', 'Afghanistan']);
   });
 });

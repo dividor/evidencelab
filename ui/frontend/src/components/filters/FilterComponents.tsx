@@ -1,5 +1,6 @@
 import React from 'react';
 import { Facets, FacetValue, RangeInfo } from '../../types/api';
+import { orderFacetValuesForDisplay } from '../../utils/facetMerge';
 
 interface SelectedFiltersDisplayProps {
   facets: Facets;
@@ -230,7 +231,7 @@ const computeDisplayItems = (
   }
 
   if (facetSearchResults[coreField]) {
-    const results = facetSearchResults[coreField];
+    const results = orderFacetValuesForDisplay(coreField, facetSearchResults[coreField]);
     const remaining = results.length - defaultDisplayCount;
     return {
       displayItems: isExpanded ? results : results.slice(0, defaultDisplayCount),
@@ -238,8 +239,9 @@ const computeDisplayItems = (
     };
   }
 
-  const filteredItems = facetValues.filter((item) =>
-    item.value.toLowerCase().includes(searchTerm)
+  const filteredItems = orderFacetValuesForDisplay(
+    coreField,
+    facetValues.filter((item) => item.value.toLowerCase().includes(searchTerm))
   );
   const remaining = filteredItems.length - defaultDisplayCount;
   return {
