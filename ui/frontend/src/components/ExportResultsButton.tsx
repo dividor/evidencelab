@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { saveAs } from 'file-saver';
+import API_BASE_URL from '../config';
 import type { SearchResult } from '../types/api';
 import {
   buildExportFilename,
@@ -57,6 +58,9 @@ export const ExportResultsButton: React.FC<ExportResultsButtonProps> = ({
           typeof window !== 'undefined' && window.location
             ? window.location.origin
             : undefined,
+        // Same API base the on-screen cards use to load table/figure
+        // screenshots, so the export embeds those exact images.
+        fileBaseUrl: API_BASE_URL,
       });
       saveAs(blob, buildExportFilename(query, new Date()));
     } catch (err) {

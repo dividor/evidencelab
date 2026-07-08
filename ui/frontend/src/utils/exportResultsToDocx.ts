@@ -2,9 +2,12 @@
  * Client-side generator for a nicely-formatted Word (.docx) export of a
  * search result set, including the AI summary.
  *
- * The export is produced entirely in the browser using the `docx` package —
- * no backend round-trip is required. The resulting Blob can be handed to
- * `file-saver`'s `saveAs` for download.
+ * The export is produced in the browser using the `docx` package. The only
+ * backend round-trip is fetching the table / figure screenshots shown on
+ * screen (from `<fileBaseUrl>/file/<path>`) so they can be embedded in the
+ * document; with no `fileBaseUrl` the export is fully client-side and
+ * text-only. The resulting Blob can be handed to `file-saver`'s `saveAs` for
+ * download.
  *
  * Design goals (see also the unit tests):
  *  - Cover page with query, dataset, timestamp, and result count.
@@ -22,6 +25,7 @@ import {
   ExternalHyperlink,
   Footer,
   HeadingLevel,
+  ImageRun,
   InternalHyperlink,
   LevelFormat,
   Packer,
@@ -32,7 +36,11 @@ import {
   TextRun,
   convertInchesToTwip,
 } from 'docx';
-import type { SearchResult } from '../types/api';
+import type { ChunkElement, SearchResult } from '../types/api';
+import {
+  buildOrderedElements,
+  isTextRedundantWithTable,
+} from '../components/searchResultCardUtils';
 import {
   buildCitationSequenceMap,
   buildGroupedReferences,
@@ -68,6 +76,15 @@ export interface ExportOptions {
    *  built from real content (internal links to heading bookmarks), not a Word
    *  field, so opening the document never prompts to update fields. */
   tableOfContents?: boolean;
+  /** Base URL of the file-serving API (e.g. "/api"), used to fetch the table /
+   *  figure screenshots shown on screen so they can be embedded in the export.
+   *  When omitted, no screenshots are fetched and the export is text-only —
+   *  this preserves the prior behaviour and keeps SSR / unit tests that don't
+   *  exercise images simple. */
+  fileBaseUrl?: string;
+  /** Injectable fetch implementation for deterministic tests. Defaults to the
+   *  global `fetch` (bound to `globalThis`). */
+  fetchFn?: typeof fetch;
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -366,6 +383,235 @@ const extractMarkdownHeadings = (md: string): { text: string; depth: number }[] 
 };
 
 // ---------------------------------------------------------------------------
+// Table / figure screenshots
+//
+// The on-screen search card renders any table or figure in a result as the
+// low-resolution screenshot the pipeline extracted (served from
+// `<fileBaseUrl>/file/<path>`). The text-only export mangled tables — a table's
+// cell text was flattened into one paragraph. We now fetch those exact images
+// and embed them with docx `ImageRun`, matching what the user sees on screen.
+// ---------------------------------------------------------------------------
+
+/** A screenshot fetched and ready for embedding. */
+export interface FetchedImage {
+  /** Raw image bytes. A `Uint8Array` (not a bare `ArrayBuffer`) is what docx's
+   *  packer reliably embeds — it matches the `Buffer` shape `fs.readFileSync`
+   *  yields in the library's own examples. */
+  data: Uint8Array;
+  /** docx-supported raster type, derived from the file extension. */
+  type: 'png' | 'jpg' | 'gif' | 'bmp';
+  /** Display size in px, already scaled to fit the page content width. */
+  width: number;
+  height: number;
+}
+
+/** Max embedded image width (~6 in at 96 dpi) so a screenshot fits the page
+ *  content box without overflowing the margins. We never upscale past the
+ *  image's natural width. */
+const MAX_IMAGE_WIDTH_PX = 600;
+
+/** File extension → docx raster type. A Map (not an object) sidesteps the
+ *  `security/detect-object-injection` lint warning on dynamic key access. */
+const IMAGE_TYPE_BY_EXT = new Map<string, FetchedImage['type']>([
+  ['png', 'png'],
+  ['jpg', 'jpg'],
+  ['jpeg', 'jpg'],
+  ['gif', 'gif'],
+  ['bmp', 'bmp'],
+]);
+
+/** Strip a leading slash so the path matches the on-screen `<img>` src and can
+ *  be appended to `<fileBaseUrl>/file/`. */
+const normaliseImagePath = (p?: string): string | undefined => {
+  const trimmed = p?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+};
+
+/** The screenshot path for a table/figure element (image_path for tables, path
+ *  for figures) — identical to what the on-screen renderer uses. */
+const visualElementPath = (el: ChunkElement): string | undefined =>
+  normaliseImagePath(el.image_path || el.path);
+
+/** The table/figure elements shown on screen for a result, in document order.
+ *  Reuses the exact same selection/ordering as the search card so the export
+ *  stays in lock-step with what the user sees. */
+const visualElementsFor = (
+  result: SearchResult,
+): Array<ChunkElement & { key: string }> =>
+  buildOrderedElements(result).filter(
+    (el) => el.element_type === 'table' || el.element_type === 'image',
+  );
+
+/** docx image type for a path, or null for types `ImageRun` cannot embed
+ *  (e.g. webp, svg). */
+const imageTypeForPath = (path: string): FetchedImage['type'] | null => {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_TYPE_BY_EXT.get(ext) ?? null;
+};
+
+/** Natural [width, height] from a PNG's IHDR header, or null. */
+const pngDimensions = (view: DataView): [number, number] | null =>
+  view.byteLength >= 24 && view.getUint32(0) === 0x89504e47
+    ? [view.getUint32(16), view.getUint32(20)]
+    : null;
+
+/** Natural [width, height] from a JPEG SOF marker, or null. */
+const jpegDimensions = (view: DataView): [number, number] | null => {
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+  let offset = 2;
+  while (offset + 9 < view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = view.getUint8(offset + 1);
+    const isSof =
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      marker !== 0xc4 &&
+      marker !== 0xc8 &&
+      marker !== 0xcc;
+    if (isSof) return [view.getUint16(offset + 7), view.getUint16(offset + 5)];
+    offset += 2 + view.getUint16(offset + 2);
+  }
+  return null;
+};
+
+/** Decode natural pixel dimensions from raw image bytes (PNG/JPEG). */
+const naturalDimensions = (data: Uint8Array): [number, number] | null => {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return pngDimensions(view) ?? jpegDimensions(view);
+};
+
+/** Scale natural dimensions to fit {@link MAX_IMAGE_WIDTH_PX}, preserving the
+ *  aspect ratio and never upscaling. */
+const fitToPage = (w: number, h: number): { width: number; height: number } => {
+  if (w <= 0 || h <= 0) {
+    return { width: MAX_IMAGE_WIDTH_PX, height: Math.round(MAX_IMAGE_WIDTH_PX * 0.75) };
+  }
+  const width = Math.min(w, MAX_IMAGE_WIDTH_PX);
+  return { width: Math.round(width), height: Math.round(h * (width / w)) };
+};
+
+/** Best available display size: the element's stored `image_size` (tables carry
+ *  it), else dimensions decoded from the bytes (figures), else the bbox aspect
+ *  ratio. */
+const displaySizeFor = (
+  el: ChunkElement,
+  data: Uint8Array,
+): { width: number; height: number } => {
+  const size = el.image_size;
+  if (Array.isArray(size) && size.length >= 2 && size[0] > 0 && size[1] > 0) {
+    return fitToPage(size[0], size[1]);
+  }
+  const decoded = naturalDimensions(data);
+  if (decoded) return fitToPage(decoded[0], decoded[1]);
+  const bbox = el.bbox;
+  if (Array.isArray(bbox) && bbox.length >= 4) {
+    return fitToPage(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+  }
+  return fitToPage(0, 0);
+};
+
+/** Fetch and decode a single screenshot. Returns null (and warns) when the
+ *  image is missing, unfetchable, or an unembeddable type — the caller skips it
+ *  and still produces the document, mirroring the on-screen `onError` that
+ *  hides a broken thumbnail. */
+const fetchVisualImage = async (
+  el: ChunkElement,
+  path: string,
+  fileBaseUrl: string,
+  fetchFn: typeof fetch,
+): Promise<FetchedImage | null> => {
+  const type = imageTypeForPath(path);
+  if (!type) return null;
+  try {
+    const res = await fetchFn(`${fileBaseUrl.replace(/\/+$/, '')}/file/${path}`);
+    if (!res.ok) return null;
+    const data = new Uint8Array(await res.arrayBuffer());
+    const { width, height } = displaySizeFor(el, data);
+    return { data, type, width, height };
+  } catch (err) {
+    console.warn('Export to Word: could not fetch screenshot', path, err);
+    return null;
+  }
+};
+
+/** Fetch every table/figure screenshot shown across the result set, de-duped by
+ *  path so each image is fetched once. Returns an empty map when no
+ *  `fileBaseUrl` is configured (e.g. SSR / tests), leaving the export
+ *  text-only. */
+export const fetchResultImages = async (
+  opts: ExportOptions,
+): Promise<Map<string, FetchedImage>> => {
+  const out = new Map<string, FetchedImage>();
+  const { fileBaseUrl } = opts;
+  if (!fileBaseUrl) return out;
+  const fetchFn =
+    opts.fetchFn ??
+    (typeof fetch !== 'undefined' ? (fetch.bind(globalThis) as typeof fetch) : undefined);
+  if (!fetchFn) return out;
+
+  // De-dupe across results so each unique screenshot is fetched only once.
+  const unique = new Map<string, ChunkElement>();
+  for (const result of opts.results) {
+    for (const el of visualElementsFor(result)) {
+      const path = visualElementPath(el);
+      if (path && !unique.has(path)) unique.set(path, el);
+    }
+  }
+  await Promise.all(
+    Array.from(unique.entries()).map(async ([path, el]) => {
+      const img = await fetchVisualImage(el, path, fileBaseUrl, fetchFn);
+      if (img) out.set(path, img);
+    }),
+  );
+  return out;
+};
+
+/** Paragraphs embedding each successfully-fetched screenshot for a result, in
+ *  document order. Images that failed to fetch are simply absent. */
+const buildResultImageParagraphs = (
+  result: SearchResult,
+  images: Map<string, FetchedImage>,
+): Paragraph[] => {
+  const out: Paragraph[] = [];
+  for (const el of visualElementsFor(result)) {
+    const path = visualElementPath(el);
+    const img = path ? images.get(path) : undefined;
+    if (!img) continue;
+    out.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+        children: [
+          new ImageRun({
+            type: img.type,
+            data: img.data,
+            transformation: { width: img.width, height: img.height },
+          }),
+        ],
+      }),
+    );
+  }
+  return out;
+};
+
+/** True when an embedded table screenshot makes the chunk text redundant — we
+ *  then drop the (mangled) text box so the screenshot stands in its place,
+ *  exactly as the on-screen card hides the redundant snippet. */
+const tableScreenshotReplacesText = (
+  result: SearchResult,
+  images: Map<string, FetchedImage>,
+): boolean =>
+  visualElementsFor(result).some((el) => {
+    if (el.element_type !== 'table') return false;
+    const path = visualElementPath(el);
+    return !!path && images.has(path) && isTextRedundantWithTable(result.text, el);
+  });
+
+// ---------------------------------------------------------------------------
 // Builders — one per section of the docx
 // ---------------------------------------------------------------------------
 
@@ -529,11 +775,42 @@ const buildSummarySection = (
   return out;
 };
 
+/** The FULL excerpt (never truncated) rendered as a single bordered, shaded box
+ *  at a smaller font — one paragraph so the box stays continuous across page
+ *  breaks, with blank lines separating sub-blocks. Returns nothing when there is
+ *  no text, or when an embedded table screenshot already conveys it (the
+ *  on-screen card hides the redundant snippet the same way). */
+const buildExcerptParagraphs = (
+  r: SearchResult,
+  images: Map<string, FetchedImage>,
+): Paragraph[] => {
+  const blocks = normaliseExcerpt(String(r.text || ''))
+    .split(/\n{2,}/)
+    .map((b) => b.split('\n').join(' ').trim())
+    .filter(Boolean);
+  if (!blocks.length || tableScreenshotReplacesText(r, images)) return [];
+  const excerptRuns: TextRun[] = [];
+  blocks.forEach((b, i) => {
+    if (i > 0) excerptRuns.push(new TextRun({ break: 2 }));
+    excerptRuns.push(new TextRun({ text: b, italics: true, size: 18, color: '3A3A3A' }));
+  });
+  const boxSide = { style: BorderStyle.SINGLE, size: 4, color: 'D7DCE1', space: 8 };
+  return [
+    new Paragraph({
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F6F8FA' },
+      border: { top: boxSide, bottom: boxSide, left: boxSide, right: boxSide },
+      spacing: { after: 160, line: 252 },
+      children: excerptRuns,
+    }),
+  ];
+};
+
 const buildResultCard = (
   r: SearchResult,
   idx: number,
   siteOrigin: string,
-  dataSource?: string,
+  dataSource: string | undefined,
+  images: Map<string, FetchedImage>,
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   const altTitle = typeof r.document_title === 'string' ? r.document_title : '';
@@ -583,30 +860,11 @@ const buildResultCard = (
     );
   }
 
-  // Render the FULL excerpt (never truncated) inside a single bordered, shaded
-  // box at a smaller font. One paragraph guarantees a single continuous box
-  // that still flows across page breaks; blank lines separate any sub-blocks.
-  const excerpt = normaliseExcerpt(String(r.text || ''));
-  const blocks = excerpt
-    .split(/\n{2,}/)
-    .map((b) => b.split('\n').join(' ').trim())
-    .filter(Boolean);
-  if (blocks.length) {
-    const excerptRuns: TextRun[] = [];
-    blocks.forEach((b, i) => {
-      if (i > 0) excerptRuns.push(new TextRun({ break: 2 }));
-      excerptRuns.push(new TextRun({ text: b, italics: true, size: 18, color: '3A3A3A' }));
-    });
-    const boxSide = { style: BorderStyle.SINGLE, size: 4, color: 'D7DCE1', space: 8 };
-    out.push(
-      new Paragraph({
-        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F6F8FA' },
-        border: { top: boxSide, bottom: boxSide, left: boxSide, right: boxSide },
-        spacing: { after: 160, line: 252 },
-        children: excerptRuns,
-      }),
-    );
-  }
+  // Embed the same table/figure screenshots shown on screen, in document order,
+  // so a table renders as its image rather than mangled, flattened cell text,
+  // followed by the FULL excerpt (unless a screenshot already conveys it).
+  out.push(...buildResultImageParagraphs(r, images));
+  out.push(...buildExcerptParagraphs(r, images));
 
   out.push(
     new Paragraph({
@@ -626,8 +884,9 @@ const buildResultCard = (
 const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
-  dataSource?: string,
+  dataSource: string | undefined,
   sectionTitle = 'Search Results',
+  images: Map<string, FetchedImage> = new Map(),
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   out.push(
@@ -638,7 +897,7 @@ const buildResultsSection = (
     }),
   );
   results.forEach((r, idx) => {
-    out.push(...buildResultCard(r, idx, siteOrigin, dataSource));
+    out.push(...buildResultCard(r, idx, siteOrigin, dataSource, images));
   });
   return out;
 };
@@ -650,7 +909,10 @@ const buildResultsSection = (
 /** Build the in-memory `docx` Document for the given export options. Exposed
  *  separately from {@link exportResultsToDocxBlob} to allow unit tests to
  *  introspect the document structure without packing a Blob. */
-export const buildExportDocument = (opts: ExportOptions): Document => {
+export const buildExportDocument = (
+  opts: ExportOptions,
+  images: Map<string, FetchedImage> = new Map(),
+): Document => {
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
@@ -671,6 +933,7 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
       siteOrigin,
       opts.dataSource,
       opts.resultsSectionTitle,
+      images,
     ),
   ];
 
@@ -743,9 +1006,13 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   });
 };
 
-/** Serialise the export to a Word-compatible Blob. */
+/** Serialise the export to a Word-compatible Blob. Table / figure screenshots
+ *  are fetched first (when `fileBaseUrl` is set) so they can be embedded
+ *  in-document; a screenshot that fails to fetch is skipped, never aborting the
+ *  export. */
 export const exportResultsToDocxBlob = async (opts: ExportOptions): Promise<Blob> => {
-  const doc = buildExportDocument(opts);
+  const images = await fetchResultImages(opts);
+  const doc = buildExportDocument(opts, images);
   const blob = await Packer.toBlob(doc);
   // docx's Packer returns a Blob with the generic zip MIME — override so
   // consumers (and tests) see the Word-specific type.
