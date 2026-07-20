@@ -2998,7 +2998,11 @@ function App() {
         onTabChange={handleTabChange}
       />
 
-      <AdminPanel isActive={activeTab === 'admin'} />
+      <AdminPanel
+        isActive={activeTab === 'admin'}
+        dataSource={dataSource}
+        dataSourceConfig={currentDataSourceConfig}
+      />
 
       <AppFooter>
         <button

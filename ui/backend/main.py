@@ -858,6 +858,7 @@ if USER_MODULE:
     from ui.backend.routes import ratings as ratings_routes
     from ui.backend.routes import research as research_routes
     from ui.backend.routes import testing as testing_routes
+    from ui.backend.routes import toc_validator as toc_validator_routes
 
     app.include_router(ratings_routes.router, prefix="/ratings", tags=["ratings"])
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
@@ -866,6 +867,9 @@ if USER_MODULE:
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])
     app.include_router(testing_routes.router, prefix="/testing", tags=["testing"])
+    app.include_router(
+        toc_validator_routes.router, prefix="/toc-validator", tags=["toc-validator"]
+    )
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 
     # Auto-promote first superuser on startup (if configured)
