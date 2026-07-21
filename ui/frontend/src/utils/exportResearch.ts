@@ -1,5 +1,5 @@
 import { DrilldownNode, SearchResult } from '../types/api';
-import { buildGroupedReferences, DocumentGroup } from '../components/AiSummaryReferences';
+import { buildGroupedReferences, DocumentGroup } from './citations';
 
 /** Escape HTML special characters */
 const esc = (text: string): string =>

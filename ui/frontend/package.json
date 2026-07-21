@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^8.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "ajv": "^8.20.0",
     "ajv-keywords": "^5.1.0",
-    "axios": "^1.13.6",
-    "docx": "^9.6.1",
+    "axios": "^1.18.1",
+    "docx": "9.6.1",
     "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
     "pdfjs-dist": "^3.11.174",
@@ -63,26 +66,27 @@
     ]
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^16.3.0",
     "@types/axios": "^0.9.36",
     "@types/file-saver": "^2.0.7",
-    "@types/node": "^25.5.0",
+    "@types/node": "^25.9.4",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/parser": "^8.60.1",
     "eslint": "^8.57.0",
     "eslint-plugin-security": "^2.1.0",
     "eslint-plugin-sonarjs": "^0.25.1",
-    "http-proxy-middleware": "^2.0.6"
+    "http-proxy-middleware": "^2.0.10"
   },
   "jest": {
     "transformIgnorePatterns": [
       "node_modules/(?!(axios|react-markdown|remark-.*|unified|bail|is-plain-obj|trough|vfile.*|unist-.*|mdast-.*|micromark.*|decode-named-character-reference|character-entities.*|character-reference-invalid|property-information|hast-util-.*|space-separated-tokens|comma-separated-tokens|ccount|escape-string-regexp|markdown-table|devlop|trim-lines|estree-util-.*|html-url-attributes|is-alphabetical|is-alphanumerical|is-decimal|is-hexadecimal|longest-streak|parse-entities|stringify-entities|zwitch|@ungap)/)"
     ],
     "moduleNameMapper": {
+      "^react-plotly\\.js$": "<rootDir>/src/testMocks/reactPlotly.tsx",
       "^unist-util-visit-parents/do-not-use-color$": "unist-util-visit-parents/lib/color.node.js",
       "^#minpath$": "<rootDir>/node_modules/vfile/lib/minpath.js",
       "^#minproc$": "<rootDir>/node_modules/vfile/lib/minproc.js",

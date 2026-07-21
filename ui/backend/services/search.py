@@ -351,7 +351,9 @@ def _build_filter_condition(
     )
 
 
-_DOC_ONLY_FIELDS = {"map_language", "sys_language"}
+# Document-level fields that are not stored on chunks. They are resolved to a
+# doc_id filter upstream (see routes.search), so the chunk filter skips them.
+_DOC_ONLY_FIELDS = {"map_language", "sys_language", "map_region"}
 _TEXT_MATCH_FIELDS = {"map_title"}
 
 
@@ -1331,10 +1333,20 @@ def search_facet_values(
         else:
             hits = result.hits
 
+        # Split '; '-joined multi-value payloads (e.g. multi-country docs) so
+        # each constituent value becomes its own facet option, instead of a
+        # single combined "A; B; C" bucket.
+        from ui.backend.utils.facet_helpers import (  # noqa: PLC0415
+            _accumulate_raw_value,
+        )
+
+        counter: Counter = Counter()
+        for hit in hits:
+            if hit.value in (None, ""):
+                continue
+            _accumulate_raw_value(counter, hit.value, hit.count)
         facets_list = [
-            {"value": str(hit.value), "count": hit.count}
-            for hit in hits
-            if hit.value not in (None, "")
+            {"value": value, "count": count} for value, count in counter.most_common()
         ]
         if not query_value:
             return facets_list

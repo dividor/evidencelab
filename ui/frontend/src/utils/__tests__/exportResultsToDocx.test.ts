@@ -15,12 +15,13 @@ import { Paragraph } from 'docx';
 import {
   DOCX_MIME,
   buildExportFilename,
-  buildReferenceGroups,
   exportResultsToDocxBlob,
-  extractCitationNumbers,
+  fetchResultImages,
   markdownToParagraphs,
   resolveResultLink,
+  type ExportOptions,
 } from '../exportResultsToDocx';
+import { buildGroupedReferences, extractCitedNumbers } from '../citations';
 import type { SearchResult } from '../../types/api';
 
 const makeResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
@@ -118,19 +119,19 @@ describe('resolveResultLink', () => {
   });
 });
 
-describe('extractCitationNumbers', () => {
+describe('extractCitedNumbers', () => {
   test('returns sorted unique numbers', () => {
-    expect(extractCitationNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
+    expect(extractCitedNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
   });
   test('handles multi-citation brackets with whitespace', () => {
-    expect(extractCitationNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
+    expect(extractCitedNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
   });
   test('returns [] when no citations present', () => {
-    expect(extractCitationNumbers('plain text with no marks')).toEqual([]);
+    expect(extractCitedNumbers('plain text with no marks')).toEqual([]);
   });
 });
 
-describe('buildReferenceGroups', () => {
+describe('buildGroupedReferences', () => {
   test('groups by document title and renumbers in citation order', () => {
     // Mirrors AiSummaryReferences: citations are processed in *sorted
     // numeric* order, then renumbered into that order. So a summary that
@@ -140,7 +141,7 @@ describe('buildReferenceGroups', () => {
       makeResult({ title: 'Doc B', organization: 'OrgB', year: '2021', page_num: 1 }),
       makeResult({ title: 'Doc A', organization: 'OrgA', year: '2020', page_num: 9 }),
     ];
-    const groups = buildReferenceGroups('first [2], then [1] and [3]', results);
+    const groups = buildGroupedReferences('first [2], then [1] and [3]', results);
     expect(groups).toHaveLength(2);
     // Doc A is the first group encountered (citation [1] → results[0])
     expect(groups[0].title).toBe('Doc A');
@@ -152,12 +153,12 @@ describe('buildReferenceGroups', () => {
   });
   test('skips out-of-range citation numbers', () => {
     const results = [makeResult({ title: 'Only Doc' })];
-    const groups = buildReferenceGroups('claim [1] then bogus [99]', results);
+    const groups = buildGroupedReferences('claim [1] then bogus [99]', results);
     expect(groups).toHaveLength(1);
     expect(groups[0].refs).toHaveLength(1);
   });
   test('returns [] when summary has no citations', () => {
-    expect(buildReferenceGroups('no marks here', [makeResult()])).toEqual([]);
+    expect(buildGroupedReferences('no marks here', [makeResult()])).toEqual([]);
   });
 });
 
@@ -396,6 +397,39 @@ describe('exportResultsToDocxBlob', () => {
     expect(refsBlock).toMatch(/p\.11/);
   });
 
+  test('inline [N] markers are renumbered sequentially, matching the screen and References', async () => {
+    // Regression for the citation discrepancy: when a summary cites
+    // non-contiguous result indices (#3 and #7), the on-screen summary
+    // renumbers them to [1] and [2]. The docx export must do the same for its
+    // inline body markers — previously it rendered the original 3 and 7,
+    // disagreeing with both the screen and its own References section.
+    const results = Array.from({ length: 7 }, (_, i) =>
+      makeResult({
+        chunk_id: `c${i + 1}`,
+        doc_id: `doc-${i + 1}`,
+        title: `Doc ${i + 1}`,
+        pdf_url: `https://example.org/doc-${i + 1}.pdf`,
+        page_num: i + 1,
+      }),
+    );
+    const opts = {
+      ...baseOpts,
+      aiSummary: '## Findings\n\nFirst point [3]. Second point [7].',
+      results,
+    };
+    const xml = await unzip(await exportResultsToDocxBlob(opts));
+    // Isolate the AI summary body (between its heading and the References
+    // heading) so we inspect only the inline markers, not page numbers or
+    // result-card numbering elsewhere in the document.
+    const body = xml.slice(xml.indexOf('Findings'), xml.indexOf('>References<'));
+    // Inline markers render the sequential display numbers...
+    expect(body).toMatch(/<w:t[^>]*>1<\/w:t>/);
+    expect(body).toMatch(/<w:t[^>]*>2<\/w:t>/);
+    // ...never the original cited indices.
+    expect(body).not.toMatch(/<w:t[^>]*>3<\/w:t>/);
+    expect(body).not.toMatch(/<w:t[^>]*>7<\/w:t>/);
+  });
+
   test('omits References section when the summary has no citations', async () => {
     const opts = {
       ...baseOpts,
@@ -419,5 +453,170 @@ describe('exportResultsToDocxBlob', () => {
     expect(styles).toMatch(/Heading1[\s\S]*?w:val="40"/);
     expect(styles).toMatch(/Heading1[\s\S]*?w:val="5B8FA8"/);
     expect(styles).toMatch(/Heading2[\s\S]*?w:val="28"/);
+  });
+});
+
+describe('table & figure screenshots', () => {
+  // Fixed clock for deterministic timestamps; the exact value is irrelevant
+  // (no assertion depends on it) so we use an epoch number rather than repeat
+  // the date-string literal used elsewhere in this file.
+  const FIXED = new Date(1_745_312_700_000);
+
+  // 1×1 transparent PNG — valid enough to embed and to exercise byte-based
+  // dimension decoding (its IHDR header encodes a 1×1 image).
+  const PNG_1x1_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const pngArrayBuffer = (): ArrayBuffer => {
+    const buf = Buffer.from(PNG_1x1_BASE64, 'base64');
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  };
+
+  /** A mock `fetch` that returns the 1×1 PNG (or fails) for the /file/ URL. */
+  const mockImageFetch = (mode: 'ok' | 'notfound' | 'reject' = 'ok') =>
+    jest.fn(async () => {
+      if (mode === 'reject') throw new Error('network down');
+      return {
+        ok: mode === 'ok',
+        arrayBuffer: async () => pngArrayBuffer(),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+
+  /** A result whose chunk contains a table screenshot plus the (redundant)
+   *  flattened cell text — mirrors what the on-screen card receives. */
+  const tableResult = (overrides: Partial<SearchResult> = {}): SearchResult =>
+    makeResult({
+      chunk_id: 'tbl',
+      doc_id: 'doc-tbl',
+      title: 'Strategic Evaluation with a Table',
+      page_num: 99,
+      text: 'Minimum 6 9 Maximum 26 9 Average 15 9',
+      chunk_elements: [
+        {
+          element_type: 'table',
+          image_path: '/data/uneg/tables/table_18.png',
+          image_size: [600, 300],
+          num_rows: 3,
+          num_cols: 3,
+          rows: [
+            [{ text: 'Minimum' }, { text: '6' }, { text: '9' }],
+            [{ text: 'Maximum' }, { text: '26' }, { text: '9' }],
+            [{ text: 'Average' }, { text: '15' }, { text: '9' }],
+          ],
+          page: 99,
+          position_hint: 1,
+        },
+      ],
+      ...overrides,
+    });
+
+  const exportOpts = (over: Partial<ExportOptions> = {}): ExportOptions => ({
+    query: 'tables',
+    results: [tableResult()],
+    now: () => FIXED,
+    fileBaseUrl: '/api',
+    fetchFn: mockImageFetch(),
+    ...over,
+  });
+
+  const mediaFiles = (zip: JSZip): string[] =>
+    Object.keys(zip.files).filter((n) => n.startsWith('word/media/'));
+
+  const unzipDoc = async (blob: Blob): Promise<string> => {
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    return zip.file('word/document.xml')!.async('string');
+  };
+
+  test('embeds the table screenshot as an image in the docx', async () => {
+    const zip = await JSZip.loadAsync(
+      await (await exportResultsToDocxBlob(exportOpts())).arrayBuffer(),
+    );
+    expect(mediaFiles(zip).length).toBeGreaterThan(0);
+  });
+
+  test('fetches the screenshot from the same /file/ URL the card uses', async () => {
+    const fetchFn = mockImageFetch();
+    await exportResultsToDocxBlob(exportOpts({ fetchFn }));
+    expect(fetchFn).toHaveBeenCalledWith('/api/file/data/uneg/tables/table_18.png');
+  });
+
+  test('drops the redundant flattened table text when the screenshot is embedded', async () => {
+    const xml = await unzipDoc(await exportResultsToDocxBlob(exportOpts()));
+    expect(xml).toContain('Strategic Evaluation with a Table'); // title kept
+    expect(xml).not.toContain('Maximum 26'); // mangled table text suppressed
+  });
+
+  test('skips a screenshot that fails to fetch but still produces the document', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const blob = await exportResultsToDocxBlob(
+      exportOpts({ fetchFn: mockImageFetch('reject') }),
+    );
+    expect(blob.type).toBe(DOCX_MIME);
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(mediaFiles(zip).length).toBe(0);
+    // With no image embedded, the text is no longer redundant and falls back in,
+    // so the reader still gets the table content (as text) rather than nothing.
+    expect(await unzipDoc(blob)).toContain('Maximum 26');
+    warn.mockRestore();
+  });
+
+  test('skips a 404 screenshot without throwing', async () => {
+    const blob = await exportResultsToDocxBlob(
+      exportOpts({ fetchFn: mockImageFetch('notfound') }),
+    );
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(mediaFiles(zip).length).toBe(0);
+  });
+
+  test('fetchResultImages returns empty when no fileBaseUrl is set', async () => {
+    const map = await fetchResultImages({ query: 'x', results: [tableResult()] });
+    expect(map.size).toBe(0);
+  });
+
+  test('fetchResultImages decodes the type and scales the size to fit the page', async () => {
+    const map = await fetchResultImages(exportOpts());
+    const img = map.get('data/uneg/tables/table_18.png');
+    expect(img).toBeDefined();
+    expect(img!.type).toBe('png');
+    // image_size [600, 300] is exactly the max width, so it is kept at 2:1.
+    expect(img!.width).toBe(600);
+    expect(img!.height).toBe(300);
+  });
+
+  test('embeds a referenced figure screenshot too (sized from decoded bytes)', async () => {
+    const result = makeResult({
+      chunk_id: 'fig',
+      doc_id: 'doc-fig',
+      title: 'Report With A Figure',
+      page_num: 5,
+      text: 'See Figure 2 for details.',
+      chunk_elements: [
+        {
+          element_type: 'text',
+          text: 'See Figure 2 for details.',
+          label: 'text',
+          page: 5,
+          position_hint: 0,
+        },
+        {
+          element_type: 'image',
+          path: '/data/uneg/figs/figure-2.png',
+          bbox: [0, 0, 300, 200],
+          page: 5,
+          position_hint: 1,
+        },
+      ],
+    });
+    const fetchFn = mockImageFetch();
+    const blob = await exportResultsToDocxBlob({
+      query: 'figs',
+      results: [result],
+      now: () => FIXED,
+      fileBaseUrl: '/api',
+      fetchFn,
+    });
+    expect(fetchFn).toHaveBeenCalledWith('/api/file/data/uneg/figs/figure-2.png');
+    const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+    expect(mediaFiles(zip).length).toBeGreaterThan(0);
   });
 });

@@ -2,9 +2,12 @@
  * Client-side generator for a nicely-formatted Word (.docx) export of a
  * search result set, including the AI summary.
  *
- * The export is produced entirely in the browser using the `docx` package —
- * no backend round-trip is required. The resulting Blob can be handed to
- * `file-saver`'s `saveAs` for download.
+ * The export is produced in the browser using the `docx` package. The only
+ * backend round-trip is fetching the table / figure screenshots shown on
+ * screen (from `<fileBaseUrl>/file/<path>`) so they can be embedded in the
+ * document; with no `fileBaseUrl` the export is fully client-side and
+ * text-only. The resulting Blob can be handed to `file-saver`'s `saveAs` for
+ * download.
  *
  * Design goals (see also the unit tests):
  *  - Cover page with query, dataset, timestamp, and result count.
@@ -16,18 +19,34 @@
  */
 import {
   AlignmentType,
+  Bookmark,
+  BorderStyle,
   Document,
   ExternalHyperlink,
   Footer,
   HeadingLevel,
+  ImageRun,
+  InternalHyperlink,
   LevelFormat,
   Packer,
+  PageBreak,
   PageNumber,
   Paragraph,
+  ShadingType,
   TextRun,
   convertInchesToTwip,
 } from 'docx';
-import type { SearchResult } from '../types/api';
+import type { ChunkElement, SearchResult } from '../types/api';
+import {
+  buildOrderedElements,
+  isTextRedundantWithTable,
+} from '../components/searchResultCardUtils';
+import {
+  buildCitationSequenceMap,
+  buildGroupedReferences,
+  parseCitationNumbers,
+  type DocumentGroup,
+} from './citations';
 
 export interface ExportOptions {
   query: string;
@@ -40,6 +59,32 @@ export interface ExportOptions {
   siteOrigin?: string;
   /** Injectable clock for deterministic tests. */
   now?: () => Date;
+  /** Heading for the per-result excerpts section (default "Search Results").
+   *  The Brief export passes "Reference Excerpts". */
+  resultsSectionTitle?: string;
+  /** Cover-page document title (default "Evidence Lab — Search Export").
+   *  The Brief export passes "AI-generated Research Brief". */
+  documentTitle?: string;
+  /** Heading for the AI-prose section (default "AI Summary"). The Brief export
+   *  passes the brief topic so the prose sits under its own subject heading. */
+  summaryHeading?: string;
+  /** Optional disclaimer rendered as a bordered call-out box on the cover,
+   *  directly under the metadata line. The Brief export uses it to flag that
+   *  the content is AI-generated and must be verified. */
+  infoBox?: string;
+  /** When true, insert a clickable Table of Contents after the cover. It is
+   *  built from real content (internal links to heading bookmarks), not a Word
+   *  field, so opening the document never prompts to update fields. */
+  tableOfContents?: boolean;
+  /** Base URL of the file-serving API (e.g. "/api"), used to fetch the table /
+   *  figure screenshots shown on screen so they can be embedded in the export.
+   *  When omitted, no screenshots are fetched and the export is text-only —
+   *  this preserves the prior behaviour and keeps SSR / unit tests that don't
+   *  exercise images simple. */
+  fileBaseUrl?: string;
+  /** Injectable fetch implementation for deterministic tests. Defaults to the
+   *  global `fetch` (bound to `globalThis`). */
+  fetchFn?: typeof fetch;
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -129,6 +174,10 @@ export interface CitationContext {
   results: SearchResult[];
   siteOrigin: string;
   dataSource?: string;
+  /** Maps each original `[N]` to its sequential display number, so inline
+   *  citations render the same renumbered value as the on-screen summary and
+   *  the References section. Built once from the full summary text. */
+  sequenceMap: Map<number, number>;
 }
 
 /** Build the inline children for a `[N]` / `[N, M]` citation marker. Each
@@ -140,27 +189,33 @@ const buildCitationRuns = (
   base: { size?: number },
   ctx: CitationContext,
 ): InlineChild[] => {
-  const nums = matched
-    .split(',')
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => Number.isFinite(n));
   const out: InlineChild[] = [new TextRun({ text: '[', size: base.size })];
-  nums.forEach((n, idx) => {
-    if (idx > 0) out.push(new TextRun({ text: ', ', size: base.size }));
+  let rendered = 0;
+  for (const n of parseCitationNumbers(matched)) {
+    // Render the sequential (renumbered) value so the inline marker matches
+    // the on-screen summary and this document's own References section. A
+    // number absent from the sequence map is not a real citation — mirror the
+    // on-screen renderer and drop it rather than show a misleading number.
+    const sequential = ctx.sequenceMap.get(n);
+    if (sequential === undefined) continue;
+    if (rendered > 0) out.push(new TextRun({ text: ', ', size: base.size }));
+    rendered += 1;
+    const display = String(sequential);
     const result = ctx.results[n - 1];
     if (!result) {
-      out.push(new TextRun({ text: String(n), size: base.size }));
-      return;
+      out.push(new TextRun({ text: display, size: base.size }));
+      continue;
     }
+    // The hyperlink still targets the original cited result.
     out.push(
       new ExternalHyperlink({
         link: resolveResultLink(result, ctx.siteOrigin, ctx.dataSource),
         children: [
-          new TextRun({ text: String(n), style: 'Hyperlink', size: base.size }),
+          new TextRun({ text: display, style: 'Hyperlink', size: base.size }),
         ],
       }),
     );
-  });
+  }
   out.push(new TextRun({ text: ']', size: base.size }));
   return out;
 };
@@ -225,16 +280,19 @@ const matchBlockParagraph = (
   line: string,
   headingShift: number,
   citations?: CitationContext,
+  bookmarkId?: string,
 ): Paragraph | null => {
   const h = /^(#{1,6})\s+(.*)$/.exec(line);
   if (h) {
     const depth = Math.min(6, Math.max(1, h[1].length + headingShift));
     const heading = HEADING_LEVELS_BY_DEPTH[depth] ?? HeadingLevel.HEADING_6;
     // Headings stay text-only — rendering hyperlinks inside a heading
-    // confuses Word's outline view, so omit the citation context here.
+    // confuses Word's outline view, so omit the citation context here. When a
+    // bookmarkId is supplied, wrap the runs so the manual TOC can link here.
+    const runs = inlineRuns(h[2]);
     return new Paragraph({
       heading,
-      children: inlineRuns(h[2]),
+      children: bookmarkId ? [new Bookmark({ id: bookmarkId, children: runs })] : runs,
       spacing: { before: 200, after: 120 },
     });
   }
@@ -276,6 +334,7 @@ export const markdownToParagraphs = (
   md: string,
   headingShift = 0,
   citations?: CitationContext,
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
   const lines = md.replace(/\r\n/g, '\n').split('\n');
@@ -291,13 +350,17 @@ export const markdownToParagraphs = (
     }
   };
 
+  let headingIdx = 0;
   for (const raw of lines) {
     const line = raw.trimEnd();
     if (line === '') {
       flushParagraph();
       continue;
     }
-    const block = matchBlockParagraph(line, headingShift, citations);
+    // Bookmark headings in document order so the manual TOC's links resolve.
+    const bookmarkId =
+      bookmarkPrefix && /^#{1,6}\s+/.test(line) ? `${bookmarkPrefix}${headingIdx++}` : undefined;
+    const block = matchBlockParagraph(line, headingShift, citations, bookmarkId);
     if (block) {
       flushParagraph();
       paragraphs.push(block);
@@ -309,70 +372,244 @@ export const markdownToParagraphs = (
   return paragraphs;
 };
 
+/** Extract markdown headings (text + depth), in document order, for the TOC. */
+const extractMarkdownHeadings = (md: string): { text: string; depth: number }[] => {
+  const out: { text: string; depth: number }[] = [];
+  for (const raw of md.replace(/\r\n/g, '\n').split('\n')) {
+    const m = /^(#{1,6})\s+(.*)$/.exec(raw.trimEnd());
+    if (m) out.push({ text: m[2].trim(), depth: m[1].length });
+  }
+  return out;
+};
+
 // ---------------------------------------------------------------------------
-// References (citations parsed out of the AI summary)
+// Table / figure screenshots
+//
+// The on-screen search card renders any table or figure in a result as the
+// low-resolution screenshot the pipeline extracted (served from
+// `<fileBaseUrl>/file/<path>`). The text-only export mangled tables — a table's
+// cell text was flattened into one paragraph. We now fetch those exact images
+// and embed them with docx `ImageRun`, matching what the user sees on screen.
 // ---------------------------------------------------------------------------
 
-/** Matches inline citations like `[1]`, `[1, 3]`, `[1,3,5]`. */
-const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
+/** A screenshot fetched and ready for embedding. */
+export interface FetchedImage {
+  /** Raw image bytes. A `Uint8Array` (not a bare `ArrayBuffer`) is what docx's
+   *  packer reliably embeds — it matches the `Buffer` shape `fs.readFileSync`
+   *  yields in the library's own examples. */
+  data: Uint8Array;
+  /** docx-supported raster type, derived from the file extension. */
+  type: 'png' | 'jpg' | 'gif' | 'bmp';
+  /** Display size in px, already scaled to fit the page content width. */
+  width: number;
+  height: number;
+}
 
-/** Parse the unique, sorted citation numbers referenced in the AI summary. */
-export const extractCitationNumbers = (summaryText: string): number[] => {
-  const cited = new Set<number>();
-  let m: RegExpExecArray | null;
-  while ((m = CITATION_REGEX.exec(summaryText)) !== null) {
-    for (const part of m[1].split(',')) {
-      const n = parseInt(part.trim(), 10);
-      if (Number.isFinite(n)) cited.add(n);
+/** Max embedded image width (~6 in at 96 dpi) so a screenshot fits the page
+ *  content box without overflowing the margins. We never upscale past the
+ *  image's natural width. */
+const MAX_IMAGE_WIDTH_PX = 600;
+
+/** File extension → docx raster type. A Map (not an object) sidesteps the
+ *  `security/detect-object-injection` lint warning on dynamic key access. */
+const IMAGE_TYPE_BY_EXT = new Map<string, FetchedImage['type']>([
+  ['png', 'png'],
+  ['jpg', 'jpg'],
+  ['jpeg', 'jpg'],
+  ['gif', 'gif'],
+  ['bmp', 'bmp'],
+]);
+
+/** Strip a leading slash so the path matches the on-screen `<img>` src and can
+ *  be appended to `<fileBaseUrl>/file/`. */
+const normaliseImagePath = (p?: string): string | undefined => {
+  const trimmed = p?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+};
+
+/** The screenshot path for a table/figure element (image_path for tables, path
+ *  for figures) — identical to what the on-screen renderer uses. */
+const visualElementPath = (el: ChunkElement): string | undefined =>
+  normaliseImagePath(el.image_path || el.path);
+
+/** The table/figure elements shown on screen for a result, in document order.
+ *  Reuses the exact same selection/ordering as the search card so the export
+ *  stays in lock-step with what the user sees. */
+const visualElementsFor = (
+  result: SearchResult,
+): Array<ChunkElement & { key: string }> =>
+  buildOrderedElements(result).filter(
+    (el) => el.element_type === 'table' || el.element_type === 'image',
+  );
+
+/** docx image type for a path, or null for types `ImageRun` cannot embed
+ *  (e.g. webp, svg). */
+const imageTypeForPath = (path: string): FetchedImage['type'] | null => {
+  const ext = path.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_TYPE_BY_EXT.get(ext) ?? null;
+};
+
+/** Natural [width, height] from a PNG's IHDR header, or null. */
+const pngDimensions = (view: DataView): [number, number] | null =>
+  view.byteLength >= 24 && view.getUint32(0) === 0x89504e47
+    ? [view.getUint32(16), view.getUint32(20)]
+    : null;
+
+/** Natural [width, height] from a JPEG SOF marker, or null. */
+const jpegDimensions = (view: DataView): [number, number] | null => {
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+  let offset = 2;
+  while (offset + 9 < view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = view.getUint8(offset + 1);
+    const isSof =
+      marker >= 0xc0 &&
+      marker <= 0xcf &&
+      marker !== 0xc4 &&
+      marker !== 0xc8 &&
+      marker !== 0xcc;
+    if (isSof) return [view.getUint16(offset + 7), view.getUint16(offset + 5)];
+    offset += 2 + view.getUint16(offset + 2);
+  }
+  return null;
+};
+
+/** Decode natural pixel dimensions from raw image bytes (PNG/JPEG). */
+const naturalDimensions = (data: Uint8Array): [number, number] | null => {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  return pngDimensions(view) ?? jpegDimensions(view);
+};
+
+/** Scale natural dimensions to fit {@link MAX_IMAGE_WIDTH_PX}, preserving the
+ *  aspect ratio and never upscaling. */
+const fitToPage = (w: number, h: number): { width: number; height: number } => {
+  if (w <= 0 || h <= 0) {
+    return { width: MAX_IMAGE_WIDTH_PX, height: Math.round(MAX_IMAGE_WIDTH_PX * 0.75) };
+  }
+  const width = Math.min(w, MAX_IMAGE_WIDTH_PX);
+  return { width: Math.round(width), height: Math.round(h * (width / w)) };
+};
+
+/** Best available display size: the element's stored `image_size` (tables carry
+ *  it), else dimensions decoded from the bytes (figures), else the bbox aspect
+ *  ratio. */
+const displaySizeFor = (
+  el: ChunkElement,
+  data: Uint8Array,
+): { width: number; height: number } => {
+  const size = el.image_size;
+  if (Array.isArray(size) && size.length >= 2 && size[0] > 0 && size[1] > 0) {
+    return fitToPage(size[0], size[1]);
+  }
+  const decoded = naturalDimensions(data);
+  if (decoded) return fitToPage(decoded[0], decoded[1]);
+  const bbox = el.bbox;
+  if (Array.isArray(bbox) && bbox.length >= 4) {
+    return fitToPage(bbox[2] - bbox[0], bbox[3] - bbox[1]);
+  }
+  return fitToPage(0, 0);
+};
+
+/** Fetch and decode a single screenshot. Returns null (and warns) when the
+ *  image is missing, unfetchable, or an unembeddable type — the caller skips it
+ *  and still produces the document, mirroring the on-screen `onError` that
+ *  hides a broken thumbnail. */
+const fetchVisualImage = async (
+  el: ChunkElement,
+  path: string,
+  fileBaseUrl: string,
+  fetchFn: typeof fetch,
+): Promise<FetchedImage | null> => {
+  const type = imageTypeForPath(path);
+  if (!type) return null;
+  try {
+    const res = await fetchFn(`${fileBaseUrl.replace(/\/+$/, '')}/file/${path}`);
+    if (!res.ok) return null;
+    const data = new Uint8Array(await res.arrayBuffer());
+    const { width, height } = displaySizeFor(el, data);
+    return { data, type, width, height };
+  } catch (err) {
+    console.warn('Export to Word: could not fetch screenshot', path, err);
+    return null;
+  }
+};
+
+/** Fetch every table/figure screenshot shown across the result set, de-duped by
+ *  path so each image is fetched once. Returns an empty map when no
+ *  `fileBaseUrl` is configured (e.g. SSR / tests), leaving the export
+ *  text-only. */
+export const fetchResultImages = async (
+  opts: ExportOptions,
+): Promise<Map<string, FetchedImage>> => {
+  const out = new Map<string, FetchedImage>();
+  const { fileBaseUrl } = opts;
+  if (!fileBaseUrl) return out;
+  const fetchFn =
+    opts.fetchFn ??
+    (typeof fetch !== 'undefined' ? (fetch.bind(globalThis) as typeof fetch) : undefined);
+  if (!fetchFn) return out;
+
+  // De-dupe across results so each unique screenshot is fetched only once.
+  const unique = new Map<string, ChunkElement>();
+  for (const result of opts.results) {
+    for (const el of visualElementsFor(result)) {
+      const path = visualElementPath(el);
+      if (path && !unique.has(path)) unique.set(path, el);
     }
   }
-  return Array.from(cited).sort((a, b) => a - b);
+  await Promise.all(
+    Array.from(unique.entries()).map(async ([path, el]) => {
+      const img = await fetchVisualImage(el, path, fileBaseUrl, fetchFn);
+      if (img) out.set(path, img);
+    }),
+  );
+  return out;
 };
 
-interface CitedRef {
-  sequential: number;
-  result: SearchResult;
-}
+/** Paragraphs embedding each successfully-fetched screenshot for a result, in
+ *  document order. Images that failed to fetch are simply absent. */
+const buildResultImageParagraphs = (
+  result: SearchResult,
+  images: Map<string, FetchedImage>,
+): Paragraph[] => {
+  const out: Paragraph[] = [];
+  for (const el of visualElementsFor(result)) {
+    const path = visualElementPath(el);
+    const img = path ? images.get(path) : undefined;
+    if (!img) continue;
+    out.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+        children: [
+          new ImageRun({
+            type: img.type,
+            data: img.data,
+            transformation: { width: img.width, height: img.height },
+          }),
+        ],
+      }),
+    );
+  }
+  return out;
+};
 
-export interface ReferenceGroup {
-  title: string;
-  organization?: string;
-  year?: string;
-  refs: CitedRef[];
-}
-
-/** Build a list of grouped references from the AI summary citations.
- *
- *  Mirrors the in-app ``buildGroupedReferences`` (in ``AiSummaryReferences``):
- *  citations are renumbered into citation order, then grouped by document
- *  title so a single document appears once with all its cited pages listed. */
-export const buildReferenceGroups = (
-  summaryText: string,
-  results: SearchResult[],
-): ReferenceGroup[] => {
-  const sortedCitations = extractCitationNumbers(summaryText);
-  const groupMap = new Map<string, ReferenceGroup>();
-  const groupOrder: string[] = [];
-
-  sortedCitations.forEach((origNum, seqIdx) => {
-    const idx = origNum - 1;
-    if (idx < 0 || idx >= results.length) return;
-    const result = results[idx];
-    const key = result.title || `(untitled #${origNum})`;
-    if (!groupMap.has(key)) {
-      groupMap.set(key, {
-        title: key,
-        organization: result.organization,
-        year: result.year,
-        refs: [],
-      });
-      groupOrder.push(key);
-    }
-    groupMap.get(key)!.refs.push({ sequential: seqIdx + 1, result });
+/** True when an embedded table screenshot makes the chunk text redundant — we
+ *  then drop the (mangled) text box so the screenshot stands in its place,
+ *  exactly as the on-screen card hides the redundant snippet. */
+const tableScreenshotReplacesText = (
+  result: SearchResult,
+  images: Map<string, FetchedImage>,
+): boolean =>
+  visualElementsFor(result).some((el) => {
+    if (el.element_type !== 'table') return false;
+    const path = visualElementPath(el);
+    return !!path && images.has(path) && isTextRedundantWithTable(result.text, el);
   });
-
-  return groupOrder.map((key) => groupMap.get(key)!);
-};
 
 // ---------------------------------------------------------------------------
 // Builders — one per section of the docx
@@ -387,7 +624,9 @@ const buildCoverParagraphs = (
     new Paragraph({
       heading: HeadingLevel.TITLE,
       alignment: AlignmentType.LEFT,
-      children: [new TextRun({ text: 'Evidence Lab — Search Export', bold: true })],
+      children: [
+        new TextRun({ text: opts.documentTitle || 'Evidence Lab — Search Export', bold: true }),
+      ],
     }),
   );
   // Demoted to H2 so the document has exactly two H1s — "AI Summary" and
@@ -406,14 +645,58 @@ const buildCoverParagraphs = (
   children.push(
     new Paragraph({
       children: [new TextRun({ text: meta.join('  ·  '), size: 20, color: '555555' })],
-      spacing: { after: 360 },
+      spacing: { after: opts.infoBox ? 120 : 360 },
     }),
   );
+  if (opts.infoBox && opts.infoBox.trim()) {
+    // A single bordered, lightly-shaded paragraph reads as a call-out box.
+    const side = { style: BorderStyle.SINGLE, size: 6, color: 'E0C36A', space: 8 };
+    children.push(
+      new Paragraph({
+        shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'FBF4DD' },
+        border: { top: side, bottom: side, left: side, right: side },
+        spacing: { before: 60, after: 360, line: 276 },
+        children: [
+          new TextRun({ text: opts.infoBox.trim(), italics: true, size: 20, color: '6B5B2E' }),
+        ],
+      }),
+    );
+  }
   return children;
 };
 
+/** A clickable Table of Contents built from real content (not a Word field, so
+ *  opening the document never prompts to "update fields"). Each entry is an
+ *  internal hyperlink to a bookmark placed on the matching heading; the heading
+ *  bookmarks are emitted by {@link markdownToParagraphs} in the same order. */
+const buildManualToc = (summary: string, bookmarkPrefix: string): Paragraph[] => {
+  const out: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: 'Contents' })],
+      spacing: { after: 120 },
+    }),
+  ];
+  extractMarkdownHeadings(summary).forEach((h, i) => {
+    out.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        indent: h.depth > 1 ? { left: convertInchesToTwip(0.3 * (h.depth - 1)) } : undefined,
+        children: [
+          new InternalHyperlink({
+            anchor: `${bookmarkPrefix}${i}`,
+            children: [new TextRun({ text: h.text, style: 'Hyperlink' })],
+          }),
+        ],
+      }),
+    );
+  });
+  out.push(new Paragraph({ children: [new PageBreak()] }));
+  return out;
+};
+
 const buildReferenceParagraphs = (
-  groups: ReferenceGroup[],
+  groups: DocumentGroup[],
   ctx: CitationContext,
 ): Paragraph[] => {
   if (groups.length === 0) return [];
@@ -427,8 +710,9 @@ const buildReferenceParagraphs = (
   );
   // Each entry is a plain (non-bulleted) paragraph led by the document's
   // citation numbers in brackets, mirroring how citations appear inline:
-  //   [1, 3]  Doc title — Org, 2020   p.4   p.9
-  // Each [N] is a clickable hyperlink to that specific result's page.
+  //   [1, 3] Doc title — Org, 2020, p.4, p.9
+  // Each [N] is a clickable hyperlink to that specific result's page. The
+  // title is unbolded so it reads as a reference line, not a heading.
   for (const group of groups) {
     const meta: string[] = [];
     if (group.organization) meta.push(group.organization);
@@ -447,10 +731,10 @@ const buildReferenceParagraphs = (
       );
     });
     children.push(new TextRun({ text: '] ' }));
-    children.push(new TextRun({ text: group.title + titleSuffix, bold: true }));
+    children.push(new TextRun({ text: group.title + titleSuffix }));
     for (const { result } of group.refs) {
       if (typeof result.page_num === 'number') {
-        children.push(new TextRun({ text: '   p.' + result.page_num, color: '555555' }));
+        children.push(new TextRun({ text: ', p.' + result.page_num, color: '555555' }));
       }
     }
 
@@ -464,30 +748,69 @@ const buildSummarySection = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource?: string,
+  heading = 'AI Summary',
+  bookmarkPrefix?: string,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: 'AI Summary' })],
+      children: [new TextRun({ text: heading })],
       spacing: { before: 240, after: 120 },
     }),
   );
-  const citations: CitationContext = { results, siteOrigin, dataSource };
+  const citations: CitationContext = {
+    results,
+    siteOrigin,
+    dataSource,
+    sequenceMap: buildCitationSequenceMap(summary, results),
+  };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
-  // body become clickable links.
-  out.push(...markdownToParagraphs(summary, 1, citations));
-  out.push(...buildReferenceParagraphs(buildReferenceGroups(summary, results), citations));
+  // body become clickable links, renumbered to match the screen. When a
+  // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
+  out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
+  out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
   return out;
+};
+
+/** The FULL excerpt (never truncated) rendered as a single bordered, shaded box
+ *  at a smaller font — one paragraph so the box stays continuous across page
+ *  breaks, with blank lines separating sub-blocks. Returns nothing when there is
+ *  no text, or when an embedded table screenshot already conveys it (the
+ *  on-screen card hides the redundant snippet the same way). */
+const buildExcerptParagraphs = (
+  r: SearchResult,
+  images: Map<string, FetchedImage>,
+): Paragraph[] => {
+  const blocks = normaliseExcerpt(String(r.text || ''))
+    .split(/\n{2,}/)
+    .map((b) => b.split('\n').join(' ').trim())
+    .filter(Boolean);
+  if (!blocks.length || tableScreenshotReplacesText(r, images)) return [];
+  const excerptRuns: TextRun[] = [];
+  blocks.forEach((b, i) => {
+    if (i > 0) excerptRuns.push(new TextRun({ break: 2 }));
+    excerptRuns.push(new TextRun({ text: b, italics: true, size: 18, color: '3A3A3A' }));
+  });
+  const boxSide = { style: BorderStyle.SINGLE, size: 4, color: 'D7DCE1', space: 8 };
+  return [
+    new Paragraph({
+      shading: { type: ShadingType.CLEAR, color: 'auto', fill: 'F6F8FA' },
+      border: { top: boxSide, bottom: boxSide, left: boxSide, right: boxSide },
+      spacing: { after: 160, line: 252 },
+      children: excerptRuns,
+    }),
+  ];
 };
 
 const buildResultCard = (
   r: SearchResult,
   idx: number,
   siteOrigin: string,
-  dataSource?: string,
+  dataSource: string | undefined,
+  images: Map<string, FetchedImage>,
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   const altTitle = typeof r.document_title === 'string' ? r.document_title : '';
@@ -537,18 +860,11 @@ const buildResultCard = (
     );
   }
 
-  const excerpt = normaliseExcerpt(String(r.text || ''));
-  const blocks = excerpt.split(/\n{2,}/);
-  for (const block of blocks) {
-    const inner = block.split('\n').join(' ').trim();
-    if (!inner) continue;
-    out.push(
-      new Paragraph({
-        spacing: { after: 120 },
-        children: [new TextRun({ text: inner })],
-      }),
-    );
-  }
+  // Embed the same table/figure screenshots shown on screen, in document order,
+  // so a table renders as its image rather than mangled, flattened cell text,
+  // followed by the FULL excerpt (unless a screenshot already conveys it).
+  out.push(...buildResultImageParagraphs(r, images));
+  out.push(...buildExcerptParagraphs(r, images));
 
   out.push(
     new Paragraph({
@@ -568,18 +884,20 @@ const buildResultCard = (
 const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
-  dataSource?: string,
+  dataSource: string | undefined,
+  sectionTitle = 'Search Results',
+  images: Map<string, FetchedImage> = new Map(),
 ): Paragraph[] => {
   const out: Paragraph[] = [];
   out.push(
     new Paragraph({
       heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: `Search Results (${results.length})` })],
+      children: [new TextRun({ text: `${sectionTitle} (${results.length})` })],
       spacing: { before: 360, after: 120 },
     }),
   );
   results.forEach((r, idx) => {
-    out.push(...buildResultCard(r, idx, siteOrigin, dataSource));
+    out.push(...buildResultCard(r, idx, siteOrigin, dataSource, images));
   });
   return out;
 };
@@ -591,19 +909,37 @@ const buildResultsSection = (
 /** Build the in-memory `docx` Document for the given export options. Exposed
  *  separately from {@link exportResultsToDocxBlob} to allow unit tests to
  *  introspect the document structure without packing a Blob. */
-export const buildExportDocument = (opts: ExportOptions): Document => {
+export const buildExportDocument = (
+  opts: ExportOptions,
+  images: Map<string, FetchedImage> = new Map(),
+): Document => {
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
+  const tocBookmarkPrefix = 'briefheading';
   const body: Paragraph[] = [
     ...buildCoverParagraphs(opts, now),
-    ...buildSummarySection(opts.aiSummary ?? '', opts.results, siteOrigin, opts.dataSource),
-    ...buildResultsSection(opts.results, siteOrigin, opts.dataSource),
+    ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
+    ...buildSummarySection(
+      opts.aiSummary ?? '',
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.summaryHeading,
+      opts.tableOfContents ? tocBookmarkPrefix : undefined,
+    ),
+    ...buildResultsSection(
+      opts.results,
+      siteOrigin,
+      opts.dataSource,
+      opts.resultsSectionTitle,
+      images,
+    ),
   ];
 
   return new Document({
     creator: 'Evidence Lab',
-    title: `Evidence Lab Search — ${opts.query}`,
+    title: opts.documentTitle ? opts.documentTitle : `Evidence Lab Search — ${opts.query}`,
     description: `Export of ${opts.results.length} search results` +
       (opts.aiSummary ? ' and the AI summary' : ''),
     // Match the web app's typography: Open Sans for body, Poppins for
@@ -670,9 +1006,13 @@ export const buildExportDocument = (opts: ExportOptions): Document => {
   });
 };
 
-/** Serialise the export to a Word-compatible Blob. */
+/** Serialise the export to a Word-compatible Blob. Table / figure screenshots
+ *  are fetched first (when `fileBaseUrl` is set) so they can be embedded
+ *  in-document; a screenshot that fails to fetch is skipped, never aborting the
+ *  export. */
 export const exportResultsToDocxBlob = async (opts: ExportOptions): Promise<Blob> => {
-  const doc = buildExportDocument(opts);
+  const images = await fetchResultImages(opts);
+  const doc = buildExportDocument(opts, images);
   const blob = await Packer.toBlob(doc);
   // docx's Packer returns a Blob with the generic zip MIME — override so
   // consumers (and tests) see the Word-specific type.

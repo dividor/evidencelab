@@ -33,6 +33,12 @@ jest.mock('../components/admin/GroupSettingsManager', () => {
   };
 });
 
+jest.mock('../components/admin/TestingManager', () => {
+  return function MockTestingManager() {
+    return <div data-testid="testing-manager">TestingManager</div>;
+  };
+});
+
 import AdminPanel from '../components/admin/AdminPanel';
 
 describe('AdminPanel', () => {
@@ -94,6 +100,13 @@ describe('AdminPanel', () => {
     expect(screen.getByTestId('group-settings-manager')).toBeInTheDocument();
     expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
     expect(screen.queryByTestId('group-manager')).not.toBeInTheDocument();
+  });
+
+  test('switches to Testing tab on click (admin-only harness)', () => {
+    render(<AdminPanel isActive={true} />);
+    fireEvent.click(screen.getByText('Testing'));
+    expect(screen.getByTestId('testing-manager')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
   });
 
   test('has active class on selected tab', () => {

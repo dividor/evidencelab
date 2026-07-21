@@ -8,6 +8,14 @@ import {
   DEFAULT_SECTION_TYPES,
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
+import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
+
+type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
+
+const defaultTabValues = (): TabValues =>
+  Object.fromEntries(
+    TAB_KEYS.map((k) => [k, { enabled: true, label: '' }]),
+  ) as TabValues;
 
 /** Keys that can be overridden per group. */
 const SETTING_KEYS: (keyof SearchSettings)[] = [
@@ -131,6 +139,71 @@ const AppearanceSection: React.FC<{
   );
 };
 
+const FeaturesSection: React.FC<{
+  collapsed: boolean;
+  onToggle: () => void;
+  tabsOverride: boolean;
+  tabValues: TabValues;
+  setTabsOverride: React.Dispatch<React.SetStateAction<boolean>>;
+  setTabValues: React.Dispatch<React.SetStateAction<TabValues>>;
+}> = ({ collapsed, onToggle, tabsOverride, tabValues, setTabsOverride, setTabValues }) => (
+  <div className="filter-section">
+    <div className="filter-section-header" onClick={onToggle}>
+      <span className="filter-section-toggle">{collapsed ? '▼' : '▶'}</span>
+      <span className="filter-section-title">Features &amp; Tabs</span>
+    </div>
+    {collapsed && (
+      <div className="filter-section-content">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
+          <input
+            type="checkbox"
+            checked={tabsOverride}
+            onChange={(e) => setTabsOverride(e.target.checked)}
+          />
+          Configure which tabs this group sees
+        </label>
+        {tabsOverride && (
+          <div style={{ marginTop: '8px' }}>
+            <p className="text-muted" style={{ fontSize: '12px', margin: '0 0 8px' }}>
+              A tab shows if any of a user&apos;s groups enables it; its label comes
+              from an enabling group. Leave a label blank to use the default.
+            </p>
+            {TAB_KEYS.map((k) => (
+              <div
+                key={k}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}
+              >
+                <label
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: '90px', fontSize: '13px' }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={tabValues[k].enabled}
+                    onChange={(e) =>
+                      setTabValues((prev) => ({ ...prev, [k]: { ...prev[k], enabled: e.target.checked } }))
+                    }
+                  />
+                  {DEFAULT_TAB_LABELS[k]}
+                </label>
+                <input
+                  type="text"
+                  value={tabValues[k].label}
+                  placeholder={`Label (default: ${DEFAULT_TAB_LABELS[k]})`}
+                  disabled={!tabValues[k].enabled}
+                  onChange={(e) =>
+                    setTabValues((prev) => ({ ...prev, [k]: { ...prev[k], label: e.target.value } }))
+                  }
+                  style={{ flex: 1 }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+);
+
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -146,8 +219,14 @@ const GroupSettingsManager: React.FC = () => {
 
   // Collapsible sections — both open by default
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['search_settings', 'content_settings', 'ai_summary', 'appearance'])
+    new Set(['search_settings', 'content_settings', 'ai_summary', 'appearance', 'features'])
   );
+
+  // Per-group feature-tab visibility/labels (stored under search_settings.tabs).
+  // `tabsOverride` off => this group doesn't constrain tabs (contributes nothing
+  // to the cross-group union).
+  const [tabsOverride, setTabsOverride] = useState(false);
+  const [tabValues, setTabValues] = useState<TabValues>(defaultTabValues);
 
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {
@@ -196,6 +275,8 @@ const GroupSettingsManager: React.FC = () => {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setTabsOverride(false);
+      setTabValues(defaultTabValues());
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -214,6 +295,26 @@ const GroupSettingsManager: React.FC = () => {
 
     setOverrides(newOverrides);
     setValues(newValues);
+
+    // Load feature-tab override (search_settings.tabs)
+    const tabsCfg = (settings as any).tabs;
+    if (tabsCfg && typeof tabsCfg === 'object') {
+      setTabsOverride(true);
+      setTabValues(
+        Object.fromEntries(
+          TAB_KEYS.map((k) => [
+            k,
+            {
+              enabled: Boolean(tabsCfg[k]?.enabled),
+              label: (tabsCfg[k]?.label as string) || '',
+            },
+          ]),
+        ) as TabValues,
+      );
+    } else {
+      setTabsOverride(false);
+      setTabValues(defaultTabValues());
+    }
 
     // Load summary prompt override
     setSummaryPromptValue(group.summary_prompt || '');
@@ -236,6 +337,15 @@ const GroupSettingsManager: React.FC = () => {
         if (overrides.has(key)) {
           payload[key] = values[key];
         }
+      }
+      // Feature-tab overrides: only written when this group opts in.
+      if (tabsOverride) {
+        payload.tabs = Object.fromEntries(
+          TAB_KEYS.map((k) => [
+            k,
+            { enabled: tabValues[k].enabled, label: tabValues[k].label.trim() || null },
+          ]),
+        );
       }
       const patchBody: Record<string, unknown> = {
         search_settings: Object.keys(payload).length > 0 ? payload : {},
@@ -674,6 +784,16 @@ const GroupSettingsManager: React.FC = () => {
               </div>
 
               {/* Appearance Settings */}
+              {/* Features & Tabs — show/hide the main tabs and relabel them */}
+              <FeaturesSection
+                collapsed={collapsedSections.has('features')}
+                onToggle={() => toggleSection('features')}
+                tabsOverride={tabsOverride}
+                tabValues={tabValues}
+                setTabsOverride={setTabsOverride}
+                setTabValues={setTabValues}
+              />
+
               <AppearanceSection
                 collapsed={collapsedSections.has('appearance')}
                 onToggle={() => toggleSection('appearance')}

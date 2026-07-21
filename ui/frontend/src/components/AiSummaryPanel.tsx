@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { SearchResult, DrilldownNode, SummaryModelConfig } from '../types/api';
 import API_BASE_URL from '../config';
 import { LANGUAGES } from '../constants';
@@ -90,9 +92,35 @@ const GeneratingText = () => (
   </span>
 );
 
+// Downgrade heading levels to match the final citation-aware render
+// (AiSummaryWithCitations' parseHeading maps `#`..`######` to min(level+2, 6)),
+// so streaming headings render at the SAME size as the completed summary
+// instead of starting large and shrinking when streaming finishes.
+const STREAMING_MD_COMPONENTS = {
+  h1: ({ node, ...props }: any) => <h3 {...props} />,
+  h2: ({ node, ...props }: any) => <h4 {...props} />,
+  h3: ({ node, ...props }: any) => <h5 {...props} />,
+  h4: ({ node, ...props }: any) => <h6 {...props} />,
+  h5: ({ node, ...props }: any) => <h6 {...props} />,
+  h6: ({ node, ...props }: any) => <h6 {...props} />,
+};
+
 const AiSummaryLoading = ({ expanded, summary }: { expanded: boolean; summary: string }) => (
   <div className={`ai-summary-content ${expanded ? 'expanded' : ''}`}>
-    <p className="ai-summary-text">{summary || <GeneratingText />}</p>
+    {summary ? (
+      // Render markdown as the summary streams in (headings, bold, lists)
+      // rather than showing raw text. The citation-aware AiSummaryBody takes
+      // over once streaming completes.
+      <div className="ai-summary-markdown">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={STREAMING_MD_COMPONENTS}>
+          {summary}
+        </ReactMarkdown>
+      </div>
+    ) : (
+      <p className="ai-summary-text">
+        <GeneratingText />
+      </p>
+    )}
   </div>
 );
 

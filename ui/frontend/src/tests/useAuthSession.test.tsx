@@ -326,7 +326,19 @@ describe('useAuthState — sliding-session refresh', () => {
     (axios.post as jest.Mock).mockResolvedValue({ data: {} });
   });
 
-  it('posts /auth/refresh while the user is active', async () => {
+  it('refreshes immediately on mount to re-slide an aging cookie', async () => {
+    // A page opened with a still-valid but aging cookie must re-slide right
+    // away, not wait a full interval (during which it could expire).
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+    );
+  });
+
+  it('keeps refreshing an active session across refresh intervals', async () => {
     jest.useFakeTimers();
     render(<AuthTestHarness />);
     await flushPromises();
@@ -334,11 +346,9 @@ describe('useAuthState — sliding-session refresh', () => {
     expect(screen.getByTestId('authenticated').textContent).toBe('true');
     (axios.post as jest.Mock).mockClear();
 
-    // Keep the session active just before the refresh interval fires.
-    act(() => { jest.advanceTimersByTime(20 * 60 * 1000); });
+    // Cross one refresh interval (a quarter of the 1h default lifetime = 15m).
     act(() => { window.dispatchEvent(new MouseEvent('mousedown')); });
-    // Cross the 30-minute refresh interval (half the 1h default lifetime).
-    await act(async () => { jest.advanceTimersByTime(15 * 60 * 1000); });
+    await act(async () => { jest.advanceTimersByTime(16 * 60 * 1000); });
 
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining('/auth/refresh'),
@@ -346,7 +356,10 @@ describe('useAuthState — sliding-session refresh', () => {
     jest.useRealTimers();
   });
 
-  it('does NOT post /auth/refresh when the user is idle', async () => {
+  it('refreshes a quiet-but-not-idle session (reading, no clicks)', async () => {
+    // Regression: a user reading without mouse/keyboard/scroll activity for
+    // longer than one refresh interval must still have their token refreshed,
+    // as long as they are within the idle-timeout window.
     jest.useFakeTimers();
     render(<AuthTestHarness />);
     await flushPromises();
@@ -354,8 +367,27 @@ describe('useAuthState — sliding-session refresh', () => {
     expect(screen.getByTestId('authenticated').textContent).toBe('true');
     (axios.post as jest.Mock).mockClear();
 
-    // No activity at all — advance across two refresh intervals.
-    await act(async () => { jest.advanceTimersByTime(59 * 60 * 1000); });
+    // No activity, but still inside the 1h idle window — advance two intervals.
+    await act(async () => { jest.advanceTimersByTime(31 * 60 * 1000); });
+
+    const refreshCalls = (axios.post as jest.Mock).mock.calls.filter(
+      ([url]) => typeof url === 'string' && url.includes('/auth/refresh'),
+    );
+    expect(refreshCalls.length).toBeGreaterThan(0);
+    jest.useRealTimers();
+  });
+
+  it('stops refreshing once the session goes idle-expired', async () => {
+    jest.useFakeTimers();
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    // No activity: idle-logout fires at the 1h idle timeout, ending the session.
+    await act(async () => { jest.advanceTimersByTime(60 * 60 * 1000 + 100); });
+    expect(screen.getByTestId('authenticated').textContent).toBe('false');
+    (axios.post as jest.Mock).mockClear();
+
+    await act(async () => { jest.advanceTimersByTime(30 * 60 * 1000); });
 
     const refreshCalls = (axios.post as jest.Mock).mock.calls.filter(
       ([url]) => typeof url === 'string' && url.includes('/auth/refresh'),

@@ -211,22 +211,29 @@ export function useAuthState(): AuthContextValue {
 
   // ---- Sliding-session refresh ----------------------------------------
   // While authenticated, periodically re-issue the auth cookie so an active
-  // user's token never expires mid-session.  We only refresh when the user
-  // interacted within the last interval, so a genuinely idle session still
-  // lapses (and the idle-logout effect above clears it).  The interval is
-  // half the server token lifetime, guaranteeing a refresh before expiry.
+  // user's token never expires mid-session.  Three things keep this robust:
+  //   1. Refresh once on mount — a page opened with a still-valid but aging
+  //      cookie (reopened tab, back-navigation) is re-slid immediately instead
+  //      of being left to expire before the first interval fires.
+  //   2. Refresh at a quarter of the token lifetime, so there are two refresh
+  //      opportunities before expiry — one skipped tick never loses the session.
+  //   3. Skip a refresh only when the user is genuinely idle (no activity within
+  //      the whole idle-timeout window), NOT merely quiet for one interval — so
+  //      an active user who is reading (no clicks/scroll) still stays logged in.
   useEffect(() => {
     if (!USER_MODULE || !state.isAuthenticated) return;
 
     const intervalMs = Math.max(
       MIN_REFRESH_INTERVAL_MS,
-      Math.floor(sessionConfig.tokenLifetimeMs / 2)
+      Math.floor(sessionConfig.tokenLifetimeMs / 4)
     );
 
     const tick = async () => {
-      // Skip when idle (no activity within the last interval) — let the cookie
-      // lapse and the idle-logout fire.
-      if (Date.now() - lastActivityRef.current >= intervalMs) return;
+      // Skip only when the session has gone fully idle — the idle-logout effect
+      // above owns ending it.  Otherwise keep the cookie fresh.
+      if (Date.now() - lastActivityRef.current >= sessionConfig.idleTimeoutMs) {
+        return;
+      }
       try {
         await axios.post(`${API_BASE_URL}/auth/refresh`);
       } catch {
@@ -235,9 +242,14 @@ export function useAuthState(): AuthContextValue {
       }
     };
 
+    tick(); // re-slide immediately; don't wait a full interval to start
     const intervalId = setInterval(tick, intervalMs);
     return () => clearInterval(intervalId);
-  }, [state.isAuthenticated, sessionConfig.tokenLifetimeMs]);
+  }, [
+    state.isAuthenticated,
+    sessionConfig.tokenLifetimeMs,
+    sessionConfig.idleTimeoutMs,
+  ]);
 
   const clearVerificationMessage = useCallback(() => {
     setVerificationMessage(null);

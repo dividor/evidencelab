@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import './App.css';
+// Deployment theme overrides — must load after App.css so the customization
+// overlay's --brand-* tokens win the cascade. Empty in the base repo.
+import './custom-theme.css';
 import API_BASE_URL, {
   AI_SUMMARY_ON,
   API_KEY,
@@ -11,6 +14,7 @@ import API_BASE_URL, {
   GA_MEASUREMENT_ID,
   USER_MODULE,
   USER_MODULE_MODE,
+  ASSISTANT_ENABLED,
 } from './config';
 
 import {
@@ -31,7 +35,9 @@ import TocModal from './components/TocModal';
 import { MetadataModal } from './components/documents/MetadataModal';
 import { SummaryModal } from './components/documents/SummaryModal';
 import { TopBar } from './components/layout/TopBar';
+import AppFooter from './components/layout/AppFooter';
 import { NavTabs } from './components/layout/NavTabs';
+import { resolveTabs, TAB_KEYS, TabKey } from './components/layout/tabConfig';
 import { SearchBox } from './components/SearchBox';
 import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
@@ -48,6 +54,7 @@ import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
 import AdminPanel from './components/admin/AdminPanel';
 import { AssistantTab } from './components/assistant/AssistantTab';
+import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
 import { streamAiSummary, AiSummaryUsage } from './utils/aiSummaryStream';
@@ -104,7 +111,7 @@ type DataSourcesConfig = DataSourceConfig;
 type DatasetTotals = Record<string, number | undefined>;
 
 // Valid tab names for URL routing
-const VALID_TABS = ['search', 'assistant', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'terms', 'stats', 'admin', 'docs'] as const;
+const VALID_TABS = ['search', 'assistant', 'brief', 'heatmap', 'documents', 'pipeline', 'processing', 'info', 'tech', 'data', 'privacy', 'terms', 'stats', 'admin', 'docs'] as const;
 type TabName = typeof VALID_TABS[number];
 
 const isGatewayError = (error: any): boolean => {
@@ -797,8 +804,10 @@ function App() {
   const [showLoadResearchModal, setShowLoadResearchModal] = useState(false);
   const [addingNodeParentId, setAddingNodeParentId] = useState<string | null>(null);
 
-  // Apply per-group search defaults (fetched when user is authenticated)
-  useGroupDefaults(USER_MODULE, authState, {
+  // Apply per-group search defaults (fetched when user is authenticated).
+  // The returned effective settings also carry `tabs` (per-group feature-tab
+  // visibility/labels, merged across the user's groups by the backend).
+  const groupDefaults = useGroupDefaults(USER_MODULE, authState, {
     denseWeight: setSearchDenseWeight,
     rerank: setRerankEnabled,
     recencyBoost: setRecencyBoostEnabled,
@@ -814,6 +823,14 @@ function App() {
     fieldBoostFields: setFieldBoostFields,
     greetingMessage: setGreetingMessage,
   });
+
+  // Resolve which main tabs to show and their labels. The chat tab additionally
+  // requires the global ASSISTANT_ENABLED config flag.
+  const tabConfig = useMemo(() => {
+    const resolved = resolveTabs(groupDefaults?.tabs);
+    resolved.assistant.enabled = resolved.assistant.enabled && ASSISTANT_ENABLED;
+    return resolved;
+  }, [groupDefaults]);
 
   // Debug: Log semantic threshold on startup
   useEffect(() => {
@@ -855,6 +872,15 @@ function App() {
 
     window.history.pushState(null, '', newPath);
   }, [selectedDomain, searchModel, selectedModelCombo]);
+
+  // If the active tab is a main feature tab that a group has disabled, fall back
+  // to the first enabled one so the user never lands on a hidden/empty tab.
+  useEffect(() => {
+    if (!TAB_KEYS.includes(activeTab as TabKey)) return;
+    if (tabConfig[activeTab as TabKey].enabled) return;
+    const firstEnabled = TAB_KEYS.find((t) => tabConfig[t].enabled);
+    if (firstEnabled && firstEnabled !== activeTab) handleTabChange(firstEnabled);
+  }, [tabConfig, activeTab, handleTabChange]);
 
   const handleAboutClick = useCallback(() => {
     setDocsInitialPath('overview/about.md');
@@ -2895,7 +2921,7 @@ function App() {
         onDocsClick={handleDocsClick}
         onAdminClick={() => handleTabChange('admin')}
         onLoadResearch={handleLoadResearch}
-        navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} />}
+        navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} tabs={tabConfig} />}
       />
 
       <SearchBox
@@ -2938,6 +2964,25 @@ function App() {
             onResultClick={handleResultClick}
           />
         }
+        briefTab={
+          <BriefTab
+            dataSource={dataSource}
+            assistantModelConfig={assistantModelConfig}
+            rerankerModel={rerankModel}
+            searchSettings={{
+              denseWeight: searchDenseWeight,
+              recencyBoost: recencyBoostEnabled,
+              recencyWeight,
+              recencyScaleDays,
+              sectionTypes,
+              keywordBoostShortQueries,
+              minChunkSize,
+              fieldBoost: fieldBoostEnabled,
+              fieldBoostFields,
+            }}
+            onResultClick={handleResultClick}
+          />
+        }
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
         statsTab={statsTab}
@@ -2955,7 +3000,7 @@ function App() {
 
       <AdminPanel isActive={activeTab === 'admin'} />
 
-      <footer className="app-footer">
+      <AppFooter>
         <button
           type="button"
           className="app-footer-link"
@@ -2995,7 +3040,7 @@ function App() {
         <button type="button" className="app-footer-link" onClick={() => setContactModalOpen(true)}>
           Contact
         </button>
-      </footer>
+      </AppFooter>
 
       {contactModalOpen && (
         <div className="preview-overlay" onClick={() => setContactModalOpen(false)}>

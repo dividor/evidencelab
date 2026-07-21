@@ -505,6 +505,52 @@ class PostgresDocMixin:
                 rows = cur.fetchall()
         return [str(row[0]) for row in rows]
 
+    def fetch_doc_ids_by_region(
+        self, region_selection: str, limit: int = 5000
+    ) -> List[str]:
+        """Fetch doc_ids whose region matches the given filter selection.
+
+        Region is a document-level field (it is not stored on chunks), held as a
+        ``"; "``-joined string of one or more regions, e.g.
+        ``"Asia and the Pacific; Eastern and Southern Africa"``.
+
+        The frontend joins multi-select filter values with commas, but region
+        names themselves contain commas (e.g. ``"Middle East, Northern Africa,
+        and Eastern Europe"``), so the selection cannot be split on commas.
+        Instead each document's individual region segments are matched against
+        the raw selection string by containment. WFP region names are mutually
+        distinct (no name is a substring of another), so this is unambiguous and
+        works for both single- and multi-select.
+
+        Args:
+            region_selection: Raw region filter value from the request.
+            limit: Maximum number of doc_ids to return.
+
+        Returns:
+            List of matching doc_id strings.
+        """
+        selection = (region_selection or "").strip()
+        if not selection:
+            return []
+        query = f"""
+            SELECT doc_id
+            FROM {self.docs_table}
+            WHERE map_region IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM unnest(string_to_array(map_region, '; ')) AS region_segment
+                  WHERE btrim(region_segment) <> ''
+                    AND %s ILIKE '%%' || btrim(region_segment) || '%%'
+              )
+            LIMIT %s
+        """
+        rows: List[tuple] = []
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, [selection, limit])
+                rows = cur.fetchall()
+        return [str(row[0]) for row in rows]
+
     def fetch_doc_ids_by_title(self, title: str, limit: int = 5000) -> List[str]:
         query = f"""
             SELECT doc_id

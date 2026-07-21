@@ -281,6 +281,38 @@ def test_search_facet_values_filters_and_maps(monkeypatch):
     assert results == [{"value": "Org A", "count": 3}]
 
 
+def test_search_facet_values_splits_multivalue(monkeypatch):
+    # A multi-value (e.g. multi-country) document is stored as a single
+    # "; "-joined payload. The typeahead facet endpoint must split it so each
+    # constituent value is its own option, with counts aggregated across
+    # standalone and multi-value documents.
+    class Hit:
+        def __init__(self, value, count):
+            self.value = value
+            self.count = count
+
+    fake_db = _make_fake_db(
+        facet_result=SimpleNamespace(
+            hits=[Hit("Rwanda", 8), Hit("Burundi; Djibouti; Rwanda", 2)]
+        )
+    )
+
+    all_values = search.search_facet_values(
+        field="organization", query="", db=fake_db, data_source="uneg", limit=10
+    )
+    assert {r["value"]: r["count"] for r in all_values} == {
+        "Rwanda": 10,
+        "Burundi": 2,
+        "Djibouti": 2,
+    }
+
+    # Typeahead "rw" returns the split single value, not the combined bucket.
+    filtered = search.search_facet_values(
+        field="organization", query="rw", db=fake_db, data_source="uneg", limit=10
+    )
+    assert filtered == [{"value": "Rwanda", "count": 10}]
+
+
 def test_search_facet_values_returns_empty_on_error(monkeypatch):
     class _Client:
         def facet(self, **_kwargs):

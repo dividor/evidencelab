@@ -363,7 +363,7 @@ const parseBBoxItem = (
   return { page, bbox: { l: coords[0], b: coords[1], r: coords[2], t: coords[3] } };
 };
 
-const findTextMatchesOnPage = (
+export const findTextMatchesOnPage = (
   items: any[],
   searchTerm: string,
   pageNum: number
@@ -405,6 +405,33 @@ const findTextMatchesOnPage = (
 
   return matches;
 };
+
+const searchModePlaceholder = (mode: 'exact' | 'semantic'): string =>
+  mode === 'semantic' ? 'Semantic search in document...' : 'Find in document...';
+
+// Exact | Semantic segmented toggle for the in-document search bar.
+// Kept module-level so its branching does not count toward PDFViewer's complexity.
+const SearchModeToggle: React.FC<{
+  searchMode: 'exact' | 'semantic';
+  onChange: (mode: 'exact' | 'semantic') => void;
+}> = ({ searchMode, onChange }) => (
+  <div className="pdf-search-mode-toggle" role="group" aria-label="Search mode">
+    <button
+      type="button"
+      className={`pdf-search-mode-button${searchMode === 'exact' ? ' active' : ''}`}
+      onClick={() => onChange('exact')}
+    >
+      Exact
+    </button>
+    <button
+      type="button"
+      className={`pdf-search-mode-button${searchMode === 'semantic' ? ' active' : ''}`}
+      onClick={() => onChange('semantic')}
+    >
+      Semantic
+    </button>
+  </div>
+);
 
 export const PDFViewer: React.FC<PDFViewerProps> = ({
   docId,
@@ -458,6 +485,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const [inPdfSearchResults, setInPdfSearchResults] = useState<HighlightBox[]>([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
+  // Search mode: exact (client-side literal find) vs semantic (original API + LLM
+  // highlighting). Defaults to semantic to preserve the prior open-from-result behavior.
+  const [searchMode, setSearchMode] = useState<'exact' | 'semantic'>('semantic');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const pagesContainerRef = useRef<HTMLDivElement>(null);
@@ -489,6 +519,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
     setInPdfSearchResults([]);
     setInPdfSearchQuery('');
     setCurrentMatchIndex(0);
+    setSearchMode('semantic');
   }, [docId, chunkId, pageNum]);
 
   // Load PDF
@@ -930,9 +961,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
       });
 
       console.log(`[Text Layer]Page ${pageNumber}: searchQuery = '${effectiveSearchQuery}', inPdfSearchQuery = '${inPdfSearchQuery}', highlights = ${pageHighlights.length}`);
-      // Highlight matching text in text layer (if search query exists)
+      // Highlight matching text in text layer (semantic mode only — exact mode
+      // shows the literal-match boxes drawn above, with no LLM highlighting).
       // IMPORTANT: Only highlight text that falls within the chunk bounding boxes
-      if (effectiveSearchQuery && effectiveSearchQuery.trim() && pageHighlights.length > 0) {
+      if (searchMode === 'semantic' && effectiveSearchQuery && effectiveSearchQuery.trim() && pageHighlights.length > 0) {
         console.log(`[Text Layer] Starting text layer highlighting for page ${pageNumber} with query: "${effectiveSearchQuery}"`);
 
         // Get all text spans in the text layer
@@ -1169,7 +1201,43 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
   // In-PDF search: semantic search via API filtered to this document,
   // plus local text matches for literal keyword hits
-  const performInPdfSearch = async (query: string) => {
+  // Exact mode: literal text find via the pdf.js text layer. No backend call and
+  // no LLM highlighting — instant, like a native PDF viewer's Find.
+  const runExactInPdfSearch = async (query: string) => {
+    const allHighlights: HighlightBox[] = [];
+    const navPoints: HighlightBox[] = [];
+    if (pdfDoc) {
+      const searchTerm = query.toLowerCase();
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        const pg = await pdfDoc.getPage(pageNum);
+        const textContent = await pg.getTextContent();
+        findTextMatchesOnPage(textContent.items, searchTerm, pageNum).forEach(m => {
+          allHighlights.push(m);
+          navPoints.push(m);
+        });
+      }
+    }
+    processedBBoxesRef.current.clear();
+    setInPdfSearchResults(navPoints);
+    setHighlights(mergeSequentialHighlights(allHighlights));
+    setCurrentMatchIndex(0);
+    if (navPoints.length > 0) {
+      hasSnappedToHighlight.current = false;
+      goToPage(navPoints[0].page);
+    }
+  };
+
+  // Switch search mode and re-run the active query under it. The mode is passed
+  // explicitly because the state update is async and would otherwise be stale.
+  const handleSearchModeChange = (mode: 'exact' | 'semantic') => {
+    if (mode === searchMode) return;
+    setSearchMode(mode);
+    if (inPdfSearchQuery.trim()) {
+      performInPdfSearch(inPdfSearchQuery, mode);
+    }
+  };
+
+  const performInPdfSearch = async (query: string, mode: 'exact' | 'semantic' = searchMode) => {
     if (!query.trim()) {
       setInPdfSearchResults([]);
       setCurrentMatchIndex(0);
@@ -1180,6 +1248,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
     setIsSearching(true);
     try {
+      if (mode === 'exact') {
+        await runExactInPdfSearch(query);
+        return;
+      }
       // --- Semantic search via API ---
       const params: any = {
         q: query,
@@ -1472,9 +1544,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
           </button>
         </div>
         <div className="pdf-search-controls">
+          <SearchModeToggle searchMode={searchMode} onChange={handleSearchModeChange} />
           <input
             type="text"
-            placeholder="Search in document..."
+            placeholder={searchModePlaceholder(searchMode)}
             value={inPdfSearchQuery}
             onChange={(e) => setInPdfSearchQuery(e.target.value)}
             onKeyPress={(e) => {

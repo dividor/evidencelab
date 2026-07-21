@@ -172,8 +172,10 @@ describe('GroupSettingsManager greetingMessage', () => {
       expect(screen.getByText('Override greeting message')).toBeInTheDocument();
     });
 
-    // The greeting message input should show the saved value
-    const input = screen.getByDisplayValue('Welcome to the portal');
+    // The greeting message input appears only after the default group is
+    // auto-selected and its settings load (several async state updates after
+    // the checkbox renders), so wait for it rather than querying synchronously.
+    const input = await screen.findByDisplayValue('Welcome to the portal');
     expect(input).toBeInTheDocument();
   });
 

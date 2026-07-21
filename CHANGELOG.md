@@ -2,6 +2,70 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.0] - 2026-07-21
+
+Evidence Lab v1.6.0 is a feature release headlined by the new **Brief** tab — a header-driven deep-research document builder — and an admin **Testing** harness for evaluating Search and AI-Summary quality with LLM-judge experiments. It also adds exact in-document PDF search, Docker-native deployment branding, per-group feature-tab toggles, and a long list of search, heatmapper, and export fixes.
+
+### Brief (Document Builder)
+- Added the **Brief** tab — header-driven deep-research authoring: define a document outline and have deep research fill in each section (#365)
+- Promoted Brief to a core tab and removed the `brief.enabled` feature flag (#366)
+- Brief uses the logged-in user's group search settings (#369)
+- Brief citations show the heading breadcrumb as an italic section path (#370)
+- Citation hover excerpts use Search's text formatter (#367)
+- Logged Brief as a new activity type, upserted on each save (#372)
+
+### Admin Testing & Evaluation
+- Added a Search & AI-Summary evaluation harness — admin-only **Testing** tab with datasets, experiments, and LLM-judge runs (#353)
+- Added CSV import to create a dataset plus a paired LLM-judge experiment in one step, then simplified the upload flow (#374, #375)
+- Added an expectation modal and live run progress (#363)
+- Added a pass-rate line chart to the experiment runs view (#395)
+- Renamed user-facing "assertion" to "expectation" (#394)
+- Scoped Create-Dataset+Experiment model combos to the data source (#376)
+
+### Search & Heatmapper
+- Fixed Heatmapper attribute filters for Postgres-sourced fields (language, evaluation category, …) (#371)
+- Fixed query-mode `src_*` filters — code safety net plus a chunk backfill script (`scripts/fixes/backfill_chunk_doc_fields.py`) (#373)
+- Dropped hallucinated AI-summary citations that have no backing source (#393)
+- Fixed region filtering via doc_id resolution (#356)
+- Split multi-value country/region facets in the typeahead (#351)
+- Sorted country filters alphabetically in Search and Heatmapper (#379)
+- Fixed Heatmapper filter modal scrolling and added full-value hover tooltips (#362)
+
+### Document Viewer & Export
+- Added an exact (literal) in-document search mode to the PDF viewer with in-document highlighting (#354)
+- Aligned Word (.docx) export citations with the on-screen summary (#355)
+- Embedded table and figure screenshots in the Word export (#378)
+
+### Groups & Auth
+- Added per-group feature-tab toggles and label overrides (#377)
+- Fixed logout and made session refresh robust for OAuth-only deployments (#396)
+
+### Deployment & Customization
+- Added Docker-native branding customization via a `CUSTOMIZE_ASSETS` overlay folder (theme, logo, favicon, footer, fonts) (#357)
+- Sourced `config.json`, Caddyfile, and GCP credentials from outside the repo via `CONFIG_SRC`, `CADDYFILE_PATH`, and `GCP_CREDS_PATH` (#360)
+- Passed the `REACT_APP_USER_FEEDBACK` build arg in the production compose file (#368)
+
+### UI Polish
+- Made the logo and title link to the home page (#352)
+- Enlarged dropdown chevrons and streamed the AI summary as markdown (#359)
+
+### Data
+- Reconciled WFP document metadata with the corrected Phase 1 sheet (#350)
+
+### CI & Dependencies
+- Fixed a demo-e2e `alembic_version` race by migrating before app services start (#361)
+- Pinned `docx` to 9.6.1 to unblock the production build (#397); reverted the langgraph-prebuilt 1.1.0 bump to restore the deliberate pin (#347)
+- Dependency bumps: axios 1.18.1 (#324, #392), uvicorn 0.49.0 (#383), langchain 1.3.7 (#343), langgraph 1.2.4 (#338), docling-core 2.81.0 (#344), pymupdf 1.28.0 (#388), plotly 5.24.1 (#385), mypy 1.20.2 (#335, #386), requests 2.34.2 (#336), psycopg2-binary 2.9.12 (#334), yaml 2.9.0 (#341), @playwright/test 1.61.1 (#391), @types/node 25.9.4 (#340, #390), @typescript-eslint/parser 8.61.0 (#339, #346), http-proxy-middleware 2.0.10 (#384), actions/checkout v7 (#380), actions/cache v6 (#382), dependabot/fetch-metadata v3 (#333, #381)
+
+### Upgrade Notes
+- **Database migrations apply automatically on deploy.** The API container runs `alembic upgrade head` on startup, so redeploying picks up this release's new migrations (`0028_add_testing_harness`, `0029_add_test_runs`) — no manual step required.
+- **New optional env vars** (leave unset for stock behaviour): `CUSTOMIZE_ASSETS`, `CONFIG_SRC`, `CADDYFILE_PATH`, `GCP_CREDS_PATH` — see `.env.example`.
+- **Brief is now a core tab** — the `brief.enabled` feature flag has been removed; use the new per-group feature-tab toggles to hide it for specific groups.
+
+**Full diff:** https://github.com/dividor/evidencelab/compare/v1.5.1...v1.6.0
+
+---
+
 ## [1.5.1] - 2026-06-11
 
 Evidence Lab v1.5.1 is a hotfix release that repairs the host-mode demo (`scripts/demo/run_demo.py --mode host`) following the README quickstart. Two bugs made a vanilla host run fail before any documents were indexed; both are now fixed and covered by regression tests.

@@ -139,7 +139,8 @@ const FeedbackButton: React.FC = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'var(--brand-primary, #2c5cdc)',
+          // Match the Search button (--brand-accent) so both share the brand color.
+          background: 'var(--brand-accent, #475569)',
           color: '#fff',
           border: 'none',
           borderRadius: '50%',

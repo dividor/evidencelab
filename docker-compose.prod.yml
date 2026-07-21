@@ -242,6 +242,15 @@ services:
     build:
       context: .
       dockerfile: ui/frontend/Dockerfile.prod
+      # Optional branding overlay. Defaults to the stock ./customize folder;
+      # set CUSTOMIZE_ASSETS=/path/to/your-branding to override. No make/diff.
+      #
+      # Optional config overlay. Defaults to this repo root (stock config.json);
+      # set CONFIG_SRC=/path/to/deployment to bake a deployment's config.json
+      # into the UI build instead. Unset => byte-identical to stock.
+      additional_contexts:
+        customize: ${CUSTOMIZE_ASSETS:-./customize}
+        config: ${CONFIG_SRC:-.}
       args:
         - REACT_APP_AI_SUMMARY_ON=${REACT_APP_AI_SUMMARY_ON:-false}
         - REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS:-true}
@@ -251,6 +260,7 @@ services:
         - REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH:-}
         - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
         - REACT_APP_API_KEY=${REACT_APP_API_KEY:-}
+        - REACT_APP_USER_FEEDBACK=${REACT_APP_USER_FEEDBACK:-0}
     container_name: ui
     # Only visible inside Docker; Caddy reverse-proxies to this
     expose:

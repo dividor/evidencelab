@@ -8,6 +8,7 @@ import GroupSettingsManager from './GroupSettingsManager';
 import LlmUsageManager from './LlmUsageManager';
 import McpAuditLog from './McpAuditLog';
 import RatingsManager from './RatingsManager';
+import TestingManager from './TestingManager';
 import UserManager from './UserManager';
 
 interface AdminPanelProps {
@@ -22,7 +23,8 @@ type AdminTab =
   | 'activity'
   | 'llm-usage'
   | 'mcp-audit'
-  | 'api-keys';
+  | 'api-keys'
+  | 'testing';
 
 const TAB_USERS: AdminTab = 'users';
 const TAB_GROUPS: AdminTab = 'groups';
@@ -32,6 +34,7 @@ const TAB_ACTIVITY: AdminTab = 'activity';
 const TAB_LLM_USAGE: AdminTab = 'llm-usage';
 const TAB_MCP_AUDIT: AdminTab = 'mcp-audit';
 const TAB_API_KEYS: AdminTab = 'api-keys';
+const TAB_TESTING: AdminTab = 'testing';
 const ACTIVE_CLASS = 'admin-tab-active';
 
 const tabClass = (tab: AdminTab, current: AdminTab) =>
@@ -96,6 +99,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
           >
             API Keys
           </button>
+          <button
+            className={tabClass(tab, TAB_TESTING)}
+            onClick={() => setTab(TAB_TESTING)}
+          >
+            Testing
+          </button>
         </div>
       </div>
       <div className="admin-tab-content">
@@ -107,6 +116,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
         {tab === TAB_LLM_USAGE && <LlmUsageManager />}
         {tab === TAB_MCP_AUDIT && <McpAuditLog />}
         {tab === TAB_API_KEYS && <ApiKeyManager />}
+        {tab === TAB_TESTING && <TestingManager />}
       </div>
     </div>
   );

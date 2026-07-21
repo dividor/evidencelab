@@ -6,7 +6,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -78,6 +78,30 @@ def _resolve_cost(
     if server is not None:
         return server
     return submitted
+
+
+async def _find_existing_activity(
+    session: AsyncSession,
+    user: User | None,
+    session_id: Optional[str],
+    search_uuid: uuid.UUID,
+) -> Optional[UserActivity]:
+    """Find an activity row by its owner (user or anonymous session) and
+    search_id, or None. Owner-scoped so users can't read/overwrite each other."""
+    if user:
+        stmt = select(UserActivity).where(
+            UserActivity.user_id == user.id,
+            UserActivity.search_id == search_uuid,
+        )
+    elif session_id:
+        stmt = select(UserActivity).where(
+            UserActivity.session_id == session_id,
+            UserActivity.search_id == search_uuid,
+        )
+    else:
+        return None
+    result = await session.execute(stmt)
+    return result.scalars().first()
 
 
 # JSONB sort keys that need nullslast() handling
@@ -200,26 +224,52 @@ async def log_activity(
     except ValueError:
         raise HTTPException(status_code=422, detail="search_id must be a valid UUID")
 
-    activity = UserActivity(
-        user_id=user.id if user else None,
-        session_id=body.session_id if not user else None,
-        search_id=search_uuid,
-        query=body.query,
-        filters=body.filters,
-        search_results=body.search_results,
-        ai_summary=body.ai_summary,
-        url=body.url,
-        llm_model=body.llm_model,
-        prompt_tokens=body.prompt_tokens,
-        completion_tokens=body.completion_tokens,
-        cost_usd=_resolve_cost(
-            body.cost_usd,
-            body.llm_model,
-            body.prompt_tokens,
-            body.completion_tokens,
-        ),
+    cost = _resolve_cost(
+        body.cost_usd,
+        body.llm_model,
+        body.prompt_tokens,
+        body.completion_tokens,
     )
-    session.add(activity)
+
+    # Upsert by (owner, search_id): update an existing row in place, otherwise
+    # insert. Searches use a fresh search_id each time, so they always insert;
+    # the Brief tab reuses one stable search_id per brief, so re-logging it on
+    # each save updates the same activity row rather than creating duplicates.
+    existing = await _find_existing_activity(
+        session, user, body.session_id, search_uuid
+    )
+    if existing is not None:
+        # search_results is JSONB holding a list; the typed-but-loose
+        # constructor accepts it on insert, so mutate through an Any alias to
+        # keep the same loose typing on the update path.
+        row: Any = existing
+        row.query = body.query
+        row.filters = body.filters
+        row.search_results = body.search_results
+        if body.ai_summary is not None:
+            row.ai_summary = body.ai_summary
+        row.url = body.url
+        row.llm_model = body.llm_model
+        row.prompt_tokens = body.prompt_tokens
+        row.completion_tokens = body.completion_tokens
+        row.cost_usd = cost
+        activity = existing
+    else:
+        activity = UserActivity(
+            user_id=user.id if user else None,
+            session_id=body.session_id if not user else None,
+            search_id=search_uuid,
+            query=body.query,
+            filters=body.filters,
+            search_results=body.search_results,
+            ai_summary=body.ai_summary,
+            url=body.url,
+            llm_model=body.llm_model,
+            prompt_tokens=body.prompt_tokens,
+            completion_tokens=body.completion_tokens,
+            cost_usd=cost,
+        )
+        session.add(activity)
     await session.commit()
     await session.refresh(activity)
     return _activity_to_read(activity, user)

@@ -17,6 +17,7 @@
         { "title": "Using Evidence Lab", "path": "using-evidence-lab/using-evidence-lab.md" },
         { "title": "Search", "path": "using-evidence-lab/search.md" },
         { "title": "Research Assistant", "path": "using-evidence-lab/research-assistant.md" },
+        { "title": "Brief", "path": "using-evidence-lab/brief.md" },
         { "title": "Research Trees", "path": "using-evidence-lab/research-trees.md" },
         { "title": "Heatmapper", "path": "using-evidence-lab/heatmapper.md" },
         { "title": "Ratings & Feedback", "path": "using-evidence-lab/ratings-feedback.md" }
@@ -27,10 +28,12 @@
       "children": [
         { "title": "Pipeline Configuration", "path": "admin/pipeline-configuration.md" },
         { "title": "User Administration", "path": "admin/user-administration.md" },
+        { "title": "Evaluation Harness", "path": "admin/evaluation.md" },
         { "title": "API", "path": "admin/api-keys.md" },
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
         { "title": "MCP Server", "path": "admin/mcp-server.md" },
-        { "title": "A2A Server", "path": "admin/a2a-server.md" }
+        { "title": "A2A Server", "path": "admin/a2a-server.md" },
+        { "title": "Customization & Branding", "path": "admin/customization.md" }
       ]
     }
   ]

@@ -29,7 +29,11 @@ from ui.backend.utils.document_utils import (
     map_core_field_to_storage,
     normalize_document_payload,
 )
-from ui.backend.utils.facet_helpers import build_facets_from_db
+from ui.backend.utils.facet_helpers import (
+    build_facets_from_db,
+    doc_ids_from_pg_field,
+    doc_ids_from_pg_jsonb,
+)
 from ui.backend.utils.filter_helpers import (
     add_dynamic_filters,
     build_core_filters_from_params,
@@ -46,6 +50,27 @@ search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
 
 
+# Sentinel doc_id that matches no document. Used when a document-level filter
+# resolves to an empty set, so the filter yields zero results rather than being
+# silently dropped (which would return everything).
+_NO_MATCH_DOC_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def _intersect_doc_id_filter(core_filters: Dict[str, Any], doc_ids: List[str]) -> None:
+    """AND a doc_id constraint into ``core_filters``, intersecting any existing one.
+
+    Multiple document-level filters (e.g. region and language) each resolve to a
+    set of doc_ids; intersecting them makes the filters combine with AND. An
+    empty result collapses to ``_NO_MATCH_DOC_ID`` so no chunks are returned.
+    """
+    new_ids = {str(d) for d in doc_ids if d}
+    existing = core_filters.get("doc_id")
+    if existing is not None:
+        existing_ids = {d for d in str(existing).split(",") if d}
+        new_ids &= existing_ids
+    core_filters["doc_id"] = ",".join(sorted(new_ids)) if new_ids else _NO_MATCH_DOC_ID
+
+
 def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     """Replace language filter with doc_id filter (language not on chunks)."""
     lang = core_filters.pop("language", None)
@@ -57,6 +82,72 @@ def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
     if doc_ids:
         core_filters["doc_id"] = ",".join(doc_ids)
+
+
+def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
+    """Replace region filter with a doc_id filter (region is doc-level only).
+
+    Region metadata lives only on documents, not chunks, so a region selection
+    is resolved to its matching documents and applied as a doc_id constraint on
+    the chunk search. The constraint is intersected with any existing doc_id
+    filter (e.g. from a language filter) so document-level filters combine
+    with AND.
+    """
+    region = core_filters.pop("region", None)
+    if not region:
+        return
+    doc_ids = pg.fetch_doc_ids_by_region(region)
+    _intersect_doc_id_filter(core_filters, doc_ids)
+
+
+def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> None:
+    """Resolve filter fields whose data lives in PostgreSQL — not the Qdrant
+    document payload — to a ``doc_id`` constraint.
+
+    Document search (used by Heatmapper's attribute mode) filters the Qdrant
+    document collection, but several filterable fields are faceted from
+    PostgreSQL: ``language`` (the ``sys_language`` column) and ``src_*`` fields
+    (the ``src_doc_raw_metadata`` JSONB). Filtering those against the Qdrant
+    payload returns wrong/zero counts, so resolve each to its matching doc_ids
+    here — the same source the facet counts come from — and AND them together.
+    Qdrant-resident fields (document_type, published_year, organization,
+    country, region, …) are left in ``core_filters`` as payload filters.
+    """
+    language = core_filters.pop("language", None)
+    if language:
+        _intersect_doc_id_filter(
+            core_filters,
+            doc_ids_from_pg_field(pg, "sys_language", str(language).split(",")),
+        )
+
+    _convert_src_fields_to_doc_ids(core_filters, pg, source)
+
+
+def _convert_src_fields_to_doc_ids(
+    core_filters: Dict[str, Any], pg, source: str
+) -> None:
+    """Resolve ``src_*`` filters to a ``doc_id`` constraint.
+
+    ``src_*`` field values live in the ``docs.src_doc_raw_metadata`` JSONB, not on
+    chunks nor in the Qdrant document payload (they are only sparsely stamped onto
+    chunks, so a chunk/payload filter silently drops most matching documents). Both
+    chunk search (``/search``) and document search (``/docsearch``) must therefore
+    resolve them to the matching doc_ids — the same source the facet counts come
+    from — and AND them with any existing doc_id constraint.
+    """
+    src_field_mapping = get_src_field_mapping(source) or {}
+    for core_field in list(core_filters.keys()):
+        if not core_field.startswith("src_"):
+            continue
+        raw_key = src_field_mapping.get(core_field)
+        if not raw_key:
+            continue
+        values = [
+            v.strip() for v in str(core_filters.pop(core_field)).split(",") if v.strip()
+        ]
+        _intersect_doc_id_filter(
+            core_filters, doc_ids_from_pg_jsonb(pg, raw_key, values)
+        )
 
 
 def _build_core_filters(
@@ -690,8 +781,13 @@ async def search(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Language is doc-level only; convert to doc_id filter for chunk search
+        # Language, region and src_* fields are doc-level only (src_* is only
+        # sparsely stamped onto chunks); convert each to a doc_id filter for the
+        # chunk search so they intersect (AND) rather than dropping documents
+        # whose chunks lack the value.
         _convert_language_to_doc_ids(core_filters, pg)
+        _convert_region_to_doc_ids(core_filters, pg)
+        _convert_src_fields_to_doc_ids(core_filters, pg, source)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
@@ -792,13 +888,29 @@ def _build_metadata_filter_condition(
 def _build_docsearch_filters(
     q: str, core_filters: Dict[str, Any], indexed_doc_ids: List[str], db
 ) -> Optional[qmodels.Filter]:
-    """Build combined Qdrant filter conditions for document search."""
+    """Build combined Qdrant filter conditions for document search.
+
+    Doc-level fields that live only in PostgreSQL (language, region) are
+    resolved upstream to a ``doc_id`` constraint in ``core_filters``. They are
+    NOT on the Qdrant document payload, so they are applied here as an
+    intersection on the document id set (a ``HasIdCondition``) rather than as a
+    payload filter — otherwise filtering by them would match nothing.
+    """
     filter_conditions: List[qmodels.Condition] = []
 
     if q.strip():
         search_conditions = db._search_conditions(q.strip())
         if search_conditions:
             filter_conditions.append(qmodels.Filter(should=search_conditions))
+
+    # Intersect the indexed document set with any resolved doc_id constraint
+    # (from language/region). Pop it so it is not also applied as a payload
+    # filter below.
+    allowed_ids = set(indexed_doc_ids)
+    doc_id_constraint = core_filters.pop("doc_id", None)
+    if doc_id_constraint is not None:
+        requested = {i for i in str(doc_id_constraint).split(",") if i}
+        allowed_ids &= requested
 
     for core_field, value in core_filters.items():
         if not value:
@@ -812,7 +924,7 @@ def _build_docsearch_filters(
 
     filter_conditions.append(
         qmodels.Filter(  # type: ignore[arg-type]
-            should=[qmodels.HasIdCondition(has_id=list(indexed_doc_ids))]
+            should=[qmodels.HasIdCondition(has_id=sorted(allowed_ids))]
         )
     )
 
@@ -894,6 +1006,11 @@ async def docsearch(
             organization, title, published_year, document_type, country, language
         )
         add_dynamic_filters(core_filters, request.query_params, source)
+        # Fields faceted from PostgreSQL (language, src_* JSONB) aren't on the
+        # Qdrant document payload — resolve them to a doc_id constraint so
+        # Heatmapper counts match the facets. Without this a "language" or
+        # "evaluation category" axis returns zero/under-counted results.
+        _resolve_pg_filter_fields(core_filters, pg, source)
 
         combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
         if combined_filter is None:

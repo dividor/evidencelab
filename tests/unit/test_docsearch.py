@@ -12,8 +12,10 @@ from qdrant_client.http import models as qmodels
 from ui.backend.routes.search import (
     _build_docsearch_filters,
     _build_metadata_filter_condition,
+    _convert_src_fields_to_doc_ids,
     _format_document_result,
     _get_indexed_doc_ids,
+    _resolve_pg_filter_fields,
     docsearch,
 )
 
@@ -438,6 +440,232 @@ def test_build_docsearch_filters_includes_indexed_doc_ids():
 
     assert has_id_filter is not None
     assert has_id_filter.has_id == indexed_ids
+
+
+def _extract_has_id(filter_obj):
+    """Pull the HasIdCondition id list out of a docsearch filter."""
+    for item in filter_obj.must:
+        if hasattr(item, "should") and item.should:
+            for cond in item.should:
+                if isinstance(cond, qmodels.HasIdCondition):
+                    return cond.has_id
+    return None
+
+
+def test_build_docsearch_filters_intersects_resolved_doc_id_constraint():
+    """A resolved doc_id constraint (from language/region) intersects the
+    indexed id set instead of being applied as a payload filter — this is the
+    fix for doc-level fields (e.g. language) returning no heatmap results."""
+    mock_db = Mock()
+    mock_db._search_conditions.return_value = []
+
+    # core_filters["doc_id"] is what _convert_language_to_doc_ids sets.
+    result = _build_docsearch_filters("", {"doc_id": "1,3,9"}, ["1", "2", "3"], mock_db)
+
+    assert _extract_has_id(result) == [
+        "1",
+        "3",
+    ]  # sorted intersection of {1,3,9} ∩ {1,2,3}
+
+
+def test_build_docsearch_filters_doc_id_not_applied_as_payload_field():
+    """The doc_id constraint must NOT become a payload FieldCondition (the
+    Qdrant document payload has no doc_id field — it's the point id)."""
+    mock_db = Mock()
+    mock_db._search_conditions.return_value = []
+
+    with patch(
+        "ui.backend.routes.search.map_core_field_to_storage", return_value="map_doc_id"
+    ) as mock_map:
+        _build_docsearch_filters("", {"doc_id": "1,2"}, ["1", "2"], mock_db)
+
+    # doc_id was popped and handled as a HasIdCondition, so it was never mapped
+    # to a payload storage field.
+    assert all(call.args[0] != "doc_id" for call in mock_map.call_args_list)
+
+
+def test_build_docsearch_filters_keeps_payload_fields_alongside_doc_id():
+    """Year/document_type stay payload conditions while doc_id intersects ids."""
+    mock_db = Mock()
+    mock_db._search_conditions.return_value = []
+
+    result = _build_docsearch_filters(
+        "", {"doc_id": "1,2", "published_year": "2020"}, ["1", "2", "3"], mock_db
+    )
+
+    assert _extract_has_id(result) == ["1", "2"]
+    # A payload condition for published_year is present.
+    has_year = any(
+        getattr(c, "key", None) == "map_published_year"
+        or (
+            hasattr(c, "must")
+            and c.must
+            and getattr(c.must[0], "key", None) == "map_published_year"
+        )
+        for c in result.must
+    )
+    assert has_year
+
+
+def test_resolve_pg_filter_fields_language_to_sys_language_doc_ids():
+    """language is resolved via the sys_language PostgreSQL column and applied
+    as a doc_id constraint (not left as a Qdrant payload filter)."""
+    core_filters = {"language": "en", "published_year": "2023"}
+    with patch(
+        "ui.backend.routes.search.doc_ids_from_pg_field", return_value=["1", "3"]
+    ) as mock_field:
+        _resolve_pg_filter_fields(core_filters, Mock(), "uneg")
+
+    # language popped → doc_id constraint set; year (Qdrant) left untouched.
+    assert "language" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"1", "3"}
+    assert core_filters["published_year"] == "2023"
+    assert mock_field.call_args.args[1] == "sys_language"
+
+
+def test_resolve_pg_filter_fields_src_field_to_jsonb_doc_ids():
+    """src_* fields are resolved via the src_doc_raw_metadata JSONB column."""
+    core_filters = {"src_evaluation_category": "DE", "document_type": "Activity"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch(
+            "ui.backend.routes.search.doc_ids_from_pg_jsonb", return_value=["5", "6"]
+        ) as mock_jsonb:
+            _resolve_pg_filter_fields(core_filters, Mock(), "wfp")
+
+    assert "src_evaluation_category" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"5", "6"}
+    assert core_filters["document_type"] == "Activity"  # Qdrant field untouched
+    # Resolved against the configured raw JSONB key.
+    assert mock_jsonb.call_args.args[1] == "Evaluation category"
+
+
+# ---------------------------------------------------------------------------
+# _convert_src_fields_to_doc_ids — used by BOTH /docsearch (attribute mode) and
+# /search (query mode). src_* values are doc-level (only sparsely stamped onto
+# chunks), so query-mode chunk search must resolve them to doc_ids rather than
+# filter the chunk payload — regression for "evaluation category × year with a
+# search string returns very few documents".
+# ---------------------------------------------------------------------------
+
+
+def test_convert_src_fields_resolves_src_field_to_doc_id_constraint():
+    core_filters = {"src_evaluation_category": "CE", "published_year": "2023"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch(
+            "ui.backend.routes.search.doc_ids_from_pg_jsonb",
+            return_value=["a", "b"],
+        ) as mock_jsonb:
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert "src_evaluation_category" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"a", "b"}
+    # published_year stays a Qdrant payload filter (it lives on chunks).
+    assert core_filters["published_year"] == "2023"
+    assert mock_jsonb.call_args.args[1] == "Evaluation category"
+
+
+def test_convert_src_fields_intersects_with_existing_doc_id():
+    """A src_* constraint ANDs with an existing doc_id set (e.g. from language),
+    rather than overwriting it."""
+    core_filters = {"src_evaluation_category": "CE", "doc_id": "a,b,c"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch(
+            "ui.backend.routes.search.doc_ids_from_pg_jsonb",
+            return_value=["b", "c", "d"],
+        ):
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert set(core_filters["doc_id"].split(",")) == {"b", "c"}
+
+
+def test_convert_src_fields_empty_resolution_yields_no_match():
+    """When a src_* value matches no documents, the filter must collapse to the
+    no-match sentinel (return nothing) rather than be dropped (return all)."""
+    from ui.backend.routes.search import _NO_MATCH_DOC_ID
+
+    core_filters = {"src_evaluation_category": "ZZ"}
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch("ui.backend.routes.search.doc_ids_from_pg_jsonb", return_value=[]):
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    assert core_filters["doc_id"] == _NO_MATCH_DOC_ID
+
+
+def test_convert_src_fields_leaves_non_src_and_unmapped_fields_untouched():
+    core_filters = {
+        "published_year": "2023",
+        "document_type": "Activity",
+        "src_unmapped": "X",
+    }
+    with patch(
+        "ui.backend.routes.search.get_src_field_mapping",
+        return_value={"src_evaluation_category": "Evaluation category"},
+    ):
+        with patch("ui.backend.routes.search.doc_ids_from_pg_jsonb") as mock_jsonb:
+            _convert_src_fields_to_doc_ids(core_filters, Mock(), "wfp")
+
+    # No configured mapping for src_unmapped → left as-is, no doc_id added.
+    mock_jsonb.assert_not_called()
+    assert core_filters["src_unmapped"] == "X"
+    assert core_filters["published_year"] == "2023"
+    assert core_filters["document_type"] == "Activity"
+    assert "doc_id" not in core_filters
+
+
+@pytest.mark.asyncio
+async def test_docsearch_language_filter_resolves_to_doc_ids(mock_pg):
+    """A language filter is resolved to doc_ids (PostgreSQL) and intersected
+    with the indexed set — regression test for 'language vs year' heatmaps
+    returning zero documents."""
+    fake_db = FakeDB(
+        scroll_results=[
+            create_fake_document("1", "English Doc", "WFP", "2023"),
+            create_fake_document("3", "Another English Doc", "WFP", "2023"),
+        ]
+    )
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
+
+    mock_request = Mock(spec=Request)
+    mock_request.query_params = {"language": "English"}
+
+    with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+                # English resolves (via sys_language) to documents 1 and 3.
+                with patch(
+                    "ui.backend.routes.search.doc_ids_from_pg_field",
+                    return_value=["1", "3"],
+                ):
+                    result = await docsearch(
+                        request=mock_request,
+                        q="",
+                        limit=10,
+                        organization=None,
+                        title=None,
+                        published_year=None,
+                        document_type=None,
+                        country=None,
+                        language="English",
+                        data_source="uneg",
+                    )
+
+    # The language filter was applied as a doc-id intersection on the scroll.
+    scroll_filter = fake_db._scroll_calls[0]["filter"]
+    assert _extract_has_id(scroll_filter) == ["1", "3"]
+    assert result.total == 2
 
 
 def test_format_document_result_returns_none_for_empty_payload():
