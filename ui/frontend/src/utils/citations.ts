@@ -37,15 +37,33 @@ export const extractCitedNumbers = (summaryText: string): number[] => {
   return Array.from(cited).sort((a, b) => a - b);
 };
 
-/** Map each original citation number to its sequential display number
+/** The cited numbers that actually resolve to a search result, sorted
+ *  ascending. A `[N]` marker only backs a real reference when `N` is within
+ *  `1..results.length`; anything outside that range — most commonly a
+ *  model-hallucinated number such as `[19]` when only 12 results exist — is
+ *  dropped here so no surface (on-screen summary, References list, or export)
+ *  ever renders a citation that points to nothing. */
+export const extractValidCitedNumbers = (
+  summaryText: string,
+  results: SearchResult[],
+): number[] =>
+  extractCitedNumbers(summaryText).filter(
+    (num) => num >= 1 && num <= results.length,
+  );
+
+/** Map each *valid* original citation number to its sequential display number
  *  (`1..k`, in citation order). This is the renumbering the on-screen summary
  *  applies to inline `[N]` markers, and the docx/HTML exports must apply the
- *  same map so their inline markers agree with the screen. */
+ *  same map so their inline markers agree with the screen. Numbers with no
+ *  backing result are excluded (see {@link extractValidCitedNumbers}), so a
+ *  number absent from the map is not a real citation and must not be
+ *  rendered — every consumer keys off this map to stay consistent. */
 export const buildCitationSequenceMap = (
   summaryText: string,
+  results: SearchResult[],
 ): Map<number, number> => {
   const citationMapping = new Map<number, number>();
-  extractCitedNumbers(summaryText).forEach((origNum, seqIdx) => {
+  extractValidCitedNumbers(summaryText, results).forEach((origNum, seqIdx) => {
     citationMapping.set(origNum, seqIdx + 1);
   });
   return citationMapping;
@@ -71,15 +89,12 @@ export const buildGroupedReferences = (
   summaryText: string,
   results: SearchResult[],
 ): DocumentGroup[] => {
-  const sortedCitations = extractCitedNumbers(summaryText);
+  const sequenceMap = buildCitationSequenceMap(summaryText, results);
   const groupMap = new Map<string, DocumentGroup>();
   const groupOrder: string[] = [];
 
-  sortedCitations.forEach((origNum, seqIdx) => {
-    const resultIndex = origNum - 1;
-    if (resultIndex < 0 || resultIndex >= results.length) return;
-
-    const result = results[resultIndex];
+  extractValidCitedNumbers(summaryText, results).forEach((origNum) => {
+    const result = results[origNum - 1];
     const key = result.title;
 
     if (!groupMap.has(key)) {
@@ -92,7 +107,12 @@ export const buildGroupedReferences = (
       groupOrder.push(key);
     }
 
-    groupMap.get(key)!.refs.push({ sequential: seqIdx + 1, result });
+    // Sequential number comes from the shared map so the References list and
+    // the inline `[N]` markers stay in lock-step by construction.
+    groupMap.get(key)!.refs.push({
+      sequential: sequenceMap.get(origNum)!,
+      result,
+    });
   });
 
   return groupOrder.map((key) => groupMap.get(key)!);
