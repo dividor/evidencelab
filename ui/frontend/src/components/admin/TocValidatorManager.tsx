@@ -148,6 +148,15 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
         allOnPageSelected={allOnPageSelected}
         onOpenMetadata={handleOpenMetadata}
         onOpenToc={handleOpenToc}
+        columnFilters={state.columnFilters}
+        activeFilterColumn={state.activeFilterColumn}
+        filterPosition={state.filterPosition}
+        onFilterClick={state.openFilter}
+        onApplyFilter={state.applyFilter}
+        onClearFilter={state.clearFilter}
+        hasActiveFilter={state.hasActiveFilter}
+        getCategoricalOptions={state.getCategoricalOptions}
+        onCloseFilter={state.closeFilter}
       />
 
       <div className="toc-validator-pagination">

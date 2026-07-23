@@ -165,6 +165,54 @@ describe('TocValidatorManager', () => {
     expect(screen.getByRole('button', { name: /Run validation \(2\)/ })).toBeEnabled();
   });
 
+  test('renames the verdict column to Table of Contents review', async () => {
+    render(<TocValidatorManager dataSource="wfp" />);
+    await screen.findByText('Zambia Country Programme');
+    expect(screen.getByText('Table of Contents review')).toBeInTheDocument();
+    expect(screen.queryByText('Validation')).not.toBeInTheDocument();
+  });
+
+  test('every filterable column header exposes a filter button', async () => {
+    render(<TocValidatorManager dataSource="wfp" />);
+    await screen.findByText('Zambia Country Programme');
+    [
+      'Filter title',
+      'Filter organization',
+      'Filter status',
+      'Filter table of contents review',
+    ].forEach((label) => {
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
+    });
+  });
+
+  test('a status column filter narrows the visible rows', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/toc-validator/results')) {
+        return Promise.resolve({ data: { results: {} } });
+      }
+      return Promise.resolve({
+        data: {
+          documents: [
+            ...DOCS,
+            { doc_id: 'd3', map_title: 'Draft Report', organization: 'WFP', status: 'parsed' },
+          ],
+          total_pages: 1,
+        },
+      });
+    });
+    render(<TocValidatorManager dataSource="wfp" />);
+    await screen.findByText('Draft Report');
+
+    // Open the Status filter popover, select only "parsed", and apply.
+    fireEvent.click(screen.getByLabelText('Filter status'));
+    const popover = screen.getByText('Filter status').closest('.filter-popover') as HTMLElement;
+    fireEvent.click(within(popover).getByText('parsed'));
+    fireEvent.click(within(popover).getByRole('button', { name: /^Apply/ }));
+
+    expect(screen.getByText('Draft Report')).toBeInTheDocument();
+    expect(screen.queryByText('Zambia Country Programme')).not.toBeInTheDocument();
+  });
+
   test('opens the metadata modal from the row link', async () => {
     render(<TocValidatorManager dataSource="wfp" />);
     const row = (await screen.findByText('Zambia Country Programme')).closest('tr') as HTMLElement;

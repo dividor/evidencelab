@@ -12210,3 +12210,22 @@ button.doc-link {
 button.doc-link:hover {
   color: var(--color-link-hover);
 }
+
+/* TOC Validator — filterable column header layout + popover backdrop. */
+.toc-validator-table th .toc-th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.toc-validator-table .filter-icon-button {
+  flex-shrink: 0;
+}
+
+/* Click-away layer; sits just under .filter-popover (z-index: 1000). */
+.filter-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
