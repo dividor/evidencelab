@@ -131,6 +131,168 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
   );
 };
 
+// Content + sources for the done/stale views: the globally-renumbered display
+// variant when available, else the section's own.
+const sectionView = (section: BriefSection, display?: SectionDisplay) => ({
+  content: display?.content ?? section.content,
+  sources: display?.sources ?? section.sources,
+});
+
+// The AI action toolbar shown on a completed section.
+const SectionTools: React.FC<{
+  editing: boolean;
+  auditCount: number;
+  onToggleEdit: () => void;
+  onRegenerate: () => void;
+  onAiEdit: () => void;
+  onAiUpdate: () => void;
+  onOpenLog: () => void;
+}> = ({ editing, auditCount, onToggleEdit, onRegenerate, onAiEdit, onAiUpdate, onOpenLog }) => (
+  <div className="brief-doc-section-tools">
+    <button className="brief-regen-btn" onClick={onToggleEdit}>
+      <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
+    </button>
+    <button className="brief-regen-btn" onClick={onRegenerate}>
+      <IconRefresh /> AI Regenerate
+    </button>
+    <button
+      className="brief-regen-btn"
+      onClick={onAiEdit}
+      title="Revise this section with an AI instruction, keeping the current content"
+    >
+      <IconSparkle /> AI Edit
+    </button>
+    <button
+      className="brief-regen-btn"
+      onClick={onAiUpdate}
+      title="Search for sources published since this section was last run and fold them in"
+    >
+      <IconClock /> AI Get Updates
+    </button>
+    <button className="brief-section-log-link" onClick={onOpenLog}>
+      Log{auditCount ? ` (${auditCount})` : ''}
+    </button>
+  </div>
+);
+
+// The "research this section" prompt shown for a pending section.
+const SectionPending: React.FC<{ sample?: boolean; onResearch: () => void }> = ({
+  sample,
+  onResearch,
+}) => (
+  <div className="brief-pending">
+    <button
+      className="brief-btn brief-btn-secondary brief-research-one-btn"
+      onClick={onResearch}
+      disabled={sample}
+      title={sample ? 'Edit this heading before researching it' : undefined}
+    >
+      <IconSparkle /> Research this section
+    </button>
+  </div>
+);
+
+// The live "researching…"/"revising…" panel; keeps the current text greyed out
+// in place while a revise (Edit/Update) runs.
+const SectionResearching: React.FC<{
+  section: BriefSection;
+  display?: SectionDisplay;
+  onSourceClick: (source: SourceReference) => void;
+}> = ({ section, display, onSourceClick }) => {
+  const { content, sources } = sectionView(section, display);
+  return (
+    <>
+      <div className="brief-researching">
+        <div className="brief-researching-head">
+          <span className="brief-spinner" />
+          <span className="brief-researching-label">
+            {section.revising ? 'Revising this section' : 'Researching this section'}
+          </span>
+          <span className="brief-researching-pct">{section.progress}%</span>
+        </div>
+        <div className="brief-activity">
+          {section.activity.map((ev, idx) => (
+            <div className="brief-activity-row" key={`${ev.tag}-${idx}`}>
+              <span className={tagClass(ev.tag)}>{ev.tag}</span>
+              <span>{ev.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {section.revising && !!section.content && (
+        // The current text stays in place, greyed out, until the revised version
+        // arrives and swaps in atomically.
+        <div className="brief-doc-content brief-doc-content-stale" aria-busy="true">
+          <CitedMarkdown content={content} sources={sources} onSourceClick={onSourceClick} />
+        </div>
+      )}
+    </>
+  );
+};
+
+// The completed-section body: raw-edit textarea, a change diff, or the rendered
+// content — plus the collapsible evidence list.
+const SectionDoneBody: React.FC<{
+  section: BriefSection;
+  brief: UseBriefReturn;
+  display?: SectionDisplay;
+  editing: boolean;
+  diffEntry: SectionAuditEntry | null;
+  viewingPending: boolean;
+  onSourceClick: (source: SourceReference) => void;
+  onCloseDiff: () => void;
+}> = ({
+  section,
+  brief,
+  display,
+  editing,
+  diffEntry,
+  viewingPending,
+  onSourceClick,
+  onCloseDiff,
+}) => {
+  const { content, sources } = sectionView(section, display);
+  return (
+    <>
+      {editing ? (
+        <textarea
+          className="brief-edit-textarea"
+          value={section.content}
+          onChange={(e) => brief.editContent(section.id, e.target.value)}
+          onBlur={brief.commitEdits}
+          rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
+        />
+      ) : diffEntry && diffEntry.before != null ? (
+        <SectionChangesView
+          entry={diffEntry}
+          viewingPending={viewingPending}
+          onHide={onCloseDiff}
+          onKeep={() => {
+            onCloseDiff();
+            brief.dismissChanges(section.id);
+          }}
+          onReject={() => {
+            onCloseDiff();
+            brief.rejectChanges(section.id);
+          }}
+        />
+      ) : (
+        <div className="brief-doc-content">
+          <CitedMarkdown content={content} sources={sources} onSourceClick={onSourceClick} />
+        </div>
+      )}
+      <CitedReferences
+        content={content}
+        sources={sources}
+        onSourceClick={onSourceClick}
+        collapsible
+        labelPrefix="Evidence"
+        className="brief-evidence"
+      />
+    </>
+  );
+};
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
@@ -171,9 +333,6 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
     brief.reviseSection(section.id, panel, aiText.trim() || null);
     setAiText('');
   };
-  // View/evidence use the globally-renumbered content; editing uses the raw text.
-  const viewContent = display?.content ?? section.content;
-  const viewSources = display?.sources ?? section.sources;
 
   return (
     <section
@@ -191,37 +350,21 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       </div>
 
       {isDone && (
-        <div className="brief-doc-section-tools">
-          <button className="brief-regen-btn" onClick={() => setEditing((v) => !v)}>
-            <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
-          </button>
-          <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
-            <IconRefresh /> AI Regenerate
-          </button>
-          <button
-            className="brief-regen-btn"
-            onClick={() => {
-              setAiText('');
-              setAiPanel((p) => (p === 'edit' ? null : 'edit'));
-            }}
-            title="Revise this section with an AI instruction, keeping the current content"
-          >
-            <IconSparkle /> AI Edit
-          </button>
-          <button
-            className="brief-regen-btn"
-            onClick={() => {
-              setAiText('');
-              setAiPanel((p) => (p === 'update' ? null : 'update'));
-            }}
-            title="Search for sources published since this section was last run and fold them in"
-          >
-            <IconClock /> AI Get Updates
-          </button>
-          <button className="brief-section-log-link" onClick={() => setLogOpen(true)}>
-            Log{auditCount ? ` (${auditCount})` : ''}
-          </button>
-        </div>
+        <SectionTools
+          editing={editing}
+          auditCount={auditCount}
+          onToggleEdit={() => setEditing((v) => !v)}
+          onRegenerate={() => brief.openRegen(section.id)}
+          onAiEdit={() => {
+            setAiText('');
+            setAiPanel((p) => (p === 'edit' ? null : 'edit'));
+          }}
+          onAiUpdate={() => {
+            setAiText('');
+            setAiPanel((p) => (p === 'update' ? null : 'update'));
+          }}
+          onOpenLog={() => setLogOpen(true)}
+        />
       )}
 
       {aiPanel && (
@@ -256,93 +399,24 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       {panelOpen && <GuidancePanel section={section} brief={brief} />}
 
       {section.status === 'pending' && !panelOpen && !anyResearching && (
-        <div className="brief-pending">
-          <button
-            className="brief-btn brief-btn-secondary brief-research-one-btn"
-            onClick={() => brief.openRegen(section.id)}
-            disabled={section.sample}
-            title={section.sample ? 'Edit this heading before researching it' : undefined}
-          >
-            <IconSparkle /> Research this section
-          </button>
-        </div>
+        <SectionPending sample={section.sample} onResearch={() => brief.openRegen(section.id)} />
       )}
 
       {section.status === 'researching' && (
-        <>
-          <div className="brief-researching">
-            <div className="brief-researching-head">
-              <span className="brief-spinner" />
-              <span className="brief-researching-label">
-                {section.revising ? 'Revising this section' : 'Researching this section'}
-              </span>
-              <span className="brief-researching-pct">{section.progress}%</span>
-            </div>
-            <div className="brief-activity">
-              {section.activity.map((ev, idx) => (
-                <div className="brief-activity-row" key={`${ev.tag}-${idx}`}>
-                  <span className={tagClass(ev.tag)}>{ev.tag}</span>
-                  <span>{ev.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          {section.revising && !!section.content && (
-            // The current text stays in place, greyed out, until the revised
-            // version arrives and swaps in atomically.
-            <div className="brief-doc-content brief-doc-content-stale" aria-busy="true">
-              <CitedMarkdown
-                content={viewContent}
-                sources={viewSources}
-                onSourceClick={onSourceClick}
-              />
-            </div>
-          )}
-        </>
+        <SectionResearching section={section} display={display} onSourceClick={onSourceClick} />
       )}
 
       {isDone && (
-        <>
-          {editing ? (
-            <textarea
-              className="brief-edit-textarea"
-              value={section.content}
-              onChange={(e) => brief.editContent(section.id, e.target.value)}
-              onBlur={brief.commitEdits}
-              rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
-            />
-          ) : diffEntry && diffEntry.before != null ? (
-            <SectionChangesView
-              entry={diffEntry}
-              viewingPending={viewingPending}
-              onHide={() => setDiffEntryId(null)}
-              onKeep={() => {
-                setDiffEntryId(null);
-                brief.dismissChanges(section.id);
-              }}
-              onReject={() => {
-                setDiffEntryId(null);
-                brief.rejectChanges(section.id);
-              }}
-            />
-          ) : (
-            <div className="brief-doc-content">
-              <CitedMarkdown
-                content={viewContent}
-                sources={viewSources}
-                onSourceClick={onSourceClick}
-              />
-            </div>
-          )}
-          <CitedReferences
-            content={viewContent}
-            sources={viewSources}
-            onSourceClick={onSourceClick}
-            collapsible
-            labelPrefix="Evidence"
-            className="brief-evidence"
-          />
-        </>
+        <SectionDoneBody
+          section={section}
+          brief={brief}
+          display={display}
+          editing={editing}
+          diffEntry={diffEntry}
+          viewingPending={viewingPending}
+          onSourceClick={onSourceClick}
+          onCloseDiff={() => setDiffEntryId(null)}
+        />
       )}
     </section>
   );
