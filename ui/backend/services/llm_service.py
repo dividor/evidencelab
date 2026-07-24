@@ -535,6 +535,99 @@ async def revise_brief_section(
     return html.unescape(_strip_section_wrapper(str(response.content)))
 
 
+# GoogleTranslator rejects requests of 5000+ characters outright, so long
+# texts (AI summaries easily exceed this; search-result chunks never do) must
+# be translated in pieces. The margin below 5000 absorbs marker inflation and
+# keeps every request safely inside the cap.
+_TRANSLATE_CHAR_LIMIT = 4500
+
+
+def _pack_units(units: List[str], limit: int, joiner: str) -> List[str]:
+    """Greedily pack string units into chunks of at most ``limit`` characters.
+
+    A single unit longer than ``limit`` becomes its own (oversized) chunk for
+    the caller to split further.
+
+    Args:
+        units: Ordered pieces of text to pack.
+        limit: Maximum chunk length in characters.
+        joiner: String placed between units within a chunk.
+
+    Returns:
+        List of packed chunks, in order.
+    """
+    chunks: List[str] = []
+    current = ""
+    for unit in units:
+        candidate = f"{current}{joiner}{unit}" if current else unit
+        if not current or len(candidate) <= limit:
+            current = candidate
+        else:
+            chunks.append(current)
+            current = unit
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _translate_oversized_paragraph(translator: GoogleTranslator, chunk: str) -> str:
+    """Translate a single paragraph that alone exceeds the request cap.
+
+    Splits on sentence ends first; a pathological single sentence is packed on
+    word boundaries as a last resort.
+
+    Args:
+        translator: Configured GoogleTranslator instance.
+        chunk: Protected paragraph text longer than the request cap.
+
+    Returns:
+        The translated paragraph.
+    """
+    out: List[str] = []
+    for sentence_chunk in _pack_units(
+        re.split(r"(?<=[.!?])\s+", chunk), _TRANSLATE_CHAR_LIMIT, " "
+    ):
+        if len(sentence_chunk) > _TRANSLATE_CHAR_LIMIT:
+            word_chunks = _pack_units(
+                sentence_chunk.split(" "), _TRANSLATE_CHAR_LIMIT, " "
+            )
+            out.extend(translator.translate(w) or w for w in word_chunks)
+        else:
+            out.append(translator.translate(sentence_chunk) or sentence_chunk)
+    return " ".join(out)
+
+
+def _translate_protected(translator: GoogleTranslator, protected: str) -> str:
+    """Translate protected text, keeping every request under the service cap.
+
+    Short texts go through in one request (the common search-result case).
+    Longer texts (AI summaries) are split at paragraph markers — natural
+    translation units — and each piece is translated separately, then
+    re-joined with the paragraph marker so the restore step behaves exactly
+    as in the single-request case.
+
+    Args:
+        translator: Configured GoogleTranslator instance.
+        protected: Text with references and newlines already marker-protected.
+
+    Returns:
+        The translated text, markers preserved.
+    """
+    if len(protected) <= _TRANSLATE_CHAR_LIMIT:
+        return translator.translate(protected)
+    para_chunks = _pack_units(
+        protected.split(" __PARA__ "), _TRANSLATE_CHAR_LIMIT, " __PARA__ "
+    )
+    return " __PARA__ ".join(
+        (
+            _translate_oversized_paragraph(translator, chunk)
+            if len(chunk) > _TRANSLATE_CHAR_LIMIT
+            else translator.translate(chunk) or chunk
+        )
+        for chunk in para_chunks
+    )
+
+
 async def translate_text(
     text: str, target_language: str, source_language: str | None = None
 ) -> str:
@@ -616,8 +709,11 @@ async def translate_text(
 
         # 3. Perform translation
         # deep-translator is synchronous, suitable for direct call here.
+        # Long texts (e.g. AI summaries) are split into chunks below the
+        # service's per-request character cap — a single oversized request
+        # is rejected outright with NotValidLength.
         translator = GoogleTranslator(source=source_lang_code, target=target_lang_code)
-        translated_text = translator.translate(protected_text)
+        translated_text = _translate_protected(translator, protected_text)
 
         # 4. Restore references: __REF_64__ -> [64]
         if translated_text:
