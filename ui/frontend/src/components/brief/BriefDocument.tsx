@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
-import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
+import { IconClock, IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
 import { BriefToc } from './BriefToc';
 import { BriefSection, SectionAuditEntry } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
@@ -216,7 +216,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             }}
             title="Search for sources published since this section was last run and fold them in"
           >
-            <IconRefresh /> AI Get Updates
+            <IconClock /> AI Get Updates
           </button>
           <button className="brief-section-log-link" onClick={() => setLogOpen(true)}>
             Log{auditCount ? ` (${auditCount})` : ''}
@@ -409,6 +409,16 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
                 title="Re-research every section from scratch"
               >
                 <IconRefresh /> AI Regenerate All
+              </button>
+            )}
+            {sections.some((s) => s.status === 'done') && (
+              <button
+                className="brief-regen-all"
+                onClick={brief.updateAll}
+                disabled={!canEditStructure}
+                title="Fold sources published since each section was last run into every section"
+              >
+                <IconClock /> AI Get All Recent Updates
               </button>
             )}
             {onExportWord && (

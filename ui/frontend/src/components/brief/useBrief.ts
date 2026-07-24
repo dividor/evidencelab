@@ -600,6 +600,28 @@ export const useBrief = ({
     }
   }, [researchOne, saveCurrent]);
 
+  // Run "Get Updates" (fold in sources newer than each section's last run) on
+  // every already-researched section, sequentially — the doc-wide counterpart to
+  // the per-section AI Get Updates.
+  const updateAll = useCallback(async () => {
+    const ids = sectionsRef.current
+      .filter((s) => s.status === 'done' && !!s.content)
+      .map((s) => s.id);
+    if (!ids.length) return;
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStage('research');
+    for (const id of ids) {
+      if (controller.signal.aborted) return;
+      await researchOne(id, null, controller.signal, { mode: 'update' });
+    }
+    if (!controller.signal.aborted) {
+      setStage('done');
+      saveCurrent();
+    }
+  }, [researchOne, saveCurrent]);
+
   // Abort all in-flight research and return to a stable, editable state: any
   // section mid-research reverts to pending; completed sections are kept.
   const stopResearch = useCallback(() => {
@@ -867,6 +889,7 @@ export const useBrief = ({
     editTitle,
     editContent,
     startResearch,
+    updateAll,
     stopResearch,
     regenerate,
     reviseSection,
