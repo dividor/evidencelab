@@ -22,6 +22,11 @@ export interface SectionAuditEntry {
   // Sources cited after this operation, and how many were newly added by it.
   sourceCount?: number;
   addedSourceCount?: number;
+  // For edit/update: the section content immediately before and after this
+  // operation, so its diff stays viewable from the Log even after it's kept and
+  // even on a reloaded (saved) brief. Absent for generate.
+  before?: string;
+  after?: string;
 }
 
 export interface BriefSection {

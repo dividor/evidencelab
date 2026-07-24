@@ -4,12 +4,90 @@ import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
 import { BriefToc } from './BriefToc';
-import { BriefSection } from './briefTypes';
+import { BriefSection, SectionAuditEntry } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
+
+// The changes view for one audit entry: a diff header (Hide, plus Keep/Reject
+// for the still-pending change) over the rendered before→after diff.
+const SectionChangesView: React.FC<{
+  entry: SectionAuditEntry;
+  viewingPending: boolean;
+  onHide: () => void;
+  onKeep: () => void;
+  onReject: () => void;
+}> = ({ entry, viewingPending, onHide, onKeep, onReject }) => (
+  <div className="brief-doc-content">
+    <div className="brief-diff-head">
+      <span>
+        Changes from the {entry.kind === 'update' ? 'update' : 'edit'}
+        {viewingPending ? '' : ` on ${new Date(entry.at).toLocaleDateString()}`}
+      </span>
+      <span className="brief-diff-actions">
+        <button className="brief-diff-dismiss brief-diff-hide" onClick={onHide} title="Hide the diff">
+          Hide changes
+        </button>
+        {viewingPending && (
+          <>
+            <button className="brief-diff-dismiss brief-diff-keep" onClick={onKeep}>
+              Keep Edits
+            </button>
+            <button className="brief-diff-dismiss brief-diff-reject" onClick={onReject}>
+              Reject Edits
+            </button>
+          </>
+        )}
+      </span>
+    </div>
+    <BriefDiff oldText={entry.before || ''} newText={entry.after || ''} />
+  </div>
+);
+
+// The Edit/Update instruction panel (keeps the current text; runs a revise).
+const AiInstructionPanel: React.FC<{
+  mode: 'edit' | 'update';
+  title: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}> = ({ mode, title, value, onChange, onSubmit, onCancel }) => (
+  <div className="brief-regen-panel brief-ai-panel">
+    <div className="brief-regen-title">
+      {mode === 'edit' ? `Edit “${title}”` : `Update “${title}”`}
+    </div>
+    <div className="brief-ai-panel-hint">
+      {mode === 'edit'
+        ? 'Keeps the current text and revises it to your instruction (does not replace it unless you ask).'
+        : 'Searches the library for sources published since this section was last run and folds any new findings in. Add an optional focus below.'}
+    </div>
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      rows={2}
+      placeholder={
+        mode === 'edit'
+          ? 'e.g. “Adjust so the viewpoint relates more to domestic policy”'
+          : 'Optional focus for the update — e.g. “prioritise enforcement actions”'
+      }
+    />
+    <div className="brief-regen-actions">
+      <button
+        className="brief-btn brief-btn-primary"
+        onClick={onSubmit}
+        disabled={mode === 'edit' && !value.trim()}
+      >
+        {mode === 'edit' ? 'Apply edit' : 'Run update'}
+      </button>
+      <button className="brief-btn brief-btn-secondary" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  </div>
+);
 
 interface SectionViewProps {
   section: BriefSection;
@@ -65,22 +143,31 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
   const [logOpen, setLogOpen] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
+  // Which audit entry's diff is on screen (by id), or null. Any edit/update
+  // entry with a stored before/after can be viewed — including on a reloaded
+  // brief — not just the latest pending change.
+  const [diffEntryId, setDiffEntryId] = useState<string | null>(null);
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
-  const auditCount = section.audit?.length ?? 0;
+  const audit = section.audit ?? [];
+  const auditCount = audit.length;
   const hasChanges = !!section.prevContent;
-  // Surface the diff automatically once an edit/update completes, so the user
-  // sees what changed (struck-out removals + highlighted additions) right away.
+  // The still-pending change (un-kept) is the latest audit entry; only it offers
+  // Keep/Reject. Everything else is view-only.
+  const pendingEntryId = hasChanges && audit.length ? audit[audit.length - 1].id : null;
+  const diffEntry = diffEntryId ? audit.find((e) => e.id === diffEntryId) ?? null : null;
+  const viewingPending = !!diffEntryId && diffEntryId === pendingEntryId;
+  // Surface the pending diff automatically once an edit/update completes (a new
+  // pending entry appears).
   useEffect(() => {
-    if (section.prevContent) setShowDiff(true);
-  }, [section.prevContent]);
+    if (pendingEntryId) setDiffEntryId(pendingEntryId);
+  }, [pendingEntryId]);
   const submitAi = () => {
     const panel = aiPanel;
     if (!panel) return;
     setAiPanel(null);
-    setShowDiff(false);
+    setDiffEntryId(null);
     brief.reviseSection(section.id, panel, aiText.trim() || null);
     setAiText('');
   };
@@ -131,15 +218,6 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           >
             <IconRefresh /> Update
           </button>
-          {hasChanges && (
-            <button
-              className="brief-regen-btn brief-changes-btn"
-              onClick={() => setShowDiff((v) => !v)}
-              title="Show what changed in the last edit/update"
-            >
-              {showDiff ? 'Hide changes' : 'Show changes'}
-            </button>
-          )}
           <button className="brief-section-log-link" onClick={() => setLogOpen(true)}>
             Log{auditCount ? ` (${auditCount})` : ''}
           </button>
@@ -147,50 +225,30 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       {aiPanel && (
-        <div className="brief-regen-panel brief-ai-panel">
-          <div className="brief-regen-title">
-            {aiPanel === 'edit' ? `Edit “${section.title}”` : `Update “${section.title}”`}
-          </div>
-          <div className="brief-ai-panel-hint">
-            {aiPanel === 'edit'
-              ? 'Keeps the current text and revises it to your instruction (does not replace it unless you ask). May search for supporting evidence.'
-              : 'Searches the library for sources published since this section was last run and folds any new findings in. Add an optional focus below.'}
-          </div>
-          <textarea
-            value={aiText}
-            onChange={(e) => setAiText(e.target.value)}
-            rows={2}
-            placeholder={
-              aiPanel === 'edit'
-                ? 'e.g. “Adjust so the viewpoint relates more to domestic policy”'
-                : 'Optional focus for the update — e.g. “prioritise enforcement actions”'
-            }
-          />
-          <div className="brief-regen-actions">
-            <button
-              className="brief-btn brief-btn-primary"
-              onClick={submitAi}
-              disabled={aiPanel === 'edit' && !aiText.trim()}
-            >
-              {aiPanel === 'edit' ? 'Apply edit' : 'Run update'}
-            </button>
-            <button
-              className="brief-btn brief-btn-secondary"
-              onClick={() => {
-                setAiPanel(null);
-                setAiText('');
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+        <AiInstructionPanel
+          mode={aiPanel}
+          title={section.title}
+          value={aiText}
+          onChange={setAiText}
+          onSubmit={submitAi}
+          onCancel={() => {
+            setAiPanel(null);
+            setAiText('');
+          }}
+        />
       )}
 
       {logOpen && (
         <BriefSectionAudit
           title={section.title}
-          audit={section.audit ?? []}
+          audit={audit}
+          pendingEntryId={pendingEntryId}
+          // Any edit/update entry with a stored before/after can be re-viewed —
+          // clicking its row opens that change's diff.
+          onShowChanges={(entryId) => {
+            setLogOpen(false);
+            setDiffEntryId(entryId);
+          }}
           onClose={() => setLogOpen(false)}
         />
       )}
@@ -211,21 +269,36 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       {section.status === 'researching' && (
-        <div className="brief-researching">
-          <div className="brief-researching-head">
-            <span className="brief-spinner" />
-            <span className="brief-researching-label">Researching this section</span>
-            <span className="brief-researching-pct">{section.progress}%</span>
+        <>
+          <div className="brief-researching">
+            <div className="brief-researching-head">
+              <span className="brief-spinner" />
+              <span className="brief-researching-label">
+                {section.revising ? 'Revising this section' : 'Researching this section'}
+              </span>
+              <span className="brief-researching-pct">{section.progress}%</span>
+            </div>
+            <div className="brief-activity">
+              {section.activity.map((ev, idx) => (
+                <div className="brief-activity-row" key={`${ev.tag}-${idx}`}>
+                  <span className={tagClass(ev.tag)}>{ev.tag}</span>
+                  <span>{ev.text}</span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="brief-activity">
-            {section.activity.map((ev, idx) => (
-              <div className="brief-activity-row" key={`${ev.tag}-${idx}`}>
-                <span className={tagClass(ev.tag)}>{ev.tag}</span>
-                <span>{ev.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+          {section.revising && !!section.content && (
+            // The current text stays in place, greyed out, until the revised
+            // version arrives and swaps in atomically.
+            <div className="brief-doc-content brief-doc-content-stale" aria-busy="true">
+              <CitedMarkdown
+                content={viewContent}
+                sources={viewSources}
+                onSourceClick={onSourceClick}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {isDone && (
@@ -238,25 +311,20 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
               onBlur={brief.commitEdits}
               rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
             />
-          ) : showDiff && hasChanges ? (
-            <div className="brief-doc-content">
-              <div className="brief-diff-head">
-                <span>
-                  Changes from the last{' '}
-                  {section.lastChangeKind === 'update' ? 'update' : 'edit'}
-                </span>
-                <button
-                  className="brief-diff-dismiss"
-                  onClick={() => {
-                    setShowDiff(false);
-                    brief.dismissChanges(section.id);
-                  }}
-                >
-                  Keep &amp; dismiss
-                </button>
-              </div>
-              <BriefDiff oldText={section.prevContent || ''} newText={section.content} />
-            </div>
+          ) : diffEntry && diffEntry.before != null ? (
+            <SectionChangesView
+              entry={diffEntry}
+              viewingPending={viewingPending}
+              onHide={() => setDiffEntryId(null)}
+              onKeep={() => {
+                setDiffEntryId(null);
+                brief.dismissChanges(section.id);
+              }}
+              onReject={() => {
+                setDiffEntryId(null);
+                brief.rejectChanges(section.id);
+              }}
+            />
           ) : (
             <div className="brief-doc-content">
               <CitedMarkdown

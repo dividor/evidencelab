@@ -530,7 +530,10 @@ async def revise_brief_section(
         HumanMessage(content=user_prompt),
     ]
     response = await llm.ainvoke(messages)  # type: ignore[arg-type]
-    return _strip_section_wrapper(str(response.content))
+    # Some models HTML-escape quotes/ampersands in their output (e.g. &#34;),
+    # which would render literally in the section. Decode entities back to plain
+    # text so the stored markdown is clean.
+    return html.unescape(_strip_section_wrapper(str(response.content)))
 
 
 async def translate_text(

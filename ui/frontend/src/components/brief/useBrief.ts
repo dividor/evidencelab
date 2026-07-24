@@ -143,7 +143,9 @@ const computeReferences = (sections: BriefSection[]): BriefReference[] => {
   const seen = new Set<string>();
   const refs: BriefReference[] = [];
   sections.forEach((s) => {
-    if (s.status !== 'done') return;
+    // Sections mid-Edit/Update keep their (old) content on screen, so they
+    // keep their footnotes too — no renumbering while a revise runs.
+    if (s.status !== 'done' && !s.revising) return;
     const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src: SourceReference) => {
       if (src.index == null || !cited.has(src.index)) return;
@@ -265,7 +267,9 @@ export const useBrief = ({
       // un-researched reverts to its last stable (pending) state on reload —
       // never a stuck "Researching…".
       sections: snap.map((s) => {
-        const done = s.status === 'done';
+        // A mid-revise section still holds its last good content — persist it
+        // as done so an interrupted Edit/Update never loses the section.
+        const done = s.status === 'done' || !!s.revising;
         return {
           title: s.title,
           level: s.level,
@@ -538,6 +542,9 @@ export const useBrief = ({
                 mode === 'generate' ? context || undefined : instruction || undefined,
               sourceCount: sources.length,
               addedSourceCount: added,
+              // Keep the before/after for a revise so its diff stays viewable.
+              before: isRevise ? priorContent : undefined,
+              after: isRevise ? content : undefined,
             };
             const cur = sectionsRef.current.find((s) => s.id === id);
             updateSection(id, {
@@ -667,6 +674,8 @@ export const useBrief = ({
           instruction: instruction.trim(),
           sourceCount: section.sources.length,
           addedSourceCount: 0,
+          before: priorContent,
+          after: revised,
         };
         updateSection(id, {
           status: 'done',
@@ -723,7 +732,8 @@ export const useBrief = ({
     [updateSection],
   );
 
-  // Reject Edits: restore the pre-op content and sources, dropping the revision.
+  // Reject Edits: restore the pre-op content and sources, drop the revision, and
+  // remove its (now-undone) audit row so the log only shows applied changes.
   const rejectChanges = useCallback(
     (id: string) =>
       setSections((prev) =>
@@ -736,6 +746,7 @@ export const useBrief = ({
                 prevContent: undefined,
                 prevSources: undefined,
                 lastChangeKind: undefined,
+                audit: s.audit ? s.audit.slice(0, -1) : s.audit,
               }
             : s,
         ),

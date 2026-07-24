@@ -120,3 +120,45 @@ describe('stripLeadingTitle', () => {
     );
   });
 });
+
+describe('footnotes react to citation changes', () => {
+  test('removing an inline citation drops its footnote and renumbers the rest', () => {
+    const sources = [
+      src({ index: 1, docId: 'd1', title: 'Doc One', page: 1 }),
+      src({ index: 2, docId: 'd2', title: 'Doc Two', page: 2 }),
+    ];
+    const before: BriefSection[] = [
+      section({ id: 'a', content: 'First [1] and second [2].', sources }),
+    ];
+    const after: BriefSection[] = [
+      // An AI edit removed the sentence citing [1]; sources are unchanged.
+      section({ id: 'a', content: 'Only the second remains [2].', sources }),
+    ];
+
+    expect(buildGlobalCitations(before).refs.map((r) => r.title)).toEqual([
+      'Doc One',
+      'Doc Two',
+    ]);
+
+    const { refs, display } = buildGlobalCitations(after);
+    expect(refs.map((r) => r.title)).toEqual(['Doc Two']);
+    expect(refs[0].n).toBe(1);
+    // The surviving citation is renumbered to the new global sequence.
+    expect(display.get('a')?.content).toBe('Only the second remains [1].');
+  });
+
+  test('a section mid-revise keeps its citations in the numbering', () => {
+    const sections: BriefSection[] = [
+      section({
+        id: 'a',
+        status: 'researching',
+        revising: true,
+        content: 'Still on screen [1].',
+        sources: [src({ index: 1, docId: 'd1', title: 'Doc One', page: 1 })],
+      }),
+    ];
+    const { refs, display } = buildGlobalCitations(sections);
+    expect(refs.map((r) => r.title)).toEqual(['Doc One']);
+    expect(display.get('a')?.content).toBe('Still on screen [1].');
+  });
+});

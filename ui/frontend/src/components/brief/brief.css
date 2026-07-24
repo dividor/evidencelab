@@ -775,6 +775,27 @@
   flex-direction: column;
   gap: 5px;
 }
+/* The per-section status box shows ~5 events, then scrolls. */
+.brief-researching .brief-activity {
+  max-height: 112px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+.brief-researching .brief-activity::-webkit-scrollbar {
+  width: 6px;
+}
+.brief-researching .brief-activity::-webkit-scrollbar-thumb {
+  background: var(--brand-border);
+  border-radius: 3px;
+}
+/* The section's current text stays in place, greyed, while a revise runs. */
+.brief-doc-content-stale {
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+  margin-top: 12px;
+}
 .brief-activity-row {
   display: flex;
   align-items: center;
@@ -1535,6 +1556,10 @@
   padding-bottom: 6px;
   border-bottom: 1px solid var(--brand-border-light);
 }
+.brief-diff-actions {
+  display: inline-flex;
+  gap: 8px;
+}
 .brief-diff-dismiss {
   background: none;
   border: 1px solid var(--brand-border);
@@ -1544,15 +1569,40 @@
   color: var(--brand-text-secondary);
   cursor: pointer;
 }
-.brief-diff-dismiss:hover {
+.brief-diff-keep:hover {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
 }
+.brief-diff-reject:hover {
+  border-color: var(--brand-error);
+  color: var(--brand-error);
+}
+/* Rendered-markdown diff: blocks flow like the document itself. */
 .brief-diff {
-  white-space: pre-wrap;
   line-height: 1.6;
   font-family: var(--font-body);
   color: var(--brand-text-primary);
+}
+.brief-diff-block > :first-child {
+  margin-top: 0;
+}
+.brief-diff-block > :last-child {
+  margin-bottom: 0;
+}
+.brief-diff-block {
+  margin: 0 0 10px;
+}
+.brief-diff-block-add {
+  background: rgba(16, 156, 145, 0.08);
+  border-left: 3px solid rgba(16, 156, 145, 0.5);
+  padding: 6px 10px;
+}
+.brief-diff-block-del {
+  background: rgba(220, 38, 38, 0.06);
+  border-left: 3px solid rgba(220, 38, 38, 0.4);
+  padding: 6px 10px;
+  text-decoration: line-through;
+  color: var(--brand-text-tertiary);
 }
 .brief-diff-add {
   background: rgba(16, 156, 145, 0.16);
@@ -1587,4 +1637,23 @@
 .brief-audit-label {
   font-weight: 600;
   color: var(--brand-text-secondary);
+}
+/* The pending (un-kept) edit row in the log opens its changes view. */
+.brief-audit-row-clickable {
+  cursor: pointer;
+}
+.brief-audit-row-clickable:hover {
+  background: var(--brand-border-light);
+}
+.brief-audit-pending {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-warning);
+}
+.brief-audit-view {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-primary);
 }

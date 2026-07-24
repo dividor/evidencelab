@@ -26,10 +26,22 @@ const formatWhen = (ts: number): string => {
 interface Props {
   title: string;
   audit: SectionAuditEntry[];
+  // The entry whose change is still pending (not yet kept/rejected) — labelled
+  // as such; its diff also offers Keep/Reject.
+  pendingEntryId?: string | null;
+  // Open a given entry's diff. Any edit/update entry with a stored before/after
+  // is viewable (including on a reloaded brief).
+  onShowChanges?: (entryId: string) => void;
   onClose: () => void;
 }
 
-export const BriefSectionAudit: React.FC<Props> = ({ title, audit, onClose }) => (
+export const BriefSectionAudit: React.FC<Props> = ({
+  title,
+  audit,
+  pendingEntryId,
+  onShowChanges,
+  onClose,
+}) => (
   <div className="brief-modal-overlay" onClick={onClose}>
     <div className="brief-modal" onClick={(e) => e.stopPropagation()}>
       <div className="brief-modal-head">
@@ -49,13 +61,17 @@ export const BriefSectionAudit: React.FC<Props> = ({ title, audit, onClose }) =>
           {[...audit]
             .slice()
             .reverse()
-            .map((e) => (
-              <div key={e.id} className="brief-modal-row">
+            .map((e) => {
+              const pending = !!pendingEntryId && e.id === pendingEntryId;
+              const viewable = e.before != null && !!onShowChanges;
+              const body = (
                 <div className="brief-modal-row-main">
                   <div className="brief-modal-row-title">
                     <span className={`brief-audit-kind brief-audit-kind-${e.kind}`}>
                       {KIND_LABEL[e.kind]}
                     </span>
+                    {pending && <span className="brief-audit-pending">· pending</span>}
+                    {viewable && <span className="brief-audit-view">· view changes</span>}
                   </div>
                   {e.question && (
                     <div className="brief-modal-row-query">
@@ -75,8 +91,30 @@ export const BriefSectionAudit: React.FC<Props> = ({ title, audit, onClose }) =>
                     {e.addedSourceCount ? ` · ${e.addedSourceCount} new` : ''}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+              return viewable ? (
+                <div
+                  key={e.id}
+                  className="brief-modal-row brief-audit-row-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onShowChanges?.(e.id)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault();
+                      onShowChanges?.(e.id);
+                    }
+                  }}
+                  title="View the changes from this edit"
+                >
+                  {body}
+                </div>
+              ) : (
+                <div key={e.id} className="brief-modal-row">
+                  {body}
+                </div>
+              );
+            })}
         </div>
       )}
     </div>
