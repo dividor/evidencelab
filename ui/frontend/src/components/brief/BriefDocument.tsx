@@ -193,10 +193,10 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       {isDone && (
         <div className="brief-doc-section-tools">
           <button className="brief-regen-btn" onClick={() => setEditing((v) => !v)}>
-            <IconEdit /> {editing ? 'Done' : 'Edit text'}
+            <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
           </button>
           <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
-            <IconRefresh /> Regenerate
+            <IconRefresh /> AI Regenerate
           </button>
           <button
             className="brief-regen-btn"
@@ -206,7 +206,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             }}
             title="Revise this section with an AI instruction, keeping the current content"
           >
-            <IconSparkle /> Edit
+            <IconSparkle /> AI Edit
           </button>
           <button
             className="brief-regen-btn"
@@ -216,7 +216,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             }}
             title="Search for sources published since this section was last run and fold them in"
           >
-            <IconRefresh /> Update
+            <IconRefresh /> AI Get Updates
           </button>
           <button className="brief-section-log-link" onClick={() => setLogOpen(true)}>
             Log{auditCount ? ` (${auditCount})` : ''}
