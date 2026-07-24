@@ -408,7 +408,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
                 disabled={!canEditStructure}
                 title="Re-research every section from scratch"
               >
-                <IconRefresh /> Regenerate all
+                <IconRefresh /> AI Regenerate All
               </button>
             )}
             {onExportWord && (
