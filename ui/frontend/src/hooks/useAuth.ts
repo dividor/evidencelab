@@ -175,12 +175,8 @@ export function useAuthState(): AuthContextValue {
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const handleTimeout = async () => {
-      // Clear the server-side cookie (best-effort — may already be expired)
-      try {
-        await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`);
-      } catch {
-        // Ignore — cookie may have already expired or CSRF may be stale
-      }
+      // End the client session first — expiring the UI must not wait on (or
+      // be blocked by) the network.
       setSessionExpired(true);
       setState({
         user: null,
@@ -188,6 +184,14 @@ export function useAuthState(): AuthContextValue {
         isLoading: false,
         isAuthenticated: false,
       });
+      // Clear the server-side cookie (best-effort — may already be expired)
+      try {
+        await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
+          timeout: 10000,
+        });
+      } catch {
+        // Ignore — cookie may have already expired or the network may be down
+      }
     };
 
     const resetTimer = () => {
@@ -382,12 +386,10 @@ export function useAuthState(): AuthContextValue {
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      // Ask the backend to clear the auth cookie
-      await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`);
-    } catch {
-      // Logout endpoint might fail if already expired — that's fine
-    }
+    // Sign the user out of the UI immediately — logout must never depend on
+    // the network or on the session still being valid. A hung request (e.g.
+    // after a VPN drop, where axios has no timeout) previously left the click
+    // doing nothing at all.
     setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     setSessionExpired(false);
 
@@ -395,6 +397,18 @@ export function useAuthState(): AuthContextValue {
     if (authPromiseRef.current) {
       authPromiseRef.current.resolve(false);
       authPromiseRef.current = null;
+    }
+
+    try {
+      // Best-effort: ask the backend to clear the httpOnly auth cookie. The
+      // endpoint requires no authentication, so this also clears stale or
+      // invalid cookies. Time-boxed so a dead connection can't hang the call.
+      await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
+        timeout: 10000,
+      });
+    } catch {
+      // Network failure or timeout — the client is already signed out; the
+      // cookie (if any) lapses on its own at token expiry.
     }
   }, []);
 

@@ -78,6 +78,33 @@ DISABLE_EMAIL_LOGIN = os.environ.get("DISABLE_EMAIL_LOGIN", "false").lower() in 
 
 router = APIRouter()
 
+
+# ---------------------------------------------------------------------------
+# Logout — registered BEFORE the built-in auth routers so it takes precedence
+# over fastapi-users' logout (first-registered route wins), which returns 401
+# when the session cookie is missing, expired, or invalid.
+#
+# Signing out must never depend on being signed in: a user whose cookie is
+# stale (expired mid-session, network/VPN transition, clock skew) still needs
+# the cookie cleared, otherwise they are stuck with a broken session they can
+# neither use nor discard. The stateless JWT needs no server-side revocation,
+# so unconditionally returning the cookie-clearing response is sufficient —
+# and harmless when no cookie was present.
+# ---------------------------------------------------------------------------
+
+
+@router.post("/cookie-login/logout", tags=["auth"])
+async def cookie_logout():
+    """Clear the auth cookie for the current browser, session or not.
+
+    Deliberately requires no authentication (see block comment above).
+
+    Returns:
+        Response: A 204 response carrying a cookie-clearing ``Set-Cookie``.
+    """
+    return await cookie_backend.transport.get_logout_response()
+
+
 # ---------------------------------------------------------------------------
 # Email/password auth — mounted only when DISABLE_EMAIL_LOGIN is not set.
 # Verify and reset-password routers remain available so OAuth users who also
@@ -108,37 +135,6 @@ router.include_router(
     fastapi_users.get_reset_password_router(),
     tags=["auth"],
 )
-
-
-# ---------------------------------------------------------------------------
-# Logout
-#
-# The email/password auth router mounted above carries the cookie logout
-# endpoint (/cookie-login/logout) — but only when email login is enabled. In
-# OAuth-only deployments (DISABLE_EMAIL_LOGIN=true) that router is absent, yet
-# the frontend still needs to clear the auth cookie on sign-out and on idle
-# logout. Register a standalone logout that works for any cookie session, but
-# only when the built-in one is not mounted, to avoid a duplicate route.
-# ---------------------------------------------------------------------------
-
-if DISABLE_EMAIL_LOGIN:
-
-    @router.post("/cookie-login/logout", tags=["auth"])
-    async def cookie_logout(user: User = Depends(current_active_user)):
-        """Clear the auth cookie for the current cookie session.
-
-        Mirrors the built-in cookie logout for OAuth-only deployments where the
-        email/password auth router that normally provides it is not mounted.
-        Requires a valid session cookie; the stateless JWT needs no server-side
-        revocation, so clearing the cookie is sufficient.
-
-        Args:
-            user: The authenticated user, resolved from the existing auth cookie.
-
-        Returns:
-            Response: A 204 response carrying a cookie-clearing ``Set-Cookie``.
-        """
-        return await cookie_backend.transport.get_logout_response()
 
 
 # ---------------------------------------------------------------------------
