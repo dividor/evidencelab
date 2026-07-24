@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ResolvedTab, TabKey, resolveTabs } from './tabConfig';
+import { ResolvedTab, TAB_TOOLTIPS, TabKey, resolveTabs } from './tabConfig';
 
 type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
@@ -40,8 +40,13 @@ export const NavTabs = ({ activeTab, onTabChange, tabs }: NavTabsProps) => {
             key={key}
             className={`nav-tab ${activeTab === key ? ACTIVE_CLASS : ''}`}
             onClick={() => onTabChange(key)}
+            aria-label={resolved[key].label}
+            aria-describedby={`nav-tab-tip-${key}`}
           >
             {resolved[key].label}
+            <span className="nav-tab-tooltip" role="tooltip" id={`nav-tab-tip-${key}`}>
+              {TAB_TOOLTIPS[key]}
+            </span>
           </button>
         ) : null,
       )}
