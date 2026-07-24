@@ -6,6 +6,8 @@ import { IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
 import { BriefToc } from './BriefToc';
 import { BriefSection } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
+import { BriefDiff } from './BriefDiff';
+import { BriefSectionAudit } from './BriefSectionAudit';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
@@ -59,9 +61,29 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   display,
 }) => {
   const [editing, setEditing] = useState(false);
+  // AI Edit/Update instruction panel + audit modal + changes toggle.
+  const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
+  const [aiText, setAiText] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
+  const [showDiff, setShowDiff] = useState(false);
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
+  const auditCount = section.audit?.length ?? 0;
+  const hasChanges = !!section.prevContent;
+  // Surface the diff automatically once an edit/update completes, so the user
+  // sees what changed (struck-out removals + highlighted additions) right away.
+  useEffect(() => {
+    if (section.prevContent) setShowDiff(true);
+  }, [section.prevContent]);
+  const submitAi = () => {
+    const panel = aiPanel;
+    if (!panel) return;
+    setAiPanel(null);
+    setShowDiff(false);
+    brief.reviseSection(section.id, panel, aiText.trim() || null);
+    setAiText('');
+  };
   // View/evidence use the globally-renumbered content; editing uses the raw text.
   const viewContent = display?.content ?? section.content;
   const viewSources = display?.sources ?? section.sources;
@@ -89,7 +111,88 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           <button className="brief-regen-btn" onClick={() => brief.openRegen(section.id)}>
             <IconRefresh /> Regenerate
           </button>
+          <button
+            className="brief-regen-btn"
+            onClick={() => {
+              setAiText('');
+              setAiPanel((p) => (p === 'edit' ? null : 'edit'));
+            }}
+            title="Revise this section with an AI instruction, keeping the current content"
+          >
+            <IconSparkle /> Edit
+          </button>
+          <button
+            className="brief-regen-btn"
+            onClick={() => {
+              setAiText('');
+              setAiPanel((p) => (p === 'update' ? null : 'update'));
+            }}
+            title="Search for sources published since this section was last run and fold them in"
+          >
+            <IconRefresh /> Update
+          </button>
+          {hasChanges && (
+            <button
+              className="brief-regen-btn brief-changes-btn"
+              onClick={() => setShowDiff((v) => !v)}
+              title="Show what changed in the last edit/update"
+            >
+              {showDiff ? 'Hide changes' : 'Show changes'}
+            </button>
+          )}
+          <button className="brief-section-log-link" onClick={() => setLogOpen(true)}>
+            Log{auditCount ? ` (${auditCount})` : ''}
+          </button>
         </div>
+      )}
+
+      {aiPanel && (
+        <div className="brief-regen-panel brief-ai-panel">
+          <div className="brief-regen-title">
+            {aiPanel === 'edit' ? `Edit “${section.title}”` : `Update “${section.title}”`}
+          </div>
+          <div className="brief-ai-panel-hint">
+            {aiPanel === 'edit'
+              ? 'Keeps the current text and revises it to your instruction (does not replace it unless you ask). May search for supporting evidence.'
+              : 'Searches the library for sources published since this section was last run and folds any new findings in. Add an optional focus below.'}
+          </div>
+          <textarea
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+            rows={2}
+            placeholder={
+              aiPanel === 'edit'
+                ? 'e.g. “Adjust so the viewpoint relates more to domestic policy”'
+                : 'Optional focus for the update — e.g. “prioritise enforcement actions”'
+            }
+          />
+          <div className="brief-regen-actions">
+            <button
+              className="brief-btn brief-btn-primary"
+              onClick={submitAi}
+              disabled={aiPanel === 'edit' && !aiText.trim()}
+            >
+              {aiPanel === 'edit' ? 'Apply edit' : 'Run update'}
+            </button>
+            <button
+              className="brief-btn brief-btn-secondary"
+              onClick={() => {
+                setAiPanel(null);
+                setAiText('');
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {logOpen && (
+        <BriefSectionAudit
+          title={section.title}
+          audit={section.audit ?? []}
+          onClose={() => setLogOpen(false)}
+        />
       )}
 
       {panelOpen && <GuidancePanel section={section} brief={brief} />}
@@ -135,6 +238,25 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
               onBlur={brief.commitEdits}
               rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
             />
+          ) : showDiff && hasChanges ? (
+            <div className="brief-doc-content">
+              <div className="brief-diff-head">
+                <span>
+                  Changes from the last{' '}
+                  {section.lastChangeKind === 'update' ? 'update' : 'edit'}
+                </span>
+                <button
+                  className="brief-diff-dismiss"
+                  onClick={() => {
+                    setShowDiff(false);
+                    brief.dismissChanges(section.id);
+                  }}
+                >
+                  Keep &amp; dismiss
+                </button>
+              </div>
+              <BriefDiff oldText={section.prevContent || ''} newText={section.content} />
+            </div>
           ) : (
             <div className="brief-doc-content">
               <CitedMarkdown

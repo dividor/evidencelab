@@ -200,3 +200,16 @@ class BriefOutlineRequest(BaseModel):
 class BriefOutlineResponse(BaseModel):
     title: str
     headings: List[BriefHeading]
+
+
+class BriefReviseRequest(BaseModel):
+    # The section's current markdown (with its inline [n] citation markers).
+    content: str
+    # The user's edit instruction (what to change).
+    instruction: str
+    data_source: str
+    model: Optional[str] = None
+
+
+class BriefReviseResponse(BaseModel):
+    content: str

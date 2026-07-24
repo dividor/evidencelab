@@ -16,7 +16,13 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ui.backend.schemas import BriefHeading, BriefOutlineRequest, BriefOutlineResponse
+from ui.backend.schemas import (
+    BriefHeading,
+    BriefOutlineRequest,
+    BriefOutlineResponse,
+    BriefReviseRequest,
+    BriefReviseResponse,
+)
 from ui.backend.services import llm_service as llm_service_module
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -115,3 +121,44 @@ async def generate_outline(
     except Exception:
         logger.error("Brief outline generation failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate outline")
+
+
+@router.post("/brief/revise", response_model=BriefReviseResponse)
+@limiter.limit(RATE_LIMIT_AI)
+async def revise_section(
+    request: Request, body: BriefReviseRequest
+) -> BriefReviseResponse:
+    """Surgically revise a section's markdown per an instruction (Brief "Edit").
+
+    A single LLM copy-edit — NOT deep research — so the section keeps its wording
+    and inline [n] citations and only the smallest necessary changes are made.
+    """
+    content = body.content or ""
+    instruction = (body.instruction or "").strip()
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="content is required")
+    if not instruction:
+        raise HTTPException(status_code=400, detail="instruction is required")
+    if len(instruction) > _MAX_QUESTION_CHARS:
+        raise HTTPException(status_code=400, detail="instruction is too long")
+    _validate_data_source(body.data_source)
+
+    model_key = (body.model or "").strip() or _resolve_configured_model(
+        body.data_source
+    )
+    if not model_key:
+        raise HTTPException(
+            status_code=503, detail="No chat/deep-research model is configured"
+        )
+
+    try:
+        llm_service = _get_llm_service()
+        revised = await llm_service.revise_brief_section(
+            content=content,
+            instruction=instruction,
+            model_key=model_key,
+        )
+        return BriefReviseResponse(content=revised)
+    except Exception:
+        logger.error("Brief section revise failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to revise section")
