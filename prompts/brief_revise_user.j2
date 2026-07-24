@@ -1,6 +1,11 @@
+{#- This is a plain-text LLM prompt, not HTML: disable autoescape so quotes and
+    ampersands in the instruction/content are not turned into entities (&#34;)
+    that the model would echo back into the revised section. -#}
+{% autoescape false -%}
 Instruction: {{ instruction }}
 
 Current section markdown:
 """
 {{ content }}
 """
+{%- endautoescape %}

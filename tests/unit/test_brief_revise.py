@@ -12,7 +12,10 @@ pytestmark = pytest.mark.unit
 
 class TestStripSectionWrapper:
     def test_strips_language_code_fence(self):
-        assert _strip_section_wrapper("```markdown\n# Title\n\nBody.\n```") == "# Title\n\nBody."
+        assert (
+            _strip_section_wrapper("```markdown\n# Title\n\nBody.\n```")
+            == "# Title\n\nBody."
+        )
 
     def test_strips_bare_code_fence(self):
         assert _strip_section_wrapper("```\nBody.\n```") == "Body."
@@ -38,7 +41,7 @@ class TestReviseBriefSection:
     async def test_sends_instruction_and_content_without_html_escaping(self):
         # The model HTML-escapes a quote in its output; the stored section must be
         # cleaned (entities decoded), and the PROMPT must not escape the content.
-        fake_llm = self._mock_llm('The report says &#34;free and compulsory&#34; [1].')
+        fake_llm = self._mock_llm("The report says &#34;free and compulsory&#34; [1].")
         with patch(
             "ui.backend.services.llm_service.get_llm", return_value=fake_llm
         ) as mock_get_llm:

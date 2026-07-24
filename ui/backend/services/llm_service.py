@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional
 
 from deep_translator import GoogleTranslator
 from jinja2 import Environment, FileSystemLoader
-from markupsafe import Markup
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -509,16 +508,16 @@ async def revise_brief_section(
     changes are made. Returns the revised section markdown (wrappers stripped).
     Prompts live in ``prompts/brief_revise_*.j2``.
     """
-    # The prompt Jinja env autoescapes (it is shared and Bandit requires it),
-    # but these templates emit a plain-text LLM prompt, not HTML — escaping
-    # would turn quotes into entities (&#34;) that the model then echoes back
-    # into the revised section verbatim. Interpolate the values unmodified,
-    # and unescape entities already baked into stored content by renders that
-    # predate this fix.
+    # The shared prompt Jinja env autoescapes (Bandit requires it), but these
+    # templates emit a plain-text LLM prompt, not HTML — escaping would turn
+    # quotes into entities (&#34;) that the model then echoes back into the
+    # revised section verbatim. The user template disables autoescape in-place
+    # ({% autoescape false %}), so pass the values as plain strings; unescape
+    # entities already baked into stored content by renders predating this fix.
     system_prompt = _brief_revise_system_template.render()
     user_prompt = _brief_revise_user_template.render(
-        instruction=Markup(html.unescape(instruction.strip())),
-        content=Markup(html.unescape(content)),
+        instruction=html.unescape(instruction.strip()),
+        content=html.unescape(content),
     )
     llm = get_llm(
         model=model_key,
