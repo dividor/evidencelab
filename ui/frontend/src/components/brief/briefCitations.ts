@@ -59,9 +59,13 @@ export const buildGlobalCitations = (
 ): { refs: GlobalRef[]; display: Map<string, SectionDisplay> } => {
   const docToGlobal = new Map<string, number>();
   const refs: GlobalRef[] = [];
-  // Assign global numbers in order of first citation across done sections.
+  // A section mid-Edit/Update (revising) keeps its old content on screen, so
+  // it stays in the numbering — otherwise citations would jump twice per run.
+  const isVisible = (s: BriefSection): boolean =>
+    (s.status === 'done' || !!s.revising) && !!s.content;
+  // Assign global numbers in order of first citation across visible sections.
   sections.forEach((s) => {
-    if (s.status !== 'done' || !s.content) return;
+    if (!isVisible(s)) return;
     extractCitedNumbers(s.content).forEach((localN) => {
       const src = s.sources.find((x) => x.index === localN);
       if (!src || docToGlobal.has(src.docId)) return;
@@ -73,7 +77,7 @@ export const buildGlobalCitations = (
   // Build per-section display content + sources keyed by the global number.
   const display = new Map<string, SectionDisplay>();
   sections.forEach((s) => {
-    if (s.status !== 'done' || !s.content) return;
+    if (!isVisible(s)) return;
     const localToGlobal = new Map<number, number>();
     const sources: SourceReference[] = [];
     const seen = new Set<number>();

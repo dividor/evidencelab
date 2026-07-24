@@ -7,8 +7,10 @@ import {
   BriefActivityEvent,
   BriefSourceSample,
   requestBriefOutline,
+  requestBriefRevise,
   researchBriefSection,
   runDeepResearch,
+  SectionResearchMode,
 } from '../../utils/briefStream';
 import {
   BRIEF_HISTORY_KEY,
@@ -16,6 +18,7 @@ import {
   BriefSection,
   BriefStage,
   SavedBrief,
+  SectionAuditEntry,
 } from './briefTypes';
 
 let _uid = 0;
@@ -140,7 +143,9 @@ const computeReferences = (sections: BriefSection[]): BriefReference[] => {
   const seen = new Set<string>();
   const refs: BriefReference[] = [];
   sections.forEach((s) => {
-    if (s.status !== 'done') return;
+    // Sections mid-Edit/Update keep their (old) content on screen, so they
+    // keep their footnotes too — no renumbering while a revise runs.
+    if (s.status !== 'done' && !s.revising) return;
     const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src: SourceReference) => {
       if (src.index == null || !cited.has(src.index)) return;
@@ -222,9 +227,10 @@ export const useBrief = ({
   }, []);
 
   const pushActivity = useCallback((id: string, ev: BriefActivityEvent) => {
+    // Retain a deep log; the status box shows ~5 rows and scrolls for the rest.
     setSections((prev) =>
       prev.map((s) =>
-        s.id === id ? { ...s, activity: [ev, ...s.activity].slice(0, 4) } : s,
+        s.id === id ? { ...s, activity: [ev, ...s.activity].slice(0, 40) } : s,
       ),
     );
   }, []);
@@ -261,13 +267,17 @@ export const useBrief = ({
       // un-researched reverts to its last stable (pending) state on reload —
       // never a stuck "Researching…".
       sections: snap.map((s) => {
-        const done = s.status === 'done';
+        // A mid-revise section still holds its last good content — persist it
+        // as done so an interrupted Edit/Update never loses the section.
+        const done = s.status === 'done' || !!s.revising;
         return {
           title: s.title,
           level: s.level,
           status: done ? 'done' : 'pending',
           content: done ? s.content : '',
           sources: done ? s.sources : [],
+          audit: s.audit && s.audit.length ? s.audit : undefined,
+          lastResearchedAt: s.lastResearchedAt,
         };
       }),
       outlineLog: outlineLogRef.current,
@@ -452,11 +462,27 @@ export const useBrief = ({
 
   // ---- research engine ----
   const researchOne = useCallback(
-    (id: string, context: string | null, signal: AbortSignal): Promise<void> => {
+    (
+      id: string,
+      context: string | null,
+      signal: AbortSignal,
+      opts?: { mode?: SectionResearchMode; instruction?: string | null },
+    ): Promise<void> => {
       const list = sectionsRef.current;
       const idx = list.findIndex((s) => s.id === id);
       const section = list[idx];
       if (!section) return Promise.resolve();
+      const mode: SectionResearchMode = opts?.mode ?? 'generate';
+      const isRevise = mode === 'edit' || mode === 'update';
+      const instruction = (opts?.instruction || '').trim() || null;
+      // Snapshot the pre-op state for the audit row + the "show changes" diff.
+      const priorContent = section.content;
+      const priorSources = section.sources;
+      // Update: only surface sources newer than the last time this section ran.
+      const publishedAfterIso =
+        mode === 'update' && section.lastResearchedAt
+          ? new Date(section.lastResearchedAt).toISOString()
+          : null;
       // For a sub-section (level 2), find the nearest preceding level-1 heading
       // so its research stays scoped to the right parent.
       let parentTitle: string | null = null;
@@ -468,13 +494,15 @@ export const useBrief = ({
           }
         }
       }
-      updateSection(id, {
-        status: 'researching',
-        progress: 4,
-        content: '',
-        sources: [],
-        activity: [],
-      });
+      // Generate clears the section; Edit/Update keep the current draft in place
+      // (rendered greyed-out, still in the citation numbering) and swap
+      // atomically on completion.
+      updateSection(
+        id,
+        isRevise
+          ? { status: 'researching', progress: 4, activity: [], revising: true }
+          : { status: 'researching', progress: 4, content: '', sources: [], activity: [] },
+      );
       const briefTopic = queryRef.current.trim() || briefTitleRef.current;
       return researchBriefSection({
         apiBaseUrl,
@@ -487,20 +515,70 @@ export const useBrief = ({
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
+        mode,
+        existingContent: isRevise ? priorContent : null,
+        instruction,
+        publishedAfterIso,
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),
           onProgress: (p) => updateSection(id, { progress: p }),
-          onToken: (t) => updateSection(id, { content: t }),
-          onSources: (s) => updateSection(id, { sources: s }),
-          onDone: ({ content, sources }) =>
-            updateSection(id, { status: 'done', progress: 100, content, sources }),
+          // Keep the old draft visible during a revise; swap only at onDone.
+          onToken: (t) => {
+            if (!isRevise) updateSection(id, { content: t });
+          },
+          onSources: (s) => {
+            if (!isRevise) updateSection(id, { sources: s });
+          },
+          onDone: ({ content, sources }) => {
+            const priorKeys = new Set(priorSources.map((s) => s.docId));
+            const added = sources.filter((s) => !priorKeys.has(s.docId)).length;
+            const entry: SectionAuditEntry = {
+              id: uid(),
+              kind: mode,
+              at: Date.now(),
+              question: mode === 'generate' ? section.title : undefined,
+              instruction:
+                mode === 'generate' ? context || undefined : instruction || undefined,
+              sourceCount: sources.length,
+              addedSourceCount: added,
+              // Keep the before/after for a revise so its diff stays viewable.
+              before: isRevise ? priorContent : undefined,
+              after: isRevise ? content : undefined,
+            };
+            const cur = sectionsRef.current.find((s) => s.id === id);
+            updateSection(id, {
+              status: 'done',
+              progress: 100,
+              content,
+              sources,
+              audit: [...(cur?.audit || []), entry],
+              lastResearchedAt: Date.now(),
+              revising: undefined,
+              prevContent: isRevise ? priorContent : undefined,
+              prevSources: isRevise ? priorSources : undefined,
+              lastChangeKind: isRevise ? mode : undefined,
+            });
+          },
           onError: (m) => {
-            updateSection(id, { status: 'pending', progress: 0 });
+            // A revise keeps its previous good content; a fresh research reverts.
+            updateSection(
+              id,
+              isRevise
+                ? { status: 'done', progress: 100, revising: undefined }
+                : { status: 'pending', progress: 0 },
+            );
             setError(m);
           },
         },
-      }).catch(() => updateSection(id, { status: 'pending', progress: 0 }));
+      }).catch(() =>
+        updateSection(
+          id,
+          isRevise
+            ? { status: 'done', progress: 100, revising: undefined }
+            : { status: 'pending', progress: 0 },
+        ),
+      );
     },
     [apiBaseUrl, dataSource, assistantModelConfig, updateSection, pushActivity],
   );
@@ -515,6 +593,28 @@ export const useBrief = ({
     for (const id of ids) {
       if (controller.signal.aborted) return;
       await researchOne(id, null, controller.signal);
+    }
+    if (!controller.signal.aborted) {
+      setStage('done');
+      saveCurrent();
+    }
+  }, [researchOne, saveCurrent]);
+
+  // Run "Get Updates" (fold in sources newer than each section's last run) on
+  // every already-researched section, sequentially — the doc-wide counterpart to
+  // the per-section AI Get Updates.
+  const updateAll = useCallback(async () => {
+    const ids = sectionsRef.current
+      .filter((s) => s.status === 'done' && !!s.content)
+      .map((s) => s.id);
+    if (!ids.length) return;
+    setError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setStage('research');
+    for (const id of ids) {
+      if (controller.signal.aborted) return;
+      await researchOne(id, null, controller.signal, { mode: 'update' });
     }
     if (!controller.signal.aborted) {
       setStage('done');
@@ -561,6 +661,121 @@ export const useBrief = ({
     [stage, researchOne, finishIfComplete],
   );
 
+  // Edit (surgical): a single backend LLM copy-edit of the CURRENT draft — no
+  // deep research — so the section keeps its wording + inline [n] citations
+  // (sources unchanged) and only the smallest necessary changes are made. The
+  // pre-op content is retained so the user can view the diff.
+  const editSectionAI = useCallback(
+    async (id: string, instruction: string) => {
+      const section = sectionsRef.current.find((s) => s.id === id);
+      if (!section || !instruction.trim()) return;
+      const priorContent = section.content;
+      setError(null);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      updateSection(id, {
+        status: 'researching',
+        progress: 35,
+        activity: [{ tag: 'DRAFT', text: 'Editing this section…' }],
+        revising: true,
+      });
+      try {
+        const revised = await requestBriefRevise({
+          apiBaseUrl,
+          dataSource,
+          content: priorContent,
+          instruction: instruction.trim(),
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        const cur = sectionsRef.current.find((s) => s.id === id);
+        const entry: SectionAuditEntry = {
+          id: uid(),
+          kind: 'edit',
+          at: Date.now(),
+          instruction: instruction.trim(),
+          sourceCount: section.sources.length,
+          addedSourceCount: 0,
+          before: priorContent,
+          after: revised,
+        };
+        updateSection(id, {
+          status: 'done',
+          progress: 100,
+          content: revised,
+          // Sources unchanged — a surgical edit preserves the [n] markers.
+          audit: [...(cur?.audit || []), entry],
+          lastResearchedAt: Date.now(),
+          revising: undefined,
+          prevContent: priorContent,
+          prevSources: section.sources,
+          lastChangeKind: 'edit',
+        });
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          updateSection(id, { status: 'done', progress: 100, revising: undefined });
+          setError(e instanceof Error ? e.message : 'Edit failed');
+        }
+      }
+    },
+    [apiBaseUrl, dataSource, updateSection],
+  );
+
+  // Dispatch the two AI actions on a DONE section: Edit → surgical revise;
+  // Update → deep research constrained to sources newer than the last run.
+  const reviseSection = useCallback(
+    async (id: string, mode: 'edit' | 'update', instruction: string | null) => {
+      setRegenFor(null);
+      setRegenText('');
+      setError(null);
+      if (stage === 'outline') setStage('research');
+      if (mode === 'edit') {
+        await editSectionAI(id, (instruction || '').trim());
+        finishIfComplete();
+        return;
+      }
+      let controller = abortRef.current;
+      if (!controller || controller.signal.aborted) controller = new AbortController();
+      abortRef.current = controller;
+      await researchOne(id, null, controller.signal, { mode, instruction });
+      finishIfComplete();
+    },
+    [stage, editSectionAI, researchOne, finishIfComplete],
+  );
+
+  // Keep Edits: accept the revised content and drop the retained pre-op state.
+  const dismissChanges = useCallback(
+    (id: string) =>
+      updateSection(id, {
+        prevContent: undefined,
+        prevSources: undefined,
+        lastChangeKind: undefined,
+      }),
+    [updateSection],
+  );
+
+  // Reject Edits: restore the pre-op content and sources, drop the revision, and
+  // remove its (now-undone) audit row so the log only shows applied changes.
+  const rejectChanges = useCallback(
+    (id: string) =>
+      setSections((prev) =>
+        prev.map((s) =>
+          s.id === id && s.prevContent != null
+            ? {
+                ...s,
+                content: s.prevContent,
+                sources: s.prevSources ?? s.sources,
+                prevContent: undefined,
+                prevSources: undefined,
+                lastChangeKind: undefined,
+                audit: s.audit ? s.audit.slice(0, -1) : s.audit,
+              }
+            : s,
+        ),
+      ),
+    [],
+  );
+
   // ---- history ----
   const loadBrief = useCallback((entry: SavedBrief) => {
     abortRef.current?.abort();
@@ -575,6 +790,8 @@ export const useBrief = ({
         progress: h.status === 'done' ? 100 : 0,
         content: h.status === 'done' ? h.content : '',
         sources: h.status === 'done' ? h.sources || [] : [],
+        audit: h.audit || [],
+        lastResearchedAt: h.lastResearchedAt,
       })),
     );
     setGeneratingActivity(entry.outlineLog || []);
@@ -672,8 +889,12 @@ export const useBrief = ({
     editTitle,
     editContent,
     startResearch,
+    updateAll,
     stopResearch,
     regenerate,
+    reviseSection,
+    dismissChanges,
+    rejectChanges,
     openRegen: (id: string) => {
       setRegenFor(id);
       setRegenText('');

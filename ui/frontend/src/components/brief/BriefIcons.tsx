@@ -41,6 +41,13 @@ export const IconRefresh: React.FC<IconProps> = ({ size = 14 }) => (
   </svg>
 );
 
+export const IconClock: React.FC<IconProps> = ({ size = 14 }) => (
+  <svg {...svgProps(size)}>
+    <circle cx="12" cy="12" r="9" />
+    <polyline points="12 7 12 12 16 14" />
+  </svg>
+);
+
 export const IconEdit: React.FC<IconProps> = ({ size = 14 }) => (
   <svg {...svgProps(size)}>
     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />

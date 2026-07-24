@@ -43,6 +43,9 @@ interface AssistantStreamOptions {
   searchSettings?: Partial<SearchSettings> | null;
   deepResearch?: boolean;
   conversationHistory?: ConversationMessage[];
+  // ISO date; constrains the library search to documents published on/after it
+  // (Brief "Update" action). Sent inside search_settings.published_after.
+  publishedAfter?: string | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -217,9 +220,16 @@ export const streamAssistantChat = async ({
   searchSettings,
   deepResearch,
   conversationHistory,
+  publishedAfter,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
+  // Fold the per-request publish-date cutoff into the search_settings payload
+  // (backend allows extra keys and applies it as a Qdrant range filter).
+  const settingsPayload = buildSearchSettingsPayload(searchSettings);
+  const searchSettingsBody = publishedAfter
+    ? { ...(settingsPayload || {}), published_after: publishedAfter }
+    : settingsPayload;
   const response = await fetch(`${apiBaseUrl}/assistant/chat/stream`, {
     method: 'POST',
     headers: buildHeaders(),
@@ -230,7 +240,7 @@ export const streamAssistantChat = async ({
       data_source: dataSource || undefined,
       assistant_model_config: assistantModelConfig || undefined,
       reranker_model: rerankerModel || undefined,
-      search_settings: buildSearchSettingsPayload(searchSettings),
+      search_settings: searchSettingsBody,
       deep_research: deepResearch || undefined,
       conversation_history: conversationHistory?.length ? conversationHistory : undefined,
     }),

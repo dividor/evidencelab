@@ -1,0 +1,122 @@
+import React from 'react';
+import { SectionAuditEntry, SectionAuditKind } from './briefTypes';
+
+// Per-section research/audit log modal — the full provenance of a section:
+// every generate/edit/update, its question/instruction, and what it drew in.
+// Mirrors BriefHistoryModal's structure/classes so it reads as the same modal.
+
+const KIND_LABEL: Record<SectionAuditKind, string> = {
+  generate: 'Generated',
+  edit: 'Edited',
+  update: 'Updated',
+};
+
+const formatWhen = (ts: number): string => {
+  try {
+    const d = new Date(ts);
+    return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString(
+      undefined,
+      { hour: 'numeric', minute: '2-digit' },
+    )}`;
+  } catch {
+    return '';
+  }
+};
+
+interface Props {
+  title: string;
+  audit: SectionAuditEntry[];
+  // The entry whose change is still pending (not yet kept/rejected) — labelled
+  // as such; its diff also offers Keep/Reject.
+  pendingEntryId?: string | null;
+  // Open a given entry's diff. Any edit/update entry with a stored before/after
+  // is viewable (including on a reloaded brief).
+  onShowChanges?: (entryId: string) => void;
+  onClose: () => void;
+}
+
+export const BriefSectionAudit: React.FC<Props> = ({
+  title,
+  audit,
+  pendingEntryId,
+  onShowChanges,
+  onClose,
+}) => (
+  <div className="brief-modal-overlay" onClick={onClose}>
+    <div className="brief-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="brief-modal-head">
+        <div>
+          <div className="brief-modal-title">Research log</div>
+          <div className="brief-modal-sub">{title}</div>
+        </div>
+        <button className="brief-modal-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+      </div>
+
+      {audit.length === 0 ? (
+        <div className="brief-modal-empty">No research activity recorded for this section yet.</div>
+      ) : (
+        <div className="brief-modal-list">
+          {[...audit]
+            .slice()
+            .reverse()
+            .map((e) => {
+              const pending = !!pendingEntryId && e.id === pendingEntryId;
+              const viewable = e.before != null && !!onShowChanges;
+              const body = (
+                <div className="brief-modal-row-main">
+                  <div className="brief-modal-row-title">
+                    <span className={`brief-audit-kind brief-audit-kind-${e.kind}`}>
+                      {KIND_LABEL[e.kind]}
+                    </span>
+                    {pending && <span className="brief-audit-pending">· pending</span>}
+                    {viewable && <span className="brief-audit-view">· view changes</span>}
+                  </div>
+                  {e.question && (
+                    <div className="brief-modal-row-query">
+                      <span className="brief-audit-label">Question</span> {e.question}
+                    </div>
+                  )}
+                  {e.instruction && (
+                    <div className="brief-modal-row-query">
+                      <span className="brief-audit-label">Instruction</span> {e.instruction}
+                    </div>
+                  )}
+                  <div className="brief-modal-row-meta">
+                    {formatWhen(e.at)}
+                    {e.sourceCount != null
+                      ? ` · ${e.sourceCount} source${e.sourceCount === 1 ? '' : 's'}`
+                      : ''}
+                    {e.addedSourceCount ? ` · ${e.addedSourceCount} new` : ''}
+                  </div>
+                </div>
+              );
+              return viewable ? (
+                <div
+                  key={e.id}
+                  className="brief-modal-row brief-audit-row-clickable"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onShowChanges?.(e.id)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault();
+                      onShowChanges?.(e.id);
+                    }
+                  }}
+                  title="View the changes from this edit"
+                >
+                  {body}
+                </div>
+              ) : (
+                <div key={e.id} className="brief-modal-row">
+                  {body}
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  </div>
+);

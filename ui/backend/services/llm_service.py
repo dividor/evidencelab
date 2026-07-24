@@ -2,6 +2,7 @@
 LLM Service for generating AI summaries using LangChain
 """
 
+import html
 import json
 import logging
 import os
@@ -120,6 +121,8 @@ _system_template = jinja_env.get_template("ai_summary_system.j2")
 _user_template = jinja_env.get_template("ai_summary_user.j2")
 _brief_outline_system_template = jinja_env.get_template("brief_outline_system.j2")
 _brief_outline_user_template = jinja_env.get_template("brief_outline_user.j2")
+_brief_revise_system_template = jinja_env.get_template("brief_revise_system.j2")
+_brief_revise_user_template = jinja_env.get_template("brief_revise_user.j2")
 
 
 def render_prompt(
@@ -472,6 +475,64 @@ async def generate_brief_outline(
     raw = str(response.content).strip()
     logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
     return parse_brief_outline(raw, fallback_title=question.strip())
+
+
+def _strip_section_wrapper(text: str) -> str:
+    """Drop an accidental ```markdown fence or matching triple-quote wrapper the
+    model sometimes adds around the returned section."""
+    t = text.strip()
+    if t.startswith("```"):
+        # Remove leading ```lang line and a trailing ``` if present.
+        lines = t.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        t = "\n".join(lines).strip()
+    if t.startswith('"""') and t.endswith('"""') and len(t) >= 6:
+        t = t[3:-3].strip()
+    return t
+
+
+async def revise_brief_section(
+    content: str,
+    instruction: str,
+    model_key: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> str:
+    """Surgically revise one brief section's markdown per an instruction.
+
+    A single LLM call — NOT deep research — so the existing wording and inline
+    ``[n]`` citation markers are preserved and only the smallest necessary
+    changes are made. Returns the revised section markdown (wrappers stripped).
+    Prompts live in ``prompts/brief_revise_*.j2``.
+    """
+    # The shared prompt Jinja env autoescapes (Bandit requires it), but these
+    # templates emit a plain-text LLM prompt, not HTML — escaping would turn
+    # quotes into entities (&#34;) that the model then echoes back into the
+    # revised section verbatim. The user template disables autoescape in-place
+    # ({% autoescape false %}), so pass the values as plain strings; unescape
+    # entities already baked into stored content by renders predating this fix.
+    system_prompt = _brief_revise_system_template.render()
+    user_prompt = _brief_revise_user_template.render(
+        instruction=html.unescape(instruction.strip()),
+        content=html.unescape(content),
+    )
+    llm = get_llm(
+        model=model_key,
+        temperature=temperature if temperature is not None else 0.2,
+        max_tokens=max_tokens or 3000,
+    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    # Some models HTML-escape quotes/ampersands in their output (e.g. &#34;),
+    # which would render literally in the section. Decode entities back to plain
+    # text so the stored markdown is clean.
+    return html.unescape(_strip_section_wrapper(str(response.content)))
 
 
 async def translate_text(
