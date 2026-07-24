@@ -198,7 +198,7 @@ const BLOCK_CLASS: Record<DiffBlockType, string> = {
 // straight vs curly) — e.g. an older draft has `&#34;`/`"` while a fresh revise
 // has `"`. They render identically, so treat them as equal to avoid a diff full
 // of meaningless quote-only "changes".
-const normalizeQuotes = (s: string): string =>
+export const normalizeQuotes = (s: string): string =>
   s
     .replace(/&#34;|&quot;/g, '"')
     .replace(/&#39;|&apos;|&#8217;|&#8216;/g, "'")

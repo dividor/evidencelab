@@ -38,4 +38,29 @@ describe('buildSectionQuery', () => {
         'and cite a source for every claim.',
     );
   });
+
+  test('update mode preserves the draft, date-filters, and keeps citations', () => {
+    const q = buildSectionQuery({
+      heading: 'Impacts',
+      briefTopic: 'girls education',
+      mode: 'update',
+      existingContent: 'Enrolment rose sharply [1].',
+      instruction: 'prioritise enforcement',
+      publishedAfterIso: '2023-05-01T00:00:00.000Z',
+    });
+    // Keeps/embeds the current draft.
+    expect(q).toContain('Enrolment rose sharply [1].');
+    expect(q).toContain('Preserve its wording, structure and citations');
+    // Constrains the search to newer sources (date only).
+    expect(q).toContain('PUBLISHED AFTER 2023-05-01');
+    // Threads the optional instruction + demands sequential citations back.
+    expect(q).toContain('prioritise enforcement');
+    expect(q).toContain('sequential [n] citation markers');
+  });
+
+  test('update mode without a draft falls back to a normal generate query', () => {
+    const q = buildSectionQuery({ heading: 'Impacts', mode: 'update' });
+    expect(q).toContain('Write the "Impacts" section');
+    expect(q).not.toContain('Preserve its wording');
+  });
 });

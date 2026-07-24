@@ -4,6 +4,7 @@ import {
   BriefDiff,
   diffBlocks,
   diffWords,
+  normalizeQuotes,
   MARK_ADD_OPEN,
   MARK_DEL_OPEN,
 } from '../components/brief/BriefDiff';
@@ -46,13 +47,12 @@ describe('BriefDiff rendering', () => {
     expect(container.querySelector('strong')?.textContent).toBe('quick');
     expect(container.textContent).not.toContain('**');
 
-    // The inserted word is wrapped as an addition.
+    // The inserted word and the whole-new paragraph are both marked as additions.
     const ins = Array.from(container.querySelectorAll('ins.brief-diff-add'));
-    expect(ins.map((el) => el.textContent).join(' ')).toContain('brown');
-
-    // The whole-new paragraph renders inside an added block.
-    const addBlock = container.querySelector('.brief-diff-block-add');
-    expect(addBlock?.textContent).toContain('A new paragraph.');
+    const addedText = ins.map((el) => el.textContent).join(' ');
+    expect(addedText).toContain('brown');
+    expect(container.textContent).toContain('A new paragraph.');
+    expect(addedText).toContain('A new paragraph.');
 
     // No sentinel characters leak into the visible text.
     expect(container.textContent).not.toMatch(/[\uE000-\uE003]/);
@@ -75,5 +75,27 @@ describe('BriefDiff rendering', () => {
     expect(h2?.textContent).toContain('New title');
     expect(h2?.querySelector('ins.brief-diff-add')?.textContent).toContain('New');
     expect(h2?.querySelector('del.brief-diff-del')?.textContent).toContain('Old');
+  });
+});
+
+describe('normalizeQuotes', () => {
+  test('collapses entity, curly, and straight quotes to one form', () => {
+    expect(normalizeQuotes('&#34;free&#34;')).toBe('"free"');
+    expect(normalizeQuotes('&quot;a&quot;')).toBe('"a"');
+    expect(normalizeQuotes('the government&#39;s plan')).toBe("the government's plan");
+    expect(normalizeQuotes('“curly” and ‘curly’')).toBe('"curly" and \'curly\'');
+    expect(normalizeQuotes('a &amp; b')).toBe('a & b');
+  });
+
+  test('quote-encoding-only differences produce no diff', () => {
+    // Old draft has entities, new draft has straight quotes — same text.
+    const { container } = render(
+      <BriefDiff
+        oldText={'The Act declares it &#34;free&#34; [1].'}
+        newText={'The Act declares it "free" [1].'}
+      />,
+    );
+    expect(container.querySelector('ins.brief-diff-add')).toBeNull();
+    expect(container.querySelector('del.brief-diff-del')).toBeNull();
   });
 });
