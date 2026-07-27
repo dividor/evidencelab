@@ -43,6 +43,18 @@ describe('parseQaCsv', () => {
     expect(rows[0].expectation).toBe('Expected text');
   });
 
+  test('parses a doc_titles list filter into the case input', () => {
+    const csv = [
+      HEADER,
+      'covid effects,,,"{""doc_titles"": [""WFP COVID-19 Response Evaluation""]}",Expected',
+    ].join('\n');
+    const rows = parseQaCsv(csv);
+    expect(rows[0].input).toEqual({
+      query: 'covid effects',
+      filters: { doc_titles: ['WFP COVID-19 Response Evaluation'] },
+    });
+  });
+
   test('accepts header aliases (question / expected_answer)', () => {
     const csv = [
       'question,expected_answer',

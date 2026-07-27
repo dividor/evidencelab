@@ -41,6 +41,7 @@ from ui.backend.auth.testing_models import (
 )
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.test_evaluators import evaluate_assertions
+from ui.backend.utils.filter_helpers import resolve_doc_level_filters
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +128,13 @@ def _storable_output(output: Any) -> Any:
 async def _run_search(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
-    """Run search through the EXACT same pipeline as the UI ``/search`` route
+    """Run search through the same retrieval pipeline as the UI ``/search`` route
     (same retrieval, result building, field-boost/dedup post-processing), so an
     experiment reproduces what a user sees in the app.
+
+    Document-level filters (``doc_titles``, ``region``) are resolved to ``doc_id``
+    filters here (via :func:`resolve_doc_level_filters`) because the harness calls
+    the chunk search directly and so bypasses the route handler's own resolvers.
 
     Parameters default to the ``/search`` endpoint's own defaults; the
     experiment ``config`` overrides them (e.g. ``embedding_model``, ``rerank``,
@@ -146,12 +151,15 @@ async def _run_search(
     query = case_input.get("query", "")
     limit = int(params.get("limit", 50))
     min_chunk_size = int(params.get("min_chunk_size", 0))
+    filters = case_input.get("filters") or None
+    if filters:
+        filters = resolve_doc_level_filters(filters, pg)
     raw = await _run_search_chunks(
         query,
         limit=limit,
         dense_weight=params.get("dense_weight"),
         db=db,
-        filters=case_input.get("filters") or None,
+        filters=filters,
         rerank=bool(params.get("rerank", False)),
         recency_boost=bool(params.get("recency_boost", False)),
         recency_weight=float(params.get("recency_weight", 0.15)),

@@ -1,6 +1,6 @@
 """Helpers for building and resolving filter fields used by search routes."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from qdrant_client.http import models
 
@@ -150,3 +150,133 @@ def collect_range_conditions(
         models.FieldCondition(key=sf, range=models.Range(**b))
         for sf, b in bounds.items()
     ]
+
+
+# Sentinel doc_id used when a document filter resolves to no documents, so the
+# search returns nothing rather than falling back to an unfiltered run.
+NO_MATCH_DOC_ID = "00000000-0000-0000-0000-000000000000"
+
+
+def _normalize_doc_titles(value: Any) -> List[str]:
+    """Coerce a ``doc_titles`` filter value into a clean list of titles.
+
+    Accepts a list of strings, or a single/comma-joined string for convenience
+    (e.g. a CSV cell). Blank entries are dropped.
+
+    Raises:
+        ValueError: If the value is neither a string nor a list/tuple.
+    """
+    if isinstance(value, str):
+        items: List[Any] = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        raise ValueError("doc_titles must be a list of document titles")
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _existing_doc_id_set(value: Any) -> Optional[Set[str]]:
+    """Return the set of doc_ids already present in a filter value, or None."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        parts = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        parts = list(value)
+    else:
+        parts = []
+    return {str(part).strip() for part in parts if str(part).strip()}
+
+
+# Doc-level filters resolved to a doc_id set for the harness chunk search.
+_DOC_LEVEL_FILTER_KEYS = ("doc_titles", "region")
+
+
+def _title_doc_ids(value: Any, pg) -> Optional[Set[str]]:
+    """Resolve a ``doc_titles`` value to a doc_id set (None if no titles)."""
+    if value is None:
+        return None
+    titles = _normalize_doc_titles(value)
+    if not titles:
+        return None
+    return set(pg.fetch_doc_ids_by_exact_titles(titles))
+
+
+def _region_names(value: Any) -> List[str]:
+    """Coerce a ``region`` filter value into a list of region names.
+
+    A bare string is treated as a single region name (region names commonly
+    contain commas, so it is never comma-split). Blank entries are dropped.
+
+    Raises:
+        ValueError: If the value is neither a string nor a list/tuple.
+    """
+    if isinstance(value, str):
+        items: List[Any] = [value]
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        raise ValueError("region must be a string or a list of region names")
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _region_doc_ids(value: Any, pg) -> Optional[Set[str]]:
+    """Resolve a ``region`` value to the union of matching doc_ids (None if empty).
+
+    Region is a document-level field (not stamped on chunks), so each selected
+    region name is resolved to doc_ids via ``pg.fetch_doc_ids_by_region`` and the
+    per-region matches are unioned (OR within the region facet).
+    """
+    if value is None:
+        return None
+    names = _region_names(value)
+    if not names:
+        return None
+    doc_ids: Set[str] = set()
+    for name in names:
+        doc_ids.update(pg.fetch_doc_ids_by_region(name))
+    return doc_ids
+
+
+def resolve_doc_level_filters(filters: Dict[str, Any], pg) -> Dict[str, Any]:
+    """Resolve document-level filters (``doc_titles``, ``region``) to ``doc_id``.
+
+    The eval harness calls the chunk search directly and so bypasses the search
+    route's own resolvers. This lets users filter by exact document title (as
+    displayed in the UI) and by region — both document-level, not stored on
+    chunks — instead of raw doc_ids. Each is resolved to doc_ids at run time and
+    AND-combined with any existing ``doc_id`` filter (regions OR within their
+    facet). When the combination matches nothing, the filter is pinned to
+    :data:`NO_MATCH_DOC_ID` so the run returns no results (never unfiltered).
+
+    ``country`` is intentionally left untouched: it is stamped on chunks and
+    applied natively by the chunk search.
+
+    Args:
+        filters: Case ``filters`` dict. Not mutated; a new dict is returned.
+        pg: Postgres client for the case's data source.
+
+    Returns:
+        A new filters dict with resolved keys replaced by a ``doc_id`` filter, or
+        the original dict when there is nothing document-level to resolve.
+    """
+    if not isinstance(filters, dict):
+        return filters
+    if not any(key in filters for key in _DOC_LEVEL_FILTER_KEYS):
+        return filters
+    result = dict(filters)
+    constraints: List[Set[str]] = []
+    existing = _existing_doc_id_set(result.get("doc_id"))
+    if existing is not None:
+        constraints.append(existing)
+    title_ids = _title_doc_ids(result.pop("doc_titles", None), pg)
+    if title_ids is not None:
+        constraints.append(title_ids)
+    region_ids = _region_doc_ids(result.pop("region", None), pg)
+    if region_ids is not None:
+        constraints.append(region_ids)
+    if not constraints:
+        return result
+    resolved = set.intersection(*constraints)
+    result["doc_id"] = sorted(resolved) if resolved else [NO_MATCH_DOC_ID]
+    return result

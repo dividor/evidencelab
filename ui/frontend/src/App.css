@@ -11999,6 +11999,77 @@ a.admin-citation-clickable:hover {
   font-size: 0.75rem;
 }
 
+.testing-tag-remove {
+  background: none;
+  border: none;
+  padding: 0 0 0 0.3rem;
+  font: inherit;
+  line-height: 1;
+  color: var(--color-text-muted, #57606a);
+  cursor: pointer;
+}
+.testing-tag-remove:hover {
+  color: var(--color-danger, #cf222e);
+}
+
+/* Document-title typeahead multiselect (case editor filter builder) */
+.testing-doc-select {
+  position: relative;
+}
+.testing-doc-select input {
+  width: 100%;
+}
+.testing-doc-suggestions {
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0.2rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  background: var(--color-surface, #fff);
+}
+.testing-doc-suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.testing-doc-suggestion:hover {
+  background: var(--color-surface-alt, #f6f8fa);
+}
+
+/* Publication-year min/max inputs in the case editor */
+.testing-year-range {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.testing-year-range input {
+  width: 6rem;
+}
+
+/* Collapsible filter-format help */
+.testing-filter-help {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8rem;
+}
+.testing-filter-help-body {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.testing-filter-help-body code {
+  font-size: 0.72rem;
+  word-break: break-word;
+}
+
 .testing-notes {
   font-size: 0.8rem;
   color: var(--color-text-muted, #57606a);
