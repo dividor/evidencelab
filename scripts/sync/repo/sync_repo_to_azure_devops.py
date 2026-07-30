@@ -20,11 +20,14 @@ The password is injected via a git credential helper that reads the
 environment at git runtime, so it never appears on a command line, in git
 config, or in logs.
 
+If ``--branches`` is omitted, the script syncs ``main`` plus every branch on
+the source remote whose name begins with ``rc`` or ``v`` (release branches).
+
 Usage (via uv — resolves the script's own dependencies, no project install):
     # Preview what would be pushed (no changes made)
-    uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
+    uv run scripts/sync/repo/sync_repo_to_azure_devops.py --dry-run
 
-    # Sync main and a release branch, plus all tags
+    # Sync specific branches only, plus all tags
     uv run scripts/sync/repo/sync_repo_to_azure_devops.py \
         --branches main rc/v1.6.1 --tags
 """
@@ -35,7 +38,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
@@ -89,6 +92,37 @@ def _run_git(args: List[str], root_dir: Path, error: str) -> None:
         raise RuntimeError(error)
 
 
+def _list_remote_branches(remote: str, root_dir: Path) -> List[str]:
+    """Return all branch names present on the source remote after a fetch."""
+    result = subprocess.run(
+        [
+            "git",
+            "for-each-ref",
+            f"refs/remotes/{remote}",
+            "--format=%(refname:strip=3)",
+        ],
+        cwd=root_dir,
+        env=_git_env(),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Could not list branches for remote '{remote}'.")
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _default_branches(remote: str, root_dir: Path) -> List[str]:
+    """Select ``main`` plus release branches (``rc*``/``v*``) from the remote."""
+    names = _list_remote_branches(remote, root_dir)
+    selected = [n for n in names if n == "main" or n.startswith(("rc", "v"))]
+    if not selected:
+        raise RuntimeError(
+            f"No branches on remote '{remote}' match the default pattern "
+            "(main, rc*, v*)."
+        )
+    return sorted(selected, key=lambda n: (n != "main", n))
+
+
 def _verify_branches(remote: str, branches: List[str], root_dir: Path) -> None:
     """Fail hard if any requested branch does not exist on the source remote."""
     for branch in branches:
@@ -137,12 +171,16 @@ def sync_to_azure_devops(
     *,
     root_dir: Path,
     remote: str,
-    branches: List[str],
+    branches: Optional[List[str]],
     tags: bool,
     dry_run: bool,
     force: bool,
 ) -> None:
-    """Fetch the source remote and push the requested refs to Azure DevOps."""
+    """Fetch the source remote and push the requested refs to Azure DevOps.
+
+    When ``branches`` is ``None``, syncs ``main`` plus every branch on the
+    source remote whose name begins with ``rc`` or ``v``.
+    """
     url = _require_env(ENV_REPO_URL)
     _require_env(ENV_CREDENTIAL)
 
@@ -152,6 +190,9 @@ def sync_to_azure_devops(
         root_dir,
         f"Fetch from remote '{remote}' failed.",
     )
+    if branches is None:
+        branches = _default_branches(remote, root_dir)
+        logger.info("No branches specified; syncing: %s", ", ".join(branches))
     _verify_branches(remote, branches, root_dir)
 
     refspecs = _build_refspecs(remote, branches, tags)
@@ -174,8 +215,11 @@ def main() -> int:
     parser.add_argument(
         "--branches",
         nargs="+",
-        default=["main"],
-        help="Branches to sync (default: main).",
+        default=None,
+        help=(
+            "Branches to sync (default: main plus any branch beginning "
+            "with 'rc' or 'v')."
+        ),
     )
     parser.add_argument(
         "--tags",

@@ -115,6 +115,56 @@ class TestBuildPushArgs:
         assert "${AZURE_DEVOPS_PASSWORD}" in helper
 
 
+def _branch_listing(names):
+    """CompletedProcess mimicking ``git for-each-ref`` stdout."""
+    return subprocess.CompletedProcess(
+        args=[], returncode=0, stdout="\n".join(names) + "\n", stderr=""
+    )
+
+
+@pytest.mark.unit
+class TestDefaultBranches:
+    _REMOTE_NAMES = [
+        "HEAD",
+        "dependabot/pip/thing",
+        "feature/x",
+        "main",
+        "rc/v1.6.0",
+        "rc/v1.6.1",
+        "v2-experiments",
+    ]
+
+    def test_selects_main_and_rc_and_v_branches(self, tmp_path):
+        with patch.object(
+            sync_mod.subprocess, "run", return_value=_branch_listing(self._REMOTE_NAMES)
+        ):
+            branches = sync_mod._default_branches("origin", tmp_path)
+        assert branches == ["main", "rc/v1.6.0", "rc/v1.6.1", "v2-experiments"]
+
+    def test_main_sorts_first(self, tmp_path):
+        with patch.object(
+            sync_mod.subprocess,
+            "run",
+            return_value=_branch_listing(["rc/v1.0.0", "main"]),
+        ):
+            branches = sync_mod._default_branches("origin", tmp_path)
+        assert branches[0] == "main"
+
+    def test_raises_when_nothing_matches(self, tmp_path):
+        with patch.object(
+            sync_mod.subprocess,
+            "run",
+            return_value=_branch_listing(["feature/x", "dev"]),
+        ):
+            with pytest.raises(RuntimeError, match="default pattern"):
+                sync_mod._default_branches("origin", tmp_path)
+
+    def test_raises_when_listing_fails(self, tmp_path):
+        with patch.object(sync_mod.subprocess, "run", return_value=_fail()):
+            with pytest.raises(RuntimeError, match="Could not list branches"):
+                sync_mod._default_branches("origin", tmp_path)
+
+
 @pytest.mark.unit
 class TestVerifyBranches:
     def test_raises_when_branch_missing(self, tmp_path):
@@ -183,6 +233,22 @@ class TestSyncToAzureDevops:
             with pytest.raises(RuntimeError, match="Push to Azure DevOps failed"):
                 self._sync(tmp_path)
 
+    def test_no_branches_discovers_main_and_release_branches(
+        self, tmp_path, monkeypatch
+    ):
+        _set_required_env(monkeypatch)
+        listing = _branch_listing(["HEAD", "feature/x", "main", "rc/v1.6.1"])
+        with patch.object(sync_mod.subprocess, "run") as run:
+            # fetch, for-each-ref, rev-parse x2, push
+            run.side_effect = [_ok(), listing, _ok(), _ok(), _ok()]
+            self._sync(tmp_path, branches=None)
+        push_cmd = run.call_args_list[-1].args[0]
+        assert push_cmd[-2:] == [
+            "refs/remotes/origin/main:refs/heads/main",
+            "refs/remotes/origin/rc/v1.6.1:refs/heads/rc/v1.6.1",
+        ]
+        assert not any("feature/x" in part for part in push_cmd)
+
 
 @pytest.mark.unit
 class TestMain:
@@ -197,5 +263,7 @@ class TestMain:
         _set_required_env(monkeypatch)
         monkeypatch.setattr(sys, "argv", ["prog", "--dry-run"])
         with patch.object(sync_mod, "_load_env", return_value=tmp_path):
-            with patch.object(sync_mod.subprocess, "run", return_value=_ok()):
+            with patch.object(sync_mod.subprocess, "run") as run:
+                # fetch, for-each-ref, rev-parse, push
+                run.side_effect = [_ok(), _branch_listing(["main"]), _ok(), _ok()]
                 assert sync_mod.main() == 0

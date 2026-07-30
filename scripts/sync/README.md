@@ -363,10 +363,11 @@ without pushing anything.
 ### Sync
 
 ```bash
-# Sync main only (default)
+# Default: sync main plus any branch beginning with 'rc' or 'v'
+# (pulls in release branches automatically)
 uv run scripts/sync/repo/sync_repo_to_azure_devops.py
 
-# Sync several branches plus all tags
+# Sync specific branches only, plus all tags
 uv run scripts/sync/repo/sync_repo_to_azure_devops.py \
   --branches main rc/v1.6.1 --tags
 
