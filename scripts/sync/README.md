@@ -7,6 +7,7 @@ your local environment and remote environments (Production/Azure).
 
 - `db/`: Scripts for Qdrant + Postgres database synchronization.
 - `files/`: Scripts for Azure File Share synchronization.
+- `repo/`: Scripts for mirroring this Git repository to another remote.
 
 ---
 
@@ -324,3 +325,69 @@ brew install azcopy
 ```bash
 python scripts/sync/files/sync_azure.py --upload --dirs uneg,worldbank --azcopy
 ```
+
+## 8. Repository Mirror Sync (GitHub → Azure DevOps)
+
+`repo/sync_repo_to_azure_devops.py` mirrors branches (and optionally tags)
+from a source remote (default `origin`) to an Azure DevOps Git repository.
+If no `--branches` are given, it syncs `main` plus any branch beginning with
+`rc` or `v`, so release branches are picked up automatically.
+
+It uses **git only** — no `az` CLI, no `azcopy`, no Docker. Run it with
+[uv](https://docs.astral.sh/uv/), which resolves the script's own inline
+dependencies automatically (no project install needed).
+
+### Prerequisites
+
+- `git` and `uv` installed
+- **Environment Variables**: `.env` (or the shell environment) must contain
+  the three connection values:
+  - `AZURE_DEVOPS_REPO_URL` — HTTPS clone URL,
+    e.g. `https://dev.azure.com/<org>/<project>/_git/<repo>`
+  - `AZURE_DEVOPS_USERNAME` — account username (any non-empty value works
+    when the password is a personal access token)
+  - `AZURE_DEVOPS_PASSWORD` — password, typically a personal access token
+    with Code (Read & Write) scope
+
+No credentials or repository URLs are hardcoded — the password is supplied to
+git through a credential helper that reads the environment at runtime, so it
+never appears on a command line or in git config.
+
+### Creating Azure DevOps credentials
+
+1. Navigate to the target repository in Azure DevOps.
+2. Click **Clone** (top-right).
+3. Click **Generate Git Credentials**.
+4. Copy the values into `.env` (or export them in your shell):
+   - the repository HTTPS URL, without any `user@` prefix → `AZURE_DEVOPS_REPO_URL`
+   - the generated username → `AZURE_DEVOPS_USERNAME`
+   - the generated password → `AZURE_DEVOPS_PASSWORD`
+
+### Preview (dry run)
+
+```bash
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
+```
+
+Contacts the target remote and reports exactly which refs would be updated,
+without pushing anything.
+
+### Sync
+
+```bash
+# Default: sync main plus any branch beginning with 'rc' or 'v'
+# (pulls in release branches automatically)
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py
+
+# Sync specific branches only, plus all tags
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py \
+  --branches main rc/v1.6.1 --tags
+
+# Overwrite diverged refs on the target (use with care)
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --force
+```
+
+The script fetches the source remote first (`--prune --tags`), verifies each
+requested branch exists there, and pushes
+`refs/remotes/<remote>/<branch> → refs/heads/<branch>` on the target.
+Non-fast-forward pushes fail unless `--force` is given.
