@@ -12191,3 +12191,129 @@ a.admin-citation-clickable:hover {
 .testing-case-editor-wrap {
   display: contents;
 }
+
+/* ---------------------------------------------------------------------------
+   Admin: TOC Validator
+   --------------------------------------------------------------------------- */
+.toc-validator-toolbar {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
+.toc-validator-toolbar .admin-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--white);
+}
+
+.toc-validator-toolbar .admin-search-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.toc-validator-spacer {
+  flex: 1;
+}
+
+.toc-validator-select-col {
+  width: 32px;
+  text-align: center;
+}
+
+.toc-validator-empty {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--gray-500);
+}
+
+.toc-validator-pagination {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--spacing-lg);
+}
+
+.toc-validator-row-changed {
+  background: #eff6ff;
+}
+
+/* Verdict cell — reuses .status-badge; adds verdict-specific colours. */
+.toc-validation-cell {
+  min-width: 190px;
+}
+
+.status-pass {
+  background: var(--color-success);
+  color: white;
+}
+
+.status-fail {
+  background: var(--color-danger);
+  color: white;
+}
+
+.status-skipped {
+  background: var(--gray-400);
+  color: white;
+}
+
+.status-untested {
+  background: transparent;
+  color: var(--gray-500);
+  border: 1px dashed var(--gray-300);
+}
+
+.toc-validation-detail {
+  font-size: 0.78rem;
+  color: var(--gray-600);
+  margin-top: 4px;
+}
+
+.toc-validation-meta {
+  font-size: 0.72rem;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+/* Link-styled buttons (accessible alternative to href="#" action links). */
+button.doc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 var(--spacing-sm) 0 0;
+  font: inherit;
+  color: var(--color-link);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.doc-link:hover {
+  color: var(--color-link-hover);
+}
+
+/* TOC Validator — filterable column header layout + popover backdrop. */
+.toc-validator-table th .toc-th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.toc-validator-table .filter-icon-button {
+  flex-shrink: 0;
+}
+
+/* Click-away layer; sits just under .filter-popover (z-index: 1000). */
+.filter-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}

@@ -9,10 +9,13 @@ import LlmUsageManager from './LlmUsageManager';
 import McpAuditLog from './McpAuditLog';
 import RatingsManager from './RatingsManager';
 import TestingManager from './TestingManager';
+import TocValidatorManager from './TocValidatorManager';
 import UserManager from './UserManager';
 
 interface AdminPanelProps {
   isActive: boolean;
+  dataSource?: string;
+  dataSourceConfig?: import('../../App').DataSourceConfigItem;
 }
 
 type AdminTab =
@@ -24,7 +27,8 @@ type AdminTab =
   | 'llm-usage'
   | 'mcp-audit'
   | 'api-keys'
-  | 'testing';
+  | 'testing'
+  | 'toc-validator';
 
 const TAB_USERS: AdminTab = 'users';
 const TAB_GROUPS: AdminTab = 'groups';
@@ -35,12 +39,17 @@ const TAB_LLM_USAGE: AdminTab = 'llm-usage';
 const TAB_MCP_AUDIT: AdminTab = 'mcp-audit';
 const TAB_API_KEYS: AdminTab = 'api-keys';
 const TAB_TESTING: AdminTab = 'testing';
+const TAB_TOC_VALIDATOR: AdminTab = 'toc-validator';
 const ACTIVE_CLASS = 'admin-tab-active';
 
 const tabClass = (tab: AdminTab, current: AdminTab) =>
   `admin-tab ${tab === current ? ACTIVE_CLASS : ''}`;
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({
+  isActive,
+  dataSource = '',
+  dataSourceConfig,
+}) => {
   const { user } = useAuth();
   const [tab, setTab] = useState<AdminTab>(TAB_USERS);
 
@@ -105,6 +114,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
           >
             Testing
           </button>
+          <button
+            className={tabClass(tab, TAB_TOC_VALIDATOR)}
+            onClick={() => setTab(TAB_TOC_VALIDATOR)}
+          >
+            TOC Validator
+          </button>
         </div>
       </div>
       <div className="admin-tab-content">
@@ -117,6 +132,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isActive }) => {
         {tab === TAB_MCP_AUDIT && <McpAuditLog />}
         {tab === TAB_API_KEYS && <ApiKeyManager />}
         {tab === TAB_TESTING && <TestingManager />}
+        {tab === TAB_TOC_VALIDATOR && (
+          <TocValidatorManager
+            dataSource={dataSource}
+            dataSourceConfig={dataSourceConfig}
+          />
+        )}
       </div>
     </div>
   );

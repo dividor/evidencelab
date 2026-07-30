@@ -257,3 +257,29 @@ export interface DrilldownNode {
 export interface SearchFilters {
   [coreField: string]: string | undefined;
 }
+
+/** One classified-TOC section flagged by the TOC validator */
+export interface TocValidationSection {
+  title: string;
+  label: string;
+  page: number | null;
+}
+
+/**
+ * Result of the admin TOC validator check for a single document: whether every
+ * section inside the human-set main-body page range uses a section type that
+ * Search includes by default.
+ */
+export interface TocValidationResult {
+  doc_id: string;
+  status: 'pass' | 'fail' | 'skipped';
+  range_start: number | null;
+  range_end: number | null;
+  sections_in_range: number;
+  num_excluded: number;
+  excluded_section_types: string[];
+  excluded_sections: TocValidationSection[];
+  reasons: string[];
+  validated_at: string;
+  validated_by: string | null;
+}
