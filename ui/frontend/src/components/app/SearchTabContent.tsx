@@ -11,6 +11,7 @@ import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
 import { serializeDrilldownTree } from '../../utils/drilldownUtils';
+import { buildResultsCoverageText } from '../../utils/resultsCoverage';
 import { useDevFixtureSearch } from '../../__fixtures__/useDevFixtureSearch';
 
 interface SearchTabContentProps {
@@ -236,6 +237,7 @@ const WanderingSpinner: React.FC = () => {
 /** Extracted sub-component for the org buttons, document thumbnail carousel, and filter indicator */
 const SearchResultFilters: React.FC<{
   uniqueOrgs: Array<{ org: string; count: number }>;
+  coverageText: string;
   filteredOrgs: string[];
   onOrgToggle: (org: string) => void;
   filteredDocIds: string[];
@@ -251,6 +253,7 @@ const SearchResultFilters: React.FC<{
   onClearAll: () => void;
 }> = ({
   uniqueOrgs,
+  coverageText,
   filteredOrgs,
   onOrgToggle,
   filteredDocIds,
@@ -278,6 +281,19 @@ const SearchResultFilters: React.FC<{
             {org} ({count})
           </button>
         ))}
+        <span className="result-info">
+          <button
+            type="button"
+            className="result-info-icon"
+            aria-label="What do these result counts mean?"
+            aria-describedby="results-coverage-tip"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+          </button>
+          <span className="result-info-tooltip" role="tooltip" id="results-coverage-tip">
+            {coverageText}
+          </span>
+        </span>
       </div>
     )}
     <div className="search-result-filters-thumbnails">
@@ -676,6 +692,19 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       .map(([org, count]) => ({ org, count }));
   }, [uniqueDocuments]);
 
+  // Live explanation of what the org result counts represent (documents behind
+  // the most relevant excerpts). Derived from current search state, not
+  // hardcoded, so it stays accurate if the page size changes.
+  const coverageText = useMemo(
+    () =>
+      buildResultsCoverageText({
+        excerptCount: visibleResults.length,
+        documentCount: uniqueDocuments.length,
+        orgCount: uniqueOrgs.length,
+      }),
+    [visibleResults.length, uniqueDocuments.length, uniqueOrgs.length],
+  );
+
   // Documents filtered by selected orgs
   const filteredUniqueDocuments = useMemo(() =>
     filteredOrgs.length > 0
@@ -888,6 +917,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
           {showFilters && (
             <SearchResultFilters
               uniqueOrgs={uniqueOrgs}
+              coverageText={coverageText}
               filteredOrgs={filteredOrgs}
               onOrgToggle={handleOrgToggle}
               filteredDocIds={filteredDocIds}

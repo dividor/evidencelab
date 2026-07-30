@@ -14,6 +14,18 @@ export const DEFAULT_TAB_LABELS: Record<TabKey, string> = {
   heatmap: 'Map',
 };
 
+// Short descriptions shown as hover/focus tooltips on each main nav tab.
+// Keyed by the stable TabKey (not the label) so the copy stays correct even
+// when a group overrides a tab's display label.
+export const TAB_TOOLTIPS: Record<TabKey, string> = {
+  search:
+    'Find relevant evidence in evaluations and connect straight to the source document.',
+  assistant: 'Ask questions in plain language and get cited answers.',
+  brief: 'Turn any topic into a structured, fully cited brief.',
+  heatmap:
+    'Visualize evidence by theme, region, or year to quickly identify evidence coverage and gaps.',
+};
+
 export interface TabSetting {
   enabled?: boolean;
   label?: string | null;

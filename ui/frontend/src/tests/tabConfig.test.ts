@@ -1,6 +1,7 @@
 import {
   DEFAULT_TAB_LABELS,
   TAB_KEYS,
+  TAB_TOOLTIPS,
   resolveTabs,
 } from '../components/layout/tabConfig';
 
@@ -39,5 +40,14 @@ describe('resolveTabs', () => {
     const r = resolveTabs({ search: { enabled: true } });
     expect(r.search.enabled).toBe(true);
     expect(r.assistant.enabled).toBe(false);
+  });
+});
+
+describe('TAB_TOOLTIPS', () => {
+  it('provides a non-empty tooltip description for every tab key', () => {
+    TAB_KEYS.forEach((k) => {
+      expect(TAB_TOOLTIPS[k]).toBeTruthy();
+      expect(TAB_TOOLTIPS[k].trim().length).toBeGreaterThan(0);
+    });
   });
 });

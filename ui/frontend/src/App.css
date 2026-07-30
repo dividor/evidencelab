@@ -596,6 +596,51 @@ h6,
   background: none;
 }
 
+/* Nav tab tooltips — describe each main tab on hover/keyboard focus.
+   Reuses the app tooltip look (dark bubble + arrow) from .tooltip-text, but
+   wraps to a readable width instead of a single nowrap line. */
+.nav-tab-tooltip {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: max-content;
+  max-width: 240px;
+  padding: 0.625rem 0.875rem;
+  background: var(--gray-900);
+  color: var(--white);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  z-index: 1000;
+}
+
+.nav-tab-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--gray-900);
+}
+
+.nav-tab:hover .nav-tab-tooltip,
+.nav-tab:focus-visible .nav-tab-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Search Container */
 .search-container {
   background: var(--white);
@@ -8541,6 +8586,73 @@ li.ai-fact-active::before {
   font-style: italic;
   color: var(--gray-400);
   white-space: nowrap;
+}
+
+/* Info affordance explaining what the org result counts mean.
+   Shares the dark-bubble tooltip look used elsewhere in the app. */
+.result-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.result-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--gray-400);
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.result-info-icon:hover,
+.result-info-icon:focus-visible {
+  color: var(--primary-blue);
+}
+
+.result-info-tooltip {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: max-content;
+  max-width: 280px;
+  padding: 0.625rem 0.875rem;
+  background: var(--gray-900);
+  color: var(--white);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  z-index: 1000;
+}
+
+.result-info-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--gray-900);
+}
+
+.result-info:hover .result-info-tooltip,
+.result-info:focus-within .result-info-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 .search-result-filters-org-label {
