@@ -79,17 +79,23 @@ export const parseQaCsv = (data: ArrayBuffer | string): QaCsvRow[] => {
 
 // Same columns as the regular dataset CSV plus an "expectation" column.
 // Regular dataset sample (query, tags, notes, filters). The QA sample below is
-// the same shape plus one extra `expectation` column.
+// the same shape plus one extra `expectation` column. The `filters` cell is a
+// JSON object; use `doc_titles` (a list of exact UI document titles) to restrict
+// a case to specific documents, and `published_year_min`/`_max` for a year range.
 export const SAMPLE_DATASET_CSV = [
   'query,tags,notes,filters',
   'girls education in Kenya,regression;baseline,Core evaluation question,',
-  'cash vs in-kind transfers in Kenya,regression,Comparison question,',
+  'cash vs in-kind transfers in Kenya,regression,Recent evaluations only,'
+    + '"{""published_year_min"": 2018, ""published_year_max"": 2022}"',
   'nutrition outcomes for children,smoke,,"{""country"": ""Kenya""}"',
+  'findings in a specific report,docs,Single-document case,'
+    + '"{""doc_titles"": [""Annual Report 2021""]}"',
 ].join('\n');
 
 export const SAMPLE_QA_CSV = [
   'query,tags,notes,filters,expectation',
-  '"What were the effects of COVID-19 on WFP activities?",covid,Core question,,'
+  '"What were the effects of COVID-19 on WFP activities?",covid,Core question,'
+    + '"{""doc_titles"": [""WFP COVID-19 Response Evaluation""]}",'
     + '"The summary should cover the most commonly cited ways WFP programmes '
     + 'changed after the pandemic and the results of those changes."',
   '"How timely was WFP in responding to COVID-19 needs?",timeliness,,,'

@@ -565,6 +565,39 @@ class PostgresDocMixin:
                 rows = cur.fetchall()
         return [str(row[0]) for row in rows]
 
+    def fetch_doc_ids_by_exact_titles(
+        self, titles: List[str], limit: int = 5000
+    ) -> List[str]:
+        """Fetch doc_ids whose display title exactly matches any given title.
+
+        Matching is case-insensitive but otherwise exact (no substring), so a
+        supplied title resolves only to the document(s) shown under that exact
+        title in the UI. Titles are the raw ``map_title`` display values, not the
+        sanitized on-disk filename form.
+
+        Args:
+            titles: Exact display titles as they appear in the UI.
+            limit: Maximum number of doc_ids to return.
+
+        Returns:
+            List of matching doc_id strings (empty if none match).
+        """
+        normalized = [t.strip().lower() for t in titles if t and t.strip()]
+        if not normalized:
+            return []
+        query = f"""
+            SELECT doc_id
+            FROM {self.docs_table}
+            WHERE LOWER(map_title) = ANY(%s)
+            LIMIT %s
+        """
+        rows: List[tuple] = []
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, (normalized, limit))
+                rows = cur.fetchall()
+        return [str(row[0]) for row in rows]
+
     def fetch_indexed_doc_ids(self) -> List[str]:
         """Fetch all indexed document IDs."""
         query = f"""

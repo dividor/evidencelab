@@ -35,7 +35,7 @@ The CSV is the **same format as the dataset upload** (see [Add test cases](#add-
 | `expectation` | yes | Free text describing the expected answer. Becomes that row's **LLM‑judge rubric** (per‑case override). |
 | `tags` | no | Separated by `;` within the cell. |
 | `notes` | no | Free text. |
-| `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
+| `filters` | no | JSON object — see [Filtering a case](#filtering-a-case). |
 
 In the **Create Dataset and Experiment** dialog you provide:
 
@@ -82,7 +82,32 @@ The CSV columns are:
 | `query` | yes | The search query / question. |
 | `tags` | no | Separated by `;` within the cell, e.g. `regression;baseline`. |
 | `notes` | no | Free text. |
-| `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
+| `filters` | no | JSON object — see [Filtering a case](#filtering-a-case). |
+
+#### Filtering a case
+
+Filters restrict which documents a case searches, reproducing the app's search
+facets. With **+ Add case** you can set the common ones with UI controls — a
+**document picker** (type to search real document titles), **country** and
+**region** pickers (populated from the data source's values), and a
+**publication year** range — and use the collapsible **Advanced filters /
+params (JSON)** box for anything else. In a CSV `filters` cell (and in the
+Advanced box) you provide a JSON object:
+
+| Filter | Format | Example |
+|--------|--------|---------|
+| Specific documents | `doc_titles`: a list of **exact document titles as they appear in the UI** (matched case-insensitively) | `{"doc_titles": ["Evaluation of X", "Annual Report 2021"]}` |
+| Publication year | `published_year_min` / `published_year_max` (numbers) | `{"published_year_min": 2018, "published_year_max": 2022}` |
+| Country / region | `country` / `region`: lists of values | `{"country": ["Kenya"], "region": ["Asia and the Pacific"]}` |
+| Other fields | e.g. `organization`, `document_type` (strings) | `{"organization": "WFP"}` |
+
+`doc_titles` and `region` are resolved to the matching document IDs at run time,
+so you filter by the human-readable title/region rather than an internal ID
+(region also matches documents whose region field is not stamped on individual
+chunks). A `doc_titles` or `region` value that matches no document yields
+**zero** results for that case (it is never silently ignored), so prefer the
+pickers to avoid typos. Use a separate `params` key for search behaviour (e.g.
+`rerank`, `limit`), not for document filtering.
 
 ---
 

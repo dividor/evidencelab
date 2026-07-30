@@ -292,6 +292,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
           <div className="testing-case-editor-wrap">
             <CaseEditor
               initial={emptyDraft()}
+              dataSource={dataset.data_source}
               saving={saving}
               submitLabel="Create Case"
               onSubmit={createCase}
@@ -304,6 +305,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
           <div className="testing-case-editor-wrap">
             <CaseEditor
               initial={caseToDraft(editingCase)}
+              dataSource={dataset.data_source}
               saving={saving}
               submitLabel="Save Case"
               onSubmit={(payload) => updateCase(editingCase.id, payload)}
