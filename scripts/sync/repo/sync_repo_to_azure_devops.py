@@ -1,25 +1,31 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["python-dotenv"]
+# ///
 """Mirror this repository's branches (and optionally tags) to an Azure DevOps remote.
 
 Pushes refs from a source remote (default ``origin``) to an Azure DevOps Git
-repository over HTTPS. All connection details come from environment variables
-(or ``.env``) so no credentials or repository URLs live in source control:
+repository over HTTPS. Requires only ``git`` and three values — no az CLI, no
+azcopy, no Docker. All connection details come from environment variables (or
+``.env``) so no credentials or repository URLs live in source control:
 
 - ``AZURE_DEVOPS_REPO_URL``: HTTPS clone URL of the target repository, e.g.
   ``https://dev.azure.com/<org>/<project>/_git/<repo>``.
-- ``AZURE_DEVOPS_PAT``: personal access token with Code (Read & Write) scope.
-- ``AZURE_DEVOPS_USERNAME``: optional; Azure DevOps accepts any non-empty
-  username when a PAT is supplied (defaults to ``pat``).
+- ``AZURE_DEVOPS_USERNAME``: the account username (any non-empty value is
+  accepted when the password is a personal access token; defaults to ``pat``).
+- ``AZURE_DEVOPS_PASSWORD``: the password — typically a personal access token
+  with Code (Read & Write) scope.
 
-The token is injected via a git credential helper that reads the environment
-at git runtime, so it never appears on a command line, in git config, or in
-logs.
+The password is injected via a git credential helper that reads the
+environment at git runtime, so it never appears on a command line, in git
+config, or in logs.
 
-Usage:
+Usage (via uv — resolves the script's own dependencies, no project install):
     # Preview what would be pushed (no changes made)
-    python scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
+    uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
 
     # Sync main and a release branch, plus all tags
-    python scripts/sync/repo/sync_repo_to_azure_devops.py \
+    uv run scripts/sync/repo/sync_repo_to_azure_devops.py \
         --branches main rc/v1.6.1 --tags
 """
 
@@ -37,7 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
 ENV_REPO_URL = "AZURE_DEVOPS_REPO_URL"
-ENV_PAT = "AZURE_DEVOPS_PAT"
+ENV_CREDENTIAL = "AZURE_DEVOPS_PASSWORD"
 ENV_USERNAME = "AZURE_DEVOPS_USERNAME"
 
 # Shell credential helper executed by git itself. It expands the environment
@@ -45,7 +51,7 @@ ENV_USERNAME = "AZURE_DEVOPS_USERNAME"
 # a process argument list, or any git config file.
 _CREDENTIAL_HELPER = (
     '!f() { echo "username=${AZURE_DEVOPS_USERNAME:-pat}"; '
-    'echo "password=${AZURE_DEVOPS_PAT}"; }; f'
+    'echo "password=${AZURE_DEVOPS_PASSWORD}"; }; f'
 )
 
 
@@ -138,7 +144,7 @@ def sync_to_azure_devops(
 ) -> None:
     """Fetch the source remote and push the requested refs to Azure DevOps."""
     url = _require_env(ENV_REPO_URL)
-    _require_env(ENV_PAT)
+    _require_env(ENV_CREDENTIAL)
 
     logger.info("Fetching latest refs from '%s'...", remote)
     _run_git(

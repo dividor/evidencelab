@@ -331,22 +331,30 @@ python scripts/sync/files/sync_azure.py --upload --dirs uneg,worldbank --azcopy
 `repo/sync_repo_to_azure_devops.py` mirrors branches (and optionally tags)
 from a source remote (default `origin`) to an Azure DevOps Git repository.
 
+It uses **git only** — no `az` CLI, no `azcopy`, no Docker. Run it with
+[uv](https://docs.astral.sh/uv/), which resolves the script's own inline
+dependencies automatically (no project install needed).
+
 ### Prerequisites
 
-- **Environment Variables**: `.env` (or the shell environment) must contain:
+- `git` and `uv` installed
+- **Environment Variables**: `.env` (or the shell environment) must contain
+  the three connection values:
   - `AZURE_DEVOPS_REPO_URL` — HTTPS clone URL,
     e.g. `https://dev.azure.com/<org>/<project>/_git/<repo>`
-  - `AZURE_DEVOPS_PAT` — personal access token with Code (Read & Write) scope
-  - `AZURE_DEVOPS_USERNAME` — optional; any non-empty value works with a PAT
+  - `AZURE_DEVOPS_USERNAME` — account username (any non-empty value works
+    when the password is a personal access token)
+  - `AZURE_DEVOPS_PASSWORD` — password, typically a personal access token
+    with Code (Read & Write) scope
 
-No credentials or repository URLs are hardcoded — the token is supplied to
+No credentials or repository URLs are hardcoded — the password is supplied to
 git through a credential helper that reads the environment at runtime, so it
 never appears on a command line or in git config.
 
 ### Preview (dry run)
 
 ```bash
-python scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --dry-run
 ```
 
 Contacts the target remote and reports exactly which refs would be updated,
@@ -356,14 +364,14 @@ without pushing anything.
 
 ```bash
 # Sync main only (default)
-python scripts/sync/repo/sync_repo_to_azure_devops.py
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py
 
 # Sync several branches plus all tags
-python scripts/sync/repo/sync_repo_to_azure_devops.py \
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py \
   --branches main rc/v1.6.1 --tags
 
 # Overwrite diverged refs on the target (use with care)
-python scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --force
+uv run scripts/sync/repo/sync_repo_to_azure_devops.py --branches main --force
 ```
 
 The script fetches the source remote first (`--prune --tags`), verifies each

@@ -28,7 +28,7 @@ sync_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sync_mod)
 
 _URL = "https://dev.azure.com/example-org/example-project/_git/example-repo"
-_PAT_SENTINEL = "sentinel-token-value"
+_SENTINEL_VALUE = "sentinel-token-value"
 
 
 def _ok():
@@ -41,7 +41,7 @@ def _fail():
 
 def _set_required_env(monkeypatch):
     monkeypatch.setenv(sync_mod.ENV_REPO_URL, _URL)
-    monkeypatch.setenv(sync_mod.ENV_PAT, _PAT_SENTINEL)
+    monkeypatch.setenv(sync_mod.ENV_CREDENTIAL, _SENTINEL_VALUE)
 
 
 @pytest.mark.unit
@@ -106,13 +106,13 @@ class TestBuildPushArgs:
         assert args[-3:] == [_URL, "a:b", "c:d"]
 
     def test_credentials_come_from_env_expansion_not_values(self, monkeypatch):
-        """The PAT must never be embedded in the command; the helper expands
-        the environment variable when git itself runs it."""
-        monkeypatch.setenv(sync_mod.ENV_PAT, _PAT_SENTINEL)
+        """The password must never be embedded in the command; the helper
+        expands the environment variable when git itself runs it."""
+        monkeypatch.setenv(sync_mod.ENV_CREDENTIAL, _SENTINEL_VALUE)
         args = sync_mod._build_push_args(_URL, ["a:b"], dry_run=True, force=False)
-        assert all(_PAT_SENTINEL not in part for part in args)
+        assert all(_SENTINEL_VALUE not in part for part in args)
         helper = next(part for part in args if part.startswith("credential.helper=!"))
-        assert "${AZURE_DEVOPS_PAT}" in helper
+        assert "${AZURE_DEVOPS_PASSWORD}" in helper
 
 
 @pytest.mark.unit
@@ -145,14 +145,14 @@ class TestSyncToAzureDevops:
 
     def test_raises_when_repo_url_env_missing(self, tmp_path, monkeypatch):
         monkeypatch.delenv(sync_mod.ENV_REPO_URL, raising=False)
-        monkeypatch.setenv(sync_mod.ENV_PAT, _PAT_SENTINEL)
+        monkeypatch.setenv(sync_mod.ENV_CREDENTIAL, _SENTINEL_VALUE)
         with pytest.raises(RuntimeError, match=sync_mod.ENV_REPO_URL):
             self._sync(tmp_path)
 
     def test_raises_when_pat_env_missing(self, tmp_path, monkeypatch):
         monkeypatch.setenv(sync_mod.ENV_REPO_URL, _URL)
-        monkeypatch.delenv(sync_mod.ENV_PAT, raising=False)
-        with pytest.raises(RuntimeError, match=sync_mod.ENV_PAT):
+        monkeypatch.delenv(sync_mod.ENV_CREDENTIAL, raising=False)
+        with pytest.raises(RuntimeError, match=sync_mod.ENV_CREDENTIAL):
             self._sync(tmp_path)
 
     def test_dry_run_passes_flag_to_git_push(self, tmp_path, monkeypatch):
@@ -188,7 +188,7 @@ class TestSyncToAzureDevops:
 class TestMain:
     def test_returns_error_code_when_env_missing(self, tmp_path, monkeypatch):
         monkeypatch.delenv(sync_mod.ENV_REPO_URL, raising=False)
-        monkeypatch.delenv(sync_mod.ENV_PAT, raising=False)
+        monkeypatch.delenv(sync_mod.ENV_CREDENTIAL, raising=False)
         monkeypatch.setattr(sys, "argv", ["prog", "--dry-run"])
         with patch.object(sync_mod, "_load_env", return_value=tmp_path):
             assert sync_mod.main() == 1
