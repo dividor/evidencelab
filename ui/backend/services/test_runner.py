@@ -39,6 +39,7 @@ from ui.backend.auth.testing_models import (
     TestResult,
     TestRun,
 )
+from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.test_evaluators import evaluate_assertions
 from ui.backend.utils.filter_helpers import resolve_doc_level_filters
@@ -288,23 +289,22 @@ def _build_references(
                 "country": r.get("country"),
                 "doc_id": r.get("doc_id"),
                 "url": r.get("url") or r.get("link"),
+                # Page of the cited chunk, carried through so the rendered
+                # References can show ``p.<page>`` exactly as the search UI does.
+                "page_num": r.get("page_num"),
             }
         )
     return references
 
 
 def _references_text(references: List[Dict[str, Any]]) -> str:
-    """Render references as an appended, human/LLM-readable section."""
-    if not references:
+    """Render references as an appended section, grouped by document with each
+    citation's page number — the same shape the search UI shows (see
+    :mod:`ui.backend.services.citations`)."""
+    lines = render_reference_lines(references)
+    if not lines:
         return ""
-    lines = ["", "", "## References"]
-    for r in references:
-        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
-        suffix = f" ({meta})" if meta else ""
-        url = f" — {r['url']}" if r.get("url") else ""
-        title = r.get("title") or r.get("doc_id") or "Unknown"
-        lines.append(f"[{r['number']}] {title}{suffix}{url}")
-    return "\n".join(lines)
+    return "\n".join(["", "", "## References", *lines])
 
 
 def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
@@ -473,15 +473,12 @@ _JUDGE_CONTEXT_TEXT_LIMIT = 1200
 
 
 def _format_judge_references(references: List[Dict[str, Any]]) -> str:
-    """A plain numbered list of the cited documents (no markdown header)."""
-    if not references:
+    """Grouped, page-numbered citation list for the judge (no markdown header) —
+    the same rendering the search UI and the stored summary use (see
+    :mod:`ui.backend.services.citations`)."""
+    lines = render_reference_lines(references)
+    if not lines:
         return "(no citations resolved in the summary)"
-    lines = []
-    for r in references:
-        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
-        suffix = f" ({meta})" if meta else ""
-        title = r.get("title") or r.get("doc_id") or "Unknown"
-        lines.append(f"[{r.get('number')}] {title}{suffix}")
     return "\n".join(lines)
 
 
