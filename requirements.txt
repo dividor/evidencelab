@@ -64,7 +64,7 @@ mcp>=1.26.0,<2
 
 # User authentication and permissions (USER_MODULE)
 fastapi-users[sqlalchemy,oauth]==15.0.4
-httpx-oauth==0.16.1
+httpx-oauth==0.17.0
 asyncpg==0.31.0
 aiosmtplib==5.1.0
 
