@@ -75,7 +75,7 @@
     "@types/node": "^25.9.4",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/parser": "^8.60.1",
+    "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^8.57.0",
     "eslint-plugin-security": "^2.1.0",
     "eslint-plugin-sonarjs": "^0.25.1",
