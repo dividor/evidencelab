@@ -24,6 +24,7 @@ from ui.backend.services.test_runner import (
     _default_summary_model,
     _execute,
     _format_judge_context,
+    _format_judge_references,
     _group_settings_to_config,
     _mirror_run_to_experiment,
     _parse_judgement,
@@ -181,6 +182,14 @@ async def test_build_references_ignores_out_of_range_citations():
     assert refs == []
 
 
+async def test_build_references_carries_page_num():
+    # The page of the cited chunk must be carried through so the rendered
+    # References can show it, exactly as the search UI does.
+    results = [{"title": "Kenya SMP", "page_num": 7}]
+    refs = _build_references("finding [1]", results)
+    assert refs[0]["page_num"] == 7
+
+
 async def test_references_text_renders_appended_section():
     text = _references_text(
         [
@@ -190,11 +199,50 @@ async def test_references_text_renders_appended_section():
                 "organization": "WFP",
                 "year": 2018,
                 "url": "http://x",
+                "page_num": 12,
             }
         ]
     )
     assert "## References" in text
-    assert "[1] Kenya SMP (WFP, 2018) — http://x" in text
+    # Grouped-by-document layout with the citation's page number, mirroring the
+    # search UI's References list (no bare URL, unlike the old flat format).
+    assert "Kenya SMP, WFP, 2018 | [1] p.12" in text
+
+
+async def test_references_text_includes_page_ranges_per_document():
+    # Two chunks of the same document cited on different pages group into one
+    # References line, each citation keeping its own page number — the "page
+    # ranges" the search UI shows and the eval harness previously dropped.
+    references = [
+        {"number": 1, "title": "Kenya SMP", "organization": "WFP", "page_num": 5},
+        {"number": 3, "title": "Kenya SMP", "organization": "WFP", "page_num": 12},
+    ]
+    text = _references_text(references)
+    assert "Kenya SMP, WFP | [1] p.5 [3] p.12" in text
+
+
+async def test_references_text_omits_page_when_unknown():
+    # A page of 0 (unknown) shows no page suffix, matching the frontend, which
+    # only renders ``p.<page>`` for a truthy page number.
+    text = _references_text([{"number": 1, "title": "No Page Doc", "page_num": 0}])
+    assert "No Page Doc | [1]" in text
+    assert "p.0" not in text
+
+
+async def test_format_judge_references_grouped_with_pages():
+    # The judge context uses the same grouped, page-numbered rendering (without
+    # the markdown header) so what is judged matches what search shows.
+    references = [
+        {"number": 1, "title": "Kenya SMP", "organization": "WFP", "page_num": 5},
+        {"number": 2, "title": "Kenya SMP", "organization": "WFP", "page_num": 9},
+    ]
+    text = _format_judge_references(references)
+    assert text == "Kenya SMP, WFP | [1] p.5 [2] p.9"
+    assert "## References" not in text
+
+
+async def test_format_judge_references_empty_when_no_citations():
+    assert _format_judge_references([]) == "(no citations resolved in the summary)"
 
 
 async def test_storable_output_is_json_safe_and_trimmed():
