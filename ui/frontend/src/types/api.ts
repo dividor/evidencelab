@@ -157,6 +157,11 @@ export interface SourceReference {
   index?: number;
   bbox?: any;
   headings?: string[];
+  // Public source links (document-level), supplied by the assistant/brief
+  // stream so the Word export can link citations to the actual PDF instead of
+  // the in-app deep link.
+  pdfUrl?: string;
+  reportUrl?: string;
 }
 
 export interface AgentState {

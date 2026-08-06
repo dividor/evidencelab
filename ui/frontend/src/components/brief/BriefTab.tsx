@@ -16,7 +16,7 @@ import { BriefSeed } from './BriefSeed';
 import { useBrief } from './useBrief';
 import './brief.css';
 
-const sourceToResult = (src: SourceReference, dataSource: string): SearchResult => ({
+export const sourceToResult = (src: SourceReference, dataSource: string): SearchResult => ({
   chunk_id: src.chunkId,
   doc_id: src.docId,
   title: src.title,
@@ -26,6 +26,11 @@ const sourceToResult = (src: SourceReference, dataSource: string): SearchResult 
   score: src.score,
   headings: src.headings || [],
   data_source: dataSource,
+  // Link every citation to the document's public "Report URL" (docs metadata)
+  // so readers outside Evidence Lab can open it in a browser. resolveResultLink
+  // uses report_url only after pdf_url, so we deliberately leave pdf_url unset
+  // and fall back to the PDF URL when a source has no report URL.
+  report_url: src.reportUrl ?? src.pdfUrl,
   metadata: {},
 });
 
@@ -99,34 +104,40 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   });
   const [exportBusy, setExportBusy] = useState(false);
 
-  const handleExportWord = useCallback(async () => {
-    if (exportBusy) return;
-    setExportBusy(true);
-    try {
-      const { summary, results } = assembleBriefForExport(brief, dataSource);
-      const blob = await exportResultsToDocxBlob({
-        query: brief.briefTitle || 'Evidence Brief',
-        aiSummary: summary,
-        results,
-        dataSource,
-        documentTitle: 'AI-generated Research Brief',
-        summaryHeading: brief.briefTitle || 'Evidence Brief',
-        infoBox: BRIEF_DISCLAIMER,
-        tableOfContents: true,
-        resultsSectionTitle: 'Reference Excerpts',
-        siteOrigin:
-          typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
-        // Same API base the on-screen cards use to load table/figure
-        // screenshots, so the brief embeds those exact images.
-        fileBaseUrl: API_BASE_URL,
-      });
-      saveAs(blob, buildExportFilename(brief.briefTitle || 'evidence-brief', new Date()));
-    } catch (err) {
-      brief.setError(err instanceof Error ? err.message : 'Export to Word failed');
-    } finally {
-      setExportBusy(false);
-    }
-  }, [exportBusy, brief, dataSource]);
+  const handleExportWord = useCallback(
+    async (citationStyle: 'links' | 'footnotes' = 'links') => {
+      if (exportBusy) return;
+      setExportBusy(true);
+      try {
+        const { summary, results } = assembleBriefForExport(brief, dataSource);
+        const blob = await exportResultsToDocxBlob({
+          query: brief.briefTitle || 'Evidence Brief',
+          aiSummary: summary,
+          results,
+          dataSource,
+          documentTitle: 'AI-generated Research Brief',
+          summaryHeading: brief.briefTitle || 'Evidence Brief',
+          infoBox: BRIEF_DISCLAIMER,
+          tableOfContents: true,
+          resultsSectionTitle: 'Reference Excerpts',
+          // 'links' keeps inline [n] citations; 'footnotes' renders each
+          // citation as a Word footnote on the relevant page.
+          citationStyle,
+          siteOrigin:
+            typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
+          // Same API base the on-screen cards use to load table/figure
+          // screenshots, so the brief embeds those exact images.
+          fileBaseUrl: API_BASE_URL,
+        });
+        saveAs(blob, buildExportFilename(brief.briefTitle || 'evidence-brief', new Date()));
+      } catch (err) {
+        brief.setError(err instanceof Error ? err.message : 'Export to Word failed');
+      } finally {
+        setExportBusy(false);
+      }
+    },
+    [exportBusy, brief, dataSource],
+  );
 
   return (
     <div className="brief-tab">

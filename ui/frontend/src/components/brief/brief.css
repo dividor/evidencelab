@@ -533,6 +533,42 @@
   opacity: 0.5;
   cursor: default;
 }
+.brief-export-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 240px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+}
+.brief-export-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+.brief-export-option:hover {
+  background: var(--brand-bg);
+}
+.brief-export-option-hint {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--brand-text-muted);
+}
 .brief-doc-title {
   font-family: var(--font-heading);
   font-size: 30px;

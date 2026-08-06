@@ -252,6 +252,36 @@ class SearchTracker:
         except Exception as exc:
             logger.warning("Failed to enrich chunk data from Postgres: %s", exc)
 
+    @staticmethod
+    def _enrich_doc_links(
+        formatted: List[Dict[str, Any]], data_source: Optional[str]
+    ) -> None:
+        """Attach document-level ``pdf_url`` / ``report_url`` by ``doc_id``.
+
+        Chunk payloads only carry chunk-level fields; the public source URLs
+        live on the ``documents`` row. Mirroring what the search route exposes
+        via document metadata, this lets the Word export link each citation to
+        the actual PDF (openable outside Evidence Lab) rather than the in-app
+        deep link.
+        """
+        doc_ids = {r["doc_id"] for r in formatted if r.get("doc_id")}
+        if not doc_ids:
+            return
+        try:
+            from ui.backend.utils.app_state import get_pg_for_source
+
+            pg = get_pg_for_source(data_source)
+            doc_meta = pg.fetch_docs(doc_ids)
+        except Exception as exc:
+            logger.warning("Failed to enrich doc links from Postgres: %s", exc)
+            return
+        for r in formatted:
+            meta = doc_meta.get(str(r.get("doc_id")))
+            if not meta:
+                continue
+            r["pdf_url"] = meta.get("map_pdf_url")
+            r["report_url"] = meta.get("map_report_url")
+
     def search(self, query: str) -> List[Dict[str, Any]]:
         """Execute search, track results, return formatted dicts.
 
@@ -280,6 +310,7 @@ class SearchTracker:
             raw = self._apply_field_boost(raw, query)
             formatted = [_format_search_result(r) for r in raw]
             self._enrich_from_postgres(formatted, self.data_source)
+            self._enrich_doc_links(formatted, self.data_source)
         except Exception as exc:
             logger.error("Search failed for query %r: %s", query, exc)
             formatted = []
@@ -368,6 +399,12 @@ class SearchTracker:
             }
             if r.get("bbox"):
                 entry["bbox"] = r["bbox"]
+            # Public source links (document-level), so the Word export can point
+            # citations at the actual PDF rather than the in-app deep link.
+            if r.get("pdf_url"):
+                entry["pdfUrl"] = r["pdf_url"]
+            if r.get("report_url"):
+                entry["reportUrl"] = r["report_url"]
             new_sources.append(entry)
         combined = list(self.prior_sources) + new_sources
         return sorted(combined, key=lambda x: x.get("index") or 0)
