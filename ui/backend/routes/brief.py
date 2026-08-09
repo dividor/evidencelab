@@ -157,6 +157,7 @@ async def revise_section(
             content=content,
             instruction=instruction,
             model_key=model_key,
+            voice_instructions=(body.voice_instructions or "").strip() or None,
         )
         return BriefReviseResponse(content=revised)
     except Exception:

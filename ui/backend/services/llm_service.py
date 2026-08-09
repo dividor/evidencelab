@@ -500,6 +500,7 @@ async def revise_brief_section(
     model_key: str | None = None,
     temperature: float | None = None,
     max_tokens: int | None = None,
+    voice_instructions: str | None = None,
 ) -> str:
     """Surgically revise one brief section's markdown per an instruction.
 
@@ -518,6 +519,9 @@ async def revise_brief_section(
     user_prompt = _brief_revise_user_template.render(
         instruction=html.unescape(instruction.strip()),
         content=html.unescape(content),
+        voice_instructions=(
+            html.unescape(voice_instructions.strip()) if voice_instructions else None
+        ),
     )
     llm = get_llm(
         model=model_key,

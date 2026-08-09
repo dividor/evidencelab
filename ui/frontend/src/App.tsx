@@ -422,6 +422,8 @@ const getTabFromPath = (): TabName => {
     return 'search';
   }
   const path = stripBasePath(window.location.pathname).replace('/', '').toLowerCase();
+  // /brief/<id> share links open the Brief tab (BriefTab reads the id itself).
+  if (path.startsWith('brief/')) return 'brief';
   return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
 };
 

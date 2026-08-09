@@ -473,6 +473,164 @@ class SavedResearchListItem(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Brief Central schemas (briefs, templates, voice profiles, shares)
+# ---------------------------------------------------------------------------
+
+
+class VoiceProfileCreate(BaseModel):
+    """Payload for creating a voice & tone profile."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    instructions: str = Field(..., min_length=1, max_length=10_000)
+
+
+class VoiceProfileUpdate(BaseModel):
+    """Payload for updating a voice & tone profile."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    instructions: Optional[str] = Field(None, min_length=1, max_length=10_000)
+
+
+class VoiceProfileRead(BaseModel):
+    """Voice & tone profile returned by read endpoints."""
+
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    instructions: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BriefTemplateHeading(BaseModel):
+    """One heading in a brief template."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+    sub: bool = False
+    text: Optional[str] = Field(None, max_length=100_000)
+
+
+class BriefTemplateCreate(BaseModel):
+    """Payload for creating a brief template."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    headings: List[BriefTemplateHeading] = Field(..., min_length=1, max_length=100)
+    with_text: bool = False
+
+
+class BriefTemplateUpdate(BaseModel):
+    """Payload for updating a brief template."""
+
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=1000)
+    headings: Optional[List[BriefTemplateHeading]] = Field(
+        None, min_length=1, max_length=100
+    )
+    with_text: Optional[bool] = None
+
+
+class BriefTemplateRead(BaseModel):
+    """Brief template returned by read endpoints."""
+
+    id: uuid.UUID
+    name: str
+    description: Optional[str] = None
+    headings: List[BriefTemplateHeading]
+    with_text: bool
+    use_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BriefCreate(BaseModel):
+    """Payload for saving a brief."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+    query: Optional[str] = Field(None, max_length=5000)
+    data_source: Optional[str] = Field(None, max_length=255)
+    voice_profile_id: Optional[uuid.UUID] = None
+    content: dict
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: dict) -> dict:
+        return _validate_research_jsonb(v)
+
+
+class BriefUpdate(BaseModel):
+    """Payload for updating a brief."""
+
+    title: Optional[str] = Field(None, min_length=1, max_length=500)
+    query: Optional[str] = Field(None, max_length=5000)
+    voice_profile_id: Optional[uuid.UUID] = None
+    content: Optional[dict] = None
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_research_jsonb(v)
+
+
+class BriefShareTarget(BaseModel):
+    """One person or group a brief is shared with."""
+
+    id: uuid.UUID
+    name: str
+    kind: str  # the user's email, or "Group · N members"
+    is_group: bool
+
+
+class BriefRead(BaseModel):
+    """Full brief returned by read endpoints."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    title: str
+    query: Optional[str] = None
+    data_source: Optional[str] = None
+    voice_profile_id: Optional[uuid.UUID] = None
+    content: dict
+    owner_name: Optional[str] = None
+    can_edit: bool = True
+    shared_with: List[BriefShareTarget] = []
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BriefListItem(BaseModel):
+    """Compact brief for card/list views (omits full content)."""
+
+    id: uuid.UUID
+    title: str
+    query: Optional[str] = None
+    data_source: Optional[str] = None
+    voice_profile_id: Optional[uuid.UUID] = None
+    section_count: int = 0
+    source_count: int = 0
+    owner_name: Optional[str] = None
+    share_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class BriefShareCreate(BaseModel):
+    """Add a viewer (user by email, or group by name) to a brief."""
+
+    target: str = Field(..., min_length=1, max_length=320)
+
+
+# ---------------------------------------------------------------------------
 # API key schemas
 # ---------------------------------------------------------------------------
 

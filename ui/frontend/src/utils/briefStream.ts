@@ -110,6 +110,7 @@ export const requestBriefRevise = async ({
   content,
   instruction,
   model,
+  voiceInstructions,
   signal,
 }: {
   apiBaseUrl: string;
@@ -117,6 +118,7 @@ export const requestBriefRevise = async ({
   content: string;
   instruction: string;
   model?: string | null;
+  voiceInstructions?: string | null;
   signal?: AbortSignal;
 }): Promise<string> => {
   const response = await fetch(`${apiBaseUrl}/brief/revise`, {
@@ -128,6 +130,7 @@ export const requestBriefRevise = async ({
       instruction,
       data_source: dataSource,
       model: model ?? null,
+      voice_instructions: voiceInstructions ?? null,
     }),
     signal,
   });
@@ -277,6 +280,8 @@ export interface ResearchSectionOptions {
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
+  // Voice & tone profile instructions applied to the section's writing.
+  voiceInstructions?: string | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -348,6 +353,7 @@ export const buildSectionQuery = ({
   existingContent,
   instruction,
   publishedAfterIso,
+  voiceInstructions,
 }: {
   heading: string;
   briefTopic?: string | null;
@@ -358,29 +364,32 @@ export const buildSectionQuery = ({
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
+  voiceInstructions?: string | null;
 }): string => {
   const topic = (briefTopic || '').trim();
   const guidance = (briefInstructions || '').trim();
   const draft = (existingContent || '').trim();
+  const voice = (voiceInstructions || '').trim();
   const scope = topic
     ? `the "${heading}" section of an evidence brief on "${topic}"`
     : `the "${heading}" section of an evidence brief`;
 
-  if (mode === 'update' && draft) {
-    return buildReviseQuery({
-      scope,
-      draft,
-      instr: (instruction || '').trim(),
-      guidance,
-      publishedAfterIso,
-    });
-  }
-  return buildGenerateQuery({
-    scope,
-    parent: (parentTitle || '').trim(),
-    guidance,
-    focus: (context || '').trim(),
-  });
+  const base =
+    mode === 'update' && draft
+      ? buildReviseQuery({
+          scope,
+          draft,
+          instr: (instruction || '').trim(),
+          guidance,
+          publishedAfterIso,
+        })
+      : buildGenerateQuery({
+          scope,
+          parent: (parentTitle || '').trim(),
+          guidance,
+          focus: (context || '').trim(),
+        });
+  return voice ? `${base} Voice & tone profile — write the section in this style: ${voice}` : base;
 };
 
 /**
@@ -404,6 +413,7 @@ export const researchBriefSection = ({
   existingContent,
   instruction,
   publishedAfterIso,
+  voiceInstructions,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -417,6 +427,7 @@ export const researchBriefSection = ({
     existingContent,
     instruction,
     publishedAfterIso,
+    voiceInstructions,
   });
   return runDeepResearch({
     apiBaseUrl,

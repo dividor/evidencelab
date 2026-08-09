@@ -2,7 +2,15 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
-import { IconClock, IconDownload, IconEdit, IconRefresh, IconSparkle } from './BriefIcons';
+import {
+  IconClock,
+  IconCopy,
+  IconDownload,
+  IconEdit,
+  IconRefresh,
+  IconShare,
+  IconSparkle,
+} from './BriefIcons';
 import { BriefToc } from './BriefToc';
 import { BriefSection, SectionAuditEntry } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
@@ -96,6 +104,8 @@ interface SectionViewProps {
   onSourceClick: (source: SourceReference) => void;
   // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
   display?: SectionDisplay;
+  // Viewer-only (shared brief): no editing or AI actions.
+  readOnly?: boolean;
 }
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
@@ -105,6 +115,8 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
   brief,
 }) => {
   const isPending = section.status === 'pending';
+  const briefVoice = brief.voices.find((v) => v.id === brief.briefVoiceId) || null;
+  const ownVoice = brief.voices.find((v) => v.id === section.voiceId) || null;
   return (
     <div className="brief-regen-panel">
       <div className="brief-regen-title">
@@ -116,6 +128,33 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />
+      {brief.voices.length > 0 && (
+        <>
+          <div className="brief-regen-voice-label">Voice &amp; tone profile</div>
+          <select
+            className="brief-regen-voice-select"
+            value={section.voiceId || ''}
+            onChange={(e) => brief.setSectionVoiceId(section.id, e.target.value || null)}
+            aria-label="Voice and tone profile for this section"
+          >
+            <option value="">
+              Use brief default{briefVoice ? ` — ${briefVoice.name}` : ''}
+            </option>
+            {brief.voices.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+          <div className="brief-regen-voice-hint">
+            {ownVoice
+              ? ownVoice.instructions.slice(0, 150)
+              : briefVoice
+                ? `Inherits the brief profile — ${briefVoice.instructions.slice(0, 120)}`
+                : 'No voice profile applied'}
+          </div>
+        </>
+      )}
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
@@ -299,6 +338,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   brief,
   onSourceClick,
   display,
+  readOnly = false,
 }) => {
   const [editing, setEditing] = useState(false);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
@@ -346,10 +386,11 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           value={section.title}
           onChange={(e) => brief.editTitle(section.id, e.target.value)}
           onBlur={brief.commitEdits}
+          readOnly={readOnly}
         />
       </div>
 
-      {isDone && (
+      {isDone && !readOnly && (
         <SectionTools
           editing={editing}
           auditCount={auditCount}
@@ -398,7 +439,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
 
       {panelOpen && <GuidancePanel section={section} brief={brief} />}
 
-      {section.status === 'pending' && !panelOpen && !anyResearching && (
+      {section.status === 'pending' && !panelOpen && !anyResearching && !readOnly && (
         <SectionPending sample={section.sample} onResearch={() => brief.openRegen(section.id)} />
       )}
 
@@ -422,6 +463,127 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   );
 };
 
+// The dropdown behind "Export to Word": references-list vs footnotes style.
+const ExportMenu: React.FC<{
+  disabled: boolean;
+  busy: boolean;
+  open: boolean;
+  setOpen: (fn: (open: boolean) => boolean) => void;
+  onExportWord: (style: 'links' | 'footnotes') => void;
+}> = ({ disabled, busy, open, setOpen, onExportWord }) => (
+  <div className="dropdown-container brief-export-menu">
+    <button
+      className="brief-export-word"
+      onClick={() => setOpen((o) => !o)}
+      onBlur={() => setTimeout(() => setOpen(() => false), 200)}
+      disabled={disabled || busy}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      title="Export this brief to Word, with citations linked to the source documents"
+    >
+      {busy ? 'Exporting…' : <><IconDownload /> Export to Word ▾</>}
+    </button>
+    {open && !busy && (
+      <div className="brief-export-dropdown" role="menu">
+        <button
+          className="brief-export-option"
+          role="menuitem"
+          onClick={() => { setOpen(() => false); onExportWord('links'); }}
+        >
+          References list
+          <span className="brief-export-option-hint">Inline [n] citations + reference excerpts</span>
+        </button>
+        <button
+          className="brief-export-option"
+          role="menuitem"
+          onClick={() => { setOpen(() => false); onExportWord('footnotes'); }}
+        >
+          Footnotes on page
+          <span className="brief-export-option-hint">Each citation as a footnote on the relevant page</span>
+        </button>
+      </div>
+    )}
+  </div>
+);
+
+// The document-level action row: regenerate/update all, share, save-as-template
+// and the Word export menu. Owner-only actions are hidden for viewers.
+const HeaderActions: React.FC<{
+  brief: UseBriefReturn;
+  readOnly: boolean;
+  canEditStructure: boolean;
+  onOpenShare?: () => void;
+  onSaveTemplate?: () => void;
+  onExportWord?: (style: 'links' | 'footnotes') => void;
+  exportBusy?: boolean;
+  exportMenuOpen: boolean;
+  setExportMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
+}> = ({
+  brief,
+  readOnly,
+  canEditStructure,
+  onOpenShare,
+  onSaveTemplate,
+  onExportWord,
+  exportBusy,
+  exportMenuOpen,
+  setExportMenuOpen,
+}) => {
+  const { sections } = brief;
+  const hasSections = sections.length > 0;
+  return (
+    <div className="brief-doc-header-actions">
+      {!readOnly && hasSections && (
+        <button
+          className="brief-regen-all"
+          onClick={brief.startResearch}
+          disabled={!canEditStructure}
+          title="Re-research every section from scratch"
+        >
+          <IconRefresh /> AI Regenerate All
+        </button>
+      )}
+      {!readOnly && sections.some((s) => s.status === 'done') && (
+        <button
+          className="brief-regen-all"
+          onClick={brief.updateAll}
+          disabled={!canEditStructure}
+          title="Fold sources published since each section was last run into every section"
+        >
+          <IconClock /> AI Get All Recent Updates
+        </button>
+      )}
+      {!readOnly && onOpenShare && (
+        <button
+          className="brief-regen-all"
+          onClick={onOpenShare}
+          title="Share this brief (viewer-only) with people or groups"
+        >
+          <IconShare /> Share
+        </button>
+      )}
+      {!readOnly && onSaveTemplate && hasSections && (
+        <button
+          className="brief-regen-all"
+          onClick={onSaveTemplate}
+          title="Save this brief's headings as a reusable template"
+        >
+          <IconCopy /> Save as Template
+        </button>
+      )}
+      {onExportWord && (
+        <ExportMenu
+          disabled={!hasSections}
+          busy={!!exportBusy}
+          open={exportMenuOpen}
+          setOpen={setExportMenuOpen}
+          onExportWord={onExportWord}
+        />
+      )}
+    </div>
+  );
+};
+
 interface BriefDocumentProps {
   brief: UseBriefReturn;
   onResultClick?: (result: SearchResult) => void;
@@ -429,6 +591,9 @@ interface BriefDocumentProps {
   // renders each citation as a Word footnote on the relevant page.
   onExportWord?: (style: 'links' | 'footnotes') => void;
   exportBusy?: boolean;
+  // Brief Central integrations (remote mode only).
+  onOpenShare?: () => void;
+  onSaveTemplate?: () => void;
 }
 
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
@@ -442,6 +607,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   onResultClick,
   onExportWord,
   exportBusy,
+  onOpenShare,
+  onSaveTemplate,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -452,8 +619,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
+  // Viewer-only: a brief shared with (not owned by) this user renders read-only.
+  const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
-  const canEditStructure = !sections.some((s) => s.status === 'researching');
+  const canEditStructure = !readOnly && !sections.some((s) => s.status === 'researching');
 
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
@@ -477,63 +646,17 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       <div className="brief-doc-header">
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-          <div className="brief-doc-header-actions">
-            {sections.length > 0 && (
-              <button
-                className="brief-regen-all"
-                onClick={brief.startResearch}
-                disabled={!canEditStructure}
-                title="Re-research every section from scratch"
-              >
-                <IconRefresh /> AI Regenerate All
-              </button>
-            )}
-            {sections.some((s) => s.status === 'done') && (
-              <button
-                className="brief-regen-all"
-                onClick={brief.updateAll}
-                disabled={!canEditStructure}
-                title="Fold sources published since each section was last run into every section"
-              >
-                <IconClock /> AI Get All Recent Updates
-              </button>
-            )}
-            {onExportWord && (
-              <div className="dropdown-container brief-export-menu">
-                <button
-                  className="brief-export-word"
-                  onClick={() => setExportMenuOpen((open) => !open)}
-                  onBlur={() => setTimeout(() => setExportMenuOpen(false), 200)}
-                  disabled={!sections.length || exportBusy}
-                  aria-haspopup="menu"
-                  aria-expanded={exportMenuOpen}
-                  title="Export this brief to Word, with citations linked to the source documents"
-                >
-                  {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word ▾</>}
-                </button>
-                {exportMenuOpen && !exportBusy && (
-                  <div className="brief-export-dropdown" role="menu">
-                    <button
-                      className="brief-export-option"
-                      role="menuitem"
-                      onClick={() => { setExportMenuOpen(false); onExportWord('links'); }}
-                    >
-                      References list
-                      <span className="brief-export-option-hint">Inline [n] citations + reference excerpts</span>
-                    </button>
-                    <button
-                      className="brief-export-option"
-                      role="menuitem"
-                      onClick={() => { setExportMenuOpen(false); onExportWord('footnotes'); }}
-                    >
-                      Footnotes on page
-                      <span className="brief-export-option-hint">Each citation as a footnote on the relevant page</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <HeaderActions
+            brief={brief}
+            readOnly={readOnly}
+            canEditStructure={canEditStructure}
+            onOpenShare={onOpenShare}
+            onSaveTemplate={onSaveTemplate}
+            onExportWord={onExportWord}
+            exportBusy={exportBusy}
+            exportMenuOpen={exportMenuOpen}
+            setExportMenuOpen={setExportMenuOpen}
+          />
         </div>
         <textarea
           ref={titleRef}
@@ -546,11 +669,18 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onBlur={brief.commitEdits}
           rows={1}
           aria-label="Brief title"
+          readOnly={readOnly}
         />
         <div className="brief-doc-meta">
           <span>{sections.length} sections</span>
           <span>·</span>
           <span>{brief.totalSources} sources synthesised</span>
+          {readOnly && brief.ownerName && (
+            <>
+              <span>·</span>
+              <span className="brief-viewer-chip">Shared by {brief.ownerName} — view only</span>
+            </>
+          )}
           {hasOutlineLog && (
             <>
               <span>·</span>
@@ -563,7 +693,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
               </button>
             </>
           )}
-          {sections.length > 0 && (
+          {!readOnly && sections.length > 0 && (
             <span className="brief-edit-hint">
               <span className="brief-icon">✎</span> Click on titles to edit research topics
             </span>
@@ -624,10 +754,11 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           brief={brief}
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}
+          readOnly={readOnly}
         />
       ))}
 
-      {brief.stage === 'outline' && (
+      {brief.stage === 'outline' && !readOnly && (
         <div className="brief-doc-actions">
           <button
             className="brief-btn brief-btn-primary"

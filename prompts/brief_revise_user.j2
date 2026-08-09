@@ -3,6 +3,10 @@
     that the model would echo back into the revised section. -#}
 {% autoescape false -%}
 Instruction: {{ instruction }}
+{% if voice_instructions %}
+Voice & tone profile (apply to any text you rewrite; do not rewrite untouched text just to restyle it):
+{{ voice_instructions }}
+{% endif %}
 
 Current section markdown:
 """

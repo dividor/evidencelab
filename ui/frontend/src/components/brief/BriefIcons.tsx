@@ -26,6 +26,23 @@ export const IconPlus: React.FC<IconProps> = ({ size = 15 }) => (
   </svg>
 );
 
+export const IconShare: React.FC<IconProps> = ({ size = 14 }) => (
+  <svg {...svgProps(size)}>
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </svg>
+);
+
+export const IconArrowLeft: React.FC<IconProps> = ({ size = 14 }) => (
+  <svg {...svgProps(size)}>
+    <line x1="19" y1="12" x2="5" y2="12" />
+    <polyline points="12 19 5 12 12 5" />
+  </svg>
+);
+
 export const IconHistory: React.FC<IconProps> = ({ size = 15 }) => (
   <svg {...svgProps(size)}>
     <path d="M3 3v5h5" />

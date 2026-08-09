@@ -209,6 +209,8 @@ class BriefReviseRequest(BaseModel):
     instruction: str
     data_source: str
     model: Optional[str] = None
+    # Optional voice & tone profile instructions applied to the rewritten text.
+    voice_instructions: Optional[str] = None
 
 
 class BriefReviseResponse(BaseModel):
