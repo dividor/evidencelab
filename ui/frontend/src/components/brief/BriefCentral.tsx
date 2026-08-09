@@ -267,9 +267,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           <div className="brief-eyebrow">Brief Central</div>
           <h2 className="bc-title">Turn a topic into a structured, evidence-backed brief</h2>
           <p className="bc-lede">
-            A brief generates an outline grounded in the document library, researches each heading
-            into cited prose, and exports to Word with citations linked back to the source
-            documents.
+            Use AI to help write a brief document based on the document library.
           </p>
         </div>
         <button

@@ -6,6 +6,7 @@ import { extractCitedNumbers } from '../citations/CitedContent';
 import {
   BriefActivityEvent,
   BriefSourceSample,
+  buildOutlineContext,
   requestBriefOutline,
   requestBriefRevise,
   researchBriefSection,
@@ -691,6 +692,17 @@ export const useBrief = ({
         instruction,
         publishedAfterIso,
         voiceInstructions: voiceInstructionsFor(section.voiceId),
+        // The whole document structure (plus a gist of written sections), so
+        // this section stays in scope and doesn't duplicate the others.
+        outlineContext: buildOutlineContext(
+          list.map((s) => ({
+            id: s.id,
+            title: s.title,
+            level: s.level,
+            content: s.status === 'done' ? s.content : undefined,
+          })),
+          id,
+        ),
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),

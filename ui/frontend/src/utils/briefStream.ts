@@ -282,6 +282,9 @@ export interface ResearchSectionOptions {
   publishedAfterIso?: string | null;
   // Voice & tone profile instructions applied to the section's writing.
   voiceInstructions?: string | null;
+  // Rendered outline of the whole brief (see buildOutlineContext), so the
+  // section stays in scope and doesn't duplicate other sections.
+  outlineContext?: string | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -338,6 +341,66 @@ const buildGenerateQuery = (args: {
   return parts.join(' ');
 };
 
+// A minimal shape of the brief's sections for outline context.
+export interface OutlineContextSection {
+  id: string;
+  title: string;
+  level: number; // 1 = section, 2 = sub-section
+  content?: string;
+}
+
+// First ~`max` characters of a section's markdown as plain-ish text, so the
+// model knows what a written section already covers without burning tokens.
+const briefGist = (markdown: string, max = 180): string => {
+  const text = markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[(\d+)\]/g, '')
+    .replace(/[#*_>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+};
+
+/**
+ * Render the brief's outline (with a marker on the section being written and a
+ * one-line gist of each already-written section) plus scope rules, so section
+ * research knows the whole document structure and doesn't duplicate material
+ * that belongs elsewhere. Returns '' when there is no other section.
+ */
+export const buildOutlineContext = (
+  sections: OutlineContextSection[],
+  currentId: string,
+): string => {
+  if (sections.length <= 1) return '';
+  const idx = sections.findIndex((s) => s.id === currentId);
+  const current = idx >= 0 ? sections[idx] : null;
+  const lines = sections.map((s, i) => {
+    const indent = s.level === 2 ? '  - ' : '- ';
+    const marker = s.id === currentId ? ' ← the section you are writing' : '';
+    const gist = s.id !== currentId && s.content ? ` (already written; covers: ${briefGist(s.content)})` : '';
+    return `${indent}${s.title}${marker}${gist}`;
+  });
+  const parts = [
+    `For context, the full outline of the brief is:\n${lines.join('\n')}`,
+    'Keep this section strictly to its own scope: do NOT repeat or pre-empt material that belongs in the other sections listed above.',
+  ];
+  // A top-level heading with sub-headings is an introduction/frame — the
+  // detail belongs to the sub-sections that follow it.
+  if (current && current.level !== 2) {
+    const subs: string[] = [];
+    for (let i = idx + 1; i < sections.length && sections[i].level === 2; i++) {
+      subs.push(sections[i].title);
+    }
+    if (subs.length) {
+      parts.push(
+        `This section has sub-sections (${subs.join('; ')}) — write it as a short high-level introduction to the theme and leave the detail to those sub-sections.`,
+      );
+    }
+  }
+  return parts.join(' ');
+};
+
 /**
  * Build the deep-research instruction for one brief section. For generate it
  * weaves in the brief topic, parent section and author guidance; for edit/update
@@ -354,6 +417,7 @@ export const buildSectionQuery = ({
   instruction,
   publishedAfterIso,
   voiceInstructions,
+  outlineContext,
 }: {
   heading: string;
   briefTopic?: string | null;
@@ -365,11 +429,13 @@ export const buildSectionQuery = ({
   instruction?: string | null;
   publishedAfterIso?: string | null;
   voiceInstructions?: string | null;
+  outlineContext?: string | null;
 }): string => {
   const topic = (briefTopic || '').trim();
   const guidance = (briefInstructions || '').trim();
   const draft = (existingContent || '').trim();
   const voice = (voiceInstructions || '').trim();
+  const outline = (outlineContext || '').trim();
   const scope = topic
     ? `the "${heading}" section of an evidence brief on "${topic}"`
     : `the "${heading}" section of an evidence brief`;
@@ -389,7 +455,10 @@ export const buildSectionQuery = ({
           guidance,
           focus: (context || '').trim(),
         });
-  return voice ? `${base} Voice & tone profile — write the section in this style: ${voice}` : base;
+  const withOutline = outline ? `${base} ${outline}` : base;
+  return voice
+    ? `${withOutline} Voice & tone profile — write the section in this style: ${voice}`
+    : withOutline;
 };
 
 /**
@@ -414,6 +483,7 @@ export const researchBriefSection = ({
   instruction,
   publishedAfterIso,
   voiceInstructions,
+  outlineContext,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -428,6 +498,7 @@ export const researchBriefSection = ({
     instruction,
     publishedAfterIso,
     voiceInstructions,
+    outlineContext,
   });
   return runDeepResearch({
     apiBaseUrl,

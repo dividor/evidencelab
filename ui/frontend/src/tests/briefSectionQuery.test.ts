@@ -1,4 +1,4 @@
-import { buildSectionQuery } from '../utils/briefStream';
+import { buildOutlineContext, buildSectionQuery } from '../utils/briefStream';
 
 describe('buildSectionQuery', () => {
   test('weaves the brief topic into a top-level section query', () => {
@@ -62,5 +62,57 @@ describe('buildSectionQuery', () => {
     const q = buildSectionQuery({ heading: 'Impacts', mode: 'update' });
     expect(q).toContain('Write the "Impacts" section');
     expect(q).not.toContain('Preserve its wording');
+  });
+});
+
+describe('buildOutlineContext', () => {
+  const sections = [
+    { id: 'a', title: 'Context and scope', level: 1 },
+    { id: 'b', title: 'What the evidence shows', level: 1, content: '# What the evidence shows\n\nCash transfers improved food consumption [1].' },
+    { id: 'c', title: 'Effectiveness', level: 1 },
+    { id: 'c1', title: 'Cost efficiency', level: 2 },
+    { id: 'c2', title: 'Outcomes', level: 2 },
+  ];
+
+  test('lists every heading and marks the one being written', () => {
+    const ctx = buildOutlineContext(sections, 'a');
+    expect(ctx).toContain('Context and scope ← the section you are writing');
+    expect(ctx).toContain('- What the evidence shows');
+    expect(ctx).toContain('  - Cost efficiency');
+    expect(ctx).toContain('do NOT repeat or pre-empt material');
+  });
+
+  test('includes a gist of already-written sections without markdown or citation markers', () => {
+    const ctx = buildOutlineContext(sections, 'a');
+    expect(ctx).toContain('already written; covers: What the evidence shows Cash transfers improved food consumption');
+    expect(ctx).not.toContain('[1]');
+    expect(ctx).not.toContain('#');
+  });
+
+  test('tells a parent heading with sub-headings to stay high-level', () => {
+    const ctx = buildOutlineContext(sections, 'c');
+    expect(ctx).toContain('sub-sections (Cost efficiency; Outcomes)');
+    expect(ctx).toContain('high-level introduction');
+  });
+
+  test('a sub-section or a section without children gets no high-level instruction', () => {
+    expect(buildOutlineContext(sections, 'c1')).not.toContain('high-level introduction');
+    expect(buildOutlineContext(sections, 'a')).not.toContain('high-level introduction');
+  });
+
+  test('returns empty for a single-section brief', () => {
+    expect(buildOutlineContext([sections[0]], 'a')).toBe('');
+  });
+});
+
+describe('buildSectionQuery with outline context', () => {
+  test('appends the outline context to the generate query', () => {
+    const q = buildSectionQuery({
+      heading: 'Effectiveness',
+      briefTopic: 'cash transfers',
+      outlineContext: 'For context, the full outline of the brief is:\n- A\n- B',
+    });
+    expect(q).toContain('full outline of the brief');
+    expect(q.indexOf('Write')).toBeLessThan(q.indexOf('full outline'));
   });
 });
