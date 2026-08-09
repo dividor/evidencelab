@@ -248,6 +248,79 @@ class TestSearchTracker:
         assert sources[0]["text"] == long_text
         assert not sources[0]["text"].endswith("...")
 
+    def test_get_sources_emits_pdf_and_report_urls_when_present(self):
+        # Document-level public links flow into the SSE source shape so the
+        # Word export can point citations at the actual PDF.
+        tracker = SearchTracker()
+        tracker.all_results = [
+            {
+                "chunk_id": "c1",
+                "doc_id": "d1",
+                "title": "Doc",
+                "text": "T",
+                "score": 0.9,
+                "page": 4,
+                "global_index": 1,
+                "pdf_url": "https://docs.example.org/WFP-1/download/",
+                "report_url": "https://docs.example.org/WFP-1/report/",
+            }
+        ]
+
+        sources = tracker.get_sources()
+
+        assert sources[0]["pdfUrl"] == "https://docs.example.org/WFP-1/download/"
+        assert sources[0]["reportUrl"] == "https://docs.example.org/WFP-1/report/"
+
+    def test_get_sources_omits_link_keys_when_absent(self):
+        # Older results without links must not carry empty pdfUrl/reportUrl keys.
+        tracker = SearchTracker()
+        tracker.all_results = [
+            {
+                "chunk_id": "c1",
+                "doc_id": "d1",
+                "title": "Doc",
+                "text": "T",
+                "score": 0.9,
+                "page": 4,
+                "global_index": 1,
+            }
+        ]
+
+        sources = tracker.get_sources()
+
+        assert "pdfUrl" not in sources[0]
+        assert "reportUrl" not in sources[0]
+
+    def test_enrich_doc_links_attaches_urls_by_doc_id(self):
+        pg = MagicMock()
+        pg.fetch_docs.return_value = {
+            "d1": {
+                "map_pdf_url": "https://docs.example.org/WFP-1/download/",
+                "map_report_url": "https://docs.example.org/WFP-1/report/",
+            }
+        }
+        formatted = [
+            {"chunk_id": "c1", "doc_id": "d1"},
+            {"chunk_id": "c2", "doc_id": "d2"},  # no metadata → left untouched
+        ]
+
+        with patch("ui.backend.utils.app_state.get_pg_for_source", return_value=pg):
+            SearchTracker._enrich_doc_links(formatted, "wfp")
+
+        assert formatted[0]["pdf_url"] == "https://docs.example.org/WFP-1/download/"
+        assert formatted[0]["report_url"] == "https://docs.example.org/WFP-1/report/"
+        assert "pdf_url" not in formatted[1]
+
+    def test_enrich_doc_links_swallows_db_errors(self):
+        # Enrichment is best-effort — a Postgres failure must not break search.
+        formatted = [{"chunk_id": "c1", "doc_id": "d1"}]
+        with patch(
+            "ui.backend.utils.app_state.get_pg_for_source",
+            side_effect=Exception("db down"),
+        ):
+            SearchTracker._enrich_doc_links(formatted, "wfp")
+        assert "pdf_url" not in formatted[0]
+
     def test_global_result_numbering_across_searches(self):
         """Results should have globally unique indices across multiple searches."""
         _mock_search_fn.reset_mock()

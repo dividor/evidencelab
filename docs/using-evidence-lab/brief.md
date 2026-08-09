@@ -84,7 +84,10 @@ Briefs save automatically as you research, and appear in the **History** rail on
 
 ### 5. Export to Word
 
-When your brief is ready, click **Export to Word** at the top right.
+When your brief is ready, click **Export to Word ▾** at the top right and choose a citation format:
+
+- **References list** — inline `[n]` citation numbers in the prose, plus a compiled **References** list at the end.
+- **Footnotes on page** — each citation becomes a Word footnote at the bottom of the page where it appears, carrying the source's title, page, and a link to the PDF.
 
 ![Export to Word button](/docs/images/brief/brief-export-button.png)
 
@@ -93,7 +96,7 @@ The exported `.docx` is a polished, branded document titled **AI-generated Resea
 - A clickable **table of contents** that jumps to each heading (no "update fields" prompt on open).
 - An information box noting the content is AI-generated and should be verified.
 - The brief topic as the heading, followed by each section's text.
-- Inline citations linked to the source documents (and the cited page), plus a **References** list and a **Reference Excerpts** section with the supporting passages. Any tables or figures in those passages are embedded as the same images shown on screen, so they keep their original layout.
+- Citations linked to the **actual source PDF at the cited page** — so a reader outside Evidence Lab can open the document in their browser — rendered inline (References list) or as on-page footnotes depending on the format you chose. Both formats keep the **Reference Excerpts** section with the supporting passages. Any tables or figures in those passages are embedded as the same images shown on screen, so they keep their original layout.
 
 ![The exported Word document](/docs/images/brief/brief-word-doc.png)
 

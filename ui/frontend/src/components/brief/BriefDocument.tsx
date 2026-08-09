@@ -425,7 +425,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
 interface BriefDocumentProps {
   brief: UseBriefReturn;
   onResultClick?: (result: SearchResult) => void;
-  onExportWord?: () => void;
+  // Export the brief to Word. 'links' keeps inline [n] citations; 'footnotes'
+  // renders each citation as a Word footnote on the relevant page.
+  onExportWord?: (style: 'links' | 'footnotes') => void;
   exportBusy?: boolean;
 }
 
@@ -443,6 +445,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
   const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
@@ -496,14 +499,39 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
               </button>
             )}
             {onExportWord && (
-              <button
-                className="brief-export-word"
-                onClick={onExportWord}
-                disabled={!sections.length || exportBusy}
-                title="Export this brief to Word, with citations linked to the source documents"
-              >
-                {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
-              </button>
+              <div className="dropdown-container brief-export-menu">
+                <button
+                  className="brief-export-word"
+                  onClick={() => setExportMenuOpen((open) => !open)}
+                  onBlur={() => setTimeout(() => setExportMenuOpen(false), 200)}
+                  disabled={!sections.length || exportBusy}
+                  aria-haspopup="menu"
+                  aria-expanded={exportMenuOpen}
+                  title="Export this brief to Word, with citations linked to the source documents"
+                >
+                  {exportBusy ? 'Exporting…' : <><IconDownload /> Export to Word ▾</>}
+                </button>
+                {exportMenuOpen && !exportBusy && (
+                  <div className="brief-export-dropdown" role="menu">
+                    <button
+                      className="brief-export-option"
+                      role="menuitem"
+                      onClick={() => { setExportMenuOpen(false); onExportWord('links'); }}
+                    >
+                      References list
+                      <span className="brief-export-option-hint">Inline [n] citations + reference excerpts</span>
+                    </button>
+                    <button
+                      className="brief-export-option"
+                      role="menuitem"
+                      onClick={() => { setExportMenuOpen(false); onExportWord('footnotes'); }}
+                    >
+                      Footnotes on page
+                      <span className="brief-export-option-hint">Each citation as a footnote on the relevant page</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
