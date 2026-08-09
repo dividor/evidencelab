@@ -294,7 +294,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   );
 
   return (
-    <div className="brief-tab">
+    <div className={`brief-tab${brief.stage === 'seed' ? '' : ' brief-tab-full'}`}>
       {brief.stage === 'seed' ? (
         landing
       ) : (

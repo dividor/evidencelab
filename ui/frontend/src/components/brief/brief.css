@@ -2260,6 +2260,16 @@
   line-height: 1.5;
 }
 
+/* An open brief uses the full window width; the document fills the space left
+   of the side rail instead of capping at reading width. */
+.brief-tab-full {
+  max-width: none;
+}
+
+.brief-tab-full .brief-doc {
+  max-width: none;
+}
+
 /* Logged-in workspace: the Contents panel is the sticky side rail (history
    lives in Brief Central). */
 .brief-toc-rail {
