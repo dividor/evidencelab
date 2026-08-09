@@ -32,7 +32,7 @@ const formatWhen = (iso: string): string => {
 };
 
 const TAB_LABELS: Record<CentralTab, (c: UseBriefCentralReturn) => string> = {
-  mine: (c) => `My briefs (${c.myBriefs.length})`,
+  mine: (c) => `Saved Briefs (${c.myBriefs.length})`,
   shared: (c) => `Shared with me (${c.sharedBriefs.length})`,
   templates: (c) => `Templates (${c.templates.length})`,
   voices: (c) => `Voice & tone (${c.voices.length})`,
