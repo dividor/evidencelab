@@ -19,6 +19,7 @@ import {
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
+import { BriefToc } from './BriefToc';
 import { IconArrowLeft } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
@@ -102,7 +103,11 @@ const BriefWorkspace: React.FC<{
   exportBusy: boolean;
   onOpenModal: (modal: 'share' | 'template') => void;
 }> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
-  const withRail = !loggedIn || brief.canEdit;
+  // Logged-in layout (Brief Central): the side rail is the sticky Contents
+  // panel — history lives on the landing page. Anonymous layout keeps the
+  // saved-briefs history rail and the inline Contents panel.
+  const canEditStructure =
+    brief.canEdit && !brief.sections.some((s) => s.status === 'researching');
   return (
     <>
       {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
@@ -113,8 +118,14 @@ const BriefWorkspace: React.FC<{
           </button>
         </div>
       )}
-      <div className={`brief-builder${withRail ? '' : ' brief-builder-solo'}`}>
-        {withRail && <BriefHistoryRail brief={brief} />}
+      <div className="brief-builder">
+        {loggedIn ? (
+          <aside className="brief-toc-rail">
+            <BriefToc brief={brief} canEdit={canEditStructure} />
+          </aside>
+        ) : (
+          <BriefHistoryRail brief={brief} />
+        )}
         <BriefDocument
           brief={brief}
           onResultClick={onResultClick}
@@ -124,6 +135,7 @@ const BriefWorkspace: React.FC<{
             loggedIn && brief.currentBriefId ? () => onOpenModal('share') : undefined
           }
           onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
+          showToc={!loggedIn}
         />
       </div>
     </>

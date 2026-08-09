@@ -594,6 +594,9 @@ interface BriefDocumentProps {
   // Brief Central integrations (remote mode only).
   onOpenShare?: () => void;
   onSaveTemplate?: () => void;
+  // False when the Contents panel renders in the workspace side rail instead
+  // (logged-in layout); true keeps the inline panel (anonymous layout).
+  showToc?: boolean;
 }
 
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
@@ -609,6 +612,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   exportBusy,
   onOpenShare,
   onSaveTemplate,
+  showToc = true,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -744,7 +748,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         )}
       </div>
 
-      {sections.length > 0 && <BriefToc brief={brief} canEdit={canEditStructure} />}
+      {showToc && sections.length > 0 && <BriefToc brief={brief} canEdit={canEditStructure} />}
 
       {sections.map((s, i) => (
         <BriefSectionView
