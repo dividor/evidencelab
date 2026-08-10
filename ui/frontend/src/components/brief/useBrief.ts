@@ -842,22 +842,36 @@ export const useBrief = ({
     ],
   );
 
-  const startResearch = useCallback(async () => {
-    const ids = sectionsRef.current.map((s) => s.id);
-    if (!ids.length) return;
-    setError(null);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setStage('research');
-    for (const id of ids) {
-      if (controller.signal.aborted) return;
-      await researchOne(id, null, controller.signal);
-    }
-    if (!controller.signal.aborted) {
-      setStage('done');
-      saveCurrent();
-    }
-  }, [researchOne, saveCurrent]);
+  // `overrides` come from the Regenerate-all modal. They are written to the
+  // refs as well as to state, because the research loop below reads the refs
+  // and React will not have committed the setState by the time it runs.
+  const startResearch = useCallback(
+    async (overrides?: { instructions?: string; voiceId?: string | null }) => {
+      if (overrides?.instructions !== undefined) {
+        instructionsRef.current = overrides.instructions;
+        setInstructions(overrides.instructions);
+      }
+      if (overrides?.voiceId !== undefined) {
+        briefVoiceIdRef.current = overrides.voiceId;
+        setBriefVoiceId(overrides.voiceId);
+      }
+      const ids = sectionsRef.current.map((s) => s.id);
+      if (!ids.length) return;
+      setError(null);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setStage('research');
+      for (const id of ids) {
+        if (controller.signal.aborted) return;
+        await researchOne(id, null, controller.signal);
+      }
+      if (!controller.signal.aborted) {
+        setStage('done');
+        saveCurrent();
+      }
+    },
+    [researchOne, saveCurrent],
+  );
 
   // Run "Get Updates" (fold in sources newer than each section's last run) on
   // every already-researched section, sequentially — the doc-wide counterpart to
