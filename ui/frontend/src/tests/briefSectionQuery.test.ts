@@ -1,4 +1,4 @@
-import { buildSectionQuery } from '../utils/briefStream';
+import { buildOutlineContext, buildSectionQuery, isLikelyNonAnswer } from '../utils/briefStream';
 
 describe('buildSectionQuery', () => {
   test('weaves the brief topic into a top-level section query', () => {
@@ -35,7 +35,9 @@ describe('buildSectionQuery', () => {
     expect(q).toBe(
       'Write the "Background" section of an evidence brief. ' +
         'Search the document library for evidence relevant to this specific section ' +
-        'and cite a source for every claim.',
+        'and cite a source for every claim. ' +
+        'Your final answer must be the finished section text itself — never a description ' +
+        'of what you are about to do, a promise to research, or narration of your process.',
     );
   });
 
@@ -62,5 +64,83 @@ describe('buildSectionQuery', () => {
     const q = buildSectionQuery({ heading: 'Impacts', mode: 'update' });
     expect(q).toContain('Write the "Impacts" section');
     expect(q).not.toContain('Preserve its wording');
+  });
+});
+
+describe('buildOutlineContext', () => {
+  const sections = [
+    { id: 'a', title: 'Context and scope', level: 1 },
+    { id: 'b', title: 'What the evidence shows', level: 1, content: '# What the evidence shows\n\nCash transfers improved food consumption [1].' },
+    { id: 'c', title: 'Effectiveness', level: 1 },
+    { id: 'c1', title: 'Cost efficiency', level: 2 },
+    { id: 'c2', title: 'Outcomes', level: 2 },
+  ];
+
+  test('lists every heading and marks the one being written', () => {
+    const ctx = buildOutlineContext(sections, 'a');
+    expect(ctx).toContain('Context and scope ← the section you are writing');
+    expect(ctx).toContain('- What the evidence shows');
+    expect(ctx).toContain('  - Cost efficiency');
+    expect(ctx).toContain('do NOT repeat or pre-empt material');
+  });
+
+  test('includes a gist of already-written sections without markdown or citation markers', () => {
+    const ctx = buildOutlineContext(sections, 'a');
+    expect(ctx).toContain('already written; covers: What the evidence shows Cash transfers improved food consumption');
+    expect(ctx).not.toContain('[1]');
+    expect(ctx).not.toContain('#');
+  });
+
+  test('tells a parent heading with sub-headings to stay high-level', () => {
+    const ctx = buildOutlineContext(sections, 'c');
+    expect(ctx).toContain('sub-sections (Cost efficiency; Outcomes)');
+    expect(ctx).toContain('high-level introduction');
+  });
+
+  test('a sub-section or a section without children gets no high-level instruction', () => {
+    expect(buildOutlineContext(sections, 'c1')).not.toContain('high-level introduction');
+    expect(buildOutlineContext(sections, 'a')).not.toContain('high-level introduction');
+  });
+
+  test('returns empty for a single-section brief', () => {
+    expect(buildOutlineContext([sections[0]], 'a')).toBe('');
+  });
+});
+
+describe('buildSectionQuery with outline context', () => {
+  test('appends the outline context to the generate query', () => {
+    const q = buildSectionQuery({
+      heading: 'Effectiveness',
+      briefTopic: 'cash transfers',
+      outlineContext: 'For context, the full outline of the brief is:\n- A\n- B',
+    });
+    expect(q).toContain('full outline of the brief');
+    expect(q.indexOf('Write')).toBeLessThan(q.indexOf('full outline'));
+  });
+});
+
+describe('isLikelyNonAnswer', () => {
+  const SCOUT =
+    "Alright, partner, I'm sendin' out a scout to rustle up some facts. Once that " +
+    "information comes back, I'll be able to pen that section for ya.";
+
+  test('flags short citationless narration when sources were read', () => {
+    expect(isLikelyNonAnswer(SCOUT, 12)).toBe(true);
+  });
+
+  test('accepts real sections with citations', () => {
+    expect(isLikelyNonAnswer('School meals improved attendance [1]. More [2].', 12)).toBe(false);
+  });
+
+  test('accepts substantial citationless text (e.g. a long intro)', () => {
+    expect(isLikelyNonAnswer('x'.repeat(900), 12)).toBe(false);
+  });
+
+  test('does not flag when few sources were read', () => {
+    expect(isLikelyNonAnswer(SCOUT, 0)).toBe(false);
+  });
+
+  test('flags empty content regardless', () => {
+    expect(isLikelyNonAnswer('', 0)).toBe(true);
   });
 });

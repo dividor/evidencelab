@@ -51,13 +51,48 @@ export const parseSectionBreadcrumb = (
   return { section: null, body: text };
 };
 
-const renderCitationExcerpt = (text: string): React.ReactNode => {
+// Expand a match to whole-word boundaries so snippets never start or end
+// mid-word (the phrase matcher is fuzzy and can clip by a few characters).
+export const snapToWordBounds = (
+  text: string,
+  start: number,
+  end: number,
+): { start: number; end: number } => {
+  const isWordChar = (ch: string): boolean => /[\p{L}\p{N}]/u.test(ch);
+  let s = Math.max(0, Math.min(start, text.length));
+  let e = Math.max(s, Math.min(end, text.length));
+  while (s > 0 && isWordChar(text[s - 1]) && s < text.length && isWordChar(text[s])) s--;
+  while (e < text.length && e > 0 && isWordChar(text[e - 1]) && isWordChar(text[e])) e++;
+  return { start: s, end: e };
+};
+
+const renderCitationExcerpt = (
+  text: string,
+  semanticMatches?: Array<{ start: number; end: number }>,
+): React.ReactNode => {
   const { section, body } = parseSectionBreadcrumb(text);
-  if (!section) return parseAndRenderSuperscripts(text);
+  // LLM-highlighted excerpts show ONLY the claim-supporting span(s), separated
+  // by ellipses — not the whole excerpt. Offsets are relative to the body
+  // (after the breadcrumb split). Without matches, the full excerpt renders.
+  const renderBody = (b: string): React.ReactNode => {
+    const snippets = (semanticMatches || [])
+      .map((m) => {
+        const { start, end } = snapToWordBounds(b, m.start, m.end);
+        return b.substring(start, end).trim();
+      })
+      .filter(Boolean);
+    if (!snippets.length) return parseAndRenderSuperscripts(b);
+    return (
+      <span className="citation-hover-snippets">
+        {snippets.map((s) => `“${s}”`).join(' … ')}
+      </span>
+    );
+  };
+  if (!section) return renderBody(text);
   return (
     <>
       <div className="citation-hover-section">{section}</div>
-      {body.trim() && <div>{parseAndRenderSuperscripts(body)}</div>}
+      {body.trim() && <div>{renderBody(body)}</div>}
     </>
   );
 };
@@ -115,7 +150,9 @@ const InlineCitation: React.FC<{
               <div className="citation-hover-meta">Page {source.page}</div>
             )}
             {source.text && (
-              <div className="citation-hover-excerpt">{renderCitationExcerpt(source.text)}</div>
+              <div className="citation-hover-excerpt">
+                {renderCitationExcerpt(source.text, source.semanticMatches)}
+              </div>
             )}
           </div>,
           document.body,

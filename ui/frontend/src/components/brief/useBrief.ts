@@ -6,6 +6,8 @@ import { extractCitedNumbers } from '../citations/CitedContent';
 import {
   BriefActivityEvent,
   BriefSourceSample,
+  buildOutlineContext,
+  isLikelyNonAnswer,
   requestBriefOutline,
   requestBriefRevise,
   researchBriefSection,
@@ -17,9 +19,24 @@ import {
   BriefReference,
   BriefSection,
   BriefStage,
+  DEFAULT_BRIEF_TITLE,
   SavedBrief,
   SectionAuditEntry,
+  VoiceProfile,
 } from './briefTypes';
+import {
+  createBrief as createBriefRemote,
+  deleteBriefRemote,
+  getBrief as getBriefRemote,
+  listMyBriefs,
+  updateBrief as updateBriefRemote,
+} from './briefCentralApi';
+import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
+import { highlightSectionSources } from './briefHighlights';
+import {
+  SEARCH_SEMANTIC_HIGHLIGHTS,
+  SEMANTIC_HIGHLIGHT_THRESHOLD,
+} from '../../config';
 
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
@@ -59,6 +76,15 @@ export interface UseBriefOptions {
   // Identifier for the logged-in user; saved briefs are scoped to it. When
   // absent (anonymous), the shared default bucket is used.
   userKey?: string | null;
+  // Server-side persistence (Brief Central). When true, briefs are stored via
+  // the /briefs API instead of localStorage, enabling sharing.
+  remote?: boolean;
+  // The user's voice & tone profiles, used to resolve the instructions applied
+  // when a section is (re)written.
+  voices?: VoiceProfile[] | null;
+  // Model for the LLM semantic highlighter (combo.semantic_highlighting_model),
+  // used to mark the claim-supporting span of each citation's excerpt.
+  semanticModelConfig?: SummaryModelConfig | null;
 }
 
 const loadHistory = (key: string): SavedBrief[] => {
@@ -171,11 +197,14 @@ export const useBrief = ({
   rerankerModel,
   searchSettings,
   userKey,
+  remote = false,
+  voices,
+  semanticModelConfig,
 }: UseBriefOptions) => {
   const historyKey = userKey ? `${BRIEF_HISTORY_KEY}_u_${userKey}` : BRIEF_HISTORY_KEY;
   const { logBrief } = useActivityLogging();
   const [stage, setStage] = useState<BriefStage>('seed');
-  const [briefTitle, setBriefTitle] = useState('Evidence Brief');
+  const [briefTitle, setBriefTitle] = useState(DEFAULT_BRIEF_TITLE);
   const [sections, setSections] = useState<BriefSection[]>([]);
   const [query, setQuery] = useState(''); // the brief topic
   const [instructions, setInstructions] = useState('');
@@ -192,6 +221,11 @@ export const useBrief = ({
   const [numberHeadings, setNumberHeadings] = useState(false);
   // Live activity for the outline-generation deep-research survey.
   const [generatingActivity, setGeneratingActivity] = useState<BriefActivityEvent[]>([]);
+  // Brief-level voice & tone profile (sections may override individually).
+  const [briefVoiceId, setBriefVoiceId] = useState<string | null>(null);
+  // False when the open brief was shared with (not owned by) this user.
+  const [canEdit, setCanEdit] = useState(true);
+  const [ownerName, setOwnerName] = useState<string | null>(null);
 
   const briefIdRef = useRef<string | null>(null);
   // Stable Activity-log id for the current brief (one row per brief).
@@ -218,13 +252,96 @@ export const useBrief = ({
   rerankerModelRef.current = rerankerModel;
   const searchSettingsRef = useRef(searchSettings);
   searchSettingsRef.current = searchSettings;
+  const briefVoiceIdRef = useRef(briefVoiceId);
+  briefVoiceIdRef.current = briefVoiceId;
+  const voicesRef = useRef(voices);
+  voicesRef.current = voices;
+  const canEditRef = useRef(canEdit);
+  canEditRef.current = canEdit;
+  // True once the current brief exists as a server row (remote mode).
+  const remoteSavedRef = useRef(false);
 
-  useEffect(() => setHistory(loadHistory(historyKey)), [historyKey]);
+  // Resolve the style instructions for a section: its own profile wins, else
+  // the brief default; null when neither is set (or the profile was deleted).
+  const voiceInstructionsFor = useCallback((sectionVoiceId?: string | null): string | null => {
+    const id = sectionVoiceId ?? briefVoiceIdRef.current;
+    if (!id) return null;
+    const profile = (voicesRef.current || []).find((v) => v.id === id);
+    return profile ? profile.instructions : null;
+  }, []);
+
+  const refreshRemoteHistory = useCallback(async () => {
+    const items = await listMyBriefs();
+    setHistory(items.map(listItemToStub));
+  }, []);
+
+  useEffect(() => {
+    if (!remote) {
+      setHistory(loadHistory(historyKey));
+      return;
+    }
+    // Remote mode: run the one-time localStorage migration, then load the
+    // server-side history. Errors surface in the brief error banner.
+    let cancelled = false;
+    (async () => {
+      try {
+        if (userKey) await migrateLocalBriefs(userKey, dataSource || null);
+        const items = await listMyBriefs();
+        if (!cancelled) setHistory(items.map(listItemToStub));
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Could not load saved briefs.');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [remote, historyKey, userKey, dataSource]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const updateSection = useCallback((id: string, patch: Partial<BriefSection>) => {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }, []);
+
+  const semanticModelConfigRef = useRef(semanticModelConfig);
+  semanticModelConfigRef.current = semanticModelConfig;
+
+  // After a section's research completes (references validated), run the LLM
+  // semantic highlighter over each cited excerpt in the background — the hover
+  // card then marks the claim-supporting span, falling back to the full
+  // excerpt. `token` (the section's lastResearchedAt) stops a stale run from
+  // clobbering a newer research pass.
+  const enrichSectionHighlights = useCallback(
+    (id: string, token: number) => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS) return;
+      const section = sectionsRef.current.find((s) => s.id === id);
+      if (!section || section.status !== 'done' || !section.content) return;
+      const isStale = () => {
+        const cur = sectionsRef.current.find((s) => s.id === id);
+        return !cur || cur.lastResearchedAt !== token;
+      };
+      void highlightSectionSources({
+        content: section.content,
+        sources: section.sources,
+        threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
+        modelConfig: semanticModelConfigRef.current,
+        isStale,
+        // Apply snippets as each source resolves — a big section takes minutes
+        // to fully enrich and the hover cards should improve as it goes.
+        onPartial: (sources) => {
+          if (!isStale()) updateSection(id, { sources });
+        },
+      })
+        .then((sources) => {
+          if (!isStale()) updateSection(id, { sources });
+        })
+        .catch(() => {
+          /* highlighting is an enhancement; the plain excerpt remains */
+        });
+    },
+    [updateSection],
+  );
 
   const pushActivity = useCallback((id: string, ev: BriefActivityEvent) => {
     // Retain a deep log; the status box shows ~5 rows and scrolls for the rest.
@@ -248,14 +365,74 @@ export const useBrief = ({
   );
 
   const deleteBrief = useCallback(
-    (id: string) => persist(history.filter((e) => e.id !== id)),
-    [history, persist],
+    (id: string) => {
+      if (remote) {
+        deleteBriefRemote(id)
+          .then(() => setHistory((prev) => prev.filter((e) => e.id !== id)))
+          .catch((e) =>
+            setError(e instanceof Error ? e.message : 'Could not delete the brief.'),
+          );
+        return;
+      }
+      persist(history.filter((e) => e.id !== id));
+    },
+    [remote, history, persist],
+  );
+
+  // Serialise remote saves: one in flight at a time; a save requested while one
+  // runs re-runs once it finishes (latest state wins — entries are rebuilt).
+  const remoteSaveBusyRef = useRef(false);
+  const remoteSavePendingRef = useRef<SavedBrief | null>(null);
+
+  const pushRemoteSave = useCallback(
+    (entry: SavedBrief) => {
+      if (remoteSaveBusyRef.current) {
+        remoteSavePendingRef.current = entry;
+        return;
+      }
+      remoteSaveBusyRef.current = true;
+      const run = async (current: SavedBrief): Promise<void> => {
+        if (remoteSavedRef.current && briefIdRef.current) {
+          await updateBriefRemote(briefIdRef.current, {
+            title: current.title,
+            query: current.query || null,
+            voiceProfileId: current.voiceId ?? null,
+            content: current,
+          });
+        } else {
+          const created = await createBriefRemote({
+            title: current.title,
+            query: current.query || null,
+            dataSource: dataSource || null,
+            voiceProfileId: current.voiceId ?? null,
+            content: current,
+          });
+          // Adopt the server id so subsequent saves update the same row.
+          briefIdRef.current = created.id;
+          remoteSavedRef.current = true;
+        }
+        const pending = remoteSavePendingRef.current;
+        remoteSavePendingRef.current = null;
+        if (pending) return run({ ...pending, id: briefIdRef.current || pending.id });
+      };
+      run(entry)
+        .then(() => refreshRemoteHistory())
+        .catch((e) =>
+          setError(e instanceof Error ? e.message : 'Could not save the brief.'),
+        )
+        .finally(() => {
+          remoteSaveBusyRef.current = false;
+        });
+    },
+    [dataSource, refreshRemoteHistory],
   );
 
   const saveCurrent = useCallback(() => {
     const id = briefIdRef.current;
     const snap = sectionsRef.current;
     if (!id || !snap.length) return;
+    // Never write back a brief someone else owns (viewer-only).
+    if (remote && !canEditRef.current) return;
     const entry: SavedBrief = {
       id,
       title: briefTitleRef.current,
@@ -278,13 +455,19 @@ export const useBrief = ({
           sources: done ? s.sources : [],
           audit: s.audit && s.audit.length ? s.audit : undefined,
           lastResearchedAt: s.lastResearchedAt,
+          voiceId: s.voiceId ?? undefined,
         };
       }),
       outlineLog: outlineLogRef.current,
       numberHeadings: numberHeadingsRef.current,
       activityId: briefActivityIdRef.current ?? undefined,
+      voiceId: briefVoiceIdRef.current,
     };
-    persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
+    if (remote) {
+      pushRemoteSave(entry);
+    } else {
+      persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
+    }
 
     // Mirror the brief into the Activity log as a "brief" row, upserted on each
     // save so there's one activity per brief reflecting its latest state.
@@ -307,7 +490,7 @@ export const useBrief = ({
         });
       logBrief(activityId, briefTitleRef.current, markdown, sources);
     }
-  }, [persist, logBrief]);
+  }, [remote, pushRemoteSave, persist, logBrief]);
 
   // Auto-save once a brief exists (outline generated or manual start) so it
   // appears in Saved Briefs right away and keeps tracking title/content edits.
@@ -321,15 +504,21 @@ export const useBrief = ({
   // Generate headings by first running a deep-research survey of the document
   // library for the topic (streaming the same SCAN/READ activity as section
   // research), then asking the model for headings grounded in what it found.
-  const generateOutline = useCallback(async () => {
-    const topic = query.trim();
+  const generateOutline = useCallback(async (overrides?: {
+    topic?: string;
+    instructions?: string;
+    numHeadings?: number;
+  }) => {
+    // Overrides let callers (the New-brief modal) pass values set in the same
+    // tick — the state updates land after this closure captured the old values.
+    const topic = (overrides?.topic ?? query).trim();
     if (!topic) return;
     setError(null);
     setOutlineLoading(true);
     setGeneratingActivity([]);
     const controller = new AbortController();
     abortRef.current = controller;
-    const guidance = instructions.trim();
+    const guidance = (overrides?.instructions ?? instructions).trim();
     let gathered: BriefSourceSample[] = [];
     try {
       const surveyQuery = guidance
@@ -367,13 +556,16 @@ export const useBrief = ({
         dataSource,
         topic,
         instructions: guidance || null,
-        numHeadings,
+        numHeadings: overrides?.numHeadings ?? numHeadings,
         model: assistantModelConfig?.model ?? null,
         sources: gathered,
         signal: controller.signal,
       });
       briefIdRef.current = uid();
       briefActivityIdRef.current = newActivityId();
+      remoteSavedRef.current = false;
+      setCanEdit(true);
+      setOwnerName(null);
       setBriefTitle(toTitleCase(topic));
       setSections(
         outline.headings
@@ -393,7 +585,10 @@ export const useBrief = ({
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
     briefActivityIdRef.current = newActivityId();
-    setBriefTitle('Evidence Brief');
+    remoteSavedRef.current = false;
+    setCanEdit(true);
+    setOwnerName(null);
+    setBriefTitle(DEFAULT_BRIEF_TITLE);
     setSections(
       // Placeholder samples: research stays disabled until the user edits them.
       ['Background & definitions', 'Key findings', 'Recommendations'].map((t) =>
@@ -402,6 +597,32 @@ export const useBrief = ({
     );
     setStage('outline');
   }, []);
+
+  // Start a brief from a template's headings (optionally with saved text).
+  const startFromTemplate = useCallback(
+    (
+      title: string,
+      headings: { title: string; sub: boolean; text?: string | null }[],
+    ) => {
+      briefIdRef.current = uid();
+      briefActivityIdRef.current = newActivityId();
+      remoteSavedRef.current = false;
+      setCanEdit(true);
+      setOwnerName(null);
+      setBriefTitle(title.trim() || DEFAULT_BRIEF_TITLE);
+      setSections(
+        headings.map((h) => {
+          const section = makeSection(h.title, h.sub ? 2 : 1, false);
+          if (h.text) {
+            return { ...section, status: 'done' as const, progress: 100, content: h.text };
+          }
+          return section;
+        }),
+      );
+      setStage('outline');
+    },
+    [],
+  );
 
   // ---- outline editing ----
   const addSection = useCallback(() => {
@@ -519,6 +740,18 @@ export const useBrief = ({
         existingContent: isRevise ? priorContent : null,
         instruction,
         publishedAfterIso,
+        voiceInstructions: voiceInstructionsFor(section.voiceId),
+        // The whole document structure (plus a gist of written sections), so
+        // this section stays in scope and doesn't duplicate the others.
+        outlineContext: buildOutlineContext(
+          list.map((s) => ({
+            id: s.id,
+            title: s.title,
+            level: s.level,
+            content: s.status === 'done' ? s.content : undefined,
+          })),
+          id,
+        ),
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),
@@ -531,6 +764,16 @@ export const useBrief = ({
             if (!isRevise) updateSection(id, { sources: s });
           },
           onDone: ({ content, sources }) => {
+            // A run that read sources but answered with process narration
+            // ("I'll go research that…") instead of the section is a failure —
+            // surface it and keep the section pending rather than storing it.
+            if (!isRevise && isLikelyNonAnswer(content, sources.length)) {
+              updateSection(id, { status: 'pending', progress: 0 });
+              setError(
+                `The model did not return researched content for “${section.title}” — please try again.`,
+              );
+              return;
+            }
             const priorKeys = new Set(priorSources.map((s) => s.docId));
             const added = sources.filter((s) => !priorKeys.has(s.docId)).length;
             const entry: SectionAuditEntry = {
@@ -547,18 +790,21 @@ export const useBrief = ({
               after: isRevise ? content : undefined,
             };
             const cur = sectionsRef.current.find((s) => s.id === id);
+            const doneAt = Date.now();
             updateSection(id, {
               status: 'done',
               progress: 100,
               content,
               sources,
               audit: [...(cur?.audit || []), entry],
-              lastResearchedAt: Date.now(),
+              lastResearchedAt: doneAt,
               revising: undefined,
               prevContent: isRevise ? priorContent : undefined,
               prevSources: isRevise ? priorSources : undefined,
               lastChangeKind: isRevise ? mode : undefined,
             });
+            // Async: LLM-highlight the cited excerpts once the state lands.
+            setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
           },
           onError: (m) => {
             // A revise keeps its previous good content; a fresh research reverts.
@@ -580,7 +826,15 @@ export const useBrief = ({
         ),
       );
     },
-    [apiBaseUrl, dataSource, assistantModelConfig, updateSection, pushActivity],
+    [
+      apiBaseUrl,
+      dataSource,
+      assistantModelConfig,
+      updateSection,
+      pushActivity,
+      voiceInstructionsFor,
+      enrichSectionHighlights,
+    ],
   );
 
   const startResearch = useCallback(async () => {
@@ -685,6 +939,7 @@ export const useBrief = ({
           dataSource,
           content: priorContent,
           instruction: instruction.trim(),
+          voiceInstructions: voiceInstructionsFor(section.voiceId),
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -699,18 +954,22 @@ export const useBrief = ({
           before: priorContent,
           after: revised,
         };
+        const doneAt = Date.now();
         updateSection(id, {
           status: 'done',
           progress: 100,
           content: revised,
-          // Sources unchanged — a surgical edit preserves the [n] markers.
+          // Sources unchanged — a surgical edit preserves the [n] markers. The
+          // claims moved though, so drop stale excerpt highlights to recompute.
+          sources: section.sources.map(({ semanticMatches: _sm, ...rest }) => rest),
           audit: [...(cur?.audit || []), entry],
-          lastResearchedAt: Date.now(),
+          lastResearchedAt: doneAt,
           revising: undefined,
           prevContent: priorContent,
           prevSources: section.sources,
           lastChangeKind: 'edit',
         });
+        setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
       } catch (e) {
         if (!controller.signal.aborted) {
           updateSection(id, { status: 'done', progress: 100, revising: undefined });
@@ -718,7 +977,7 @@ export const useBrief = ({
         }
       }
     },
-    [apiBaseUrl, dataSource, updateSection],
+    [apiBaseUrl, dataSource, updateSection, voiceInstructionsFor, enrichSectionHighlights],
   );
 
   // Dispatch the two AI actions on a DONE section: Edit → surgical revise;
@@ -777,32 +1036,101 @@ export const useBrief = ({
   );
 
   // ---- history ----
-  const loadBrief = useCallback((entry: SavedBrief) => {
-    abortRef.current?.abort();
-    briefIdRef.current = entry.id;
-    briefActivityIdRef.current = entry.activityId || newActivityId();
-    setBriefTitle(entry.title);
-    setQuery(entry.query);
-    setSections(
-      entry.sections.map((h) => ({
-        ...makeSection(h.title, h.level),
-        status: h.status === 'done' ? 'done' : 'pending',
-        progress: h.status === 'done' ? 100 : 0,
-        content: h.status === 'done' ? h.content : '',
-        sources: h.status === 'done' ? h.sources || [] : [],
-        audit: h.audit || [],
-        lastResearchedAt: h.lastResearchedAt,
-      })),
-    );
-    setGeneratingActivity(entry.outlineLog || []);
-    setNumberHeadings(entry.numberHeadings ?? false);
-    setStage('done');
-    setHistoryOpen(false);
-  }, []);
+  // Materialise a SavedBrief into the working state. `access` marks whether the
+  // user owns it (edit) or views a shared copy (read-only).
+  const applyLoadedBrief = useCallback(
+    (
+      entry: SavedBrief,
+      access: { canEdit: boolean; ownerName: string | null; saved: boolean },
+    ) => {
+      abortRef.current?.abort();
+      briefIdRef.current = entry.id;
+      remoteSavedRef.current = access.saved;
+      briefActivityIdRef.current = entry.activityId || newActivityId();
+      setBriefTitle(entry.title);
+      setQuery(entry.query);
+      setCanEdit(access.canEdit);
+      setOwnerName(access.ownerName);
+      setBriefVoiceId(entry.voiceId ?? null);
+      setSections(
+        entry.sections.map((h) => ({
+          ...makeSection(h.title, h.level),
+          status: h.status === 'done' ? 'done' : 'pending',
+          progress: h.status === 'done' ? 100 : 0,
+          content: h.status === 'done' ? h.content : '',
+          sources: h.status === 'done' ? h.sources || [] : [],
+          audit: h.audit || [],
+          lastResearchedAt: h.lastResearchedAt,
+          voiceId: h.voiceId ?? null,
+        })),
+      );
+      setGeneratingActivity(entry.outlineLog || []);
+      setNumberHeadings(entry.numberHeadings ?? false);
+      setStage('done');
+      setHistoryOpen(false);
+    },
+    [],
+  );
+
+  const loadBrief = useCallback(
+    (entry: SavedBrief) => {
+      if (remote) {
+        // History rows are stubs — fetch the full brief (with access info).
+        getBriefRemote(entry.id)
+          .then((full) =>
+            applyLoadedBrief(remoteToSaved(full), {
+              canEdit: full.can_edit,
+              ownerName: full.owner_name,
+              saved: true,
+            }),
+          )
+          .catch((e) =>
+            setError(e instanceof Error ? e.message : 'Could not open the brief.'),
+          );
+        return;
+      }
+      applyLoadedBrief(entry, { canEdit: true, ownerName: null, saved: false });
+    },
+    [remote, applyLoadedBrief],
+  );
+
+  // Open a server brief by id (Brief Central cards and /brief/<id> URLs).
+  const openBriefById = useCallback(
+    (id: string) => loadBrief({ id } as SavedBrief),
+    [loadBrief],
+  );
 
   // Duplicate a saved brief under a new id and open the copy.
   const cloneBrief = useCallback(
     (entry: SavedBrief) => {
+      if (remote) {
+        getBriefRemote(entry.id)
+          .then(async (full) => {
+            const copyContent: SavedBrief = {
+              ...full.content,
+              title: `${full.title} (copy)`,
+              date: Date.now(),
+              activityId: newActivityId(),
+            };
+            const created = await createBriefRemote({
+              title: copyContent.title,
+              query: full.query,
+              dataSource: full.data_source,
+              voiceProfileId: full.voice_profile_id,
+              content: copyContent,
+            });
+            await refreshRemoteHistory();
+            applyLoadedBrief(remoteToSaved(created), {
+              canEdit: true,
+              ownerName: null,
+              saved: true,
+            });
+          })
+          .catch((e) =>
+            setError(e instanceof Error ? e.message : 'Could not copy the brief.'),
+          );
+        return;
+      }
       const copy: SavedBrief = {
         ...entry,
         id: uid(),
@@ -813,19 +1141,23 @@ export const useBrief = ({
       persist([copy, ...historyRef.current].slice(0, 10));
       loadBrief(copy);
     },
-    [persist, loadBrief],
+    [remote, persist, loadBrief, applyLoadedBrief, refreshRemoteHistory],
   );
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     briefIdRef.current = null;
     briefActivityIdRef.current = null;
+    remoteSavedRef.current = false;
     setStage('seed');
     setSections([]);
     setRegenFor(null);
     setError(null);
     setQuery('');
     setNumberHeadings(false);
+    setBriefVoiceId(null);
+    setCanEdit(true);
+    setOwnerName(null);
   }, []);
 
   // Persist a title/content edit immediately (any non-seed stage).
@@ -868,6 +1200,11 @@ export const useBrief = ({
     doneCount,
     totalProgress,
     totalSources,
+    briefVoiceId,
+    canEdit,
+    ownerName,
+    remote,
+    voices: voices || [],
     // setters / actions
     setQuery,
     setInstructions,
@@ -878,8 +1215,13 @@ export const useBrief = ({
     setRegenText,
     setError,
     setHistoryOpen,
+    setBriefVoiceId,
+    setSectionVoiceId: (id: string, voiceId: string | null) =>
+      updateSection(id, { voiceId }),
     generateOutline,
     startManual,
+    startFromTemplate,
+    openBriefById,
     addSection,
     addHeading,
     addSubHeading,

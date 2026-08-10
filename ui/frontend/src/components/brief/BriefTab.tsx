@@ -1,6 +1,6 @@
 import { saveAs } from 'file-saver';
-import React, { useCallback, useState } from 'react';
-import API_BASE_URL, { USER_MODULE } from '../../config';
+import React, { useCallback, useEffect, useState } from 'react';
+import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
@@ -9,12 +9,35 @@ import {
   exportResultsToDocxBlob,
 } from '../../utils/exportResultsToDocx';
 import { buildGlobalCitations } from './briefCitations';
+import { BriefCentral } from './BriefCentral';
+import {
+  BriefShareModal,
+  BriefTemplateModal,
+  NewBriefSubmit,
+  TemplateDraft,
+} from './BriefCentralModals';
 import { BriefDocument } from './BriefDocument';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
-import { BriefSeed } from './BriefSeed';
+import { BriefToc } from './BriefToc';
+import { IconArrowLeft } from './BriefIcons';
+import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
+import { DEFAULT_BRIEF_TITLE } from './briefTypes';
 import { useBrief } from './useBrief';
+import { useBriefCentral } from './useBriefCentral';
 import './brief.css';
+
+// /brief/<server-uuid> deep links (share URLs). Base-path aware.
+const briefPath = (id: string | null): string => {
+  const suffix = id ? `/brief/${id}` : '/brief';
+  return `${APP_BASE_PATH || ''}${suffix}`;
+};
+
+const briefIdFromLocation = (): string | null => {
+  const path = window.location.pathname;
+  const match = path.match(/\/brief\/([0-9a-f-]{36})\/?$/i);
+  return match ? match[1] : null;
+};
 
 export const sourceToResult = (src: SourceReference, dataSource: string): SearchResult => ({
   chunk_id: src.chunkId,
@@ -69,6 +92,71 @@ const assembleBriefForExport = (
   return { summary: lines.join('\n'), results };
 };
 
+// The open-brief view: back button (logged in), history rail (owners) and the
+// document itself. Extracted from BriefTab to keep each component simple.
+const BriefWorkspace: React.FC<{
+  brief: ReturnType<typeof useBrief>;
+  loggedIn: boolean;
+  onBack: () => void;
+  onResultClick?: (result: SearchResult) => void;
+  onExportWord: (style: 'links' | 'footnotes') => void;
+  exportBusy: boolean;
+  onOpenModal: (modal: 'share' | 'template') => void;
+}> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
+  // Logged-in layout (Brief Central): the side rail is the sticky Contents
+  // panel — history lives on the landing page. Anonymous layout keeps the
+  // saved-briefs history rail and the inline Contents panel.
+  const canEditStructure =
+    brief.canEdit && !brief.sections.some((s) => s.status === 'researching');
+  // Offset the sticky rail below the app's sticky top bar so the first
+  // headings never slide underneath it.
+  const [railTop, setRailTop] = useState(88);
+  useEffect(() => {
+    const measure = () => {
+      const bar = document.querySelector('.top-bar');
+      setRailTop((bar instanceof HTMLElement ? bar.offsetHeight : 72) + 16);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
+  return (
+    <>
+      {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
+      {loggedIn && (
+        <div className="brief-back-row">
+          <button className="brief-back-btn" onClick={onBack}>
+            <IconArrowLeft /> Brief Central
+          </button>
+        </div>
+      )}
+      <div className="brief-builder">
+        {loggedIn ? (
+          <aside
+            className="brief-toc-rail"
+            style={{ top: railTop, maxHeight: `calc(100vh - ${railTop + 16}px)` }}
+          >
+            <BriefToc brief={brief} canEdit={canEditStructure} />
+          </aside>
+        ) : (
+          <BriefHistoryRail brief={brief} />
+        )}
+        <BriefDocument
+          brief={brief}
+          onResultClick={onResultClick}
+          onExportWord={onExportWord}
+          exportBusy={exportBusy}
+          onOpenShare={
+            loggedIn && brief.currentBriefId ? () => onOpenModal('share') : undefined
+          }
+          onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
+          showToc={!loggedIn}
+        />
+      </div>
+    </>
+  );
+};
+
 interface BriefTabProps {
   dataSource: string;
   // The configured chat / deep-research model, used for outline + section research.
@@ -77,6 +165,9 @@ interface BriefTabProps {
   // users). Applied to brief searches only when logged in.
   rerankerModel?: string | null;
   searchSettings?: Partial<SearchSettings> | null;
+  // Model for the LLM semantic highlighter (combo.semantic_highlighting_model),
+  // used to mark claim-supporting spans in citation excerpts.
+  semanticModelConfig?: SummaryModelConfig | null;
   // Opens the document preview (citations/footnotes click through to it).
   onResultClick?: (result: SearchResult) => void;
 }
@@ -86,12 +177,16 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   assistantModelConfig,
   rerankerModel,
   searchSettings,
+  semanticModelConfig,
   onResultClick,
 }) => {
   const auth = useAuth();
   // Logged-in users get their own saved-briefs bucket; anonymous users share one.
   const userKey = USER_MODULE && auth.user ? String(auth.user.id) : null;
   const loggedIn = userKey != null;
+  // Logged-in users get Brief Central: server-side briefs, sharing, templates
+  // and voice & tone profiles. Anonymous users keep the localStorage flow.
+  const central = useBriefCentral(loggedIn);
   const brief = useBrief({
     apiBaseUrl: API_BASE_URL,
     dataSource,
@@ -101,8 +196,56 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     rerankerModel: loggedIn ? rerankerModel ?? null : null,
     searchSettings: loggedIn ? searchSettings ?? null : null,
     userKey,
+    remote: loggedIn,
+    voices: central.voices,
+    semanticModelConfig,
   });
   const [exportBusy, setExportBusy] = useState(false);
+  const [workspaceModal, setWorkspaceModal] = useState<'share' | 'template' | null>(null);
+
+  // Deep link: open /brief/<id> (a share URL) once auth has resolved.
+  const { openBriefById } = brief;
+  useEffect(() => {
+    if (!loggedIn) return;
+    const id = briefIdFromLocation();
+    if (id) openBriefById(id);
+  }, [loggedIn, openBriefById]);
+
+  const openBrief = useCallback(
+    (id: string) => {
+      brief.openBriefById(id);
+      window.history.pushState(null, '', briefPath(id));
+    },
+    [brief],
+  );
+
+  const backToCentral = useCallback(() => {
+    brief.reset();
+    window.history.pushState(null, '', briefPath(null));
+    void central.refresh();
+  }, [brief, central]);
+
+  const createBrief = useCallback(
+    (args: NewBriefSubmit) => {
+      brief.setQuery(args.title);
+      brief.setInstructions(args.instructions);
+      brief.setNumHeadings(args.numHeadings);
+      brief.setBriefVoiceId(args.voiceId);
+      if (args.mode === 'ai') {
+        void brief.generateOutline({
+          topic: args.title,
+          instructions: args.instructions,
+          numHeadings: args.numHeadings,
+        });
+        return;
+      }
+      brief.startFromTemplate(
+        args.title || args.template?.name || DEFAULT_BRIEF_TITLE,
+        args.template ? args.template.headings : [],
+      );
+    },
+    [brief],
+  );
 
   const handleExportWord = useCallback(
     async (citationStyle: 'links' | 'footnotes' = 'links') => {
@@ -111,12 +254,12 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       try {
         const { summary, results } = assembleBriefForExport(brief, dataSource);
         const blob = await exportResultsToDocxBlob({
-          query: brief.briefTitle || 'Evidence Brief',
+          query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
           aiSummary: summary,
           results,
           dataSource,
           documentTitle: 'AI-generated Research Brief',
-          summaryHeading: brief.briefTitle || 'Evidence Brief',
+          summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
           infoBox: BRIEF_DISCLAIMER,
           tableOfContents: true,
           resultsSectionTitle: 'Reference Excerpts',
@@ -139,25 +282,79 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [exportBusy, brief, dataSource],
   );
 
+  // The template draft when saving the open brief's headings as a template.
+  const templateFromBrief: TemplateDraft = {
+    fromBrief: true,
+    name: `${brief.briefTitle.slice(0, 40)} template`,
+    description: 'Saved from a brief',
+    headings: brief.sections.map((s) => ({
+      title: s.title,
+      sub: s.level === 2,
+      text: s.content || null,
+    })),
+    withText: false,
+  };
+
+  // Logged-in outline generation runs from the New-brief modal — surface the
+  // live research activity instead of silently sitting on the landing page.
+  const landing = loggedIn ? (
+    brief.outlineLoading ? (
+      <>
+        {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
+        <BriefGeneratingPanel brief={brief} />
+      </>
+    ) : (
+      <>
+        {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
+        <BriefCentral central={central} onOpenBrief={openBrief} onCreateBrief={createBrief} />
+      </>
+    )
+  ) : (
+    <BriefSeed brief={brief} />
+  );
+
   return (
-    <div className="brief-tab">
+    <div className={`brief-tab${brief.stage === 'seed' ? '' : ' brief-tab-full'}`}>
       {brief.stage === 'seed' ? (
-        <BriefSeed brief={brief} />
+        landing
       ) : (
-        <>
-          {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-          <div className="brief-builder">
-            <BriefHistoryRail brief={brief} />
-            <BriefDocument
-              brief={brief}
-              onResultClick={onResultClick}
-              onExportWord={handleExportWord}
-              exportBusy={exportBusy}
-            />
-          </div>
-        </>
+        <BriefWorkspace
+          brief={brief}
+          loggedIn={loggedIn}
+          onBack={backToCentral}
+          onResultClick={onResultClick}
+          onExportWord={handleExportWord}
+          exportBusy={exportBusy}
+          onOpenModal={setWorkspaceModal}
+        />
       )}
       <BriefHistoryModal brief={brief} />
+      {workspaceModal === 'share' && brief.currentBriefId && (
+        <BriefShareModal
+          briefId={brief.currentBriefId}
+          briefTitle={brief.briefTitle}
+          onChanged={() => void central.refresh()}
+          onClose={() => setWorkspaceModal(null)}
+        />
+      )}
+      {workspaceModal === 'template' && (
+        <BriefTemplateModal
+          draft={templateFromBrief}
+          onSave={async (d) => {
+            await central.saveTemplate({
+              name: d.name,
+              description: d.description || null,
+              headings: d.headings.map((h) => ({
+                ...h,
+                text: d.withText ? h.text : null,
+              })),
+              withText: d.withText,
+            });
+            setWorkspaceModal(null);
+          }}
+          onClose={() => setWorkspaceModal(null)}
+        />
+      )}
     </div>
   );
 };

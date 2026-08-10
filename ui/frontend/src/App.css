@@ -3853,6 +3853,11 @@ h6,
   font-size: 0.75rem;
   color: var(--gray-500);
 }
+/* LLM-selected excerpt snippets render quoted and italic. */
+.citation-hover-snippets {
+  font-style: italic;
+}
+
 .citation-hover-excerpt {
   margin-top: 8px;
   padding-top: 8px;
@@ -3864,7 +3869,6 @@ h6,
 /* Heading breadcrumb shown as an italic section path at the top of the excerpt. */
 .citation-hover-section {
   margin-bottom: 6px;
-  font-style: italic;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--gray-500);

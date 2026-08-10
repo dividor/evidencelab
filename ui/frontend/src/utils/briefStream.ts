@@ -110,6 +110,7 @@ export const requestBriefRevise = async ({
   content,
   instruction,
   model,
+  voiceInstructions,
   signal,
 }: {
   apiBaseUrl: string;
@@ -117,6 +118,7 @@ export const requestBriefRevise = async ({
   content: string;
   instruction: string;
   model?: string | null;
+  voiceInstructions?: string | null;
   signal?: AbortSignal;
 }): Promise<string> => {
   const response = await fetch(`${apiBaseUrl}/brief/revise`, {
@@ -128,6 +130,7 @@ export const requestBriefRevise = async ({
       instruction,
       data_source: dataSource,
       model: model ?? null,
+      voice_instructions: voiceInstructions ?? null,
     }),
     signal,
   });
@@ -277,6 +280,11 @@ export interface ResearchSectionOptions {
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
+  // Voice & tone profile instructions applied to the section's writing.
+  voiceInstructions?: string | null;
+  // Rendered outline of the whole brief (see buildOutlineContext), so the
+  // section stays in scope and doesn't duplicate other sections.
+  outlineContext?: string | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -327,9 +335,83 @@ const buildGenerateQuery = (args: {
   }
   parts.push(
     'Search the document library for evidence relevant to this specific section and cite a source for every claim.',
+    'Your final answer must be the finished section text itself — never a description of what you are about to do, a promise to research, or narration of your process.',
   );
   if (args.guidance) parts.push(`Overall brief guidance: ${args.guidance}`);
   if (args.focus) parts.push(`Focus for this section: ${args.focus}`);
+  return parts.join(' ');
+};
+
+/**
+ * Heuristic for a deep-research run that returned process narration instead of
+ * the section ("I'll go research that…"): it read sources but produced short
+ * text with no [n] citation markers. Such a result is treated as a failed run
+ * (fail loud, keep the section pending) rather than stored as content.
+ */
+export const isLikelyNonAnswer = (content: string, sourceCount: number): boolean => {
+  const text = (content || '').trim();
+  if (!text) return true;
+  const hasCitations = /\[\d+(?:,\s*\d+)*\]/.test(text);
+  return sourceCount >= 3 && !hasCitations && text.length < 800;
+};
+
+// A minimal shape of the brief's sections for outline context.
+export interface OutlineContextSection {
+  id: string;
+  title: string;
+  level: number; // 1 = section, 2 = sub-section
+  content?: string;
+}
+
+// First ~`max` characters of a section's markdown as plain-ish text, so the
+// model knows what a written section already covers without burning tokens.
+const briefGist = (markdown: string, max = 180): string => {
+  const text = markdown
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[(\d+)\]/g, '')
+    .replace(/[#*_>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+};
+
+/**
+ * Render the brief's outline (with a marker on the section being written and a
+ * one-line gist of each already-written section) plus scope rules, so section
+ * research knows the whole document structure and doesn't duplicate material
+ * that belongs elsewhere. Returns '' when there is no other section.
+ */
+export const buildOutlineContext = (
+  sections: OutlineContextSection[],
+  currentId: string,
+): string => {
+  if (sections.length <= 1) return '';
+  const idx = sections.findIndex((s) => s.id === currentId);
+  const current = idx >= 0 ? sections[idx] : null;
+  const lines = sections.map((s, i) => {
+    const indent = s.level === 2 ? '  - ' : '- ';
+    const marker = s.id === currentId ? ' ← the section you are writing' : '';
+    const gist = s.id !== currentId && s.content ? ` (already written; covers: ${briefGist(s.content)})` : '';
+    return `${indent}${s.title}${marker}${gist}`;
+  });
+  const parts = [
+    `For context, the full outline of the brief is:\n${lines.join('\n')}`,
+    'Keep this section strictly to its own scope: do NOT repeat or pre-empt material that belongs in the other sections listed above.',
+  ];
+  // A top-level heading with sub-headings is an introduction/frame — the
+  // detail belongs to the sub-sections that follow it.
+  if (current && current.level !== 2) {
+    const subs: string[] = [];
+    for (let i = idx + 1; i < sections.length && sections[i].level === 2; i++) {
+      subs.push(sections[i].title);
+    }
+    if (subs.length) {
+      parts.push(
+        `This section has sub-sections (${subs.join('; ')}) — write it as a short high-level introduction to the theme and leave the detail to those sub-sections.`,
+      );
+    }
+  }
   return parts.join(' ');
 };
 
@@ -348,6 +430,8 @@ export const buildSectionQuery = ({
   existingContent,
   instruction,
   publishedAfterIso,
+  voiceInstructions,
+  outlineContext,
 }: {
   heading: string;
   briefTopic?: string | null;
@@ -358,29 +442,37 @@ export const buildSectionQuery = ({
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
+  voiceInstructions?: string | null;
+  outlineContext?: string | null;
 }): string => {
   const topic = (briefTopic || '').trim();
   const guidance = (briefInstructions || '').trim();
   const draft = (existingContent || '').trim();
+  const voice = (voiceInstructions || '').trim();
+  const outline = (outlineContext || '').trim();
   const scope = topic
     ? `the "${heading}" section of an evidence brief on "${topic}"`
     : `the "${heading}" section of an evidence brief`;
 
-  if (mode === 'update' && draft) {
-    return buildReviseQuery({
-      scope,
-      draft,
-      instr: (instruction || '').trim(),
-      guidance,
-      publishedAfterIso,
-    });
-  }
-  return buildGenerateQuery({
-    scope,
-    parent: (parentTitle || '').trim(),
-    guidance,
-    focus: (context || '').trim(),
-  });
+  const base =
+    mode === 'update' && draft
+      ? buildReviseQuery({
+          scope,
+          draft,
+          instr: (instruction || '').trim(),
+          guidance,
+          publishedAfterIso,
+        })
+      : buildGenerateQuery({
+          scope,
+          parent: (parentTitle || '').trim(),
+          guidance,
+          focus: (context || '').trim(),
+        });
+  const withOutline = outline ? `${base} ${outline}` : base;
+  return voice
+    ? `${withOutline} Voice & tone profile — write the section in this style: ${voice}`
+    : withOutline;
 };
 
 /**
@@ -404,6 +496,8 @@ export const researchBriefSection = ({
   existingContent,
   instruction,
   publishedAfterIso,
+  voiceInstructions,
+  outlineContext,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -417,6 +511,8 @@ export const researchBriefSection = ({
     existingContent,
     instruction,
     publishedAfterIso,
+    voiceInstructions,
+    outlineContext,
   });
   return runDeepResearch({
     apiBaseUrl,
