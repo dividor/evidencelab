@@ -219,6 +219,18 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [brief],
   );
 
+  // Keep the URL canonical: App's tab navigation pushes a bare /brief, which
+  // would strip the open brief's id (and break copy-from-address-bar links).
+  // Restore it whenever the workspace has a brief open. Runs on every render —
+  // pathname isn't reactive state — and is an idempotent replaceState.
+  useEffect(() => {
+    if (!loggedIn || !brief.currentBriefId || brief.stage === 'seed') return;
+    const want = briefPath(brief.currentBriefId);
+    if (window.location.pathname !== want && briefIdFromLocation() === null) {
+      window.history.replaceState(null, '', want);
+    }
+  });
+
   const backToCentral = useCallback(() => {
     brief.reset();
     window.history.pushState(null, '', briefPath(null));

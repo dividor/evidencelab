@@ -166,6 +166,13 @@ export interface SourceReference {
   // to the text after the heading-breadcrumb line): the part of the excerpt
   // that supports the citing claim. Absent → render the full excerpt plain.
   semanticMatches?: Array<{ start: number; end: number; matchedText?: string }>;
+  // Per-claim LLM highlight matches: one entry per sentence citing this source
+  // (`claim` is the normalized sentence), so a source cited in several places
+  // shows the snippets for the sentence actually hovered.
+  claimMatches?: Array<{
+    claim: string;
+    matches: Array<{ start: number; end: number; matchedText?: string }>;
+  }>;
 }
 
 export interface AgentState {
