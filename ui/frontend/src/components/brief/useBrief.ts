@@ -307,23 +307,26 @@ export const useBrief = ({
   const semanticModelConfigRef = useRef(semanticModelConfig);
   semanticModelConfigRef.current = semanticModelConfig;
 
+  // Latest research-completion token per section id, written synchronously so
+  // highlight enrichment can detect a superseded run without waiting on state.
+  const researchTokenRef = useRef<Record<string, number>>({});
+
   // After a section's research completes (references validated), run the LLM
   // semantic highlighter over each cited excerpt in the background — the hover
   // card then marks the claim-supporting span, falling back to the full
   // excerpt. `token` (the section's lastResearchedAt) stops a stale run from
   // clobbering a newer research pass.
   const enrichSectionHighlights = useCallback(
-    (id: string, token: number) => {
-      if (!SEARCH_SEMANTIC_HIGHLIGHTS) return;
-      const section = sectionsRef.current.find((s) => s.id === id);
-      if (!section || section.status !== 'done' || !section.content) return;
-      const isStale = () => {
-        const cur = sectionsRef.current.find((s) => s.id === id);
-        return !cur || cur.lastResearchedAt !== token;
-      };
+    (id: string, token: number, content: string, sources: SourceReference[]) => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !content || !sources.length) return;
+      // Staleness is tracked in a ref written synchronously at completion —
+      // reading it from section state would race React's commit, since this
+      // runs from a timeout that can fire before the re-render lands.
+      const isStale = () => researchTokenRef.current[id] !== token;
+      if (isStale()) return;
       void highlightSectionSources({
-        content: section.content,
-        sources: section.sources,
+        content,
+        sources,
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
         modelConfig: semanticModelConfigRef.current,
         isStale,
@@ -803,8 +806,10 @@ export const useBrief = ({
               prevSources: isRevise ? priorSources : undefined,
               lastChangeKind: isRevise ? mode : undefined,
             });
-            // Async: LLM-highlight the cited excerpts once the state lands.
-            setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
+            // Async: LLM-highlight the cited excerpts. The token is recorded
+            // synchronously so the deferred run can tell if it was superseded.
+            researchTokenRef.current[id] = doneAt;
+            setTimeout(() => enrichSectionHighlights(id, doneAt, content, sources), 0);
           },
           onError: (m) => {
             // A revise keeps its previous good content; a fresh research reverts.
@@ -961,7 +966,7 @@ export const useBrief = ({
           content: revised,
           // Sources unchanged — a surgical edit preserves the [n] markers. The
           // claims moved though, so drop stale excerpt highlights to recompute.
-          sources: section.sources.map(({ semanticMatches: _sm, ...rest }) => rest),
+          sources: section.sources.map(({ claimMatches: _cm, semanticMatches: _sm, ...rest }) => rest),
           audit: [...(cur?.audit || []), entry],
           lastResearchedAt: doneAt,
           revising: undefined,
@@ -969,7 +974,17 @@ export const useBrief = ({
           prevSources: section.sources,
           lastChangeKind: 'edit',
         });
-        setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
+        researchTokenRef.current[id] = doneAt;
+        setTimeout(
+          () =>
+            enrichSectionHighlights(
+              id,
+              doneAt,
+              revised,
+              section.sources.map(({ claimMatches: _cm, semanticMatches: _sm, ...rest }) => rest),
+            ),
+          0,
+        );
       } catch (e) {
         if (!controller.signal.aborted) {
           updateSection(id, { status: 'done', progress: 100, revising: undefined });
