@@ -658,3 +658,109 @@ export const BriefShareModal: React.FC<{
     </div>
   );
 };
+
+// ---------------------------------------------------------------------------
+// Regenerate all sections
+// ---------------------------------------------------------------------------
+
+export interface RegenAllSubmit {
+  instructions: string;
+  voiceId: string | null;
+  // Clear each section's own profile so the chosen one applies document-wide.
+  applyVoiceToAllSections: boolean;
+}
+
+/**
+ * Confirmation for the document-wide "AI Regenerate All": every section is
+ * re-researched from scratch, so the user gets a chance to steer the run with
+ * guidance and a voice & tone profile before it starts.
+ */
+export const BriefRegenAllModal: React.FC<{
+  voices: VoiceProfile[];
+  briefVoiceId: string | null;
+  instructions: string;
+  hasSectionVoices: boolean;
+  onSubmit: (submit: RegenAllSubmit) => void;
+  onClose: () => void;
+}> = ({ voices, briefVoiceId, instructions: initial, hasSectionVoices, onSubmit, onClose }) => {
+  const [instructions, setInstructions] = useState(initial);
+  const [voiceId, setVoiceId] = useState<string | null>(briefVoiceId);
+  const [applyToAll, setApplyToAll] = useState(false);
+  const selected = voices.find((v) => v.id === voiceId) || null;
+
+  return (
+    <div className="brief-modal-overlay" onClick={onClose}>
+      <div className="brief-modal bc-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="brief-modal-head">
+          <div>
+            <div className="brief-modal-title">Regenerate all sections</div>
+            <div className="brief-modal-sub">
+              Every section is re-researched from scratch with these settings.
+            </div>
+          </div>
+          <button className="brief-modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div className="bc-modal-body">
+          <label className="brief-label" htmlFor="bc-regen-instructions">
+            Instructions <span className="brief-label-hint">(optional — guides the research)</span>
+          </label>
+          <textarea
+            id="bc-regen-instructions"
+            className="brief-textarea brief-textarea-sm"
+            rows={3}
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="e.g. emphasise evidence since 2020, foreground cost-efficiency, flag where evidence is thin"
+          />
+          <label className="brief-label brief-label-spaced" htmlFor="bc-regen-voice">
+            Voice &amp; tone profile
+          </label>
+          <select
+            id="bc-regen-voice"
+            className="bc-select"
+            value={voiceId || ''}
+            onChange={(e) => setVoiceId(e.target.value || null)}
+          >
+            <option value="">No voice profile</option>
+            {voices.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+          {selected && <div className="bc-voice-hint">{selected.description}</div>}
+          {hasSectionVoices && (
+            <>
+              <div className="bc-voice-hint">
+                Sections with their own voice profile keep it unless you overwrite them below.
+              </div>
+              <label className="bc-checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={applyToAll}
+                  onChange={(e) => setApplyToAll(e.target.checked)}
+                />
+                Apply this profile to every section
+              </label>
+            </>
+          )}
+          <div className="bc-modal-actions">
+            <button
+              className="brief-btn brief-btn-primary"
+              onClick={() =>
+                onSubmit({ instructions, voiceId, applyVoiceToAllSections: applyToAll })
+              }
+            >
+              <IconSparkle /> Regenerate all sections
+            </button>
+            <button className="brief-btn brief-btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -11,6 +11,7 @@ import {
 import { buildGlobalCitations } from './briefCitations';
 import { BriefCentral } from './BriefCentral';
 import {
+  BriefRegenAllModal,
   BriefShareModal,
   BriefTemplateModal,
   NewBriefSubmit,
@@ -101,7 +102,7 @@ const BriefWorkspace: React.FC<{
   onResultClick?: (result: SearchResult) => void;
   onExportWord: (style: 'links' | 'footnotes') => void;
   exportBusy: boolean;
-  onOpenModal: (modal: 'share' | 'template') => void;
+  onOpenModal: (modal: 'share' | 'template' | 'regen-all') => void;
 }> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -150,6 +151,7 @@ const BriefWorkspace: React.FC<{
             loggedIn && brief.currentBriefId ? () => onOpenModal('share') : undefined
           }
           onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
+          onRegenerateAll={() => onOpenModal('regen-all')}
           showToc={!loggedIn}
         />
       </div>
@@ -201,7 +203,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     semanticModelConfig,
   });
   const [exportBusy, setExportBusy] = useState(false);
-  const [workspaceModal, setWorkspaceModal] = useState<'share' | 'template' | null>(null);
+  const [workspaceModal, setWorkspaceModal] = useState<
+    'share' | 'template' | 'regen-all' | null
+  >(null);
 
   // Deep link: open /brief/<id> (a share URL) once auth has resolved.
   const { openBriefById } = brief;
@@ -218,6 +222,18 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     },
     [brief],
   );
+
+  // Keep the URL canonical: App's tab navigation pushes a bare /brief, which
+  // would strip the open brief's id (and break copy-from-address-bar links).
+  // Restore it whenever the workspace has a brief open. Runs on every render —
+  // pathname isn't reactive state — and is an idempotent replaceState.
+  useEffect(() => {
+    if (!loggedIn || !brief.currentBriefId || brief.stage === 'seed') return;
+    const want = briefPath(brief.currentBriefId);
+    if (window.location.pathname !== want && briefIdFromLocation() === null) {
+      window.history.replaceState(null, '', want);
+    }
+  });
 
   const backToCentral = useCallback(() => {
     brief.reset();
@@ -351,6 +367,26 @@ export const BriefTab: React.FC<BriefTabProps> = ({
               withText: d.withText,
             });
             setWorkspaceModal(null);
+          }}
+          onClose={() => setWorkspaceModal(null)}
+        />
+      )}
+      {workspaceModal === 'regen-all' && (
+        <BriefRegenAllModal
+          voices={brief.voices}
+          briefVoiceId={brief.briefVoiceId}
+          instructions={brief.instructions}
+          hasSectionVoices={brief.sections.some((s) => !!s.voiceId)}
+          onSubmit={({ instructions, voiceId, applyVoiceToAllSections }) => {
+            if (applyVoiceToAllSections) {
+              brief.sections.forEach((s) => {
+                if (s.voiceId) brief.setSectionVoiceId(s.id, null);
+              });
+            }
+            setWorkspaceModal(null);
+            // Passed explicitly: the research loop reads refs, which React
+            // would not have updated from the setters by the time it starts.
+            void brief.startResearch({ instructions, voiceId });
           }}
           onClose={() => setWorkspaceModal(null)}
         />

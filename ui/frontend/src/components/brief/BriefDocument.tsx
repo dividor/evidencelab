@@ -514,6 +514,7 @@ const HeaderActions: React.FC<{
   canEditStructure: boolean;
   onOpenShare?: () => void;
   onSaveTemplate?: () => void;
+  onRegenerateAll?: () => void;
   onExportWord?: (style: 'links' | 'footnotes') => void;
   exportBusy?: boolean;
   exportMenuOpen: boolean;
@@ -524,6 +525,7 @@ const HeaderActions: React.FC<{
   canEditStructure,
   onOpenShare,
   onSaveTemplate,
+  onRegenerateAll,
   onExportWord,
   exportBusy,
   exportMenuOpen,
@@ -536,7 +538,7 @@ const HeaderActions: React.FC<{
       {!readOnly && hasSections && (
         <button
           className="brief-regen-all"
-          onClick={brief.startResearch}
+          onClick={onRegenerateAll || (() => void brief.startResearch())}
           disabled={!canEditStructure}
           title="Re-research every section from scratch"
         >
@@ -594,6 +596,7 @@ interface BriefDocumentProps {
   // Brief Central integrations (remote mode only).
   onOpenShare?: () => void;
   onSaveTemplate?: () => void;
+  onRegenerateAll?: () => void;
   // False when the Contents panel renders in the workspace side rail instead
   // (logged-in layout); true keeps the inline panel (anonymous layout).
   showToc?: boolean;
@@ -643,6 +646,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   exportBusy,
   onOpenShare,
   onSaveTemplate,
+  onRegenerateAll,
   showToc = true,
 }) => {
   const { sections, numbers } = brief;
@@ -687,6 +691,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             canEditStructure={canEditStructure}
             onOpenShare={onOpenShare}
             onSaveTemplate={onSaveTemplate}
+            onRegenerateAll={onRegenerateAll}
             onExportWord={onExportWord}
             exportBusy={exportBusy}
             exportMenuOpen={exportMenuOpen}
@@ -797,7 +802,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         <div className="brief-doc-actions">
           <button
             className="brief-btn brief-btn-primary"
-            onClick={brief.startResearch}
+            onClick={onRegenerateAll || (() => void brief.startResearch())}
             disabled={!sections.length}
           >
             Start deep research →

@@ -29,6 +29,38 @@ export const extractCitedNumbers = (text: string): number[] => {
   return Array.from(cited).sort((a, b) => a - b);
 };
 
+/**
+ * Canonical form of a citing sentence used to key per-claim highlight matches:
+ * citation markers and markdown decoration stripped, whitespace collapsed,
+ * lowercased. Must produce identical keys at enrichment and render time.
+ */
+export const normalizeClaimText = (text: string): string =>
+  text
+    .replace(/\[(?:\d+,\s*)*\d+\]/g, '')
+    .replace(/[#*_>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/** The sentence surrounding a citation marker at `pos` within a text node. */
+export const sentenceAround = (text: string, pos: number): string => {
+  let start = 0;
+  for (let i = pos - 1; i >= 0; i--) {
+    if ('.!?\n'.includes(text[i])) {
+      start = i + 1;
+      break;
+    }
+  }
+  let end = text.length;
+  for (let i = pos; i < text.length; i++) {
+    if ('.!?\n'.includes(text[i])) {
+      end = i + 1;
+      break;
+    }
+  }
+  return text.slice(start, end).trim();
+};
+
 // A leading "-- h1 > h2 > h3 --" line is a heading breadcrumb embedded in the
 // chunk text. Split it off so the excerpt can show it as an italic section path
 // (without the -- markers) above the body.
@@ -97,11 +129,34 @@ const renderCitationExcerpt = (
   );
 };
 
+/**
+ * Highlight matches for the specific citing sentence being hovered. Falls back
+ * to the source-level matches (older briefs) when per-claim data is absent —
+ * but only if there is a single claim entry, since source-level matches for a
+ * multiply-cited source mix claims and mislead.
+ */
+const matchesForClaim = (
+  source: SourceReference,
+  claim: string | undefined,
+): Array<{ start: number; end: number }> | undefined => {
+  const entries = source.claimMatches;
+  if (entries?.length) {
+    if (claim) {
+      const key = normalizeClaimText(claim);
+      const hit = entries.find((e) => e.claim === key);
+      if (hit) return hit.matches;
+    }
+    return entries.length === 1 ? entries[0].matches : undefined;
+  }
+  return source.semanticMatches;
+};
+
 const InlineCitation: React.FC<{
   num: number;
   source?: SourceReference;
   onClick?: (source: SourceReference) => void;
-}> = ({ num, source, onClick }) => {
+  claim?: string;
+}> = ({ num, source, onClick, claim }) => {
   const ref = useRef<HTMLAnchorElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [card, setCard] = useState<{ top: number; left: number } | null>(null);
@@ -151,7 +206,7 @@ const InlineCitation: React.FC<{
             )}
             {source.text && (
               <div className="citation-hover-excerpt">
-                {renderCitationExcerpt(source.text, source.semanticMatches)}
+                {renderCitationExcerpt(source.text, matchesForClaim(source, claim))}
               </div>
             )}
           </div>,
@@ -174,6 +229,7 @@ function replaceCitations(
 
   while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+    const claim = sentenceAround(text, match.index);
     const nums = parseCitationNumbers(match[1]);
     // Group consecutive citations by document.
     const groups: number[][] = [];
@@ -196,7 +252,12 @@ function replaceCitations(
               {group.map((n, i) => (
                 <React.Fragment key={n}>
                   {i > 0 && <span>, </span>}
-                  <InlineCitation num={n} source={sourceByIndex.get(n)} onClick={onSourceClick} />
+                  <InlineCitation
+                    num={n}
+                    source={sourceByIndex.get(n)}
+                    onClick={onSourceClick}
+                    claim={claim}
+                  />
                 </React.Fragment>
               ))}
             </span>
