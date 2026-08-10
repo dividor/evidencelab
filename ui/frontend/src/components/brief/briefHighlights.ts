@@ -41,6 +41,10 @@ export interface HighlightSectionArgs {
   modelConfig?: SummaryModelConfig | null;
   // Abort check — polled between sources so a stale run stops early.
   isStale?: () => boolean;
+  // Called after each source resolves with the full source list (enriched so
+  // far + untouched rest), so the UI can show snippets as they arrive instead
+  // of waiting for the whole section.
+  onPartial?: (sources: SourceReference[]) => void;
 }
 
 /**
@@ -56,6 +60,7 @@ export const highlightSectionSources = async ({
   threshold,
   modelConfig,
   isStale,
+  onPartial,
 }: HighlightSectionArgs): Promise<SourceReference[]> => {
   const cited = new Set(extractCitedNumbers(content));
   const out: SourceReference[] = [];
@@ -79,6 +84,7 @@ export const highlightSectionSources = async ({
     try {
       const matches = await findSemanticMatches(body, claim, threshold, modelConfig);
       out.push(matches.length ? { ...source, semanticMatches: matches } : source);
+      if (matches.length) onPartial?.(out.concat(sources.slice(out.length)));
     } catch {
       // Highlighting is an enhancement — the full excerpt remains the fallback.
       out.push(source);

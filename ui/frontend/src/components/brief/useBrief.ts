@@ -326,6 +326,11 @@ export const useBrief = ({
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
         modelConfig: semanticModelConfigRef.current,
         isStale,
+        // Apply snippets as each source resolves — a big section takes minutes
+        // to fully enrich and the hover cards should improve as it goes.
+        onPartial: (sources) => {
+          if (!isStale()) updateSection(id, { sources });
+        },
       })
         .then((sources) => {
           if (!isStale()) updateSection(id, { sources });
