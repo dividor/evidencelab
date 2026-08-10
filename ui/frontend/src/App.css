@@ -3853,9 +3853,20 @@ h6,
   font-size: 0.75rem;
   color: var(--gray-500);
 }
-/* LLM-selected excerpt snippets render quoted and italic. */
-.citation-hover-snippets {
-  font-style: italic;
+/* The span(s) the LLM picked out as supporting the hovered claim. */
+.citation-hover-mark {
+  background: rgba(91, 143, 168, 0.22);
+  color: inherit;
+  padding: 0 1px;
+}
+
+/* Excerpt paragraphs inside the citation hover card. */
+.citation-hover-para {
+  margin: 0 0 8px;
+}
+
+.citation-hover-para:last-child {
+  margin-bottom: 0;
 }
 
 .citation-hover-excerpt {

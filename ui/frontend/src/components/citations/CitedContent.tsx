@@ -98,27 +98,100 @@ export const snapToWordBounds = (
   return { start: s, end: e };
 };
 
+/**
+ * Tidy a raw chunk for reading: PDF extraction leaves runs of spaces mid-
+ * sentence and inline footnote markers ("[^56]"), and paragraphs arrive as
+ * single newlines. Paragraph breaks are preserved for rendering.
+ */
+export const formatExcerpt = (text: string): string =>
+  text
+    .replace(/\[\^\d+\]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+/**
+ * Locate each LLM-selected span inside the formatted excerpt. Offsets from the
+ * matcher refer to the raw text, so the span is re-found by its text after
+ * formatting — then snapped to whole words and merged where spans overlap.
+ */
+export const locateMatchRanges = (
+  formatted: string,
+  snippets: string[],
+): Array<{ start: number; end: number }> => {
+  const haystack = formatted.toLowerCase();
+  const found: Array<{ start: number; end: number }> = [];
+  for (const raw of snippets) {
+    const needle = formatExcerpt(raw).toLowerCase().trim();
+    if (needle.length < 12) continue;
+    const at = haystack.indexOf(needle);
+    if (at < 0) continue;
+    found.push(snapToWordBounds(formatted, at, at + needle.length));
+  }
+  found.sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [];
+  for (const r of found) {
+    const last = merged[merged.length - 1];
+    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
+    else merged.push({ ...r });
+  }
+  return merged;
+};
+
+// One paragraph of the excerpt with the claim-supporting spans marked.
+const ExcerptParagraph: React.FC<{
+  text: string;
+  ranges: Array<{ start: number; end: number }>;
+  offset: number;
+}> = ({ text, ranges, offset }) => {
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  ranges.forEach((r, i) => {
+    const start = r.start - offset;
+    const end = r.end - offset;
+    if (end <= 0 || start >= text.length) return;
+    const from = Math.max(0, start);
+    const to = Math.min(text.length, end);
+    if (from > cursor) parts.push(text.slice(cursor, from));
+    parts.push(
+      <mark key={`hl-${i}`} className="citation-hover-mark">
+        {text.slice(from, to)}
+      </mark>,
+    );
+    cursor = to;
+  });
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <p className="citation-hover-para">{parts.length ? parts : text}</p>;
+};
+
 const renderCitationExcerpt = (
   text: string,
-  semanticMatches?: Array<{ start: number; end: number }>,
+  semanticMatches?: Array<{ start: number; end: number; matchedText?: string }>,
 ): React.ReactNode => {
   const { section, body } = parseSectionBreadcrumb(text);
-  // LLM-highlighted excerpts show ONLY the claim-supporting span(s), separated
-  // by ellipses — not the whole excerpt. Offsets are relative to the body
-  // (after the breadcrumb split). Without matches, the full excerpt renders.
-  const renderBody = (b: string): React.ReactNode => {
+  // The whole excerpt is shown, formatted for reading, with the span(s) the
+  // LLM picked out for the hovered claim highlighted in place.
+  const renderBody = (raw: string): React.ReactNode => {
+    const formatted = formatExcerpt(raw);
     const snippets = (semanticMatches || [])
-      .map((m) => {
-        const { start, end } = snapToWordBounds(b, m.start, m.end);
-        return b.substring(start, end).trim();
-      })
+      .map((m) => m.matchedText ?? raw.slice(m.start, m.end))
       .filter(Boolean);
-    if (!snippets.length) return parseAndRenderSuperscripts(b);
-    return (
-      <span className="citation-hover-snippets">
-        {snippets.map((s) => `“${s}”`).join(' … ')}
-      </span>
-    );
+    const ranges = snippets.length ? locateMatchRanges(formatted, snippets) : [];
+    if (!ranges.length) return parseAndRenderSuperscripts(formatted);
+    // Paragraphs are rendered separately, so each needs its offset into the
+    // formatted text to know which ranges fall inside it.
+    let offset = 0;
+    return formatted.split(/\n{2,}/).map((para, i) => {
+      const node = (
+        <ExcerptParagraph key={`p-${i}`} text={para} ranges={ranges} offset={offset} />
+      );
+      offset += para.length + 2;
+      return node;
+    });
   };
   if (!section) return renderBody(text);
   return (
@@ -138,12 +211,19 @@ const renderCitationExcerpt = (
 const matchesForClaim = (
   source: SourceReference,
   claim: string | undefined,
-): Array<{ start: number; end: number }> | undefined => {
+): Array<{ start: number; end: number; matchedText?: string }> | undefined => {
   const entries = source.claimMatches;
   if (entries?.length) {
     if (claim) {
       const key = normalizeClaimText(claim);
-      const hit = entries.find((e) => e.claim === key);
+      // Enrichment splits sentences in the markdown, where a soft line-wrap
+      // ends a "sentence"; the rendered text the card sees has those wraps
+      // collapsed. Containment matches the two forms of the same sentence.
+      const hit =
+        entries.find((e) => e.claim === key) ||
+        entries.find(
+          (e) => e.claim.length > 24 && (key.includes(e.claim) || e.claim.includes(key)),
+        );
       if (hit) return hit.matches;
     }
     return entries.length === 1 ? entries[0].matches : undefined;

@@ -154,6 +154,46 @@ describe('snapToWordBounds', () => {
   });
 });
 
+describe('excerpt formatting and highlight location', () => {
+  const { formatExcerpt, locateMatchRanges } = jest.requireActual(
+    '../components/citations/CitedContent',
+  );
+  const RAW =
+    '211. WFP has launched a new  country  strategy for the period 2018 -2023 [^56] .\n\n' +
+    '212. The launching of  Kenya\'s first School Feeding strategy in 2018 .';
+
+  it('drops footnote markers and PDF double-spacing but keeps paragraphs', () => {
+    const out = formatExcerpt(RAW);
+    expect(out).toContain('a new country strategy');
+    expect(out).not.toContain('[^56]');
+    expect(out).not.toMatch(/ {2,}/);
+    expect(out).toContain('2018 -2023.');
+    expect(out.split(/\n{2,}/)).toHaveLength(2);
+  });
+
+  it('locates a snippet in the formatted text despite raw-text spacing', () => {
+    const formatted = formatExcerpt(RAW);
+    const ranges = locateMatchRanges(formatted, ['a new  country  strategy for the period']);
+    expect(ranges).toHaveLength(1);
+    expect(formatted.slice(ranges[0].start, ranges[0].end)).toContain(
+      'a new country strategy for the period',
+    );
+  });
+
+  it('merges overlapping spans and ignores ones that are not present', () => {
+    const formatted = formatExcerpt(RAW);
+    const ranges = locateMatchRanges(formatted, [
+      'WFP has launched a new country',
+      'launched a new country strategy',
+      'text that does not appear anywhere',
+    ]);
+    expect(ranges).toHaveLength(1);
+    expect(formatted.slice(ranges[0].start, ranges[0].end)).toBe(
+      'WFP has launched a new country strategy',
+    );
+  });
+});
+
 describe('claim selection in the hover card (matchesForClaim via normalize/sentence)', () => {
   const { normalizeClaimText, sentenceAround } = jest.requireActual(
     '../components/citations/CitedContent',
