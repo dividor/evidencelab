@@ -599,6 +599,37 @@ interface BriefDocumentProps {
   showToc?: boolean;
 }
 
+// Floating bar fixed to the bottom of the viewport while research runs: which
+// section is being written, overall progress, and a Stop control.
+const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
+  const current = brief.sections.find((s) => s.status === 'researching');
+  if (!current) return null;
+  const total = brief.sections.length;
+  return (
+    <div className="brief-status-bar" role="status">
+      <span className="brief-spinner brief-status-bar-spinner" />
+      <div className="brief-status-bar-main">
+        <div className="brief-status-bar-label">
+          {current.revising ? 'Revising' : 'Researching'} “{current.title}”
+          <span className="brief-status-bar-count">
+            {brief.doneCount}/{total} sections
+          </span>
+        </div>
+        <div className="brief-status-bar-track">
+          <div className="brief-status-bar-fill" style={{ width: `${brief.totalProgress}%` }} />
+        </div>
+      </div>
+      <button
+        className="brief-status-bar-stop"
+        onClick={brief.stopResearch}
+        title="Stop all research"
+      >
+        ■ Stop
+      </button>
+    </div>
+  );
+};
+
 const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
   el.style.height = 'auto';
@@ -801,6 +832,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           </div>
         </section>
       )}
+
+      <ResearchStatusBar brief={brief} />
     </div>
   );
 };

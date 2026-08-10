@@ -2389,3 +2389,84 @@
     flex-wrap: wrap;
   }
 }
+
+/* ---------- floating research status bar ---------- */
+.brief-status-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(680px, calc(100vw - 32px));
+  padding: 12px 18px;
+  background: var(--brand-primary-dark);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+}
+
+.brief-status-bar-spinner {
+  flex: none;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
+.brief-status-bar-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.brief-status-bar-label {
+  font-family: var(--font-heading);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.brief-status-bar-count {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.brief-status-bar-track {
+  margin-top: 7px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.brief-status-bar-fill {
+  height: 100%;
+  background: #fff;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.brief-status-bar-stop {
+  flex: none;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.brief-status-bar-stop:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
