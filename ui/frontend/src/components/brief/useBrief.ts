@@ -459,6 +459,7 @@ export const useBrief = ({
           audit: s.audit && s.audit.length ? s.audit : undefined,
           lastResearchedAt: s.lastResearchedAt,
           voiceId: s.voiceId ?? undefined,
+          guidance: s.guidance || undefined,
         };
       }),
       outlineLog: outlineLogRef.current,
@@ -863,7 +864,10 @@ export const useBrief = ({
       setStage('research');
       for (const id of ids) {
         if (controller.signal.aborted) return;
-        await researchOne(id, null, controller.signal);
+        // Each section carries its own author instructions (set in its Research
+        // panel), so a document-wide run honours what the user typed per section.
+        const guidance = sectionsRef.current.find((s) => s.id === id)?.guidance?.trim() || null;
+        await researchOne(id, guidance, controller.signal);
       }
       if (!controller.signal.aborted) {
         setStage('done');
@@ -1091,6 +1095,7 @@ export const useBrief = ({
           audit: h.audit || [],
           lastResearchedAt: h.lastResearchedAt,
           voiceId: h.voiceId ?? null,
+          guidance: h.guidance || '',
         })),
       );
       setGeneratingActivity(entry.outlineLog || []);
@@ -1245,6 +1250,7 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
+    setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>
       updateSection(id, { voiceId }),
     generateOutline,

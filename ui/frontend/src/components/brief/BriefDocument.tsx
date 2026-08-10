@@ -110,10 +110,12 @@ interface SectionViewProps {
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
-const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> = ({
-  section,
-  brief,
-}) => {
+const GuidancePanel: React.FC<{
+  section: BriefSection;
+  brief: UseBriefReturn;
+  // The inline panel for an un-researched section has nothing to cancel back to.
+  hideCancel?: boolean;
+}> = ({ section, brief, hideCancel }) => {
   const isPending = section.status === 'pending';
   const briefVoice = brief.voices.find((v) => v.id === brief.briefVoiceId) || null;
   const ownVoice = brief.voices.find((v) => v.id === section.voiceId) || null;
@@ -123,8 +125,8 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
         {isPending ? 'Research' : 'Regenerate'} “{section.title}”
       </div>
       <textarea
-        value={brief.regenText}
-        onChange={(e) => brief.setRegenText(e.target.value)}
+        value={section.guidance || ''}
+        onChange={(e) => brief.setSectionGuidance(section.id, e.target.value)}
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />
@@ -158,13 +160,15 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
-          onClick={() => brief.regenerate(section.id, brief.regenText.trim() || null)}
+          onClick={() => brief.regenerate(section.id, (section.guidance || '').trim() || null)}
         >
           {isPending ? 'Research section' : 'Re-research section'}
         </button>
-        <button className="brief-btn brief-btn-secondary" onClick={brief.closeRegen}>
-          Cancel
-        </button>
+        {!hideCancel && (
+          <button className="brief-btn brief-btn-secondary" onClick={brief.closeRegen}>
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );
@@ -352,6 +356,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
+  // An un-researched section shows its Research panel inline rather than a
+  // button, so instructions can be written for several sections up front and
+  // then applied by "AI Regenerate All". Sample headings must be edited first.
+  const showInlineResearch =
+    section.status === 'pending' &&
+    !panelOpen &&
+    !anyResearching &&
+    !readOnly &&
+    !section.sample;
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   const hasChanges = !!section.prevContent;
@@ -437,11 +450,18 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {panelOpen && <GuidancePanel section={section} brief={brief} />}
-
-      {section.status === 'pending' && !panelOpen && !anyResearching && !readOnly && (
-        <SectionPending sample={section.sample} onResearch={() => brief.openRegen(section.id)} />
+      {(panelOpen || showInlineResearch) && (
+        <GuidancePanel section={section} brief={brief} hideCancel={showInlineResearch} />
       )}
+
+      {/* Sample headings keep the (disabled) button until they are edited. */}
+      {section.status === 'pending' &&
+        section.sample &&
+        !panelOpen &&
+        !anyResearching &&
+        !readOnly && (
+          <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
+        )}
 
       {section.status === 'researching' && (
         <SectionResearching section={section} display={display} onSourceClick={onSourceClick} />
