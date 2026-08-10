@@ -336,6 +336,21 @@ const SectionDoneBody: React.FC<{
   );
 };
 
+// How an un-researched section invites research: inline panel (so instructions
+// can be written for several sections before one "Regenerate all" run), the
+// legacy button for un-edited sample headings, or nothing while busy/read-only.
+type PendingMode = 'none' | 'inline' | 'button';
+
+const pendingResearchMode = (
+  section: BriefSection,
+  panelOpen: boolean,
+  anyResearching: boolean,
+  readOnly: boolean,
+): PendingMode => {
+  if (section.status !== 'pending' || panelOpen || anyResearching || readOnly) return 'none';
+  return section.sample ? 'button' : 'inline';
+};
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
@@ -356,15 +371,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
-  // An un-researched section shows its Research panel inline rather than a
-  // button, so instructions can be written for several sections up front and
-  // then applied by "AI Regenerate All". Sample headings must be edited first.
-  const showInlineResearch =
-    section.status === 'pending' &&
-    !panelOpen &&
-    !anyResearching &&
-    !readOnly &&
-    !section.sample;
+  const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   const hasChanges = !!section.prevContent;
@@ -450,18 +457,13 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {(panelOpen || showInlineResearch) && (
-        <GuidancePanel section={section} brief={brief} hideCancel={showInlineResearch} />
+      {(panelOpen || pendingMode === 'inline') && (
+        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
       )}
 
-      {/* Sample headings keep the (disabled) button until they are edited. */}
-      {section.status === 'pending' &&
-        section.sample &&
-        !panelOpen &&
-        !anyResearching &&
-        !readOnly && (
-          <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
-        )}
+      {pendingMode === 'button' && (
+        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
+      )}
 
       {section.status === 'researching' && (
         <SectionResearching section={section} display={display} onSourceClick={onSourceClick} />
