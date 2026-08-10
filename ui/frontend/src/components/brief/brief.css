@@ -2286,6 +2286,19 @@
   border: 1px solid var(--brand-border);
 }
 
+/* Scroll-spy: the section currently in view. (No side accent bars.) The
+   tint bleeds past the text into the panel padding on both sides. */
+.brief-toc-row-active .brief-toc-row-line {
+  background: rgba(91, 143, 168, 0.1);
+  margin: 0 -10px;
+  padding: 2px 10px;
+}
+
+.brief-toc-row-active .brief-toc-text {
+  color: var(--brand-primary-dark);
+  font-weight: 600;
+}
+
 /* ---------- responsive (matches App.css breakpoints) ---------- */
 @media (max-width: 1024px) {
   .brief-builder {

@@ -31,6 +31,11 @@ import {
   updateBrief as updateBriefRemote,
 } from './briefCentralApi';
 import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
+import { highlightSectionSources } from './briefHighlights';
+import {
+  SEARCH_SEMANTIC_HIGHLIGHTS,
+  SEMANTIC_HIGHLIGHT_THRESHOLD,
+} from '../../config';
 
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
@@ -76,6 +81,9 @@ export interface UseBriefOptions {
   // The user's voice & tone profiles, used to resolve the instructions applied
   // when a section is (re)written.
   voices?: VoiceProfile[] | null;
+  // Model for the LLM semantic highlighter (combo.semantic_highlighting_model),
+  // used to mark the claim-supporting span of each citation's excerpt.
+  semanticModelConfig?: SummaryModelConfig | null;
 }
 
 const loadHistory = (key: string): SavedBrief[] => {
@@ -190,6 +198,7 @@ export const useBrief = ({
   userKey,
   remote = false,
   voices,
+  semanticModelConfig,
 }: UseBriefOptions) => {
   const historyKey = userKey ? `${BRIEF_HISTORY_KEY}_u_${userKey}` : BRIEF_HISTORY_KEY;
   const { logBrief } = useActivityLogging();
@@ -293,6 +302,40 @@ export const useBrief = ({
   const updateSection = useCallback((id: string, patch: Partial<BriefSection>) => {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }, []);
+
+  const semanticModelConfigRef = useRef(semanticModelConfig);
+  semanticModelConfigRef.current = semanticModelConfig;
+
+  // After a section's research completes (references validated), run the LLM
+  // semantic highlighter over each cited excerpt in the background — the hover
+  // card then marks the claim-supporting span, falling back to the full
+  // excerpt. `token` (the section's lastResearchedAt) stops a stale run from
+  // clobbering a newer research pass.
+  const enrichSectionHighlights = useCallback(
+    (id: string, token: number) => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS) return;
+      const section = sectionsRef.current.find((s) => s.id === id);
+      if (!section || section.status !== 'done' || !section.content) return;
+      const isStale = () => {
+        const cur = sectionsRef.current.find((s) => s.id === id);
+        return !cur || cur.lastResearchedAt !== token;
+      };
+      void highlightSectionSources({
+        content: section.content,
+        sources: section.sources,
+        threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
+        modelConfig: semanticModelConfigRef.current,
+        isStale,
+      })
+        .then((sources) => {
+          if (!isStale()) updateSection(id, { sources });
+        })
+        .catch(() => {
+          /* highlighting is an enhancement; the plain excerpt remains */
+        });
+    },
+    [updateSection],
+  );
 
   const pushActivity = useCallback((id: string, ev: BriefActivityEvent) => {
     // Retain a deep log; the status box shows ~5 rows and scrolls for the rest.
@@ -731,18 +774,21 @@ export const useBrief = ({
               after: isRevise ? content : undefined,
             };
             const cur = sectionsRef.current.find((s) => s.id === id);
+            const doneAt = Date.now();
             updateSection(id, {
               status: 'done',
               progress: 100,
               content,
               sources,
               audit: [...(cur?.audit || []), entry],
-              lastResearchedAt: Date.now(),
+              lastResearchedAt: doneAt,
               revising: undefined,
               prevContent: isRevise ? priorContent : undefined,
               prevSources: isRevise ? priorSources : undefined,
               lastChangeKind: isRevise ? mode : undefined,
             });
+            // Async: LLM-highlight the cited excerpts once the state lands.
+            setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
           },
           onError: (m) => {
             // A revise keeps its previous good content; a fresh research reverts.
@@ -771,6 +817,7 @@ export const useBrief = ({
       updateSection,
       pushActivity,
       voiceInstructionsFor,
+      enrichSectionHighlights,
     ],
   );
 
@@ -891,18 +938,22 @@ export const useBrief = ({
           before: priorContent,
           after: revised,
         };
+        const doneAt = Date.now();
         updateSection(id, {
           status: 'done',
           progress: 100,
           content: revised,
-          // Sources unchanged — a surgical edit preserves the [n] markers.
+          // Sources unchanged — a surgical edit preserves the [n] markers. The
+          // claims moved though, so drop stale excerpt highlights to recompute.
+          sources: section.sources.map(({ semanticMatches: _sm, ...rest }) => rest),
           audit: [...(cur?.audit || []), entry],
-          lastResearchedAt: Date.now(),
+          lastResearchedAt: doneAt,
           revising: undefined,
           prevContent: priorContent,
           prevSources: section.sources,
           lastChangeKind: 'edit',
         });
+        setTimeout(() => enrichSectionHighlights(id, doneAt), 0);
       } catch (e) {
         if (!controller.signal.aborted) {
           updateSection(id, { status: 'done', progress: 100, revising: undefined });
@@ -910,7 +961,7 @@ export const useBrief = ({
         }
       }
     },
-    [apiBaseUrl, dataSource, updateSection, voiceInstructionsFor],
+    [apiBaseUrl, dataSource, updateSection, voiceInstructionsFor, enrichSectionHighlights],
   );
 
   // Dispatch the two AI actions on a DONE section: Edit → surgical revise;

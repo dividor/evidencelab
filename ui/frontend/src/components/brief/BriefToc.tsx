@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   closestCenter,
   DndContext,
@@ -30,14 +30,41 @@ const scrollToSection = (id: string): void => {
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+// Scroll-spy: the id of the section heading nearest above the viewport top
+// (accounting for the sticky top bar), so the TOC can highlight where you are.
+const useActiveSection = (sections: BriefSection[]): string | null => {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  useEffect(() => {
+    const track = () => {
+      const bar = document.querySelector('.top-bar');
+      const offset = (bar instanceof HTMLElement ? bar.offsetHeight : 0) + 80;
+      let active: string | null = null;
+      for (const section of sections) {
+        const el = document.getElementById(`brief-section-${section.id}`);
+        if (el && el.getBoundingClientRect().top <= offset) active = section.id;
+      }
+      setActiveId(active ?? (sections.length ? sections[0].id : null));
+    };
+    track();
+    window.addEventListener('scroll', track, { passive: true });
+    window.addEventListener('resize', track);
+    return () => {
+      window.removeEventListener('scroll', track);
+      window.removeEventListener('resize', track);
+    };
+  }, [sections]);
+  return activeId;
+};
+
 interface TocRowProps {
   section: BriefSection;
   num: string;
   brief: UseBriefReturn;
   canEdit: boolean;
+  active: boolean;
 }
 
-const TocRow: React.FC<TocRowProps> = ({ section, num, brief, canEdit }) => {
+const TocRow: React.FC<TocRowProps> = ({ section, num, brief, canEdit, active }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: section.id,
     disabled: !canEdit,
@@ -64,7 +91,9 @@ const TocRow: React.FC<TocRowProps> = ({ section, num, brief, canEdit }) => {
     <div
       ref={setNodeRef}
       style={style}
-      className={`brief-toc-row${section.level === 2 ? ' brief-toc-row-sub' : ''}`}
+      className={`brief-toc-row${section.level === 2 ? ' brief-toc-row-sub' : ''}${
+        active ? ' brief-toc-row-active' : ''
+      }`}
     >
       <div className="brief-toc-row-line">
         {canEdit && (
@@ -143,6 +172,7 @@ interface BriefTocProps {
  */
 export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
   const { sections, numbers, numberHeadings } = brief;
+  const activeId = useActiveSection(sections);
   const [addingHeading, setAddingHeading] = useState(false);
   const [headingName, setHeadingName] = useState('');
   const closeHeading = (): void => {
@@ -195,6 +225,7 @@ export const BriefToc: React.FC<BriefTocProps> = ({ brief, canEdit }) => {
                 num={numberHeadings ? numbers[i] : ''}
                 brief={brief}
                 canEdit={canEdit}
+                active={s.id === activeId}
               />
             ))}
           </div>

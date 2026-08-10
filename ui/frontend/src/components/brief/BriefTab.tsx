@@ -108,6 +108,18 @@ const BriefWorkspace: React.FC<{
   // saved-briefs history rail and the inline Contents panel.
   const canEditStructure =
     brief.canEdit && !brief.sections.some((s) => s.status === 'researching');
+  // Offset the sticky rail below the app's sticky top bar so the first
+  // headings never slide underneath it.
+  const [railTop, setRailTop] = useState(88);
+  useEffect(() => {
+    const measure = () => {
+      const bar = document.querySelector('.top-bar');
+      setRailTop((bar instanceof HTMLElement ? bar.offsetHeight : 72) + 16);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
   return (
     <>
       {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
@@ -120,7 +132,10 @@ const BriefWorkspace: React.FC<{
       )}
       <div className="brief-builder">
         {loggedIn ? (
-          <aside className="brief-toc-rail">
+          <aside
+            className="brief-toc-rail"
+            style={{ top: railTop, maxHeight: `calc(100vh - ${railTop + 16}px)` }}
+          >
             <BriefToc brief={brief} canEdit={canEditStructure} />
           </aside>
         ) : (
@@ -150,6 +165,9 @@ interface BriefTabProps {
   // users). Applied to brief searches only when logged in.
   rerankerModel?: string | null;
   searchSettings?: Partial<SearchSettings> | null;
+  // Model for the LLM semantic highlighter (combo.semantic_highlighting_model),
+  // used to mark claim-supporting spans in citation excerpts.
+  semanticModelConfig?: SummaryModelConfig | null;
   // Opens the document preview (citations/footnotes click through to it).
   onResultClick?: (result: SearchResult) => void;
 }
@@ -159,6 +177,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   assistantModelConfig,
   rerankerModel,
   searchSettings,
+  semanticModelConfig,
   onResultClick,
 }) => {
   const auth = useAuth();
@@ -179,6 +198,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     userKey,
     remote: loggedIn,
     voices: central.voices,
+    semanticModelConfig,
   });
   const [exportBusy, setExportBusy] = useState(false);
   const [workspaceModal, setWorkspaceModal] = useState<'share' | 'template' | null>(null);

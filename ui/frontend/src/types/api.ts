@@ -162,6 +162,10 @@ export interface SourceReference {
   // the in-app deep link.
   pdfUrl?: string;
   reportUrl?: string;
+  // LLM semantic-highlight matches within the excerpt body (offsets relative
+  // to the text after the heading-breadcrumb line): the part of the excerpt
+  // that supports the citing claim. Absent → render the full excerpt plain.
+  semanticMatches?: Array<{ start: number; end: number; matchedText?: string }>;
 }
 
 export interface AgentState {

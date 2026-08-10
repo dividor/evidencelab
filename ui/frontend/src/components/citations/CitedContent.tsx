@@ -51,13 +51,30 @@ export const parseSectionBreadcrumb = (
   return { section: null, body: text };
 };
 
-const renderCitationExcerpt = (text: string): React.ReactNode => {
+const renderCitationExcerpt = (
+  text: string,
+  semanticMatches?: Array<{ start: number; end: number }>,
+): React.ReactNode => {
   const { section, body } = parseSectionBreadcrumb(text);
-  if (!section) return parseAndRenderSuperscripts(text);
+  // LLM-highlighted excerpts show ONLY the claim-supporting span(s), separated
+  // by ellipses — not the whole excerpt. Offsets are relative to the body
+  // (after the breadcrumb split). Without matches, the full excerpt renders.
+  const renderBody = (b: string): React.ReactNode => {
+    const snippets = (semanticMatches || [])
+      .map((m) => b.substring(m.start, m.end).trim())
+      .filter(Boolean);
+    if (!snippets.length) return parseAndRenderSuperscripts(b);
+    return (
+      <span className="citation-hover-snippets">
+        {snippets.map((s) => `“${s}”`).join(' … ')}
+      </span>
+    );
+  };
+  if (!section) return renderBody(text);
   return (
     <>
       <div className="citation-hover-section">{section}</div>
-      {body.trim() && <div>{parseAndRenderSuperscripts(body)}</div>}
+      {body.trim() && <div>{renderBody(body)}</div>}
     </>
   );
 };
@@ -115,7 +132,9 @@ const InlineCitation: React.FC<{
               <div className="citation-hover-meta">Page {source.page}</div>
             )}
             {source.text && (
-              <div className="citation-hover-excerpt">{renderCitationExcerpt(source.text)}</div>
+              <div className="citation-hover-excerpt">
+                {renderCitationExcerpt(source.text, source.semanticMatches)}
+              </div>
             )}
           </div>,
           document.body,

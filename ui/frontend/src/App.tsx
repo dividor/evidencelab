@@ -2970,6 +2970,7 @@ function App() {
           <BriefTab
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
+            semanticModelConfig={semanticHighlightModelConfig}
             rerankerModel={rerankModel}
             searchSettings={{
               denseWeight: searchDenseWeight,
