@@ -89,6 +89,13 @@ export const buildGlobalCitations = (
       if (!seen.has(g)) {
         seen.add(g);
         sources.push({ ...src, index: g });
+        return;
+      }
+      // A document's other chunks ride along as variants: their excerpts carry
+      // the highlights for claims this first chunk does not support.
+      const kept = sources.find((x) => x.index === g);
+      if (kept && kept.chunkId !== src.chunkId) {
+        kept.variants = [...(kept.variants || []), src];
       }
     });
     const content = stripLeadingTitle(s.content, s.title).replace(CITATION_RE, (_m, nums: string) => {

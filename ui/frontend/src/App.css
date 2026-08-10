@@ -3853,30 +3853,22 @@ h6,
   font-size: 0.75rem;
   color: var(--gray-500);
 }
-/* The span(s) the LLM picked out as supporting the hovered claim. */
-.citation-hover-mark {
+/* Excerpt body inside the citation hover card: Search's own text formatter
+   lays the chunk out, so lists and indentation match a search result. */
+.citation-hover-body .formatted-text-block {
+  white-space: pre-wrap;
+}
+
+/* The span(s) the LLM picked out as supporting the hovered claim. Search marks
+   matches with weight alone; a tint reads better in the smaller card. */
+.citation-hover-excerpt mark,
+.citation-hover-excerpt .search-highlight {
   background: rgba(91, 143, 168, 0.22);
   color: inherit;
+  font-weight: inherit;
   padding: 0 1px;
 }
 
-/* Excerpt paragraphs inside the citation hover card. */
-.citation-hover-para {
-  margin: 0 0 8px;
-}
-
-.citation-hover-para:last-child {
-  margin-bottom: 0;
-}
-
-.citation-hover-excerpt {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--gray-100);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: var(--gray-700);
-}
 /* Heading breadcrumb shown as an italic section path at the top of the excerpt. */
 .citation-hover-section {
   margin-bottom: 6px;

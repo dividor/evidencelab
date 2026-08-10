@@ -8,7 +8,7 @@ import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { SourceReference } from '../../types/api';
-import { parseAndRenderSuperscripts } from '../../utils/textHighlighting';
+import { CitationExcerpt } from './CitationExcerpt';
 
 const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
 
@@ -73,7 +73,9 @@ export const parseSectionBreadcrumb = (
   let i = 0;
   while (i < lines.length && lines[i].trim() === '') i++;
   const match = i < lines.length ? SECTION_BREADCRUMB_RE.exec(lines[i].trim()) : null;
-  if (match && match[1].includes(' > ')) {
+  // Any leading "-- … --" line is the chunk's heading breadcrumb, whether it is
+  // a full path ("Chapter > Section") or a single heading.
+  if (match) {
     const body = lines
       .slice(i + 1)
       .join('\n')
@@ -83,152 +85,36 @@ export const parseSectionBreadcrumb = (
   return { section: null, body: text };
 };
 
-// Expand a match to whole-word boundaries so snippets never start or end
-// mid-word (the phrase matcher is fuzzy and can clip by a few characters).
-export const snapToWordBounds = (
-  text: string,
-  start: number,
-  end: number,
-): { start: number; end: number } => {
-  const isWordChar = (ch: string): boolean => /[\p{L}\p{N}]/u.test(ch);
-  let s = Math.max(0, Math.min(start, text.length));
-  let e = Math.max(s, Math.min(end, text.length));
-  while (s > 0 && isWordChar(text[s - 1]) && s < text.length && isWordChar(text[s])) s--;
-  while (e < text.length && e > 0 && isWordChar(text[e - 1]) && isWordChar(text[e])) e++;
-  return { start: s, end: e };
-};
-
 /**
- * Tidy a raw chunk for reading: PDF extraction leaves runs of spaces mid-
- * sentence and inline footnote markers ("[^56]"), and paragraphs arrive as
- * single newlines. Paragraph breaks are preserved for rendering.
+ * The chunk and spans to show for the sentence being hovered. A document's
+ * chunks are combined under one citation number, so the variants are searched
+ * too and whichever chunk supports this claim is the one displayed.
  */
-export const formatExcerpt = (text: string): string =>
-  text
-    .replace(/\[\^\d+\]/g, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+([.,;:!?])/g, '$1')
-    .split('\n')
-    .map((line) => line.trim())
-    .join('\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-/**
- * Locate each LLM-selected span inside the formatted excerpt. Offsets from the
- * matcher refer to the raw text, so the span is re-found by its text after
- * formatting — then snapped to whole words and merged where spans overlap.
- */
-export const locateMatchRanges = (
-  formatted: string,
-  snippets: string[],
-): Array<{ start: number; end: number }> => {
-  const haystack = formatted.toLowerCase();
-  const found: Array<{ start: number; end: number }> = [];
-  for (const raw of snippets) {
-    const needle = formatExcerpt(raw).toLowerCase().trim();
-    if (needle.length < 12) continue;
-    const at = haystack.indexOf(needle);
-    if (at < 0) continue;
-    found.push(snapToWordBounds(formatted, at, at + needle.length));
-  }
-  found.sort((a, b) => a.start - b.start);
-  const merged: Array<{ start: number; end: number }> = [];
-  for (const r of found) {
-    const last = merged[merged.length - 1];
-    if (last && r.start <= last.end) last.end = Math.max(last.end, r.end);
-    else merged.push({ ...r });
-  }
-  return merged;
-};
-
-// One paragraph of the excerpt with the claim-supporting spans marked.
-const ExcerptParagraph: React.FC<{
-  text: string;
-  ranges: Array<{ start: number; end: number }>;
-  offset: number;
-}> = ({ text, ranges, offset }) => {
-  const parts: React.ReactNode[] = [];
-  let cursor = 0;
-  ranges.forEach((r, i) => {
-    const start = r.start - offset;
-    const end = r.end - offset;
-    if (end <= 0 || start >= text.length) return;
-    const from = Math.max(0, start);
-    const to = Math.min(text.length, end);
-    if (from > cursor) parts.push(text.slice(cursor, from));
-    parts.push(
-      <mark key={`hl-${i}`} className="citation-hover-mark">
-        {text.slice(from, to)}
-      </mark>,
-    );
-    cursor = to;
-  });
-  if (cursor < text.length) parts.push(text.slice(cursor));
-  return <p className="citation-hover-para">{parts.length ? parts : text}</p>;
-};
-
-const renderCitationExcerpt = (
-  text: string,
-  semanticMatches?: Array<{ start: number; end: number; matchedText?: string }>,
-): React.ReactNode => {
-  const { section, body } = parseSectionBreadcrumb(text);
-  // The whole excerpt is shown, formatted for reading, with the span(s) the
-  // LLM picked out for the hovered claim highlighted in place.
-  const renderBody = (raw: string): React.ReactNode => {
-    const formatted = formatExcerpt(raw);
-    const snippets = (semanticMatches || [])
-      .map((m) => m.matchedText ?? raw.slice(m.start, m.end))
-      .filter(Boolean);
-    const ranges = snippets.length ? locateMatchRanges(formatted, snippets) : [];
-    if (!ranges.length) return parseAndRenderSuperscripts(formatted);
-    // Paragraphs are rendered separately, so each needs its offset into the
-    // formatted text to know which ranges fall inside it.
-    let offset = 0;
-    return formatted.split(/\n{2,}/).map((para, i) => {
-      const node = (
-        <ExcerptParagraph key={`p-${i}`} text={para} ranges={ranges} offset={offset} />
-      );
-      offset += para.length + 2;
-      return node;
-    });
-  };
-  if (!section) return renderBody(text);
-  return (
-    <>
-      <div className="citation-hover-section">{section}</div>
-      {body.trim() && <div>{renderBody(body)}</div>}
-    </>
-  );
-};
-
-/**
- * Highlight matches for the specific citing sentence being hovered. Falls back
- * to the source-level matches (older briefs) when per-claim data is absent —
- * but only if there is a single claim entry, since source-level matches for a
- * multiply-cited source mix claims and mislead.
- */
-const matchesForClaim = (
+const resolveForClaim = (
   source: SourceReference,
   claim: string | undefined,
-): Array<{ start: number; end: number; matchedText?: string }> | undefined => {
-  const entries = source.claimMatches;
-  if (entries?.length) {
-    if (claim) {
-      const key = normalizeClaimText(claim);
+): {
+  source: SourceReference;
+  matches?: Array<{ start: number; end: number; matchedText?: string }>;
+} => {
+  const candidates = [source, ...(source.variants || [])];
+  const key = claim ? normalizeClaimText(claim) : '';
+  if (key) {
+    for (const candidate of candidates) {
       // Enrichment splits sentences in the markdown, where a soft line-wrap
       // ends a "sentence"; the rendered text the card sees has those wraps
       // collapsed. Containment matches the two forms of the same sentence.
-      const hit =
-        entries.find((e) => e.claim === key) ||
-        entries.find(
-          (e) => e.claim.length > 24 && (key.includes(e.claim) || e.claim.includes(key)),
-        );
-      if (hit) return hit.matches;
+      const hit = (candidate.claimMatches || []).find(
+        (e) =>
+          e.claim === key ||
+          (e.claim.length > 24 && (key.includes(e.claim) || e.claim.includes(key))),
+      );
+      if (hit) return { source: candidate, matches: hit.matches };
     }
-    return entries.length === 1 ? entries[0].matches : undefined;
   }
-  return source.semanticMatches;
+  // A source cited once has no ambiguity about which claim its spans support.
+  const only = source.claimMatches?.length === 1 ? source.claimMatches[0].matches : undefined;
+  return { source, matches: only ?? source.semanticMatches };
 };
 
 const InlineCitation: React.FC<{
@@ -245,6 +131,11 @@ const InlineCitation: React.FC<{
     e.preventDefault();
     if (source && onClick) onClick(source);
   };
+
+  const shown = source ? resolveForClaim(source, claim) : null;
+  const { section: breadcrumb, body: excerptBody } = parseSectionBreadcrumb(
+    shown?.source.text || '',
+  );
 
   const show = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
@@ -272,7 +163,7 @@ const InlineCitation: React.FC<{
         {num}
       </a>
       {card &&
-        source &&
+        shown &&
         createPortal(
           <div
             className="citation-hover-card"
@@ -280,13 +171,14 @@ const InlineCitation: React.FC<{
             onMouseEnter={show}
             onMouseLeave={scheduleHide}
           >
-            <div className="citation-hover-title">{source.title || `Source ${num}`}</div>
-            {typeof source.page === 'number' && (
-              <div className="citation-hover-meta">Page {source.page}</div>
+            <div className="citation-hover-title">{shown.source.title || `Source ${num}`}</div>
+            {typeof shown.source.page === 'number' && (
+              <div className="citation-hover-meta">Page {shown.source.page}</div>
             )}
-            {source.text && (
+            {shown.source.text && (
               <div className="citation-hover-excerpt">
-                {renderCitationExcerpt(source.text, matchesForClaim(source, claim))}
+                {breadcrumb && <div className="citation-hover-section">{breadcrumb}</div>}
+                <CitationExcerpt text={excerptBody} claim={claim} matches={shown.matches} />
               </div>
             )}
           </div>,

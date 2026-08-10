@@ -21,11 +21,9 @@ import {
 // steers the highlighter, it is never shown to the user.
 const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+|\n+/;
 
-// A source is often cited from several sentences; highlighting each claim
-// separately keeps every hover card specific. Cap the per-source claim count
-// so one heavily-cited source can't monopolise the (serial) LLM budget.
-const MAX_CLAIMS_PER_SOURCE = 4;
-
+// A source is often cited from several sentences; each claim is highlighted
+// separately so every hover card is specific to the sentence it belongs to.
+// There is no cap — a brief should have highlights everywhere it cites.
 // Matches shorter than this are fragments ("er > Education --") that mislead
 // more than they help — drop them.
 const MIN_MATCH_CHARS = 30;
@@ -52,7 +50,6 @@ export const extractClaimsForCitation = (
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push({ key, prose: key });
-    if (out.length >= MAX_CLAIMS_PER_SOURCE) break;
   }
   return out;
 };

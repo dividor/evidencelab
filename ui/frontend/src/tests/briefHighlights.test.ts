@@ -126,38 +126,8 @@ describe('highlightSectionSources', () => {
   });
 });
 
-describe('snapToWordBounds', () => {
-  const { snapToWordBounds } = jest.requireActual('../components/citations/CitedContent');
-  const text = 'The Kenya Certificate of Secondary Education results.';
-
-  it('expands a mid-word start back to the word start', () => {
-    const start = text.indexOf('tificate');
-    const out = snapToWordBounds(text, start, text.indexOf('Education') + 9);
-    expect(text.substring(out.start, out.end)).toBe('Certificate of Secondary Education');
-  });
-
-  it('expands a mid-word end forward to the word end', () => {
-    const out = snapToWordBounds(text, text.indexOf('Kenya'), text.indexOf('Cert') + 4);
-    expect(text.substring(out.start, out.end)).toBe('Kenya Certificate');
-  });
-
-  it('leaves boundaries already on word edges untouched', () => {
-    const s = text.indexOf('Kenya');
-    const out = snapToWordBounds(text, s, s + 'Kenya'.length);
-    expect(out).toEqual({ start: s, end: s + 5 });
-  });
-
-  it('clamps out-of-range offsets', () => {
-    const out = snapToWordBounds(text, -5, text.length + 10);
-    expect(out.start).toBe(0);
-    expect(out.end).toBe(text.length);
-  });
-});
-
 describe('excerpt formatting and highlight location', () => {
-  const { formatExcerpt, locateMatchRanges } = jest.requireActual(
-    '../components/citations/CitedContent',
-  );
+  const { formatExcerpt } = jest.requireActual('../components/citations/CitationExcerpt');
   const RAW =
     '211. WFP has launched a new  country  strategy for the period 2018 -2023 [^56] .\n\n' +
     '212. The launching of  Kenya\'s first School Feeding strategy in 2018 .';
@@ -171,27 +141,6 @@ describe('excerpt formatting and highlight location', () => {
     expect(out.split(/\n{2,}/)).toHaveLength(2);
   });
 
-  it('locates a snippet in the formatted text despite raw-text spacing', () => {
-    const formatted = formatExcerpt(RAW);
-    const ranges = locateMatchRanges(formatted, ['a new  country  strategy for the period']);
-    expect(ranges).toHaveLength(1);
-    expect(formatted.slice(ranges[0].start, ranges[0].end)).toContain(
-      'a new country strategy for the period',
-    );
-  });
-
-  it('merges overlapping spans and ignores ones that are not present', () => {
-    const formatted = formatExcerpt(RAW);
-    const ranges = locateMatchRanges(formatted, [
-      'WFP has launched a new country',
-      'launched a new country strategy',
-      'text that does not appear anywhere',
-    ]);
-    expect(ranges).toHaveLength(1);
-    expect(formatted.slice(ranges[0].start, ranges[0].end)).toBe(
-      'WFP has launched a new country strategy',
-    );
-  });
 });
 
 describe('claim selection in the hover card (matchesForClaim via normalize/sentence)', () => {
