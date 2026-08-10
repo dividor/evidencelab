@@ -335,10 +335,24 @@ const buildGenerateQuery = (args: {
   }
   parts.push(
     'Search the document library for evidence relevant to this specific section and cite a source for every claim.',
+    'Your final answer must be the finished section text itself — never a description of what you are about to do, a promise to research, or narration of your process.',
   );
   if (args.guidance) parts.push(`Overall brief guidance: ${args.guidance}`);
   if (args.focus) parts.push(`Focus for this section: ${args.focus}`);
   return parts.join(' ');
+};
+
+/**
+ * Heuristic for a deep-research run that returned process narration instead of
+ * the section ("I'll go research that…"): it read sources but produced short
+ * text with no [n] citation markers. Such a result is treated as a failed run
+ * (fail loud, keep the section pending) rather than stored as content.
+ */
+export const isLikelyNonAnswer = (content: string, sourceCount: number): boolean => {
+  const text = (content || '').trim();
+  if (!text) return true;
+  const hasCitations = /\[\d+(?:,\s*\d+)*\]/.test(text);
+  return sourceCount >= 3 && !hasCitations && text.length < 800;
 };
 
 // A minimal shape of the brief's sections for outline context.

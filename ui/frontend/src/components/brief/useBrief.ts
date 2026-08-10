@@ -7,6 +7,7 @@ import {
   BriefActivityEvent,
   BriefSourceSample,
   buildOutlineContext,
+  isLikelyNonAnswer,
   requestBriefOutline,
   requestBriefRevise,
   researchBriefSection,
@@ -763,6 +764,16 @@ export const useBrief = ({
             if (!isRevise) updateSection(id, { sources: s });
           },
           onDone: ({ content, sources }) => {
+            // A run that read sources but answered with process narration
+            // ("I'll go research that…") instead of the section is a failure —
+            // surface it and keep the section pending rather than storing it.
+            if (!isRevise && isLikelyNonAnswer(content, sources.length)) {
+              updateSection(id, { status: 'pending', progress: 0 });
+              setError(
+                `The model did not return researched content for “${section.title}” — please try again.`,
+              );
+              return;
+            }
             const priorKeys = new Set(priorSources.map((s) => s.docId));
             const added = sources.filter((s) => !priorKeys.has(s.docId)).length;
             const entry: SectionAuditEntry = {
