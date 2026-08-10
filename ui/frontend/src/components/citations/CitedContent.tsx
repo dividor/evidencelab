@@ -51,6 +51,21 @@ export const parseSectionBreadcrumb = (
   return { section: null, body: text };
 };
 
+// Expand a match to whole-word boundaries so snippets never start or end
+// mid-word (the phrase matcher is fuzzy and can clip by a few characters).
+export const snapToWordBounds = (
+  text: string,
+  start: number,
+  end: number,
+): { start: number; end: number } => {
+  const isWordChar = (ch: string): boolean => /[\p{L}\p{N}]/u.test(ch);
+  let s = Math.max(0, Math.min(start, text.length));
+  let e = Math.max(s, Math.min(end, text.length));
+  while (s > 0 && isWordChar(text[s - 1]) && s < text.length && isWordChar(text[s])) s--;
+  while (e < text.length && e > 0 && isWordChar(text[e - 1]) && isWordChar(text[e])) e++;
+  return { start: s, end: e };
+};
+
 const renderCitationExcerpt = (
   text: string,
   semanticMatches?: Array<{ start: number; end: number }>,
@@ -61,7 +76,10 @@ const renderCitationExcerpt = (
   // (after the breadcrumb split). Without matches, the full excerpt renders.
   const renderBody = (b: string): React.ReactNode => {
     const snippets = (semanticMatches || [])
-      .map((m) => b.substring(m.start, m.end).trim())
+      .map((m) => {
+        const { start, end } = snapToWordBounds(b, m.start, m.end);
+        return b.substring(start, end).trim();
+      })
       .filter(Boolean);
     if (!snippets.length) return parseAndRenderSuperscripts(b);
     return (

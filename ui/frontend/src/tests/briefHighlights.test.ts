@@ -103,3 +103,31 @@ describe('highlightSectionSources', () => {
     expect(out).toHaveLength(2);
   });
 });
+
+describe('snapToWordBounds', () => {
+  const { snapToWordBounds } = jest.requireActual('../components/citations/CitedContent');
+  const text = 'The Kenya Certificate of Secondary Education results.';
+
+  it('expands a mid-word start back to the word start', () => {
+    const start = text.indexOf('tificate');
+    const out = snapToWordBounds(text, start, text.indexOf('Education') + 9);
+    expect(text.substring(out.start, out.end)).toBe('Certificate of Secondary Education');
+  });
+
+  it('expands a mid-word end forward to the word end', () => {
+    const out = snapToWordBounds(text, text.indexOf('Kenya'), text.indexOf('Cert') + 4);
+    expect(text.substring(out.start, out.end)).toBe('Kenya Certificate');
+  });
+
+  it('leaves boundaries already on word edges untouched', () => {
+    const s = text.indexOf('Kenya');
+    const out = snapToWordBounds(text, s, s + 'Kenya'.length);
+    expect(out).toEqual({ start: s, end: s + 5 });
+  });
+
+  it('clamps out-of-range offsets', () => {
+    const out = snapToWordBounds(text, -5, text.length + 10);
+    expect(out.start).toBe(0);
+    expect(out.end).toBe(text.length);
+  });
+});
