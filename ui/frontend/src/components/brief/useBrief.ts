@@ -310,6 +310,8 @@ export const useBrief = ({
   // Latest research-completion token per section id, written synchronously so
   // highlight enrichment can detect a superseded run without waiting on state.
   const researchTokenRef = useRef<Record<string, number>>({});
+  // Brief id awaiting a highlight-enrichment resume after being opened.
+  const resumeRef = useRef<string | null>(null);
 
   // After a section's research completes (references validated), run the LLM
   // semantic highlighter over each cited excerpt in the background — the hover
@@ -317,14 +319,26 @@ export const useBrief = ({
   // excerpt. `token` (the section's lastResearchedAt) stops a stale run from
   // clobbering a newer research pass.
   const enrichSectionHighlights = useCallback(
-    (id: string, token: number, content: string, sources: SourceReference[]) => {
-      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !content || !sources.length) return;
+    (
+      id: string,
+      token: number,
+      content: string,
+      sources: SourceReference[],
+    ): Promise<void> => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !content || !sources.length) {
+        return Promise.resolve();
+      }
+      // No highlight model yet (the combo config is applied after mount) —
+      // leave the section un-enriched so the resume pass retries once it lands.
+      if (!semanticModelConfigRef.current?.model) {
+        return Promise.resolve();
+      }
       // Staleness is tracked in a ref written synchronously at completion —
       // reading it from section state would race React's commit, since this
       // runs from a timeout that can fire before the re-render lands.
       const isStale = () => researchTokenRef.current[id] !== token;
-      if (isStale()) return;
-      void highlightSectionSources({
+      if (isStale()) return Promise.resolve();
+      return highlightSectionSources({
         content,
         sources,
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
@@ -1102,9 +1116,52 @@ export const useBrief = ({
       setNumberHeadings(entry.numberHeadings ?? false);
       setStage('done');
       setHistoryOpen(false);
+      resumeRef.current = entry.id;
     },
     [],
   );
+
+  // Whether this tab is in the foreground; the opportunistic highlight backfill
+  // only runs here (see below).
+  const [tabVisible, setTabVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  );
+  useEffect(() => {
+    const onVisibility = (): void => setTabVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // Highlight enrichment runs in the browser after a section completes, so
+  // reloading or navigating away mid-run leaves cited sources unenriched for
+  // good. Opening a brief resumes those gaps, one section at a time.
+  useEffect(() => {
+    const briefId = resumeRef.current;
+    if (!briefId || !SEARCH_SEMANTIC_HIGHLIGHTS) return;
+    // The highlight model comes from the model combo, which App applies after
+    // mount. Starting first sends model=null and every call fails, so wait —
+    // this effect re-runs on the render that delivers the config.
+    if (!semanticModelConfigRef.current?.model) return;
+    // Backfill only from the visible tab. Every open tab showing a brief would
+    // otherwise run the same backfill, multiplying API load and exhausting the
+    // browser's per-origin connections (which stalls page loads).
+    if (!tabVisible) return;
+    resumeRef.current = null;
+    void (async () => {
+      for (const section of sectionsRef.current) {
+        if (briefIdRef.current !== briefId) return;
+        if (section.status !== 'done' || !section.content) continue;
+        const cited = new Set(extractCitedNumbers(section.content));
+        const pending = section.sources.some(
+          (src) => src.index != null && cited.has(src.index) && src.claimMatches === undefined,
+        );
+        if (!pending) continue;
+        const token = section.lastResearchedAt ?? Date.now();
+        researchTokenRef.current[section.id] = token;
+        await enrichSectionHighlights(section.id, token, section.content, section.sources);
+      }
+    })();
+  });
 
   const loadBrief = useCallback(
     (entry: SavedBrief) => {
