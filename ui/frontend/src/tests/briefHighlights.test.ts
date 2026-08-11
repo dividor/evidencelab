@@ -55,12 +55,16 @@ describe('highlightSectionSources', () => {
   beforeEach(() => mockFindSemanticMatches.mockReset());
 
   it('attaches per-claim matches for cited sources; failures keep plain excerpts', async () => {
-    // Source 1 is cited from two sentences → two claim entries.
-    mockFindSemanticMatches
-      .mockResolvedValueOnce([LONG_MATCH])
-      .mockResolvedValueOnce([{ ...LONG_MATCH, start: 5, end: 45 }])
-      .mockRejectedValueOnce(new Error('LLM down'))
-      .mockResolvedValue([]);
+    // Keyed by claim, not call order: sources are highlighted concurrently, so
+    // a fixed mock sequence would be consumed in a non-deterministic order.
+    mockFindSemanticMatches.mockImplementation((_body: string, claim: string) => {
+      if (claim.includes('cash transfers improved')) return Promise.resolve([LONG_MATCH]);
+      if (claim.includes('cost efficiency favoured')) {
+        return Promise.resolve([{ ...LONG_MATCH, start: 5, end: 45 }]);
+      }
+      if (claim.includes('dietary diversity')) return Promise.reject(new Error('LLM down'));
+      return Promise.resolve([]);
+    });
     const out = await highlightSectionSources({
       content: CONTENT,
       sources: [source(1), source(2), source(3)],

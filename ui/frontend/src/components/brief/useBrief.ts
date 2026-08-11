@@ -32,7 +32,7 @@ import {
   updateBrief as updateBriefRemote,
 } from './briefCentralApi';
 import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
-import { highlightSectionSources } from './briefHighlights';
+import { highlightOneSource, highlightSectionSources } from './briefHighlights';
 import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
@@ -314,6 +314,13 @@ export const useBrief = ({
   // must not start a second pass or overwrite the token of a running one,
   // which would make that run consider itself stale and stop.
   const enrichingRef = useRef<Set<string>>(new Set());
+  // Set when enrichment has updated a section's sources; a post-commit effect
+  // persists them. Without this the highlights lived only in memory and were
+  // lost on reload, since enrichment never triggered a save of its own.
+  const enrichSaveRef = useRef(false);
+  const lastEnrichSaveRef = useRef(0);
+  // Sources with an on-demand (hover-triggered) highlight in flight.
+  const onDemandRef = useRef<Set<string>>(new Set());
   // Brief id awaiting a highlight-enrichment resume after being opened.
   const resumeRef = useRef<string | null>(null);
 
@@ -352,16 +359,56 @@ export const useBrief = ({
         // Apply snippets as each source resolves — a big section takes minutes
         // to fully enrich and the hover cards should improve as it goes.
         onPartial: (sources) => {
-          if (!isStale()) updateSection(id, { sources });
+          if (isStale()) return;
+          updateSection(id, { sources });
+          // Persist progress periodically: a long section takes minutes and a
+          // reload mid-run would otherwise discard everything done so far.
+          if (Date.now() - lastEnrichSaveRef.current > 15000) enrichSaveRef.current = true;
         },
       })
         .then((sources) => {
-          if (!isStale()) updateSection(id, { sources });
+          if (isStale()) return;
+          updateSection(id, { sources });
+          enrichSaveRef.current = true;
         })
         .catch(() => {
           /* highlighting is an enhancement; the plain excerpt remains */
         })
         .finally(() => enrichingRef.current.delete(id));
+    },
+    [updateSection],
+  );
+
+  // Enrich one source now, because a hover card opened on a citation whose
+  // excerpt has no highlights yet. The card re-renders from section state, so
+  // it fills in while the user is still hovering.
+  const requestSourceHighlight = useCallback(
+    (sectionId: string, sourceIndex: number) => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !semanticModelConfigRef.current?.model) return;
+      const key = `${sectionId}:${sourceIndex}`;
+      if (onDemandRef.current.has(key)) return;
+      const section = sectionsRef.current.find((sec) => sec.id === sectionId);
+      const source = section?.sources.find((src) => src.index === sourceIndex);
+      if (!section || !source || !source.text || source.claimMatches !== undefined) return;
+      onDemandRef.current.add(key);
+      void highlightOneSource({
+        source,
+        content: section.content,
+        threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
+        modelConfig: semanticModelConfigRef.current,
+      })
+        .then((enriched) => {
+          const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
+          if (!cur) return;
+          updateSection(sectionId, {
+            sources: cur.sources.map((src) => (src.index === sourceIndex ? enriched : src)),
+          });
+          enrichSaveRef.current = true;
+        })
+        .catch(() => {
+          /* the full excerpt remains as the fallback */
+        })
+        .finally(() => onDemandRef.current.delete(key));
     },
     [updateSection],
   );
@@ -1154,7 +1201,12 @@ export const useBrief = ({
     if (!tabVisible) return;
     resumeRef.current = null;
     void (async () => {
-      for (const { id } of sectionsRef.current) {
+      // Most recently researched first: that is the section the user is
+      // looking at, and enriching in document order left it until last.
+      const order = sectionsRef.current
+        .map((sec) => ({ id: sec.id, at: sec.lastResearchedAt ?? 0 }))
+        .sort((a, b) => b.at - a.at);
+      for (const { id } of order) {
         if (briefIdRef.current !== briefId) return;
         // A pass started by research owns this section; starting a second one
         // here would overwrite its token and make it stop mid-run.
@@ -1321,6 +1373,7 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
+    requestSourceHighlight,
     setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>
       updateSection(id, { voiceId }),

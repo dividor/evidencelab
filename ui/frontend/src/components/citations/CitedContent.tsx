@@ -122,7 +122,10 @@ const InlineCitation: React.FC<{
   source?: SourceReference;
   onClick?: (source: SourceReference) => void;
   claim?: string;
-}> = ({ num, source, onClick, claim }) => {
+  // Ask the owner to highlight this source now (hover on an un-enriched
+  // excerpt). The card re-renders from state, so it fills in while open.
+  onRequestHighlight?: (source: SourceReference) => void;
+}> = ({ num, source, onClick, claim, onRequestHighlight }) => {
   const ref = useRef<HTMLAnchorElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [card, setCard] = useState<{ top: number; left: number } | null>(null);
@@ -140,6 +143,8 @@ const InlineCitation: React.FC<{
   const show = () => {
     if (hideTimer.current) clearTimeout(hideTimer.current);
     if (!source) return;
+    // Nothing highlighted for this claim yet — kick off a pass for it.
+    if (!shown?.matches?.length && onRequestHighlight) onRequestHighlight(source);
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
     // Position below the badge, clamped so the card stays in the viewport.
@@ -178,6 +183,12 @@ const InlineCitation: React.FC<{
             {shown.source.text && (
               <div className="citation-hover-excerpt">
                 {breadcrumb && <div className="citation-hover-section">{breadcrumb}</div>}
+                {!shown.matches?.length && shown.source.claimMatches === undefined && (
+                  <div className="citation-hover-pending">
+                    <span className="brief-spinner citation-hover-spinner" />
+                    Finding the supporting passage…
+                  </div>
+                )}
                 <CitationExcerpt text={excerptBody} claim={claim} matches={shown.matches} />
               </div>
             )}
@@ -193,6 +204,7 @@ function replaceCitations(
   text: string,
   sourceByIndex: Map<number, SourceReference>,
   onSourceClick?: (source: SourceReference) => void,
+  onRequestHighlight?: (source: SourceReference) => void,
 ): React.ReactNode {
   const parts: React.ReactNode[] = [];
   const re = new RegExp(CITATION_REGEX.source, 'g');
@@ -229,6 +241,7 @@ function replaceCitations(
                     source={sourceByIndex.get(n)}
                     onClick={onSourceClick}
                     claim={claim}
+                    onRequestHighlight={onRequestHighlight}
                   />
                 </React.Fragment>
               ))}
@@ -249,10 +262,11 @@ function transformChildren(
   children: React.ReactNode,
   sourceByIndex: Map<number, SourceReference>,
   onSourceClick?: (source: SourceReference) => void,
+  onRequestHighlight?: (source: SourceReference) => void,
 ): React.ReactNode {
   return React.Children.map(children, (child) => {
     if (typeof child !== 'string') return child;
-    return replaceCitations(child, sourceByIndex, onSourceClick);
+    return replaceCitations(child, sourceByIndex, onSourceClick, onRequestHighlight);
   });
 }
 
@@ -260,7 +274,9 @@ export const CitedMarkdown: React.FC<{
   content: string;
   sources: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
-}> = ({ content, sources, onSourceClick }) => {
+  // Called when a hover card opens on a citation with no highlights yet.
+  onRequestHighlight?: (source: SourceReference) => void;
+}> = ({ content, sources, onSourceClick, onRequestHighlight }) => {
   const sourceByIndex = useMemo(() => {
     const map = new Map<number, SourceReference>();
     sources.forEach((s) => {
@@ -272,19 +288,19 @@ export const CitedMarkdown: React.FC<{
   const components = useMemo(
     () => ({
       p: ({ children, ...props }: any) => (
-        <p {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</p>
+        <p {...props}>{transformChildren(children, sourceByIndex, onSourceClick, onRequestHighlight)}</p>
       ),
       li: ({ children, ...props }: any) => (
-        <li {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</li>
+        <li {...props}>{transformChildren(children, sourceByIndex, onSourceClick, onRequestHighlight)}</li>
       ),
       strong: ({ children, ...props }: any) => (
-        <strong {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</strong>
+        <strong {...props}>{transformChildren(children, sourceByIndex, onSourceClick, onRequestHighlight)}</strong>
       ),
       em: ({ children, ...props }: any) => (
-        <em {...props}>{transformChildren(children, sourceByIndex, onSourceClick)}</em>
+        <em {...props}>{transformChildren(children, sourceByIndex, onSourceClick, onRequestHighlight)}</em>
       ),
     }),
-    [sourceByIndex, onSourceClick],
+    [sourceByIndex, onSourceClick, onRequestHighlight],
   );
 
   return (

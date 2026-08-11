@@ -28,6 +28,15 @@ const SENTENCE_SPLIT_RE = /(?<=[.!?])\s+|\n+/;
 // more than they help — drop them.
 const MIN_MATCH_CHARS = 30;
 
+// Excerpts highlighted at once. Each is one LLM call taking ~10-15s, so a
+// serial pass over a heavily-cited section took minutes; a small pool keeps
+// the section usable quickly without flooding the highlight endpoint.
+const HIGHLIGHT_CONCURRENCY = 6;
+
+// Completed excerpts to collect before publishing them to the UI, so cards
+// fill in batches instead of one re-render per source.
+const HIGHLIGHT_BATCH = 3;
+
 /**
  * Every sentence of the section that cites source `n`, individually — cleaned
  * of markers/markdown for the LLM but keyed by `normalizeClaimText` so the
@@ -83,24 +92,59 @@ export const highlightSectionSources = async ({
   onPartial,
 }: HighlightSectionArgs): Promise<SourceReference[]> => {
   const cited = new Set(extractCitedNumbers(content));
-  const out: SourceReference[] = [];
-  for (const source of sources) {
-    if (isStale?.()) return out.concat(sources.slice(out.length));
-    if (
-      source.index == null ||
-      !cited.has(source.index) ||
-      !source.text ||
-      source.claimMatches?.length
-    ) {
-      out.push(source);
-      continue;
+  const out = sources.slice();
+  // Which sources still need a pass: cited, has text, never attempted.
+  const queue = sources
+    .map((source, at) => ({ source, at }))
+    .filter(
+      ({ source }) =>
+        source.index != null &&
+        cited.has(source.index) &&
+        !!source.text &&
+        source.claimMatches === undefined,
+    );
+
+  // Run several at a time. Serially, a section citing 50 sources took ~10
+  // minutes at ~12s per LLM call, so highlights effectively never showed up
+  // for the section the user had just researched.
+  let next = 0;
+  let sinceFlush = 0;
+  const flush = (): void => {
+    if (!sinceFlush) return;
+    sinceFlush = 0;
+    onPartial?.(out.slice());
+  };
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const slot = next++;
+      if (slot >= queue.length || isStale?.()) return;
+      const { source, at } = queue[slot];
+      out[at] = await enrichSource(source, content, threshold, modelConfig, isStale);
+      if (out[at].claimMatches?.length) sinceFlush += 1;
+      // Publish a batch at a time rather than per source: the hover cards fill
+      // in visibly as the pool completes waves, without a re-render each call.
+      if (sinceFlush >= HIGHLIGHT_BATCH) flush();
     }
-    const enriched = await enrichSource(source, content, threshold, modelConfig, isStale);
-    out.push(enriched);
-    if (enriched !== source) onPartial?.(out.concat(sources.slice(out.length)));
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(HIGHLIGHT_CONCURRENCY, queue.length) }, worker),
+  );
+  flush();
   return out;
 };
+
+/**
+ * Highlight a single source on demand — used when a hover card opens on a
+ * citation whose excerpt has not been enriched yet, so the card can fill in
+ * while it is open rather than waiting for the background pass to reach it.
+ */
+export const highlightOneSource = async (args: {
+  source: SourceReference;
+  content: string;
+  threshold: number;
+  modelConfig?: SummaryModelConfig | null;
+}): Promise<SourceReference> =>
+  enrichSource(args.source, args.content, args.threshold, args.modelConfig);
 
 /**
  * Highlight one source's excerpt against each sentence citing it. Returns the
@@ -128,5 +172,7 @@ const enrichSource = async (
   } catch {
     // Highlighting is an enhancement — keep whatever matched before the error.
   }
-  return entries.length ? { ...source, claimMatches: entries } : source;
+  // Always record the attempt (an empty list means "tried, nothing matched"),
+  // so resuming an interrupted run only retries sources never attempted.
+  return { ...source, claimMatches: entries };
 };

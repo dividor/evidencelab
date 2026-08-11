@@ -106,6 +106,8 @@ interface SectionViewProps {
   display?: SectionDisplay;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
+  // Hover on an un-enriched citation asks for that source to be highlighted.
+  onRequestHighlight?: (source: SourceReference) => void;
 }
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
@@ -284,6 +286,7 @@ const SectionDoneBody: React.FC<{
   viewingPending: boolean;
   onSourceClick: (source: SourceReference) => void;
   onCloseDiff: () => void;
+  onRequestHighlight?: (source: SourceReference) => void;
 }> = ({
   section,
   brief,
@@ -293,6 +296,7 @@ const SectionDoneBody: React.FC<{
   viewingPending,
   onSourceClick,
   onCloseDiff,
+  onRequestHighlight,
 }) => {
   const { content, sources } = sectionView(section, display);
   return (
@@ -321,7 +325,12 @@ const SectionDoneBody: React.FC<{
         />
       ) : (
         <div className="brief-doc-content">
-          <CitedMarkdown content={content} sources={sources} onSourceClick={onSourceClick} />
+          <CitedMarkdown
+            content={content}
+            sources={sources}
+            onSourceClick={onSourceClick}
+            onRequestHighlight={onRequestHighlight}
+          />
         </div>
       )}
       <CitedReferences
@@ -358,6 +367,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   onSourceClick,
   display,
   readOnly = false,
+  onRequestHighlight,
 }) => {
   const [editing, setEditing] = useState(false);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
@@ -479,6 +489,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           viewingPending={viewingPending}
           onSourceClick={onSourceClick}
           onCloseDiff={() => setDiffEntryId(null)}
+          onRequestHighlight={onRequestHighlight}
         />
       )}
     </section>
@@ -817,6 +828,9 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}
           readOnly={readOnly}
+          onRequestHighlight={(src) =>
+            src.index != null && brief.requestSourceHighlight(s.id, src.index)
+          }
         />
       ))}
 

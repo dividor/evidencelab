@@ -12445,3 +12445,18 @@ button.doc-link:hover {
   inset: 0;
   z-index: 999;
 }
+
+/* Hover card: the highlight for this citation is being computed on demand. */
+.citation-hover-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+.citation-hover-spinner {
+  width: 11px;
+  height: 11px;
+  border-width: 2px;
+}
