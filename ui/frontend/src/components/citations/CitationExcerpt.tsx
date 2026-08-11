@@ -8,13 +8,14 @@ import { renderTextWithInlineReferences } from '../../utils/textHighlighting';
 
 /**
  * Tidy a raw chunk for reading: PDF extraction leaves runs of spaces
- * mid-sentence and inline footnote markers ("[^56]"), and lines arrive hard-
- * wrapped with stray leading whitespace. Line and paragraph breaks are kept so
- * the formatter can indent lists.
+ * mid-sentence, and lines arrive hard-wrapped with stray leading whitespace.
+ * Line and paragraph breaks are kept so the formatter can indent lists.
+ *
+ * Footnote markers ("[^56]") are left in place: Search's renderer turns them
+ * into superscripts, so the card shows them the same way a result does.
  */
 export const formatExcerpt = (text: string): string =>
   text
-    .replace(/\[\^\d+\]/g, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+([.,;:!?])/g, '$1')
     .split('\n')
