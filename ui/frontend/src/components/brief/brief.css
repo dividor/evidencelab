@@ -489,8 +489,11 @@
   gap: 16px;
 }
 .brief-doc-header-actions {
-  flex-shrink: 0;
-  display: inline-flex;
+  flex-shrink: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
@@ -2486,4 +2489,43 @@
 
 .brief-status-bar-stop:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* References: the grouping toggle sits beside the heading. */
+.brief-footnotes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.brief-footnotes-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.brief-footnotes-group-toggle input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+/* Grouped view: one document per row, with its citation numbers. */
+.brief-footnote-group {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.brief-footnote-group-nums {
+  flex: none;
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.brief-footnote-pages {
+  color: var(--brand-text-tertiary);
 }

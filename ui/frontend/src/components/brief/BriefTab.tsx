@@ -100,7 +100,7 @@ const BriefWorkspace: React.FC<{
   loggedIn: boolean;
   onBack: () => void;
   onResultClick?: (result: SearchResult) => void;
-  onExportWord: (style: 'links' | 'footnotes') => void;
+  onExportWord: () => void;
   exportBusy: boolean;
   onOpenModal: (modal: 'share' | 'template' | 'regen-all') => void;
 }> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
@@ -264,7 +264,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   );
 
   const handleExportWord = useCallback(
-    async (citationStyle: 'links' | 'footnotes' = 'links') => {
+    async () => {
       if (exportBusy) return;
       setExportBusy(true);
       try {
@@ -278,10 +278,12 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
           infoBox: BRIEF_DISCLAIMER,
           tableOfContents: true,
-          resultsSectionTitle: 'Reference Excerpts',
-          // 'links' keeps inline [n] citations; 'footnotes' renders each
-          // citation as a Word footnote on the relevant page.
-          citationStyle,
+          resultsSectionTitle: 'References',
+          // The document mirrors the on-screen References section: inline [n]
+          // citations and a compact list, grouped by document when the reader
+          // has that turned on.
+          citationStyle: 'links',
+          referenceList: brief.groupReferences ? 'grouped' : 'flat',
           siteOrigin:
             typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
           // Same API base the on-screen cards use to load table/figure

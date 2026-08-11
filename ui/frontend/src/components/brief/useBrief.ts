@@ -209,6 +209,9 @@ export const useBrief = ({
   const [query, setQuery] = useState(''); // the brief topic
   const [instructions, setInstructions] = useState('');
   const [numHeadings, setNumHeadings] = useState(6);
+  // References list: one row per document (off) vs grouped by document (on).
+  // Also chooses how the Word export lays its references out.
+  const [groupReferences, setGroupReferences] = useState(false);
   const [newHeading, setNewHeading] = useState('');
   const [regenFor, setRegenFor] = useState<string | null>(null);
   const [regenText, setRegenText] = useState('');
@@ -1373,6 +1376,8 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
+    groupReferences,
+    setGroupReferences,
     requestSourceHighlight,
     setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>
