@@ -999,13 +999,10 @@ const buildReferenceList = (
       rows.push({ label: nums.join(', '), title: titleOf(result), result }),
     );
   } else {
-    results.forEach((r, idx) =>
-      rows.push({
-        label: String(idx + 1),
-        title: `${titleOf(r)}${r.page_num ? `, p.${r.page_num}` : ''}`,
-        result: r,
-      }),
-    );
+    results.forEach((r, idx) => {
+      const page = r.page_num ? `, p.${r.page_num}` : '';
+      rows.push({ label: String(idx + 1), title: `${titleOf(r)}${page}`, result: r });
+    });
   }
 
   const out: Paragraph[] = [

@@ -3,7 +3,7 @@
 // references list grouped by document. Used by the Research Assistant
 // (ChatMessage) and the Brief tab so both render citations identically.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -129,6 +129,11 @@ const InlineCitation: React.FC<{
   const ref = useRef<HTMLAnchorElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [card, setCard] = useState<{ top: number; left: number } | null>(null);
+  // The excerpt is clipped until the reader asks for the rest; expanding turns
+  // the body into a scroll area (with its scrollbar) rather than a long card.
+  const [expanded, setExpanded] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -152,8 +157,19 @@ const InlineCitation: React.FC<{
     setCard({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - CARD_W - 12) });
   };
   const scheduleHide = () => {
-    hideTimer.current = setTimeout(() => setCard(null), 120);
+    hideTimer.current = setTimeout(() => {
+      setCard(null);
+      setExpanded(false);
+    }, 120);
   };
+
+  // Is there more text than the collapsed height shows? Measured after the
+  // card renders, so "Show more" only appears when it would do something.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!card || !el) return;
+    setClipped(el.scrollHeight > el.clientHeight + 4);
+  }, [card, excerptBody, expanded]);
 
   return (
     <>
@@ -162,8 +178,17 @@ const InlineCitation: React.FC<{
         href="#"
         className="ai-summary-citation"
         onClick={handleClick}
-        onMouseEnter={show}
+        // mouseover (not mouseenter) so the card also opens when the badge is
+        // re-rendered under a stationary cursor — enrichment re-renders these
+        // constantly, and mouseenter would not fire again until you left and
+        // returned. mousemove is the safety net for that same case.
+        onMouseOver={show}
+        onMouseMove={() => {
+          if (!card) show();
+        }}
+        onFocus={show}
         onMouseLeave={scheduleHide}
+        onBlur={scheduleHide}
       >
         {num}
       </a>
@@ -181,7 +206,12 @@ const InlineCitation: React.FC<{
               <div className="citation-hover-meta">Page {shown.source.page}</div>
             )}
             {shown.source.text && (
-              <div className="citation-hover-excerpt">
+              <div
+                ref={bodyRef}
+                className={`citation-hover-excerpt${
+                  expanded ? ' citation-hover-excerpt-open' : ''
+                }`}
+              >
                 {breadcrumb && <div className="citation-hover-section">{breadcrumb}</div>}
                 {!shown.matches?.length && shown.source.claimMatches === undefined && (
                   <div className="citation-hover-pending">
@@ -191,6 +221,15 @@ const InlineCitation: React.FC<{
                 )}
                 <CitationExcerpt text={excerptBody} claim={claim} matches={shown.matches} />
               </div>
+            )}
+            {shown.source.text && (clipped || expanded) && (
+              <button
+                type="button"
+                className="citation-hover-more"
+                onClick={() => setExpanded((v) => !v)}
+              >
+                {expanded ? 'Show less' : 'Show more'}
+              </button>
             )}
           </div>,
           document.body,

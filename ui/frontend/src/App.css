@@ -3834,8 +3834,8 @@ h6,
   z-index: 1000;
   width: 360px;
   max-width: calc(100vw - 24px);
-  max-height: 320px;
-  overflow-y: auto;
+  max-height: 420px;
+  overflow: hidden;
   background: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: 8px;
@@ -12459,4 +12459,38 @@ button.doc-link:hover {
   width: 11px;
   height: 11px;
   border-width: 2px;
+}
+
+/* Excerpt is clipped until "Show more"; expanded it scrolls, so the scrollbar
+   only appears once the reader has asked for the longer text. */
+.citation-hover-excerpt {
+  max-height: 132px;
+  overflow: hidden;
+}
+.citation-hover-excerpt-open {
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar {
+  width: 8px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb {
+  background: var(--gray-300);
+  border-radius: 4px;
+}
+.citation-hover-more {
+  display: block;
+  margin-top: 6px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-family: var(--font-heading, inherit);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.citation-hover-more:hover {
+  text-decoration: underline;
 }
