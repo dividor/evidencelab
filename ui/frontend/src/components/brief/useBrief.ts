@@ -310,6 +310,10 @@ export const useBrief = ({
   // Latest research-completion token per section id, written synchronously so
   // highlight enrichment can detect a superseded run without waiting on state.
   const researchTokenRef = useRef<Record<string, number>>({});
+  // Sections with an enrichment pass in flight. The backfill skips these: it
+  // must not start a second pass or overwrite the token of a running one,
+  // which would make that run consider itself stale and stop.
+  const enrichingRef = useRef<Set<string>>(new Set());
   // Brief id awaiting a highlight-enrichment resume after being opened.
   const resumeRef = useRef<string | null>(null);
 
@@ -338,6 +342,7 @@ export const useBrief = ({
       // runs from a timeout that can fire before the re-render lands.
       const isStale = () => researchTokenRef.current[id] !== token;
       if (isStale()) return Promise.resolve();
+      enrichingRef.current.add(id);
       return highlightSectionSources({
         content,
         sources,
@@ -355,7 +360,8 @@ export const useBrief = ({
         })
         .catch(() => {
           /* highlighting is an enhancement; the plain excerpt remains */
-        });
+        })
+        .finally(() => enrichingRef.current.delete(id));
     },
     [updateSection],
   );
@@ -1148,17 +1154,25 @@ export const useBrief = ({
     if (!tabVisible) return;
     resumeRef.current = null;
     void (async () => {
-      for (const section of sectionsRef.current) {
+      for (const { id } of sectionsRef.current) {
         if (briefIdRef.current !== briefId) return;
-        if (section.status !== 'done' || !section.content) continue;
+        // A pass started by research owns this section; starting a second one
+        // here would overwrite its token and make it stop mid-run.
+        if (enrichingRef.current.has(id)) continue;
+        // Re-read: research finishing during the backfill replaces a section's
+        // content and sources, and the snapshot would enrich the old set.
+        const section = sectionsRef.current.find((s) => s.id === id);
+        if (!section || section.status !== 'done' || !section.content) continue;
         const cited = new Set(extractCitedNumbers(section.content));
         const pending = section.sources.some(
           (src) => src.index != null && cited.has(src.index) && src.claimMatches === undefined,
         );
         if (!pending) continue;
-        const token = section.lastResearchedAt ?? Date.now();
-        researchTokenRef.current[section.id] = token;
-        await enrichSectionHighlights(section.id, token, section.content, section.sources);
+        // Keep any token already recorded so a run started by research retains
+        // ownership; only invent one when the section has none.
+        const token = researchTokenRef.current[id] ?? section.lastResearchedAt ?? Date.now();
+        researchTokenRef.current[id] = token;
+        await enrichSectionHighlights(id, token, section.content, section.sources);
       }
     })();
   });

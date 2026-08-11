@@ -69,8 +69,10 @@ describe('highlightSectionSources', () => {
     expect(out[0].claimMatches).toHaveLength(2);
     expect(out[0].claimMatches?.[0].claim).toContain('cash transfers improved');
     expect(out[0].claimMatches?.[0].matches).toEqual([LONG_MATCH]);
-    expect(out[1].claimMatches).toBeUndefined();
-    expect(out[2].claimMatches).toBeUndefined();
+    // An empty list records "attempted, nothing matched" so a resumed run
+    // does not retry these; only never-attempted sources are picked up.
+    expect(out[1].claimMatches).toEqual([]);
+    expect(out[2].claimMatches).toEqual([]);
   });
 
   it('drops fragment matches below the minimum length', async () => {
@@ -80,7 +82,7 @@ describe('highlightSectionSources', () => {
       sources: [source(2)],
       threshold: 0.6,
     });
-    expect(out[0].claimMatches).toBeUndefined();
+    expect(out[0].claimMatches).toEqual([]);
   });
 
   it('skips uncited sources and ones already highlighted', async () => {
@@ -132,13 +134,17 @@ describe('excerpt formatting and highlight location', () => {
     '211. WFP has launched a new  country  strategy for the period 2018 -2023 [^56] .\n\n' +
     '212. The launching of  Kenya\'s first School Feeding strategy in 2018 .';
 
-  it('drops footnote markers and PDF double-spacing but keeps paragraphs', () => {
+  it('collapses PDF double-spacing and keeps paragraphs', () => {
     const out = formatExcerpt(RAW);
     expect(out).toContain('a new country strategy');
-    expect(out).not.toContain('[^56]');
     expect(out).not.toMatch(/ {2,}/);
-    expect(out).toContain('2018 -2023.');
     expect(out.split(/\n{2,}/)).toHaveLength(2);
+  });
+
+  it('keeps footnote markers so they render as superscripts, as Search does', () => {
+    const out = formatExcerpt(RAW);
+    expect(out).toContain('[^56]');
+    expect(out).toContain('2018 -2023 [^56].');
   });
 
 });
@@ -160,5 +166,24 @@ describe('claim selection in the hover card (matchesForClaim via normalize/sente
   it('sentenceAround isolates the sentence containing the marker position', () => {
     const text = 'First sentence here. Second one cites [3]. Third sentence.';
     expect(sentenceAround(text, text.indexOf('[3]'))).toBe('Second one cites [3].');
+  });
+});
+
+describe('resuming an interrupted enrichment', () => {
+  beforeEach(() => mockFindSemanticMatches.mockReset());
+
+  it('retries sources never attempted but leaves attempted ones alone', async () => {
+    mockFindSemanticMatches.mockResolvedValue([LONG_MATCH]);
+    const attempted = { ...source(1), claimMatches: [] };
+    const neverTried = source(2);
+    const out = await highlightSectionSources({
+      content: CONTENT,
+      sources: [attempted, neverTried],
+      threshold: 0.6,
+    });
+    // Only the never-attempted source is sent to the highlighter.
+    expect(mockFindSemanticMatches).toHaveBeenCalledTimes(1);
+    expect(out[0].claimMatches).toEqual([]);
+    expect(out[1].claimMatches).toHaveLength(1);
   });
 });
