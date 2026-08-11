@@ -175,7 +175,9 @@ const computeReferences = (sections: BriefSection[]): BriefReference[] => {
     const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src: SourceReference) => {
       if (src.index == null || !cited.has(src.index)) return;
-      const key = src.docId || src.title;
+      // One entry per cited passage, matching the numbering in
+      // buildGlobalCitations (and the AI summary), not one per document.
+      const key = src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
       if (seen.has(key)) return;
       seen.add(key);
       refs.push({

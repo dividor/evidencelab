@@ -49,24 +49,32 @@ describe('buildGlobalCitations', () => {
 
     const { refs, display } = buildGlobalCitations(sections);
 
-    // Three distinct documents → consecutive global numbers 1, 2, 3.
-    expect(refs.map((r) => r.n)).toEqual([1, 2, 3]);
-    expect(refs.map((r) => r.title)).toEqual(['Doc One', 'Doc Two', 'Doc Three']);
+    // One number per cited passage (as the AI summary numbers its sources), so
+    // Doc One's two pages are [1] and [4], not one combined number.
+    expect(refs.map((r) => r.n)).toEqual([1, 2, 3, 4]);
+    expect(refs.map((r) => r.title)).toEqual([
+      'Doc One',
+      'Doc Two',
+      'Doc Three',
+      'Doc One',
+    ]);
+    expect(refs.map((r) => r.page)).toEqual([5, 3, 1, 9]);
 
     // Section A keeps 1, 2.
     expect(display.get('a')?.content).toBe('Intro [1] and more [2].');
-    // Section B: local [7] → global [3] (new doc, consecutive); local [21] → [1]
-    // (same document as section A's [1], so combined to the same number).
-    expect(display.get('b')?.content).toBe('New finding [3] and a repeat of doc one [1].');
+    // Section B: local [7] → [3]; local [21] is a different passage of Doc One
+    // (p.9, not p.5) so it gets its own number rather than reusing [1].
+    expect(display.get('b')?.content).toBe('New finding [3] and a repeat of doc one [4].');
   });
 
-  test('combines multiple citations to the same document within a marker group', () => {
+  test('keeps separate numbers for different passages of one document', () => {
     const sections: BriefSection[] = [
       section({
         id: 'a',
         content: 'Claim [3, 4].',
         sources: [
-          // Both local indices point at the same document → one global number.
+          // Two passages of the same document, on different pages: each keeps
+          // its own number so the reader can tell which page backs the claim.
           src({ index: 3, docId: 'dX', title: 'Same Doc', page: 2 }),
           src({ index: 4, docId: 'dX', title: 'Same Doc', page: 8 }),
         ],
@@ -75,8 +83,27 @@ describe('buildGlobalCitations', () => {
 
     const { refs, display } = buildGlobalCitations(sections);
 
+    expect(refs).toHaveLength(2);
+    expect(refs.map((r) => r.page)).toEqual([2, 8]);
+    expect(display.get('a')?.content).toBe('Claim [1, 2].');
+  });
+
+  test('one number per passage, shared by chunks of the same page', () => {
+    const sections: BriefSection[] = [
+      section({
+        id: 'a',
+        content: 'Claim [1] and [2].',
+        sources: [
+          src({ index: 1, chunkId: 'same-chunk', docId: 'dY', title: 'Doc', page: 4 }),
+          src({ index: 2, chunkId: 'same-chunk', docId: 'dY', title: 'Doc', page: 4 }),
+        ],
+      }),
+    ];
+
+    const { refs, display } = buildGlobalCitations(sections);
+
     expect(refs).toHaveLength(1);
-    expect(display.get('a')?.content).toBe('Claim [1].');
+    expect(display.get('a')?.content).toBe('Claim [1] and [1].');
   });
 
   test('ignores sections that are not done', () => {

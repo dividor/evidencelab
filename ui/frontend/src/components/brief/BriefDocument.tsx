@@ -101,12 +101,10 @@ const AiInstructionPanel: React.FC<{
   </div>
 );
 
-// Collapse the reference list to one entry per document, keeping every
-// citation number that points at it. Pages are dropped: the group covers the
-// document as a whole.
+// One row per document: its title, then each citation number pointing into it
+// with that number's page — "Title, [1] p. 32, [2] p. 56". No excerpts.
 const groupReferencesByDoc = (
   refs: Array<{ n: number; title: string; page?: number; source: SourceReference }>,
-  pagesByDoc: Map<string, Array<{ page: number; source: SourceReference }>>,
 ): Array<{
   key: string;
   title: string;
@@ -120,17 +118,16 @@ const groupReferencesByDoc = (
       cites: Array<{ n: number; page: number; source: SourceReference }>;
     }
   >();
+  // Numbers are per cited passage, so a document collects each of its own
+  // numbers with the page that number points at.
   for (const r of refs) {
     const key = r.source.docId || r.title;
-    if (byDoc.has(key)) continue;
-    // Citation numbers are assigned per document, so every chunk of this
-    // document carries this reference's number; the page differs per chunk.
-    const hits = pagesByDoc.get(key) || [];
-    const cites = hits.length
-      ? hits.map((h) => ({ n: r.n, page: h.page, source: h.source }))
-      : [{ n: r.n, page: r.page ?? 0, source: r.source }];
-    byDoc.set(key, { key, title: r.title, cites });
+    const cite = { n: r.n, page: r.page ?? 0, source: r.source };
+    const found = byDoc.get(key);
+    if (found) found.cites.push(cite);
+    else byDoc.set(key, { key, title: r.title, cites: [cite] });
   }
+  byDoc.forEach((g) => g.cites.sort((a, b) => a.page - b.page || a.n - b.n));
   return Array.from(byDoc.values());
 };
 
@@ -887,7 +884,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           </div>
           <div className="brief-footnotes-list">
             {brief.groupReferences
-              ? groupReferencesByDoc(references, citedPagesByDoc(sections)).map((g) => (
+              ? groupReferencesByDoc(references).map((g) => (
                   <div className="brief-footnote-group" key={g.key}>
                     <span className="brief-footnote-text">{g.title}</span>
                     {g.cites.map((c, i) => (
