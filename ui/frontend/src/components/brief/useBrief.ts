@@ -32,7 +32,7 @@ import {
   updateBrief as updateBriefRemote,
 } from './briefCentralApi';
 import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
-import { highlightSectionSources } from './briefHighlights';
+import { highlightOneSource, highlightSectionSources } from './briefHighlights';
 import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
@@ -175,7 +175,9 @@ const computeReferences = (sections: BriefSection[]): BriefReference[] => {
     const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src: SourceReference) => {
       if (src.index == null || !cited.has(src.index)) return;
-      const key = src.docId || src.title;
+      // One entry per cited passage, matching the numbering in
+      // buildGlobalCitations (and the AI summary), not one per document.
+      const key = src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
       if (seen.has(key)) return;
       seen.add(key);
       refs.push({
@@ -209,6 +211,9 @@ export const useBrief = ({
   const [query, setQuery] = useState(''); // the brief topic
   const [instructions, setInstructions] = useState('');
   const [numHeadings, setNumHeadings] = useState(6);
+  // References list: one row per document (off) vs grouped by document (on).
+  // Also chooses how the Word export lays its references out.
+  const [groupReferences, setGroupReferences] = useState(false);
   const [newHeading, setNewHeading] = useState('');
   const [regenFor, setRegenFor] = useState<string | null>(null);
   const [regenText, setRegenText] = useState('');
@@ -310,6 +315,19 @@ export const useBrief = ({
   // Latest research-completion token per section id, written synchronously so
   // highlight enrichment can detect a superseded run without waiting on state.
   const researchTokenRef = useRef<Record<string, number>>({});
+  // Sections with an enrichment pass in flight. The backfill skips these: it
+  // must not start a second pass or overwrite the token of a running one,
+  // which would make that run consider itself stale and stop.
+  const enrichingRef = useRef<Set<string>>(new Set());
+  // Set when enrichment has updated a section's sources; a post-commit effect
+  // persists them. Without this the highlights lived only in memory and were
+  // lost on reload, since enrichment never triggered a save of its own.
+  const enrichSaveRef = useRef(false);
+  const lastEnrichSaveRef = useRef(0);
+  // Sources with an on-demand (hover-triggered) highlight in flight.
+  const onDemandRef = useRef<Set<string>>(new Set());
+  // Brief id awaiting a highlight-enrichment resume after being opened.
+  const resumeRef = useRef<string | null>(null);
 
   // After a section's research completes (references validated), run the LLM
   // semantic highlighter over each cited excerpt in the background — the hover
@@ -317,14 +335,27 @@ export const useBrief = ({
   // excerpt. `token` (the section's lastResearchedAt) stops a stale run from
   // clobbering a newer research pass.
   const enrichSectionHighlights = useCallback(
-    (id: string, token: number, content: string, sources: SourceReference[]) => {
-      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !content || !sources.length) return;
+    (
+      id: string,
+      token: number,
+      content: string,
+      sources: SourceReference[],
+    ): Promise<void> => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !content || !sources.length) {
+        return Promise.resolve();
+      }
+      // No highlight model yet (the combo config is applied after mount) —
+      // leave the section un-enriched so the resume pass retries once it lands.
+      if (!semanticModelConfigRef.current?.model) {
+        return Promise.resolve();
+      }
       // Staleness is tracked in a ref written synchronously at completion —
       // reading it from section state would race React's commit, since this
       // runs from a timeout that can fire before the re-render lands.
       const isStale = () => researchTokenRef.current[id] !== token;
-      if (isStale()) return;
-      void highlightSectionSources({
+      if (isStale()) return Promise.resolve();
+      enrichingRef.current.add(id);
+      return highlightSectionSources({
         content,
         sources,
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
@@ -333,15 +364,64 @@ export const useBrief = ({
         // Apply snippets as each source resolves — a big section takes minutes
         // to fully enrich and the hover cards should improve as it goes.
         onPartial: (sources) => {
-          if (!isStale()) updateSection(id, { sources });
+          if (isStale()) return;
+          updateSection(id, { sources });
+          // Persist progress periodically: a long section takes minutes and a
+          // reload mid-run would otherwise discard everything done so far.
+          if (Date.now() - lastEnrichSaveRef.current > 15000) enrichSaveRef.current = true;
         },
       })
         .then((sources) => {
-          if (!isStale()) updateSection(id, { sources });
+          if (isStale()) return;
+          updateSection(id, { sources });
+          enrichSaveRef.current = true;
         })
         .catch(() => {
           /* highlighting is an enhancement; the plain excerpt remains */
+        })
+        .finally(() => enrichingRef.current.delete(id));
+    },
+    [updateSection],
+  );
+
+  // Enrich one source now, because a hover card opened on a citation whose
+  // excerpt has no highlights yet. The card re-renders from section state, so
+  // it fills in while the user is still hovering.
+  const requestSourceHighlight = useCallback(
+    (sectionId: string, chunkId: string) => {
+      if (!SEARCH_SEMANTIC_HIGHLIGHTS || !semanticModelConfigRef.current?.model) return;
+      const key = `${sectionId}:${chunkId}`;
+      if (onDemandRef.current.has(key)) return;
+      const section = sectionsRef.current.find((sec) => sec.id === sectionId);
+      // Matched by chunk, not index: the card shows the *display* source, whose
+      // index is the global citation number, while section state keeps the
+      // local research indices. Matching on index found nothing, so the card
+      // sat on "Highlighting…" for ever.
+      const source = section?.sources.find((src) => src.chunkId === chunkId);
+      if (!section || !source || !source.text || source.claimMatches !== undefined) return;
+      onDemandRef.current.add(key);
+      const applyToSection = (enriched: SourceReference): void => {
+        const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
+        if (!cur) return;
+        updateSection(sectionId, {
+          sources: cur.sources.map((src) => (src.chunkId === chunkId ? enriched : src)),
         });
+        enrichSaveRef.current = true;
+      };
+      void highlightOneSource({
+        source,
+        content: section.content,
+        threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
+        modelConfig: semanticModelConfigRef.current,
+        // Paint each claim as it lands so the open card stops saying
+        // "Highlighting…" after the first result, not the last.
+        onProgress: applyToSection,
+      })
+        .then(applyToSection)
+        .catch(() => {
+          /* the full excerpt remains as the fallback */
+        })
+        .finally(() => onDemandRef.current.delete(key));
     },
     [updateSection],
   );
@@ -459,6 +539,7 @@ export const useBrief = ({
           audit: s.audit && s.audit.length ? s.audit : undefined,
           lastResearchedAt: s.lastResearchedAt,
           voiceId: s.voiceId ?? undefined,
+          guidance: s.guidance || undefined,
         };
       }),
       outlineLog: outlineLogRef.current,
@@ -863,7 +944,10 @@ export const useBrief = ({
       setStage('research');
       for (const id of ids) {
         if (controller.signal.aborted) return;
-        await researchOne(id, null, controller.signal);
+        // Each section carries its own author instructions (set in its Research
+        // panel), so a document-wide run honours what the user typed per section.
+        const guidance = sectionsRef.current.find((s) => s.id === id)?.guidance?.trim() || null;
+        await researchOne(id, guidance, controller.signal);
       }
       if (!controller.signal.aborted) {
         setStage('done');
@@ -1091,15 +1175,72 @@ export const useBrief = ({
           audit: h.audit || [],
           lastResearchedAt: h.lastResearchedAt,
           voiceId: h.voiceId ?? null,
+          guidance: h.guidance || '',
         })),
       );
       setGeneratingActivity(entry.outlineLog || []);
       setNumberHeadings(entry.numberHeadings ?? false);
       setStage('done');
       setHistoryOpen(false);
+      resumeRef.current = entry.id;
     },
     [],
   );
+
+  // Whether this tab is in the foreground; the opportunistic highlight backfill
+  // only runs here (see below).
+  const [tabVisible, setTabVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden',
+  );
+  useEffect(() => {
+    const onVisibility = (): void => setTabVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
+  // Highlight enrichment runs in the browser after a section completes, so
+  // reloading or navigating away mid-run leaves cited sources unenriched for
+  // good. Opening a brief resumes those gaps, one section at a time.
+  useEffect(() => {
+    const briefId = resumeRef.current;
+    if (!briefId || !SEARCH_SEMANTIC_HIGHLIGHTS) return;
+    // The highlight model comes from the model combo, which App applies after
+    // mount. Starting first sends model=null and every call fails, so wait —
+    // this effect re-runs on the render that delivers the config.
+    if (!semanticModelConfigRef.current?.model) return;
+    // Backfill only from the visible tab. Every open tab showing a brief would
+    // otherwise run the same backfill, multiplying API load and exhausting the
+    // browser's per-origin connections (which stalls page loads).
+    if (!tabVisible) return;
+    resumeRef.current = null;
+    void (async () => {
+      // Most recently researched first: that is the section the user is
+      // looking at, and enriching in document order left it until last.
+      const order = sectionsRef.current
+        .map((sec) => ({ id: sec.id, at: sec.lastResearchedAt ?? 0 }))
+        .sort((a, b) => b.at - a.at);
+      for (const { id } of order) {
+        if (briefIdRef.current !== briefId) return;
+        // A pass started by research owns this section; starting a second one
+        // here would overwrite its token and make it stop mid-run.
+        if (enrichingRef.current.has(id)) continue;
+        // Re-read: research finishing during the backfill replaces a section's
+        // content and sources, and the snapshot would enrich the old set.
+        const section = sectionsRef.current.find((s) => s.id === id);
+        if (!section || section.status !== 'done' || !section.content) continue;
+        const cited = new Set(extractCitedNumbers(section.content));
+        const pending = section.sources.some(
+          (src) => src.index != null && cited.has(src.index) && src.claimMatches === undefined,
+        );
+        if (!pending) continue;
+        // Keep any token already recorded so a run started by research retains
+        // ownership; only invent one when the section has none.
+        const token = researchTokenRef.current[id] ?? section.lastResearchedAt ?? Date.now();
+        researchTokenRef.current[id] = token;
+        await enrichSectionHighlights(id, token, section.content, section.sources);
+      }
+    })();
+  });
 
   const loadBrief = useCallback(
     (entry: SavedBrief) => {
@@ -1245,6 +1386,10 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
+    groupReferences,
+    setGroupReferences,
+    requestSourceHighlight,
+    setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>
       updateSection(id, { voiceId }),
     generateOutline,

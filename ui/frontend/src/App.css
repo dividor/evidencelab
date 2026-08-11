@@ -3834,8 +3834,8 @@ h6,
   z-index: 1000;
   width: 360px;
   max-width: calc(100vw - 24px);
-  max-height: 320px;
-  overflow-y: auto;
+  max-height: 420px;
+  overflow: hidden;
   background: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: 8px;
@@ -3853,11 +3853,6 @@ h6,
   font-size: 0.75rem;
   color: var(--gray-500);
 }
-/* LLM-selected excerpt snippets render quoted and italic. */
-.citation-hover-snippets {
-  font-style: italic;
-}
-
 .citation-hover-excerpt {
   margin-top: 8px;
   padding-top: 8px;
@@ -3866,6 +3861,23 @@ h6,
   line-height: 1.5;
   color: var(--gray-700);
 }
+
+/* Excerpt body inside the citation hover card: Search's own text formatter
+   lays the chunk out, so lists and indentation match a search result. */
+.citation-hover-body .formatted-text-block {
+  white-space: pre-wrap;
+}
+
+/* The span(s) the LLM picked out as supporting the hovered claim. Search marks
+   matches with weight alone; a tint reads better in the smaller card. */
+.citation-hover-excerpt mark,
+.citation-hover-excerpt .search-highlight {
+  background: rgba(91, 143, 168, 0.22);
+  color: inherit;
+  font-weight: inherit;
+  padding: 0 1px;
+}
+
 /* Heading breadcrumb shown as an italic section path at the top of the excerpt. */
 .citation-hover-section {
   margin-bottom: 6px;
@@ -12432,4 +12444,63 @@ button.doc-link:hover {
   position: fixed;
   inset: 0;
   z-index: 999;
+}
+
+/* Hover card: the highlight for this citation is being computed on demand. */
+.citation-hover-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+.citation-hover-spinner {
+  width: 11px;
+  height: 11px;
+  border-width: 2px;
+}
+
+/* Excerpt is clipped until "Show more"; expanded it scrolls, so the scrollbar
+   only appears once the reader has asked for the longer text. */
+.citation-hover-excerpt {
+  max-height: 132px;
+  overflow: hidden;
+}
+.citation-hover-excerpt-open {
+  max-height: 300px;
+  /* 'scroll', not 'auto': the scrollbar is visible the moment the reader
+     expands, so it is obvious there is more text below. */
+  overflow-y: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-400) transparent;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar {
+  width: 9px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 5px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb {
+  background: var(--gray-400);
+  border-radius: 5px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-500);
+}
+.citation-hover-more {
+  display: block;
+  margin-top: 6px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-family: var(--font-heading, inherit);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.citation-hover-more:hover {
+  text-decoration: underline;
 }

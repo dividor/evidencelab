@@ -173,6 +173,10 @@ export interface SourceReference {
     claim: string;
     matches: Array<{ start: number; end: number; matchedText?: string }>;
   }>;
+  // Other chunks of the same document cited in the same section. Display
+  // combines a document's chunks under one number, so the hover card looks
+  // across these to show the chunk that actually supports the hovered claim.
+  variants?: SourceReference[];
 }
 
 export interface AgentState {

@@ -57,7 +57,13 @@ export interface SectionDisplay {
 export const buildGlobalCitations = (
   sections: BriefSection[],
 ): { refs: GlobalRef[]; display: Map<string, SectionDisplay> } => {
-  const docToGlobal = new Map<string, number>();
+  // One citation number per cited passage, exactly as the AI summary numbers
+  // its sources (assistant_graph assigns global_index per chunk). A report
+  // cited from p.32 and p.56 therefore gets two numbers, and the reader can
+  // see which page each claim came from.
+  const chunkKey = (src: SourceReference): string =>
+    src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
+  const chunkToGlobal = new Map<string, number>();
   const refs: GlobalRef[] = [];
   // A section mid-Edit/Update (revising) keeps its old content on screen, so
   // it stays in the numbering — otherwise citations would jump twice per run.
@@ -68,9 +74,9 @@ export const buildGlobalCitations = (
     if (!isVisible(s)) return;
     extractCitedNumbers(s.content).forEach((localN) => {
       const src = s.sources.find((x) => x.index === localN);
-      if (!src || docToGlobal.has(src.docId)) return;
+      if (!src || chunkToGlobal.has(chunkKey(src))) return;
       const n = refs.length + 1;
-      docToGlobal.set(src.docId, n);
+      chunkToGlobal.set(chunkKey(src), n);
       refs.push({ n, title: src.title, page: src.page, source: src });
     });
   });
@@ -83,13 +89,13 @@ export const buildGlobalCitations = (
     const seen = new Set<number>();
     s.sources.forEach((src) => {
       if (src.index == null) return;
-      const g = docToGlobal.get(src.docId);
+      const g = chunkToGlobal.get(chunkKey(src));
       if (g == null) return;
       localToGlobal.set(src.index, g);
-      if (!seen.has(g)) {
-        seen.add(g);
-        sources.push({ ...src, index: g });
-      }
+      // Each number belongs to one passage, so there is nothing to merge.
+      if (seen.has(g)) return;
+      seen.add(g);
+      sources.push({ ...src, index: g });
     });
     const content = stripLeadingTitle(s.content, s.title).replace(CITATION_RE, (_m, nums: string) => {
       const mapped = Array.from(

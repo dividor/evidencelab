@@ -18,6 +18,7 @@ from deepagents.middleware.subagents import SubAgent
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
 
+from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
@@ -383,11 +384,13 @@ class SearchTracker:
         """
         new_sources: List[Dict[str, Any]] = []
         for r in self.all_results:
-            text = r.get("text", "")
+            # Same encoding repair Search applies to chunk text and titles
+            # (routes/search.py), so citation excerpts read identically.
+            text = clean_text(r.get("text", ""))
             entry: Dict[str, Any] = {
                 "chunkId": r.get("chunk_id", ""),
                 "docId": r.get("doc_id", ""),
-                "title": r.get("title", ""),
+                "title": clean_text(r.get("title", "")),
                 # Full chunk text (not truncated): the on-screen citation panels
                 # show title/page only, while the Brief's Word export renders the
                 # complete excerpt for each cited source.

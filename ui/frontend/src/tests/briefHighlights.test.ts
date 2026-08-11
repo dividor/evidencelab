@@ -55,12 +55,16 @@ describe('highlightSectionSources', () => {
   beforeEach(() => mockFindSemanticMatches.mockReset());
 
   it('attaches per-claim matches for cited sources; failures keep plain excerpts', async () => {
-    // Source 1 is cited from two sentences → two claim entries.
-    mockFindSemanticMatches
-      .mockResolvedValueOnce([LONG_MATCH])
-      .mockResolvedValueOnce([{ ...LONG_MATCH, start: 5, end: 45 }])
-      .mockRejectedValueOnce(new Error('LLM down'))
-      .mockResolvedValue([]);
+    // Keyed by claim, not call order: sources are highlighted concurrently, so
+    // a fixed mock sequence would be consumed in a non-deterministic order.
+    mockFindSemanticMatches.mockImplementation((_body: string, claim: string) => {
+      if (claim.includes('cash transfers improved')) return Promise.resolve([LONG_MATCH]);
+      if (claim.includes('cost efficiency favoured')) {
+        return Promise.resolve([{ ...LONG_MATCH, start: 5, end: 45 }]);
+      }
+      if (claim.includes('dietary diversity')) return Promise.reject(new Error('LLM down'));
+      return Promise.resolve([]);
+    });
     const out = await highlightSectionSources({
       content: CONTENT,
       sources: [source(1), source(2), source(3)],
@@ -69,8 +73,13 @@ describe('highlightSectionSources', () => {
     expect(out[0].claimMatches).toHaveLength(2);
     expect(out[0].claimMatches?.[0].claim).toContain('cash transfers improved');
     expect(out[0].claimMatches?.[0].matches).toEqual([LONG_MATCH]);
-    expect(out[1].claimMatches).toBeUndefined();
-    expect(out[2].claimMatches).toBeUndefined();
+    // An empty list records "attempted, nothing matched" so a resumed run
+    // does not retry these; only never-attempted sources are picked up.
+    expect(out[1].claimMatches).toEqual([]);
+    // Source 3 is cited from two sentences: the 'dietary diversity' one fails,
+    // but claims are highlighted independently, so the other still lands.
+    expect(out[2].claimMatches).toHaveLength(1);
+    expect(out[2].claimMatches?.[0].claim).toContain('cost efficiency');
   });
 
   it('drops fragment matches below the minimum length', async () => {
@@ -80,7 +89,7 @@ describe('highlightSectionSources', () => {
       sources: [source(2)],
       threshold: 0.6,
     });
-    expect(out[0].claimMatches).toBeUndefined();
+    expect(out[0].claimMatches).toEqual([]);
   });
 
   it('skips uncited sources and ones already highlighted', async () => {
@@ -126,32 +135,25 @@ describe('highlightSectionSources', () => {
   });
 });
 
-describe('snapToWordBounds', () => {
-  const { snapToWordBounds } = jest.requireActual('../components/citations/CitedContent');
-  const text = 'The Kenya Certificate of Secondary Education results.';
+describe('excerpt formatting and highlight location', () => {
+  const { formatExcerpt } = jest.requireActual('../components/citations/CitationExcerpt');
+  const RAW =
+    '211. WFP has launched a new  country  strategy for the period 2018 -2023 [^56] .\n\n' +
+    '212. The launching of  Kenya\'s first School Feeding strategy in 2018 .';
 
-  it('expands a mid-word start back to the word start', () => {
-    const start = text.indexOf('tificate');
-    const out = snapToWordBounds(text, start, text.indexOf('Education') + 9);
-    expect(text.substring(out.start, out.end)).toBe('Certificate of Secondary Education');
+  it('collapses PDF double-spacing and keeps paragraphs', () => {
+    const out = formatExcerpt(RAW);
+    expect(out).toContain('a new country strategy');
+    expect(out).not.toMatch(/ {2,}/);
+    expect(out.split(/\n{2,}/)).toHaveLength(2);
   });
 
-  it('expands a mid-word end forward to the word end', () => {
-    const out = snapToWordBounds(text, text.indexOf('Kenya'), text.indexOf('Cert') + 4);
-    expect(text.substring(out.start, out.end)).toBe('Kenya Certificate');
+  it('keeps footnote markers so they render as superscripts, as Search does', () => {
+    const out = formatExcerpt(RAW);
+    expect(out).toContain('[^56]');
+    expect(out).toContain('2018 -2023 [^56].');
   });
 
-  it('leaves boundaries already on word edges untouched', () => {
-    const s = text.indexOf('Kenya');
-    const out = snapToWordBounds(text, s, s + 'Kenya'.length);
-    expect(out).toEqual({ start: s, end: s + 5 });
-  });
-
-  it('clamps out-of-range offsets', () => {
-    const out = snapToWordBounds(text, -5, text.length + 10);
-    expect(out.start).toBe(0);
-    expect(out.end).toBe(text.length);
-  });
 });
 
 describe('claim selection in the hover card (matchesForClaim via normalize/sentence)', () => {
@@ -171,5 +173,24 @@ describe('claim selection in the hover card (matchesForClaim via normalize/sente
   it('sentenceAround isolates the sentence containing the marker position', () => {
     const text = 'First sentence here. Second one cites [3]. Third sentence.';
     expect(sentenceAround(text, text.indexOf('[3]'))).toBe('Second one cites [3].');
+  });
+});
+
+describe('resuming an interrupted enrichment', () => {
+  beforeEach(() => mockFindSemanticMatches.mockReset());
+
+  it('retries sources never attempted but leaves attempted ones alone', async () => {
+    mockFindSemanticMatches.mockResolvedValue([LONG_MATCH]);
+    const attempted = { ...source(1), claimMatches: [] };
+    const neverTried = source(2);
+    const out = await highlightSectionSources({
+      content: CONTENT,
+      sources: [attempted, neverTried],
+      threshold: 0.6,
+    });
+    // Only the never-attempted source is sent to the highlighter.
+    expect(mockFindSemanticMatches).toHaveBeenCalledTimes(1);
+    expect(out[0].claimMatches).toEqual([]);
+    expect(out[1].claimMatches).toHaveLength(1);
   });
 });

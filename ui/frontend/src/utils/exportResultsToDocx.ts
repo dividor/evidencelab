@@ -63,6 +63,10 @@ export interface ExportOptions {
   /** Heading for the per-result excerpts section (default "Search Results").
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
+  // Render a compact references list (no excerpts) instead of full result
+  // cards, mirroring the Brief's on-screen References section. 'grouped'
+  // collapses to one row per document.
+  referenceList?: 'flat' | 'grouped';
   /** Cover-page document title (default "Evidence Lab — Search Export").
    *  The Brief export passes "AI-generated Research Brief". */
   documentTitle?: string;
@@ -965,6 +969,66 @@ const buildResultCard = (
   return out;
 };
 
+/**
+ * A compact references list: one line per citation (flat) or per document
+ * (grouped), title hyperlinked to the source, no excerpt text. Mirrors what
+ * the Brief shows on screen so the export matches the reader's view.
+ */
+const buildReferenceList = (
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  grouped: boolean,
+  sectionTitle = 'References',
+): Paragraph[] => {
+  const titleOf = (r: SearchResult): string =>
+    (r.title && r.title.trim()) ||
+    (typeof r.document_title === 'string' && r.document_title.trim()) ||
+    '(untitled document)';
+
+  const rows: Array<{ label: string; title: string; result: SearchResult }> = [];
+  if (grouped) {
+    const byDoc = new Map<string, { nums: number[]; result: SearchResult }>();
+    results.forEach((r, idx) => {
+      const key = r.doc_id || titleOf(r);
+      const found = byDoc.get(key);
+      if (found) found.nums.push(idx + 1);
+      else byDoc.set(key, { nums: [idx + 1], result: r });
+    });
+    byDoc.forEach(({ nums, result }) =>
+      rows.push({ label: nums.join(', '), title: titleOf(result), result }),
+    );
+  } else {
+    results.forEach((r, idx) => {
+      const page = r.page_num ? `, p.${r.page_num}` : '';
+      rows.push({ label: String(idx + 1), title: `${titleOf(r)}${page}`, result: r });
+    });
+  }
+
+  const out: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: sectionTitle })],
+      spacing: { before: 360, after: 120 },
+    }),
+  ];
+  rows.forEach(({ label, title, result }) => {
+    out.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        children: [
+          new TextRun({ text: `${label}. `, bold: true }),
+          new ExternalHyperlink({
+            link: resolveResultLink(result, siteOrigin, dataSource),
+            children: [new TextRun({ text: title, style: 'Hyperlink' })],
+          }),
+        ],
+      }),
+    );
+  });
+  return out;
+};
+
 const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
@@ -1018,13 +1082,21 @@ export const buildExportDocument = (
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
       footnotes,
     ),
-    ...buildResultsSection(
-      opts.results,
-      siteOrigin,
-      opts.dataSource,
-      opts.resultsSectionTitle,
-      images,
-    ),
+    ...(opts.referenceList
+      ? buildReferenceList(
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.referenceList === 'grouped',
+          opts.resultsSectionTitle,
+        )
+      : buildResultsSection(
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.resultsSectionTitle,
+          images,
+        )),
   ];
 
   return new Document({

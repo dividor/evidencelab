@@ -14,6 +14,19 @@ const source: SourceReference = {
   headings: [],
 };
 
+const claimSource: SourceReference = {
+  ...source,
+  text: 'The GoK  commitment to  education is articulated in the Constitution [^56] .',
+  claimMatches: [
+    {
+      claim: 'a key finding',
+      matches: [
+        { start: 0, end: 31, matchedText: 'The GoK commitment to education' },
+      ],
+    },
+  ],
+};
+
 describe('inline citation hover card', () => {
   test('renders the excerpt with the same formatter Search uses', () => {
     const { container } = render(<CitedMarkdown content="A key finding [1]." sources={[source]} />);
@@ -31,5 +44,20 @@ describe('inline citation hover card', () => {
     const excerpt = document.querySelector('.citation-hover-excerpt');
     expect(excerpt).not.toBeNull();
     expect(excerpt!.querySelector('.formatted-text-block')).not.toBeNull();
+  });
+
+  test('marks the span supporting the hovered claim and tidies the chunk', () => {
+    const { container } = render(
+      <CitedMarkdown content="A key finding [1]." sources={[claimSource]} />,
+    );
+    fireEvent.mouseEnter(container.querySelector('.ai-summary-citation') as HTMLElement);
+
+    const excerpt = document.querySelector('.citation-hover-excerpt') as HTMLElement;
+    const mark = excerpt.querySelector('mark');
+    expect(mark).not.toBeNull();
+    expect(mark!.textContent).toContain('commitment to education');
+    // Footnote markers and PDF double-spacing are cleaned up for reading.
+    expect(excerpt.textContent).not.toContain('[^56]');
+    expect(excerpt.textContent).not.toMatch(/ {2,}/);
   });
 });

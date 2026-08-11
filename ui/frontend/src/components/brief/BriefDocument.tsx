@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
-import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
+import {
+  CitedMarkdown,
+  CitedReferences,
+  extractCitedNumbers,
+} from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import {
   IconClock,
@@ -97,6 +101,60 @@ const AiInstructionPanel: React.FC<{
   </div>
 );
 
+// One row per document: its title, then each citation number pointing into it
+// with that number's page — "Title, [1] p. 32, [2] p. 56". No excerpts.
+const groupReferencesByDoc = (
+  refs: Array<{ n: number; title: string; page?: number; source: SourceReference }>,
+): Array<{
+  key: string;
+  title: string;
+  cites: Array<{ n: number; page: number; source: SourceReference }>;
+}> => {
+  const byDoc = new Map<
+    string,
+    {
+      key: string;
+      title: string;
+      cites: Array<{ n: number; page: number; source: SourceReference }>;
+    }
+  >();
+  // Numbers are per cited passage, so a document collects each of its own
+  // numbers with the page that number points at.
+  for (const r of refs) {
+    const key = r.source.docId || r.title;
+    const cite = { n: r.n, page: r.page ?? 0, source: r.source };
+    const found = byDoc.get(key);
+    if (found) found.cites.push(cite);
+    else byDoc.set(key, { key, title: r.title, cites: [cite] });
+  }
+  byDoc.forEach((g) => g.cites.sort((a, b) => a.page - b.page || a.n - b.n));
+  return Array.from(byDoc.values());
+};
+
+/**
+ * Every cited chunk of each document, as the page and the source behind it.
+ * The grouped references row lists these after the title, each labelled with
+ * the citation number that appears inline in the prose.
+ */
+const citedPagesByDoc = (
+  sections: BriefSection[],
+): Map<string, Array<{ page: number; source: SourceReference }>> => {
+  const map = new Map<string, Array<{ page: number; source: SourceReference }>>();
+  sections.forEach((s) => {
+    if (!(s.status === 'done' || s.revising) || !s.content) return;
+    const cited = new Set(extractCitedNumbers(s.content));
+    s.sources.forEach((src) => {
+      if (src.index == null || !cited.has(src.index) || src.page == null) return;
+      const key = src.docId || src.title;
+      const hits = map.get(key) || [];
+      if (!hits.some((h) => h.page === src.page)) hits.push({ page: src.page, source: src });
+      map.set(key, hits);
+    });
+  });
+  map.forEach((hits) => hits.sort((a, b) => a.page - b.page));
+  return map;
+};
+
 interface SectionViewProps {
   section: BriefSection;
   num: string;
@@ -106,14 +164,18 @@ interface SectionViewProps {
   display?: SectionDisplay;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
+  // Hover on an un-enriched citation asks for that source to be highlighted.
+  onRequestHighlight?: (source: SourceReference) => void;
 }
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
-const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> = ({
-  section,
-  brief,
-}) => {
+const GuidancePanel: React.FC<{
+  section: BriefSection;
+  brief: UseBriefReturn;
+  // The inline panel for an un-researched section has nothing to cancel back to.
+  hideCancel?: boolean;
+}> = ({ section, brief, hideCancel }) => {
   const isPending = section.status === 'pending';
   const briefVoice = brief.voices.find((v) => v.id === brief.briefVoiceId) || null;
   const ownVoice = brief.voices.find((v) => v.id === section.voiceId) || null;
@@ -123,8 +185,8 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
         {isPending ? 'Research' : 'Regenerate'} “{section.title}”
       </div>
       <textarea
-        value={brief.regenText}
-        onChange={(e) => brief.setRegenText(e.target.value)}
+        value={section.guidance || ''}
+        onChange={(e) => brief.setSectionGuidance(section.id, e.target.value)}
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />
@@ -158,13 +220,15 @@ const GuidancePanel: React.FC<{ section: BriefSection; brief: UseBriefReturn }> 
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
-          onClick={() => brief.regenerate(section.id, brief.regenText.trim() || null)}
+          onClick={() => brief.regenerate(section.id, (section.guidance || '').trim() || null)}
         >
           {isPending ? 'Research section' : 'Re-research section'}
         </button>
-        <button className="brief-btn brief-btn-secondary" onClick={brief.closeRegen}>
-          Cancel
-        </button>
+        {!hideCancel && (
+          <button className="brief-btn brief-btn-secondary" onClick={brief.closeRegen}>
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );
@@ -280,6 +344,7 @@ const SectionDoneBody: React.FC<{
   viewingPending: boolean;
   onSourceClick: (source: SourceReference) => void;
   onCloseDiff: () => void;
+  onRequestHighlight?: (source: SourceReference) => void;
 }> = ({
   section,
   brief,
@@ -289,6 +354,7 @@ const SectionDoneBody: React.FC<{
   viewingPending,
   onSourceClick,
   onCloseDiff,
+  onRequestHighlight,
 }) => {
   const { content, sources } = sectionView(section, display);
   return (
@@ -317,7 +383,12 @@ const SectionDoneBody: React.FC<{
         />
       ) : (
         <div className="brief-doc-content">
-          <CitedMarkdown content={content} sources={sources} onSourceClick={onSourceClick} />
+          <CitedMarkdown
+            content={content}
+            sources={sources}
+            onSourceClick={onSourceClick}
+            onRequestHighlight={onRequestHighlight}
+          />
         </div>
       )}
       <CitedReferences
@@ -332,6 +403,21 @@ const SectionDoneBody: React.FC<{
   );
 };
 
+// How an un-researched section invites research: inline panel (so instructions
+// can be written for several sections before one "Regenerate all" run), the
+// legacy button for un-edited sample headings, or nothing while busy/read-only.
+type PendingMode = 'none' | 'inline' | 'button';
+
+const pendingResearchMode = (
+  section: BriefSection,
+  panelOpen: boolean,
+  anyResearching: boolean,
+  readOnly: boolean,
+): PendingMode => {
+  if (section.status !== 'pending' || panelOpen || anyResearching || readOnly) return 'none';
+  return section.sample ? 'button' : 'inline';
+};
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
@@ -339,6 +425,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   onSourceClick,
   display,
   readOnly = false,
+  onRequestHighlight,
 }) => {
   const [editing, setEditing] = useState(false);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
@@ -352,6 +439,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
+  const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   const hasChanges = !!section.prevContent;
@@ -437,10 +525,12 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
-      {panelOpen && <GuidancePanel section={section} brief={brief} />}
+      {(panelOpen || pendingMode === 'inline') && (
+        <GuidancePanel section={section} brief={brief} hideCancel={pendingMode === 'inline'} />
+      )}
 
-      {section.status === 'pending' && !panelOpen && !anyResearching && !readOnly && (
-        <SectionPending sample={section.sample} onResearch={() => brief.openRegen(section.id)} />
+      {pendingMode === 'button' && (
+        <SectionPending sample onResearch={() => brief.openRegen(section.id)} />
       )}
 
       {section.status === 'researching' && (
@@ -457,53 +547,28 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           viewingPending={viewingPending}
           onSourceClick={onSourceClick}
           onCloseDiff={() => setDiffEntryId(null)}
+          onRequestHighlight={onRequestHighlight}
         />
       )}
     </section>
   );
 };
 
-// The dropdown behind "Export to Word": references-list vs footnotes style.
-const ExportMenu: React.FC<{
+// "Export to Word": one button. The document mirrors the on-screen
+// references, so its layout follows the "Group by document" toggle.
+const ExportButton: React.FC<{
   disabled: boolean;
   busy: boolean;
-  open: boolean;
-  setOpen: (fn: (open: boolean) => boolean) => void;
-  onExportWord: (style: 'links' | 'footnotes') => void;
-}> = ({ disabled, busy, open, setOpen, onExportWord }) => (
-  <div className="dropdown-container brief-export-menu">
-    <button
-      className="brief-export-word"
-      onClick={() => setOpen((o) => !o)}
-      onBlur={() => setTimeout(() => setOpen(() => false), 200)}
-      disabled={disabled || busy}
-      aria-haspopup="menu"
-      aria-expanded={open}
-      title="Export this brief to Word, with citations linked to the source documents"
-    >
-      {busy ? 'Exporting…' : <><IconDownload /> Export to Word ▾</>}
-    </button>
-    {open && !busy && (
-      <div className="brief-export-dropdown" role="menu">
-        <button
-          className="brief-export-option"
-          role="menuitem"
-          onClick={() => { setOpen(() => false); onExportWord('links'); }}
-        >
-          References list
-          <span className="brief-export-option-hint">Inline [n] citations + reference excerpts</span>
-        </button>
-        <button
-          className="brief-export-option"
-          role="menuitem"
-          onClick={() => { setOpen(() => false); onExportWord('footnotes'); }}
-        >
-          Footnotes on page
-          <span className="brief-export-option-hint">Each citation as a footnote on the relevant page</span>
-        </button>
-      </div>
-    )}
-  </div>
+  onExportWord: () => void;
+}> = ({ disabled, busy, onExportWord }) => (
+  <button
+    className="brief-export-word"
+    onClick={onExportWord}
+    disabled={disabled || busy}
+    title="Export this brief to Word, with citations linked to the source documents"
+  >
+    {busy ? 'Exporting…' : <><IconDownload /> Export to Word</>}
+  </button>
 );
 
 // The document-level action row: regenerate/update all, share, save-as-template
@@ -515,10 +580,8 @@ const HeaderActions: React.FC<{
   onOpenShare?: () => void;
   onSaveTemplate?: () => void;
   onRegenerateAll?: () => void;
-  onExportWord?: (style: 'links' | 'footnotes') => void;
+  onExportWord?: () => void;
   exportBusy?: boolean;
-  exportMenuOpen: boolean;
-  setExportMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }> = ({
   brief,
   readOnly,
@@ -528,8 +591,6 @@ const HeaderActions: React.FC<{
   onRegenerateAll,
   onExportWord,
   exportBusy,
-  exportMenuOpen,
-  setExportMenuOpen,
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
@@ -574,11 +635,9 @@ const HeaderActions: React.FC<{
         </button>
       )}
       {onExportWord && (
-        <ExportMenu
+        <ExportButton
           disabled={!hasSections}
           busy={!!exportBusy}
-          open={exportMenuOpen}
-          setOpen={setExportMenuOpen}
           onExportWord={onExportWord}
         />
       )}
@@ -591,7 +650,7 @@ interface BriefDocumentProps {
   onResultClick?: (result: SearchResult) => void;
   // Export the brief to Word. 'links' keeps inline [n] citations; 'footnotes'
   // renders each citation as a Word footnote on the relevant page.
-  onExportWord?: (style: 'links' | 'footnotes') => void;
+  onExportWord?: () => void;
   exportBusy?: boolean;
   // Brief Central integrations (remote mode only).
   onOpenShare?: () => void;
@@ -651,7 +710,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
   const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
@@ -694,8 +752,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             onRegenerateAll={onRegenerateAll}
             onExportWord={onExportWord}
             exportBusy={exportBusy}
-            exportMenuOpen={exportMenuOpen}
-            setExportMenuOpen={setExportMenuOpen}
           />
         </div>
         <textarea
@@ -795,6 +851,9 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onSourceClick={handleSourceClick}
           display={display.get(s.id)}
           readOnly={readOnly}
+          onRequestHighlight={(src) =>
+            src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
+          }
         />
       ))}
 
@@ -812,28 +871,77 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 
       {references.length > 0 && (
         <section className="brief-footnotes">
-          <h2 className="brief-footnotes-title">References</h2>
+          <div className="brief-footnotes-head">
+            <h2 className="brief-footnotes-title">References</h2>
+            <label className="brief-footnotes-group-toggle">
+              <input
+                type="checkbox"
+                checked={brief.groupReferences}
+                onChange={(e) => brief.setGroupReferences(e.target.checked)}
+              />
+              Group by document
+            </label>
+          </div>
           <div className="brief-footnotes-list">
-            {references.map((r) => (
-              <div className="brief-footnote-row" key={r.n}>
-                <a
-                  href="#"
-                  className="brief-footnote-link"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleSourceClick(r.source);
-                  }}
-                >
-                  <span className="citation-doc-group">
-                    <span className="ai-summary-citation">{r.n}</span>
-                  </span>
-                  <span className="brief-footnote-text">
-                    {r.title}
-                    {r.page ? `, p.${r.page}` : ''}
-                  </span>
-                </a>
-              </div>
-            ))}
+            {brief.groupReferences
+              ? groupReferencesByDoc(references).map((g) => (
+                  <div className="brief-footnote-group" key={g.key}>
+                    <span className="brief-footnote-text">{g.title}</span>
+                    {g.cites.map((c, i) => (
+                      <span className="brief-footnote-cite" key={`${c.n}-${c.page}-${i}`}>
+                        {/* The number is shown once per run of the same
+                            citation, so a document cited from many pages reads
+                            "[1] p. 9, p. 11" rather than repeating "[1]". */}
+                        {(i === 0 || g.cites[i - 1].n !== c.n) && (
+                          <span className="citation-doc-group">
+                            <a
+                              href="#"
+                              className="ai-summary-citation"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleSourceClick(c.source);
+                              }}
+                            >
+                              {c.n}
+                            </a>
+                          </span>
+                        )}
+                        {c.page ? (
+                          <a
+                            href="#"
+                            className="brief-footnote-page-link"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleSourceClick(c.source);
+                            }}
+                          >
+                            {` p. ${c.page}`}
+                          </a>
+                        ) : null}
+                      </span>
+                    ))}
+                  </div>
+                ))
+              : references.map((r) => (
+                  <div className="brief-footnote-row" key={r.n}>
+                    <a
+                      href="#"
+                      className="brief-footnote-link"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSourceClick(r.source);
+                      }}
+                    >
+                      <span className="citation-doc-group">
+                        <span className="ai-summary-citation">{r.n}</span>
+                      </span>
+                      <span className="brief-footnote-text">
+                        {r.title}
+                        {r.page ? `, p.${r.page}` : ''}
+                      </span>
+                    </a>
+                  </div>
+                ))}
           </div>
         </section>
       )}

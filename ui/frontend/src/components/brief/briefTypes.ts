@@ -57,6 +57,9 @@ export interface BriefSection {
   prevSources?: SourceReference[];
   // The kind of the most recent AI op that changed content, for the changes UI.
   lastChangeKind?: SectionAuditKind;
+  // Author instructions for researching this section, kept per section so they
+  // survive and are applied by a document-wide "Regenerate all".
+  guidance?: string;
   // Voice & tone profile override for this section (null/absent = brief default).
   voiceId?: string | null;
 }
@@ -78,6 +81,7 @@ export interface SavedBriefSection {
   audit?: SectionAuditEntry[];
   lastResearchedAt?: number;
   voiceId?: string | null;
+  guidance?: string;
 }
 
 export interface SavedBrief {
