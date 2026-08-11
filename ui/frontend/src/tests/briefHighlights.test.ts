@@ -76,7 +76,10 @@ describe('highlightSectionSources', () => {
     // An empty list records "attempted, nothing matched" so a resumed run
     // does not retry these; only never-attempted sources are picked up.
     expect(out[1].claimMatches).toEqual([]);
-    expect(out[2].claimMatches).toEqual([]);
+    // Source 3 is cited from two sentences: the 'dietary diversity' one fails,
+    // but claims are highlighted independently, so the other still lands.
+    expect(out[2].claimMatches).toHaveLength(1);
+    expect(out[2].claimMatches?.[0].claim).toContain('cost efficiency');
   });
 
   it('drops fragment matches below the minimum length', async () => {

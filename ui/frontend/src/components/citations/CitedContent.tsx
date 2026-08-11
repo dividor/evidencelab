@@ -3,7 +3,7 @@
 // references list grouped by document. Used by the Research Assistant
 // (ChatMessage) and the Brief tab so both render citations identically.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -134,6 +134,9 @@ const InlineCitation: React.FC<{
   const [expanded, setExpanded] = useState(false);
   const [clipped, setClipped] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  // Whether this card's on-screen placement has been settled for this open.
+  const placedRef = useRef(false);
 
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -152,14 +155,17 @@ const InlineCitation: React.FC<{
     if (!shown?.matches?.length && onRequestHighlight) onRequestHighlight(source);
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
-    // Position below the badge, clamped so the card stays in the viewport.
+    // Provisional spot below the badge; the layout effect below flips it above
+    // once the real height is known and there is not room underneath.
     const CARD_W = 360;
+    placedRef.current = false;
     setCard({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - CARD_W - 12) });
   };
   const scheduleHide = () => {
     hideTimer.current = setTimeout(() => {
       setCard(null);
       setExpanded(false);
+      placedRef.current = false;
     }, 120);
   };
 
@@ -170,6 +176,30 @@ const InlineCitation: React.FC<{
     if (!card || !el) return;
     setClipped(el.scrollHeight > el.clientHeight + 4);
   }, [card, excerptBody, expanded]);
+
+  // Highlight enrichment re-renders these badges constantly. If the pointer is
+  // already resting on one, no pointer event fires for the new node, so the
+  // card would only appear after the user moved (or clicked). Re-open it here.
+  useEffect(() => {
+    if (card || !ref.current) return;
+    if (ref.current.matches(':hover')) show();
+  });
+
+  // Keep the card on screen: flip above the citation when it would overflow
+  // the bottom. Runs once per open (placedRef), never in a setCard→effect→
+  // setCard loop, which froze the page.
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    const anchor = ref.current;
+    if (!card || !el || !anchor || placedRef.current) return;
+    placedRef.current = true;
+    const height = el.offsetHeight;
+    const a = anchor.getBoundingClientRect();
+    const room = window.innerHeight - a.bottom - 12;
+    if (height > room && a.top > room) {
+      setCard({ top: Math.max(8, a.top - height - 6), left: card.left });
+    }
+  }, [card]);
 
   return (
     <>
@@ -196,6 +226,7 @@ const InlineCitation: React.FC<{
         shown &&
         createPortal(
           <div
+            ref={cardRef}
             className="citation-hover-card"
             style={{ top: card.top, left: card.left }}
             onMouseEnter={show}

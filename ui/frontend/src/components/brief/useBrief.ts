@@ -400,20 +400,24 @@ export const useBrief = ({
       const source = section?.sources.find((src) => src.chunkId === chunkId);
       if (!section || !source || !source.text || source.claimMatches !== undefined) return;
       onDemandRef.current.add(key);
+      const applyToSection = (enriched: SourceReference): void => {
+        const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
+        if (!cur) return;
+        updateSection(sectionId, {
+          sources: cur.sources.map((src) => (src.chunkId === chunkId ? enriched : src)),
+        });
+        enrichSaveRef.current = true;
+      };
       void highlightOneSource({
         source,
         content: section.content,
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
         modelConfig: semanticModelConfigRef.current,
+        // Paint each claim as it lands so the open card stops saying
+        // "Highlighting…" after the first result, not the last.
+        onProgress: applyToSection,
       })
-        .then((enriched) => {
-          const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
-          if (!cur) return;
-          updateSection(sectionId, {
-            sources: cur.sources.map((src) => (src.chunkId === chunkId ? enriched : src)),
-          });
-          enrichSaveRef.current = true;
-        })
+        .then(applyToSection)
         .catch(() => {
           /* the full excerpt remains as the fallback */
         })

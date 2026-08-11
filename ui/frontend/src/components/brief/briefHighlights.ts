@@ -31,7 +31,24 @@ const MIN_MATCH_CHARS = 30;
 // Excerpts highlighted at once. Each is one LLM call taking ~10-15s, so a
 // serial pass over a heavily-cited section took minutes; a small pool keeps
 // the section usable quickly without flooding the highlight endpoint.
-const HIGHLIGHT_CONCURRENCY = 6;
+// Kept below the browser's ~6 connections per origin so a hover-triggered
+// call, plus the brief's own saves, always have a socket free.
+const HIGHLIGHT_CONCURRENCY = 3;
+
+// A hover on an un-highlighted citation must be served at once. Background
+// workers park between calls while any on-demand request is outstanding, and
+// the smaller pool above leaves browser connections free for it — otherwise
+// the hover queues behind a section's worth of calls and takes minutes.
+let priorityInFlight = 0;
+// Bounded: a slow (or stuck) hover request must not stall the whole backfill,
+// so workers yield for at most this long before carrying on regardless.
+const PRIORITY_YIELD_MS = 15000;
+const waitForPriority = async (): Promise<void> => {
+  const until = Date.now() + PRIORITY_YIELD_MS;
+  while (priorityInFlight > 0 && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+};
 
 // Completed excerpts to collect before publishing them to the UI, so cards
 // fill in batches instead of one re-render per source.
@@ -116,6 +133,7 @@ export const highlightSectionSources = async ({
   };
   const worker = async (): Promise<void> => {
     for (;;) {
+      await waitForPriority();
       const slot = next++;
       if (slot >= queue.length || isStale?.()) return;
       const { source, at } = queue[slot];
@@ -143,8 +161,25 @@ export const highlightOneSource = async (args: {
   content: string;
   threshold: number;
   modelConfig?: SummaryModelConfig | null;
-}): Promise<SourceReference> =>
-  enrichSource(args.source, args.content, args.threshold, args.modelConfig);
+  // Called as each claim resolves, so an open card shows its first highlight
+  // after one round-trip instead of waiting for every claim in the source.
+  onProgress?: (partial: SourceReference) => void;
+}): Promise<SourceReference> => {
+  // Registered as priority work: background workers pause until this returns.
+  priorityInFlight += 1;
+  try {
+    return await enrichSource(
+      args.source,
+      args.content,
+      args.threshold,
+      args.modelConfig,
+      undefined,
+      args.onProgress,
+    );
+  } finally {
+    priorityInFlight = Math.max(0, priorityInFlight - 1);
+  }
+};
 
 /**
  * Highlight one source's excerpt against each sentence citing it. Returns the
@@ -157,18 +192,37 @@ const enrichSource = async (
   threshold: number,
   modelConfig: SummaryModelConfig | null | undefined,
   isStale?: () => boolean,
+  onProgress?: (partial: SourceReference) => void,
 ): Promise<SourceReference> => {
   const claims = extractClaimsForCitation(content, source.index as number);
   const { body } = parseSectionBreadcrumb(source.text || '');
   const entries: NonNullable<SourceReference['claimMatches']> = [];
   try {
-    for (const { key, prose } of claims) {
-      if (isStale?.()) break;
-      const matches = (await findSemanticMatches(body, prose, threshold, modelConfig)).filter(
-        (m) => m.end - m.start >= MIN_MATCH_CHARS,
-      );
-      if (matches.length) entries.push({ claim: key, matches });
-    }
+    // The claims are independent, so ask for them together: a source cited from
+    // five sentences took five sequential LLM calls (~a minute) before the card
+    // showed anything. One round of parallel calls resolves it in one call's
+    // time. Order is preserved by index.
+    const results = await Promise.all(
+      claims.map(async ({ key, prose }) => {
+        if (isStale?.()) return null;
+        try {
+          const matches = (await findSemanticMatches(body, prose, threshold, modelConfig)).filter(
+            (m) => m.end - m.start >= MIN_MATCH_CHARS,
+          );
+          if (!matches.length) return null;
+          const entry = { claim: key, matches };
+          // Publish immediately: the open card gains this span now rather
+          // than when the slowest claim of the source finishes.
+          onProgress?.({ ...source, claimMatches: [...entries, entry] });
+          entries.push(entry);
+          return entry;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    // entries was filled as each claim resolved (see onProgress above).
+    void results;
   } catch {
     // Highlighting is an enhancement — keep whatever matched before the error.
   }
