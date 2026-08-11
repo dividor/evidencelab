@@ -388,12 +388,16 @@ export const useBrief = ({
   // excerpt has no highlights yet. The card re-renders from section state, so
   // it fills in while the user is still hovering.
   const requestSourceHighlight = useCallback(
-    (sectionId: string, sourceIndex: number) => {
+    (sectionId: string, chunkId: string) => {
       if (!SEARCH_SEMANTIC_HIGHLIGHTS || !semanticModelConfigRef.current?.model) return;
-      const key = `${sectionId}:${sourceIndex}`;
+      const key = `${sectionId}:${chunkId}`;
       if (onDemandRef.current.has(key)) return;
       const section = sectionsRef.current.find((sec) => sec.id === sectionId);
-      const source = section?.sources.find((src) => src.index === sourceIndex);
+      // Matched by chunk, not index: the card shows the *display* source, whose
+      // index is the global citation number, while section state keeps the
+      // local research indices. Matching on index found nothing, so the card
+      // sat on "Highlighting…" for ever.
+      const source = section?.sources.find((src) => src.chunkId === chunkId);
       if (!section || !source || !source.text || source.claimMatches !== undefined) return;
       onDemandRef.current.add(key);
       void highlightOneSource({
@@ -406,7 +410,7 @@ export const useBrief = ({
           const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
           if (!cur) return;
           updateSection(sectionId, {
-            sources: cur.sources.map((src) => (src.index === sourceIndex ? enriched : src)),
+            sources: cur.sources.map((src) => (src.chunkId === chunkId ? enriched : src)),
           });
           enrichSaveRef.current = true;
         })

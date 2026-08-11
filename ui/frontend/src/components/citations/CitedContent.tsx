@@ -216,7 +216,7 @@ const InlineCitation: React.FC<{
                 {!shown.matches?.length && shown.source.claimMatches === undefined && (
                   <div className="citation-hover-pending">
                     <span className="brief-spinner citation-hover-spinner" />
-                    Finding the supporting passage…
+                    Highlighting relevant text …
                   </div>
                 )}
                 <CitationExcerpt text={excerptBody} claim={claim} matches={shown.matches} />

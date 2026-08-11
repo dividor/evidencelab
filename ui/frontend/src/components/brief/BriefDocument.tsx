@@ -852,7 +852,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           display={display.get(s.id)}
           readOnly={readOnly}
           onRequestHighlight={(src) =>
-            src.index != null && brief.requestSourceHighlight(s.id, src.index)
+            src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
           }
         />
       ))}
