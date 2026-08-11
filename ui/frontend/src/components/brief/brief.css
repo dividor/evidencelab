@@ -2514,18 +2514,33 @@
   cursor: pointer;
 }
 /* Grouped view: one document per row, with its citation numbers. */
+/* "Title, [1] p. 32, [2] p. 56" — the title then each inline citation with
+   the page it points at. */
 .brief-footnote-group {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  padding: 2px 0;
+  display: block;
+  padding: 3px 0;
+  line-height: 1.6;
 }
-.brief-footnote-group-nums {
-  flex: none;
-  display: inline-flex;
-  gap: 4px;
-  flex-wrap: wrap;
+.brief-footnote-group .brief-footnote-text {
+  margin-right: 2px;
+}
+.brief-footnote-cite {
+  white-space: nowrap;
+  color: var(--brand-text-secondary);
+  font-size: 13px;
+}
+.brief-footnote-cite::before {
+  content: ', ';
+  color: var(--brand-text-tertiary);
 }
 .brief-footnote-pages {
   color: var(--brand-text-tertiary);
+}
+.brief-footnote-page-link {
+  color: var(--brand-text-secondary);
+  text-decoration: none;
+}
+.brief-footnote-page-link:hover {
+  color: var(--brand-primary-dark);
+  text-decoration: underline;
 }

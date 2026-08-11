@@ -12469,15 +12469,25 @@ button.doc-link:hover {
 }
 .citation-hover-excerpt-open {
   max-height: 300px;
-  overflow-y: auto;
+  /* 'scroll', not 'auto': the scrollbar is visible the moment the reader
+     expands, so it is obvious there is more text below. */
+  overflow-y: scroll;
   scrollbar-width: thin;
+  scrollbar-color: var(--gray-400) transparent;
 }
 .citation-hover-excerpt-open::-webkit-scrollbar {
-  width: 8px;
+  width: 9px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 5px;
 }
 .citation-hover-excerpt-open::-webkit-scrollbar-thumb {
-  background: var(--gray-300);
-  border-radius: 4px;
+  background: var(--gray-400);
+  border-radius: 5px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-500);
 }
 .citation-hover-more {
   display: block;

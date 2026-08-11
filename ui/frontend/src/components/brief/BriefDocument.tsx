@@ -106,40 +106,55 @@ const AiInstructionPanel: React.FC<{
 // document as a whole.
 const groupReferencesByDoc = (
   refs: Array<{ n: number; title: string; page?: number; source: SourceReference }>,
-  pagesByDoc: Map<string, number[]>,
-): Array<{ key: string; title: string; pages: number[]; entries: typeof refs }> => {
+  pagesByDoc: Map<string, Array<{ page: number; source: SourceReference }>>,
+): Array<{
+  key: string;
+  title: string;
+  cites: Array<{ n: number; page: number; source: SourceReference }>;
+}> => {
   const byDoc = new Map<
     string,
-    { key: string; title: string; pages: number[]; entries: typeof refs }
+    {
+      key: string;
+      title: string;
+      cites: Array<{ n: number; page: number; source: SourceReference }>;
+    }
   >();
   for (const r of refs) {
     const key = r.source.docId || r.title;
-    const found = byDoc.get(key);
-    if (found) found.entries.push(r);
-    else byDoc.set(key, { key, title: r.title, pages: pagesByDoc.get(key) || [], entries: [r] });
+    if (byDoc.has(key)) continue;
+    // Citation numbers are assigned per document, so every chunk of this
+    // document carries this reference's number; the page differs per chunk.
+    const hits = pagesByDoc.get(key) || [];
+    const cites = hits.length
+      ? hits.map((h) => ({ n: r.n, page: h.page, source: h.source }))
+      : [{ n: r.n, page: r.page ?? 0, source: r.source }];
+    byDoc.set(key, { key, title: r.title, cites });
   }
   return Array.from(byDoc.values());
 };
 
 /**
- * Every page cited from each document across the brief. Citation numbers are
- * per document, so the flat list only ever shows the first chunk's page; the
- * grouped view uses this to show the document's full page coverage.
+ * Every cited chunk of each document, as the page and the source behind it.
+ * The grouped references row lists these after the title, each labelled with
+ * the citation number that appears inline in the prose.
  */
-const citedPagesByDoc = (sections: BriefSection[]): Map<string, number[]> => {
-  const map = new Map<string, number[]>();
+const citedPagesByDoc = (
+  sections: BriefSection[],
+): Map<string, Array<{ page: number; source: SourceReference }>> => {
+  const map = new Map<string, Array<{ page: number; source: SourceReference }>>();
   sections.forEach((s) => {
     if (!(s.status === 'done' || s.revising) || !s.content) return;
     const cited = new Set(extractCitedNumbers(s.content));
     s.sources.forEach((src) => {
       if (src.index == null || !cited.has(src.index) || src.page == null) return;
       const key = src.docId || src.title;
-      const pages = map.get(key) || [];
-      if (!pages.includes(src.page)) pages.push(src.page);
-      map.set(key, pages);
+      const hits = map.get(key) || [];
+      if (!hits.some((h) => h.page === src.page)) hits.push({ page: src.page, source: src });
+      map.set(key, hits);
     });
   });
-  map.forEach((pages) => pages.sort((a, b) => a - b));
+  map.forEach((hits) => hits.sort((a, b) => a.page - b.page));
   return map;
 };
 
@@ -874,30 +889,40 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             {brief.groupReferences
               ? groupReferencesByDoc(references, citedPagesByDoc(sections)).map((g) => (
                   <div className="brief-footnote-group" key={g.key}>
-                    <span className="brief-footnote-group-nums">
-                      {g.entries.map((r) => (
-                        <span className="citation-doc-group" key={r.n}>
+                    <span className="brief-footnote-text">{g.title}</span>
+                    {g.cites.map((c, i) => (
+                      <span className="brief-footnote-cite" key={`${c.n}-${c.page}-${i}`}>
+                        {/* The number is shown once per run of the same
+                            citation, so a document cited from many pages reads
+                            "[1] p. 9, p. 11" rather than repeating "[1]". */}
+                        {(i === 0 || g.cites[i - 1].n !== c.n) && (
+                          <span className="citation-doc-group">
+                            <a
+                              href="#"
+                              className="ai-summary-citation"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleSourceClick(c.source);
+                              }}
+                            >
+                              {c.n}
+                            </a>
+                          </span>
+                        )}
+                        {c.page ? (
                           <a
                             href="#"
-                            className="ai-summary-citation"
+                            className="brief-footnote-page-link"
                             onClick={(e) => {
                               e.preventDefault();
-                              handleSourceClick(r.source);
+                              handleSourceClick(c.source);
                             }}
                           >
-                            {r.n}
+                            {` p. ${c.page}`}
                           </a>
-                        </span>
-                      ))}
-                    </span>
-                    <span className="brief-footnote-text">
-                      {g.title}
-                      {g.pages.length > 0 && (
-                        <span className="brief-footnote-pages">
-                          {` — ${g.pages.length > 1 ? 'pp.' : 'p.'} ${g.pages.join(', ')}`}
-                        </span>
-                      )}
-                    </span>
+                        ) : null}
+                      </span>
+                    ))}
                   </div>
                 ))
               : references.map((r) => (
