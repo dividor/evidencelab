@@ -21,9 +21,11 @@ describe('parseSectionBreadcrumb', () => {
     expect(body).toBe('Just an ordinary excerpt with no heading line.');
   });
 
-  test('a "-- … --" line without a " > " separator is not treated as a breadcrumb', () => {
-    const text = '-- not a path --\nbody';
-    const { section } = parseSectionBreadcrumb(text);
-    expect(section).toBeNull();
+  test('a single-heading "-- … --" line is a breadcrumb too, not body text', () => {
+    // Chunks from a document with flat headings carry one heading rather than
+    // a path; showing it as the section keeps the "--" markers out of the body.
+    const { section, body } = parseSectionBreadcrumb('-- Summary EQ 1 --\nbody');
+    expect(section).toBe('Summary EQ 1');
+    expect(body).toBe('body');
   });
 });
