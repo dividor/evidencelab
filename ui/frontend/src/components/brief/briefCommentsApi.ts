@@ -2,7 +2,7 @@
 // credentials and CSRF handling, so comments behave like the rest of Brief
 // Central.
 
-import API_BASE_URL from '../../config';
+import API_BASE_URL, { API_KEY } from '../../config';
 
 export interface BriefComment {
   id: string;
@@ -70,14 +70,16 @@ const csrfToken = (): string => {
 };
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': csrfToken(),
+  };
+  // Deployments running with an API key require it on every call.
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRF-Token': csrfToken(),
-      ...(init.headers || {}),
-    },
+    headers: { ...headers, ...((init.headers as Record<string, string>) || {}) },
   });
   if (!res.ok) {
     throw new Error(`Request failed (${res.status})`);
