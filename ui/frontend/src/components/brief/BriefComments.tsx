@@ -42,6 +42,9 @@ const CommentBody: React.FC<{
         <span className="brief-comment-avatar">{initialsOf(comment.authorName)}</span>
         <span className="brief-comment-author">{comment.authorName}</span>
         <span className="brief-comment-when">{when(comment.createdAt)}</span>
+        {comment.resolved && !comment.parentId && (
+          <span className="brief-comment-resolved-badge">✓ Resolved</span>
+        )}
       </div>
       {editing ? (
         <div className="brief-comment-edit">

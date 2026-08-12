@@ -2661,8 +2661,31 @@
   border-color: var(--brand-primary);
   background: rgba(91, 143, 168, 0.06);
 }
+/* Resolved threads read as *settled*, not faded: dimming the whole card put
+   grey text on a grey panel. A success-tinted card and a badge mark the state
+   while the text stays fully legible. (No side accent bars — see CLAUDE.md.) */
 .brief-comment-resolved {
-  opacity: 0.62;
+  background: color-mix(in srgb, var(--brand-success) 7%, var(--brand-surface));
+  border-color: color-mix(in srgb, var(--brand-success) 40%, var(--brand-border));
+}
+.brief-comment-resolved .brief-comment-quote {
+  color: var(--brand-text-secondary);
+}
+/* The badge sits with the author line, so the state is legible at a glance. */
+.brief-comment-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-success) 16%, transparent);
+  color: color-mix(in srgb, var(--brand-success) 75%, #000);
+  font-family: var(--font-heading);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 .brief-comment-quote {
   font-size: 12.5px;
