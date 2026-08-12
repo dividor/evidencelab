@@ -39,6 +39,9 @@ import { useBrief } from './useBrief';
 import { useBriefCentral } from './useBriefCentral';
 import './brief.css';
 
+// Whether the reader wants comments shown; remembered across briefs.
+const SHOW_COMMENTS_KEY = 'evidencelab_brief_show_comments';
+
 // /brief/<server-uuid> deep links (share URLs). Base-path aware.
 const briefPath = (id: string | null): string => {
   const suffix = id ? `/brief/${id}` : '/brief';
@@ -120,6 +123,8 @@ const BriefWorkspace: React.FC<{
   onSelectText?: (selection: BriefSelection) => void;
   commentMarks?: Map<string, CommentMark[]>;
   onOpenThread?: (threadId: string) => void;
+  showComments?: boolean;
+  onToggleComments?: (show: boolean) => void;
 }> = ({
   brief,
   loggedIn,
@@ -134,6 +139,8 @@ const BriefWorkspace: React.FC<{
   onSelectText,
   commentMarks,
   onOpenThread,
+  showComments,
+  onToggleComments,
 }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -188,8 +195,10 @@ const BriefWorkspace: React.FC<{
           commentMarks={commentMarks}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
+          showComments={showComments}
+          onToggleComments={onToggleComments}
         />
-        {comments && (
+        {comments && showComments !== false && (
           <BriefComments
             comments={comments}
             canResolve={brief.canEdit}
@@ -252,6 +261,23 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   // A thread opened from a passage on a narrow screen, shown as a modal —
   // there is no rail to scroll to.
   const [threadModalId, setThreadModalId] = useState<string | null>(null);
+  // Comment visibility is a reading preference, kept per browser so a reader
+  // who turns comments off does not meet them again on every brief.
+  const [showComments, setShowComments] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SHOW_COMMENTS_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const toggleComments = useCallback((show: boolean) => {
+    setShowComments(show);
+    try {
+      localStorage.setItem(SHOW_COMMENTS_KEY, show ? 'true' : 'false');
+    } catch {
+      /* a browser refusing storage should not break the toggle */
+    }
+  }, []);
 
   // Commented passages per section, painted into the prose.
   const commentMarks = useMemo(() => {
@@ -496,6 +522,8 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           onSelectText={setSelection}
           commentMarks={commentMarks}
           onOpenThread={openThreadFromText}
+          showComments={showComments}
+          onToggleComments={toggleComments}
         />
       )}
       {(selection || pendingComment) && (

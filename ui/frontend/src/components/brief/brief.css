@@ -2824,18 +2824,23 @@
   z-index: 120;
   pointer-events: none;
   background: rgba(245, 197, 66, 0.42);
+  background: color-mix(in srgb, var(--brand-warning) 42%, transparent);
   border-radius: 2px;
 }
 
 /* ---------- commented passages ---------- */
 /* A passage someone has commented on, marked inline in the prose. */
 .brief-comment-mark {
+  /* color-mix keeps the deployment's own --brand-warning while producing the
+     soft tint a highlight needs; the fallbacks cover browsers without it. */
   background: rgba(245, 197, 66, 0.28);
-  border-bottom: 2px solid rgba(245, 197, 66, 0.85);
+  background: color-mix(in srgb, var(--brand-warning) 28%, transparent);
+  border-bottom: 2px solid var(--brand-warning);
   cursor: pointer;
 }
 .brief-comment-mark:hover {
   background: rgba(245, 197, 66, 0.45);
+  background: color-mix(in srgb, var(--brand-warning) 45%, transparent);
 }
 /* Resolved threads stay visible but recede. */
 .brief-comment-mark-resolved {
@@ -2845,6 +2850,7 @@
 /* The passage whose thread is open. */
 .brief-comment-mark-active {
   background: rgba(245, 197, 66, 0.6);
+  background: color-mix(in srgb, var(--brand-warning) 60%, transparent);
 }
 
 /* The speech bubble that follows a commented passage. */
@@ -2893,4 +2899,24 @@
 .brief-thread-modal .brief-comment-thread {
   border: none;
   padding: 0;
+}
+
+/* Comment visibility control, in the brief's meta row. */
+.brief-comments-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+.brief-comments-visibility input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.brief-comments-visibility:hover {
+  color: var(--brand-text-secondary);
 }

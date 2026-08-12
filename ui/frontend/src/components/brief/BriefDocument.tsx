@@ -714,6 +714,9 @@ interface BriefDocumentProps {
   commentMarks?: Map<string, CommentMark[]>;
   // A speech bubble in the text was clicked.
   onOpenThread?: (threadId: string) => void;
+  // Comment visibility, and the control for it shown in the meta row.
+  showComments?: boolean;
+  onToggleComments?: (show: boolean) => void;
   // The thread being viewed, so its passage can be shown as active.
   activeThreadId?: string | null;
 }
@@ -768,6 +771,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   commentMarks,
   onOpenThread,
   activeThreadId,
+  showComments,
+  onToggleComments,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -881,10 +886,15 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
               </button>
             </>
           )}
-          {!readOnly && sections.length > 0 && (
-            <span className="brief-edit-hint">
-              <span className="brief-icon">✎</span> Click on titles to edit research topics
-            </span>
+          {onToggleComments && sections.length > 0 && (
+            <label className="brief-comments-visibility" title="Show or hide comments on this brief">
+              <input
+                type="checkbox"
+                checked={showComments !== false}
+                onChange={(e) => onToggleComments(e.target.checked)}
+              />
+              Show comments
+            </label>
           )}
         </div>
         {brief.stage === 'research' && (
@@ -946,7 +956,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onRequestHighlight={(src) =>
             src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
           }
-          marks={commentMarks?.get(s.id)}
+          marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
         />
