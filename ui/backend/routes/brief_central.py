@@ -9,7 +9,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
@@ -39,6 +39,11 @@ from ui.backend.auth.schemas import (
 from ui.backend.auth.users import current_active_user
 
 logger = logging.getLogger(__name__)
+
+# Share-dialog suggestions: enough characters to be a deliberate lookup, and a
+# short list so the dialog never doubles as a directory dump.
+MIN_SHARE_QUERY_CHARS = 2
+SHARE_SUGGESTION_LIMIT = 8
 router = APIRouter()
 
 _BRIEF_NOT_FOUND = "Brief not found"
@@ -247,6 +252,53 @@ async def list_shared_briefs(
         owner = await session.get(User, brief.user_id)
         items.append(_to_list_item(brief, _owner_name(owner) if owner else None, 0))
     return items
+
+
+@router.get("/briefs/share-targets", tags=["briefs"])
+async def search_share_targets(
+    q: str,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Suggest people and groups matching ``q`` for the share dialog.
+
+    Matching is on email, first/last name and group name. Requires at least
+    two characters and returns a short list, so the dialog helps someone who
+    already knows who they are looking for rather than listing the directory.
+    """
+    term = (q or "").strip()
+    if len(term) < MIN_SHARE_QUERY_CHARS:
+        return {"users": [], "groups": []}
+    like = f"%{term.lower()}%"
+
+    user_rows = await session.execute(
+        select(User)
+        .where(
+            User.id != user.id,
+            or_(
+                func.lower(User.email).like(like),
+                func.lower(func.coalesce(User.first_name, "")).like(like),
+                func.lower(func.coalesce(User.last_name, "")).like(like),
+            ),
+        )
+        .order_by(User.email)
+        .limit(SHARE_SUGGESTION_LIMIT)
+    )
+    group_rows = await session.execute(
+        select(UserGroup)
+        .where(func.lower(UserGroup.name).like(like))
+        .order_by(UserGroup.name)
+        .limit(SHARE_SUGGESTION_LIMIT)
+    )
+    return {
+        "users": [
+            {"email": u.email, "name": u.full_name or u.email}
+            # unique(): User eager-loads collections (oauth accounts), which
+            # SQLAlchemy requires be de-duplicated before iterating.
+            for u in user_rows.scalars().unique().all()
+        ],
+        "groups": [{"name": g.name} for g in group_rows.scalars().all()],
+    }
 
 
 @router.get("/briefs/{brief_id}", response_model=BriefRead, tags=["briefs"])

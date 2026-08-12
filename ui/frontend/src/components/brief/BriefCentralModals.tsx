@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { addBriefShare, getBrief, removeBriefShare } from './briefCentralApi';
+import {
+  addBriefShare,
+  getBrief,
+  removeBriefShare,
+  searchShareTargets,
+} from './briefCentralApi';
 import { IconCopy, IconPlus, IconSparkle } from './BriefIcons';
 import {
   BriefShareTarget,
@@ -558,6 +563,51 @@ export const BriefShareModal: React.FC<{
     }
   }, [briefId, input, busy, onChanged]);
 
+  // Suggestions for what has been typed: the API matches people by email or
+  // name and groups by name, so the user picks a real target instead of
+  // guessing an exact address.
+  const [suggestions, setSuggestions] = useState<
+    Array<{ value: string; label: string; sub: string; kind: 'user' | 'group' }>
+  >([]);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  useEffect(() => {
+    const term = input.trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    // Debounced so a lookup runs when typing pauses, not on every keystroke.
+    const t = setTimeout(() => {
+      void searchShareTargets(term)
+        .then((res) => {
+          if (cancelled) return;
+          setSuggestions([
+            ...res.users.map((u) => ({
+              value: u.email,
+              label: u.name,
+              sub: u.email,
+              kind: 'user' as const,
+            })),
+            ...res.groups.map((g) => ({
+              value: g.name,
+              label: g.name,
+              sub: 'Group',
+              kind: 'group' as const,
+            })),
+          ]);
+          setSuggestOpen(true);
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([]);
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [input]);
+
   const remove = useCallback(
     async (shareId: string) => {
       setError(null);
@@ -612,16 +662,50 @@ export const BriefShareModal: React.FC<{
             Add people or groups
           </label>
           <div className="bc-share-row">
-            <input
-              id="bc-share-add"
-              className="bc-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void add();
-              }}
-              placeholder="name@org.org or group name"
-            />
+            <div className="bc-share-input-wrap">
+              <input
+                id="bc-share-add"
+                className="bc-input"
+                value={input}
+                autoComplete="off"
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setSuggestOpen(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void add();
+                  else if (e.key === 'Escape') setSuggestOpen(false);
+                }}
+                // Delayed so a click on a suggestion lands before it closes.
+                onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+                onFocus={() => suggestions.length > 0 && setSuggestOpen(true)}
+                placeholder="Search people or groups"
+              />
+              {suggestOpen && suggestions.length > 0 && (
+                <div className="bc-share-suggestions" role="listbox">
+                  {suggestions.map((sug) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={false}
+                      className="bc-share-suggestion"
+                      key={`${sug.kind}-${sug.value}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setInput(sug.value);
+                        setSuggestOpen(false);
+                      }}
+                    >
+                      <span className="bc-avatar">{initialsOf(sug.label)}</span>
+                      <span className="bc-share-suggestion-main">
+                        <span className="bc-share-suggestion-name">{sug.label}</span>
+                        <span className="bc-share-suggestion-sub">{sug.sub}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button className="brief-btn brief-btn-primary" disabled={busy} onClick={() => void add()}>
               Add
             </button>

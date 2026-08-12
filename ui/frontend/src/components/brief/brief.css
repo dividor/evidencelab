@@ -2544,3 +2544,50 @@
   color: var(--brand-primary-dark);
   text-decoration: underline;
 }
+
+/* Share dialog: people/group suggestions under the input. */
+.bc-share-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.bc-share-suggestions {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.12);
+}
+.bc-share-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-share-suggestion:hover {
+  background: var(--brand-border-light);
+}
+.bc-share-suggestion-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.bc-share-suggestion-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.bc-share-suggestion-sub {
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
