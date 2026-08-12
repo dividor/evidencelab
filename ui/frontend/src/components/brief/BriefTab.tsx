@@ -125,6 +125,7 @@ const BriefWorkspace: React.FC<{
   onOpenThread?: (threadId: string) => void;
   showComments?: boolean;
   onToggleComments?: (show: boolean) => void;
+  orphanedThreadIds?: string[];
 }> = ({
   brief,
   loggedIn,
@@ -141,6 +142,7 @@ const BriefWorkspace: React.FC<{
   onOpenThread,
   showComments,
   onToggleComments,
+  orphanedThreadIds,
 }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -200,6 +202,7 @@ const BriefWorkspace: React.FC<{
         />
         {comments && showComments !== false && (
           <BriefComments
+            orphanedThreadIds={orphanedThreadIds}
             comments={comments}
             canResolve={brief.canEdit}
             activeThreadId={activeThreadId}
@@ -297,6 +300,27 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     });
     return map;
   }, [comments]);
+
+  // Threads whose quoted passage is no longer in the brief: the section was
+  // re-researched, so the card explains why clicking it goes nowhere.
+  const [orphanedThreadIds, setOrphanedThreadIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!comments) return;
+    // Marks are painted into the DOM, so read back what actually landed.
+    const timer = window.setTimeout(() => {
+      const painted = new Set(
+        Array.from(document.querySelectorAll('.brief-comment-mark')).map((m) =>
+          m.getAttribute('data-thread-id'),
+        ),
+      );
+      setOrphanedThreadIds(
+        comments.threads
+          .filter((t) => t.root.quote && !painted.has(t.root.id))
+          .map((t) => t.root.id),
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [comments, showComments]);
 
   // A speech bubble in the prose: on a narrow screen there is no rail, so the
   // thread opens in a modal; otherwise the rail scrolls it into view.
@@ -518,12 +542,13 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           onOpenModal={setWorkspaceModal}
           comments={loggedIn && brief.currentBriefId ? comments : null}
           activeThreadId={activeThreadId}
-          onSelectThread={setActiveThreadId}
+          onSelectThread={jumpToThreadPassage}
           onSelectText={setSelection}
           commentMarks={commentMarks}
           onOpenThread={openThreadFromText}
           showComments={showComments}
           onToggleComments={toggleComments}
+          orphanedThreadIds={orphanedThreadIds}
         />
       )}
       {(selection || pendingComment) && (

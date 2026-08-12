@@ -108,7 +108,9 @@ const ThreadCard: React.FC<{
   canResolve: boolean;
   active: boolean;
   onSelect: () => void;
-}> = ({ thread, comments, canResolve, active, onSelect }) => {
+  // The quoted passage could not be found in the brief any more.
+  orphaned?: boolean;
+}> = ({ thread, comments, canResolve, active, onSelect, orphaned }) => {
   const [reply, setReply] = useState('');
   const { root, replies } = thread;
 
@@ -129,7 +131,16 @@ const ThreadCard: React.FC<{
       onClick={onSelect}
       role="presentation"
     >
-      {root.quote && <div className="brief-comment-quote">“{root.quote}”</div>}
+      {root.quote && (
+        <div className="brief-comment-quote">
+          “{root.quote}”
+          {orphaned && (
+            <span className="brief-comment-orphan" title="The text this comment referred to has changed">
+              passage no longer in the brief
+            </span>
+          )}
+        </div>
+      )}
       <CommentBody
         comment={root}
         canResolve={canResolve}
@@ -182,7 +193,9 @@ export const BriefComments: React.FC<{
   canResolve: boolean;
   activeThreadId: string | null;
   onSelectThread: (id: string | null) => void;
-}> = ({ comments, canResolve, activeThreadId, onSelectThread }) => {
+  // Threads whose passage is no longer present, so the card can say so.
+  orphanedThreadIds?: string[];
+}> = ({ comments, canResolve, activeThreadId, onSelectThread, orphanedThreadIds }) => {
   const [showResolved, setShowResolved] = useState(false);
   const visible = showResolved
     ? comments.threads
@@ -219,6 +232,7 @@ export const BriefComments: React.FC<{
             comments={comments}
             canResolve={canResolve}
             active={activeThreadId === thread.root.id}
+            orphaned={orphanedThreadIds?.includes(thread.root.id)}
             onSelect={() => onSelectThread(thread.root.id)}
           />
         ))

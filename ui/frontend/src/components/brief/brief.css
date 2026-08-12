@@ -2952,6 +2952,27 @@
 .brief-thread-modal .brief-comment-reply {
   margin-left: 0;
 }
+/* The comment itself is the point of the modal: give it room and weight, and
+   let the quoted passage recede to context. */
+.brief-thread-modal .brief-comment-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--brand-text-primary);
+  margin: 2px 0 12px;
+}
+.brief-thread-modal .brief-comment-quote {
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-thread-modal .brief-comment-author {
+  font-size: 13.5px;
+}
+/* Separate each reply from the one above so a thread is readable. */
+.brief-thread-modal .brief-comment-reply {
+  border-top: 1px solid var(--brand-border-light);
+  padding-top: 10px;
+  margin-top: 10px;
+}
 
 /* Comment visibility control, in the brief's meta row. */
 .brief-comments-visibility {
@@ -2971,4 +2992,14 @@
 }
 .brief-comments-visibility:hover {
   color: var(--brand-text-secondary);
+}
+
+/* A thread whose quoted passage is no longer in the brief (the section was
+   re-researched): clicking it cannot scroll anywhere, so say why. */
+.brief-comment-orphan {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--brand-warning);
 }
