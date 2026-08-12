@@ -17,6 +17,7 @@ import {
 } from './BriefIcons';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
+import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
 import { BriefSection, SectionAuditEntry } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
@@ -167,6 +168,10 @@ interface SectionViewProps {
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
   onRequestHighlight?: (source: SourceReference) => void;
+  // Commented passages in this section, and the thread currently open.
+  marks?: CommentMark[];
+  onOpenThread?: (threadId: string) => void;
+  activeThreadId?: string | null;
 }
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
@@ -346,6 +351,9 @@ const SectionDoneBody: React.FC<{
   onSourceClick: (source: SourceReference) => void;
   onCloseDiff: () => void;
   onRequestHighlight?: (source: SourceReference) => void;
+  marks?: CommentMark[];
+  onOpenThread?: (threadId: string) => void;
+  activeThreadId?: string | null;
 }> = ({
   section,
   brief,
@@ -356,8 +364,32 @@ const SectionDoneBody: React.FC<{
   onSourceClick,
   onCloseDiff,
   onRequestHighlight,
+  marks,
+  onOpenThread,
+  activeThreadId,
 }) => {
   const { content, sources } = sectionView(section, display);
+  const proseRef = useRef<HTMLDivElement>(null);
+
+  // Paint commented passages after the markdown renders, repainting whenever
+  // the prose or the comment set changes.
+  useEffect(() => {
+    const el = proseRef.current;
+    if (el) paintCommentMarks(el, marks || []);
+  }, [content, marks]);
+
+  // Show which passage the open thread belongs to.
+  useEffect(() => {
+    const el = proseRef.current;
+    if (!el) return;
+    el.querySelectorAll(`.${MARK_CLASS}`).forEach((m) => {
+      m.classList.toggle(
+        'brief-comment-mark-active',
+        !!activeThreadId && m.getAttribute('data-thread-id') === activeThreadId,
+      );
+    });
+  }, [activeThreadId, marks, content]);
+
   return (
     <>
       {editing ? (
@@ -383,7 +415,15 @@ const SectionDoneBody: React.FC<{
           }}
         />
       ) : (
-        <div className="brief-doc-content">
+        <div
+          className="brief-doc-content"
+          ref={proseRef}
+          onClick={(e) => {
+            const bubble = (e.target as HTMLElement).closest(`.${BUBBLE_CLASS}`);
+            const threadId = bubble?.getAttribute('data-thread-id');
+            if (threadId && onOpenThread) onOpenThread(threadId);
+          }}
+        >
           <CitedMarkdown
             content={content}
             sources={sources}
@@ -427,6 +467,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   display,
   readOnly = false,
   onRequestHighlight,
+  marks,
+  onOpenThread,
+  activeThreadId,
 }) => {
   const [editing, setEditing] = useState(false);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
@@ -550,6 +593,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onSourceClick={onSourceClick}
           onCloseDiff={() => setDiffEntryId(null)}
           onRequestHighlight={onRequestHighlight}
+          marks={marks}
+          onOpenThread={onOpenThread}
+          activeThreadId={activeThreadId}
         />
       )}
     </section>
@@ -664,6 +710,12 @@ interface BriefDocumentProps {
   // Selecting text inside a section surfaces the selection toolbar; the owner
   // decides which actions to offer.
   onSelectText?: (selection: BriefSelection) => void;
+  // Commented passages to paint into the prose, keyed by section id.
+  commentMarks?: Map<string, CommentMark[]>;
+  // A speech bubble in the text was clicked.
+  onOpenThread?: (threadId: string) => void;
+  // The thread being viewed, so its passage can be shown as active.
+  activeThreadId?: string | null;
 }
 
 // Floating bar fixed to the bottom of the viewport while research runs: which
@@ -713,6 +765,9 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   onRegenerateAll,
   showToc = true,
   onSelectText,
+  commentMarks,
+  onOpenThread,
+  activeThreadId,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -891,6 +946,9 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onRequestHighlight={(src) =>
             src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
           }
+          marks={commentMarks?.get(s.id)}
+          onOpenThread={onOpenThread}
+          activeThreadId={activeThreadId}
         />
       ))}
 

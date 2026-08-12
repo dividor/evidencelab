@@ -73,6 +73,9 @@ export interface BriefReference {
 }
 
 export interface SavedBriefSection {
+  // Stable across saves/loads: comments (and any future per-section anchor)
+  // reference this, so regenerating it would orphan them.
+  id?: string;
   title: string;
   level: number;
   status: SectionStatus;

@@ -111,6 +111,8 @@ const ThreadCard: React.FC<{
       className={`brief-comment-thread${root.resolved ? ' brief-comment-resolved' : ''}${
         active ? ' brief-comment-thread-active' : ''
       }`}
+      // Lets a speech bubble in the prose scroll this card into view.
+      data-thread-card={root.id}
       onClick={onSelect}
       role="presentation"
     >
@@ -265,6 +267,47 @@ export const BriefCommentComposer: React.FC<{
               Cancel
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+/**
+ * One thread shown as a modal. Used on narrow screens, where there is no rail
+ * to scroll to when a speech bubble in the text is tapped.
+ */
+export const BriefThreadModal: React.FC<{
+  threadId: string;
+  comments: UseBriefCommentsReturn;
+  canResolve: boolean;
+  onClose: () => void;
+}> = ({ threadId, comments, canResolve, onClose }) => {
+  const thread = comments.threads.find((t) => t.root.id === threadId);
+  if (!thread) return null;
+  return (
+    <div className="brief-modal-overlay" onClick={onClose}>
+      <div
+        className="brief-modal brief-thread-modal"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label="Comment thread"
+      >
+        <div className="brief-modal-head">
+          <div className="brief-modal-title">Comment</div>
+          <button className="brief-modal-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div className="bc-modal-body">
+          <ThreadCard
+            thread={thread}
+            comments={comments}
+            canResolve={canResolve}
+            active
+            onSelect={() => {}}
+          />
         </div>
       </div>
     </div>

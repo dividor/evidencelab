@@ -18,7 +18,8 @@ import {
   TemplateDraft,
 } from './BriefCentralModals';
 import { BriefDocument } from './BriefDocument';
-import { BriefComments, BriefCommentComposer } from './BriefComments';
+import { BriefComments, BriefCommentComposer, BriefThreadModal } from './BriefComments';
+import { CommentMark } from './briefCommentMarks';
 import { buildAnchor } from './briefCommentAnchors';
 import {
   BriefSelection,
@@ -117,6 +118,8 @@ const BriefWorkspace: React.FC<{
   activeThreadId?: string | null;
   onSelectThread?: (id: string | null) => void;
   onSelectText?: (selection: BriefSelection) => void;
+  commentMarks?: Map<string, CommentMark[]>;
+  onOpenThread?: (threadId: string) => void;
 }> = ({
   brief,
   loggedIn,
@@ -129,6 +132,8 @@ const BriefWorkspace: React.FC<{
   activeThreadId = null,
   onSelectThread = () => {},
   onSelectText,
+  commentMarks,
+  onOpenThread,
 }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -180,6 +185,9 @@ const BriefWorkspace: React.FC<{
           onRegenerateAll={() => onOpenModal('regen-all')}
           showToc={!loggedIn}
           onSelectText={comments ? onSelectText : undefined}
+          commentMarks={commentMarks}
+          onOpenThread={onOpenThread}
+          activeThreadId={activeThreadId}
         />
         {comments && (
           <BriefComments
@@ -241,6 +249,57 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   // Comments on the open brief, plus the selection awaiting a comment body.
   const comments = useBriefComments(brief.currentBriefId, loggedIn);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // A thread opened from a passage on a narrow screen, shown as a modal —
+  // there is no rail to scroll to.
+  const [threadModalId, setThreadModalId] = useState<string | null>(null);
+
+  // Commented passages per section, painted into the prose.
+  const commentMarks = useMemo(() => {
+    const map = new Map<string, CommentMark[]>();
+    if (!comments) return map;
+    comments.threads.forEach((thread) => {
+      const sectionId = thread.root.sectionId;
+      if (!sectionId || !thread.root.quote) return;
+      const list = map.get(sectionId) || [];
+      list.push({
+        threadId: thread.root.id,
+        quote: thread.root.quote,
+        resolved: thread.root.resolved,
+        count: 1 + thread.replies.length,
+      });
+      map.set(sectionId, list);
+    });
+    return map;
+  }, [comments]);
+
+  // A speech bubble in the prose: on a narrow screen there is no rail, so the
+  // thread opens in a modal; otherwise the rail scrolls it into view.
+  const openThreadFromText = useCallback((threadId: string) => {
+    setActiveThreadId(threadId);
+    if (window.matchMedia('(max-width: 1024px)').matches) {
+      setThreadModalId(threadId);
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-thread-card="${threadId}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, []);
+
+  // A card in the rail: scroll the brief to the passage it annotates.
+  const jumpToThreadPassage = useCallback((threadId: string | null) => {
+    setActiveThreadId(threadId);
+    if (!threadId) return;
+    window.requestAnimationFrame(() => {
+      const mark = document.querySelector(`.brief-comment-mark[data-thread-id="${threadId}"]`);
+      if (!mark) return;
+      const bar = document.querySelector('.top-bar');
+      const offset = (bar instanceof HTMLElement ? bar.offsetHeight : 0) + 24;
+      const top = mark.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: 'smooth' });
+    });
+  }, []);
   const [pendingComment, setPendingComment] = useState<{
     sectionId: string;
     quote: string;
@@ -435,10 +494,20 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           activeThreadId={activeThreadId}
           onSelectThread={setActiveThreadId}
           onSelectText={setSelection}
+          commentMarks={commentMarks}
+          onOpenThread={openThreadFromText}
         />
       )}
       {(selection || pendingComment) && (
         <BriefSelectionHighlight rects={(selection || pendingComment)!.rects} />
+      )}
+      {threadModalId && comments && (
+        <BriefThreadModal
+          threadId={threadModalId}
+          comments={comments}
+          canResolve={brief.canEdit}
+          onClose={() => setThreadModalId(null)}
+        />
       )}
       {selection && (
         <BriefSelectionMenu
