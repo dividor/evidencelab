@@ -147,7 +147,7 @@ Comments let reviewers respond to a brief in place, which is the usual next step
 
 ![Commenting on a passage of a brief](/docs/images/brief/brief-comments.png)
 
-- **Start a thread** — select any text in the brief and confirm **Comment**. The comment is anchored to the passage you highlighted, which is quoted at the top of the thread.
+- **Start a thread** — select any text in the brief and choose **Comment** from the toolbar that appears over the selection. The comment is anchored to the passage you highlighted, which is quoted at the top of the thread.
 - **Reply** — type in the box at the bottom of a thread. Threads are one level deep, so a conversation stays readable.
 - **Edit** — you can change the wording of your own comments at any time.
 - **Resolve** — mark a thread as dealt with; the brief's owner can resolve any thread, and you can always resolve your own. Resolved threads are hidden until you tick **Show resolved**, and can be reopened.

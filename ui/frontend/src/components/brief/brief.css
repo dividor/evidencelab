@@ -2779,3 +2779,33 @@
 .brief-comment-mark-active {
   background: rgba(245, 197, 66, 0.55);
 }
+
+/* Floating toolbar over selected text: actions for that passage. */
+.brief-selection-menu {
+  position: fixed;
+  z-index: 300;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+.brief-selection-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 7px 12px;
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.brief-selection-action:hover {
+  background: rgba(91, 143, 168, 0.1);
+  color: var(--brand-primary-dark);
+}

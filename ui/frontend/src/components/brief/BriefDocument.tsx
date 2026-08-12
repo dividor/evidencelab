@@ -16,6 +16,7 @@ import {
   IconSparkle,
 } from './BriefIcons';
 import { BriefToc } from './BriefToc';
+import { BriefSelection } from './BriefSelectionMenu';
 import { BriefSection, SectionAuditEntry } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
@@ -660,8 +661,9 @@ interface BriefDocumentProps {
   // False when the Contents panel renders in the workspace side rail instead
   // (logged-in layout); true keeps the inline panel (anonymous layout).
   showToc?: boolean;
-  // Selecting text inside a section offers to open a comment on it.
-  onCommentOnSelection?: (sectionId: string, text: string) => void;
+  // Selecting text inside a section surfaces the selection toolbar; the owner
+  // decides which actions to offer.
+  onSelectText?: (selection: BriefSelection) => void;
 }
 
 // Floating bar fixed to the bottom of the viewport while research runs: which
@@ -710,7 +712,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   onSaveTemplate,
   onRegenerateAll,
   showToc = true,
-  onCommentOnSelection,
+  onSelectText,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -746,18 +748,24 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
     <div
       className="brief-doc"
       onMouseUp={() => {
-        // A selection inside a section offers to open a comment on it. The
-        // section is found from the DOM so any nested markup still resolves.
-        if (!onCommentOnSelection) return;
+        // Report a selection made inside a section; the section is resolved
+        // from the DOM so nested markup (links, citations) still traces back.
+        if (!onSelectText) return;
         const sel = window.getSelection();
         const text = sel ? sel.toString().trim() : '';
-        if (!text || text.length < 3) return;
-        const node = sel?.anchorNode;
+        if (!text || text.length < 3 || sel?.rangeCount !== 1) return;
+        const node = sel.anchorNode;
         const el =
           node instanceof HTMLElement ? node : (node?.parentElement as HTMLElement | null);
         const sectionEl = el?.closest('[data-brief-section-id]') as HTMLElement | null;
         const sectionId = sectionEl?.getAttribute('data-brief-section-id');
-        if (sectionId) onCommentOnSelection(sectionId, text);
+        if (!sectionId) return;
+        const box = sel.getRangeAt(0).getBoundingClientRect();
+        onSelectText({
+          sectionId,
+          text,
+          rect: { top: box.top, left: box.left, width: box.width },
+        });
       }}
     >
       <div className="brief-doc-header">

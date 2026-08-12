@@ -1,5 +1,5 @@
 import { saveAs } from 'file-saver';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
@@ -20,11 +20,16 @@ import {
 import { BriefDocument } from './BriefDocument';
 import { BriefComments, BriefCommentComposer } from './BriefComments';
 import { buildAnchor } from './briefCommentAnchors';
+import {
+  BriefSelection,
+  BriefSelectionMenu,
+  SelectionAction,
+} from './BriefSelectionMenu';
 import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefToc } from './BriefToc';
-import { IconArrowLeft } from './BriefIcons';
+import { IconArrowLeft, IconComment } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
 import { useBrief } from './useBrief';
@@ -109,7 +114,7 @@ const BriefWorkspace: React.FC<{
   comments?: UseBriefCommentsReturn | null;
   activeThreadId?: string | null;
   onSelectThread?: (id: string | null) => void;
-  onCommentOnSelection?: (sectionId: string, text: string) => void;
+  onSelectText?: (selection: BriefSelection) => void;
 }> = ({
   brief,
   loggedIn,
@@ -121,7 +126,7 @@ const BriefWorkspace: React.FC<{
   comments,
   activeThreadId = null,
   onSelectThread = () => {},
-  onCommentOnSelection,
+  onSelectText,
 }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -172,7 +177,7 @@ const BriefWorkspace: React.FC<{
           onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
           onRegenerateAll={() => onOpenModal('regen-all')}
           showToc={!loggedIn}
-          onCommentOnSelection={comments ? onCommentOnSelection : undefined}
+          onSelectText={comments ? onSelectText : undefined}
         />
         {comments && (
           <BriefComments
@@ -241,23 +246,43 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     suffix: string;
   } | null>(null);
 
-  const handleCommentOnSelection = useCallback(
-    (sectionId: string, text: string) => {
-      const section = brief.sections.find((s) => s.id === sectionId);
+  // The live text selection, which the toolbar hangs off.
+  const [selection, setSelection] = useState<BriefSelection | null>(null);
+
+  // Turn a selection into a comment anchor and open the composer. Written as
+  // a selection *action* so later ones (e.g. "Research this further") slot in
+  // beside it without changing how selection works.
+  const commentOnSelection = useCallback(
+    (sel: BriefSelection) => {
+      const section = brief.sections.find((s) => s.id === sel.sectionId);
       const content = section?.content || '';
-      const at = content.indexOf(text);
+      const at = content.indexOf(sel.text);
       const anchor =
         at >= 0
-          ? buildAnchor(content, at, at + text.length)
-          : { quote: text, quotePrefix: '', quoteSuffix: '' };
+          ? buildAnchor(content, at, at + sel.text.length)
+          : { quote: sel.text, quotePrefix: '', quoteSuffix: '' };
+      setSelection(null);
       setPendingComment({
-        sectionId,
+        sectionId: sel.sectionId,
         quote: anchor.quote,
         prefix: anchor.quotePrefix,
         suffix: anchor.quoteSuffix,
       });
     },
     [brief.sections],
+  );
+
+  const selectionActions = useMemo<SelectionAction[]>(
+    () => [
+      {
+        key: 'comment',
+        label: 'Comment',
+        title: 'Comment on the selected text',
+        icon: <IconComment />,
+        onRun: commentOnSelection,
+      },
+    ],
+    [commentOnSelection],
   );
 
   const [workspaceModal, setWorkspaceModal] = useState<
@@ -404,7 +429,14 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           comments={loggedIn && brief.currentBriefId ? comments : null}
           activeThreadId={activeThreadId}
           onSelectThread={setActiveThreadId}
-          onCommentOnSelection={handleCommentOnSelection}
+          onSelectText={setSelection}
+        />
+      )}
+      {selection && (
+        <BriefSelectionMenu
+          selection={selection}
+          actions={selectionActions}
+          onClose={() => setSelection(null)}
         />
       )}
       {pendingComment && (
