@@ -2800,18 +2800,40 @@
   padding: 5px 11px;
   cursor: pointer;
 }
+/* Edit/Delete are incidental to reading a thread, so they sit under the bubble
+   as quiet links rather than competing with the reply action. */
 .brief-comment-btn {
   background: none;
-  border: 1px solid var(--brand-border);
-  color: var(--brand-text-secondary);
+  border: none;
+  padding: 0;
+  color: var(--brand-text-tertiary);
+  font-size: 11.5px;
+  text-decoration: none;
 }
 .brief-comment-btn:hover {
-  border-color: var(--brand-primary);
   color: var(--brand-primary-dark);
+  text-decoration: underline;
 }
 .brief-comment-btn-danger:hover {
-  border-color: var(--brand-error);
   color: var(--brand-error);
+  text-decoration: underline;
+}
+/* Separate the links with a dot so they do not read as one word. */
+.brief-comment .brief-comment-actions {
+  gap: 10px;
+  margin-top: 4px;
+}
+.brief-comment .brief-comment-actions .brief-comment-btn + .brief-comment-btn::before {
+  content: '·';
+  margin-right: 10px;
+  color: var(--brand-border);
+}
+/* The editor's Save/Cancel stay as buttons — they commit a change. */
+.brief-comment-edit .brief-comment-btn {
+  border: 1px solid var(--brand-border);
+  padding: 5px 11px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
 }
 .brief-comment-btn-primary {
   background: var(--color-button-primary, var(--brand-primary));

@@ -20,27 +20,22 @@ import {
 import { BriefDocument } from './BriefDocument';
 import { BriefComments, BriefCommentComposer, BriefThreadModal } from './BriefComments';
 import { CommentMark } from './briefCommentMarks';
-import { buildAnchor } from './briefCommentAnchors';
 import {
   BriefSelection,
   BriefSelectionHighlight,
   BriefSelectionMenu,
-  HighlightRect,
-  SelectionAction,
 } from './BriefSelectionMenu';
+import { useBriefAnnotations, UseBriefAnnotationsReturn } from './useBriefAnnotations';
 import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefToc } from './BriefToc';
-import { IconArrowLeft, IconComment } from './BriefIcons';
+import { IconArrowLeft } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
 import { useBrief } from './useBrief';
 import { useBriefCentral } from './useBriefCentral';
 import './brief.css';
-
-// Whether the reader wants comments shown; remembered across briefs.
-const SHOW_COMMENTS_KEY = 'evidencelab_brief_show_comments';
 
 // /brief/<server-uuid> deep links (share URLs). Base-path aware.
 const briefPath = (id: string | null): string => {
@@ -229,6 +224,61 @@ interface BriefTabProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
+// The annotation layer over an open brief: the marked passage, the selection
+// toolbar, a thread opened from the text, and the comment being written.
+const BriefAnnotationLayer: React.FC<{
+  annotations: UseBriefAnnotationsReturn;
+  comments: UseBriefCommentsReturn | null;
+  canResolve: boolean;
+}> = ({ annotations, comments, canResolve }) => {
+  const {
+    selection,
+    setSelection,
+    selectionActions,
+    pendingComment,
+    clearPendingComment,
+    threadModalId,
+    closeThreadModal,
+  } = annotations;
+  const marked = selection || pendingComment;
+  return (
+    <>
+      {marked && <BriefSelectionHighlight rects={marked.rects} />}
+      {threadModalId && comments && (
+        <BriefThreadModal
+          threadId={threadModalId}
+          comments={comments}
+          canResolve={canResolve}
+          onClose={closeThreadModal}
+        />
+      )}
+      {selection && (
+        <BriefSelectionMenu
+          selection={selection}
+          actions={selectionActions}
+          onClose={() => setSelection(null)}
+        />
+      )}
+      {pendingComment && comments && (
+        <BriefCommentComposer
+          quote={pendingComment.quote}
+          onCancel={clearPendingComment}
+          onSubmit={(body) => {
+            void comments.add({
+              body,
+              sectionId: pendingComment.sectionId,
+              quote: pendingComment.quote,
+              quotePrefix: pendingComment.prefix,
+              quoteSuffix: pendingComment.suffix,
+            });
+            clearPendingComment();
+          }}
+        />
+      )}
+    </>
+  );
+};
+
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -260,149 +310,23 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const [exportBusy, setExportBusy] = useState(false);
   // Comments on the open brief, plus the selection awaiting a comment body.
   const comments = useBriefComments(brief.currentBriefId, loggedIn);
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  // A thread opened from a passage on a narrow screen, shown as a modal —
-  // there is no rail to scroll to.
-  const [threadModalId, setThreadModalId] = useState<string | null>(null);
-  // Comment visibility is a reading preference, kept per browser so a reader
-  // who turns comments off does not meet them again on every brief.
-  const [showComments, setShowComments] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(SHOW_COMMENTS_KEY) !== 'false';
-    } catch {
-      return true;
-    }
-  });
-  const toggleComments = useCallback((show: boolean) => {
-    setShowComments(show);
-    try {
-      localStorage.setItem(SHOW_COMMENTS_KEY, show ? 'true' : 'false');
-    } catch {
-      /* a browser refusing storage should not break the toggle */
-    }
-  }, []);
-
-  // Commented passages per section, painted into the prose.
-  const commentMarks = useMemo(() => {
-    const map = new Map<string, CommentMark[]>();
-    if (!comments) return map;
-    comments.threads.forEach((thread) => {
-      const sectionId = thread.root.sectionId;
-      if (!sectionId || !thread.root.quote) return;
-      const list = map.get(sectionId) || [];
-      list.push({
-        threadId: thread.root.id,
-        quote: thread.root.quote,
-        resolved: thread.root.resolved,
-        count: 1 + thread.replies.length,
-      });
-      map.set(sectionId, list);
-    });
-    return map;
-    // `comments` is a fresh object each render; `threads` only changes when the
-    // data does, so keying off it stops the marks being rebuilt constantly.
-  }, [comments?.threads]);
-
-  // Threads whose quoted passage is no longer in the brief: the section was
-  // re-researched, so the card explains why clicking it goes nowhere.
-  const [orphanedThreadIds, setOrphanedThreadIds] = useState<string[]>([]);
-  useEffect(() => {
-    if (!comments) return;
-    // Marks are painted into the DOM, so read back what actually landed.
-    const timer = window.setTimeout(() => {
-      const painted = new Set(
-        Array.from(document.querySelectorAll('.brief-comment-mark')).map((m) =>
-          m.getAttribute('data-thread-id'),
-        ),
-      );
-      const next = comments.threads
-        .filter((t) => t.root.quote && !painted.has(t.root.id))
-        .map((t) => t.root.id);
-      // Only update when the set actually changed: a new array every time
-      // would re-render, re-run this effect and repaint the marks on a loop.
-      setOrphanedThreadIds((prev) =>
-        prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
-      );
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [comments?.threads, showComments]);
-
-  // A speech bubble in the prose: on a narrow screen there is no rail, so the
-  // thread opens in a modal; otherwise the rail scrolls it into view.
-  const openThreadFromText = useCallback((threadId: string) => {
-    setActiveThreadId(threadId);
-    if (window.matchMedia('(max-width: 1024px)').matches) {
-      setThreadModalId(threadId);
-      return;
-    }
-    window.requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-thread-card="${threadId}"]`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-  }, []);
-
-  // A card in the rail: scroll the brief to the passage it annotates.
-  const jumpToThreadPassage = useCallback((threadId: string | null) => {
-    setActiveThreadId(threadId);
-    if (!threadId) return;
-    window.requestAnimationFrame(() => {
-      const mark = document.querySelector(`.brief-comment-mark[data-thread-id="${threadId}"]`);
-      if (!mark) return;
-      const bar = document.querySelector('.top-bar');
-      const offset = (bar instanceof HTMLElement ? bar.offsetHeight : 0) + 24;
-      const top = mark.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top, behavior: 'smooth' });
-    });
-  }, []);
-  const [pendingComment, setPendingComment] = useState<{
-    sectionId: string;
-    quote: string;
-    prefix: string;
-    suffix: string;
-    // Where the passage sits on screen, so it stays marked while the box is open.
-    rects: HighlightRect[];
-  } | null>(null);
-
-  // The live text selection, which the toolbar hangs off.
-  const [selection, setSelection] = useState<BriefSelection | null>(null);
-
-  // Turn a selection into a comment anchor and open the composer. Written as
-  // a selection *action* so later ones (e.g. "Research this further") slot in
-  // beside it without changing how selection works.
-  const commentOnSelection = useCallback(
-    (sel: BriefSelection) => {
-      const section = brief.sections.find((s) => s.id === sel.sectionId);
-      const content = section?.content || '';
-      const at = content.indexOf(sel.text);
-      const anchor =
-        at >= 0
-          ? buildAnchor(content, at, at + sel.text.length)
-          : { quote: sel.text, quotePrefix: '', quoteSuffix: '' };
-      setSelection(null);
-      setPendingComment({
-        sectionId: sel.sectionId,
-        quote: anchor.quote,
-        prefix: anchor.quotePrefix,
-        suffix: anchor.quoteSuffix,
-        rects: sel.rects,
-      });
-    },
-    [brief.sections],
-  );
-
-  const selectionActions = useMemo<SelectionAction[]>(
-    () => [
-      {
-        key: 'comment',
-        label: 'Comment',
-        title: 'Comment on the selected text',
-        icon: <IconComment />,
-        onRun: commentOnSelection,
-      },
-    ],
-    [commentOnSelection],
-  );
+  const annotations = useBriefAnnotations(brief.sections, comments);
+  const {
+    showComments,
+    toggleComments,
+    commentMarks,
+    orphanedThreadIds,
+    activeThreadId,
+    threadModalId,
+    closeThreadModal,
+    openThreadFromText,
+    jumpToThreadPassage,
+    selection,
+    setSelection,
+    selectionActions,
+    pendingComment,
+    clearPendingComment,
+  } = annotations;
 
   const [workspaceModal, setWorkspaceModal] = useState<
     'share' | 'template' | 'regen-all' | null
@@ -556,40 +480,11 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           orphanedThreadIds={orphanedThreadIds}
         />
       )}
-      {(selection || pendingComment) && (
-        <BriefSelectionHighlight rects={(selection || pendingComment)!.rects} />
-      )}
-      {threadModalId && comments && (
-        <BriefThreadModal
-          threadId={threadModalId}
-          comments={comments}
-          canResolve={brief.canEdit}
-          onClose={() => setThreadModalId(null)}
-        />
-      )}
-      {selection && (
-        <BriefSelectionMenu
-          selection={selection}
-          actions={selectionActions}
-          onClose={() => setSelection(null)}
-        />
-      )}
-      {pendingComment && (
-        <BriefCommentComposer
-          quote={pendingComment.quote}
-          onCancel={() => setPendingComment(null)}
-          onSubmit={(body) => {
-            void comments.add({
-              body,
-              sectionId: pendingComment.sectionId,
-              quote: pendingComment.quote,
-              quotePrefix: pendingComment.prefix,
-              quoteSuffix: pendingComment.suffix,
-            });
-            setPendingComment(null);
-          }}
-        />
-      )}
+      <BriefAnnotationLayer
+        annotations={annotations}
+        comments={comments}
+        canResolve={brief.canEdit}
+      />
       <BriefHistoryModal brief={brief} />
       {workspaceModal === 'share' && brief.currentBriefId && (
         <BriefShareModal
