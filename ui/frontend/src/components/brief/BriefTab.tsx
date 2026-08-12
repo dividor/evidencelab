@@ -1,5 +1,5 @@
 import { saveAs } from 'file-saver';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
@@ -18,6 +18,15 @@ import {
   TemplateDraft,
 } from './BriefCentralModals';
 import { BriefDocument } from './BriefDocument';
+import { BriefComments, BriefCommentComposer, BriefThreadModal } from './BriefComments';
+import { CommentMark } from './briefCommentMarks';
+import {
+  BriefSelection,
+  BriefSelectionHighlight,
+  BriefSelectionMenu,
+} from './BriefSelectionMenu';
+import { useBriefAnnotations, UseBriefAnnotationsReturn } from './useBriefAnnotations';
+import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefToc } from './BriefToc';
@@ -103,7 +112,33 @@ const BriefWorkspace: React.FC<{
   onExportWord: () => void;
   exportBusy: boolean;
   onOpenModal: (modal: 'share' | 'template' | 'regen-all') => void;
-}> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
+  comments?: UseBriefCommentsReturn | null;
+  activeThreadId?: string | null;
+  onSelectThread?: (id: string | null) => void;
+  onSelectText?: (selection: BriefSelection) => void;
+  commentMarks?: Map<string, CommentMark[]>;
+  onOpenThread?: (threadId: string) => void;
+  showComments?: boolean;
+  onToggleComments?: (show: boolean) => void;
+  orphanedThreadIds?: string[];
+}> = ({
+  brief,
+  loggedIn,
+  onBack,
+  onResultClick,
+  onExportWord,
+  exportBusy,
+  onOpenModal,
+  comments,
+  activeThreadId = null,
+  onSelectThread = () => {},
+  onSelectText,
+  commentMarks,
+  onOpenThread,
+  showComments,
+  onToggleComments,
+  orphanedThreadIds,
+}) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
   // saved-briefs history rail and the inline Contents panel.
@@ -153,7 +188,22 @@ const BriefWorkspace: React.FC<{
           onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
           onRegenerateAll={() => onOpenModal('regen-all')}
           showToc={!loggedIn}
+          onSelectText={comments ? onSelectText : undefined}
+          commentMarks={commentMarks}
+          onOpenThread={onOpenThread}
+          activeThreadId={activeThreadId}
+          showComments={showComments}
+          onToggleComments={onToggleComments}
         />
+        {comments && showComments !== false && (
+          <BriefComments
+            orphanedThreadIds={orphanedThreadIds}
+            comments={comments}
+            canResolve={brief.canEdit}
+            activeThreadId={activeThreadId}
+            onSelectThread={onSelectThread}
+          />
+        )}
       </div>
     </>
   );
@@ -173,6 +223,61 @@ interface BriefTabProps {
   // Opens the document preview (citations/footnotes click through to it).
   onResultClick?: (result: SearchResult) => void;
 }
+
+// The annotation layer over an open brief: the marked passage, the selection
+// toolbar, a thread opened from the text, and the comment being written.
+const BriefAnnotationLayer: React.FC<{
+  annotations: UseBriefAnnotationsReturn;
+  comments: UseBriefCommentsReturn | null;
+  canResolve: boolean;
+}> = ({ annotations, comments, canResolve }) => {
+  const {
+    selection,
+    setSelection,
+    selectionActions,
+    pendingComment,
+    clearPendingComment,
+    threadModalId,
+    closeThreadModal,
+  } = annotations;
+  const marked = selection || pendingComment;
+  return (
+    <>
+      {marked && <BriefSelectionHighlight rects={marked.rects} />}
+      {threadModalId && comments && (
+        <BriefThreadModal
+          threadId={threadModalId}
+          comments={comments}
+          canResolve={canResolve}
+          onClose={closeThreadModal}
+        />
+      )}
+      {selection && (
+        <BriefSelectionMenu
+          selection={selection}
+          actions={selectionActions}
+          onClose={() => setSelection(null)}
+        />
+      )}
+      {pendingComment && comments && (
+        <BriefCommentComposer
+          quote={pendingComment.quote}
+          onCancel={clearPendingComment}
+          onSubmit={(body) => {
+            void comments.add({
+              body,
+              sectionId: pendingComment.sectionId,
+              quote: pendingComment.quote,
+              quotePrefix: pendingComment.prefix,
+              quoteSuffix: pendingComment.suffix,
+            });
+            clearPendingComment();
+          }}
+        />
+      )}
+    </>
+  );
+};
 
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
@@ -203,6 +308,26 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     semanticModelConfig,
   });
   const [exportBusy, setExportBusy] = useState(false);
+  // Comments on the open brief, plus the selection awaiting a comment body.
+  const comments = useBriefComments(brief.currentBriefId, loggedIn);
+  const annotations = useBriefAnnotations(brief.sections, comments);
+  const {
+    showComments,
+    toggleComments,
+    commentMarks,
+    orphanedThreadIds,
+    activeThreadId,
+    threadModalId,
+    closeThreadModal,
+    openThreadFromText,
+    jumpToThreadPassage,
+    selection,
+    setSelection,
+    selectionActions,
+    pendingComment,
+    clearPendingComment,
+  } = annotations;
+
   const [workspaceModal, setWorkspaceModal] = useState<
     'share' | 'template' | 'regen-all' | null
   >(null);
@@ -344,8 +469,22 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           onExportWord={handleExportWord}
           exportBusy={exportBusy}
           onOpenModal={setWorkspaceModal}
+          comments={loggedIn && brief.currentBriefId ? comments : null}
+          activeThreadId={activeThreadId}
+          onSelectThread={jumpToThreadPassage}
+          onSelectText={setSelection}
+          commentMarks={commentMarks}
+          onOpenThread={openThreadFromText}
+          showComments={showComments}
+          onToggleComments={toggleComments}
+          orphanedThreadIds={orphanedThreadIds}
         />
       )}
+      <BriefAnnotationLayer
+        annotations={annotations}
+        comments={comments}
+        canResolve={brief.canEdit}
+      />
       <BriefHistoryModal brief={brief} />
       {workspaceModal === 'share' && brief.currentBriefId && (
         <BriefShareModal

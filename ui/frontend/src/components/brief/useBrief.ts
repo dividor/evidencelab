@@ -531,6 +531,9 @@ export const useBrief = ({
         // as done so an interrupted Edit/Update never loses the section.
         const done = s.status === 'done' || !!s.revising;
         return {
+          // Persist the id so comments anchored to this section survive a
+          // reload; a fresh id each load would orphan every thread.
+          id: s.id,
           title: s.title,
           level: s.level,
           status: done ? 'done' : 'pending',
@@ -1168,6 +1171,10 @@ export const useBrief = ({
       setSections(
         entry.sections.map((h) => ({
           ...makeSection(h.title, h.level),
+          // Keep the saved id: comments anchor to it, and a fresh id each load
+          // would orphan every thread. Briefs saved before ids were persisted
+          // fall back to the generated one.
+          ...(h.id ? { id: h.id } : {}),
           status: h.status === 'done' ? 'done' : 'pending',
           progress: h.status === 'done' ? 100 : 0,
           content: h.status === 'done' ? h.content : '',

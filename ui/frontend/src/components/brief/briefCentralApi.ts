@@ -76,6 +76,18 @@ export const deleteBriefRemote = async (id: string): Promise<void> => {
   await axios.delete(`${API_BASE_URL}/briefs/${id}`);
 };
 
+/** People and groups matching a share-dialog query (min 2 characters). */
+export interface ShareSuggestions {
+  users: Array<{ email: string; name: string }>;
+  groups: Array<{ name: string }>;
+}
+
+export const searchShareTargets = async (q: string): Promise<ShareSuggestions> => {
+  const res = await axios.get(`${API_BASE_URL}/briefs/share-targets`, { params: { q } });
+  const data = res.data as Partial<ShareSuggestions>;
+  return { users: data.users || [], groups: data.groups || [] };
+};
+
 export const addBriefShare = async (
   briefId: string,
   target: string,

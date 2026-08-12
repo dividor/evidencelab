@@ -278,9 +278,13 @@
 }
 .brief-builder {
   display: grid;
-  grid-template-columns: 308px 1fr;
+  grid-template-columns: 308px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+}
+/* With the comment rail open the document keeps the middle column. */
+.brief-builder:has(.brief-comments-rail) {
+  grid-template-columns: 308px minmax(0, 1fr) 320px;
 }
 
 /* ---------- outline rail ---------- */
@@ -2321,6 +2325,25 @@
 
 /* ---------- responsive (matches App.css breakpoints) ---------- */
 @media (max-width: 1024px) {
+  /* Comment rail stacks under the document rather than squeezing it. */
+  .brief-builder:has(.brief-comments-rail) {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-modal-overlay {
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  .brief-comments-rail {
+    position: static;
+    max-height: none;
+    padding-left: 0;
+    /* After the document: .brief-doc carries order 1, so leaving this at the
+       default 0 floated the comments above the brief they refer to. */
+    order: 3;
+  }
+
   .brief-builder {
     grid-template-columns: 1fr;
   }
@@ -2543,4 +2566,526 @@
 .brief-footnote-page-link:hover {
   color: var(--brand-primary-dark);
   text-decoration: underline;
+}
+
+/* Share dialog: people/group suggestions under the input. */
+.bc-share-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.bc-share-suggestions {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.12);
+}
+.bc-share-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-share-suggestion:hover {
+  background: var(--brand-border-light);
+}
+.bc-share-suggestion-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.bc-share-suggestion-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.bc-share-suggestion-sub {
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+
+/* ---------- comments ---------- */
+/* The rail sits to the right of the document; on narrow screens it drops
+   below it (see the responsive block at the end of this file). */
+.brief-comments-rail {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 4px;
+}
+.brief-comments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.brief-comments-title {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+.brief-comments-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  cursor: pointer;
+}
+.brief-comments-empty {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--brand-text-tertiary);
+}
+.brief-comment-thread {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.brief-comment-thread-active {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 30%, transparent);
+  background: var(--brand-surface);
+}
+.brief-comment-thread-active .brief-comment-quote {
+  background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+  color: var(--brand-text-secondary);
+}
+/* Resolved threads read as *settled*, not faded: dimming the whole card put
+   grey text on a grey panel. A success-tinted card and a badge mark the state
+   while the text stays fully legible. (No side accent bars — see CLAUDE.md.) */
+.brief-comment-resolved {
+  background: color-mix(in srgb, var(--brand-success) 7%, var(--brand-surface));
+  border-color: color-mix(in srgb, var(--brand-success) 40%, var(--brand-border));
+}
+.brief-comment-resolved .brief-comment-quote {
+  color: var(--brand-text-secondary);
+}
+/* The badge sits with the author line, so the state is legible at a glance. */
+.brief-comment-resolved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--brand-success) 16%, transparent);
+  color: color-mix(in srgb, var(--brand-success) 75%, #000);
+  font-family: var(--font-heading);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.brief-comment-quote {
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--brand-text-secondary);
+  background: var(--brand-border-light);
+  padding: 7px 10px;
+  margin-bottom: 10px;
+}
+.brief-comment + .brief-comment,
+/* A reply is a distinct turn in the conversation: indented, on its own tinted
+   panel, so a thread does not read as one undifferentiated block of text. */
+.brief-comment-reply {
+  margin-top: 8px;
+  margin-left: 14px;
+  padding: 8px 10px;
+  background: var(--brand-border-light);
+}
+.brief-comment-reply .brief-comment-avatar {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+}
+.brief-comment-reply .brief-comment-text {
+  font-size: 13px;
+}
+/* The composer sits apart from the conversation above it. */
+.brief-comment-foot {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--brand-border-light);
+}
+.brief-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+.brief-comment-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.brief-comment-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.brief-comment-when {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--brand-text-tertiary);
+}
+/* The comment reads as speech: a bubble with a small tail, aligned under the
+   author's name rather than sitting flat on a grey panel. */
+.brief-comment-text {
+  position: relative;
+  margin-left: 29px;
+  padding: 9px 12px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--brand-text-primary);
+  white-space: pre-wrap;
+}
+.brief-comment-input {
+  width: 100%;
+  border: 1px solid var(--brand-border);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--brand-text-primary);
+  resize: vertical;
+  outline: none;
+}
+.brief-comment-input:focus {
+  border-color: var(--brand-primary);
+}
+.brief-comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.brief-comment-btn,
+.brief-comment-btn-primary {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+/* Edit/Delete are incidental to reading a thread, so they sit under the bubble
+   as quiet links rather than competing with the reply action. */
+.brief-comment-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand-text-tertiary);
+  font-size: 11.5px;
+  text-decoration: none;
+}
+.brief-comment-btn:hover {
+  color: var(--brand-primary-dark);
+  text-decoration: underline;
+}
+.brief-comment-btn-danger:hover {
+  color: var(--brand-error);
+  text-decoration: underline;
+}
+/* Separate the links with a dot so they do not read as one word. */
+.brief-comment .brief-comment-actions {
+  gap: 10px;
+  margin-top: 4px;
+}
+.brief-comment .brief-comment-actions .brief-comment-btn + .brief-comment-btn::before {
+  content: '·';
+  margin-right: 10px;
+  color: var(--brand-border);
+}
+/* The editor's Save/Cancel stay as buttons — they commit a change. */
+.brief-comment-edit .brief-comment-btn {
+  border: 1px solid var(--brand-border);
+  padding: 5px 11px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+.brief-comment-btn-primary {
+  background: var(--color-button-primary, var(--brand-primary));
+  border: none;
+  color: #fff;
+}
+.brief-comment-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.brief-comment-modal .brief-comment-quote {
+  margin-bottom: 12px;
+}
+/* A passage that carries a comment is tinted in the document. */
+:root {
+  --brief-comment-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z'/%3E%3C/svg%3E");
+}
+
+.brief-comment-mark {
+  background: rgba(245, 197, 66, 0.28);
+  border-bottom: 1px solid rgba(191, 148, 30, 0.6);
+  cursor: pointer;
+}
+.brief-comment-mark-active {
+  background: rgba(245, 197, 66, 0.55);
+}
+
+/* Floating toolbar over selected text: actions for that passage. */
+.brief-selection-menu {
+  position: fixed;
+  z-index: 300;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+.brief-selection-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 7px 12px;
+  font-family: var(--font-heading);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.brief-selection-action:hover {
+  background: rgba(91, 143, 168, 0.1);
+  color: var(--brand-primary-dark);
+}
+
+/* The selected passage, kept marked while the toolbar or comment box is open —
+   the browser stops painting its own selection once focus moves away. */
+.brief-selection-highlight {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+  background: rgba(245, 197, 66, 0.42);
+  background: color-mix(in srgb, var(--brand-warning) 42%, transparent);
+  border-radius: 2px;
+}
+
+/* ---------- commented passages ---------- */
+/* A passage someone has commented on, marked inline in the prose. */
+.brief-comment-mark {
+  /* color-mix keeps the deployment's own --brand-warning while producing the
+     soft tint a highlight needs; the fallbacks cover browsers without it. */
+  background: rgba(245, 197, 66, 0.28);
+  background: color-mix(in srgb, var(--brand-warning) 28%, transparent);
+  border-bottom: 2px solid var(--brand-warning);
+  cursor: pointer;
+}
+.brief-comment-mark:hover {
+  background: rgba(245, 197, 66, 0.45);
+  background: color-mix(in srgb, var(--brand-warning) 45%, transparent);
+}
+/* Resolved threads stay visible but recede. */
+.brief-comment-mark-resolved {
+  background: transparent;
+  border-bottom: 1px dotted var(--brand-text-tertiary);
+}
+/* The passage whose thread is open. */
+.brief-comment-mark-active {
+  background: rgba(245, 197, 66, 0.6);
+  background: color-mix(in srgb, var(--brand-warning) 60%, transparent);
+}
+
+/* The speech bubble that follows a commented passage. */
+/* A quiet outline marker in the brand colour rather than a filled chip: it has
+   to be legible inline without competing with the prose. */
+.brief-comment-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  vertical-align: baseline;
+  min-width: 18px;
+  height: 16px;
+  margin-left: 3px;
+  padding: 0 3px;
+  border: none;
+  background: none;
+  color: var(--brand-primary-dark);
+  font-family: var(--font-heading);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+/* Speech-bubble glyph drawn in the brand colour, so it inherits per-deployment
+   branding instead of an emoji's own palette. */
+.brief-comment-bubble::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background-color: currentColor;
+  -webkit-mask: var(--brief-comment-glyph) center / contain no-repeat;
+  mask: var(--brief-comment-glyph) center / contain no-repeat;
+}
+.brief-comment-bubble:hover {
+  color: var(--brand-primary);
+}
+.brief-comment-mark-resolved + .brief-comment-bubble {
+  color: var(--brand-text-tertiary);
+}
+
+/* Thread shown as a modal on narrow screens: the rail's card styling is
+   dropped so the thread reads as modal content, and everything is constrained
+   to the viewport (the timestamp and reply box previously ran off-screen). */
+.brief-thread-modal {
+  max-width: min(520px, calc(100vw - 32px));
+}
+.brief-thread-modal .bc-modal-body {
+  padding: 16px 20px 20px;
+}
+.brief-thread-modal .brief-comment-thread {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: default;
+}
+/* Wrap the author line instead of pushing the timestamp off the edge. */
+.brief-thread-modal .brief-comment-head {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.brief-thread-modal .brief-comment-when {
+  flex: none;
+}
+.brief-thread-modal .brief-comment-input,
+.brief-thread-modal .brief-comment-foot {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.brief-thread-modal .brief-comment-reply {
+  margin-left: 0;
+}
+/* The comment itself is the point of the modal: give it room and weight, and
+   let the quoted passage recede to context. */
+.brief-thread-modal .brief-comment-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--brand-text-primary);
+  margin: 2px 0 12px;
+}
+.brief-thread-modal .brief-comment-quote {
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-thread-modal .brief-comment-author {
+  font-size: 13.5px;
+}
+/* Separate each reply from the one above so a thread is readable. */
+.brief-thread-modal .brief-comment-reply {
+  border-top: 1px solid var(--brand-border-light);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+/* Comment visibility control, in the brief's meta row. */
+.brief-comments-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  font-size: 12.5px;
+  color: var(--brand-text-tertiary);
+  cursor: pointer;
+  user-select: none;
+}
+.brief-comments-visibility input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.brief-comments-visibility:hover {
+  color: var(--brand-text-secondary);
+}
+
+/* A thread whose quoted passage is no longer in the brief (the section was
+   re-researched): clicking it cannot scroll anywhere, so say why. */
+.brief-comment-orphan {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--brand-warning);
+}
+
+
+/* The bubble's tail, pointing up at its author. */
+.brief-comment-text::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 14px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-left: 1px solid var(--brand-border);
+  border-top: 1px solid var(--brand-border);
+  transform: rotate(45deg);
+}
+/* Replies are tinted in the brand hue so a thread alternates visibly rather
+   than repeating the same grey block. */
+.brief-comment-reply {
+  background: none;
+  padding: 0;
+  margin-left: 16px;
+}
+.brief-comment-reply .brief-comment-text {
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--brand-surface));
+  border-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+}
+.brief-comment-reply .brief-comment-text::before {
+  border-left-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+  border-top-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+}
+/* The quoted passage is context, tinted rather than grey. */
+.brief-comment-quote {
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border-radius: 6px;
+}
+/* Edit/Delete sit under the bubble, aligned with it. */
+.brief-comment .brief-comment-actions {
+  margin-left: 29px;
 }

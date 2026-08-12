@@ -4,11 +4,13 @@
 
 ![The Brief workspace — history, contents (TOC) and the document](/docs/images/brief/brief-workspace.png)
 
-The workspace has three parts:
+When you are signed in, briefs are saved to your account and open from **Brief Central** — the landing page listing your **Saved Briefs**, briefs **Shared with me**, your **Templates**, and your **Voice & tone** profiles.
 
-- **History** (left) — your saved briefs. Briefs auto-save as you work.
-- **Contents** (the TOC at the top of the document) — where you add, name, reorder, and remove headings, and jump to a section.
-- **The document** — the brief itself: each heading and its researched, cited text.
+The workspace itself has three parts:
+
+- **Contents** (left) — where you add, name, reorder, and remove headings, and jump to a section. It follows you as you scroll and highlights the section you are reading.
+- **The document** (middle) — the brief itself: each heading and its researched, cited text.
+- **Comments** (right) — review threads on the brief, when there are any.
 
 > Brief is a tab in the top navigation. If you don't see it, an administrator can enable it with `application.brief.enabled` in `config.json`.
 
@@ -66,28 +68,25 @@ For each completed section you can:
 - **Edit text** — tweak the generated prose by hand.
 - **Regenerate** — re-run the research, optionally with new guidance.
 
-Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief and combined per document.
+Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief, one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers.
 
 ---
 
-### 4. Saved briefs (History)
+### 4. Saved briefs (Brief Central)
 
-Briefs save automatically as you research, and appear in the **History** rail on the left. From there you can:
+Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
 
-- **Search** your briefs by name or topic.
-- **Duplicate** a brief (the copy icon) to branch off a new version.
-- **Delete** a brief (the **×**) — the brief you currently have open can't be deleted.
-- **See more** — when you have more than ten briefs, open the full, searchable list.
-- **New brief** — start again from the topic screen.
+From a card you can **open**, **share** or **delete** a brief. **New brief** starts again from the topic screen.
+
+> Signed out, briefs are kept in your browser's local storage instead, and sharing, templates, voice profiles and comments are unavailable.
 
 ---
 
 ### 5. Export to Word
 
-When your brief is ready, click **Export to Word ▾** at the top right and choose a citation format:
+When your brief is ready, click **Export to Word** at the top right.
 
-- **References list** — inline `[n]` citation numbers in the prose, plus a compiled **References** list at the end.
-- **Footnotes on page** — each citation becomes a Word footnote at the bottom of the page where it appears, carrying the source's title, page, and a link to the PDF.
+The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkbox above that list. Leave it off for one line per citation; tick it to collapse the list to one line per document — `Title, [1] p. 32, [2] p. 56` — which is more compact when a brief leans on a handful of reports.
 
 ![Export to Word button](/docs/images/brief/brief-export-button.png)
 
@@ -96,8 +95,64 @@ The exported `.docx` is a polished, branded document titled **AI-generated Resea
 - A clickable **table of contents** that jumps to each heading (no "update fields" prompt on open).
 - An information box noting the content is AI-generated and should be verified.
 - The brief topic as the heading, followed by each section's text.
-- Citations linked to the **actual source PDF at the cited page** — so a reader outside Evidence Lab can open the document in their browser — rendered inline (References list) or as on-page footnotes depending on the format you chose. Both formats keep the **Reference Excerpts** section with the supporting passages. Any tables or figures in those passages are embedded as the same images shown on screen, so they keep their original layout.
+- Citations linked to the **actual source PDF at the cited page**, so a reader outside Evidence Lab can open the document in their browser. The **Reference Excerpts** section carries the supporting passages. Any tables or figures in those passages are embedded as the same images shown on screen, so they keep their original layout.
 
 ![The exported Word document](/docs/images/brief/brief-word-doc.png)
 
 > Brief content is generated by AI through deep research over the document library. Always verify factual claims and review for coverage and accuracy — it's a guide for the writing process, not a finished product.
+
+---
+
+### 6. Share a brief
+
+Open a brief and click **Share**, or use **Share** on its card in Brief Central.
+
+Sharing is **viewer-only**: recipients can read the brief, follow its citations, export it and leave comments, but they cannot change the text, re-research a section, or re-share it. Only the owner can edit.
+
+- **Add people or groups** — start typing a name, email address or group name. Matching users and groups appear after two characters; pick one and click **Add**. Groups share with every current member.
+- **Brief link** — copy the brief's URL (`/brief/<id>`) and send it. The link only opens for people you have added, so it is safe to paste into a channel where others might see it.
+- **Remove access** — click the **×** beside a person or group.
+
+Briefs shared with you appear under **Shared with me** in Brief Central, labelled with the owner's name.
+
+---
+
+### 7. Templates
+
+A template stores a heading structure so the next brief starts with the shape you want, rather than a blank outline or an AI-generated one.
+
+- **Save a brief as a template** — open a brief and click **Save as Template**. You can edit the headings before saving, and choose whether to **include section text** (off by default, which saves the headings only).
+- **Create one from scratch** — on the **Templates** tab in Brief Central, click **New template** and add headings (and sub-headings) by hand.
+- **Use a template** — click **Use** on a template card, or pick it in the **Manual** tab of the New brief dialog. The brief opens with those headings ready to research.
+
+Templates are private to you.
+
+---
+
+### 8. Voice & tone profiles
+
+A voice & tone profile is a set of style instructions applied whenever a section is written, so briefs read consistently for their audience — a donor board memo and a field-team summary need different registers.
+
+- **Create one** — on the **Voice & tone** tab in Brief Central, click **New voice & tone profile** and give it a name, a one-line description of when to use it, and the style instructions themselves (for example: *Write in plain English at CEFR B2. Lead each section with the finding, then the evidence. Avoid acronyms on first use.*).
+- **Apply it to a brief** — choose a profile in the New brief dialog, or in **AI Regenerate All**.
+- **Override it for one section** — a section's Research or Regenerate panel has its own profile selector; leave it on *Use brief default* to inherit the brief's.
+
+The instructions are passed to the model when the outline is generated, when a section is researched or regenerated, and when a section is revised with **AI Edit**.
+
+---
+
+### 9. Comments
+
+Comments let reviewers respond to a brief in place, which is the usual next step after sharing one.
+
+![Commenting on a passage of a brief](/docs/images/brief/brief-comments.png)
+
+- **Start a thread** — select any text in the brief and choose **Comment** from the toolbar that appears over the selection. The comment is anchored to the passage you highlighted, which is quoted at the top of the thread.
+- **Reply** — type in the box at the bottom of a thread. Threads are one level deep, so a conversation stays readable.
+- **Edit** — you can change the wording of your own comments at any time.
+- **Resolve** — mark a thread as dealt with; the brief's owner can resolve any thread, and you can always resolve your own. Resolved threads are hidden until you tick **Show resolved**, and can be reopened.
+- **Delete** — remove your own comment; the brief's owner can also clear a thread. Deleting the comment that opened a thread removes its replies too.
+
+Anyone who can see a brief can comment on it, including viewers of a shared brief — that is the point of sharing one for review.
+
+Because a comment is anchored to the **text** you highlighted rather than to a position in the document, it survives ordinary editing and re-flowing. If a section is re-researched and the quoted passage is gone entirely, the comment remains in the rail with its quote, so the discussion is not lost.
