@@ -2757,7 +2757,15 @@
   font-size: 11px;
   color: var(--brand-text-tertiary);
 }
+/* The comment reads as speech: a bubble with a small tail, aligned under the
+   author's name rather than sitting flat on a grey panel. */
 .brief-comment-text {
+  position: relative;
+  margin-left: 29px;
+  padding: 9px 12px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 12px;
   font-size: 13.5px;
   line-height: 1.55;
   color: var(--brand-text-primary);
@@ -3019,4 +3027,43 @@
   font-style: normal;
   font-size: 11px;
   color: var(--brand-warning);
+}
+
+
+/* The bubble's tail, pointing up at its author. */
+.brief-comment-text::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 14px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-left: 1px solid var(--brand-border);
+  border-top: 1px solid var(--brand-border);
+  transform: rotate(45deg);
+}
+/* Replies are tinted in the brand hue so a thread alternates visibly rather
+   than repeating the same grey block. */
+.brief-comment-reply {
+  background: none;
+  padding: 0;
+  margin-left: 16px;
+}
+.brief-comment-reply .brief-comment-text {
+  background: color-mix(in srgb, var(--brand-primary) 8%, var(--brand-surface));
+  border-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+}
+.brief-comment-reply .brief-comment-text::before {
+  border-left-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+  border-top-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-border));
+}
+/* The quoted passage is context, tinted rather than grey. */
+.brief-comment-quote {
+  background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+  border-radius: 6px;
+}
+/* Edit/Delete sit under the bubble, aligned with it. */
+.brief-comment .brief-comment-actions {
+  margin-left: 29px;
 }
