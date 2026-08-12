@@ -2664,7 +2664,12 @@
 }
 .brief-comment-thread-active {
   border-color: var(--brand-primary);
-  background: rgba(91, 143, 168, 0.06);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 30%, transparent);
+  background: var(--brand-surface);
+}
+.brief-comment-thread-active .brief-comment-quote {
+  background: color-mix(in srgb, var(--brand-primary) 10%, transparent);
+  color: var(--brand-text-secondary);
 }
 /* Resolved threads read as *settled*, not faded: dimming the whole card put
    grey text on a grey panel. A success-tinted card and a badge mark the state
@@ -2702,13 +2707,27 @@
   margin-bottom: 10px;
 }
 .brief-comment + .brief-comment,
+/* A reply is a distinct turn in the conversation: indented, on its own tinted
+   panel, so a thread does not read as one undifferentiated block of text. */
 .brief-comment-reply {
-  margin-top: 10px;
+  margin-top: 8px;
+  margin-left: 14px;
+  padding: 8px 10px;
+  background: var(--brand-border-light);
+}
+.brief-comment-reply .brief-comment-avatar {
+  width: 19px;
+  height: 19px;
+  font-size: 9px;
+}
+.brief-comment-reply .brief-comment-text {
+  font-size: 13px;
+}
+/* The composer sits apart from the conversation above it. */
+.brief-comment-foot {
+  margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--brand-border-light);
-}
-.brief-comment-reply {
-  padding-left: 12px;
 }
 .brief-comment-head {
   display: flex;
@@ -2795,9 +2814,7 @@
   opacity: 0.5;
   cursor: default;
 }
-.brief-comment-foot {
-  margin-top: 10px;
-}
+
 .brief-comment-modal .brief-comment-quote {
   margin-bottom: 12px;
 }
