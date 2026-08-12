@@ -764,9 +764,7 @@ async def update_brief_comment(
             raise HTTPException(status_code=403, detail="Cannot resolve this comment")
         comment.resolved = body.resolved
         comment.resolved_by_id = user.id if body.resolved else None
-        comment.resolved_at = (
-            datetime.now(timezone.utc) if body.resolved else None
-        )
+        comment.resolved_at = datetime.now(timezone.utc) if body.resolved else None
     await session.commit()
     await session.refresh(comment)
     return await _to_comment_read(session, comment, user)

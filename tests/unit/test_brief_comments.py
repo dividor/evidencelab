@@ -99,9 +99,7 @@ def patch_access(monkeypatch):
                 raise HTTPException(status_code=404, detail="Brief not found")
             return object(), is_owner
 
-        monkeypatch.setattr(
-            "ui.backend.routes.brief_central._get_viewable_brief", fake
-        )
+        monkeypatch.setattr("ui.backend.routes.brief_central._get_viewable_brief", fake)
 
     return _set
 
