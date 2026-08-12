@@ -299,7 +299,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       map.set(sectionId, list);
     });
     return map;
-  }, [comments]);
+    // `comments` is a fresh object each render; `threads` only changes when the
+    // data does, so keying off it stops the marks being rebuilt constantly.
+  }, [comments?.threads]);
 
   // Threads whose quoted passage is no longer in the brief: the section was
   // re-researched, so the card explains why clicking it goes nowhere.
@@ -313,14 +315,17 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           m.getAttribute('data-thread-id'),
         ),
       );
-      setOrphanedThreadIds(
-        comments.threads
-          .filter((t) => t.root.quote && !painted.has(t.root.id))
-          .map((t) => t.root.id),
+      const next = comments.threads
+        .filter((t) => t.root.quote && !painted.has(t.root.id))
+        .map((t) => t.root.id);
+      // Only update when the set actually changed: a new array every time
+      // would re-render, re-run this effect and repaint the marks on a loop.
+      setOrphanedThreadIds((prev) =>
+        prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
       );
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [comments, showComments]);
+  }, [comments?.threads, showComments]);
 
   // A speech bubble in the prose: on a narrow screen there is no rail, so the
   // thread opens in a modal; otherwise the rail scrolls it into view.

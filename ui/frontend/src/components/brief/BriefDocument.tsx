@@ -371,11 +371,24 @@ const SectionDoneBody: React.FC<{
   const { content, sources } = sectionView(section, display);
   const proseRef = useRef<HTMLDivElement>(null);
 
-  // Paint commented passages after the markdown renders, repainting whenever
-  // the prose or the comment set changes.
+  // Paint commented passages after the markdown renders. The marks live in the
+  // DOM rather than in React's tree, so a re-render of the prose wipes them —
+  // an observer puts them back. It is disconnected while painting so our own
+  // mutations cannot trigger another pass.
   useEffect(() => {
     const el = proseRef.current;
-    if (el) paintCommentMarks(el, marks || []);
+    if (!el) return;
+    const options = { childList: true, subtree: true, characterData: true };
+    const observer = new MutationObserver(() => {
+      if (!el.querySelector(`.${MARK_CLASS}`) && (marks || []).length) repaint();
+    });
+    function repaint(): void {
+      observer.disconnect();
+      paintCommentMarks(el as HTMLElement, marks || []);
+      observer.observe(el as HTMLElement, options);
+    }
+    repaint();
+    return () => observer.disconnect();
   }, [content, marks]);
 
   // Show which passage the open thread belongs to.
