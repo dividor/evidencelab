@@ -2334,6 +2334,9 @@
     position: static;
     max-height: none;
     padding-left: 0;
+    /* After the document: .brief-doc carries order 1, so leaving this at the
+       default 0 floated the comments above the brief they refer to. */
+    order: 3;
   }
 
   .brief-builder {
