@@ -2330,6 +2330,11 @@
     grid-template-columns: 1fr;
   }
 
+  .brief-modal-overlay {
+    align-items: center;
+    padding: 24px 16px;
+  }
+
   .brief-comments-rail {
     position: static;
     max-height: none;
@@ -2692,8 +2697,8 @@
   font-style: italic;
   line-height: 1.5;
   color: var(--brand-text-secondary);
-  border-left: 2px solid var(--brand-border);
-  padding-left: 9px;
+  background: var(--brand-border-light);
+  padding: 7px 10px;
   margin-bottom: 10px;
 }
 .brief-comment + .brief-comment,
@@ -2915,13 +2920,37 @@
   color: var(--brand-text-tertiary);
 }
 
-/* Thread shown as a modal on narrow screens. */
+/* Thread shown as a modal on narrow screens: the rail's card styling is
+   dropped so the thread reads as modal content, and everything is constrained
+   to the viewport (the timestamp and reply box previously ran off-screen). */
 .brief-thread-modal {
-  max-width: 520px;
+  max-width: min(520px, calc(100vw - 32px));
+}
+.brief-thread-modal .bc-modal-body {
+  padding: 16px 20px 20px;
 }
 .brief-thread-modal .brief-comment-thread {
   border: none;
+  background: none;
   padding: 0;
+  cursor: default;
+}
+/* Wrap the author line instead of pushing the timestamp off the edge. */
+.brief-thread-modal .brief-comment-head {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.brief-thread-modal .brief-comment-when {
+  flex: none;
+}
+.brief-thread-modal .brief-comment-input,
+.brief-thread-modal .brief-comment-foot {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.brief-thread-modal .brief-comment-reply {
+  margin-left: 0;
 }
 
 /* Comment visibility control, in the brief's meta row. */
