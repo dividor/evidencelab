@@ -760,11 +760,20 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         const sectionEl = el?.closest('[data-brief-section-id]') as HTMLElement | null;
         const sectionId = sectionEl?.getAttribute('data-brief-section-id');
         if (!sectionId) return;
-        const box = sel.getRangeAt(0).getBoundingClientRect();
+        const range = sel.getRangeAt(0);
+        const box = range.getBoundingClientRect();
+        // One rect per line, so a multi-line selection stays fully marked.
+        const rects = Array.from(range.getClientRects()).map((r) => ({
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          height: r.height,
+        }));
         onSelectText({
           sectionId,
           text,
           rect: { top: box.top, left: box.left, width: box.width },
+          rects,
         });
       }}
     >

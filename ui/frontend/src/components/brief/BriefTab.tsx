@@ -22,7 +22,9 @@ import { BriefComments, BriefCommentComposer } from './BriefComments';
 import { buildAnchor } from './briefCommentAnchors';
 import {
   BriefSelection,
+  BriefSelectionHighlight,
   BriefSelectionMenu,
+  HighlightRect,
   SelectionAction,
 } from './BriefSelectionMenu';
 import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
@@ -244,6 +246,8 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     quote: string;
     prefix: string;
     suffix: string;
+    // Where the passage sits on screen, so it stays marked while the box is open.
+    rects: HighlightRect[];
   } | null>(null);
 
   // The live text selection, which the toolbar hangs off.
@@ -267,6 +271,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         quote: anchor.quote,
         prefix: anchor.quotePrefix,
         suffix: anchor.quoteSuffix,
+        rects: sel.rects,
       });
     },
     [brief.sections],
@@ -431,6 +436,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           onSelectThread={setActiveThreadId}
           onSelectText={setSelection}
         />
+      )}
+      {(selection || pendingComment) && (
+        <BriefSelectionHighlight rects={(selection || pendingComment)!.rects} />
       )}
       {selection && (
         <BriefSelectionMenu

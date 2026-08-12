@@ -2809,3 +2809,13 @@
   background: rgba(91, 143, 168, 0.1);
   color: var(--brand-primary-dark);
 }
+
+/* The selected passage, kept marked while the toolbar or comment box is open —
+   the browser stops painting its own selection once focus moves away. */
+.brief-selection-highlight {
+  position: fixed;
+  z-index: 120;
+  pointer-events: none;
+  background: rgba(245, 197, 66, 0.42);
+  border-radius: 2px;
+}

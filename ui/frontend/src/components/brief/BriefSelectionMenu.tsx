@@ -6,11 +6,22 @@
 
 import React, { useEffect } from 'react';
 
+export interface HighlightRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
 export interface BriefSelection {
   sectionId: string;
   text: string;
   // Viewport rect of the selection, used to place the menu above it.
   rect: { top: number; left: number; width: number };
+  // One rect per line of the selection, so the passage can be kept visibly
+  // marked after the browser's own selection loses focus (to the toolbar or
+  // the comment box) and stops being drawn.
+  rects: HighlightRect[];
 }
 
 export interface SelectionAction {
@@ -77,3 +88,22 @@ export const BriefSelectionMenu: React.FC<{
     </div>
   );
 };
+
+
+/**
+ * Keeps the selected passage visibly marked while the toolbar or the comment
+ * box is open. The browser stops painting its own selection once focus moves
+ * away, which leaves the reader unsure what they are about to act on.
+ */
+export const BriefSelectionHighlight: React.FC<{ rects: HighlightRect[] }> = ({ rects }) => (
+  <>
+    {rects.map((r) => (
+      <div
+        // Geometry is unique per line and stable for a given selection.
+        key={`${r.top}:${r.left}:${r.width}`}
+        className="brief-selection-highlight"
+        style={{ top: r.top, left: r.left, width: r.width, height: r.height }}
+      />
+    ))}
+  </>
+);
