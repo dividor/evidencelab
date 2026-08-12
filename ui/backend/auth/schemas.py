@@ -587,6 +587,45 @@ class BriefShareTarget(BaseModel):
     is_group: bool
 
 
+class BriefCommentCreate(BaseModel):
+    """A new comment, or a reply when ``parent_id`` is set."""
+
+    body: str = Field(min_length=1, max_length=5000)
+    # Anchor: which section, and the highlighted text with a little context.
+    section_id: Optional[str] = Field(default=None, max_length=64)
+    quote: Optional[str] = Field(default=None, max_length=2000)
+    quote_prefix: Optional[str] = Field(default=None, max_length=500)
+    quote_suffix: Optional[str] = Field(default=None, max_length=500)
+    parent_id: Optional[uuid.UUID] = None
+
+
+class BriefCommentUpdate(BaseModel):
+    """Edit a comment's text, or resolve/reopen its thread."""
+
+    body: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    resolved: Optional[bool] = None
+
+
+class BriefCommentRead(BaseModel):
+    """A comment as shown in the brief's comment rail."""
+
+    id: uuid.UUID
+    brief_id: uuid.UUID
+    parent_id: Optional[uuid.UUID] = None
+    section_id: Optional[str] = None
+    quote: Optional[str] = None
+    quote_prefix: Optional[str] = None
+    quote_suffix: Optional[str] = None
+    body: str
+    resolved: bool
+    author_name: str
+    author_email: str
+    # True when the signed-in user wrote it (drives Edit/Delete affordances).
+    is_mine: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class BriefRead(BaseModel):
     """Full brief returned by read endpoints."""
 

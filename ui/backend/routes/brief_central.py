@@ -7,6 +7,7 @@ group name). Templates and voice profiles are private to their owner.
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import (
     Brief,
+    BriefComment,
     BriefShare,
     BriefTemplate,
     User,
@@ -23,6 +25,9 @@ from ui.backend.auth.models import (
     VoiceProfile,
 )
 from ui.backend.auth.schemas import (
+    BriefCommentCreate,
+    BriefCommentRead,
+    BriefCommentUpdate,
     BriefCreate,
     BriefListItem,
     BriefRead,
@@ -630,4 +635,160 @@ async def delete_voice_profile(
     """Delete a voice profile (owner only)."""
     profile = await _get_owned_profile(session, profile_id, user)
     await session.delete(profile)
+    await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Comments
+# ---------------------------------------------------------------------------
+
+_COMMENT_NOT_FOUND = "Comment not found"
+
+
+def _comment_author_name(author: User | None) -> str:
+    """Display name for a comment's author, falling back to their email."""
+    if not author:
+        return "Unknown"
+    full = " ".join(p for p in [author.first_name, author.last_name] if p).strip()
+    return full or author.email
+
+
+async def _to_comment_read(
+    session: AsyncSession, comment: BriefComment, user: User
+) -> BriefCommentRead:
+    """Serialise a comment, resolving its author for display."""
+    author = await session.get(User, comment.user_id)
+    return BriefCommentRead(
+        id=comment.id,
+        brief_id=comment.brief_id,
+        parent_id=comment.parent_id,
+        section_id=comment.section_id,
+        quote=comment.quote,
+        quote_prefix=comment.quote_prefix,
+        quote_suffix=comment.quote_suffix,
+        body=comment.body,
+        resolved=comment.resolved,
+        author_name=_comment_author_name(author),
+        author_email=author.email if author else "",
+        is_mine=comment.user_id == user.id,
+        created_at=comment.created_at,
+        updated_at=comment.updated_at,
+    )
+
+
+@router.get(
+    "/briefs/{brief_id}/comments",
+    response_model=list[BriefCommentRead],
+    tags=["brief-comments"],
+)
+async def list_brief_comments(
+    brief_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Every comment on a brief, oldest first, for anyone who can view it."""
+    await _get_viewable_brief(session, brief_id, user)
+    result = await session.execute(
+        select(BriefComment)
+        .where(BriefComment.brief_id == brief_id)
+        .order_by(BriefComment.created_at)
+    )
+    return [await _to_comment_read(session, c, user) for c in result.scalars().all()]
+
+
+@router.post(
+    "/briefs/{brief_id}/comments",
+    response_model=BriefCommentRead,
+    status_code=201,
+    tags=["brief-comments"],
+)
+async def create_brief_comment(
+    brief_id: uuid.UUID,
+    body: BriefCommentCreate,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Add a comment, or a reply when ``parent_id`` is given.
+
+    Anyone who can view the brief can comment — that is the point of sharing a
+    brief for review.
+    """
+    await _get_viewable_brief(session, brief_id, user)
+    if body.parent_id:
+        parent = await session.get(BriefComment, body.parent_id)
+        # A reply must belong to the same brief, and threads stay one deep so
+        # the rail never becomes a tree.
+        if not parent or parent.brief_id != brief_id or parent.parent_id:
+            raise HTTPException(status_code=404, detail=_COMMENT_NOT_FOUND)
+    comment = BriefComment(
+        brief_id=brief_id,
+        user_id=user.id,
+        parent_id=body.parent_id,
+        section_id=body.section_id,
+        quote=body.quote,
+        quote_prefix=body.quote_prefix,
+        quote_suffix=body.quote_suffix,
+        body=body.body,
+    )
+    session.add(comment)
+    await session.commit()
+    await session.refresh(comment)
+    return await _to_comment_read(session, comment, user)
+
+
+@router.patch(
+    "/briefs/{brief_id}/comments/{comment_id}",
+    response_model=BriefCommentRead,
+    tags=["brief-comments"],
+)
+async def update_brief_comment(
+    brief_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    body: BriefCommentUpdate,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Edit a comment's text (author only) or resolve it (author or brief owner)."""
+    brief, is_owner = await _get_viewable_brief(session, brief_id, user)
+    comment = await session.get(BriefComment, comment_id)
+    if not comment or comment.brief_id != brief_id:
+        raise HTTPException(status_code=404, detail=_COMMENT_NOT_FOUND)
+    if body.body is not None:
+        # Only the person who wrote it may change what it says.
+        if comment.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Not your comment")
+        comment.body = body.body
+    if body.resolved is not None:
+        # Resolving is a review action: the thread's author or the brief owner.
+        if comment.user_id != user.id and not is_owner:
+            raise HTTPException(status_code=403, detail="Cannot resolve this comment")
+        comment.resolved = body.resolved
+        comment.resolved_by_id = user.id if body.resolved else None
+        comment.resolved_at = (
+            datetime.now(timezone.utc) if body.resolved else None
+        )
+    await session.commit()
+    await session.refresh(comment)
+    return await _to_comment_read(session, comment, user)
+
+
+@router.delete(
+    "/briefs/{brief_id}/comments/{comment_id}",
+    status_code=204,
+    tags=["brief-comments"],
+)
+async def delete_brief_comment(
+    brief_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Delete a comment (its author, or the brief owner clearing a thread)."""
+    brief, is_owner = await _get_viewable_brief(session, brief_id, user)
+    comment = await session.get(BriefComment, comment_id)
+    if not comment or comment.brief_id != brief_id:
+        raise HTTPException(status_code=404, detail=_COMMENT_NOT_FOUND)
+    if comment.user_id != user.id and not is_owner:
+        raise HTTPException(status_code=403, detail="Not your comment")
+    await session.delete(comment)
     await session.commit()

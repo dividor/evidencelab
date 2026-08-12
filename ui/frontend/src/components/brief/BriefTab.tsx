@@ -18,6 +18,9 @@ import {
   TemplateDraft,
 } from './BriefCentralModals';
 import { BriefDocument } from './BriefDocument';
+import { BriefComments, BriefCommentComposer } from './BriefComments';
+import { buildAnchor } from './briefCommentAnchors';
+import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
 import { BriefToc } from './BriefToc';
@@ -103,7 +106,23 @@ const BriefWorkspace: React.FC<{
   onExportWord: () => void;
   exportBusy: boolean;
   onOpenModal: (modal: 'share' | 'template' | 'regen-all') => void;
-}> = ({ brief, loggedIn, onBack, onResultClick, onExportWord, exportBusy, onOpenModal }) => {
+  comments?: UseBriefCommentsReturn | null;
+  activeThreadId?: string | null;
+  onSelectThread?: (id: string | null) => void;
+  onCommentOnSelection?: (sectionId: string, text: string) => void;
+}> = ({
+  brief,
+  loggedIn,
+  onBack,
+  onResultClick,
+  onExportWord,
+  exportBusy,
+  onOpenModal,
+  comments,
+  activeThreadId = null,
+  onSelectThread = () => {},
+  onCommentOnSelection,
+}) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
   // saved-briefs history rail and the inline Contents panel.
@@ -153,7 +172,16 @@ const BriefWorkspace: React.FC<{
           onSaveTemplate={loggedIn ? () => onOpenModal('template') : undefined}
           onRegenerateAll={() => onOpenModal('regen-all')}
           showToc={!loggedIn}
+          onCommentOnSelection={comments ? onCommentOnSelection : undefined}
         />
+        {comments && (
+          <BriefComments
+            comments={comments}
+            canResolve={brief.canEdit}
+            activeThreadId={activeThreadId}
+            onSelectThread={onSelectThread}
+          />
+        )}
       </div>
     </>
   );
@@ -203,6 +231,35 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     semanticModelConfig,
   });
   const [exportBusy, setExportBusy] = useState(false);
+  // Comments on the open brief, plus the selection awaiting a comment body.
+  const comments = useBriefComments(brief.currentBriefId, loggedIn);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [pendingComment, setPendingComment] = useState<{
+    sectionId: string;
+    quote: string;
+    prefix: string;
+    suffix: string;
+  } | null>(null);
+
+  const handleCommentOnSelection = useCallback(
+    (sectionId: string, text: string) => {
+      const section = brief.sections.find((s) => s.id === sectionId);
+      const content = section?.content || '';
+      const at = content.indexOf(text);
+      const anchor =
+        at >= 0
+          ? buildAnchor(content, at, at + text.length)
+          : { quote: text, quotePrefix: '', quoteSuffix: '' };
+      setPendingComment({
+        sectionId,
+        quote: anchor.quote,
+        prefix: anchor.quotePrefix,
+        suffix: anchor.quoteSuffix,
+      });
+    },
+    [brief.sections],
+  );
+
   const [workspaceModal, setWorkspaceModal] = useState<
     'share' | 'template' | 'regen-all' | null
   >(null);
@@ -344,6 +401,26 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           onExportWord={handleExportWord}
           exportBusy={exportBusy}
           onOpenModal={setWorkspaceModal}
+          comments={loggedIn && brief.currentBriefId ? comments : null}
+          activeThreadId={activeThreadId}
+          onSelectThread={setActiveThreadId}
+          onCommentOnSelection={handleCommentOnSelection}
+        />
+      )}
+      {pendingComment && (
+        <BriefCommentComposer
+          quote={pendingComment.quote}
+          onCancel={() => setPendingComment(null)}
+          onSubmit={(body) => {
+            void comments.add({
+              body,
+              sectionId: pendingComment.sectionId,
+              quote: pendingComment.quote,
+              quotePrefix: pendingComment.prefix,
+              quoteSuffix: pendingComment.suffix,
+            });
+            setPendingComment(null);
+          }}
         />
       )}
       <BriefHistoryModal brief={brief} />

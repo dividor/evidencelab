@@ -343,6 +343,66 @@ class Brief(Base):
     )
 
 
+class BriefComment(Base):
+    """A comment on a brief, optionally anchored to a quoted passage.
+
+    Threads are one level deep: a reply carries ``parent_id`` pointing at the
+    comment that opened the thread. Anchors store the quoted text (plus a
+    little surrounding context) rather than character offsets, so a comment
+    survives the section being re-researched and re-flowed.
+    """
+
+    __tablename__ = "brief_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    brief_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Replies point at the comment that started the thread (one level deep).
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brief_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    # Which section the anchor lives in; null for a whole-brief comment.
+    section_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The highlighted text, with a little context either side so it can be
+    # re-located after the surrounding prose changes.
+    quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quote_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quote_suffix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
 class BriefShare(Base):
     """Viewer-only grant on a brief for a user or a group."""
 

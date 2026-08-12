@@ -278,9 +278,13 @@
 }
 .brief-builder {
   display: grid;
-  grid-template-columns: 308px 1fr;
+  grid-template-columns: 308px minmax(0, 1fr);
   gap: 28px;
   align-items: start;
+}
+/* With the comment rail open the document keeps the middle column. */
+.brief-builder:has(.brief-comments-rail) {
+  grid-template-columns: 308px minmax(0, 1fr) 320px;
 }
 
 /* ---------- outline rail ---------- */
@@ -2321,6 +2325,17 @@
 
 /* ---------- responsive (matches App.css breakpoints) ---------- */
 @media (max-width: 1024px) {
+  /* Comment rail stacks under the document rather than squeezing it. */
+  .brief-builder:has(.brief-comments-rail) {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-comments-rail {
+    position: static;
+    max-height: none;
+    padding-left: 0;
+  }
+
   .brief-builder {
     grid-template-columns: 1fr;
   }
@@ -2590,4 +2605,177 @@
 .bc-share-suggestion-sub {
   font-size: 11.5px;
   color: var(--brand-text-tertiary);
+}
+
+/* ---------- comments ---------- */
+/* The rail sits to the right of the document; on narrow screens it drops
+   below it (see the responsive block at the end of this file). */
+.brief-comments-rail {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 4px;
+}
+.brief-comments-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.brief-comments-title {
+  font-family: var(--font-heading);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-primary);
+}
+.brief-comments-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  cursor: pointer;
+}
+.brief-comments-empty {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--brand-text-tertiary);
+}
+.brief-comment-thread {
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.brief-comment-thread-active {
+  border-color: var(--brand-primary);
+  background: rgba(91, 143, 168, 0.06);
+}
+.brief-comment-resolved {
+  opacity: 0.62;
+}
+.brief-comment-quote {
+  font-size: 12.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--brand-text-secondary);
+  border-left: 2px solid var(--brand-border);
+  padding-left: 9px;
+  margin-bottom: 10px;
+}
+.brief-comment + .brief-comment,
+.brief-comment-reply {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--brand-border-light);
+}
+.brief-comment-reply {
+  padding-left: 12px;
+}
+.brief-comment-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+.brief-comment-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.brief-comment-author {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.brief-comment-when {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--brand-text-tertiary);
+}
+.brief-comment-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--brand-text-primary);
+  white-space: pre-wrap;
+}
+.brief-comment-input {
+  width: 100%;
+  border: 1px solid var(--brand-border);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--brand-text-primary);
+  resize: vertical;
+  outline: none;
+}
+.brief-comment-input:focus {
+  border-color: var(--brand-primary);
+}
+.brief-comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.brief-comment-btn,
+.brief-comment-btn-primary {
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.brief-comment-btn {
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text-secondary);
+}
+.brief-comment-btn:hover {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary-dark);
+}
+.brief-comment-btn-danger:hover {
+  border-color: var(--brand-error);
+  color: var(--brand-error);
+}
+.brief-comment-btn-primary {
+  background: var(--color-button-primary, var(--brand-primary));
+  border: none;
+  color: #fff;
+}
+.brief-comment-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.brief-comment-foot {
+  margin-top: 10px;
+}
+.brief-comment-modal .brief-comment-quote {
+  margin-bottom: 12px;
+}
+/* A passage that carries a comment is tinted in the document. */
+.brief-comment-mark {
+  background: rgba(245, 197, 66, 0.28);
+  border-bottom: 1px solid rgba(191, 148, 30, 0.6);
+  cursor: pointer;
+}
+.brief-comment-mark-active {
+  background: rgba(245, 197, 66, 0.55);
 }
