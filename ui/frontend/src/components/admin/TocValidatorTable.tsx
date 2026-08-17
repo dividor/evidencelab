@@ -9,6 +9,7 @@ interface TocValidatorTableProps {
   results: Map<string, TocValidationResult>;
   changedIds: Set<string>;
   selectedIds: Set<string>;
+  approvedIds: Set<string>;
   onToggle: (docId: string) => void;
   onTogglePage: () => void;
   allOnPageSelected: boolean;
@@ -95,6 +96,7 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
   results,
   changedIds,
   selectedIds,
+  approvedIds,
   onToggle,
   onTogglePage,
   allOnPageSelected,
@@ -153,9 +155,11 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
         {documents.map((doc) => {
           const key = docKey(doc);
           const status = doc.status || doc.sys_status || 'downloaded';
+          const approved = approvedIds.has(key);
           const rowClass = [
             selectedIds.has(key) ? 'admin-row-selected' : '',
             changedIds.has(key) ? 'toc-validator-row-changed' : '',
+            approved ? 'toc-validator-row-approved' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -183,6 +187,7 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
               <TocValidationResultCell
                 result={results.get(key)}
                 changed={changedIds.has(key)}
+                approved={approved}
               />
               <DocumentLinksCell
                 doc={doc}

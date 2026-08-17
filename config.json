@@ -24,7 +24,16 @@
       "highlight_threshold": 0.6,
       "page_size": 50,
       "rerank_model": "jinaai/jina-reranker-v2-base-multilingual",
-      "default_dense_model": "e5_large"
+      "default_dense_model": "e5_large",
+      "default_included_section_types": [
+        "executive_summary",
+        "context",
+        "methodology",
+        "findings",
+        "conclusions",
+        "recommendations",
+        "other"
+      ]
     }
   },
   "supported_embedding_models": {

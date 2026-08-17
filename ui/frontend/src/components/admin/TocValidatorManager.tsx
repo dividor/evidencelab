@@ -4,7 +4,7 @@ import API_BASE_URL from '../../config';
 import { MetadataModal } from '../documents/MetadataModal';
 import TocModal from '../TocModal';
 import TocValidatorTable from './TocValidatorTable';
-import { docKey, useTocValidator } from './useTocValidator';
+import { docApproved, docKey, useTocValidator } from './useTocValidator';
 
 interface TocValidatorManagerProps {
   dataSource?: string;
@@ -16,6 +16,7 @@ interface TocModalState {
   docId: string;
   toc: string;
   loading: boolean;
+  approved: boolean;
 }
 
 const EMPTY_TOC_STATE: TocModalState = {
@@ -23,6 +24,7 @@ const EMPTY_TOC_STATE: TocModalState = {
   docId: '',
   toc: '',
   loading: false,
+  approved: false,
 };
 
 /**
@@ -48,7 +50,8 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
     async (doc: any) => {
       const docId = docKey(doc);
       const seeded = doc.toc_classified || doc.sys_toc_classified || doc.toc || '';
-      setTocState({ open: true, docId, toc: seeded, loading: true });
+      const approved = docApproved(doc);
+      setTocState({ open: true, docId, toc: seeded, loading: true, approved });
       try {
         const response = await axios.get<any>(`${API_BASE_URL}/document/${docId}`, {
           params: { data_source: dataSource || undefined },
@@ -59,6 +62,7 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
           docId,
           toc: data.toc_classified || data.sys_toc_classified || seeded,
           loading: false,
+          approved: docApproved(data),
         });
       } catch (err) {
         setTocState((prev) => ({ ...prev, loading: false }));
@@ -74,6 +78,15 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
     (newToc: string) => {
       setTocState((prev) => ({ ...prev, toc: newToc }));
       if (tocState.docId) state.revalidate(tocState.docId);
+    },
+    [state, tocState.docId]
+  );
+
+  // The modal already persisted the approval flag; reflect it in the table.
+  const handleTocApprovedChange = useCallback(
+    (approved: boolean) => {
+      setTocState((prev) => ({ ...prev, approved }));
+      if (tocState.docId) state.setApproval(tocState.docId, approved);
     },
     [state, tocState.docId]
   );
@@ -143,6 +156,7 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
         results={resultsByDocId}
         changedIds={state.changedIds}
         selectedIds={state.selectedIds}
+        approvedIds={state.approvedIds}
         onToggle={state.toggle}
         onTogglePage={state.togglePage}
         allOnPageSelected={allOnPageSelected}
@@ -195,6 +209,8 @@ export const TocValidatorManager: React.FC<TocValidatorManagerProps> = ({
         dataSource={dataSource}
         loading={tocState.loading}
         onTocUpdated={handleTocUpdated}
+        tocApproved={tocState.approved}
+        onTocApprovedChange={handleTocApprovedChange}
       />
     </div>
   );

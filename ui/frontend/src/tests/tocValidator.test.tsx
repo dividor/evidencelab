@@ -19,8 +19,14 @@ jest.mock('../components/documents/MetadataModal', () => ({
 
 jest.mock('../components/TocModal', () => ({
   __esModule: true,
-  default: ({ isOpen, docId }: any) =>
-    isOpen ? <div data-testid="toc-modal">{docId}</div> : null,
+  default: ({ isOpen, docId, tocApproved, onTocApprovedChange }: any) =>
+    isOpen ? (
+      <div data-testid="toc-modal">
+        <span>{docId}</span>
+        <span data-testid="toc-modal-approved">{String(Boolean(tocApproved))}</span>
+        <button onClick={() => onTocApprovedChange(!tocApproved)}>toggle-approve</button>
+      </div>
+    ) : null,
 }));
 
 const mockGet = jest.fn();
@@ -55,12 +61,12 @@ const failResult: TocValidationResult = {
   validated_by: 'admin@wfp.org',
 };
 
-const renderCell = (result?: TocValidationResult, changed?: boolean) =>
+const renderCell = (result?: TocValidationResult, changed?: boolean, approved?: boolean) =>
   render(
     <table>
       <tbody>
         <tr>
-          <TocValidationResultCell result={result} changed={changed} />
+          <TocValidationResultCell result={result} changed={changed} approved={approved} />
         </tr>
       </tbody>
     </table>
@@ -94,6 +100,23 @@ describe('TocValidationResultCell', () => {
   test('shows updated badge when result changed in the last run', () => {
     renderCell(failResult, true);
     expect(screen.getByText('updated')).toBeInTheDocument();
+  });
+
+  test('shows the human-approved badge alongside the verdict when approved', () => {
+    renderCell(failResult, false, true);
+    expect(screen.getByText('Fail')).toBeInTheDocument();
+    expect(screen.getByText('Human-approved')).toBeInTheDocument();
+  });
+
+  test('shows the human-approved badge even when the document is not tested', () => {
+    renderCell(undefined, false, true);
+    expect(screen.getByText('Not tested')).toBeInTheDocument();
+    expect(screen.getByText('Human-approved')).toBeInTheDocument();
+  });
+
+  test('omits the human-approved badge when the document is not approved', () => {
+    renderCell(failResult, false, false);
+    expect(screen.queryByText('Human-approved')).not.toBeInTheDocument();
   });
 });
 
@@ -232,6 +255,46 @@ describe('TocValidatorManager', () => {
     expect(within(withoutToc).queryByText('Contents')).not.toBeInTheDocument();
     fireEvent.click(within(withToc).getByText('Contents'));
     expect(await screen.findByTestId('toc-modal')).toHaveTextContent('d1');
+  });
+
+  test('marks rows a human has approved with the approved badge', async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/toc-validator/results')) {
+        return Promise.resolve({ data: { results: {} } });
+      }
+      if (url.includes('/documents')) {
+        return Promise.resolve({
+          data: {
+            documents: [
+              { ...DOCS[0], toc_approved: true },
+              DOCS[1],
+            ],
+            total_pages: 1,
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    render(<TocValidatorManager dataSource="wfp" />);
+    const approvedRow = (await screen.findByText('Zambia Country Programme')).closest(
+      'tr'
+    ) as HTMLElement;
+    const plainRow = screen.getByText('Yemen Emergency Response').closest('tr') as HTMLElement;
+    expect(within(approvedRow).getByText('Human-approved')).toBeInTheDocument();
+    expect(within(plainRow).queryByText('Human-approved')).not.toBeInTheDocument();
+  });
+
+  test('approving from the contents modal marks the row approved live', async () => {
+    render(<TocValidatorManager dataSource="wfp" />);
+    const row = (await screen.findByText('Zambia Country Programme')).closest('tr') as HTMLElement;
+    expect(within(row).queryByText('Human-approved')).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByText('Contents'));
+    fireEvent.click(await screen.findByText('toggle-approve'));
+
+    await waitFor(() =>
+      expect(within(row).getByText('Human-approved')).toBeInTheDocument()
+    );
   });
 
   test('shows an error when the validation run fails', async () => {
