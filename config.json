@@ -27,7 +27,7 @@
       "default_dense_model": "e5_large",
       "coverage_alert": {
         "enabled": true,
-        "max_document_fraction": 0.15,
+        "max_document_fraction": 0.2,
         "min_document_floor": 3,
         "candidate_ratio": 3.0
       }

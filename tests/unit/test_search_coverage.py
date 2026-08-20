@@ -43,6 +43,17 @@ class TestIsConcentrated:
         # 50 chunks from 6 docs, 180 candidate docs: the canonical case.
         assert is_concentrated(50, 6, 180, DEFAULTS)
 
+    def test_field_case_when_eight_docs_at_page_fifty_then_triggers(self):
+        # Regression: the UI's real "targeting" search (section-type filter +
+        # min_chunk_size) returned 50 chunks from 8 documents with 167
+        # candidates and must trigger — 0.15 put the ceiling at 7.5 and let
+        # this obviously concentrated page slip through.
+        assert is_concentrated(50, 8, 167, DEFAULTS)
+
+    def test_moderate_spread_when_above_fraction_ceiling_then_not_triggered(self):
+        # 11 docs at page size 50 sits above the 0.2 ceiling (10).
+        assert not is_concentrated(50, 11, 167, DEFAULTS)
+
     def test_concentrated_page_when_small_candidate_pool_then_not_triggered(self):
         # Few docs on the page, but the corpus holds barely more: narrow query.
         assert not is_concentrated(50, 6, 10, DEFAULTS)

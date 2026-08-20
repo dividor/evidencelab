@@ -18,7 +18,7 @@ from typing import Any, Iterable
 
 from pipeline.db import get_application_config
 
-DEFAULT_MAX_DOCUMENT_FRACTION = 0.15
+DEFAULT_MAX_DOCUMENT_FRACTION = 0.2
 DEFAULT_MIN_DOCUMENT_FLOOR = 3
 DEFAULT_CANDIDATE_RATIO = 3.0
 
