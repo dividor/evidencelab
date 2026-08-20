@@ -24,6 +24,7 @@ from pipeline.db import (
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
+from ui.backend.services.search_coverage import count_candidate_documents  # noqa: E402
 from ui.backend.utils.filter_helpers import build_doc_id_filter  # noqa: E402
 from ui.backend.utils.filter_helpers import collect_range_conditions
 from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
@@ -499,6 +500,19 @@ def _merge_hybrid_results(
     return search_result
 
 
+def _record_candidate_documents(
+    coverage_stats: Optional[Dict[str, int]],
+    *point_lists: List[Any],
+) -> None:
+    """Record how many distinct documents the retrieval pool contains.
+
+    No-op when the caller did not request coverage stats.
+    """
+    if coverage_stats is None:
+        return
+    coverage_stats["candidate_documents"] = count_candidate_documents(point_lists)
+
+
 def _run_hybrid_search(
     db: Database,
     collection: str,
@@ -510,6 +524,7 @@ def _run_hybrid_search(
     payload_fields: Optional[List[str]],
     weight: float,
     limit: int,
+    coverage_stats: Optional[Dict[str, int]] = None,
 ):
     t_qdrant_start = time.time()
     dense_results = _run_dense_search(
@@ -537,6 +552,9 @@ def _run_hybrid_search(
         t_dense_end - t_qdrant_start,
         t_qdrant_end - t_dense_end,
     )
+    # Count candidate documents before the merge truncates to `limit`; the
+    # dense + sparse pools are the only place the full match breadth is known.
+    _record_candidate_documents(coverage_stats, dense_results, sparse_results)
     return _merge_hybrid_results(dense_results, sparse_results, weight, limit)
 
 
@@ -634,6 +652,7 @@ def search_chunks(
     dense_model: Optional[str] = None,
     payload_fields: Optional[List[str]] = None,
     max_rerank_candidates: int = 0,
+    coverage_stats: Optional[Dict[str, int]] = None,
 ) -> List[Any]:
     """
     Hybrid search combining semantic (dense) and keyword (sparse) vectors.
@@ -666,6 +685,10 @@ def search_chunks(
         payload_fields: Optional list of fields to include in the payload.
                         If provided, only these fields are returned.
                         If None, full payload is returned.
+        coverage_stats: Optional dict the caller can pass to receive coverage
+                        statistics; when provided, ``candidate_documents`` is
+                        set to the number of distinct documents in the
+                        pre-truncation retrieval pool.
 
 
     Returns:
@@ -698,6 +721,7 @@ def search_chunks(
             fetch_limit,
             payload_fields,
         )
+        _record_candidate_documents(coverage_stats, search_result)
     elif weight <= 0.01:
         search_result = _run_sparse_search(
             db,
@@ -707,6 +731,7 @@ def search_chunks(
             fetch_limit,
             payload_fields,
         )
+        _record_candidate_documents(coverage_stats, search_result)
     else:
         search_result = _run_hybrid_search(
             db,
@@ -719,6 +744,7 @@ def search_chunks(
             payload_fields,
             weight,
             limit,
+            coverage_stats=coverage_stats,
         )
 
     chunk_cache = None

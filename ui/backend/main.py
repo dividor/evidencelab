@@ -475,6 +475,7 @@ async def search(
     deduplicate: bool = True,
     field_boost: bool = True,
     field_boost_fields: Optional[str] = None,
+    max_chunks_per_doc: Optional[int] = None,
 ):
     search_routes.get_db_for_source = get_db_for_source
     search_routes.get_pg_for_source = get_pg_for_source
@@ -505,6 +506,7 @@ async def search(
         deduplicate=deduplicate,
         field_boost=field_boost,
         field_boost_fields=field_boost_fields,
+        max_chunks_per_doc=max_chunks_per_doc,
     )
 
 
