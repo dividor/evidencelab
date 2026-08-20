@@ -211,11 +211,25 @@ export interface AssistantConfig {
   maxIterations: number;
 }
 
+/**
+ * Server-computed relation between the returned page and the retrieval
+ * candidate pool. `concentrated` is true when the top-scoring chunks are
+ * concentrated in a handful of documents even though many more documents
+ * matched the query (typical for very broad search terms).
+ */
+export interface SearchCoverage {
+  chunks_returned: number;
+  documents_in_results: number;
+  candidate_documents: number;
+  concentrated: boolean;
+}
+
 export interface SearchResponse {
   results: SearchResult[];
   total: number;
   query: string;
   filters?: Record<string, string[]>;
+  coverage?: SearchCoverage | null;
 }
 
 export interface FacetValue {

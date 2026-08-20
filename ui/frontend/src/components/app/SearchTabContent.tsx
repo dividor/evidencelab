@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-import { Facets, FacetValue, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
+import { Facets, FacetValue, SearchCoverage, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { ResultsHeaderRow } from '../ResultsHeaderRow';
+import { CoverageNotice } from '../CoverageNotice';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
@@ -103,6 +104,12 @@ interface SearchTabContentProps {
   dataSource?: string;
   summaryModelConfig?: SummaryModelConfig | null;
   hasSearchRun?: boolean;
+  coverage: SearchCoverage | null;
+  broadenActive: boolean;
+  coverageNoticeDismissed: boolean;
+  onBroadenResults: () => void;
+  onShowAllExcerpts: () => void;
+  onDismissCoverageNotice: () => void;
   onSaveResearch?: (title: string) => void;
   saveResearchLoading?: boolean;
   saveResearchStatus?: 'idle' | 'saved' | 'error';
@@ -490,6 +497,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   dataSource,
   summaryModelConfig,
   hasSearchRun,
+  coverage,
+  broadenActive,
+  coverageNoticeDismissed,
+  onBroadenResults,
+  onShowAllExcerpts,
+  onDismissCoverageNotice,
   onSaveResearch,
   saveResearchLoading,
   saveResearchStatus,
@@ -914,6 +927,16 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
           />
+          {!isFixtureActive && results.length > 0 && (
+            <CoverageNotice
+              coverage={coverage}
+              broadenActive={broadenActive}
+              dismissed={coverageNoticeDismissed}
+              onBroaden={onBroadenResults}
+              onShowAll={onShowAllExcerpts}
+              onDismiss={onDismissCoverageNotice}
+            />
+          )}
           {showFilters && (
             <SearchResultFilters
               uniqueOrgs={uniqueOrgs}

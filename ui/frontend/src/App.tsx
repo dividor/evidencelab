@@ -19,6 +19,7 @@ import API_BASE_URL, {
 
 import {
   SearchResponse,
+  SearchCoverage,
   Facets,
   FacetValue,
   SearchFilters,
@@ -302,6 +303,11 @@ const resolveRequestHighlightHandler = (
   return handler;
 };
 
+// Per-document chunk cap applied by the coverage notice's "Show more
+// documents" action: keeps the two best excerpts per document so the page
+// draws from many more documents.
+const BROADEN_MAX_CHUNKS_PER_DOC = 2;
+
 const buildSearchParams = ({
   query,
   filters,
@@ -321,6 +327,7 @@ const buildSearchParams = ({
   deduplicateEnabled,
   fieldBoostEnabled,
   fieldBoostFields,
+  maxChunksPerDoc,
 }: {
   query: string;
   filters: SearchFilters;
@@ -340,6 +347,8 @@ const buildSearchParams = ({
   deduplicateEnabled: boolean;
   fieldBoostEnabled: boolean;
   fieldBoostFields: Record<string, number>;
+  /** Per-document chunk cap for the "broaden results" mode (null = off). */
+  maxChunksPerDoc: number | null;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -370,6 +379,9 @@ const buildSearchParams = ({
   }
   if (autoMinScore) {
     params.append('auto_min_score', 'true');
+  }
+  if (maxChunksPerDoc != null && maxChunksPerDoc > 0) {
+    params.append('max_chunks_per_doc', maxChunksPerDoc.toString());
   }
   params.append('deduplicate', deduplicateEnabled.toString());
   params.append('field_boost', fieldBoostEnabled.toString());
@@ -699,6 +711,13 @@ function App() {
   // Initialize search state from URL parameters - MOVED TO TOP
   const [query, setQuery] = useState(initialSearchState.query);
   const [results, setResults] = useState<SearchResult[]>([]);
+  // Server-computed coverage of the current results page; drives the
+  // concentrated-results notice above the results list.
+  const [coverage, setCoverage] = useState<SearchCoverage | null>(null);
+  // Per-document chunk cap ("broaden results" mode); null = regular ranking.
+  const [maxChunksPerDoc, setMaxChunksPerDoc] = useState<number | null>(null);
+  // Session-scoped dismissal of the concentrated-results notice.
+  const [coverageNoticeDismissed, setCoverageNoticeDismissed] = useState(false);
   const [searchId, setSearchId] = useState(() => generateUUID());
   const [facets, setFacets] = useState<Facets | null>(null);
   const [allFacets, setAllFacets] = useState<Facets | null>(null);
@@ -1793,6 +1812,9 @@ function App() {
       recencyScaleDays,
       sectionTypes,
       keywordBoostShortQueries,
+      // Drilldown retrieval feeds the AI summary, not the visible results
+      // list, so the broaden-results cap does not apply here.
+      maxChunksPerDoc: null,
       minChunkSize,
       rerankModel,
       rerankModelPageSize,
@@ -1890,6 +1912,8 @@ function App() {
           keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
           searchModel, dataSource, autoMinScore, deduplicateEnabled,
           fieldBoostEnabled, fieldBoostFields,
+          // AI-summary retrieval, not the visible results list: no cap.
+          maxChunksPerDoc: null,
         });
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
         const freshResults = searchResp.data.results.slice(0, 20);
@@ -1961,6 +1985,8 @@ function App() {
         keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
         searchModel, dataSource, autoMinScore, deduplicateEnabled,
         fieldBoostEnabled, fieldBoostFields,
+        // AI-summary retrieval, not the visible results list: no cap.
+        maxChunksPerDoc: null,
       });
       const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
       const freshResults = searchResp.data.results.slice(0, 20);
@@ -2159,6 +2185,7 @@ function App() {
         deduplicateEnabled,
         fieldBoostEnabled,
         fieldBoostFields,
+        maxChunksPerDoc,
       });
 
       const searchStartTime = performance.now();
@@ -2174,6 +2201,7 @@ function App() {
       console.log(`[Perf] Results count: ${data.results.length}`);
       searchDurationMsRef.current = Math.round(searchEndTime - searchStartTime);
       setResults(data.results);
+      setCoverage(data.coverage ?? null);
       // Initialize all headings as collapsed by default
       setCollapsedHeadings(new Set(data.results.map((_, index) => index)));
 
@@ -2220,9 +2248,34 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    maxChunksPerDoc,
     logSearch,
     searchId,
   ]);
+
+  // Re-run the current search when the "broaden results" mode toggles, so
+  // the per-document cap takes effect immediately. A ref guards against
+  // firing on unrelated performSearch identity changes.
+  const prevMaxChunksPerDocRef = React.useRef(maxChunksPerDoc);
+  useEffect(() => {
+    if (prevMaxChunksPerDocRef.current === maxChunksPerDoc) return;
+    prevMaxChunksPerDocRef.current = maxChunksPerDoc;
+    if (hasSearchRun && query.trim()) {
+      performSearch();
+    }
+  }, [maxChunksPerDoc, hasSearchRun, query, performSearch]);
+
+  const handleBroadenResults = useCallback(() => {
+    setMaxChunksPerDoc(BROADEN_MAX_CHUNKS_PER_DOC);
+  }, []);
+
+  const handleShowAllExcerpts = useCallback(() => {
+    setMaxChunksPerDoc(null);
+  }, []);
+
+  const handleDismissCoverageNotice = useCallback(() => {
+    setCoverageNoticeDismissed(true);
+  }, []);
 
   // Track if we've done initial search to avoid double-searching on load
   const hasSearchedRef = React.useRef(false);
@@ -2816,6 +2869,12 @@ function App() {
       dataSource={dataSource}
       summaryModelConfig={summaryModelConfig}
       hasSearchRun={hasSearchRun}
+      coverage={coverage}
+      broadenActive={maxChunksPerDoc != null}
+      coverageNoticeDismissed={coverageNoticeDismissed}
+      onBroadenResults={handleBroadenResults}
+      onShowAllExcerpts={handleShowAllExcerpts}
+      onDismissCoverageNotice={handleDismissCoverageNotice}
       onSaveResearch={handleSaveResearch}
       saveResearchLoading={saveResearchLoading}
       saveResearchStatus={saveResearchStatus}
