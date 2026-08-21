@@ -11,14 +11,29 @@ export function plural(count: number, noun: string): string {
 }
 
 /**
- * How many more documents matched the query beyond those on the page,
- * rounded to the nearest ten once large enough that exact figures would
- * suggest false precision (the candidate pool is a sample, not a census).
+ * Round document counts to the nearest ten once large enough that exact
+ * figures would suggest false precision (the candidate pool is a sample,
+ * not a census).
  */
+function approximateCount(count: number): number {
+  return count >= 20 ? Math.round(count / 10) * 10 : count;
+}
+
+/** How many more documents matched the query beyond those on the page. */
 export function approximateExtraDocuments(coverage: SearchCoverage): number {
-  const extra = Math.max(
-    coverage.candidate_documents - coverage.documents_in_results,
-    0,
+  return approximateCount(
+    Math.max(coverage.candidate_documents - coverage.documents_in_results, 0),
   );
-  return extra >= 20 ? Math.round(extra / 10) * 10 : extra;
+}
+
+/**
+ * Approximate total of matching documents, for the broadened-state copy
+ * ("36 of about 170 matching documents"). Never less than the number of
+ * documents actually on the page.
+ */
+export function approximateMatchingDocuments(coverage: SearchCoverage): number {
+  return Math.max(
+    approximateCount(coverage.candidate_documents),
+    coverage.documents_in_results,
+  );
 }

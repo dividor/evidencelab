@@ -82,8 +82,10 @@ describe('CoverageNotice', () => {
       coverage: distributed,
       onShowTopDocuments,
     });
+    // 184 candidates rounded to 180: the 32 shown are framed as a slice of
+    // the matching field, so the alert's count and this state stay coherent.
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Showing the top excerpts from 32 documents',
+      'Showing the top excerpts from 32 of about 180 matching documents',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show only top documents' }));
     expect(onShowTopDocuments).toHaveBeenCalledTimes(1);
@@ -94,6 +96,23 @@ describe('CoverageNotice', () => {
   it('shows the confirmation strip even after dismissal (user-initiated mode)', () => {
     renderNotice({ broadenActive: true, dismissed: true, coverage: distributed });
     expect(screen.getByRole('status')).toHaveTextContent('Showing the top excerpts');
+  });
+
+  it('never reports fewer matching documents than are on the page', () => {
+    // Rounding 22 candidates down to 20 would contradict a page showing 21
+    // documents; the total is clamped to the page count.
+    renderNotice({
+      broadenActive: true,
+      coverage: {
+        chunks_returned: 42,
+        documents_in_results: 21,
+        candidate_documents: 22,
+        concentrated: false,
+      },
+    });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'from 21 of about 21 matching documents',
+    );
   });
 
   it('uses singular grammar for a single dominating document', () => {

@@ -1,6 +1,10 @@
 import React from 'react';
 import type { SearchCoverage } from '../types/api';
-import { approximateExtraDocuments, plural } from '../utils/resultsCoverage';
+import {
+  approximateExtraDocuments,
+  approximateMatchingDocuments,
+  plural,
+} from '../utils/resultsCoverage';
 
 interface CoverageNoticeProps {
   /** Server-computed coverage for the current results page (null until a
@@ -41,11 +45,17 @@ export const CoverageNotice: React.FC<CoverageNoticeProps> = ({
   if (!coverage) return null;
 
   if (broadenActive) {
+    // Tie the page back to the alert's count: the N documents shown are the
+    // strongest slice of the ~M that matched, not an exhaustive listing.
     return (
       <div className="coverage-notice" role="status" aria-live="polite">
         <span className="coverage-notice-text">
           Showing the top excerpts from{' '}
-          <strong>{plural(coverage.documents_in_results, 'document')}</strong>.
+          <strong>{coverage.documents_in_results}</strong> of about{' '}
+          <strong>
+            {plural(approximateMatchingDocuments(coverage), 'matching document')}
+          </strong>
+          .
         </span>
         <button
           type="button"
