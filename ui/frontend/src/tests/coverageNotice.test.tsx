@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { CoverageNotice } from '../components/CoverageNotice';
-import { approximateExtraDocuments } from '../utils/resultsCoverage';
+import { approximateMatchingDocuments } from '../utils/resultsCoverage';
 import type { SearchCoverage } from '../types/api';
 
 const concentrated: SearchCoverage = {
@@ -40,9 +40,12 @@ describe('CoverageNotice', () => {
   it('renders the alert with document counts when results are concentrated', () => {
     renderNotice();
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Only 6 documents contain the top-matching excerpts');
-    // 184 - 6 = 178, rounded to the nearest ten to avoid false precision.
-    expect(status).toHaveTextContent('about 180 more matched with lower relevance');
+    // 184 candidates rounded to 180 — the SAME total the broadened state
+    // quotes, so the two states can never contradict each other.
+    expect(status).toHaveTextContent(
+      'Only 6 of about 180 matching documents contain the top-matching excerpts',
+    );
+    expect(status).toHaveTextContent('the rest matched with lower relevance');
     expect(screen.getByRole('button', { name: 'Show more documents' })).toBeInTheDocument();
   });
 
@@ -120,26 +123,41 @@ describe('CoverageNotice', () => {
       coverage: { ...concentrated, documents_in_results: 1, candidate_documents: 12 },
     });
     expect(screen.getByRole('status')).toHaveTextContent(
-      'Only 1 document contains the top-matching excerpts',
+      'Only 1 of about 12 matching documents contains the top-matching excerpts',
     );
-    expect(screen.getByRole('status')).toHaveTextContent('about 11 more');
+  });
+
+  it('quotes the same matching total in the alert and the broadened state', () => {
+    // The consistency guarantee: both states derive their figure from the
+    // same helper, so a user toggling between them sees one number.
+    renderNotice();
+    const alertText = screen.getByRole('status').textContent ?? '';
+    renderNotice({ broadenActive: true, coverage: distributed });
+    const broadenedText = screen.getAllByRole('status').pop()?.textContent ?? '';
+    const total = String(approximateMatchingDocuments(concentrated));
+    expect(alertText).toContain(`about ${total} matching documents`);
+    expect(broadenedText).toContain(`about ${total} matching documents`);
   });
 });
 
-describe('approximateExtraDocuments', () => {
-  it('keeps small differences exact', () => {
+describe('approximateMatchingDocuments', () => {
+  it('keeps small totals exact', () => {
     expect(
-      approximateExtraDocuments({ ...concentrated, candidate_documents: 18 }),
-    ).toBe(12);
+      approximateMatchingDocuments({ ...concentrated, candidate_documents: 18 }),
+    ).toBe(18);
   });
 
-  it('rounds larger differences to the nearest ten', () => {
-    expect(approximateExtraDocuments(concentrated)).toBe(180);
+  it('rounds larger totals to the nearest ten', () => {
+    expect(approximateMatchingDocuments(concentrated)).toBe(180);
   });
 
-  it('never returns a negative count', () => {
+  it('never reports fewer than the documents on the page', () => {
     expect(
-      approximateExtraDocuments({ ...concentrated, candidate_documents: 3 }),
-    ).toBe(0);
+      approximateMatchingDocuments({
+        ...concentrated,
+        documents_in_results: 21,
+        candidate_documents: 22,
+      }),
+    ).toBe(21);
   });
 });

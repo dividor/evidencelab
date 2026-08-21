@@ -19,17 +19,11 @@ function approximateCount(count: number): number {
   return count >= 20 ? Math.round(count / 10) * 10 : count;
 }
 
-/** How many more documents matched the query beyond those on the page. */
-export function approximateExtraDocuments(coverage: SearchCoverage): number {
-  return approximateCount(
-    Math.max(coverage.candidate_documents - coverage.documents_in_results, 0),
-  );
-}
-
 /**
- * Approximate total of matching documents, for the broadened-state copy
- * ("36 of about 170 matching documents"). Never less than the number of
- * documents actually on the page.
+ * Approximate total of matching documents. Both CoverageNotice states quote
+ * this same figure ("N of about 170 matching documents") so the numbers stay
+ * consistent across the alert and the broadened view. Never less than the
+ * number of documents actually on the page.
  */
 export function approximateMatchingDocuments(coverage: SearchCoverage): number {
   return Math.max(

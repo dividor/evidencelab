@@ -55,7 +55,7 @@ Each result card shows:
 
 Very broad search terms (e.g., "targeting") can concentrate the highest-scoring excerpts in just a handful of documents, so only a few documents appear even though many more in the corpus match the query. When the system detects this, a blue notice appears above the results:
 
-> Only **6 documents** contain the top-matching excerpts — about **180 more** matched with lower relevance. **[Show more documents]**
+> Only **8** of about **170 matching documents** contain the top-matching excerpts — the rest matched with lower relevance. **[Show more documents]**
 
 - **Show more documents** re-runs the search keeping only the best few excerpts per document, so the page draws from many more documents. While active, the notice flips to a confirmation ("Showing the top excerpts from 36 of about 170 matching documents") that frames the page as the strongest slice of everything that matched, with a **Show only top documents** button to return to the regular ranking, where the top excerpts concentrate in the few best-matching documents.
 - The **×** button dismisses the notice for the rest of your session.

@@ -1,10 +1,6 @@
 import React from 'react';
 import type { SearchCoverage } from '../types/api';
-import {
-  approximateExtraDocuments,
-  approximateMatchingDocuments,
-  plural,
-} from '../utils/resultsCoverage';
+import { approximateMatchingDocuments, plural } from '../utils/resultsCoverage';
 
 interface CoverageNoticeProps {
   /** Server-computed coverage for the current results page (null until a
@@ -70,21 +66,17 @@ export const CoverageNotice: React.FC<CoverageNoticeProps> = ({
 
   if (!coverage.concentrated || dismissed) return null;
 
-  const extraDocuments = approximateExtraDocuments(coverage);
+  // Both states quote the SAME rounded total ("N of about M matching
+  // documents") so the numbers can never appear to contradict each other.
   return (
     <div className="coverage-notice" role="status" aria-live="polite">
       <span className="coverage-notice-text">
-        Only <strong>{plural(coverage.documents_in_results, 'document')}</strong>{' '}
+        Only <strong>{coverage.documents_in_results}</strong> of about{' '}
+        <strong>
+          {plural(approximateMatchingDocuments(coverage), 'matching document')}
+        </strong>{' '}
         {coverage.documents_in_results === 1 ? 'contains' : 'contain'} the
-        top-matching excerpts
-        {extraDocuments > 0 && (
-          <>
-            {' '}
-            — about <strong>{extraDocuments} more</strong> matched with lower
-            relevance
-          </>
-        )}
-        .
+        top-matching excerpts — the rest matched with lower relevance.
       </span>
       <button type="button" className="coverage-notice-action" onClick={onBroaden}>
         Show more documents
