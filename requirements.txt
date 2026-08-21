@@ -46,7 +46,7 @@ langdetect==1.0.9
 deep-translator==1.11.4
 
 # NLP and summarization
-nltk==3.9.2
+nltk==3.10.3
 numpy
 transformers==4.57.1
 huggingface-hub>=0.20.0
