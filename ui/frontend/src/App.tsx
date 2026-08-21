@@ -2269,7 +2269,7 @@ function App() {
     setMaxChunksPerDoc(BROADEN_MAX_CHUNKS_PER_DOC);
   }, []);
 
-  const handleShowAllExcerpts = useCallback(() => {
+  const handleShowTopDocuments = useCallback(() => {
     setMaxChunksPerDoc(null);
   }, []);
 
@@ -2873,7 +2873,7 @@ function App() {
       broadenActive={maxChunksPerDoc != null}
       coverageNoticeDismissed={coverageNoticeDismissed}
       onBroadenResults={handleBroadenResults}
-      onShowAllExcerpts={handleShowAllExcerpts}
+      onShowTopDocuments={handleShowTopDocuments}
       onDismissCoverageNotice={handleDismissCoverageNotice}
       onSaveResearch={handleSaveResearch}
       saveResearchLoading={saveResearchLoading}

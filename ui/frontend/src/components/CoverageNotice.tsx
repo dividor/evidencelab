@@ -12,8 +12,9 @@ interface CoverageNoticeProps {
   dismissed: boolean;
   /** Re-run the search with a per-document cap so more documents appear. */
   onBroaden: () => void;
-  /** Leave broaden mode and show the uncapped ranking again. */
-  onShowAll: () => void;
+  /** Leave broaden mode: back to the uncapped ranking, where the top
+   *  excerpts concentrate in the few best-matching documents. */
+  onShowTopDocuments: () => void;
   /** Hide the alert for the rest of the session. */
   onDismiss: () => void;
 }
@@ -34,7 +35,7 @@ export const CoverageNotice: React.FC<CoverageNoticeProps> = ({
   broadenActive,
   dismissed,
   onBroaden,
-  onShowAll,
+  onShowTopDocuments,
   onDismiss,
 }) => {
   if (!coverage) return null;
@@ -46,8 +47,12 @@ export const CoverageNotice: React.FC<CoverageNoticeProps> = ({
           Showing the top excerpts from{' '}
           <strong>{plural(coverage.documents_in_results, 'document')}</strong>.
         </span>
-        <button type="button" className="coverage-notice-action" onClick={onShowAll}>
-          Show all excerpts
+        <button
+          type="button"
+          className="coverage-notice-action"
+          onClick={onShowTopDocuments}
+        >
+          Show only top documents
         </button>
       </div>
     );

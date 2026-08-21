@@ -57,7 +57,7 @@ Very broad search terms (e.g., "targeting") can concentrate the highest-scoring 
 
 > Only **6 documents** contain the top-matching excerpts — about **180 more** matched with lower relevance. **[Show more documents]**
 
-- **Show more documents** re-runs the search keeping only the best few excerpts per document, so the page draws from many more documents. While active, the notice flips to a confirmation ("Showing the top excerpts from N documents") with a **Show all excerpts** button to return to the regular ranking.
+- **Show more documents** re-runs the search keeping only the best few excerpts per document, so the page draws from many more documents. While active, the notice flips to a confirmation ("Showing the top excerpts from N documents") with a **Show only top documents** button to return to the regular ranking, where the top excerpts concentrate in the few best-matching documents.
 - The **×** button dismisses the notice for the rest of your session.
 - The notice only appears when both conditions hold: the current page is dominated by a few documents, *and* the search found substantially more matching documents than are shown. Genuinely narrow queries (few matching documents corpus-wide) never trigger it.
 

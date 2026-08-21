@@ -107,7 +107,7 @@ interface SearchTabContentProps {
   broadenActive: boolean;
   coverageNoticeDismissed: boolean;
   onBroadenResults: () => void;
-  onShowAllExcerpts: () => void;
+  onShowTopDocuments: () => void;
   onDismissCoverageNotice: () => void;
   onSaveResearch?: (title: string) => void;
   saveResearchLoading?: boolean;
@@ -485,7 +485,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   broadenActive,
   coverageNoticeDismissed,
   onBroadenResults,
-  onShowAllExcerpts,
+  onShowTopDocuments,
   onDismissCoverageNotice,
   onSaveResearch,
   saveResearchLoading,
@@ -904,7 +904,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               broadenActive={broadenActive}
               dismissed={coverageNoticeDismissed}
               onBroaden={onBroadenResults}
-              onShowAll={onShowAllExcerpts}
+              onShowTopDocuments={onShowTopDocuments}
               onDismiss={onDismissCoverageNotice}
             />
           )}

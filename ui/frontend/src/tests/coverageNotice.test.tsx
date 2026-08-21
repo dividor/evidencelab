@@ -30,7 +30,7 @@ const renderNotice = (
       broadenActive={false}
       dismissed={false}
       onBroaden={noop}
-      onShowAll={noop}
+      onShowTopDocuments={noop}
       onDismiss={noop}
       {...overrides}
     />,
@@ -76,17 +76,17 @@ describe('CoverageNotice', () => {
   });
 
   it('shows the confirmation strip with a way back while broadened', () => {
-    const onShowAll = jest.fn();
+    const onShowTopDocuments = jest.fn();
     renderNotice({
       broadenActive: true,
       coverage: distributed,
-      onShowAll,
+      onShowTopDocuments,
     });
     expect(screen.getByRole('status')).toHaveTextContent(
       'Showing the top excerpts from 32 documents',
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Show all excerpts' }));
-    expect(onShowAll).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Show only top documents' }));
+    expect(onShowTopDocuments).toHaveBeenCalledTimes(1);
     // The alert body and dismiss control belong to the alert state only.
     expect(screen.queryByRole('button', { name: 'Dismiss this notice' })).not.toBeInTheDocument();
   });
