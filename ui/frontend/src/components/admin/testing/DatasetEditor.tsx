@@ -4,11 +4,7 @@ import * as XLSX from 'xlsx-js-style';
 import API_BASE_URL from '../../../config';
 import type { TestCase, TestDataset } from '../../../types/testing';
 import ConfirmModal from '../ConfirmModal';
-import CaseEditor, {
-  CasePayload,
-  caseToDraft,
-  emptyDraft,
-} from './CaseEditor';
+import CaseEditor, { CasePayload } from './CaseEditor';
 import { SAMPLE_DATASET_CSV } from './csv';
 
 /* ------------------------------------------------------------------ */
@@ -291,7 +287,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
         {creating && (
           <div className="testing-case-editor-wrap">
             <CaseEditor
-              initial={emptyDraft()}
+              initialCase={null}
               dataSource={dataset.data_source}
               saving={saving}
               submitLabel="Create Case"
@@ -304,7 +300,8 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
         {editingCase && (
           <div className="testing-case-editor-wrap">
             <CaseEditor
-              initial={caseToDraft(editingCase)}
+              key={editingCase.id}
+              initialCase={editingCase}
               dataSource={dataset.data_source}
               saving={saving}
               submitLabel="Save Case"

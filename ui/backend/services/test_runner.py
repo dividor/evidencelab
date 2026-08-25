@@ -133,9 +133,10 @@ async def _run_search(
     (same retrieval, result building, field-boost/dedup post-processing), so an
     experiment reproduces what a user sees in the app.
 
-    Document-level filters (``doc_titles``, ``region``) are resolved to ``doc_id``
-    filters here (via :func:`resolve_doc_level_filters`) because the harness calls
-    the chunk search directly and so bypasses the route handler's own resolvers.
+    Document-level filters (``doc_titles``, ``region``, ``language`` and the
+    data source's ``src_*`` fields) are resolved to ``doc_id`` filters here (via
+    :func:`resolve_doc_level_filters`) because the harness calls the chunk
+    search directly and so bypasses the route handler's own resolvers.
 
     Parameters default to the ``/search`` endpoint's own defaults; the
     experiment ``config`` overrides them (e.g. ``embedding_model``, ``rerank``,
@@ -154,7 +155,7 @@ async def _run_search(
     min_chunk_size = int(params.get("min_chunk_size", 0))
     filters = case_input.get("filters") or None
     if filters:
-        filters = resolve_doc_level_filters(filters, pg)
+        filters = resolve_doc_level_filters(filters, pg, source)
     raw = await _run_search_chunks(
         query,
         limit=limit,
