@@ -392,6 +392,19 @@ const resolveAiRatingScope = (
   itemId: drilldownNodeId || undefined,
 });
 
+/** Coverage notice gated on real (non-fixture) searches with results.
+ * The visibility conditionals live here rather than in the component body
+ * (keeps its cyclomatic complexity below the repo threshold). */
+const SearchCoverageNotice: React.FC<
+  React.ComponentProps<typeof CoverageNotice> & {
+    fixtureActive: boolean;
+    resultCount: number;
+  }
+> = ({ fixtureActive, resultCount, ...noticeProps }) => {
+  if (fixtureActive || resultCount === 0) return null;
+  return <CoverageNotice {...noticeProps} />;
+};
+
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   filtersExpanded,
   activeFiltersCount,
@@ -898,16 +911,17 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
           />
-          {!isFixtureActive && results.length > 0 && (
-            <CoverageNotice
-              coverage={coverage}
-              broadenActive={broadenActive}
-              dismissed={coverageNoticeDismissed}
-              onBroaden={onBroadenResults}
-              onShowTopDocuments={onShowTopDocuments}
-              onDismiss={onDismissCoverageNotice}
-            />
-          )}
+          <SearchCoverageNotice
+            fixtureActive={isFixtureActive}
+            resultCount={results.length}
+            coverage={coverage}
+            broadenActive={broadenActive}
+            dismissed={coverageNoticeDismissed}
+            onBroaden={onBroadenResults}
+            onShowTopDocuments={onShowTopDocuments}
+            onDismiss={onDismissCoverageNotice}
+          />
+
           {showFilters && (
             <SearchResultFilters
               uniqueOrgs={uniqueOrgs}
