@@ -196,6 +196,7 @@ jobs:
           df -h /
 
       - name: Log in to Docker Hub
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -370,6 +371,7 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Log in to Docker Hub
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
