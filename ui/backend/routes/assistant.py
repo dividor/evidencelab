@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.assistant_service import stream_research_response
+from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
 logger = logging.getLogger(__name__)
@@ -162,6 +163,39 @@ async def _load_conversation_history(body, user, session):
         return []
 
 
+def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> None:
+    """Record a finished assistant turn's usage onto its activity row.
+
+    Keyed by the ``activity_id`` the client sends with the request so the
+    tokens land on the same row the client logs the conversation under.
+    Brief section research passes its brief's stable id plus
+    ``usage_context='brief'`` so every section's usage accumulates onto the
+    one brief row — typed ``brief`` even when this recording creates it.
+
+    Monitoring only: scheduled as a background task, so it adds no latency
+    to — and can never fail — the stream (the done event always reaches
+    the client).
+    """
+    usage = event.get("usage")
+    if not usage or not body.activity_id:
+        return
+    if body.usage_context == "brief":
+        activity_type = "brief"
+    elif body.deep_research:
+        activity_type = "assistant-deep-research"
+    else:
+        activity_type = "assistant-basic"
+    schedule_llm_usage_recording(
+        usage=usage,
+        activity_type=activity_type,
+        query=body.query,
+        # getattr: direct handler calls (tests) receive the Depends sentinel.
+        user_id=getattr(user, "id", None),
+        session_id=body.session_id,
+        search_id=body.activity_id,
+    )
+
+
 async def _stream_with_heartbeat(ait):
     """Yield events from *ait*, inserting SSE heartbeat comments on idle."""
     task = None
@@ -242,7 +276,9 @@ async def stream_assistant_chat(
                     last_synthesis = event.get("token", "")
                 elif etype == "sources":
                     last_sources = event.get("sources")
-                elif _should_persist(event, user, session):
+                if etype == "done":
+                    _record_assistant_usage(event, body, user)
+                if _should_persist(event, user, session):
                     logger.info(
                         "[deepres] done event: deep=%s synthesis_len=%d sources_count=%d",
                         body.deep_research,

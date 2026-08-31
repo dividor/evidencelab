@@ -1,13 +1,15 @@
 import asyncio
 import json
 import re
+import uuid
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from qdrant_client.http import models as qmodels
 
 from pipeline.utilities.text_cleaning import clean_text
+from ui.backend.auth.optional_user import resolve_optional_user as _resolve_user_dep
 from ui.backend.schemas import (
     HighlightBox,
     HighlightMatch,
@@ -31,6 +33,40 @@ from ui.backend.utils.highlight_helpers import (
 
 router = APIRouter()
 _highlight_cache: Dict[Any, Any] = {}
+
+
+def _record_highlight_usage(
+    usage: Dict[str, Any], request: UnifiedHighlightRequest, user: Any
+) -> None:
+    """Accumulate semantic-highlight LLM usage onto a per-search activity row.
+
+    Highlight calls fire once per viewed document, so instead of one row per
+    call the usage accumulates onto a single ``highlight`` row derived from
+    the originating search's id. Without a search context each call records
+    its own row (the usage is never dropped).
+
+    Monitoring only: scheduled as a background task, so it adds no latency
+    to — and can never fail — the highlight response.
+    """
+    try:
+        from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+
+        search_id = None
+        if request.search_id:
+            # Deterministic sibling id of the search row, so all highlight
+            # calls for one search share one 'highlight' activity row.
+            search_id = uuid.uuid5(uuid.NAMESPACE_URL, f"highlight:{request.search_id}")
+        schedule_llm_usage_recording(
+            usage=usage,
+            activity_type="highlight",
+            query=request.query,
+            # getattr: direct handler calls (tests) receive the Depends sentinel.
+            user_id=getattr(user, "id", None),
+            session_id=request.session_id,
+            search_id=search_id,
+        )
+    except Exception:
+        logger.warning("Failed to record highlight usage", exc_info=True)
 
 
 def _bbox_gaps(bboxes: List[tuple]) -> List[float]:
@@ -484,7 +520,7 @@ async def _get_semantic_llm_output(
         logger.info("Using cached LLM output for semantic highlighting")
         return cache[cache_key]
 
-    llm_output = await get_semantic_llm_output(query, clean_text, request)
+    llm_output, _usage = await get_semantic_llm_output(query, clean_text, request)
     cache[cache_key] = llm_output
     return llm_output
 
@@ -516,7 +552,9 @@ async def _find_semantic_matches(
 
 
 @router.post("/highlight", response_model=UnifiedHighlightResponse)
-async def highlight_text(request: UnifiedHighlightRequest):
+async def highlight_text(
+    request: UnifiedHighlightRequest, user=Depends(_resolve_user_dep)
+):
     """
     Unified highlighting endpoint that supports keyword and/or semantic highlighting.
 
@@ -571,7 +609,10 @@ async def highlight_text(request: UnifiedHighlightRequest):
         # SEMANTIC HIGHLIGHTING (LLM-based)
         if highlight_type in ["semantic", "both"]:
             try:
-                llm_output = await get_semantic_llm_output(query, clean_text, request)
+                llm_output, usage = await get_semantic_llm_output(
+                    query, clean_text, request
+                )
+                _record_highlight_usage(usage, request, user)
                 try:
                     phrases = parse_semantic_phrases(llm_output)
                     semantic_matches = await find_semantic_matches(
