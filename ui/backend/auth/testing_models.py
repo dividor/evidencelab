@@ -16,8 +16,9 @@ runtime ORM mapping only.
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -233,6 +234,13 @@ class TestResult(Base):
     assertion_results: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Combined LLM usage for this case (summary generation + judge calls);
+    # cost is summed per call from each call's own model rate.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(precision=12, scale=6), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
