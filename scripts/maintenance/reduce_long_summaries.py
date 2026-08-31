@@ -146,6 +146,20 @@ def process_doc_worker(doc_id, doc_data, data_source, wet_run):
 
     except Exception as e:
         thread_logger.error(f"Error processing {doc_id}: {e}")
+    finally:
+        # Flush this document's LLM token usage into the admin usage rollup
+        # (the summarizer only auto-flushes via process_document, which this
+        # script bypasses by calling _llm_summary directly).
+        if global_summarizer is not None:
+            from pipeline.utilities.usage_recorder import record_pipeline_usage
+
+            record_pipeline_usage(
+                global_summarizer._usage,
+                stage="summarize",
+                data_source=data_source,
+                doc_id=str(doc_id),
+                query=f"summarize (reduce): {doc_data.get('map_title', doc_id)}",
+            )
 
 
 def fix_long_summaries(

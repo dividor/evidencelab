@@ -383,7 +383,9 @@ def _init_summarizer(
     sum_config = pipeline_config.get("summarize", {}) if pipeline_config else {}
     if not sum_config.get("enabled", True):
         return
-    summarizer = SummarizeProcessor(config=sum_config)
+    summarizer = SummarizeProcessor(
+        config=sum_config, data_source=_worker_context.get("data_source")
+    )
     summarizer.setup(embedding_service=embedding_service)
     _worker_context["summarizer"] = summarizer
 
