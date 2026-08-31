@@ -26,11 +26,50 @@ _CITATION_GUIDANCE = (
 _ASSISTANT_TIMEOUT_SECONDS = 120
 
 
+def record_assistant_usage(
+    usage: Optional[Dict[str, Any]],
+    query: str,
+    data_source: Optional[str],
+    deep_research: bool,
+    activity_type: str,
+) -> None:
+    """Record an external (MCP/A2A) assistant call's token usage server-side.
+
+    These calls never touch a browser, so the backend writes the activity row
+    directly: anonymous ``user_id``, typed by protocol, with the caller's
+    auth identity (from the per-request auth context, which the HTTP server
+    sets for both the MCP and A2A branches) kept in the filters JSONB.
+
+    Monitoring only: scheduled as a background task and never raises into
+    the tool call (the answer has already been produced).
+    """
+    try:
+        from mcp_server.audit import request_auth
+        from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+
+        auth_info = request_auth.get()
+        schedule_llm_usage_recording(
+            usage=usage,
+            activity_type=activity_type,
+            query=query,
+            server_owned=True,
+            filters_extra={
+                "data_source": data_source,
+                "deep_research": deep_research,
+                "auth_type": auth_info.get("type"),
+                "auth_user_id": str(auth_info.get("user_id", "")),
+            },
+        )
+    except Exception:
+        logger.warning("Failed to record assistant usage", exc_info=True)
+
+
 async def mcp_ask_assistant(
     query: str,
     data_source: Optional[str] = None,
     deep_research: bool = False,
     model_combo: Optional[str] = None,
+    usage_activity_type: str = "mcp-assistant",
 ) -> MCPAssistantResponse:
     """Ask the AI research assistant a question about evaluation documents.
 
@@ -44,6 +83,8 @@ async def mcp_ask_assistant(
         data_source: Data collection to search (e.g. "uneg", "worldbank").
         deep_research: Enable multi-pass deep research mode for complex
             questions (slower but more thorough).
+        usage_activity_type: Activity type the call's token usage is
+            recorded under (the A2A handler passes ``a2a-assistant``).
 
     Returns:
         MCPAssistantResponse with the synthesized answer and sources.
@@ -52,9 +93,10 @@ async def mcp_ask_assistant(
 
     answer_text = ""
     sources: List[Dict[str, Any]] = []
+    usage: Optional[Dict[str, Any]] = None
 
     async def _consume_stream():
-        nonlocal answer_text, sources
+        nonlocal answer_text, sources, usage
         from pipeline.db import UI_MODEL_COMBOS, get_default_model_combo
 
         resolved = model_combo or get_default_model_combo()
@@ -79,6 +121,8 @@ async def mcp_ask_assistant(
                 answer_text += event.get("token", "")
             elif event_type == "sources":
                 sources = event.get("sources", [])
+            elif event_type == "done":
+                usage = event.get("usage")
             elif event_type == "error":
                 error_msg = event.get("error", "Unknown error")
                 raise RuntimeError(f"Assistant error: {error_msg}")
@@ -100,6 +144,9 @@ async def mcp_ask_assistant(
             )
         # Partial answer is still useful — return what we have
 
+    record_assistant_usage(
+        usage, query, data_source, deep_research, usage_activity_type
+    )
     citations, references = await _build_citations_from_sources(sources, data_source)
 
     return MCPAssistantResponse(
