@@ -1050,7 +1050,10 @@ const getTranslatedSemanticMatches = async (
       translatedText,
       queryText,
       SEMANTIC_HIGHLIGHT_THRESHOLD,
-      semanticHighlightModelConfig
+      semanticHighlightModelConfig,
+      // Heatmap highlighting is not tied to the results-tab search — detach
+      // from the search usage context so tokens record standalone.
+      null
     );
   } catch (error) {
     console.error('Heatmap translated highlight failed', error);
@@ -2600,7 +2603,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           text,
           queryText,
           SEMANTIC_HIGHLIGHT_THRESHOLD,
-          semanticHighlightModelConfig
+          semanticHighlightModelConfig,
+          // Heatmap highlighting is not tied to the results-tab search.
+          null
         );
         const rowKey = rowDimension === 'queries'
           ? `row-${activeCell.rowIndex}`

@@ -8,6 +8,7 @@
 // cross-encoder runs on CPU and is far too slow for multi-query research).
 
 import { API_KEY } from '../config';
+import { getSessionId } from '../hooks/useActivityLogging';
 import { SourceReference, SummaryModelConfig } from '../types/api';
 import { SearchSettings } from '../types/auth';
 import { streamAssistantChat } from './assistantStream';
@@ -50,6 +51,10 @@ export interface RequestOutlineOptions {
   numHeadings?: number | null;
   model?: string | null;
   sources?: BriefSourceSample[];
+  // The brief's stable activity id, so the backend records outline LLM
+  // usage server-side onto the brief's activity row (the anonymous session
+  // id is resolved internally).
+  activityId?: string | null;
   signal?: AbortSignal;
 }
 
@@ -61,6 +66,7 @@ export const requestBriefOutline = async ({
   numHeadings,
   model,
   sources,
+  activityId,
   signal,
 }: RequestOutlineOptions): Promise<BriefOutline> => {
   const response = await fetch(`${apiBaseUrl}/brief/outline`, {
@@ -74,6 +80,8 @@ export const requestBriefOutline = async ({
       instructions: instructions ?? null,
       num_headings: numHeadings ?? null,
       sources: sources ?? null,
+      activity_id: activityId ?? null,
+      session_id: getSessionId(),
     }),
     signal,
   });
@@ -111,6 +119,7 @@ export const requestBriefRevise = async ({
   instruction,
   model,
   voiceInstructions,
+  activityId,
   signal,
 }: {
   apiBaseUrl: string;
@@ -119,6 +128,8 @@ export const requestBriefRevise = async ({
   instruction: string;
   model?: string | null;
   voiceInstructions?: string | null;
+  // Usage-recording context (see RequestOutlineOptions).
+  activityId?: string | null;
   signal?: AbortSignal;
 }): Promise<string> => {
   const response = await fetch(`${apiBaseUrl}/brief/revise`, {
@@ -131,6 +142,8 @@ export const requestBriefRevise = async ({
       data_source: dataSource,
       model: model ?? null,
       voice_instructions: voiceInstructions ?? null,
+      activity_id: activityId ?? null,
+      session_id: getSessionId(),
     }),
     signal,
   });
@@ -186,6 +199,10 @@ export interface RunDeepResearchOptions {
   rerankerModel?: string | null;
   searchSettings?: Partial<SearchSettings> | null;
   publishedAfter?: string | null;
+  // The brief's stable activity id, so the backend records this research
+  // turn's token usage onto the brief's activity row (typed 'brief' via
+  // the stream's usageContext).
+  activityId?: string | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -203,6 +220,7 @@ export const runDeepResearch = async ({
   rerankerModel = null,
   searchSettings = null,
   publishedAfter = null,
+  activityId = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -218,6 +236,8 @@ export const runDeepResearch = async ({
     rerankerModel: rerankerModel ?? null,
     searchSettings: searchSettings ?? null,
     publishedAfter: publishedAfter ?? null,
+    activityId: activityId ?? null,
+    usageContext: 'brief',
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -285,6 +305,8 @@ export interface ResearchSectionOptions {
   // Rendered outline of the whole brief (see buildOutlineContext), so the
   // section stays in scope and doesn't duplicate other sections.
   outlineContext?: string | null;
+  // Usage-recording context (see RunDeepResearchOptions).
+  activityId?: string | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -498,6 +520,7 @@ export const researchBriefSection = ({
   publishedAfterIso,
   voiceInstructions,
   outlineContext,
+  activityId,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -525,6 +548,7 @@ export const researchBriefSection = ({
     // filter the backend applies to the Qdrant query (belt-and-braces with the
     // prompt instruction above).
     publishedAfter: mode === 'update' ? publishedAfterIso : null,
+    activityId,
     handlers,
     signal,
   });

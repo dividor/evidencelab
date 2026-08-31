@@ -1,11 +1,25 @@
 // Shared text highlighting and rendering utilities used by App, PDFViewer, and SearchResultCard
 import React from 'react';
 import API_BASE_URL, { API_KEY, SEARCH_SEMANTIC_HIGHLIGHTS } from '../config';
+import { getSessionId } from '../hooks/useActivityLogging';
 import { SearchResult, SummaryModelConfig } from '../types/api';
 
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : null;
+};
+
+// The current search's activity id, set by App after each search so semantic
+// highlight LLM calls can be usage-tracked server-side against that search
+// (module-level because the highlight call sits several layers below the
+// component that knows the search id). Callers highlighting OUTSIDE the
+// search results context (heatmap, brief citations) must pass
+// `searchIdOverride: null` to detach from it — their usage then records on
+// its own rows instead of the last search's.
+let highlightSearchId: string | null = null;
+
+export const setHighlightSearchContext = (searchId: string | null): void => {
+  highlightSearchId = searchId;
 };
 
 export interface TextMatch {
@@ -184,7 +198,10 @@ export const highlightTextWithAPI = async (
   query: string,
   highlightType: 'keyword' | 'semantic' | 'both' = 'both',
   threshold: number = 0.4,
-  semanticModelConfig?: SummaryModelConfig | null
+  semanticModelConfig?: SummaryModelConfig | null,
+  // undefined → attribute usage to the current search context; null → this
+  // call is not search-related (heatmap, brief) and records standalone.
+  searchIdOverride?: string | null
 ): Promise<any> => {
   if (!query.trim() || !text.trim()) return { highlighted_text: text, matches: [] };
 
@@ -203,7 +220,12 @@ export const highlightTextWithAPI = async (
         text: text,
         highlight_type: highlightType,
         semantic_threshold: threshold,
-        semantic_model_config: semanticModelConfig || undefined
+        semantic_model_config: semanticModelConfig || undefined,
+        // Usage-recording context (see setHighlightSearchContext).
+        search_id:
+          (searchIdOverride === undefined ? highlightSearchId : searchIdOverride) ||
+          undefined,
+        session_id: getSessionId()
       })
     });
 
@@ -420,7 +442,10 @@ export const findSemanticMatches = async (
   text: string,
   query: string,
   threshold: number = 0.4,
-  semanticModelConfig?: SummaryModelConfig | null
+  semanticModelConfig?: SummaryModelConfig | null,
+  // Forwarded to highlightTextWithAPI: pass null from non-search surfaces
+  // (heatmap, brief) so usage is not attributed to the last search.
+  searchIdOverride?: string | null
 ): Promise<TextMatch[]> => {
   if (!query.trim() || !text.trim()) return [];
 
@@ -430,7 +455,8 @@ export const findSemanticMatches = async (
     query,
     'semantic',
     threshold,
-    semanticModelConfig
+    semanticModelConfig,
+    searchIdOverride
   );
 
   if (!responseData || !responseData.matches || !Array.isArray(responseData.matches)) {

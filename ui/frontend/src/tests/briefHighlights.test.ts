@@ -119,6 +119,8 @@ describe('highlightSectionSources', () => {
       expect.stringContaining('cash transfers improved'),
       0.6,
       undefined,
+      // Brief highlighting detaches from the results-tab search usage context.
+      null,
     );
   });
 

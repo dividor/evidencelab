@@ -15,6 +15,16 @@ export const formatMs = (ms?: number | null): string => {
   return `${Math.round(ms)} ms`;
 };
 
+export const formatTokens = (tokens?: number | null): string => {
+  if (tokens === null || tokens === undefined) return '-';
+  return tokens.toLocaleString();
+};
+
+export const formatCostUsd = (cost?: number | null): string => {
+  if (cost === null || cost === undefined) return '-';
+  return `$${cost.toFixed(4)}`;
+};
+
 export const formatTimestamp = (ts?: string | null): string => {
   if (!ts) return '-';
   const d = new Date(ts);

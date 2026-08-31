@@ -206,9 +206,11 @@ const enrichSource = async (
       claims.map(async ({ key, prose }) => {
         if (isStale?.()) return null;
         try {
-          const matches = (await findSemanticMatches(body, prose, threshold, modelConfig)).filter(
-            (m) => m.end - m.start >= MIN_MATCH_CHARS,
-          );
+          // null: brief citation highlighting is not tied to the results-tab
+          // search — detach from the search usage context.
+          const matches = (
+            await findSemanticMatches(body, prose, threshold, modelConfig, null)
+          ).filter((m) => m.end - m.start >= MIN_MATCH_CHARS);
           if (!matches.length) return null;
           const entry = { claim: key, matches };
           // Publish immediately: the open card gains this span now rather

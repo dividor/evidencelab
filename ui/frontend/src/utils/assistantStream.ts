@@ -1,4 +1,5 @@
 import { API_KEY } from '../config';
+import { getSessionId } from '../hooks/useActivityLogging';
 import { SummaryModelConfig, SourceReference, SearchToolCall } from '../types/api';
 import { SearchSettings } from '../types/auth';
 
@@ -12,6 +13,8 @@ export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
   langsmith_trace_url?: string;
+  // Informational only: the backend records usage server-side against the
+  // activity row when the request carried an activityId.
   usage?: AssistantUsage;
 }
 
@@ -46,6 +49,13 @@ interface AssistantStreamOptions {
   // ISO date; constrains the library search to documents published on/after it
   // (Brief "Update" action). Sent inside search_settings.published_after.
   publishedAfter?: string | null;
+  // Activity row (search_id) the backend records this turn's token usage
+  // onto, server-side. Brief sections pass their brief's stable id so all
+  // section research accumulates onto one row, with usageContext 'brief' so
+  // a newly created row is typed 'brief'. The anonymous session id is
+  // resolved internally.
+  activityId?: string | null;
+  usageContext?: 'brief' | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -221,6 +231,8 @@ export const streamAssistantChat = async ({
   deepResearch,
   conversationHistory,
   publishedAfter,
+  activityId,
+  usageContext,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -243,6 +255,9 @@ export const streamAssistantChat = async ({
       search_settings: searchSettingsBody,
       deep_research: deepResearch || undefined,
       conversation_history: conversationHistory?.length ? conversationHistory : undefined,
+      activity_id: activityId || undefined,
+      session_id: getSessionId(),
+      usage_context: usageContext || undefined,
     }),
     signal,
   });
