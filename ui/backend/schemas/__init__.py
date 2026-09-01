@@ -43,12 +43,27 @@ class ModelConfig(BaseModel):
     is_default: bool
 
 
+class SearchCoverage(BaseModel):
+    """How the returned page relates to the retrieval candidate pool.
+
+    Lets the frontend alert users when the top-scoring chunks are
+    concentrated in a handful of documents even though many more documents
+    matched the query (typical for very broad search terms).
+    """
+
+    chunks_returned: int
+    documents_in_results: int
+    candidate_documents: int
+    concentrated: bool
+
+
 class SearchResponse(BaseModel):
     results: List[SearchResult]
     total: int
     query: str
     filters: Optional[Dict[str, List[str]]] = None
     facets: Optional[Any] = None
+    coverage: Optional[SearchCoverage] = None
 
 
 class FacetValue(BaseModel):

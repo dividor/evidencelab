@@ -809,7 +809,6 @@ h6,
   color: var(--brand-primary);
 }
 
-
 /* Results page: normal top search box */
 .search-container.search-container-results .search-input {
   font-size: 1.0625rem;
@@ -3957,7 +3956,6 @@ h6,
   font-size: 0.95em;
 }
 
-
 .ai-summary-expand-button {
   background: none;
   border: none;
@@ -5095,6 +5093,53 @@ li.ai-fact-active::before {
 }
 .search-results-heading-row .search-results-heading {
   margin: 0;
+}
+
+/* Contextual concentrated-results notice above the results list. Background
+   tint only (project rule: no side accent bars on highlighted items). */
+.coverage-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  margin: 0.25rem 0 0.75rem 0;
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+}
+
+.coverage-notice-text {
+  flex: 1 1 auto;
+  min-width: 12rem;
+}
+
+.coverage-notice-action {
+  background: #ffffff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.coverage-notice-action:hover {
+  background: #dbeafe;
+}
+
+.coverage-notice-dismiss {
+  background: none;
+  border: none;
+  color: #1e40af;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0 0.25rem;
 }
 .search-results-export {
   display: inline-flex;
@@ -6371,7 +6416,6 @@ li.ai-fact-active::before {
   }
 }
 
-
 .highlight-indicator {
   position: absolute;
   pointer-events: none;
@@ -7381,7 +7425,6 @@ li.ai-fact-active::before {
   width: 900px !important;
   max-width: 95vw !important;
 }
-
 
 .queue-sections {
   display: flex;
@@ -8602,73 +8645,6 @@ li.ai-fact-active::before {
   font-style: italic;
   color: var(--gray-400);
   white-space: nowrap;
-}
-
-/* Info affordance explaining what the org result counts mean.
-   Shares the dark-bubble tooltip look used elsewhere in the app. */
-.result-info {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.result-info-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--gray-400);
-  cursor: help;
-  transition: color 0.15s ease;
-}
-
-.result-info-icon:hover,
-.result-info-icon:focus-visible {
-  color: var(--primary-blue);
-}
-
-.result-info-tooltip {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 50%;
-  transform: translateX(-50%) translateY(-4px);
-  width: max-content;
-  max-width: 280px;
-  padding: 0.625rem 0.875rem;
-  background: var(--gray-900);
-  color: var(--white);
-  border-radius: var(--radius-md);
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  font-weight: 400;
-  line-height: 1.45;
-  text-align: left;
-  white-space: normal;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
-  z-index: 1000;
-}
-
-.result-info-tooltip::after {
-  content: '';
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-bottom-color: var(--gray-900);
-}
-
-.result-info:hover .result-info-tooltip,
-.result-info:focus-within .result-info-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translateX(-50%) translateY(0);
 }
 
 .search-result-filters-org-label {

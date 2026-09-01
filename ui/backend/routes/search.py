@@ -14,13 +14,23 @@ from pipeline.db import (
 )
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
-from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
+from ui.backend.schemas import (
+    Facets,
+    FacetValue,
+    SearchCoverage,
+    SearchResponse,
+    SearchResult,
+)
 from ui.backend.services.search import (
     get_search_facets,
     scroll_filtered_chunks,
     search_chunks,
     search_facet_values,
     search_titles,
+)
+from ui.backend.services.search_coverage import (
+    is_concentrated,
+    load_coverage_thresholds,
 )
 from ui.backend.services.search_models import apply_field_boost
 from ui.backend.utils.app_limits import get_rate_limits, limiter
@@ -48,6 +58,15 @@ RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "2"))
 search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
+
+# Trigger rule for the concentrated-results coverage alert, loaded once at
+# startup like the rest of the search configuration.
+COVERAGE_THRESHOLDS = load_coverage_thresholds()
+
+# When a per-document cap is active the page must be filled from a deeper
+# retrieval pool, since capping discards the surplus chunks of dominant
+# documents. Retrieval depth becomes `limit * BROADEN_FETCH_FACTOR`.
+BROADEN_FETCH_FACTOR = 4
 
 
 # Sentinel doc_id that matches no document. Used when a document-level filter
@@ -196,6 +215,7 @@ async def _run_search_chunks(
     dense_model: Optional[str],
     rerank_model: Optional[str],
     max_rerank_candidates: int = 0,
+    coverage_stats: Optional[Dict[str, int]] = None,
 ):
     t0 = time.time()
     async with search_semaphore:
@@ -216,6 +236,7 @@ async def _run_search_chunks(
             dense_model=dense_model,
             rerank_model=rerank_model,
             max_rerank_candidates=max_rerank_candidates,
+            coverage_stats=coverage_stats,
         )
     t1 = time.time()
     logger.info(
@@ -374,6 +395,71 @@ def _apply_auto_min_score_filter(results: List[SearchResult]) -> List[SearchResu
     return filtered
 
 
+def _build_result_item(
+    result,
+    doc_id: str,
+    doc,
+    data_source: Optional[str],
+    chunk_cache,
+    min_chunk_size: int,
+) -> Optional[SearchResult]:
+    """Join one Qdrant point with doc/chunk metadata into a SearchResult.
+
+    Returns None when the display text falls below ``min_chunk_size``.
+    """
+    normalized_doc = normalize_document_payload(doc)
+
+    chunk_payload = chunk_cache.get(str(result.id), {})
+    chunk_text = clean_text(
+        chunk_payload.get("sys_text") or result.payload.get("sys_text", "")
+    )
+    chunk_bboxes = chunk_payload.get("sys_bbox", [])
+    formatted_text = infer_paragraphs_from_bboxes(
+        chunk_text.replace("\n", "\n\n"), chunk_bboxes
+    )
+    display_text = _strip_heading_row(formatted_text, chunk_payload)
+    if min_chunk_size > 0 and len(clean_text(display_text)) < min_chunk_size:
+        return None
+
+    return SearchResult(
+        id=str(result.id),
+        chunk_id=str(result.id),
+        doc_id=doc_id,
+        document_title=clean_text(normalized_doc.get("title", "Unknown")),
+        data_source=doc.get("data_source", data_source),
+        text=display_text,
+        page_num=(
+            chunk_payload.get("sys_page_num")
+            if chunk_payload.get("sys_page_num") is not None
+            else 0
+        ),
+        chunk_elements=chunk_payload.get("sys_chunk_elements"),
+        headings=chunk_payload.get("sys_headings") or [],
+        section_type=(
+            chunk_payload.get("tag_section_type")
+            or result.payload.get("tag_section_type")
+        ),
+        score=result.score,
+        item_types=chunk_payload.get("sys_item_types"),
+        bbox=chunk_bboxes,
+        elements=chunk_payload.get("sys_elements"),
+        table_data=chunk_payload.get("sys_table_data"),
+        tables=chunk_payload.get("sys_tables"),
+        images=chunk_payload.get("sys_images"),
+        title=clean_text(normalized_doc.get("title", "Unknown")),
+        organization=normalized_doc.get("organization"),
+        year=(
+            str(normalized_doc.get("published_year"))
+            if normalized_doc.get("published_year") is not None
+            else None
+        ),
+        language=normalized_doc.get("language"),
+        metadata={
+            k: v for k, v in normalized_doc.items() if k not in ("abstractive_summary",)
+        },
+    )
+
+
 def _build_search_results(
     results,
     doc_cache,
@@ -381,72 +467,32 @@ def _build_search_results(
     data_source: Optional[str],
     limit: int,
     min_chunk_size: int,
+    max_chunks_per_doc: int = 0,
 ):
     # Build SearchResult objects from Qdrant results joined with doc/chunk metadata.
     # Skips results whose doc is missing from cache or whose text is too short.
-    filtered_results = []
+    # When max_chunks_per_doc > 0, at most that many chunks per document are
+    # kept (the "broaden results" mode), filling the page from more documents.
+    filtered_results: List[SearchResult] = []
+    chunks_per_doc: Dict[str, int] = {}
     for result in results:
         doc_id_raw = result.payload.get("doc_id") or result.payload.get("sys_doc_id")
         doc_id: Optional[str] = str(doc_id_raw) if doc_id_raw is not None else None
         if doc_id not in doc_cache:
             continue
         assert doc_id is not None
-        doc = doc_cache[doc_id]
-        normalized_doc = normalize_document_payload(doc)
-
-        chunk_payload = chunk_cache.get(str(result.id), {})
-        chunk_text = clean_text(
-            chunk_payload.get("sys_text") or result.payload.get("sys_text", "")
-        )
-        chunk_bboxes = chunk_payload.get("sys_bbox", [])
-        formatted_text = infer_paragraphs_from_bboxes(
-            chunk_text.replace("\n", "\n\n"), chunk_bboxes
-        )
-        display_text = _strip_heading_row(formatted_text, chunk_payload)
-        if min_chunk_size > 0 and len(clean_text(display_text)) < min_chunk_size:
+        if (
+            max_chunks_per_doc > 0
+            and chunks_per_doc.get(doc_id, 0) >= max_chunks_per_doc
+        ):
             continue
-
-        filtered_results.append(
-            SearchResult(
-                id=str(result.id),
-                chunk_id=str(result.id),
-                doc_id=doc_id,
-                document_title=clean_text(normalized_doc.get("title", "Unknown")),
-                data_source=doc.get("data_source", data_source),
-                text=display_text,
-                page_num=(
-                    chunk_payload.get("sys_page_num")
-                    if chunk_payload.get("sys_page_num") is not None
-                    else 0
-                ),
-                chunk_elements=chunk_payload.get("sys_chunk_elements"),
-                headings=chunk_payload.get("sys_headings") or [],
-                section_type=(
-                    chunk_payload.get("tag_section_type")
-                    or result.payload.get("tag_section_type")
-                ),
-                score=result.score,
-                item_types=chunk_payload.get("sys_item_types"),
-                bbox=chunk_bboxes,
-                elements=chunk_payload.get("sys_elements"),
-                table_data=chunk_payload.get("sys_table_data"),
-                tables=chunk_payload.get("sys_tables"),
-                images=chunk_payload.get("sys_images"),
-                title=clean_text(normalized_doc.get("title", "Unknown")),
-                organization=normalized_doc.get("organization"),
-                year=(
-                    str(normalized_doc.get("published_year"))
-                    if normalized_doc.get("published_year") is not None
-                    else None
-                ),
-                language=normalized_doc.get("language"),
-                metadata={
-                    k: v
-                    for k, v in normalized_doc.items()
-                    if k not in ("abstractive_summary",)
-                },
-            )
+        item = _build_result_item(
+            result, doc_id, doc_cache[doc_id], data_source, chunk_cache, min_chunk_size
         )
+        if item is None:
+            continue
+        filtered_results.append(item)
+        chunks_per_doc[doc_id] = chunks_per_doc.get(doc_id, 0) + 1
 
         if len(filtered_results) >= limit:
             break
@@ -608,7 +654,36 @@ def _parse_boost_fields(raw: Optional[str]) -> Dict[str, float]:
     return config
 
 
-def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
+def _build_search_coverage(
+    filtered_results: List[SearchResult],
+    coverage_stats: Optional[Dict[str, int]],
+) -> Optional[SearchCoverage]:
+    """Assemble the coverage metadata for the response.
+
+    Returns None when no coverage stats were collected (empty-query scroll
+    path) so the response field stays absent rather than misleading.
+    """
+    if coverage_stats is None or "candidate_documents" not in coverage_stats:
+        return None
+    chunks_returned = len(filtered_results)
+    documents_in_results = len({r.doc_id for r in filtered_results})
+    candidate_documents = coverage_stats["candidate_documents"]
+    return SearchCoverage(
+        chunks_returned=chunks_returned,
+        documents_in_results=documents_in_results,
+        candidate_documents=candidate_documents,
+        concentrated=is_concentrated(
+            chunks_returned,
+            documents_in_results,
+            candidate_documents,
+            COVERAGE_THRESHOLDS,
+        ),
+    )
+
+
+def _fetch_and_build_results(
+    pg, results, data_source, limit, min_chunk_size, max_chunks_per_doc=0
+):
     """Build doc/chunk caches and construct SearchResult list. Returns None if no docs."""
     t_doc = time.time()
     doc_cache = _build_doc_cache(pg, results)
@@ -626,7 +701,13 @@ def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     )
     t_build = time.time()
     built = _build_search_results(
-        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size
+        results,
+        doc_cache,
+        chunk_cache,
+        data_source,
+        limit,
+        min_chunk_size,
+        max_chunks_per_doc=max_chunks_per_doc,
     )
     logger.info(
         "[TIMING] build_results: %.3fs (%s results)", time.time() - t_build, len(built)
@@ -758,6 +839,14 @@ async def search(
         description="Comma-separated core field names to boost (e.g. 'country,organization'). "
         "Each field gets a 0.5 weight multiplier.",
     ),
+    max_chunks_per_doc: Optional[int] = Query(
+        None,
+        ge=1,
+        le=10,
+        description="Cap chunks per document so the page draws from more "
+        "documents ('broaden results' mode). Retrieval is deepened to fill "
+        "the page.",
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -768,6 +857,9 @@ async def search(
 
     t_start = time.time()
     source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    # Direct (non-HTTP) calls in tests leave Query sentinels as defaults;
+    # normalize the cap to a plain int before it reaches comparison logic.
+    per_doc_cap = max_chunks_per_doc if isinstance(max_chunks_per_doc, int) else 0
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
 
@@ -796,6 +888,7 @@ async def search(
 
         section_types_list = _parse_section_types(section_types)
 
+        coverage_stats: Optional[Dict[str, int]] = None
         if not q.strip():
             # Empty query: scroll with filters only (no embedding needed)
             results = await run_in_threadpool(
@@ -806,9 +899,14 @@ async def search(
                 section_types=section_types_list,
             )
         else:
+            coverage_stats = {}
+            # A per-document cap needs a deeper pool to fill the page from
+            # more documents; without it the surplus chunks of dominant
+            # documents would just shrink the page.
+            retrieval_limit = limit * BROADEN_FETCH_FACTOR if per_doc_cap else limit
             results = await _run_search_chunks(
                 q,
-                limit=limit,
+                limit=retrieval_limit,
                 dense_weight=dense_weight,
                 db=db,
                 filters=core_filters or None,
@@ -822,11 +920,17 @@ async def search(
                 dense_model=model,
                 rerank_model=rerank_model,
                 max_rerank_candidates=rerank_model_page_size or 0,
+                coverage_stats=coverage_stats,
             )
 
         t2 = time.time()
         filtered_results = _fetch_and_build_results(
-            pg, results, data_source, limit, min_chunk_size
+            pg,
+            results,
+            data_source,
+            limit,
+            min_chunk_size,
+            max_chunks_per_doc=per_doc_cap,
         )
         if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})
@@ -852,6 +956,7 @@ async def search(
             total=len(filtered_results),
             query=q,
             filters=filters_response,
+            coverage=_build_search_coverage(filtered_results, coverage_stats),
         )
 
     except Exception as e:

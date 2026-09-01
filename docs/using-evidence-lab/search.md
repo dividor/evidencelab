@@ -51,6 +51,18 @@ Each result card shows:
 - **Text excerpt** with **semantic highlighting** — key phrases relevant to your query are shown in bold, even when the search was in a different language from the document
 - **Language indicator and translation** — click the language dropdown to translate the result snippet
 
+#### Broad Search Notice
+
+Very broad search terms (e.g., "targeting") can concentrate the highest-scoring excerpts in just a handful of documents, so only a few documents appear even though many more in the corpus match the query. When the system detects this, a blue notice appears above the results:
+
+> Only **8** of about **170 matching documents** contain the top-matching excerpts — the rest matched with lower relevance. **[Show more documents]**
+
+- **Show more documents** re-runs the search keeping only the best few excerpts per document, so the page draws from many more documents. While active, the notice flips to a confirmation ("Showing the top excerpts from 36 of about 170 matching documents") that frames the page as the strongest slice of everything that matched, with a **Show only top documents** button to return to the regular ranking, where the top excerpts concentrate in the few best-matching documents.
+- The **×** button dismisses the notice for the rest of your session.
+- The notice only appears when both conditions hold: the current page is dominated by a few documents, *and* the search found substantially more matching documents than are shown. Genuinely narrow queries (few matching documents corpus-wide) never trigger it.
+
+Administrators can tune or disable the detection in `config.json` under `application.search.coverage_alert` (`enabled`, `max_document_fraction`, `min_document_floor`, `candidate_ratio`).
+
 ---
 
 ### Filters

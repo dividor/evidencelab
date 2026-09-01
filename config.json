@@ -24,7 +24,13 @@
       "highlight_threshold": 0.6,
       "page_size": 50,
       "rerank_model": "jinaai/jina-reranker-v2-base-multilingual",
-      "default_dense_model": "e5_large"
+      "default_dense_model": "e5_large",
+      "coverage_alert": {
+        "enabled": true,
+        "max_document_fraction": 0.2,
+        "min_document_floor": 3,
+        "candidate_ratio": 3.0
+      }
     }
   },
   "supported_embedding_models": {

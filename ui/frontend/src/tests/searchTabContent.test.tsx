@@ -291,7 +291,9 @@ describe('SearchTabContent result filters', () => {
     expect(titles[1].textContent).toBe('Popular Report');
   });
 
-  test('renders the coverage info tooltip after the org pills with live counts', () => {
+  test('does not render the retired coverage info tooltip', () => {
+    // The hover tooltip was replaced by the CoverageNotice strip, which the
+    // backend drives via the response's coverage object.
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
       buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Report B', organization: 'WFP' }),
@@ -300,21 +302,8 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    // The info affordance carries the live explanation: 3 excerpts, 3 docs, 2 orgs.
-    const tooltip = document.getElementById('results-coverage-tip');
-    expect(tooltip).not.toBeNull();
-    expect(tooltip?.textContent).toContain('3 most relevant text excerpts');
-    expect(tooltip?.textContent).toContain('3 documents across 2 organizations');
-
-    // The icon sits after the organization pills, not before them.
-    const orgsRow = document.querySelector('.search-result-filters-orgs');
-    const children = Array.from(orgsRow?.children ?? []);
-    const pillIndexes = children
-      .map((el, i) => (el.classList.contains('search-result-filters-org-label') ? i : -1))
-      .filter((i) => i >= 0);
-    const infoIndex = children.findIndex((el) => el.classList.contains('result-info'));
-    expect(pillIndexes.length).toBeGreaterThan(0);
-    expect(infoIndex).toBeGreaterThan(Math.max(...pillIndexes));
+    expect(document.getElementById('results-coverage-tip')).toBeNull();
+    expect(document.querySelector('.result-info')).toBeNull();
   });
 
   test('semantic highlight updates do not reset active filter', () => {

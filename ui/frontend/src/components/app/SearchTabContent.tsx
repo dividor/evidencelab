@@ -1,17 +1,17 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-import { Facets, FacetValue, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
+import { Facets, FacetValue, SearchCoverage, SearchResult, DrilldownNode, SummaryModelConfig } from '../../types/api';
 import API_BASE_URL from '../../config';
 import { AiSummaryPanel } from '../AiSummaryPanel';
 import { FiltersPanel } from '../filters/FiltersPanel';
 import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { ResultsHeaderRow } from '../ResultsHeaderRow';
+import { CoverageNotice } from '../CoverageNotice';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
 import { serializeDrilldownTree } from '../../utils/drilldownUtils';
-import { buildResultsCoverageText } from '../../utils/resultsCoverage';
 import { useDevFixtureSearch } from '../../__fixtures__/useDevFixtureSearch';
 
 interface SearchTabContentProps {
@@ -103,6 +103,12 @@ interface SearchTabContentProps {
   dataSource?: string;
   summaryModelConfig?: SummaryModelConfig | null;
   hasSearchRun?: boolean;
+  coverage: SearchCoverage | null;
+  broadenActive: boolean;
+  coverageNoticeDismissed: boolean;
+  onBroadenResults: () => void;
+  onShowTopDocuments: () => void;
+  onDismissCoverageNotice: () => void;
   onSaveResearch?: (title: string) => void;
   saveResearchLoading?: boolean;
   saveResearchStatus?: 'idle' | 'saved' | 'error';
@@ -237,7 +243,6 @@ const WanderingSpinner: React.FC = () => {
 /** Extracted sub-component for the org buttons, document thumbnail carousel, and filter indicator */
 const SearchResultFilters: React.FC<{
   uniqueOrgs: Array<{ org: string; count: number }>;
-  coverageText: string;
   filteredOrgs: string[];
   onOrgToggle: (org: string) => void;
   filteredDocIds: string[];
@@ -253,7 +258,6 @@ const SearchResultFilters: React.FC<{
   onClearAll: () => void;
 }> = ({
   uniqueOrgs,
-  coverageText,
   filteredOrgs,
   onOrgToggle,
   filteredDocIds,
@@ -281,19 +285,6 @@ const SearchResultFilters: React.FC<{
             {org} ({count})
           </button>
         ))}
-        <span className="result-info">
-          <button
-            type="button"
-            className="result-info-icon"
-            aria-label="What do these result counts mean?"
-            aria-describedby="results-coverage-tip"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
-          </button>
-          <span className="result-info-tooltip" role="tooltip" id="results-coverage-tip">
-            {coverageText}
-          </span>
-        </span>
       </div>
     )}
     <div className="search-result-filters-thumbnails">
@@ -401,6 +392,19 @@ const resolveAiRatingScope = (
   itemId: drilldownNodeId || undefined,
 });
 
+/** Coverage notice gated on real (non-fixture) searches with results.
+ * The visibility conditionals live here rather than in the component body
+ * (keeps its cyclomatic complexity below the repo threshold). */
+const SearchCoverageNotice: React.FC<
+  React.ComponentProps<typeof CoverageNotice> & {
+    fixtureActive: boolean;
+    resultCount: number;
+  }
+> = ({ fixtureActive, resultCount, ...noticeProps }) => {
+  if (fixtureActive || resultCount === 0) return null;
+  return <CoverageNotice {...noticeProps} />;
+};
+
 export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   filtersExpanded,
   activeFiltersCount,
@@ -490,6 +494,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   dataSource,
   summaryModelConfig,
   hasSearchRun,
+  coverage,
+  broadenActive,
+  coverageNoticeDismissed,
+  onBroadenResults,
+  onShowTopDocuments,
+  onDismissCoverageNotice,
   onSaveResearch,
   saveResearchLoading,
   saveResearchStatus,
@@ -691,19 +701,6 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
       .sort((a, b) => b[1] - a[1])
       .map(([org, count]) => ({ org, count }));
   }, [uniqueDocuments]);
-
-  // Live explanation of what the org result counts represent (documents behind
-  // the most relevant excerpts). Derived from current search state, not
-  // hardcoded, so it stays accurate if the page size changes.
-  const coverageText = useMemo(
-    () =>
-      buildResultsCoverageText({
-        excerptCount: visibleResults.length,
-        documentCount: uniqueDocuments.length,
-        orgCount: uniqueOrgs.length,
-      }),
-    [visibleResults.length, uniqueDocuments.length, uniqueOrgs.length],
-  );
 
   // Documents filtered by selected orgs
   const filteredUniqueDocuments = useMemo(() =>
@@ -914,10 +911,20 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
           />
+          <SearchCoverageNotice
+            fixtureActive={isFixtureActive}
+            resultCount={results.length}
+            coverage={coverage}
+            broadenActive={broadenActive}
+            dismissed={coverageNoticeDismissed}
+            onBroaden={onBroadenResults}
+            onShowTopDocuments={onShowTopDocuments}
+            onDismiss={onDismissCoverageNotice}
+          />
+
           {showFilters && (
             <SearchResultFilters
               uniqueOrgs={uniqueOrgs}
-              coverageText={coverageText}
               filteredOrgs={filteredOrgs}
               onOrgToggle={handleOrgToggle}
               filteredDocIds={filteredDocIds}
