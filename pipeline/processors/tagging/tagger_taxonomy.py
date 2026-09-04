@@ -159,6 +159,8 @@ class TaxonomyTagger(BaseTagger):
 
         try:
             response = invoke_with_retry(llm, messages)
+            if self.usage_collector is not None:
+                self.usage_collector.add_response(response, model_key)
             return self._parse_llm_response(str(response.content))
         except Exception as exc:
             logger.error("LLM call failed for taxonomy: %s", exc)

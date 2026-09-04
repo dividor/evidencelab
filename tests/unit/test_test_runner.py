@@ -569,3 +569,186 @@ async def test_evaluate_case_uses_injected_judge_factory():
     )
     assert outcome["status"] == "pass"
     assert outcome["score"] == 0.9
+
+
+# ---------------------------------------------------------------------------
+# Token usage tracking (summary + judge calls → case totals → run rollup)
+# ---------------------------------------------------------------------------
+
+
+async def test_case_usage_totals_sums_summary_and_judge_per_model():
+    output = {
+        "usage": {
+            "llm_model": "gpt-4.1-mini",
+            "prompt_tokens": 1000,
+            "completion_tokens": 500,
+        },
+        "judge_usage": [
+            {
+                "llm_model": "gemini-2.0-flash",
+                "prompt_tokens": 200,
+                "completion_tokens": 100,
+            },
+        ],
+    }
+    totals = test_runner._case_usage_totals(output)
+    assert totals["prompt_tokens"] == 1200
+    assert totals["completion_tokens"] == 600
+    # Cost is per-call from each call's own model rate:
+    # gpt-4.1-mini: 1000*0.0004/1k + 500*0.0016/1k = 0.0012
+    # gemini-2.0-flash: 200*0.0001/1k + 100*0.0004/1k = 0.00006
+    assert float(totals["cost_usd"]) == pytest.approx(0.00126)
+
+
+async def test_case_usage_totals_when_no_llm_calls_then_all_none():
+    totals = test_runner._case_usage_totals({"results": [], "count": 0})
+    assert totals == {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "cost_usd": None,
+    }
+
+
+async def test_evaluate_case_carries_usage_totals_into_outcome():
+    async def runner(_case_input):
+        return {
+            "summary": "s",
+            "usage": {
+                "llm_model": "gpt-4.1-mini",
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+            },
+        }
+
+    outcome = await evaluate_case({}, [], runner)
+    assert outcome["prompt_tokens"] == 10
+    assert outcome["completion_tokens"] == 5
+    assert outcome["cost_usd"] is not None
+
+
+async def test_evaluate_case_error_outcome_has_null_usage():
+    async def runner(_case_input):
+        raise RuntimeError("boom")
+
+    outcome = await evaluate_case({}, [], runner)
+    assert outcome["status"] == "error"
+    assert outcome["prompt_tokens"] is None
+    assert outcome["cost_usd"] is None
+
+
+async def test_judge_factory_stashes_judge_usage_on_output(monkeypatch):
+    async def fake_judge_call(_prompt, _model_key):
+        return (
+            '{"score": 1.0, "reason": "ok"}',
+            {"llm_model": "gpt-4.1-mini", "prompt_tokens": 40, "completion_tokens": 8},
+        )
+
+    monkeypatch.setattr(test_runner, "_judge_call", fake_judge_call)
+    factory = test_runner.make_judge_factory({"judge_model": "gpt-4.1-mini"})
+    output = {"raw_summary": "text", "references": [], "search_results": []}
+    judge_fn = await factory(
+        output,
+        [
+            {"type": "llm_judge", "rubric": "r1"},
+            {"type": "llm_judge", "rubric": "r1"},  # deduped — judged once
+            {"type": "llm_judge", "rubric": "r2"},
+        ],
+    )
+    # One usage entry per distinct rubric.
+    assert len(output["judge_usage"]) == 2
+    assert output["judge_usage"][0]["prompt_tokens"] == 40
+    score, reason, _prompt = judge_fn("text", "r1")
+    assert score == 1.0 and reason == "ok"
+
+
+async def test_record_run_usage_writes_evaluation_activity_row(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    recorded = AsyncMock(return_value=True)
+    monkeypatch.setattr("ui.backend.services.usage_recorder.record_llm_usage", recorded)
+
+    user_id = uuid.uuid4()
+    dataset = TestDataset(id=uuid.uuid4(), capability="ai_summary", data_source="uneg")
+    experiment = TestExperiment(
+        id=uuid.uuid4(), dataset_id=dataset.id, name="My experiment"
+    )
+    run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=experiment.id,
+        run_number=3,
+        status="completed",
+        created_by_user_id=user_id,
+        summary_stats={
+            "total": 4,
+            "prompt_tokens": 4000,
+            "completion_tokens": 900,
+            "total_tokens": 4900,
+            "cost_usd": 0.00304,
+        },
+    )
+    await test_runner._record_run_usage(
+        experiment, run, dataset, {"summary_model": "gpt-4.1-mini"}
+    )
+
+    recorded.assert_awaited_once()
+    kwargs = recorded.await_args.kwargs
+    assert kwargs["activity_type"] == "evaluation"
+    assert kwargs["user_id"] == user_id
+    assert kwargs["search_id"] == run.id
+    assert kwargs["query"] == "Evaluation: My experiment (run 3)"
+    assert kwargs["usage"] == {
+        "llm_model": "gpt-4.1-mini",
+        "prompt_tokens": 4000,
+        "completion_tokens": 900,
+    }
+    assert float(kwargs["cost_usd"]) == pytest.approx(0.00304)
+    assert kwargs["filters_extra"]["experiment_name"] == "My experiment"
+    assert kwargs["filters_extra"]["data_source"] == "uneg"
+    assert kwargs["filters_extra"]["cases"] == 4
+
+
+async def test_execute_attributes_run_to_triggering_user(monkeypatch):
+    async def fake_runner(_case_input):
+        return {"results": [{"id": "A", "doc_id": "A"}], "count": 1}
+
+    async def fake_factory(_output, _expectations):
+        return lambda _text, _rubric: 0.0
+
+    record_calls = []
+
+    async def fake_record(experiment, run, dataset, cfg):
+        record_calls.append(run)
+
+    c1 = uuid.uuid4()
+    cases = [TestCase(id=c1, input={"query": "a"})]
+    monkeypatch.setattr(test_runner, "build_case_runner", lambda *a, **k: fake_runner)
+    monkeypatch.setattr(test_runner, "make_judge_factory", lambda _cfg: fake_factory)
+    monkeypatch.setattr(test_runner, "_record_run_usage", fake_record)
+
+    async def fake_load_cases(_session, _dataset_id):
+        return cases
+
+    monkeypatch.setattr(test_runner, "_load_cases", fake_load_cases)
+
+    dataset = TestDataset(id=uuid.uuid4(), capability="search", data_source="uneg")
+    creator, clicker = uuid.uuid4(), uuid.uuid4()
+    experiment = TestExperiment(
+        id=uuid.uuid4(),
+        dataset_id=dataset.id,
+        status="pending",
+        created_by_user_id=creator,
+        config=None,
+        case_expectations={
+            "columns": [{"type": "min_results", "value": 1}],
+            "cases": {str(c1): {"active": True, "cols": [True]}},
+        },
+    )
+    session = _FakeSession(dataset)
+
+    await _execute(session, experiment, triggered_by_user_id=clicker)
+
+    # The run — and therefore its token usage — is attributed to whoever
+    # clicked Run, not the experiment's creator.
+    (run,) = [o for o in session.added if isinstance(o, TestRun)]
+    assert run.created_by_user_id == clicker
+    assert record_calls == [run]

@@ -747,6 +747,15 @@ class AssistantChatRequest(BaseModel):
             "follow-up turns."
         ),
     )
+    # Activity row (search_id) this turn's token usage is recorded onto,
+    # server-side, when the stream finishes — plus the anonymous session id
+    # for owner scoping. Brief sections pass their brief's stable activity
+    # id here so all section research accumulates onto one row, and set
+    # usage_context='brief' so a newly created row is typed 'brief' rather
+    # than 'assistant-deep-research'.
+    activity_id: Optional[str] = Field(None, max_length=100)
+    session_id: Optional[str] = Field(None, max_length=64)
+    usage_context: Optional[str] = Field(None, max_length=32)
 
 
 class ThreadRenameRequest(BaseModel):

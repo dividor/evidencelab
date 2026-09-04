@@ -215,6 +215,7 @@ async def _run_research(
         data_source=data_source,
         deep_research=deep_research,
         model_combo=model_combo,
+        usage_activity_type="a2a-assistant",
     )
 
     parts: List[Any] = [TextPart(text=response.answer)]
@@ -267,9 +268,10 @@ async def _run_research_streaming(
     answer_text = ""
     sources: List[Dict[str, Any]] = []
     token_events: List[str] = []
+    usage: Optional[Dict[str, Any]] = None
 
     async def _consume() -> None:
-        nonlocal answer_text, sources
+        nonlocal answer_text, sources, usage
         async for event in stream_research_response(
             query=query,
             data_source=data_source,
@@ -291,6 +293,8 @@ async def _run_research_streaming(
                 token_events.append(_sse_rpc(rpc_id, chunk_event.model_dump()))
             elif event_type == "sources":
                 sources.extend(event.get("sources", []))
+            elif event_type == "done":
+                usage = event.get("usage")
             elif event_type == "error":
                 raise RuntimeError(event.get("error", "Unknown assistant error"))
 
@@ -301,6 +305,10 @@ async def _run_research_streaming(
             raise RuntimeError(
                 f"Assistant timed out after {_ASSISTANT_TIMEOUT_SECONDS}s"
             )
+
+    from mcp_server.tools.assistant import record_assistant_usage
+
+    record_assistant_usage(usage, query, data_source, deep_research, "a2a-assistant")
 
     for evt in token_events:
         yield evt

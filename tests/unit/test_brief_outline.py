@@ -82,7 +82,7 @@ class TestGenerateBriefOutline:
         with patch(
             "ui.backend.services.llm_service.get_llm", return_value=fake_llm
         ) as mock_get_llm:
-            title, headings = await generate_brief_outline(
+            title, headings, usage = await generate_brief_outline(
                 question="How effective is anticipatory action for floods?",
                 model_key="some-model",
             )
@@ -97,3 +97,5 @@ class TestGenerateBriefOutline:
         assert title == "Anticipatory Action"
         assert [h["title"] for h in headings] == ["Overview", "Flood programmes"]
         assert [h["level"] for h in headings] == [1, 2]
+        # Usage payload carries the model key (mock reports no token counts).
+        assert usage == {"llm_model": "some-model"}

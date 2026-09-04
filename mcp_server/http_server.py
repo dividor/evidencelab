@@ -403,6 +403,14 @@ class MCPApp:
                 try:
                     a2a_auth_info = await verify_mcp_auth(request)
                     a2a_principal = a2a_auth_info.get("user_id")
+                    # Mirror the MCP branch: expose the caller's identity via
+                    # the per-request auth context so token-usage recording
+                    # (mcp_server.tools.assistant.record_assistant_usage)
+                    # attributes A2A spend to the real API identity.
+                    request_auth.set(
+                        a2a_auth_info or {"type": "unknown", "user_id": "unknown"}
+                    )
+                    request_client_ip.set(_get_client_ip(scope))
                 except PermissionError as exc:
                     logger.warning("A2A auth DENIED: %s", exc)
                     body = json.dumps({"detail": str(exc)}).encode()

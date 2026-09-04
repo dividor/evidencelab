@@ -11,6 +11,7 @@ from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_section_type import SectionTypeTagger
 from pipeline.processors.tagging.tagger_taxonomy import TaxonomyTagger
 from pipeline.utilities.embedding_service import EmbeddingService
+from pipeline.utilities.usage_recorder import UsageCollector, record_pipeline_usage
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class TaggerProcessor(BaseProcessor):
         super().__init__()
         self.data_source = data_source
         self.config = config or {}
+        self._usage = UsageCollector()
         self._database: Optional[Database] = None
         self._pg: Optional[PostgresClient] = None
         self._embedding_model = None
@@ -89,11 +91,24 @@ class TaggerProcessor(BaseProcessor):
             section_type_tagger,
             taxonomy_tagger,
         ]
+        for tagger in self._taggers:
+            tagger.set_usage_collector(self._usage)
 
     def teardown(self) -> None:
         self._embedding_model = None
         self._taggers = []
         super().teardown()
+
+    def _record_doc_usage(self, doc: Dict[str, Any], doc_id: str) -> None:
+        """Flush the shared collector into one 'pipeline' activity row per model."""
+        title = doc.get("map_title") or doc_id
+        record_pipeline_usage(
+            self._usage,
+            stage=self.stage_name,
+            data_source=self.data_source,
+            doc_id=doc_id,
+            query=f"{self.stage_name}: {title}",
+        )
 
     def process_document(self, doc: Dict[str, Any]) -> Dict[str, Any]:
         """Apply all taggers to chunks of a document."""
@@ -110,19 +125,23 @@ class TaggerProcessor(BaseProcessor):
 
         logger.info("Tagging %d chunks for doc %s", len(chunks), doc_id)
 
-        updates_count = 0
-        for chunk_id, chunk_payload in chunks:
-            updates = self._tag_single_chunk(chunk_payload, doc)
-            if updates:
-                self._update_chunk(chunk_id, updates)
-                updates_count += 1
+        try:
+            updates_count = 0
+            for chunk_id, chunk_payload in chunks:
+                updates = self._tag_single_chunk(chunk_payload, doc)
+                if updates:
+                    self._update_chunk(chunk_id, updates)
+                    updates_count += 1
 
-        logger.info(
-            "Updated %d/%d chunks for doc %s", updates_count, len(chunks), doc_id
-        )
+            logger.info(
+                "Updated %d/%d chunks for doc %s", updates_count, len(chunks), doc_id
+            )
 
-        if self._pg is not None:
-            self._update_document_tags(doc, doc_id)
+            if self._pg is not None:
+                self._update_document_tags(doc, doc_id)
+        finally:
+            # Record the doc's LLM usage — including partial usage on failure.
+            self._record_doc_usage(doc, doc_id)
 
         return {
             "success": True,
@@ -204,17 +223,24 @@ class TaggerProcessor(BaseProcessor):
         if section_type_tagger is None:
             return {"success": False, "error": "SectionTypeTagger not found"}
 
-        classifications = section_type_tagger.classify_document_toc(doc)
+        try:
+            classifications = section_type_tagger.classify_document_toc(doc)
 
-        stage_info = make_stage(
-            success=True, sections_count=len(classifications) if classifications else 0
-        )
-        existing_stages = self._get_existing_stages(doc)
-        updated_stages = update_stages(existing_stages, "tag", stage_info)
+            stage_info = make_stage(
+                success=True,
+                sections_count=len(classifications) if classifications else 0,
+            )
+            existing_stages = self._get_existing_stages(doc)
+            updated_stages = update_stages(existing_stages, "tag", stage_info)
 
-        # Taxonomy Tagging
-        if self._pg is not None:
-            self._apply_taxonomy_tags(doc, doc_id)
+            # Taxonomy Tagging
+            if self._pg is not None:
+                self._apply_taxonomy_tags(doc, doc_id)
+        finally:
+            # Record after BOTH the TOC classification and the taxonomy
+            # tagging (which also calls the LLM), so this doc's usage is not
+            # flushed early and misattributed to the next document.
+            self._record_doc_usage(doc, doc_id)
 
         if self._pg is not None:
             try:
@@ -251,12 +277,15 @@ class TaggerProcessor(BaseProcessor):
         if not chunks:
             return {"success": True, "skipped": True, "reason": "No chunks found"}
 
-        updates_count = 0
-        for chunk_id, chunk_payload in chunks:
-            updates = self._tag_single_chunk(chunk_payload, doc)
-            if updates:
-                self._update_chunk(chunk_id, updates)
-                updates_count += 1
+        try:
+            updates_count = 0
+            for chunk_id, chunk_payload in chunks:
+                updates = self._tag_single_chunk(chunk_payload, doc)
+                if updates:
+                    self._update_chunk(chunk_id, updates)
+                    updates_count += 1
+        finally:
+            self._record_doc_usage(doc, doc_id)
 
         logger.info(
             "Tagged %d/%d chunks for doc %s", updates_count, len(chunks), doc_id

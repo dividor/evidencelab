@@ -48,7 +48,7 @@ import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
 import { useGroupDefaults } from './hooks/useGroupDefaults';
-import { useActivityLogging } from './hooks/useActivityLogging';
+import { getSessionId, useActivityLogging } from './hooks/useActivityLogging';
 import { buildContextualSearchQuery, serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
 import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
@@ -57,10 +57,11 @@ import { AssistantTab } from './components/assistant/AssistantTab';
 import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
-import { streamAiSummary, AiSummaryUsage } from './utils/aiSummaryStream';
+import { streamAiSummary } from './utils/aiSummaryStream';
 import {
   highlightTextWithAPI,
   findSemanticMatches,
+  setHighlightSearchContext,
   TextMatch
 } from './utils/textHighlighting';
 // datasource config is now fetched dynamically
@@ -1674,14 +1675,17 @@ function App() {
       query: streamQuery,
       results: leanResults,
       summaryModelConfig,
+      // Server-side usage recording context: the backend accumulates this
+      // stream's token usage onto the search's activity row (drill-down
+      // streams reuse the same id, so their usage sums onto that row too).
+      searchId: activitySearchIdRef.current || null,
       signal: abortController.signal,
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
-        onDone: (data) => {
-          // Stash usage so the trailing updateActivitySummary effect can
-          // include token counts + model in the PATCH that fires next.
-          aiSummaryUsageRef.current = data?.usage;
+        onDone: () => {
+          // Token usage is recorded server-side against the search row —
+          // the client no longer echoes it through the activity routes.
           setAiSummaryLoading(false);
         },
         onError: (message: string) => {
@@ -1911,6 +1915,9 @@ function App() {
           results: leanResults,
           max_results: 20,
           ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+          // Usage-recording context: accumulate onto the search's activity row.
+          search_id: activitySearchIdRef.current || undefined,
+          session_id: getSessionId(),
         });
 
         updateNodeDataInTree(nodeId, {
@@ -1977,6 +1984,9 @@ function App() {
           results: leanResults,
           max_results: 20,
           ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+          // Usage-recording context: accumulate onto the search's activity row.
+          search_id: activitySearchIdRef.current || undefined,
+          session_id: getSessionId(),
         }
       );
 
@@ -2184,6 +2194,9 @@ function App() {
         });
         activitySearchIdRef.current = searchId;
       }
+      // Semantic-highlight LLM calls made while viewing these results record
+      // their token usage against this search (server-side).
+      setHighlightSearchContext(searchId);
 
       // Reload facets to reflect search result distribution (with query)
       loadFacets({ includeQuery: true, queryValue: query });
@@ -2277,9 +2290,6 @@ function App() {
   const searchDurationMsRef = useRef<number>(0);
   const summaryStartMsRef = useRef<number>(0);
   const prevAiSummaryLoadingRef = useRef(false);
-  // Captured token usage from the AI summary SSE done event so the
-  // trailing PATCH /activity/{id}/summary can persist it.
-  const aiSummaryUsageRef = useRef<AiSummaryUsage | undefined>(undefined);
   useEffect(() => {
     // Detect transition from loading → done and log the completed summary
     if (
@@ -2300,9 +2310,7 @@ function App() {
         aiSummary,
         summaryDurationMs,
         drilldownTree ? serializeDrilldownTree(drilldownTree) : undefined,
-        aiSummaryUsageRef.current,
       );
-      aiSummaryUsageRef.current = undefined;
     }
     prevAiSummaryLoadingRef.current = aiSummaryLoading;
   }, [aiSummaryLoading, aiSummary, isDrilldown, updateActivitySummary, drilldownTree]);

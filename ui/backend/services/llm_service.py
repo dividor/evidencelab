@@ -441,7 +441,7 @@ async def generate_brief_outline(
     sources: Optional[List[Dict[str, Any]]] = None,
     instructions: str | None = None,
     num_headings: int | None = None,
-) -> tuple[str, List[Dict[str, Any]]]:
+) -> tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
     """Generate research-brief section headings for a topic.
 
     ``question`` is the brief topic. ``instructions`` is optional author
@@ -451,9 +451,10 @@ async def generate_brief_outline(
     grounded in the themes actually present in the library. Prompts live in
     ``prompts/brief_outline_*.j2``.
 
-    Returns ``(title, headings)``; ``title`` falls back to the topic when the
-    model does not supply one (callers typically force the title to the topic).
-    Each heading is ``{"title": str, "level": 1 | 2}``.
+    Returns ``(title, headings, usage)``; ``title`` falls back to the topic
+    when the model does not supply one (callers typically force the title to
+    the topic). Each heading is ``{"title": str, "level": 1 | 2}``; ``usage``
+    is the token-usage payload from ``summarize_usage_metadata``.
     """
     system_prompt = _brief_outline_system_template.render()
     user_prompt = _brief_outline_user_template.render(
@@ -471,10 +472,14 @@ async def generate_brief_outline(
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ]
-    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    usage_handler = UsageMetadataCallbackHandler()
+    response = await llm.ainvoke(
+        messages, config={"callbacks": [usage_handler]}  # type: ignore[arg-type]
+    )
     raw = str(response.content).strip()
     logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
-    return parse_brief_outline(raw, fallback_title=question.strip())
+    title, headings = parse_brief_outline(raw, fallback_title=question.strip())
+    return title, headings, summarize_usage_metadata(usage_handler, model_key)
 
 
 def _strip_section_wrapper(text: str) -> str:
@@ -501,12 +506,13 @@ async def revise_brief_section(
     temperature: float | None = None,
     max_tokens: int | None = None,
     voice_instructions: str | None = None,
-) -> str:
+) -> tuple[str, Dict[str, Any]]:
     """Surgically revise one brief section's markdown per an instruction.
 
     A single LLM call — NOT deep research — so the existing wording and inline
     ``[n]`` citation markers are preserved and only the smallest necessary
-    changes are made. Returns the revised section markdown (wrappers stripped).
+    changes are made. Returns ``(revised_markdown, usage)`` where ``usage`` is
+    the token-usage payload from ``summarize_usage_metadata``.
     Prompts live in ``prompts/brief_revise_*.j2``.
     """
     # The shared prompt Jinja env autoescapes (Bandit requires it), but these
@@ -532,11 +538,15 @@ async def revise_brief_section(
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ]
-    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    usage_handler = UsageMetadataCallbackHandler()
+    response = await llm.ainvoke(
+        messages, config={"callbacks": [usage_handler]}  # type: ignore[arg-type]
+    )
     # Some models HTML-escape quotes/ampersands in their output (e.g. &#34;),
     # which would render literally in the section. Decode entities back to plain
     # text so the stored markdown is clean.
-    return html.unescape(_strip_section_wrapper(str(response.content)))
+    revised = html.unescape(_strip_section_wrapper(str(response.content)))
+    return revised, summarize_usage_metadata(usage_handler, model_key)
 
 
 # GoogleTranslator rejects requests of 5000+ characters outright, so long

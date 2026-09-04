@@ -45,7 +45,7 @@ class TestReviseBriefSection:
         with patch(
             "ui.backend.services.llm_service.get_llm", return_value=fake_llm
         ) as mock_get_llm:
-            result = await revise_brief_section(
+            result, usage = await revise_brief_section(
                 content='Article 53 declares basic education "free and compulsory" [1].',
                 instruction="Make it more concise",
                 model_key="some-model",
@@ -63,12 +63,14 @@ class TestReviseBriefSection:
         assert "&#34;" not in joined
         # Output entities are decoded so the stored markdown is clean.
         assert result == 'The report says "free and compulsory" [1].'
+        # Usage payload carries the model key (mock reports no token counts).
+        assert usage == {"llm_model": "some-model"}
 
     @pytest.mark.asyncio
     async def test_strips_code_fence_from_output(self):
         fake_llm = self._mock_llm("```markdown\nRevised body [1].\n```")
         with patch("ui.backend.services.llm_service.get_llm", return_value=fake_llm):
-            result = await revise_brief_section(
+            result, _usage = await revise_brief_section(
                 content="Body [1].", instruction="tighten", model_key="m"
             )
         assert result == "Revised body [1]."

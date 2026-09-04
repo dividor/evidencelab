@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from jinja2 import Environment, FileSystemLoader
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import traceable
 
@@ -247,7 +248,14 @@ async def get_semantic_llm_output(
     query: str,
     clean_text: str,
     request: UnifiedHighlightRequest,
-) -> str:
+) -> Tuple[str, Dict[str, Any]]:
+    """Run the semantic-highlight LLM call, returning ``(output, usage)``.
+
+    ``usage`` is the token-usage payload from ``summarize_usage_metadata``;
+    a cache hit costs no tokens and returns an empty usage dict.
+    """
+    from ui.backend.services.llm_service import summarize_usage_metadata
+
     prompts_dir = Path(__file__).resolve().parents[3] / "prompts"
     jinja_env = Environment(loader=FileSystemLoader(str(prompts_dir)), autoescape=True)
     system_template = jinja_env.get_template("semantic_highlight_system.j2")
@@ -262,16 +270,21 @@ async def get_semantic_llm_output(
     llm = llm_factory.get_llm(
         model=model_key, temperature=temperature, max_tokens=max_tokens
     )
+    # Label usage with the model the call actually used, so rows from
+    # requests without a semantic_model_config are still costed.
+    usage_model_key = llm_factory.resolve_effective_model_key(model_key)
 
     cache_key = (query, hash(clean_text))
     if cache_key in HIGHLIGHT_CACHE:
-        return HIGHLIGHT_CACHE[cache_key]
+        return HIGHLIGHT_CACHE[cache_key], {}
 
+    usage_handler = UsageMetadataCallbackHandler()
     response = await llm.ainvoke(
         [
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
-        ]
+        ],
+        config={"callbacks": [usage_handler]},
     )
     content = response.content
     llm_output = (content if isinstance(content, str) else str(content)).strip()
@@ -283,7 +296,7 @@ async def get_semantic_llm_output(
     if len(HIGHLIGHT_CACHE) > 1000:
         HIGHLIGHT_CACHE.clear()
     HIGHLIGHT_CACHE[cache_key] = llm_output
-    return llm_output
+    return llm_output, summarize_usage_metadata(usage_handler, usage_model_key)
 
 
 def parse_semantic_phrases(llm_output: str) -> list[str]:

@@ -607,6 +607,12 @@ export const useBrief = ({
     abortRef.current = controller;
     const guidance = (overrides?.instructions ?? instructions).trim();
     let gathered: BriefSourceSample[] = [];
+    // Allocate the new brief's activity id up front so the survey and outline
+    // LLM calls record their token usage onto it server-side (tokens are
+    // spent even when outline generation is aborted midway). Kept LOCAL until
+    // the outline succeeds, so a failed attempt never re-points a currently
+    // loaded brief's activity row.
+    const activityId = newActivityId();
     try {
       const surveyQuery = guidance
         ? `Research the document library to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
@@ -619,6 +625,7 @@ export const useBrief = ({
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
+        activityId,
         signal: controller.signal,
         handlers: {
           onActivity: (ev) => setGeneratingActivity((prev) => [ev, ...prev].slice(0, 40)),
@@ -646,10 +653,11 @@ export const useBrief = ({
         numHeadings: overrides?.numHeadings ?? numHeadings,
         model: assistantModelConfig?.model ?? null,
         sources: gathered,
+        activityId,
         signal: controller.signal,
       });
       briefIdRef.current = uid();
-      briefActivityIdRef.current = newActivityId();
+      briefActivityIdRef.current = activityId;
       remoteSavedRef.current = false;
       setCanEdit(true);
       setOwnerName(null);
@@ -823,6 +831,7 @@ export const useBrief = ({
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
+        activityId: briefActivityIdRef.current,
         mode,
         existingContent: isRevise ? priorContent : null,
         instruction,
@@ -1046,7 +1055,8 @@ export const useBrief = ({
           content: priorContent,
           instruction: instruction.trim(),
           voiceInstructions: voiceInstructionsFor(section.voiceId),
-          signal: controller.signal,
+          activityId: briefActivityIdRef.current,
+            signal: controller.signal,
         });
         if (controller.signal.aborted) return;
         const cur = sectionsRef.current.find((s) => s.id === id);

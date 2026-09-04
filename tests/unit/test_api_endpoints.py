@@ -136,7 +136,7 @@ async def test_datasources_config(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_generate_summary(monkeypatch):
-    async def fake_generate(
+    async def fake_generate_with_usage(
         query: str,
         results: list,
         max_results: int,
@@ -145,7 +145,11 @@ async def test_generate_summary(monkeypatch):
         max_tokens: int | None = None,
         system_prompt_override: str | None = None,
     ):
-        return "summary"
+        return "summary", {
+            "llm_model": "gpt-4.1-mini",
+            "prompt_tokens": 12,
+            "completion_tokens": 3,
+        }
 
     def fake_render(
         query: str,
@@ -156,7 +160,7 @@ async def test_generate_summary(monkeypatch):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
-    llm_module.generate_ai_summary = fake_generate
+    llm_module.generate_ai_summary_with_usage = fake_generate_with_usage
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
@@ -171,6 +175,10 @@ async def test_generate_summary(monkeypatch):
     assert response.summary == "summary"
     assert response.prompt == "prompt"
     assert response.results_count == 1
+    # Usage is no longer discarded — it is returned to the caller.
+    assert response.usage is not None
+    assert response.usage.prompt_tokens == 12
+    assert response.usage.completion_tokens == 3
 
 
 @pytest.mark.asyncio

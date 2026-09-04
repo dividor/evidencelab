@@ -116,6 +116,10 @@ class TestResultRead(BaseModel):
     assertion_results: Optional[List[Dict[str, Any]]] = None
     latency_ms: Optional[int] = None
     error_message: Optional[str] = None
+    # Combined LLM usage for the case (summary + judge calls).
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    cost_usd: Optional[float] = None
     created_at: datetime
 
 
@@ -129,6 +133,9 @@ class TestRunRead(BaseModel):
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    # The user the run (and its token usage) is attributed to — whoever
+    # clicked Run, falling back to the experiment's creator.
+    created_by_user_id: Optional[uuid.UUID] = None
     created_at: datetime
     results: List[TestResultRead] = Field(default_factory=list)
 

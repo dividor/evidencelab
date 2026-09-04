@@ -41,15 +41,19 @@ describe('Semantic Highlighting', () => {
       expect.stringContaining('/api/highlight'),
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({
-          query: query,
-          text: text,
-          highlight_type: 'semantic',
-          semantic_threshold: threshold
-        })
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' })
       })
     );
+    const sentBody = JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
+    expect(sentBody).toMatchObject({
+      query: query,
+      text: text,
+      highlight_type: 'semantic',
+      semantic_threshold: threshold
+    });
+    // Usage-recording context (anonymous session id) rides along so the
+    // backend can attribute semantic-highlight token usage server-side.
+    expect(typeof sentBody.session_id).toBe('string');
   });
 
   test('findSemanticMatches handles empty response', async () => {

@@ -6,14 +6,13 @@ FastAPI server that provides semantic search over indexed documents in Qdrant.
 import logging
 import os
 import signal
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -28,6 +27,7 @@ from pipeline.db import (
     load_datasources_config,
 )
 from pipeline.utilities.tasks import app as celery_app
+from ui.backend import schemas as _api_schemas
 from ui.backend.routes import assistant as assistant_routes
 from ui.backend.routes import brief as brief_routes
 from ui.backend.routes import config as config_routes
@@ -696,134 +696,24 @@ if USER_MODULE_MODE == "on_active":
     app.add_middleware(ActiveAuthMiddleware, auth_secret=AUTH_SECRET, api_key=API_KEY)
 
 
-# Models
-class SearchResult(BaseModel):
-    id: Optional[str] = None  # Chunk ID (for UI compatibility)
-    chunk_id: str
-    doc_id: str
-    document_title: Optional[str] = None  # Document title (for UI compatibility)
-    data_source: Optional[str] = None  # Data source (for UI filtering)
-    text: str
-    page_num: int
-    chunk_elements: Optional[List[Dict[str, Any]]] = (
-        None  # Unified array with all elements (text, images, tables)
-    )
-    headings: List[str]
-    section_type: Optional[str] = None
-    score: float
-    # Visual content metadata
-    item_types: Optional[List[str]] = None  # e.g., ['TableItem', 'PictureItem']
-    # Backward compatibility fields
-    bbox: Optional[List] = None  # Legacy field
-    elements: Optional[List[Dict[str, Any]]] = None  # Legacy field
-    table_data: Optional[Dict[str, Any]] = None  # Legacy field
-    tables: Optional[List[Dict[str, Any]]] = None  # Legacy field
-    images: Optional[List[Dict[str, Any]]] = None  # Legacy field
-    # Core fields for backward compatibility
-    title: str
-    organization: Optional[str] = None
-    year: Optional[str] = None
-    file_format: Optional[str] = None
-    # ALL document metadata as flexible JSON - any field can appear here
-    metadata: Dict[str, Any] = {}
-    sys_parsed_folder: Optional[str] = None
-    sys_filepath: Optional[str] = None
-    sys_full_summary: Optional[str] = None
-
-    class Config:
-        extra = "allow"  # Allow additional fields not explicitly defined
-
-
-class ModelConfig(BaseModel):
-    name: str
-    description: str
-    is_default: bool
-
-
-class SearchResponse(BaseModel):
-    results: List[SearchResult]
-    total: int
-    query: str
-    filters: Optional[Dict[str, List[str]]] = None
-
-
-class FacetValue(BaseModel):
-    value: str
-    count: int
-    organization: Optional[str] = None  # For title facets - associated org
-    published_year: Optional[str] = None  # For title facets - associated year
-
-
-class Facets(BaseModel):
-    """Dynamic facets response using core field names."""
-
-    facets: Dict[str, List[FacetValue]]  # core_field_name -> list of facet values
-    filter_fields: Dict[str, str]  # core_field_name -> display label (from config)
-
-
-class HighlightBox(BaseModel):
-    page: int
-    bbox: Dict[str, float]  # {l, r, t, b}
-    text: str
-
-
-class HighlightResponse(BaseModel):
-    highlights: List[HighlightBox]
-    total: int
-
-
-class HighlightMatch(BaseModel):
-    start: int
-    end: int
-    text: str
-    match_type: str  # "exact_phrase", "word", "semantic"
-    word: Optional[str] = None  # For word matches
-    similarity: Optional[float] = None  # For semantic matches
-
-
-class SummaryModelConfig(BaseModel):
-    model: str
-    max_tokens: int
-    temperature: float
-    chunk_overlap: int
-    chunk_tokens_ratio: float
-
-
-class UnifiedHighlightRequest(BaseModel):
-    query: str
-    text: str
-    highlight_type: str = "both"  # "keyword", "semantic", or "both"
-    semantic_threshold: float = 0.4
-    min_sentence_length_ratio: float = 1.5
-    semantic_model_config: Optional[SummaryModelConfig] = None
-
-
-class UnifiedHighlightResponse(BaseModel):
-    highlighted_text: str  # Text with <em> tags inserted
-    matches: List[HighlightMatch]  # For backward compatibility
-    total: int
-    types_returned: List[str]  # Which types were actually returned
-
-
-class AISummaryRequest(BaseModel):
-    query: str
-    results: List[SearchResult]
-    max_results: int = 20
-    summary_model: Optional[str] = None
-    summary_model_config: Optional[SummaryModelConfig] = None
-
-
-class TranslateRequest(BaseModel):
-    text: str
-    target_language: str
-    source_language: Optional[str] = None
-
-
-class AISummaryResponse(BaseModel):
-    summary: str
-    query: str
-    results_count: int
-    prompt: str = ""
+# Models: the routes bind the canonical request/response models from
+# ui.backend.schemas; these aliases exist only for backwards compatibility
+# with code (and tests) that historically imported them from main. Aliasing
+# instead of redefining keeps them from silently drifting out of sync.
+SearchResult = _api_schemas.SearchResult
+ModelConfig = _api_schemas.ModelConfig
+SearchResponse = _api_schemas.SearchResponse
+FacetValue = _api_schemas.FacetValue
+Facets = _api_schemas.Facets
+HighlightBox = _api_schemas.HighlightBox
+HighlightResponse = _api_schemas.HighlightResponse
+HighlightMatch = _api_schemas.HighlightMatch
+SummaryModelConfig = _api_schemas.SummaryModelConfig
+UnifiedHighlightRequest = _api_schemas.UnifiedHighlightRequest
+UnifiedHighlightResponse = _api_schemas.UnifiedHighlightResponse
+AISummaryRequest = _api_schemas.AISummaryRequest
+TranslateRequest = _api_schemas.TranslateRequest
+AISummaryResponse = _api_schemas.AISummaryResponse
 
 
 app.include_router(config_routes.router)

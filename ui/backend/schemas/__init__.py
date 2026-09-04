@@ -97,6 +97,14 @@ class SummaryModelConfig(BaseModel):
     chunk_tokens_ratio: float
 
 
+class LlmUsagePayload(BaseModel):
+    """Token usage reported for one LLM call (activity-log field shape)."""
+
+    llm_model: Optional[str] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+
+
 class UnifiedHighlightRequest(BaseModel):
     query: str
     text: str
@@ -104,6 +112,10 @@ class UnifiedHighlightRequest(BaseModel):
     semantic_threshold: float = 0.4
     min_sentence_length_ratio: float = 1.5
     semantic_model_config: Optional[SummaryModelConfig] = None
+    # Current search context so semantic-highlight LLM usage can be recorded
+    # server-side (one accumulating 'highlight' activity row per search).
+    search_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class UnifiedHighlightResponse(BaseModel):
@@ -119,6 +131,12 @@ class AISummaryRequest(BaseModel):
     max_results: int = 20
     summary_model: Optional[str] = None
     summary_model_config: Optional[SummaryModelConfig] = None
+    # Activity row (search_id) this summary's token usage is recorded onto,
+    # server-side, when generation finishes — plus the anonymous session id
+    # for owner scoping. Drill-down summaries reuse the parent search's id so
+    # their usage accumulates onto the same row.
+    search_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class TranslateRequest(BaseModel):
@@ -132,6 +150,7 @@ class AISummaryResponse(BaseModel):
     query: str
     results_count: int
     prompt: str = ""
+    usage: Optional[LlmUsagePayload] = None
 
 
 class LLMConfig(BaseModel):
@@ -195,6 +214,10 @@ class BriefOutlineRequest(BaseModel):
     # Optional sample of the most relevant corpus material (from a prior /search)
     # so the outline reflects what the system actually contains.
     sources: Optional[List[BriefSourceSample]] = None
+    # The brief's stable activity id (+ anonymous session id) so outline LLM
+    # usage is recorded server-side onto the brief's activity row.
+    activity_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class BriefOutlineResponse(BaseModel):
@@ -211,6 +234,10 @@ class BriefReviseRequest(BaseModel):
     model: Optional[str] = None
     # Optional voice & tone profile instructions applied to the rewritten text.
     voice_instructions: Optional[str] = None
+    # The brief's stable activity id (+ anonymous session id) so revise LLM
+    # usage is recorded server-side onto the brief's activity row.
+    activity_id: Optional[str] = None
+    session_id: Optional[str] = None
 
 
 class BriefReviseResponse(BaseModel):

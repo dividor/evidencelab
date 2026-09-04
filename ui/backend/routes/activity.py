@@ -249,10 +249,10 @@ async def log_activity(
         if body.ai_summary is not None:
             row.ai_summary = body.ai_summary
         row.url = body.url
-        row.llm_model = body.llm_model
-        row.prompt_tokens = body.prompt_tokens
-        row.completion_tokens = body.completion_tokens
-        row.cost_usd = cost
+        # Usage is patch-only: token counts may already have been recorded
+        # server-side (streaming endpoints, brief sections), so a re-POST
+        # without usage — e.g. every Brief save — must not null them out.
+        _apply_token_usage(row, body)
         activity = existing
     else:
         activity = UserActivity(

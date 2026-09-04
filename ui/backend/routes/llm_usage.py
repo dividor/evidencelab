@@ -59,6 +59,12 @@ _VALID_ACTIVITY_TYPES = {
     "assistant-basic",
     "assistant-deep-research",
     "brief",
+    # Server-side recorded types (see ui/backend/services/usage_recorder.py).
+    "highlight",
+    "evaluation",
+    "mcp-assistant",
+    "a2a-assistant",
+    "pipeline",
 }
 
 _DEFAULT_RANGE_DAYS = 30
