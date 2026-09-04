@@ -12173,13 +12173,13 @@ a.admin-citation-clickable:hover {
   background: var(--color-surface-alt, #f6f8fa);
 }
 
-/* Publication-year min/max inputs in the case editor */
-.testing-year-range {
+/* Range-field min/max inputs in the case editor */
+.testing-range-inputs {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-.testing-year-range input {
+.testing-range-inputs input {
   width: 6rem;
 }
 

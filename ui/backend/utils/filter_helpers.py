@@ -7,9 +7,11 @@ from qdrant_client.http import models
 from pipeline.db import (
     get_default_filter_fields,
     get_field_mapping,
+    get_src_field_mapping,
     get_taxonomy_filter_fields,
 )
 from ui.backend.utils.document_utils import map_core_field_to_storage
+from ui.backend.utils.facet_helpers import doc_ids_from_pg_jsonb
 from ui.backend.utils.language_codes import LANGUAGE_CODES
 
 
@@ -189,7 +191,14 @@ def _existing_doc_id_set(value: Any) -> Optional[Set[str]]:
 
 
 # Doc-level filters resolved to a doc_id set for the harness chunk search.
-_DOC_LEVEL_FILTER_KEYS = ("doc_titles", "region")
+# ``src_*`` fields (from the data source's ``src_field_mapping``) are detected
+# dynamically in :func:`_is_doc_level_key`.
+_DOC_LEVEL_FILTER_KEYS = ("doc_titles", "region", "language")
+
+
+def _is_doc_level_key(key: str, src_mapping: Dict[str, str]) -> bool:
+    """True when a filter key must be resolved to doc_ids for the chunk search."""
+    return key in _DOC_LEVEL_FILTER_KEYS or key in src_mapping
 
 
 def _title_doc_ids(value: Any, pg) -> Optional[Set[str]]:
@@ -238,23 +247,99 @@ def _region_doc_ids(value: Any, pg) -> Optional[Set[str]]:
     return doc_ids
 
 
-def resolve_doc_level_filters(filters: Dict[str, Any], pg) -> Dict[str, Any]:
-    """Resolve document-level filters (``doc_titles``, ``region``) to ``doc_id``.
+def _language_names(value: Any) -> List[str]:
+    """Coerce a ``language`` filter value into a list of language names/codes.
+
+    Accepts a list of strings, or a single/comma-joined string for convenience.
+    Blank entries are dropped.
+
+    Raises:
+        ValueError: If the value is neither a string nor a list/tuple.
+    """
+    if isinstance(value, str):
+        items: List[Any] = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        raise ValueError("language must be a string or a list of languages")
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _language_doc_ids(value: Any, pg) -> Optional[Set[str]]:
+    """Resolve a ``language`` value to a doc_id set (None if empty).
+
+    Language lives on documents (``sys_language``), not on chunks, so it is
+    resolved via PostgreSQL exactly like the ``/search`` route does. Values may
+    be full language names (as faceted in the UI) or ISO codes; names are
+    normalised to codes first.
+    """
+    if value is None:
+        return None
+    names = _language_names(value)
+    if not names:
+        return None
+    codes = [LANGUAGE_CODES.get(name, name) for name in names]
+    return set(pg.fetch_doc_ids_by_language(codes))
+
+
+def _src_field_values(field: str, value: Any) -> List[str]:
+    """Coerce a ``src_*`` filter value into a list of values (comma-splitting
+    bare strings, matching the search route's convention).
+
+    Raises:
+        ValueError: If the value is neither a string nor a list/tuple.
+    """
+    if isinstance(value, str):
+        items: List[Any] = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = list(value)
+    else:
+        raise ValueError(f"{field} must be a string or a list of values")
+    return [str(item).strip() for item in items if str(item).strip()]
+
+
+def _pop_src_field_constraints(
+    result: Dict[str, Any], src_mapping: Dict[str, str], pg
+) -> List[Set[str]]:
+    """Pop each present ``src_*`` filter and resolve it to a doc_id set.
+
+    ``src_*`` values live in the ``docs.src_doc_raw_metadata`` JSONB (only
+    sparsely stamped onto chunks), so each field is resolved via PostgreSQL —
+    the same source its facet counts come from. Values OR within a field; the
+    returned sets AND across fields.
+    """
+    constraints: List[Set[str]] = []
+    for field, raw_key in src_mapping.items():
+        if field not in result:
+            continue
+        values = _src_field_values(field, result.pop(field))
+        if values:
+            constraints.append(set(doc_ids_from_pg_jsonb(pg, raw_key, values)))
+    return constraints
+
+
+def resolve_doc_level_filters(
+    filters: Dict[str, Any], pg, data_source: str
+) -> Dict[str, Any]:
+    """Resolve document-level filters to a ``doc_id`` filter for the harness.
 
     The eval harness calls the chunk search directly and so bypasses the search
-    route's own resolvers. This lets users filter by exact document title (as
-    displayed in the UI) and by region — both document-level, not stored on
-    chunks — instead of raw doc_ids. Each is resolved to doc_ids at run time and
-    AND-combined with any existing ``doc_id`` filter (regions OR within their
-    facet). When the combination matches nothing, the filter is pinned to
-    :data:`NO_MATCH_DOC_ID` so the run returns no results (never unfiltered).
+    route's own resolvers. Filter fields whose values live on documents rather
+    than chunks — ``doc_titles`` (exact UI titles), ``region``, ``language`` and
+    the data source's config-declared ``src_*`` fields — must therefore be
+    resolved to doc_ids at run time, mirroring the ``/search`` route. Each
+    resolved set is AND-combined with any existing ``doc_id`` filter (values OR
+    within a field). When the combination matches nothing, the filter is pinned
+    to :data:`NO_MATCH_DOC_ID` so the run returns no results (never unfiltered).
 
-    ``country`` is intentionally left untouched: it is stamped on chunks and
-    applied natively by the chunk search.
+    Chunk-resident fields (``country``, ``document_type``, ``organization``,
+    year ranges, taxonomy ``tag_*`` fields, …) are intentionally left untouched:
+    the chunk search applies them natively as payload filters.
 
     Args:
         filters: Case ``filters`` dict. Not mutated; a new dict is returned.
         pg: Postgres client for the case's data source.
+        data_source: Data source key, used to look up its ``src_field_mapping``.
 
     Returns:
         A new filters dict with resolved keys replaced by a ``doc_id`` filter, or
@@ -262,21 +347,24 @@ def resolve_doc_level_filters(filters: Dict[str, Any], pg) -> Dict[str, Any]:
     """
     if not isinstance(filters, dict):
         return filters
-    if not any(key in filters for key in _DOC_LEVEL_FILTER_KEYS):
+    src_mapping = get_src_field_mapping(data_source) or {}
+    if not any(_is_doc_level_key(key, src_mapping) for key in filters):
         return filters
     result = dict(filters)
     constraints: List[Set[str]] = []
     existing = _existing_doc_id_set(result.get("doc_id"))
     if existing is not None:
         constraints.append(existing)
-    title_ids = _title_doc_ids(result.pop("doc_titles", None), pg)
-    if title_ids is not None:
-        constraints.append(title_ids)
-    region_ids = _region_doc_ids(result.pop("region", None), pg)
-    if region_ids is not None:
-        constraints.append(region_ids)
+    for resolved in (
+        _title_doc_ids(result.pop("doc_titles", None), pg),
+        _region_doc_ids(result.pop("region", None), pg),
+        _language_doc_ids(result.pop("language", None), pg),
+    ):
+        if resolved is not None:
+            constraints.append(resolved)
+    constraints.extend(_pop_src_field_constraints(result, src_mapping, pg))
     if not constraints:
         return result
-    resolved = set.intersection(*constraints)
-    result["doc_id"] = sorted(resolved) if resolved else [NO_MATCH_DOC_ID]
+    resolved_ids = set.intersection(*constraints)
+    result["doc_id"] = sorted(resolved_ids) if resolved_ids else [NO_MATCH_DOC_ID]
     return result

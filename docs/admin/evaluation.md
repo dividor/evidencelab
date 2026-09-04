@@ -86,28 +86,32 @@ The CSV columns are:
 
 #### Filtering a case
 
-Filters restrict which documents a case searches, reproducing the app's search
-facets. With **+ Add case** you can set the common ones with UI controls — a
-**document picker** (type to search real document titles), **country** and
-**region** pickers (populated from the data source's values), and a
-**publication year** range — and use the collapsible **Advanced filters /
-params (JSON)** box for anything else. In a CSV `filters` cell (and in the
-Advanced box) you provide a JSON object:
+Filters restrict which documents a case searches, using the **same filter
+fields the search page offers** for the dataset's data source — they come from
+the data source's configuration (`config.json`), not from a fixed list. With
+**+ Add case** the editor shows one control per configured field: a **document
+picker** (type to search real document titles) when the source declares a
+title filter, a **value picker** for each facet field (populated from the data
+source's values, e.g. country, region, document type, language), and **min /
+max inputs** for each numeric range field (e.g. publication year). Anything a
+case carries beyond those fields (e.g. `params` from an import) is shown
+read-only and kept unchanged when saving. In a CSV `filters` cell you provide
+a JSON object:
 
 | Filter | Format | Example |
 |--------|--------|---------|
 | Specific documents | `doc_titles`: a list of **exact document titles as they appear in the UI** (matched case-insensitively) | `{"doc_titles": ["Evaluation of X", "Annual Report 2021"]}` |
-| Publication year | `published_year_min` / `published_year_max` (numbers) | `{"published_year_min": 2018, "published_year_max": 2022}` |
-| Country / region | `country` / `region`: lists of values | `{"country": ["Kenya"], "region": ["Asia and the Pacific"]}` |
-| Other fields | e.g. `organization`, `document_type` (strings) | `{"organization": "WFP"}` |
+| Facet fields | the configured field name with a list of values | `{"country": ["Kenya"], "region": ["Asia and the Pacific"]}` |
+| Range fields | `<field>_min` / `<field>_max` (numbers) | `{"published_year_min": 2018, "published_year_max": 2022}` |
 
-`doc_titles` and `region` are resolved to the matching document IDs at run time,
-so you filter by the human-readable title/region rather than an internal ID
-(region also matches documents whose region field is not stamped on individual
-chunks). A `doc_titles` or `region` value that matches no document yields
+Document-level fields — `doc_titles`, `region`, `language` and the source's
+`src_*` fields — are resolved to the matching document IDs at run time, exactly
+as the search page does, so you filter by the human-readable value rather than
+an internal ID (this also matches documents whose value is not stamped on
+individual chunks). A document-level value that matches no document yields
 **zero** results for that case (it is never silently ignored), so prefer the
-pickers to avoid typos. Use a separate `params` key for search behaviour (e.g.
-`rerank`, `limit`), not for document filtering.
+pickers to avoid typos. Search behaviour (e.g. `rerank`, `limit`) belongs in a
+case's separate `params` key — set via the API or an import, not a filter.
 
 ---
 
