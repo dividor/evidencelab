@@ -1,0 +1,23 @@
+# Environment for the analysis notebooks in this directory.
+#
+# Install into a DEDICATED virtualenv (Python 3.11), not the repo's app
+# environment: ragas requires langchain-community<0.4, which conflicts with
+# the app's langchain-community pin in the root requirements.txt.
+#
+#   python3.11 -m venv ~/.venvs/evidencelab-notebooks
+#   ~/.venvs/evidencelab-notebooks/bin/pip install -r notebooks/requirements.txt
+#
+# The notebooks import repo modules by path (notebooks/citation_fidelity_lib.py,
+# pipeline/utilities/text_cleaning.py — stdlib-only), so run Jupyter from the
+# repo root; no app dependencies are needed beyond this file.
+jupyter==1.1.1
+pandas==2.2.3
+psycopg2-binary==2.9.12
+requests==2.32.5
+
+# RAGAS faithfulness judging (notebook section 8). ragas 0.4 still imports the
+# pre-1.0 langchain-community module layout, hence the < 0.4 pin here.
+ragas==0.4.3
+langchain-community<0.4
+langchain-openai==1.6.0
+openai==2.54.0

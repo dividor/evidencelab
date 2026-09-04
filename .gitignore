@@ -290,3 +290,6 @@ config.json
 /gcp.key.json.vertex
 /gcp.key.*.json
 /gcp.key.*
+
+# Analysis notebook outputs (generated per run)
+/notebooks/output/
