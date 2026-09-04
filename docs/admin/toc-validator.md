@@ -15,6 +15,14 @@ executive_summary, context, methodology, findings, conclusions, recommendations,
 Every other section type — `front_matter`, `acronyms`, `annexes`, `appendix`,
 `bibliography`, `introduction` — is **excluded by default**.
 
+This default-included list is **not hardcoded in the validator**. It is read from
+`application.search.default_included_section_types` in `config.json` — the *same*
+list Search uses — so the two can never drift. Changing that one config value
+re-points both Search's default and the validator (rebuild the frontend for the
+Search side, since `config.json` is baked into the build). If, for example, you
+decide `introduction` should count as body content, add it there and the
+validator stops flagging it everywhere at once.
+
 Section tagging is automatic (done at upload by the TOC classifier). If a section
 that is really part of the report body is mis-tagged as, say, `annexes`, that content
 silently disappears from default search results. Users never see it and never know
@@ -78,7 +86,9 @@ Two patterns are worth separating:
 * **`introduction` flagged across most documents.** This is systemic, not per-document
   mis-tagging: the body range starts at the introduction, and `introduction` is not in
   the default-included set (nor is it offered as a filter option in Search settings).
-  The fix is a decision about the defaults, not about individual documents.
+  The fix is a decision about the defaults, not about individual documents — add
+  `introduction` to `application.search.default_included_section_types` in `config.json`
+  and both Search and the validator will treat it as included.
 * **`annexes` / `acronyms` / `bibliography` / `front_matter` inside the body range.**
   These are genuine mis-tags worth investigating per document — for example a report
   whose *Findings* and *Recommendations* chapters were labelled `annexes` because their
@@ -88,6 +98,24 @@ Two patterns are worth separating:
 
 From a flagged row, open **Contents**, correct the section type, and save. Editing the
 classification automatically re-validates that document so the verdict updates.
+
+## Human approval
+
+A reviewer can mark a document's section tagging as **Approved** — a human sign-off that
+the classification has been checked. Approval is set from the **Contents** modal (its
+**Approved** checkbox), reachable both from the Documents Library and from the TOC
+Validator's own **Contents** link.
+
+Approved documents are called out in the review column with a green **✓ Human-approved**
+badge, and the row is tinted. The badge shows independently of the automated verdict: an
+approved document may still read **Fail** (for example a document dominated by a correctly
+tagged `introduction`) or **Not tested** — approval records human judgement, not the
+result of the check. This lets an admin tell at a glance which flagged rows have already
+been reviewed and accepted from those that still need attention.
+
+Approval is a live property of the document (stored as `sys_toc_approved`), read fresh
+from the document list — it is **not** frozen into the stored validation snapshot, so it
+stays current even between validation runs.
 
 ## Where results are stored
 

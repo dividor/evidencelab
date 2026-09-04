@@ -30,6 +30,18 @@ INTRO_FIELD = (
     "Introduction - before beginning of Annexes (start_page_number, end_page_number)"
 )
 
+# The default-included set the script now receives from config (see
+# pipeline.db.config.get_default_included_section_types).
+INCLUDED = [
+    "executive_summary",
+    "context",
+    "methodology",
+    "findings",
+    "conclusions",
+    "recommendations",
+    "other",
+]
+
 
 class TestSelectDocuments:
     def _docs(self):
@@ -68,7 +80,7 @@ class TestBuildReportRow:
 
     def test_build_report_row_when_body_annex_then_fail_row(self):
         toc = "[H1] Intro | context | page 13\n[H1] Misfiled | annexes | page 40\n"
-        row = mod.build_report_row(self._doc(toc, "(13, 67)"), "wfp")
+        row = mod.build_report_row(self._doc(toc, "(13, 67)"), "wfp", INCLUDED)
         assert row["status"] == "fail"
         assert row["doc_id"] == "doc-1"
         assert row["title"] == "Test Doc"
@@ -79,13 +91,13 @@ class TestBuildReportRow:
 
     def test_build_report_row_has_all_report_headers(self):
         row = mod.build_report_row(
-            self._doc("[H1] F | findings | page 30", "(13, 67)"), "wfp"
+            self._doc("[H1] F | findings | page 30", "(13, 67)"), "wfp", INCLUDED
         )
         assert set(row.keys()) == set(mod.REPORT_HEADERS)
 
     def test_build_report_row_when_no_range_then_skipped(self):
         row = mod.build_report_row(
-            self._doc("[H1] F | findings | page 30", None), "wfp"
+            self._doc("[H1] F | findings | page 30", None), "wfp", INCLUDED
         )
         assert row["status"] == "skipped"
         assert "missing_metadata_range" in row["reasons"]

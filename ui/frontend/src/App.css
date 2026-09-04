@@ -12399,6 +12399,34 @@ a.admin-citation-clickable:hover {
   border: 1px dashed var(--gray-300);
 }
 
+/* Status chip + approval badge sit on one row above the detail lines. */
+.toc-validation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Human-approval marker: deliberately high-contrast so an approved document is
+   obvious at a glance, independent of the pass/fail verdict beside it. */
+.toc-approved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-success);
+  color: white;
+}
+
+/* Subtle full-row tint reinforcing approval (no side accent bar, per UI rules). */
+.toc-validator-row-approved td {
+  background: #ecfdf5;
+}
+
 .toc-validation-detail {
   font-size: 0.78rem;
   color: var(--gray-600);

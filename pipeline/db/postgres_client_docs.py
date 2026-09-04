@@ -1069,10 +1069,12 @@ class PostgresDocMixin:
 
                     sys_toc = None
                     sys_toc_classified = None
+                    sys_toc_approved = None
                     sys_filepath = None
                     if isinstance(sys_data, dict):
                         sys_toc = sys_data.get("sys_toc")
                         sys_toc_classified = sys_data.get("sys_toc_classified")
+                        sys_toc_approved = sys_data.get("sys_toc_approved")
                         sys_filepath = sys_data.get("sys_filepath")
 
                     documents.append(
@@ -1095,6 +1097,7 @@ class PostgresDocMixin:
                             "sys_error_message": sys_error_message,
                             "sys_toc": sys_toc,
                             "sys_toc_classified": sys_toc_classified,
+                            "sys_toc_approved": sys_toc_approved,
                             "sys_filepath": sys_filepath,
                             "map_title": map_title,
                             "map_organization": map_organization,

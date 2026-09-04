@@ -16,6 +16,14 @@ export const docOrg = (doc: any): string =>
 export const docStatus = (doc: any): string =>
   doc.status || doc.sys_status || 'downloaded';
 
+/**
+ * True when a human reviewer has approved this document's section tagging.
+ * Reads the normalized `toc_approved` field, falling back to the raw sys_data
+ * shape so it works whether the row came from the list or a single-doc fetch.
+ */
+export const docApproved = (doc: any): boolean =>
+  doc?.toc_approved === true || doc?.sys_data?.sys_toc_approved === true;
+
 /** The four filterable columns; drives header rendering and options. */
 export type FilterColumn = 'title' | 'organization' | 'status' | 'review';
 
@@ -82,6 +90,7 @@ export const useTocValidator = (dataSource: string) => {
   const [results, setResults] = useState<Record<string, TocValidationResult>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [changedIds, setChangedIds] = useState<Set<string>>(new Set());
+  const [approvedIds, setApprovedIds] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
 
   const loadDocuments = useCallback(async () => {
@@ -105,6 +114,7 @@ export const useTocValidator = (dataSource: string) => {
         current += 1;
       } while (current <= pages);
       setAllDocuments(collected);
+      setApprovedIds(new Set(collected.filter(docApproved).map(docKey)));
     } catch (err) {
       setError('Could not load documents.');
     } finally {
@@ -137,10 +147,21 @@ export const useTocValidator = (dataSource: string) => {
   useEffect(() => {
     setSelectedIds(new Set());
     setChangedIds(new Set());
+    setApprovedIds(new Set());
     setColumnFilters({});
     setSearch('');
     setPage(1);
   }, [dataSource]);
+
+  /** Reflect an approval toggle (made in the Contents modal) in the table. */
+  const setApproval = useCallback((docId: string, approved: boolean) => {
+    setApprovedIds((prev) => {
+      const next = new Set(prev);
+      if (approved) next.add(docId);
+      else next.delete(docId);
+      return next;
+    });
+  }, []);
 
   // Filtered set (search box + every active column filter), in load order.
   const filtered = useMemo(() => {
@@ -299,6 +320,7 @@ export const useTocValidator = (dataSource: string) => {
     results,
     selectedIds,
     changedIds,
+    approvedIds,
     running,
     columnFilters,
     activeFilterColumn,
@@ -317,6 +339,7 @@ export const useTocValidator = (dataSource: string) => {
     selectAllMatching,
     runValidation,
     revalidate,
+    setApproval,
     reloadDocuments: loadDocuments,
   };
 };

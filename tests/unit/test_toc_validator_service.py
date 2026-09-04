@@ -1,6 +1,6 @@
 """Unit tests for the TOC validator backend service."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -66,6 +66,24 @@ class TestRunValidation:
         }
         results = service.run_validation(pg, ["b", "a"])
         assert [r["doc_id"] for r in results] == ["b", "a"]
+
+    def test_run_validation_honours_configured_included_set(self):
+        """The validator uses Search's configured list, not a hardcoded copy.
+
+        With ``introduction`` in the included set, an in-body introduction (the
+        classic false positive) passes instead of failing.
+        """
+        pg = MagicMock()
+        pg.fetch_docs.return_value = {
+            "d1": _doc("[H1] Introduction | introduction | page 30", "(13, 67)")
+        }
+        with patch.object(
+            service,
+            "get_default_included_section_types",
+            return_value=["introduction", "findings"],
+        ):
+            results = service.run_validation(pg, ["d1"])
+        assert results[0]["status"] == "pass"
 
 
 class TestGetStoredResults:

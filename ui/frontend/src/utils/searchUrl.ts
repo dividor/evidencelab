@@ -1,3 +1,4 @@
+import config from '../config.json';
 import { SearchFilters } from '../types/api';
 import type { SearchSettings } from '../types/auth';
 
@@ -26,15 +27,20 @@ export interface SearchStateFromURL {
 
 export const DEFAULT_FIELD_BOOST_FIELDS: Record<string, number> = { country: 1, organization: 0.5 };
 
-export const DEFAULT_SECTION_TYPES = [
-  'executive_summary',
-  'context',
-  'methodology',
-  'findings',
-  'conclusions',
-  'recommendations',
-  'other',
-];
+// The section types Search includes by default. Sourced from
+// `config.application.search.default_included_section_types` in config.json so
+// Search and the admin TOC Validator share one definition and cannot drift.
+// The literal here is only a safety net for a config.json missing the key.
+export const DEFAULT_SECTION_TYPES: string[] =
+  (config.application as any).search?.default_included_section_types ?? [
+    'executive_summary',
+    'context',
+    'methodology',
+    'findings',
+    'conclusions',
+    'recommendations',
+    'other',
+  ];
 
 /** Hardcoded system defaults for all search/content settings. */
 export const SYSTEM_DEFAULTS: Required<SearchSettings> = {

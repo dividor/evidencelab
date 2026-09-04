@@ -20,8 +20,13 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-# Mirrors DEFAULT_SECTION_TYPES in ui/frontend/src/utils/searchUrl.ts — the
-# section types that Search includes by default. Everything else is excluded.
+# Fallback default for the section types Search includes by default (everything
+# else is excluded). The authoritative source is
+# ``config.application.search.default_included_section_types`` in config.json —
+# the same list Search uses (ui/frontend/src/utils/searchUrl.ts reads it too).
+# The backend TOC-validator service resolves that config value and passes it in
+# as ``included``; this tuple is only used when no list is supplied (the offline
+# script and unit tests), so the two stay in sync via config, never by hand.
 DEFAULT_INCLUDED_SECTION_TYPES: Tuple[str, ...] = (
     "executive_summary",
     "context",

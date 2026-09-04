@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT))  # noqa: E402
 
+from pipeline.db.config import get_default_included_section_types  # noqa: E402
 from pipeline.validation.section_inclusion import (  # noqa: E402
     describe_excluded_sections,
     evaluate_document,
@@ -92,9 +93,11 @@ def select_documents(
     return eligible[:limit] if limit else eligible
 
 
-def build_report_row(doc: Dict[str, Any], data_source: str) -> Dict[str, Any]:
+def build_report_row(
+    doc: Dict[str, Any], data_source: str, included: List[str]
+) -> Dict[str, Any]:
     """Evaluate one doc and flatten the result into a report row."""
-    result = evaluate_document(doc)
+    result = evaluate_document(doc, included=included)
     return {
         "doc_id": str(doc.get("id")),
         "title": get_document_title(doc),
@@ -178,9 +181,10 @@ def main() -> None:
 
     counts = {"pass": 0, "fail": 0, "skipped": 0}
     excluded_tally: Dict[str, int] = {}
+    included = get_default_included_section_types()
 
     for doc in select_documents(pg.fetch_all_docs(), args.records, args.file_id):
-        row = build_report_row(doc, args.data_source)
+        row = build_report_row(doc, args.data_source, included)
         counts[row["status"]] += 1
         _tally_excluded(row, excluded_tally)
         ws.append([row[key] for key in REPORT_HEADERS])
