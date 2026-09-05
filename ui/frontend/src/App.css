@@ -8751,6 +8751,7 @@ li.ai-fact-active::before {
 }
 
 .search-result-filters-thumbnail {
+  position: relative;
   flex-shrink: 0;
   width: 196px;
   height: 96px;
@@ -8773,6 +8774,26 @@ li.ai-fact-active::before {
 .search-result-filters-thumbnail.selected {
   border: 2px solid var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.2);
+}
+
+/* Number of result excerpts from this document, on its carousel card. */
+.search-result-filters-thumbnail-count {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--brand-primary);
+  color: var(--white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
 }
 
 .search-result-filters-thumbnail-image {

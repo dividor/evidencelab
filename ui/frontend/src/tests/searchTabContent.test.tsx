@@ -103,6 +103,10 @@ const baseProps = {
   searchId: 0,
 };
 
+const SEL_SEARCH_RESULT_FILTERS_THUMBNAIL = '.search-result-filters-thumbnail';
+const SEL_SEARCH_RESULT_FILTERS = '.search-result-filters';
+const POPULAR_REPORT = 'Popular Report';
+
 describe('SearchTabContent result filters', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');
@@ -116,7 +120,7 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    expect(document.querySelector('.search-result-filters')).not.toBeInTheDocument();
+    expect(document.querySelector(SEL_SEARCH_RESULT_FILTERS)).not.toBeInTheDocument();
   });
 
   test('shows document thumbnails when multiple unique documents exist', () => {
@@ -127,9 +131,23 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    expect(document.querySelector('.search-result-filters')).toBeInTheDocument();
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    expect(document.querySelector(SEL_SEARCH_RESULT_FILTERS)).toBeInTheDocument();
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     expect(thumbnails).toHaveLength(2);
+  });
+
+  test('each document thumbnail carries a badge with its number of results', () => {
+    const results = [
+      buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
+      buildResult({ chunk_id: 'c2', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF', page_num: 2 }),
+      buildResult({ chunk_id: 'c3', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF', page_num: 3 }),
+      buildResult({ chunk_id: 'c4', doc_id: 'doc-2', title: 'Report B', organization: 'WFP' }),
+    ];
+    render(<SearchTabContent {...baseProps} results={results} />);
+    const badges = Array.from(document.querySelectorAll('.search-result-filters-thumbnail-count'));
+    expect(badges.map((b) => b.textContent)).toEqual(['3', '1']);
+    expect(badges[0]).toHaveAttribute('title', '3 results from this document');
+    expect(badges[1]).toHaveAttribute('title', '1 result from this document');
   });
 
   test('shows org labels when multiple orgs exist', () => {
@@ -154,7 +172,7 @@ describe('SearchTabContent result filters', () => {
 
     expect(screen.getByText('UNICEF (2)')).toBeInTheDocument();
     // Thumbnails should still be present
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     expect(thumbnails).toHaveLength(2);
   });
 
@@ -168,13 +186,13 @@ describe('SearchTabContent result filters', () => {
     render(<SearchTabContent {...baseProps} results={results} />);
 
     // All 3 thumbnails visible initially
-    expect(document.querySelectorAll('.search-result-filters-thumbnail')).toHaveLength(3);
+    expect(document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL)).toHaveLength(3);
 
     // Click UNICEF org filter
     fireEvent.click(screen.getByText('UNICEF (2)'));
 
     // Only UNICEF docs should show
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     expect(thumbnails).toHaveLength(2);
     const thumbTitles = document.querySelectorAll('.search-result-filters-thumbnail-title');
     expect(thumbTitles[0].textContent).toBe('Report A');
@@ -190,7 +208,7 @@ describe('SearchTabContent result filters', () => {
     render(<SearchTabContent {...baseProps} results={results} />);
 
     // Click thumbnail for Report A
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     fireEvent.click(thumbnails[0]);
 
     // Should show filter indicator
@@ -211,7 +229,7 @@ describe('SearchTabContent result filters', () => {
     render(<SearchTabContent {...baseProps} results={results} />);
 
     // Click a thumbnail to activate filter
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     fireEvent.click(thumbnails[0]);
     expect(screen.queryByTestId('result-c2')).not.toBeInTheDocument();
 
@@ -240,7 +258,7 @@ describe('SearchTabContent result filters', () => {
     // Deactivate
     fireEvent.click(unicefBtn);
     expect(unicefBtn).not.toHaveClass('active');
-    expect(document.querySelectorAll('.search-result-filters-thumbnail')).toHaveLength(2);
+    expect(document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL)).toHaveLength(2);
   });
 
   test('clicking a selected thumbnail toggles it off', () => {
@@ -251,7 +269,7 @@ describe('SearchTabContent result filters', () => {
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
 
     // Select
     fireEvent.click(thumbnails[0]);
@@ -273,22 +291,22 @@ describe('SearchTabContent result filters', () => {
     render(<SearchTabContent {...baseProps} results={results} minScore={0.5} />);
 
     // Only 1 unique doc above threshold, so filters should not show
-    expect(document.querySelector('.search-result-filters')).not.toBeInTheDocument();
+    expect(document.querySelector(SEL_SEARCH_RESULT_FILTERS)).not.toBeInTheDocument();
   });
 
   test('documents are deduplicated in insertion order', () => {
     const results = [
       buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Rare Report', organization: 'UNICEF' }),
-      buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Popular Report', organization: 'WFP' }),
-      buildResult({ chunk_id: 'c3', doc_id: 'doc-2', title: 'Popular Report', organization: 'WFP', page_num: 2 }),
-      buildResult({ chunk_id: 'c4', doc_id: 'doc-2', title: 'Popular Report', organization: 'WFP', page_num: 3 }),
+      buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: POPULAR_REPORT, organization: 'WFP' }),
+      buildResult({ chunk_id: 'c3', doc_id: 'doc-2', title: POPULAR_REPORT, organization: 'WFP', page_num: 2 }),
+      buildResult({ chunk_id: 'c4', doc_id: 'doc-2', title: POPULAR_REPORT, organization: 'WFP', page_num: 3 }),
     ];
 
     render(<SearchTabContent {...baseProps} results={results} />);
 
     const titles = document.querySelectorAll('.search-result-filters-thumbnail-title');
     expect(titles[0].textContent).toBe('Rare Report');
-    expect(titles[1].textContent).toBe('Popular Report');
+    expect(titles[1].textContent).toBe(POPULAR_REPORT);
   });
 
   test('renders the coverage info tooltip after the org pills with live counts', () => {
@@ -326,7 +344,7 @@ describe('SearchTabContent result filters', () => {
     const { rerender } = render(<SearchTabContent {...baseProps} results={results} />);
 
     // Activate a document filter
-    const thumbnails = document.querySelectorAll('.search-result-filters-thumbnail');
+    const thumbnails = document.querySelectorAll(SEL_SEARCH_RESULT_FILTERS_THUMBNAIL);
     fireEvent.click(thumbnails[0]);
     expect(screen.queryByTestId('result-c2')).not.toBeInTheDocument();
 

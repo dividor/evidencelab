@@ -38,7 +38,7 @@ A row of **organization filter chips** (e.g., UNDP (14), UNICEF (4), FAO (4)) ap
 
 #### Document Carousel
 
-A horizontal **carousel of document cards** shows the top-matching documents with their cover images, titles, organizations, and publication years. Click any card to jump directly to that document's results below, or scroll the carousel to browse more.
+A horizontal **carousel of document cards** shows the top-matching documents with their cover images, titles, organizations, and publication years. Each card carries a badge with the number of matching excerpts from that document. Click any card to jump directly to that document's results below, or scroll the carousel to browse more.
 
 #### Result Cards
 

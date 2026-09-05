@@ -243,6 +243,7 @@ const SearchResultFilters: React.FC<{
   filteredDocIds: string[];
   onDocToggle: (docId: string) => void;
   filteredUniqueDocuments: SearchResult[];
+  documentResultCounts: Map<string, number>;
   selectedDomain: string;
   hasActiveFilter: boolean;
   filterLabel: string | null;
@@ -259,6 +260,7 @@ const SearchResultFilters: React.FC<{
   filteredDocIds,
   onDocToggle,
   filteredUniqueDocuments,
+  documentResultCounts,
   selectedDomain,
   hasActiveFilter,
   filterLabel,
@@ -313,6 +315,7 @@ const SearchResultFilters: React.FC<{
             ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
             : null;
           const isSelected = filteredDocIds.includes(doc.doc_id);
+          const resultCount = documentResultCounts.get(doc.doc_id) || 0;
           return (
             <div
               key={doc.doc_id}
@@ -320,6 +323,14 @@ const SearchResultFilters: React.FC<{
               onClick={() => onDocToggle(doc.doc_id)}
               title={doc.title || 'Untitled'}
             >
+              {resultCount > 0 && (
+                <span
+                  className="search-result-filters-thumbnail-count"
+                  title={`${resultCount} result${resultCount === 1 ? '' : 's'} from this document`}
+                >
+                  {resultCount}
+                </span>
+              )}
               <div className="search-result-filters-thumbnail-image">
                 {thumbnailUrl ? (
                   <img
@@ -680,6 +691,14 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
     return docs;
   }, [visibleResults]);
 
+  // How many visible result excerpts each document contributes; shown as a
+  // badge on its carousel card.
+  const documentResultCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    visibleResults.forEach((r) => counts.set(r.doc_id, (counts.get(r.doc_id) || 0) + 1));
+    return counts;
+  }, [visibleResults]);
+
   // Unique orgs with counts
   const uniqueOrgs = useMemo(() => {
     const orgCounts = new Map<string, number>();
@@ -923,6 +942,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               filteredDocIds={filteredDocIds}
               onDocToggle={handleDocToggle}
               filteredUniqueDocuments={filteredUniqueDocuments}
+              documentResultCounts={documentResultCounts}
               selectedDomain={selectedDomain}
               hasActiveFilter={hasActiveFilter}
               filterLabel={filterLabel}
