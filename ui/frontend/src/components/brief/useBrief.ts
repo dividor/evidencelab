@@ -677,6 +677,13 @@ export const useBrief = ({
     }
   }, [apiBaseUrl, dataSource, query, instructions, numHeadings, assistantModelConfig]);
 
+  // Abort an in-flight outline generation and return to the seed form with the
+  // topic and instructions intact. generateOutline's own cleanup clears the
+  // loading state and suppresses the abort error.
+  const stopOutline = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
     briefActivityIdRef.current = newActivityId();
@@ -1410,6 +1417,7 @@ export const useBrief = ({
     setSectionVoiceId: (id: string, voiceId: string | null) =>
       updateSection(id, { voiceId }),
     generateOutline,
+    stopOutline,
     startManual,
     startFromTemplate,
     openBriefById,

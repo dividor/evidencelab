@@ -221,6 +221,28 @@
 .brief-generating .brief-activity {
   margin-top: 12px;
 }
+/* The x at the end of the "in progress" row that stops outline generation. */
+.brief-generating-stop {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--brand-border);
+  border-radius: 50%;
+  color: var(--brand-text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.brief-generating-stop:hover {
+  color: var(--brand-text-primary);
+  border-color: var(--brand-text-tertiary);
+  background: var(--brand-border-light);
+}
 
 /* Editable brief title in the document header */
 .brief-doc-title-input {

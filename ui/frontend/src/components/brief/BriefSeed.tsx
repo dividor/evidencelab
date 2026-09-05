@@ -17,6 +17,15 @@ export const BriefGeneratingPanel: React.FC<{ brief: UseBriefReturn }> = ({ brie
       <div className="brief-researching-head">
         <span className="brief-spinner" />
         <span className="brief-researching-label">Deep research in progress</span>
+        <button
+          type="button"
+          className="brief-generating-stop"
+          onClick={brief.stopOutline}
+          aria-label="Stop generating"
+          title="Stop generating this outline"
+        >
+          ×
+        </button>
       </div>
       <div className="brief-activity">
         {brief.generatingActivity.map((ev, i) => (

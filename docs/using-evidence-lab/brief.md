@@ -24,7 +24,7 @@ Click the **Brief** tab and you'll land on the start screen.
 
 You have three ways to start:
 
-- **Generate outline** — enter a **Topic** (e.g. *girls education in Kenya*), optionally add **Instructions** to steer the headings (e.g. *focus on East Africa, prioritise RCTs since 2018, structure around outcomes*), choose the **Number of sections**, and click **Generate outline**. Evidence Lab runs a deep-research survey across the document library and proposes headings grounded in what the collection actually contains.
+- **Generate outline** — enter a **Topic** (e.g. *girls education in Kenya*), optionally add **Instructions** to steer the headings (e.g. *focus on East Africa, prioritise RCTs since 2018, structure around outcomes*), choose the **Number of sections**, and click **Generate outline**. Evidence Lab runs a deep-research survey across the document library and proposes headings grounded in what the collection actually contains. While the survey runs, a *Deep research in progress* panel shows what it is searching; click the **×** at the end of that row to stop it and return to the form with your topic and instructions kept.
 - **Write my own headings** — skip the survey and start from a small set of placeholder headings you edit yourself.
 - **Load a saved brief** — reopen any brief from your history.
 
