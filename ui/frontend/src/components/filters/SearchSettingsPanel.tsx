@@ -28,12 +28,20 @@ interface SearchSettingsPanelProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
   onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   availableBoostFields: string[];
 }
+
+const SUBSETTINGS_GROUP_CLASS = 'settings-subsettings-group';
 
 const BOOST_FIELD_OPTIONS = [
   { value: 'country', label: 'Country' },
@@ -112,7 +120,7 @@ const RecencyControls = ({
   recencyScaleDays: number;
   onRecencyScaleDaysChange: (value: number) => void;
 }) => (
-  <div className={recencyBoostEnabled ? 'settings-subsettings-group' : undefined}>
+  <div className={recencyBoostEnabled ? SUBSETTINGS_GROUP_CLASS : undefined}>
     <label className="rerank-checkbox-label">
       <input
         type="checkbox"
@@ -165,6 +173,79 @@ const RecencyControls = ({
           </div>
         </div>
       </>
+    )}
+  </div>
+);
+
+// Wide search: spread results across documents. When on, the search returns
+// `wideLimit` documents with at most `wideGroupSize` results each, documents
+// ranked by their best match, instead of a flat top-N of chunks.
+export const WideSearchControls = ({
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+}: {
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+}) => (
+  <div className={wideSearch ? SUBSETTINGS_GROUP_CLASS : undefined}>
+    <label className="rerank-checkbox-label">
+      <input
+        type="checkbox"
+        checked={wideSearch}
+        onChange={(event) => onWideSearchToggle(event.target.checked)}
+        className="rerank-checkbox"
+      />
+      <span>Wide Search</span>
+      <span
+        className="rerank-tooltip"
+        title="Spread results across more documents: return a set number of documents with at most a few results each, ranked by each document's best match. Use it when one document is crowding out the rest."
+      >
+        ⓘ
+      </span>
+    </label>
+    {wideSearch && (
+      <div className="wide-search-fields">
+        <label className="wide-search-field">
+          <span className="wide-search-label">Max results per document</span>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            step="1"
+            value={wideGroupSize}
+            aria-label="Max results per document"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onWideGroupSizeChange(Math.min(50, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+        <label className="wide-search-field">
+          <span className="wide-search-label">Number of documents</span>
+          <input
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            value={wideLimit}
+            aria-label="Number of documents"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onWideLimitChange(Math.min(200, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+      </div>
     )}
   </div>
 );
@@ -255,6 +336,12 @@ export const SearchSettingsPanel = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -395,7 +482,15 @@ export const SearchSettingsPanel = ({
               ⓘ
             </span>
           </label>
-          <div className={fieldBoostEnabled ? 'settings-subsettings-group' : undefined}>
+          <WideSearchControls
+            wideSearch={wideSearch}
+            onWideSearchToggle={onWideSearchToggle}
+            wideGroupSize={wideGroupSize}
+            onWideGroupSizeChange={onWideGroupSizeChange}
+            wideLimit={wideLimit}
+            onWideLimitChange={onWideLimitChange}
+          />
+          <div className={fieldBoostEnabled ? SUBSETTINGS_GROUP_CLASS : undefined}>
           <label className="rerank-checkbox-label">
             <input
               type="checkbox"

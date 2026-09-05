@@ -20,6 +20,9 @@ export interface SearchStateFromURL {
   deduplicate: boolean;
   fieldBoost: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
+  wideLimit: number;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -57,6 +60,9 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   deduplicate: true,
   fieldBoost: true,
   fieldBoostFields: { ...DEFAULT_FIELD_BOOST_FIELDS },
+  wideSearch: false,
+  wideGroupSize: 5,
+  wideLimit: 20,
   greetingMessage: '',
 };
 
@@ -231,6 +237,9 @@ export const getSearchStateFromURL = (
     deduplicate: parseBooleanParam(params, 'deduplicate', d.deduplicate ?? SYSTEM_DEFAULTS.deduplicate),
     fieldBoost: parseBooleanParam(params, 'field_boost', d.fieldBoost ?? SYSTEM_DEFAULTS.fieldBoost),
     fieldBoostFields: parseFieldBoostFields(params),
+    wideSearch: parseBooleanParam(params, 'wide', d.wideSearch ?? SYSTEM_DEFAULTS.wideSearch),
+    wideGroupSize: parseIntParam(params, 'wide_group_size', d.wideGroupSize ?? SYSTEM_DEFAULTS.wideGroupSize),
+    wideLimit: parseIntParam(params, 'wide_limit', d.wideLimit ?? SYSTEM_DEFAULTS.wideLimit),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -314,7 +323,10 @@ export const buildSearchURL = (
   modelCombo?: string | null,
   dataset?: string | null,
   fieldBoost?: boolean,
-  fieldBoostFields?: Record<string, number>
+  fieldBoostFields?: Record<string, number>,
+  wideSearch?: boolean,
+  wideGroupSize?: number,
+  wideLimit?: number
 ): string => {
   const params = new URLSearchParams();
   setParamIfNonEmpty(params, 'q', query);
@@ -339,6 +351,9 @@ export const buildSearchURL = (
       .join(',');
     params.set('field_boost_fields', encoded);
   }
+  setParamIfTrue(params, 'wide', wideSearch);
+  setParamIfNotDefault(params, 'wide_group_size', wideGroupSize, SYSTEM_DEFAULTS.wideGroupSize);
+  setParamIfNotDefault(params, 'wide_limit', wideLimit, SYSTEM_DEFAULTS.wideLimit);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

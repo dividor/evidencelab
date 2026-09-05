@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
+import GroupSettingsManager from '../components/admin/GroupSettingsManager';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -9,8 +10,6 @@ jest.mock('../../src/config', () => ({
   __esModule: true,
   default: '/api',
 }));
-
-import GroupSettingsManager from '../components/admin/GroupSettingsManager';
 
 const mockGroups = [
   {
@@ -35,6 +34,10 @@ const mockGroups = [
   },
 ];
 
+const SEL_INPUT_TYPE_CHECKBOX = 'input[type="checkbox"]';
+const SEARCH_SETTINGS = 'Search Settings';
+const SAVE_SETTINGS = 'Save Settings';
+
 describe('GroupSettingsManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -52,7 +55,7 @@ describe('GroupSettingsManager', () => {
   test('auto-selects default group and shows settings panel', async () => {
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_SETTINGS)).toBeInTheDocument();
       expect(screen.getByText('Content Settings')).toBeInTheDocument();
     });
   });
@@ -67,12 +70,12 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByText('Analysts'));
 
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_SETTINGS)).toBeInTheDocument();
     });
 
     // Analysts group has rerank=false, so the Enable Reranker checkbox should be unchecked
     const rerankLabel = screen.getByText('Enable Reranker');
-    const rerankCheckbox = rerankLabel.parentElement!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const rerankCheckbox = rerankLabel.parentElement!.querySelector(SEL_INPUT_TYPE_CHECKBOX) as HTMLInputElement;
     expect(rerankCheckbox.checked).toBe(false);
   });
 
@@ -87,10 +90,10 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByText('Analysts'));
 
     await waitFor(() => {
-      expect(screen.getByText('Save Settings')).toBeInTheDocument();
+      expect(screen.getByText(SAVE_SETTINGS)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Save Settings'));
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g1', {
@@ -136,19 +139,43 @@ describe('GroupSettingsManager', () => {
 
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('Search Settings')).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_SETTINGS)).toBeInTheDocument();
     });
 
     // Toggle the Deduplicate checkbox (currently true by default)
     const deduplicateLabel = screen.getByText('Deduplicate');
-    const deduplicateCheckbox = deduplicateLabel.parentElement!.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const deduplicateCheckbox = deduplicateLabel.parentElement!.querySelector(SEL_INPUT_TYPE_CHECKBOX) as HTMLInputElement;
     fireEvent.click(deduplicateCheckbox);
 
-    fireEvent.click(screen.getByText('Save Settings'));
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
         search_settings: { deduplicate: false },
+        summary_prompt: '',
+      });
+    });
+  });
+
+  test('wide search and its fields are saved as group overrides', async () => {
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+
+    render(<GroupSettingsManager />);
+    await waitFor(() => {
+      expect(screen.getByText(SEARCH_SETTINGS)).toBeInTheDocument();
+    });
+
+    const wideLabel = screen.getByText('Wide Search');
+    const wideCheckbox = wideLabel.parentElement!.querySelector(SEL_INPUT_TYPE_CHECKBOX) as HTMLInputElement;
+    fireEvent.click(wideCheckbox);
+    fireEvent.change(screen.getByLabelText('Max results per document'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Number of documents'), { target: { value: '40' } });
+
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
+        search_settings: { wideSearch: true, wideGroupSize: 3, wideLimit: 40 },
         summary_prompt: '',
       });
     });

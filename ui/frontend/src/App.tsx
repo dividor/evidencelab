@@ -322,6 +322,9 @@ const buildSearchParams = ({
   deduplicateEnabled,
   fieldBoostEnabled,
   fieldBoostFields,
+  wideSearch,
+  wideGroupSize,
+  wideLimit,
 }: {
   query: string;
   filters: SearchFilters;
@@ -341,6 +344,9 @@ const buildSearchParams = ({
   deduplicateEnabled: boolean;
   fieldBoostEnabled: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
+  wideLimit: number;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -373,6 +379,11 @@ const buildSearchParams = ({
     params.append('auto_min_score', 'true');
   }
   params.append('deduplicate', deduplicateEnabled.toString());
+  if (wideSearch) {
+    params.append('wide_search', 'true');
+    params.append('wide_group_size', wideGroupSize.toString());
+    params.append('wide_limit', wideLimit.toString());
+  }
   params.append('field_boost', fieldBoostEnabled.toString());
   if (fieldBoostEnabled && Object.keys(fieldBoostFields).length > 0) {
     const encoded = Object.entries(fieldBoostFields)
@@ -765,6 +776,10 @@ function App() {
   const [minChunkSize, setMinChunkSize] = useState<number>(initialSearchState.minChunkSize);
   // Deduplicate cross-document results
   const [deduplicateEnabled, setDeduplicateEnabled] = useState<boolean>(initialSearchState.deduplicate);
+  // Wide search: spread results across documents (N documents x M results each)
+  const [wideSearch, setWideSearch] = useState<boolean>(initialSearchState.wideSearch);
+  const [wideGroupSize, setWideGroupSize] = useState<number>(initialSearchState.wideGroupSize);
+  const [wideLimit, setWideLimit] = useState<number>(initialSearchState.wideLimit);
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
@@ -824,6 +839,9 @@ function App() {
     deduplicate: setDeduplicateEnabled,
     fieldBoost: setFieldBoostEnabled,
     fieldBoostFields: setFieldBoostFields,
+    wideSearch: setWideSearch,
+    wideGroupSize: setWideGroupSize,
+    wideLimit: setWideLimit,
     greetingMessage: setGreetingMessage,
   });
 
@@ -945,6 +963,9 @@ function App() {
       setDeduplicateEnabled(searchState.deduplicate);
       setFieldBoostEnabled(searchState.fieldBoost);
       setFieldBoostFields(searchState.fieldBoostFields);
+      setWideSearch(searchState.wideSearch);
+      setWideGroupSize(searchState.wideGroupSize);
+      setWideLimit(searchState.wideLimit);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1527,7 +1548,10 @@ function App() {
         selectedModelCombo,
         selectedDomain,
         fieldBoostEnabled,
-        fieldBoostFields
+        fieldBoostFields,
+        wideSearch,
+        wideGroupSize,
+        wideLimit
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1570,6 +1594,9 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    wideSearch,
+    wideGroupSize,
+    wideLimit,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1806,6 +1833,9 @@ function App() {
       deduplicateEnabled,
       fieldBoostEnabled,
       fieldBoostFields,
+      wideSearch,
+      wideGroupSize,
+      wideLimit,
     });
 
     try {
@@ -1837,7 +1867,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit]);
 
   // Navigate back to parent node in the drilldown tree
   const navigateBackDrilldown = useCallback(() => {
@@ -1893,7 +1924,7 @@ function App() {
           recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
           keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
           searchModel, dataSource, autoMinScore, deduplicateEnabled,
-          fieldBoostEnabled, fieldBoostFields,
+          fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
         });
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
         const freshResults = searchResp.data.results.slice(0, 20);
@@ -1938,7 +1969,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit]);
 
   // Add a custom node to the tree: create stub, search, summarize, update
   const handleAddNodeToTree = useCallback(async (parentId: string, userQuery: string) => {
@@ -1967,7 +1999,7 @@ function App() {
         recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
         keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
         searchModel, dataSource, autoMinScore, deduplicateEnabled,
-        fieldBoostEnabled, fieldBoostFields,
+        fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
       });
       const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
       const freshResults = searchResp.data.results.slice(0, 20);
@@ -2003,7 +2035,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit]);
 
   // Remove a node from the tree
   const handleRemoveNodeFromTree = useCallback((nodeId: string) => {
@@ -2169,6 +2202,9 @@ function App() {
         deduplicateEnabled,
         fieldBoostEnabled,
         fieldBoostFields,
+        wideSearch,
+        wideGroupSize,
+        wideLimit,
       });
 
       const searchStartTime = performance.now();
@@ -2233,6 +2269,9 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    wideSearch,
+    wideGroupSize,
+    wideLimit,
     logSearch,
     searchId,
   ]);
@@ -2779,6 +2818,12 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      wideSearch={wideSearch}
+      onWideSearchToggle={setWideSearch}
+      wideGroupSize={wideGroupSize}
+      onWideGroupSizeChange={setWideGroupSize}
+      wideLimit={wideLimit}
+      onWideLimitChange={setWideLimit}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}
@@ -2885,6 +2930,12 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      wideSearch={wideSearch}
+      onWideSearchToggle={setWideSearch}
+      wideGroupSize={wideGroupSize}
+      onWideGroupSizeChange={setWideGroupSize}
+      wideLimit={wideLimit}
+      onWideLimitChange={setWideLimit}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}

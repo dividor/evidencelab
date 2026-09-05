@@ -75,6 +75,23 @@ Click any filter option to apply it immediately — results update in real-time.
 
 > *Tip: Filters and search work together. Start with a broad query, then use filters to progressively narrow results to exactly what you need.*
 
+### Wide Search
+
+By default a search returns the best-matching **excerpts**, wherever they come from. When a topic is covered in depth by one report, that report can fill most of the list on its own, so you see a lot of one document and little of the rest of the library.
+
+**Wide Search** changes what a result is: instead of the top excerpts, you get a set number of **documents**, each contributing at most a few excerpts, with documents ranked by their single best match. Turn it on under **Search Settings** in the left sidebar, then set:
+
+| Field | What it does | Default |
+|-------|--------------|---------|
+| **Max results per document** | The most excerpts any one document can contribute. | 5 |
+| **Number of documents** | How many documents to return. The total number of excerpts is at most *documents × max per document*. | 20 |
+
+Wide Search respects your other settings: filters and section types still narrow what is searched, the semantic/keyword balance still applies, and the reranker, recency boost and deduplication still run on what comes back. The document carousel above the results shows how many excerpts each document contributed.
+
+Use it when you want coverage across the library, such as scanning how many evaluations touch a theme, rather than the deepest matches on one report. Leave it off for a focused question where the most relevant passages matter more than spread.
+
+Administrators can set Wide Search and its two fields as defaults for a team under **Admin → Group Settings**; users can still change them for a session.
+
 ---
 
 ### Document Preview & PDF Viewer

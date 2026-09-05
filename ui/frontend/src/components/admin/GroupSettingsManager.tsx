@@ -9,6 +9,7 @@ import {
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
+import { WideSearchControls } from '../filters/SearchSettingsPanel';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -32,6 +33,9 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'deduplicate',
   'fieldBoost',
   'fieldBoostFields',
+  'wideSearch',
+  'wideGroupSize',
+  'wideLimit',
   'greetingMessage',
 ];
 
@@ -610,6 +614,16 @@ const GroupSettingsManager: React.FC = () => {
                     ⓘ
                   </span>
                 </label>
+
+                {/* Wide search */}
+                <WideSearchControls
+                  wideSearch={values.wideSearch}
+                  onWideSearchToggle={(v) => update('wideSearch', v)}
+                  wideGroupSize={values.wideGroupSize}
+                  onWideGroupSizeChange={(v) => update('wideGroupSize', v)}
+                  wideLimit={values.wideLimit}
+                  onWideLimitChange={(v) => update('wideLimit', v)}
+                />
 
                 {/* Field Level Boosting */}
                 <div className={values.fieldBoost ? 'settings-subsettings-group' : undefined}>

@@ -427,6 +427,9 @@ async def test_search_endpoint(monkeypatch):
         model=None,
         rerank_model=None,
         rerank_model_page_size=None,
+        wide_search=False,
+        wide_group_size=5,
+        wide_limit=20,
         auto_min_score=False,
         deduplicate=True,
         field_boost=True,
@@ -982,3 +985,74 @@ def test_language_facets_map_codes_to_full_names():
     assert lang_values["French"] == 10
     # Unknown codes pass through unchanged
     assert lang_values["Unknown"] == 3
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_passes_wide_search_settings(monkeypatch):
+    # The main.py wrapper copies its globals into the routes module on every
+    # call, which outlives monkeypatch; snapshot and restore so this test does
+    # not leak its fakes into later modules.
+    import ui.backend.routes.search as search_routes
+
+    rebound = ("search_chunks", "get_db_for_source", "get_pg_for_source")
+    saved = {
+        name: getattr(search_routes, name)
+        for name in rebound
+        if hasattr(search_routes, name)
+    }
+
+    db = _make_db_mock()
+    monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
+    pg = SimpleNamespace()
+    pg.fetch_docs = lambda doc_ids: {}
+    pg.fetch_chunks = lambda chunk_ids: {}
+    pg.fetch_indexed_doc_ids = lambda: []
+    monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: pg)
+
+    captured = {}
+
+    def fake_search_chunks(*_args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(main_module, "search_chunks", fake_search_chunks)
+
+    try:
+        result = await main_module.search(
+            _make_request(path="/search"),
+            q="school feeding",
+            limit=50,
+            organization=None,
+            title=None,
+            published_year=None,
+            document_type=None,
+            country=None,
+            language=None,
+            dense_weight=None,
+            rerank=False,
+            recency_boost=False,
+            recency_weight=0.15,
+            recency_scale_days=365,
+            section_types=None,
+            keyword_boost_short_queries=True,
+            data_source=None,
+            min_chunk_size=0,
+            model=None,
+            rerank_model=None,
+            rerank_model_page_size=None,
+            wide_search=True,
+            wide_group_size=3,
+            wide_limit=7,
+            auto_min_score=False,
+            deduplicate=True,
+            field_boost=True,
+            field_boost_fields=None,
+        )
+    finally:
+        for name, value in saved.items():
+            setattr(search_routes, name, value)
+
+    assert captured["wide_search"] is True
+    assert captured["wide_group_size"] == 3
+    assert captured["wide_limit"] == 7
+    assert result.total == 0

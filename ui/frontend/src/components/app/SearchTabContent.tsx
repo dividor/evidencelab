@@ -58,6 +58,12 @@ interface SearchTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -456,6 +462,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -810,6 +822,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onSectionTypesChange={onSectionTypesChange}
         deduplicateEnabled={deduplicateEnabled}
         onDeduplicateToggle={onDeduplicateToggle}
+        wideSearch={wideSearch}
+        onWideSearchToggle={onWideSearchToggle}
+        wideGroupSize={wideGroupSize}
+        onWideGroupSizeChange={onWideGroupSizeChange}
+        wideLimit={wideLimit}
+        onWideLimitChange={onWideLimitChange}
         fieldBoostEnabled={fieldBoostEnabled}
         onFieldBoostToggle={onFieldBoostToggle}
         fieldBoostFields={fieldBoostFields}

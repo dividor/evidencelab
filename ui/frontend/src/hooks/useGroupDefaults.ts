@@ -32,6 +32,9 @@ const SETTING_PARAM_MAP: Array<{ param: string; key: keyof SearchSettings }> = [
   { param: 'deduplicate', key: 'deduplicate' },
   { param: 'field_boost', key: 'fieldBoost' },
   { param: 'field_boost_fields', key: 'fieldBoostFields' },
+  { param: 'wide', key: 'wideSearch' },
+  { param: 'wide_group_size', key: 'wideGroupSize' },
+  { param: 'wide_limit', key: 'wideLimit' },
 ];
 
 interface AuthState {

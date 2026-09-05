@@ -62,6 +62,9 @@ describe('SYSTEM_DEFAULTS', () => {
     expect(SYSTEM_DEFAULTS.autoMinScore).toBe(false);
     expect(SYSTEM_DEFAULTS.deduplicate).toBe(true);
     expect(SYSTEM_DEFAULTS.fieldBoost).toBe(true);
+    expect(SYSTEM_DEFAULTS.wideSearch).toBe(false);
+    expect(SYSTEM_DEFAULTS.wideGroupSize).toBe(5);
+    expect(SYSTEM_DEFAULTS.wideLimit).toBe(20);
   });
 });
 
@@ -131,6 +134,26 @@ describe('getSearchStateFromURL with groupDefaults', () => {
     const state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
     expect(state.minChunkSize).toBe(200);
     expect(state.recencyScaleDays).toBe(180);
+  });
+
+  test('wide search settings fall back to system defaults, then group defaults, then URL', () => {
+    setURL('?q=test');
+    let state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES);
+    expect(state.wideSearch).toBe(false);
+    expect(state.wideGroupSize).toBe(5);
+    expect(state.wideLimit).toBe(20);
+
+    const groupDefaults: SearchSettings = { wideSearch: true, wideGroupSize: 3, wideLimit: 40 };
+    state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
+    expect(state.wideSearch).toBe(true);
+    expect(state.wideGroupSize).toBe(3);
+    expect(state.wideLimit).toBe(40);
+
+    setURL('?q=test&wide=false&wide_group_size=2&wide_limit=9');
+    state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
+    expect(state.wideSearch).toBe(false);
+    expect(state.wideGroupSize).toBe(2);
+    expect(state.wideLimit).toBe(9);
   });
 
   test('group defaults for section types', () => {

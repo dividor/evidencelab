@@ -28,6 +28,12 @@ export interface SearchSettings {
   deduplicate?: boolean;
   fieldBoost?: boolean;
   fieldBoostFields?: Record<string, number>;
+  /** Wide search: spread results across documents (see wideGroupSize / wideLimit). */
+  wideSearch?: boolean;
+  /** Wide search: max results per document. */
+  wideGroupSize?: number;
+  /** Wide search: number of documents to return. */
+  wideLimit?: number;
   greetingMessage?: string;
 }
 

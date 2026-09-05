@@ -94,6 +94,12 @@ interface HeatmapTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -1191,6 +1197,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -2799,6 +2811,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onSectionTypesChange,
     deduplicateEnabled,
     onDeduplicateToggle,
+    wideSearch,
+    onWideSearchToggle,
+    wideGroupSize,
+    onWideGroupSizeChange,
+    wideLimit,
+    onWideLimitChange,
     fieldBoostEnabled,
     onFieldBoostToggle,
     fieldBoostFields,
