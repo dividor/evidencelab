@@ -1,11 +1,14 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-
-jest.mock('axios');
-
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import axios from 'axios';
 import UserMenu from './UserMenu';
 import { AuthContext } from '../../hooks/useAuth';
 import type { AuthContextValue } from '../../types/auth';
+
+jest.mock('axios');
+
+const ALICE_EMAIL = 'alice@example.com';
+const ALICE_NAME = 'Alice Baker';
 
 const mockAuthValue = (overrides: Partial<AuthContextValue> = {}): AuthContextValue => ({
   user: null,
@@ -49,10 +52,10 @@ describe('UserMenu', () => {
         isAuthenticated: true,
         user: {
           id: '1',
-          email: 'alice@example.com',
+          email: ALICE_EMAIL,
           first_name: 'Alice',
           last_name: 'Baker',
-          display_name: 'Alice Baker',
+          display_name: ALICE_NAME,
           is_active: true,
           is_verified: true,
           is_superuser: false,
@@ -71,10 +74,10 @@ describe('UserMenu', () => {
         isAuthenticated: true,
         user: {
           id: '1',
-          email: 'alice@example.com',
+          email: ALICE_EMAIL,
           first_name: 'Alice',
           last_name: 'Baker',
-          display_name: 'Alice Baker',
+          display_name: ALICE_NAME,
           is_active: true,
           is_verified: true,
           is_superuser: false,
@@ -143,7 +146,7 @@ describe('UserMenu', () => {
         logout,
         user: {
           id: '1',
-          email: 'alice@example.com',
+          email: ALICE_EMAIL,
           first_name: 'Alice',
           last_name: null,
           display_name: 'Alice',
@@ -158,5 +161,82 @@ describe('UserMenu', () => {
     fireEvent.click(screen.getByText('A'));
     fireEvent.click(screen.getByText('Sign Out'));
     expect(logout).toHaveBeenCalled();
+  });
+
+  describe('menu item clicks survive the trigger losing focus', () => {
+    const signedInAdmin = () =>
+      mockAuthValue({
+        isAuthenticated: true,
+        user: {
+          id: '1',
+          email: ALICE_EMAIL,
+          first_name: 'Alice',
+          last_name: 'Baker',
+          display_name: ALICE_NAME,
+          is_active: true,
+          is_verified: true,
+          is_superuser: true,
+          created_at: null,
+          updated_at: null,
+        },
+      });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('opens Saved Research when the click lands long after focus left the trigger', async () => {
+      jest.useFakeTimers();
+      (axios.get as jest.Mock).mockResolvedValue({ data: [] });
+      renderWithAuth(signedInAdmin(), { onLoadResearch: jest.fn() });
+      const trigger = screen.getByText('AB');
+      fireEvent.click(trigger);
+      const item = screen.getByText('Saved Research');
+      // A real click moves focus off the trigger on mouse-down; the mouse-up
+      // (and so the click) can arrive much later on a slow click or a remote
+      // desktop. The item must still be there when it does.
+      fireEvent.mouseDown(item);
+      fireEvent.focusOut(trigger);
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      fireEvent.click(item);
+      expect(screen.getByText('Load Previous Research')).toBeInTheDocument();
+      await act(async () => {
+        for (let i = 0; i < 5; i++) await Promise.resolve();
+      });
+    });
+
+    it('opens Admin when the click lands long after focus left the trigger', () => {
+      jest.useFakeTimers();
+      const onAdminClick = jest.fn();
+      renderWithAuth(signedInAdmin(), { onAdminClick });
+      const trigger = screen.getByText('AB');
+      fireEvent.click(trigger);
+      const item = screen.getByRole('button', { name: 'Admin' });
+      fireEvent.mouseDown(item);
+      fireEvent.focusOut(trigger);
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      fireEvent.click(item);
+      expect(onAdminClick).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Admin' })).not.toBeInTheDocument();
+    });
+
+    it('closes when the user presses outside the menu', () => {
+      renderWithAuth(signedInAdmin());
+      fireEvent.click(screen.getByText('AB'));
+      expect(screen.getByText('Profile')).toBeInTheDocument();
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByText('Profile')).not.toBeInTheDocument();
+    });
+
+    it('closes on Escape', () => {
+      renderWithAuth(signedInAdmin());
+      fireEvent.click(screen.getByText('AB'));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      expect(screen.queryByText('Profile')).not.toBeInTheDocument();
+    });
   });
 });
