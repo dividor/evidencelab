@@ -86,7 +86,7 @@ By default a search returns the best-matching **excerpts**, wherever they come f
 | **Max results per document** | The most excerpts any one document can contribute. | 5 |
 | **Number of documents** | How many documents to return. The total number of excerpts is at most *documents × max per document*. | 20 |
 
-Wide Search respects your other settings: filters and section types still narrow what is searched, the semantic/keyword balance still applies, and the reranker, recency boost and deduplication still run on what comes back. The document carousel above the results shows how many excerpts each document contributed.
+Wide Search respects your other settings: filters and section types still narrow what is searched, the semantic/keyword balance still applies, and the reranker, recency boost and deduplication still run on what comes back. The document carousel above the results shows how many excerpts each document contributed. The AI Summary is built from the best excerpt of each document first, so its references spread across the returned documents too.
 
 Use it when you want coverage across the library, such as scanning how many evaluations touch a theme, rather than the deepest matches on one report. Leave it off for a focused question where the most relevant passages matter more than spread.
 

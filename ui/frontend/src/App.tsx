@@ -48,6 +48,7 @@ import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
 import { useGroupDefaults } from './hooks/useGroupDefaults';
+import { selectSummaryResults } from './utils/summarySelection';
 import { getSessionId, useActivityLogging } from './hooks/useActivityLogging';
 import { buildContextualSearchQuery, serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
 import { generateUUID } from './utils/uuid';
@@ -1747,11 +1748,11 @@ function App() {
     setAddingNodeParentId(null);
     setFindOutMoreDone(false);
 
-    const sliced = summaryResults.slice(0, 20);
+    const sliced = selectSummaryResults(summaryResults, wideSearch);
     setAiSummaryResults(sliced);
     setAiSummaryExpanded(false);
     launchSummaryStream(query, sliced);
-  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream]);
+  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream, wideSearch]);
 
   const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
     startAiSummaryStream(data.results);
@@ -1840,7 +1841,7 @@ function App() {
 
     try {
       const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = response.data.results.slice(0, 20);
+      const freshResults = selectSummaryResults(response.data.results, wideSearch);
       setResults(freshResults);
       setAiSummaryResults(freshResults);
 
@@ -1927,7 +1928,7 @@ function App() {
           fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
         });
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-        const freshResults = searchResp.data.results.slice(0, 20);
+        const freshResults = selectSummaryResults(searchResp.data.results, wideSearch);
 
         // Query inheritance (root + parent): same approach as startDrilldown above.
         // At root level parentContext is empty; deeper levels add the immediate
@@ -2002,7 +2003,7 @@ function App() {
         fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
       });
       const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = searchResp.data.results.slice(0, 20);
+      const freshResults = selectSummaryResults(searchResp.data.results, wideSearch);
 
       const leanResults = freshResults.map((r) => ({
         chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
