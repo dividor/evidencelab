@@ -781,6 +781,10 @@ function App() {
   const [wideSearch, setWideSearch] = useState<boolean>(initialSearchState.wideSearch);
   const [wideGroupSize, setWideGroupSize] = useState<number>(initialSearchState.wideGroupSize);
   const [wideLimit, setWideLimit] = useState<number>(initialSearchState.wideLimit);
+  // AI summary: how many results it is built from (null = every result)
+  const [summaryLimitResults, setSummaryLimitResults] = useState<boolean>(initialSearchState.summaryLimitResults);
+  const [summaryMaxResults, setSummaryMaxResults] = useState<number>(initialSearchState.summaryMaxResults);
+  const summaryResultCap = summaryLimitResults ? summaryMaxResults : null;
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
@@ -843,6 +847,8 @@ function App() {
     wideSearch: setWideSearch,
     wideGroupSize: setWideGroupSize,
     wideLimit: setWideLimit,
+    summaryLimitResults: setSummaryLimitResults,
+    summaryMaxResults: setSummaryMaxResults,
     greetingMessage: setGreetingMessage,
   });
 
@@ -967,6 +973,8 @@ function App() {
       setWideSearch(searchState.wideSearch);
       setWideGroupSize(searchState.wideGroupSize);
       setWideLimit(searchState.wideLimit);
+      setSummaryLimitResults(searchState.summaryLimitResults);
+      setSummaryMaxResults(searchState.summaryMaxResults);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1552,7 +1560,9 @@ function App() {
         fieldBoostFields,
         wideSearch,
         wideGroupSize,
-        wideLimit
+        wideLimit,
+        summaryLimitResults,
+        summaryMaxResults
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1598,6 +1608,8 @@ function App() {
     wideSearch,
     wideGroupSize,
     wideLimit,
+    summaryLimitResults,
+    summaryMaxResults,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1748,11 +1760,11 @@ function App() {
     setAddingNodeParentId(null);
     setFindOutMoreDone(false);
 
-    const sliced = selectSummaryResults(summaryResults, wideSearch);
+    const sliced = selectSummaryResults(summaryResults, wideSearch, summaryResultCap);
     setAiSummaryResults(sliced);
     setAiSummaryExpanded(false);
     launchSummaryStream(query, sliced);
-  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream, wideSearch]);
+  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream, wideSearch, summaryResultCap]);
 
   const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
     startAiSummaryStream(data.results);
@@ -1841,7 +1853,7 @@ function App() {
 
     try {
       const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = selectSummaryResults(response.data.results, wideSearch);
+      const freshResults = selectSummaryResults(response.data.results, wideSearch, summaryResultCap);
       setResults(freshResults);
       setAiSummaryResults(freshResults);
 
@@ -1869,7 +1881,7 @@ function App() {
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
       autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
-      wideSearch, wideGroupSize, wideLimit]);
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Navigate back to parent node in the drilldown tree
   const navigateBackDrilldown = useCallback(() => {
@@ -1928,7 +1940,7 @@ function App() {
           fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
         });
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-        const freshResults = selectSummaryResults(searchResp.data.results, wideSearch);
+        const freshResults = selectSummaryResults(searchResp.data.results, wideSearch, summaryResultCap);
 
         // Query inheritance (root + parent): same approach as startDrilldown above.
         // At root level parentContext is empty; deeper levels add the immediate
@@ -1971,7 +1983,7 @@ function App() {
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
       autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
-      wideSearch, wideGroupSize, wideLimit]);
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Add a custom node to the tree: create stub, search, summarize, update
   const handleAddNodeToTree = useCallback(async (parentId: string, userQuery: string) => {
@@ -2003,7 +2015,7 @@ function App() {
         fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
       });
       const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = selectSummaryResults(searchResp.data.results, wideSearch);
+      const freshResults = selectSummaryResults(searchResp.data.results, wideSearch, summaryResultCap);
 
       const leanResults = freshResults.map((r) => ({
         chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
@@ -2037,7 +2049,7 @@ function App() {
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
       autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
-      wideSearch, wideGroupSize, wideLimit]);
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Remove a node from the tree
   const handleRemoveNodeFromTree = useCallback((nodeId: string) => {
@@ -2825,6 +2837,10 @@ function App() {
       onWideGroupSizeChange={setWideGroupSize}
       wideLimit={wideLimit}
       onWideLimitChange={setWideLimit}
+      summaryLimitResults={summaryLimitResults}
+      onSummaryLimitResultsChange={setSummaryLimitResults}
+      summaryMaxResults={summaryMaxResults}
+      onSummaryMaxResultsChange={setSummaryMaxResults}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}
@@ -2937,6 +2953,10 @@ function App() {
       onWideGroupSizeChange={setWideGroupSize}
       wideLimit={wideLimit}
       onWideLimitChange={setWideLimit}
+      summaryLimitResults={summaryLimitResults}
+      onSummaryLimitResultsChange={setSummaryLimitResults}
+      summaryMaxResults={summaryMaxResults}
+      onSummaryMaxResultsChange={setSummaryMaxResults}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}

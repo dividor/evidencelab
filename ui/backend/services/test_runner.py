@@ -231,6 +231,14 @@ def _default_summary_model() -> Optional[str]:
     return next(iter(SUPPORTED_LLMS), None)
 
 
+def _summary_max_results(cfg: Dict[str, Any], result_count: int) -> int:
+    """How many results the summary is built from: the configured cap, or every
+    result when the group has switched the cap off (summary_limit_results=False)."""
+    if cfg.get("summary_limit_results") is False:
+        return result_count
+    return int(cfg.get("max_results", 20))
+
+
 async def _run_summary(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
@@ -242,7 +250,7 @@ async def _run_summary(
     raw_summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
         results=search_out["results"],
-        max_results=int(cfg.get("max_results", 20)),
+        max_results=_summary_max_results(cfg, len(search_out["results"])),
         model_key=model_key,
         temperature=cfg.get("temperature"),
         max_tokens=cfg.get("max_tokens"),
@@ -356,6 +364,8 @@ _GROUP_SETTING_MAP = {
     "wideSearch": "wide_search",
     "wideGroupSize": "wide_group_size",
     "wideLimit": "wide_limit",
+    "summaryLimitResults": "summary_limit_results",
+    "summaryMaxResults": "max_results",
 }
 
 

@@ -35,6 +35,8 @@ const SETTING_PARAM_MAP: Array<{ param: string; key: keyof SearchSettings }> = [
   { param: 'wide', key: 'wideSearch' },
   { param: 'wide_group_size', key: 'wideGroupSize' },
   { param: 'wide_limit', key: 'wideLimit' },
+  { param: 'summary_limit', key: 'summaryLimitResults' },
+  { param: 'summary_max', key: 'summaryMaxResults' },
 ];
 
 interface AuthState {

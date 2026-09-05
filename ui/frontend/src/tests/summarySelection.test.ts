@@ -47,6 +47,13 @@ describe('selectSummaryResults', () => {
     expect(selectSummaryResults(many, false)).toHaveLength(SUMMARY_RESULT_LIMIT);
   });
 
+  test('a null limit uses every result, in both modes', () => {
+    expect(selectSummaryResults(wideResults, false, null)).toHaveLength(wideResults.length);
+    const spread = selectSummaryResults(wideResults, true, null);
+    expect(spread).toHaveLength(wideResults.length);
+    expect(spread.slice(0, 4).map((r) => r.doc_id)).toEqual(['A', 'B', 'C', 'D']);
+  });
+
   test('results without a document id are kept as their own group', () => {
     const loose = [{ ...result('X', 1), doc_id: '' }, { ...result('X', 2), doc_id: '' }, result('Y', 1)];
     const picked = selectSummaryResults(loose, true, 3);

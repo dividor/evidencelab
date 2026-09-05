@@ -65,6 +65,8 @@ describe('SYSTEM_DEFAULTS', () => {
     expect(SYSTEM_DEFAULTS.wideSearch).toBe(false);
     expect(SYSTEM_DEFAULTS.wideGroupSize).toBe(5);
     expect(SYSTEM_DEFAULTS.wideLimit).toBe(20);
+    expect(SYSTEM_DEFAULTS.summaryLimitResults).toBe(true);
+    expect(SYSTEM_DEFAULTS.summaryMaxResults).toBe(20);
   });
 });
 
@@ -134,6 +136,23 @@ describe('getSearchStateFromURL with groupDefaults', () => {
     const state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
     expect(state.minChunkSize).toBe(200);
     expect(state.recencyScaleDays).toBe(180);
+  });
+
+  test('AI summary cap settings fall back to system defaults, then group defaults, then URL', () => {
+    setURL('?q=test');
+    let state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES);
+    expect(state.summaryLimitResults).toBe(true);
+    expect(state.summaryMaxResults).toBe(20);
+
+    const groupDefaults: SearchSettings = { summaryLimitResults: false, summaryMaxResults: 40 };
+    state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
+    expect(state.summaryLimitResults).toBe(false);
+    expect(state.summaryMaxResults).toBe(40);
+
+    setURL('?q=test&summary_limit=true&summary_max=8');
+    state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
+    expect(state.summaryLimitResults).toBe(true);
+    expect(state.summaryMaxResults).toBe(8);
   });
 
   test('wide search settings fall back to system defaults, then group defaults, then URL', () => {

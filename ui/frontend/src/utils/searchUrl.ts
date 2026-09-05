@@ -1,6 +1,7 @@
 import config from '../config.json';
 import { SearchFilters } from '../types/api';
 import type { SearchSettings } from '../types/auth';
+import { SUMMARY_RESULT_LIMIT } from './summarySelection';
 
 export interface SearchStateFromURL {
   query: string;
@@ -23,6 +24,8 @@ export interface SearchStateFromURL {
   wideSearch: boolean;
   wideGroupSize: number;
   wideLimit: number;
+  summaryLimitResults: boolean;
+  summaryMaxResults: number;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -63,6 +66,8 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   wideSearch: false,
   wideGroupSize: 5,
   wideLimit: 20,
+  summaryLimitResults: true,
+  summaryMaxResults: SUMMARY_RESULT_LIMIT,
   greetingMessage: '',
 };
 
@@ -240,6 +245,8 @@ export const getSearchStateFromURL = (
     wideSearch: parseBooleanParam(params, 'wide', d.wideSearch ?? SYSTEM_DEFAULTS.wideSearch),
     wideGroupSize: parseIntParam(params, 'wide_group_size', d.wideGroupSize ?? SYSTEM_DEFAULTS.wideGroupSize),
     wideLimit: parseIntParam(params, 'wide_limit', d.wideLimit ?? SYSTEM_DEFAULTS.wideLimit),
+    summaryLimitResults: parseBooleanParam(params, 'summary_limit', d.summaryLimitResults ?? SYSTEM_DEFAULTS.summaryLimitResults),
+    summaryMaxResults: parseIntParam(params, 'summary_max', d.summaryMaxResults ?? SYSTEM_DEFAULTS.summaryMaxResults),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -326,7 +333,9 @@ export const buildSearchURL = (
   fieldBoostFields?: Record<string, number>,
   wideSearch?: boolean,
   wideGroupSize?: number,
-  wideLimit?: number
+  wideLimit?: number,
+  summaryLimitResults?: boolean,
+  summaryMaxResults?: number
 ): string => {
   const params = new URLSearchParams();
   setParamIfNonEmpty(params, 'q', query);
@@ -354,6 +363,8 @@ export const buildSearchURL = (
   setParamIfTrue(params, 'wide', wideSearch);
   setParamIfNotDefault(params, 'wide_group_size', wideGroupSize, SYSTEM_DEFAULTS.wideGroupSize);
   setParamIfNotDefault(params, 'wide_limit', wideLimit, SYSTEM_DEFAULTS.wideLimit);
+  setParamIfFalse(params, 'summary_limit', summaryLimitResults);
+  setParamIfNotDefault(params, 'summary_max', summaryMaxResults, SYSTEM_DEFAULTS.summaryMaxResults);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

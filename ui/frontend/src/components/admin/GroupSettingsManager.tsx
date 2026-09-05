@@ -9,7 +9,7 @@ import {
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
-import { WideSearchControls } from '../filters/SearchSettingsPanel';
+import { AiSummaryControls, WideSearchControls } from '../filters/SearchSettingsPanel';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -36,6 +36,8 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'wideSearch',
   'wideGroupSize',
   'wideLimit',
+  'summaryLimitResults',
+  'summaryMaxResults',
   'greetingMessage',
 ];
 
@@ -827,6 +829,12 @@ const GroupSettingsManager: React.FC = () => {
                 </div>
                 {collapsedSections.has('ai_summary') && (
                   <div className="filter-section-content">
+                    <AiSummaryControls
+                      summaryLimitResults={values.summaryLimitResults}
+                      onSummaryLimitResultsChange={(v) => update('summaryLimitResults', v)}
+                      summaryMaxResults={values.summaryMaxResults}
+                      onSummaryMaxResultsChange={(v) => update('summaryMaxResults', v)}
+                    />
                     <div style={{ marginTop: '4px' }}>
                       <button
                         className="btn-sm"

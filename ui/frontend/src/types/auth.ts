@@ -34,6 +34,10 @@ export interface SearchSettings {
   wideGroupSize?: number;
   /** Wide search: number of documents to return. */
   wideLimit?: number;
+  /** AI summary: cap the results it is built from (off = use every result). */
+  summaryLimitResults?: boolean;
+  /** AI summary: the cap, when summaryLimitResults is on. */
+  summaryMaxResults?: number;
   greetingMessage?: string;
 }
 

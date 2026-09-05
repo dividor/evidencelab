@@ -34,6 +34,10 @@ interface SearchSettingsPanelProps {
   onWideGroupSizeChange: (value: number) => void;
   wideLimit: number;
   onWideLimitChange: (value: number) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -250,6 +254,57 @@ export const WideSearchControls = ({
   </div>
 );
 
+// AI Summary: how many of the results it is built from. Off = every result.
+export const AiSummaryControls = ({
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+}: {
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+}) => (
+  <div className={summaryLimitResults ? SUBSETTINGS_GROUP_CLASS : undefined}>
+    <label className="rerank-checkbox-label">
+      <input
+        type="checkbox"
+        checked={summaryLimitResults}
+        onChange={(event) => onSummaryLimitResultsChange(event.target.checked)}
+        className="rerank-checkbox"
+      />
+      <span>Limit Results Used</span>
+      <span
+        className="rerank-tooltip"
+        title="Build the AI Summary from at most this many results. Turn off to give the summary every result on the page (slower and costlier, but nothing is left out)."
+      >
+        ⓘ
+      </span>
+    </label>
+    {summaryLimitResults && (
+      <div className="wide-search-fields">
+        <label className="wide-search-field">
+          <span className="wide-search-label">Max results for summary</span>
+          <input
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            value={summaryMaxResults}
+            aria-label="Max results for summary"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onSummaryMaxResultsChange(Math.min(200, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+      </div>
+    )}
+  </div>
+);
+
 const SectionTypesSelector = ({
   sectionTypes,
   onSectionTypesChange,
@@ -342,6 +397,10 @@ export const SearchSettingsPanel = ({
   onWideGroupSizeChange,
   wideLimit,
   onWideLimitChange,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -607,6 +666,25 @@ export const SearchSettingsPanel = ({
           <SectionTypesSelector
             sectionTypes={sectionTypes}
             onSectionTypesChange={onSectionTypesChange}
+          />
+        </div>
+      )}
+    </div>
+
+    <div className="filter-section">
+      <div className="filter-section-header" onClick={() => onToggleFilter('ai_summary_settings')}>
+        <span className="filter-section-toggle">
+          {collapsedFilters.has('ai_summary_settings') ? '▼' : '▶'}
+        </span>
+        <span className="filter-section-title">AI Summary</span>
+      </div>
+      {collapsedFilters.has('ai_summary_settings') && (
+        <div className="filter-section-content">
+          <AiSummaryControls
+            summaryLimitResults={summaryLimitResults}
+            onSummaryLimitResultsChange={onSummaryLimitResultsChange}
+            summaryMaxResults={summaryMaxResults}
+            onSummaryMaxResultsChange={onSummaryMaxResultsChange}
           />
         </div>
       )}

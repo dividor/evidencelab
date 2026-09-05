@@ -51,6 +51,10 @@ interface FiltersPanelProps {
   onWideGroupSizeChange: (value: number) => void;
   wideLimit: number;
   onWideLimitChange: (value: number) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -105,6 +109,10 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onWideGroupSizeChange,
   wideLimit,
   onWideLimitChange,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -176,6 +184,10 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onWideGroupSizeChange={onWideGroupSizeChange}
             wideLimit={wideLimit}
             onWideLimitChange={onWideLimitChange}
+            summaryLimitResults={summaryLimitResults}
+            onSummaryLimitResultsChange={onSummaryLimitResultsChange}
+            summaryMaxResults={summaryMaxResults}
+            onSummaryMaxResultsChange={onSummaryMaxResultsChange}
             fieldBoostEnabled={fieldBoostEnabled}
             onFieldBoostToggle={onFieldBoostToggle}
             fieldBoostFields={fieldBoostFields}

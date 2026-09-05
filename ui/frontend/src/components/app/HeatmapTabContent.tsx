@@ -100,6 +100,10 @@ interface HeatmapTabContentProps {
   onWideGroupSizeChange: (value: number) => void;
   wideLimit: number;
   onWideLimitChange: (value: number) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -1203,6 +1207,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onWideGroupSizeChange,
   wideLimit,
   onWideLimitChange,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -2817,6 +2825,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onWideGroupSizeChange,
     wideLimit,
     onWideLimitChange,
+    summaryLimitResults,
+    onSummaryLimitResultsChange,
+    summaryMaxResults,
+    onSummaryMaxResultsChange,
     fieldBoostEnabled,
     onFieldBoostToggle,
     fieldBoostFields,

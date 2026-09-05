@@ -13,6 +13,15 @@ describe('buildSearchURL wide search params', () => {
     expect(url.has('wide_limit')).toBe(false);
   });
 
+  test('omits summary cap params at defaults and writes them when changed', () => {
+    const atDefaults = new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, false, 5, 20, true, 20));
+    expect(atDefaults.has('summary_limit')).toBe(false);
+    expect(atDefaults.has('summary_max')).toBe(false);
+    const changed = new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, false, 5, 20, false, 35));
+    expect(changed.get('summary_limit')).toBe('false');
+    expect(changed.get('summary_max')).toBe('35');
+  });
+
   test('writes wide=true and non-default sizes', () => {
     const url = new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, true, 3, 40));
     expect(url.get('wide')).toBe('true');

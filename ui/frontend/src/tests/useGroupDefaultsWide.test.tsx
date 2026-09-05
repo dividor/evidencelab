@@ -15,7 +15,8 @@ jest.mock('../../src/config', () => ({
 const SETTING_KEYS: (keyof SearchSettings)[] = [
   'denseWeight', 'rerank', 'recencyBoost', 'recencyWeight', 'recencyScaleDays', 'sectionTypes',
   'keywordBoostShortQueries', 'minChunkSize', 'semanticHighlighting', 'autoMinScore', 'deduplicate',
-  'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'greetingMessage',
+  'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'summaryLimitResults',
+  'summaryMaxResults', 'greetingMessage',
 ];
 
 const makeSetters = () =>
@@ -43,6 +44,15 @@ describe('useGroupDefaults applies wide search team defaults', () => {
     await waitFor(() => expect(setters.wideSearch).toHaveBeenCalledWith(true));
     expect(setters.wideGroupSize).toHaveBeenCalledWith(3);
     expect(setters.wideLimit).toHaveBeenCalledWith(40);
+  });
+
+  test('applies the AI summary cap team defaults', async () => {
+    setURL('?q=test');
+    mockedAxios.get.mockResolvedValue({ data: { summaryLimitResults: false, summaryMaxResults: 60 } });
+    const setters = makeSetters();
+    render(<Harness setters={setters} />);
+    await waitFor(() => expect(setters.summaryLimitResults).toHaveBeenCalledWith(false));
+    expect(setters.summaryMaxResults).toHaveBeenCalledWith(60);
   });
 
   test('a URL value wins over the team default for that key only', async () => {

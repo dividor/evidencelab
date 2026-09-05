@@ -38,6 +38,8 @@ const SEL_INPUT_TYPE_CHECKBOX = 'input[type="checkbox"]';
 const SEARCH_SETTINGS = 'Search Settings';
 const SAVE_SETTINGS = 'Save Settings';
 
+const URL_API_GROUPS_G2 = '/api/groups/g2';
+
 describe('GroupSettingsManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -150,7 +152,7 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
     await waitFor(() => {
-      expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
         search_settings: { deduplicate: false },
         summary_prompt: '',
       });
@@ -174,8 +176,30 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
     await waitFor(() => {
-      expect(mockedAxios.patch).toHaveBeenCalledWith('/api/groups/g2', {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
         search_settings: { wideSearch: true, wideGroupSize: 3, wideLimit: 40 },
+        summary_prompt: '',
+      });
+    });
+  });
+
+  test('the AI summary result cap is saved as group overrides', async () => {
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+
+    render(<GroupSettingsManager />);
+    await waitFor(() => {
+      expect(screen.getByText('AI Summary')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText('Max results for summary'), { target: { value: '35' } });
+    const limitLabel = screen.getByText('Limit Results Used');
+    fireEvent.click(limitLabel.parentElement!.querySelector(SEL_INPUT_TYPE_CHECKBOX) as HTMLInputElement);
+
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+        search_settings: { summaryMaxResults: 35, summaryLimitResults: false },
         summary_prompt: '',
       });
     });
