@@ -49,6 +49,18 @@ const makeFn = () => {
   return fn;
 };
 
+// Mirrors axios's cancellation contract: a request aborted through its
+// AbortSignal rejects with an error carrying `__CANCEL__`, which
+// `axios.isCancel` recognises.
+class CanceledError extends Error {
+  __CANCEL__ = true;
+
+  constructor(message = 'canceled') {
+    super(message);
+    this.name = 'CanceledError';
+  }
+}
+
 const axiosMock = {
   get: makeFn(),
   put: makeFn(),
@@ -65,6 +77,9 @@ const axiosMock = {
   },
   create: () => axiosMock,
   isAxiosError: () => false,
+  isCancel: (value: unknown) =>
+    !!value && (value as { __CANCEL__?: boolean }).__CANCEL__ === true,
+  CanceledError,
 };
 
 export default axiosMock;
