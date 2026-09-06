@@ -45,6 +45,20 @@ interface FiltersPanelProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -93,6 +107,20 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -158,6 +186,20 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onSectionTypesChange={onSectionTypesChange}
             deduplicateEnabled={deduplicateEnabled}
             onDeduplicateToggle={onDeduplicateToggle}
+            wideSearch={wideSearch}
+            onWideSearchToggle={onWideSearchToggle}
+            wideGroupSize={wideGroupSize}
+            onWideGroupSizeChange={onWideGroupSizeChange}
+            wideLimit={wideLimit}
+            onWideLimitChange={onWideLimitChange}
+            groupByDocument={groupByDocument}
+            onGroupByDocumentToggle={onGroupByDocumentToggle}
+            summaryLimitResults={summaryLimitResults}
+            onSummaryLimitResultsChange={onSummaryLimitResultsChange}
+            summaryMaxResults={summaryMaxResults}
+            onSummaryMaxResultsChange={onSummaryMaxResultsChange}
+            summaryTemperature={summaryTemperature}
+            onSummaryTemperatureChange={onSummaryTemperatureChange}
             fieldBoostEnabled={fieldBoostEnabled}
             onFieldBoostToggle={onFieldBoostToggle}
             fieldBoostFields={fieldBoostFields}

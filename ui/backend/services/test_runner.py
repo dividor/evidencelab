@@ -153,6 +153,9 @@ async def _run_search(
     query = case_input.get("query", "")
     limit = int(params.get("limit", 50))
     min_chunk_size = int(params.get("min_chunk_size", 0))
+    wide_search = bool(params.get("wide_search", False))
+    wide_group_size = int(params.get("wide_group_size", 5))
+    wide_limit = int(params.get("wide_limit", 20))
     filters = case_input.get("filters") or None
     if filters:
         filters = resolve_doc_level_filters(filters, pg, source)
@@ -174,8 +177,12 @@ async def _run_search(
         dense_model=params.get("embedding_model") or params.get("dense_model"),
         rerank_model=params.get("rerank_model"),
         max_rerank_candidates=int(params.get("max_rerank_candidates") or 0),
+        wide_search=wide_search,
+        wide_group_size=wide_group_size,
+        wide_limit=wide_limit,
     )
-    built = _fetch_and_build_results(pg, raw, source, limit, min_chunk_size)
+    effective_limit = wide_limit * wide_group_size if wide_search else limit
+    built = _fetch_and_build_results(pg, raw, source, effective_limit, min_chunk_size)
     if not built:
         return {"query": query, "results": [], "count": 0}
     boosted = _apply_post_retrieval_boosts(
@@ -224,6 +231,14 @@ def _default_summary_model() -> Optional[str]:
     return next(iter(SUPPORTED_LLMS), None)
 
 
+def _summary_max_results(cfg: Dict[str, Any], result_count: int) -> int:
+    """How many results the summary is built from: the configured cap, or every
+    result when the group has switched the cap off (summary_limit_results=False)."""
+    if cfg.get("summary_limit_results") is False:
+        return result_count
+    return int(cfg.get("max_results", 20))
+
+
 async def _run_summary(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
@@ -235,7 +250,7 @@ async def _run_summary(
     raw_summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
         results=search_out["results"],
-        max_results=int(cfg.get("max_results", 20)),
+        max_results=_summary_max_results(cfg, len(search_out["results"])),
         model_key=model_key,
         temperature=cfg.get("temperature"),
         max_tokens=cfg.get("max_tokens"),
@@ -346,6 +361,12 @@ _GROUP_SETTING_MAP = {
     "autoMinScore": "auto_min_score",
     "deduplicate": "deduplicate",
     "fieldBoost": "field_boost",
+    "wideSearch": "wide_search",
+    "wideGroupSize": "wide_group_size",
+    "wideLimit": "wide_limit",
+    "summaryLimitResults": "summary_limit_results",
+    "summaryMaxResults": "max_results",
+    "summaryTemperature": "temperature",
 }
 
 

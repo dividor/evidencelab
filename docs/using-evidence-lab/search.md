@@ -23,6 +23,8 @@ At the top of your results, Evidence Lab generates an **AI Summary** — a synth
 - Use the **language dropdown** (top-right of the summary card) to translate the summary into 10+ languages.
 - Click **"Find out more"** next to a heading to drill into that sub-topic as a new search — this launches a **Research Tree** (see [Research Trees](/docs/using-evidence-lab/research-trees.md)).
 - You can also **highlight any text** within the summary and click the popup button to research that specific phrase further.
+- The **Response variability** slider under **AI Summary** in the left sidebar sets the model's sampling temperature, shown beside the label. At **More Consistent** (temperature 0, the default) the model always takes its most likely wording, so the same results give the same summary every time. Towards **Creative Insights** (1) it may choose less likely wordings, so summaries differ between runs and paraphrase more loosely.
+- By default the summary is built from the top **20** results. Under **AI Summary** in the left sidebar you can change that number, or untick **Limit Results Used** to give it every result on the page (slower and costlier, but nothing is left out). With Wide Search on, the results are spread across documents first.
 
 > *Note: The AI summary is generated in real-time and may take a few seconds to stream in. A disclaimer reminds you that AI can make mistakes — always verify important findings against the source documents.*
 
@@ -38,7 +40,7 @@ A row of **organization filter chips** (e.g., UNDP (14), UNICEF (4), FAO (4)) ap
 
 #### Document Carousel
 
-A horizontal **carousel of document cards** shows the top-matching documents with their cover images, titles, organizations, and publication years. Click any card to jump directly to that document's results below, or scroll the carousel to browse more.
+A horizontal **carousel of document cards** shows the top-matching documents with their cover images, titles, organizations, and publication years. Each card carries a badge with the number of matching excerpts from that document. Click any card to jump directly to that document's results below, or scroll the carousel to browse more.
 
 #### Result Cards
 
@@ -50,6 +52,12 @@ Each result card shows:
 - **Section breadcrumb** — shows where in the document this excerpt came from (e.g., "CONTEXT > Nutrition situation in Bangladesh > Humanitarian context")
 - **Text excerpt** with **semantic highlighting** — key phrases relevant to your query are shown in bold, even when the search was in a different language from the document
 - **Language indicator and translation** — click the language dropdown to translate the result snippet
+
+#### Group by Document
+
+Tick **Group by document** under **Search Settings** in the left sidebar, or the matching checkbox in the results header next to the Export button (the two are the same setting), to see one row per document instead of a flat list of excerpts. Each row shows the document's cover thumbnail, title, source and year, and how many excerpts matched. Because the rows carry the thumbnails, the document carousel is not shown in this mode; the organization chips stay, and still filter the rows. Rows start collapsed; click a row to expand it and see that document's excerpt cards (the same cards as the flat list, with page numbers, highlighting, translation and ratings), and click again to collapse it. A line above the rows tells you how many excerpts and documents you are looking at.
+
+Grouping changes only how results are shown: the search, its ranking and the AI summary are unchanged. A **Sort by** control next to the Export button orders the rows by **Relevance** (the cumulative relevance of each document's excerpts, so a document with several good matches ranks above one with a single match) or by **Publication Date** (newest first, undated documents last). Excerpts inside a row keep their rank order either way. The chevron at the left of each row, or the **Expand all / Collapse all** button next to the sort control, opens and closes the rows. Expanding a row asks for the semantic highlights of all its excerpts straight away, so they appear without scrolling each card into view. **Export to Word** in this mode adds two tables, both in the same order as the rows and with each title linked to the document online: a **Document List** under References with the documents the AI summary cites, their source, year and number of citations; and a **Raw Search Results** section with every document and its number of excerpts. The setting is kept in the page link (`group_by_doc=true`) and administrators can set it as a team default under **Admin → Group Settings**.
 
 ---
 
@@ -74,6 +82,23 @@ The left sidebar provides **faceted navigation** to narrow your results:
 Click any filter option to apply it immediately — results update in real-time. Active filters appear as removable tags. Click **"Clear filters"** to reset all filters at once.
 
 > *Tip: Filters and search work together. Start with a broad query, then use filters to progressively narrow results to exactly what you need.*
+
+### Wide Search
+
+By default a search returns the best-matching **excerpts**, wherever they come from. When a topic is covered in depth by one report, that report can fill most of the list on its own, so you see a lot of one document and little of the rest of the library.
+
+**Wide Search** changes what a result is: instead of the top excerpts, you get a set number of **documents**, each contributing at most a few excerpts, with documents ranked by their single best match. Turn it on under **Search Settings** in the left sidebar, then set:
+
+| Field | What it does | Default |
+|-------|--------------|---------|
+| **Max results per document** | The most excerpts any one document can contribute. | 5 |
+| **Number of documents** | How many documents to return. The total number of excerpts is at most *documents × max per document*. | 20 |
+
+Wide Search respects your other settings: filters and section types still narrow what is searched, the semantic/keyword balance still applies, and the reranker, recency boost and deduplication still run on what comes back. The document carousel above the results shows how many excerpts each document contributed. The AI Summary is built from the best excerpt of each document first, so its references spread across the returned documents too.
+
+Use it when you want coverage across the library, such as scanning how many evaluations touch a theme, rather than the deepest matches on one report. Leave it off for a focused question where the most relevant passages matter more than spread.
+
+Administrators can set Wide Search and its two fields as defaults for a team under **Admin → Group Settings**; users can still change them for a session.
 
 ---
 

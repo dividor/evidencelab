@@ -34,10 +34,16 @@ import {
   PageNumber,
   Paragraph,
   ShadingType,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
+  WidthType,
   convertInchesToTwip,
 } from 'docx';
 import type { ChunkElement, SearchResult } from '../types/api';
+import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
+import type { DocumentResultGroup, GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
   isTextRedundantWithTable,
@@ -97,6 +103,11 @@ export interface ExportOptions {
    *    source (title, page, PDF link) is placed as a footnote on the same
    *    page. The end References/excerpt sections are still included. */
   citationStyle?: 'links' | 'footnotes';
+  /** Group-by-document mode: add a "Document List" table of the cited
+   *  documents under References (title linked to the document online,
+   *  source, year, citation count) and a "Raw Search Results" section listing
+   *  every document with its excerpt count, in the on-screen order. */
+  documentList?: { sortBy: GroupSortBy };
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -863,6 +874,106 @@ const buildSummarySection = (
   return out;
 };
 
+/** Link to the document itself (no page anchor). */
+const resolveDocumentLink = (r: SearchResult, siteOrigin: string, dataSource?: string): string =>
+  resolveResultLink({ ...r, page_num: undefined as unknown as number }, siteOrigin, dataSource);
+
+const tableCell = (children: InlineChild[], widthPct: number): TableCell =>
+  new TableCell({
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
+    children: [new Paragraph({ spacing: { before: 40, after: 40 }, children })],
+  });
+
+const heading2 = (text: string): Paragraph =>
+  new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    children: [new TextRun({ text })],
+    spacing: { before: 240, after: 120 },
+  });
+
+/** One table row per document: title linked to the document online, source,
+ *  year, and a count supplied by the caller. */
+const buildDocumentTable = (
+  groups: DocumentResultGroup[],
+  countLabel: string,
+  countFor: (group: DocumentResultGroup) => number,
+  siteOrigin: string,
+  dataSource: string | undefined,
+): Table => {
+  const header = new TableRow({
+    tableHeader: true,
+    children: [
+      tableCell([new TextRun({ text: 'Document', bold: true })], 55),
+      tableCell([new TextRun({ text: 'Source', bold: true })], 20),
+      tableCell([new TextRun({ text: 'Year', bold: true })], 10),
+      tableCell([new TextRun({ text: countLabel, bold: true })], 15),
+    ],
+  });
+  const rows = groups.map((group) => {
+    const first = group.results[0];
+    const title = first.translated_title || first.title || 'Untitled';
+    const source = first.organization || first.metadata?.organization || '';
+    const year = String(first.year || first.metadata?.year || '');
+    return new TableRow({
+      children: [
+        tableCell(
+          [
+            new ExternalHyperlink({
+              link: resolveDocumentLink(first, siteOrigin, dataSource),
+              children: [new TextRun({ text: title, style: 'Hyperlink' })],
+            }),
+          ],
+          55,
+        ),
+        tableCell([new TextRun({ text: source })], 20),
+        tableCell([new TextRun({ text: year })], 10),
+        tableCell([new TextRun({ text: String(countFor(group)) })], 15),
+      ],
+    });
+  });
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] });
+};
+
+/** Group-by-document exports: under References, a "Document List" of the
+ *  documents the AI summary cites (title linked to the document online,
+ *  source, year, citation count), then a "Raw Search Results" section listing
+ *  every document with its number of excerpts. Both follow the on-screen
+ *  order. Documents with no citations are left out of the Document List. */
+const buildDocumentListParagraphs = (
+  summary: string,
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  sortBy: GroupSortBy,
+): (Paragraph | Table)[] => {
+  const groups = sortDocumentGroups(groupResultsByDocument(results), sortBy);
+  if (groups.length === 0) return [];
+  const citationCounts = new Map<string, number>();
+  for (const cited of buildGroupedReferences(summary, results)) {
+    for (const { result } of cited.refs) {
+      citationCounts.set(result.doc_id, (citationCounts.get(result.doc_id) ?? 0) + 1);
+    }
+  }
+  const citations = (group: DocumentResultGroup) => citationCounts.get(group.docId) ?? 0;
+  const cited = groups.filter((group) => citations(group) > 0);
+  const out: (Paragraph | Table)[] = [];
+  if (cited.length > 0) {
+    out.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        children: [new TextRun({ text: 'Document List' })],
+        spacing: { before: 200, after: 100 },
+      }),
+      buildDocumentTable(cited, 'Citations', citations, siteOrigin, dataSource),
+    );
+  }
+  out.push(
+    heading2('Raw Search Results'),
+    buildDocumentTable(groups, 'Excerpts', (group) => group.results.length, siteOrigin, dataSource),
+  );
+  return out;
+};
+
 /** The FULL excerpt (never truncated) rendered as a single bordered, shaded box
  *  at a smaller font — one paragraph so the box stays continuous across page
  *  breaks, with blank lines separating sub-blocks. Returns nothing when there is
@@ -1070,7 +1181,7 @@ export const buildExportDocument = (
     opts.citationStyle === 'footnotes' ? createFootnoteRegistry() : undefined;
 
   const tocBookmarkPrefix = 'briefheading';
-  const body: Paragraph[] = [
+  const body: (Paragraph | Table)[] = [
     ...buildCoverParagraphs(opts, now),
     ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
     ...buildSummarySection(
@@ -1082,6 +1193,15 @@ export const buildExportDocument = (
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
       footnotes,
     ),
+    ...(opts.documentList
+      ? buildDocumentListParagraphs(
+          opts.aiSummary ?? '',
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.documentList.sortBy,
+        )
+      : []),
     ...(opts.referenceList
       ? buildReferenceList(
           opts.results,

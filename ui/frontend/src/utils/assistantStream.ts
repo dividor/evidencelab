@@ -214,6 +214,9 @@ const buildSearchSettingsPayload = (
   if (settings.keywordBoostShortQueries != null) payload.keyword_boost_short_queries = settings.keywordBoostShortQueries;
   if (settings.minChunkSize != null) payload.min_chunk_size = settings.minChunkSize;
   if (settings.fieldBoost != null) payload.field_boost_enabled = settings.fieldBoost;
+  if (settings.wideSearch != null) payload.wide_search = settings.wideSearch;
+  if (settings.wideGroupSize != null) payload.wide_group_size = settings.wideGroupSize;
+  if (settings.wideLimit != null) payload.wide_limit = settings.wideLimit;
   if (settings.fieldBoostFields != null && Object.keys(settings.fieldBoostFields).length > 0) {
     payload.field_boost_fields = settings.fieldBoostFields;
   }

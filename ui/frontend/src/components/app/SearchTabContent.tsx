@@ -7,6 +7,8 @@ import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { ResultsHeaderRow } from '../ResultsHeaderRow';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
+import type { GroupSortBy } from '../../utils/resultGrouping';
+import type { ExpansionCommand } from '../SearchResultsList';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
@@ -58,6 +60,20 @@ interface SearchTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -243,6 +259,7 @@ const SearchResultFilters: React.FC<{
   filteredDocIds: string[];
   onDocToggle: (docId: string) => void;
   filteredUniqueDocuments: SearchResult[];
+  documentResultCounts: Map<string, number>;
   selectedDomain: string;
   hasActiveFilter: boolean;
   filterLabel: string | null;
@@ -251,6 +268,8 @@ const SearchResultFilters: React.FC<{
   canScrollRight: boolean;
   scrollThumbnails: (direction: 'left' | 'right') => void;
   onClearAll: () => void;
+  /** Group-by-document mode: rows carry the thumbnails, so the strip is not shown. */
+  hideDocumentStrip: boolean;
 }> = ({
   uniqueOrgs,
   coverageText,
@@ -259,6 +278,7 @@ const SearchResultFilters: React.FC<{
   filteredDocIds,
   onDocToggle,
   filteredUniqueDocuments,
+  documentResultCounts,
   selectedDomain,
   hasActiveFilter,
   filterLabel,
@@ -267,9 +287,12 @@ const SearchResultFilters: React.FC<{
   canScrollRight,
   scrollThumbnails,
   onClearAll,
+  hideDocumentStrip,
 }) => (
   <div className="search-result-filters">
-    <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
+    <span className="search-result-filters-hint">
+      {hideDocumentStrip ? 'Click on organizations to refine results' : 'Click on documents or organizations to refine results'}
+    </span>
     {uniqueOrgs.length > 0 && (
       <div className="search-result-filters-orgs">
         {uniqueOrgs.map(({ org, count }) => (
@@ -296,6 +319,7 @@ const SearchResultFilters: React.FC<{
         </span>
       </div>
     )}
+    {!hideDocumentStrip && (
     <div className="search-result-filters-thumbnails">
       {canScrollLeft && (
         <button
@@ -313,6 +337,7 @@ const SearchResultFilters: React.FC<{
             ? `${API_BASE_URL}/document/${doc.doc_id}/thumbnail?data_source=${dataSource}`
             : null;
           const isSelected = filteredDocIds.includes(doc.doc_id);
+          const resultCount = documentResultCounts.get(doc.doc_id) || 0;
           return (
             <div
               key={doc.doc_id}
@@ -320,6 +345,14 @@ const SearchResultFilters: React.FC<{
               onClick={() => onDocToggle(doc.doc_id)}
               title={doc.title || 'Untitled'}
             >
+              {resultCount > 0 && (
+                <span
+                  className="search-result-filters-thumbnail-count"
+                  title={`${resultCount} result${resultCount === 1 ? '' : 's'} from this document`}
+                >
+                  {resultCount}
+                </span>
+              )}
               <div className="search-result-filters-thumbnail-image">
                 {thumbnailUrl ? (
                   <img
@@ -362,6 +395,7 @@ const SearchResultFilters: React.FC<{
         </button>
       )}
     </div>
+    )}
     {hasActiveFilter && (
       <div className="search-result-filters-indicator">
         <span className="search-result-filters-indicator-text">
@@ -445,6 +479,20 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -555,6 +603,14 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   // with ratings created before drilldown scoping existed.
   const aiRatingScope = resolveAiRatingScope(aiDrilldownCurrentNodeId);
   const aiRating = aiSummaryRatings.get(aiRatingScope.key);
+
+  // Order of the document rows in group-by-document mode
+  const [groupSortBy, setGroupSortBy] = useState<GroupSortBy>('relevance');
+  const [expansionCommand, setExpansionCommand] = useState<ExpansionCommand | undefined>(undefined);
+  const [allGroupsExpanded, setAllGroupsExpanded] = useState(false);
+  const handleToggleAllGroups = useCallback((expand: boolean) => {
+    setExpansionCommand((prev) => ({ expand, id: (prev?.id ?? 0) + 1 }));
+  }, []);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
@@ -680,6 +736,14 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
     return docs;
   }, [visibleResults]);
 
+  // How many visible result excerpts each document contributes; shown as a
+  // badge on its carousel card.
+  const documentResultCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    visibleResults.forEach((r) => counts.set(r.doc_id, (counts.get(r.doc_id) || 0) + 1));
+    return counts;
+  }, [visibleResults]);
+
   // Unique orgs with counts
   const uniqueOrgs = useMemo(() => {
     const orgCounts = new Map<string, number>();
@@ -791,6 +855,20 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onSectionTypesChange={onSectionTypesChange}
         deduplicateEnabled={deduplicateEnabled}
         onDeduplicateToggle={onDeduplicateToggle}
+        wideSearch={wideSearch}
+        onWideSearchToggle={onWideSearchToggle}
+        wideGroupSize={wideGroupSize}
+        onWideGroupSizeChange={onWideGroupSizeChange}
+        wideLimit={wideLimit}
+        onWideLimitChange={onWideLimitChange}
+        groupByDocument={groupByDocument}
+        onGroupByDocumentToggle={onGroupByDocumentToggle}
+        summaryLimitResults={summaryLimitResults}
+        onSummaryLimitResultsChange={onSummaryLimitResultsChange}
+        summaryMaxResults={summaryMaxResults}
+        onSummaryMaxResultsChange={onSummaryMaxResultsChange}
+        summaryTemperature={summaryTemperature}
+        onSummaryTemperatureChange={onSummaryTemperatureChange}
         fieldBoostEnabled={fieldBoostEnabled}
         onFieldBoostToggle={onFieldBoostToggle}
         fieldBoostFields={fieldBoostFields}
@@ -913,6 +991,12 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             aiSummaryLoading={aiSummaryLoading}
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
+            groupByDocument={groupByDocument}
+            onGroupByDocumentToggle={onGroupByDocumentToggle}
+            groupSortBy={groupSortBy}
+            onGroupSortByChange={setGroupSortBy}
+            allGroupsExpanded={allGroupsExpanded}
+            onToggleAllGroups={handleToggleAllGroups}
           />
           {showFilters && (
             <SearchResultFilters
@@ -923,6 +1007,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               filteredDocIds={filteredDocIds}
               onDocToggle={handleDocToggle}
               filteredUniqueDocuments={filteredUniqueDocuments}
+              documentResultCounts={documentResultCounts}
               selectedDomain={selectedDomain}
               hasActiveFilter={hasActiveFilter}
               filterLabel={filterLabel}
@@ -931,11 +1016,18 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               canScrollRight={canScrollRight}
               scrollThumbnails={scrollThumbnails}
               onClearAll={handleClearCarouselFilters}
+              hideDocumentStrip={groupByDocument}
             />
           )}
           <SearchResultsList
             results={hasActiveFilter && !isFixtureActive ? displayedResults : effectiveResults}
             minScore={hasActiveFilter ? 0 : minScore}
+            groupByDocument={groupByDocument}
+            defaultExpandedDocIds={filteredDocIds}
+            thumbnailDataSource={selectedDomain}
+            groupSortBy={groupSortBy}
+            expansionCommand={expansionCommand}
+            onAllExpandedChange={setAllGroupsExpanded}
             loading={loading}
             query={query}
             hasSearchRun={hasSearchRun}

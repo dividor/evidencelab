@@ -28,6 +28,20 @@ export interface SearchSettings {
   deduplicate?: boolean;
   fieldBoost?: boolean;
   fieldBoostFields?: Record<string, number>;
+  /** Wide search: spread results across documents (see wideGroupSize / wideLimit). */
+  wideSearch?: boolean;
+  /** Wide search: max results per document. */
+  wideGroupSize?: number;
+  /** Wide search: number of documents to return. */
+  wideLimit?: number;
+  /** Search screen: show one collapsed row per document, expandable to its excerpts. */
+  groupByDocument?: boolean;
+  /** AI summary: cap the results it is built from (off = use every result). */
+  summaryLimitResults?: boolean;
+  /** AI summary: the cap, when summaryLimitResults is on. */
+  summaryMaxResults?: number;
+  /** AI summary: sampling temperature, 0 (precise) to 1 (creative). */
+  summaryTemperature?: number;
   greetingMessage?: string;
 }
 

@@ -57,7 +57,7 @@ Each heading starts un-researched. To fill one in, open it and click **Research 
 
 ![Researching a heading with optional guidance](/docs/images/brief/brief-research-section.png)
 
-Evidence Lab runs deep research scoped to that heading — its searches take into account the brief topic, the heading's parent section (for sub-headings), and your guidance — then writes cited prose for the section. You can research sections one at a time, or click **Start deep research** to research the whole outline in sequence.
+Evidence Lab runs deep research scoped to that heading — its searches take into account the brief topic, the heading's parent section (for sub-headings), and your guidance — then writes cited prose for the section. The research uses your Search settings, including **Wide Search**: with it on, each search spreads across documents (best excerpt of each first) instead of drawing many excerpts from one report. You can research sections one at a time, or click **Start deep research** to research the whole outline in sequence.
 
 When a section finishes, it shows the written text with inline citations.
 

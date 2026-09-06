@@ -726,6 +726,10 @@ class AssistantSearchSettings(BaseModel):
     min_chunk_size: Optional[int] = None
     field_boost_enabled: Optional[bool] = None
     field_boost_fields: Optional[dict[str, float]] = None
+    # Wide search: spread each tool search across documents (see search_wide)
+    wide_search: Optional[bool] = None
+    wide_group_size: Optional[int] = Field(None, ge=1, le=50)
+    wide_limit: Optional[int] = Field(None, ge=1, le=1000)
 
 
 class AssistantChatRequest(BaseModel):

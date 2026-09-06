@@ -196,6 +196,9 @@ async def _run_search_chunks(
     dense_model: Optional[str],
     rerank_model: Optional[str],
     max_rerank_candidates: int = 0,
+    wide_search: bool = False,
+    wide_group_size: int = 5,
+    wide_limit: int = 20,
 ):
     t0 = time.time()
     async with search_semaphore:
@@ -216,6 +219,9 @@ async def _run_search_chunks(
             dense_model=dense_model,
             rerank_model=rerank_model,
             max_rerank_candidates=max_rerank_candidates,
+            wide_search=wide_search,
+            wide_group_size=wide_group_size,
+            wide_limit=wide_limit,
         )
     t1 = time.time()
     logger.info(
@@ -740,6 +746,19 @@ async def search(
     rerank_model_page_size: Optional[int] = Query(
         None, description="Max candidates to send to reranker (0 or None = all)"
     ),
+    wide_search: bool = Query(
+        False,
+        description=(
+            "Wide search: spread results across documents (wide_limit documents, "
+            "at most wide_group_size chunks each) instead of a flat top-N"
+        ),
+    ),
+    wide_group_size: int = Query(
+        5, ge=1, le=50, description="Wide search: max results per document"
+    ),
+    wide_limit: int = Query(
+        20, ge=1, le=1000, description="Wide search: number of documents to return"
+    ),
     auto_min_score: bool = Query(
         False, description="Automatically filter bottom 30% of results by score"
     ),
@@ -822,11 +841,15 @@ async def search(
                 dense_model=model,
                 rerank_model=rerank_model,
                 max_rerank_candidates=rerank_model_page_size or 0,
+                wide_search=wide_search,
+                wide_group_size=wide_group_size,
+                wide_limit=wide_limit,
             )
 
         t2 = time.time()
+        effective_limit = wide_limit * wide_group_size if wide_search else limit
         filtered_results = _fetch_and_build_results(
-            pg, results, data_source, limit, min_chunk_size
+            pg, results, data_source, effective_limit, min_chunk_size
         )
         if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})

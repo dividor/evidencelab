@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SearchResult(BaseModel):
@@ -131,6 +131,9 @@ class AISummaryRequest(BaseModel):
     max_results: int = 20
     summary_model: Optional[str] = None
     summary_model_config: Optional[SummaryModelConfig] = None
+    # Sampling temperature chosen by the user or their team (0 = precise,
+    # higher = more creative). When set it overrides the model combo's own.
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     # Activity row (search_id) this summary's token usage is recorded onto,
     # server-side, when generation finishes — plus the anonymous session id
     # for owner scoping. Drill-down summaries reuse the parent search's id so

@@ -224,6 +224,10 @@ Select a group using the radio buttons at the top, then configure:
 | **Deduplicate** | Remove duplicate content found across reports | On |
 | **Field Boost** | Boost specific metadata fields in ranking | On |
 | **Field Boost Fields** | Which fields to boost (Country, Organization, etc.) with weights | Country: 1, Org: 0.5 |
+| **Wide Search** | Return a set number of documents with at most a few results each, instead of the flat top results, so one document cannot crowd out the rest | Off |
+| **Max results per document** | Wide Search: the most results any one document can contribute | 5 |
+| **Number of documents** | Wide Search: how many documents to return | 20 |
+| **Group by document** | Search screen: show one collapsed row per document with its excerpt count; click a row to expand its excerpts. Display only, the search is unchanged | Off |
 
 #### Content Settings
 
@@ -243,6 +247,9 @@ Select a group using the radio buttons at the top, then configure:
 | Setting | Description |
 |---------|-------------|
 | **Summary Prompt** | Custom system prompt for AI summaries. If empty, uses the built-in default. |
+| **Limit Results Used** | Build the summary from at most *Max results for summary* results. Off = every result on the page. Default: on. |
+| **Max results for summary** | The cap, when the limit is on. Default: 20. |
+| **Response variability** | Sampling temperature for the AI summary, from More Consistent (0: the same results always give the same summary) to Creative Insights (1: wording differs between runs). Overrides the model combo's configured temperature. Default: 0. |
 
 Click **Save Settings** to apply, or **Reset to Defaults** to clear all group overrides.
 

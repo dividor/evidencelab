@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SearchResult } from '../types/api';
 import { ExportResultsButton } from './ExportResultsButton';
+import type { GroupSortBy } from '../utils/resultGrouping';
 
 interface ResultsHeaderRowProps {
   /** Effective results (may be fixture data in dev mode) used to drive both
@@ -17,6 +18,15 @@ interface ResultsHeaderRowProps {
   dataSource?: string;
   /** When true, render a small "dev fixture" badge next to the heading. */
   showFixtureBadge?: boolean;
+  /** Group-by-document mode: show the document sort control. */
+  groupByDocument?: boolean;
+  /** Mirrors the Search Settings checkbox; shown whenever there are results. */
+  onGroupByDocumentToggle?: (value: boolean) => void;
+  groupSortBy?: GroupSortBy;
+  onGroupSortByChange?: (value: GroupSortBy) => void;
+  /** Whether every document row is expanded; the button offers the opposite. */
+  allGroupsExpanded?: boolean;
+  onToggleAllGroups?: (expand: boolean) => void;
 }
 
 /**
@@ -34,6 +44,12 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
   aiSummaryLoading,
   dataSource,
   showFixtureBadge,
+  groupByDocument,
+  onGroupByDocumentToggle,
+  groupSortBy = 'relevance',
+  onGroupSortByChange,
+  allGroupsExpanded = false,
+  onToggleAllGroups,
 }) => {
   if (results.length === 0) return null;
   return (
@@ -46,14 +62,50 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
           </span>
         ) : null}
       </h3>
-      <ExportResultsButton
-        results={results}
-        query={query}
-        aiSummary={aiSummary}
-        aiSummaryLoading={aiSummaryLoading}
-        dataSource={dataSource}
-        className="search-results-export"
-      />
+      <div className="search-results-heading-actions">
+        {groupByDocument && (
+          <button
+            type="button"
+            className="export-results-button results-expand-all"
+            onClick={() => onToggleAllGroups?.(!allGroupsExpanded)}
+          >
+            {allGroupsExpanded ? 'Collapse all' : 'Expand all'}
+          </button>
+        )}
+        {groupByDocument && (
+          <label className="results-sort">
+            <span>Sort by</span>
+            <select
+              aria-label="Sort documents by"
+              value={groupSortBy}
+              onChange={(event) => onGroupSortByChange?.(event.target.value as GroupSortBy)}
+            >
+              <option value="relevance">Relevance</option>
+              <option value="date">Publication Date</option>
+            </select>
+          </label>
+        )}
+        {onGroupByDocumentToggle && (
+          <label className="results-group-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(groupByDocument)}
+              onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
+            />
+            <span>Group by document</span>
+          </label>
+        )}
+        <ExportResultsButton
+          results={results}
+          query={query}
+          aiSummary={aiSummary}
+          aiSummaryLoading={aiSummaryLoading}
+          dataSource={dataSource}
+          className="search-results-export"
+          groupByDocument={groupByDocument}
+          groupSortBy={groupSortBy}
+        />
+      </div>
     </div>
   );
 };

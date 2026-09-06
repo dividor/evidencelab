@@ -9,6 +9,7 @@ import {
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
+import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -32,6 +33,13 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'deduplicate',
   'fieldBoost',
   'fieldBoostFields',
+  'wideSearch',
+  'wideGroupSize',
+  'wideLimit',
+  'groupByDocument',
+  'summaryLimitResults',
+  'summaryMaxResults',
+  'summaryTemperature',
   'greetingMessage',
 ];
 
@@ -611,6 +619,22 @@ const GroupSettingsManager: React.FC = () => {
                   </span>
                 </label>
 
+                {/* Wide search */}
+                <WideSearchControls
+                  wideSearch={values.wideSearch}
+                  onWideSearchToggle={(v) => update('wideSearch', v)}
+                  wideGroupSize={values.wideGroupSize}
+                  onWideGroupSizeChange={(v) => update('wideGroupSize', v)}
+                  wideLimit={values.wideLimit}
+                  onWideLimitChange={(v) => update('wideLimit', v)}
+                />
+
+                {/* Group by document (Search screen display) */}
+                <GroupByDocumentControl
+                  groupByDocument={values.groupByDocument}
+                  onGroupByDocumentToggle={(v) => update('groupByDocument', v)}
+                />
+
                 {/* Field Level Boosting */}
                 <div className={values.fieldBoost ? 'settings-subsettings-group' : undefined}>
                 <label className="rerank-checkbox-label">
@@ -813,6 +837,14 @@ const GroupSettingsManager: React.FC = () => {
                 </div>
                 {collapsedSections.has('ai_summary') && (
                   <div className="filter-section-content">
+                    <AiSummaryControls
+                      summaryLimitResults={values.summaryLimitResults}
+                      onSummaryLimitResultsChange={(v) => update('summaryLimitResults', v)}
+                      summaryMaxResults={values.summaryMaxResults}
+                      onSummaryMaxResultsChange={(v) => update('summaryMaxResults', v)}
+                      summaryTemperature={values.summaryTemperature}
+                      onSummaryTemperatureChange={(v) => update('summaryTemperature', v)}
+                    />
                     <div style={{ marginTop: '4px' }}>
                       <button
                         className="btn-sm"
