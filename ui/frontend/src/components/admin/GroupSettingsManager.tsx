@@ -38,6 +38,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'wideLimit',
   'summaryLimitResults',
   'summaryMaxResults',
+  'summaryTemperature',
   'greetingMessage',
 ];
 
@@ -834,6 +835,8 @@ const GroupSettingsManager: React.FC = () => {
                       onSummaryLimitResultsChange={(v) => update('summaryLimitResults', v)}
                       summaryMaxResults={values.summaryMaxResults}
                       onSummaryMaxResultsChange={(v) => update('summaryMaxResults', v)}
+                      summaryTemperature={values.summaryTemperature}
+                      onSummaryTemperatureChange={(v) => update('summaryTemperature', v)}
                     />
                     <div style={{ marginTop: '4px' }}>
                       <button

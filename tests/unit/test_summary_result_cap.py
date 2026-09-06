@@ -12,9 +12,15 @@ pytestmark = pytest.mark.unit
 
 def test_group_settings_map_summary_cap_keys():
     cfg = _group_settings_to_config(
-        {"summaryLimitResults": False, "summaryMaxResults": 35, "wideSearch": True}
+        {
+            "summaryLimitResults": False,
+            "summaryMaxResults": 35,
+            "wideSearch": True,
+            "summaryTemperature": 0.4,
+        }
     )
     assert cfg["summary_limit_results"] is False
+    assert cfg["temperature"] == 0.4
     assert cfg["max_results"] == 35
     assert cfg["wide_search"] is True
 

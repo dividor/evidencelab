@@ -3367,6 +3367,10 @@ h6,
   justify-content: space-between;
   gap: var(--spacing-sm);
 }
+.summary-temperature-value {
+  font-weight: 400;
+  color: var(--gray-500);
+}
 .wide-search-label {
   font-size: 0.8rem;
   color: var(--gray-600);

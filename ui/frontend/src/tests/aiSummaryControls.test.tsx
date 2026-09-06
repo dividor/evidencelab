@@ -10,6 +10,8 @@ const renderControls = (overrides: Partial<React.ComponentProps<typeof AiSummary
     onSummaryLimitResultsChange: jest.fn(),
     summaryMaxResults: 20,
     onSummaryMaxResultsChange: jest.fn(),
+    summaryTemperature: 0,
+    onSummaryTemperatureChange: jest.fn(),
     ...overrides,
   };
   render(<AiSummaryControls {...props} />);
@@ -21,6 +23,18 @@ describe('AiSummaryControls', () => {
     renderControls();
     expect(screen.getByRole('checkbox')).toBeChecked();
     expect((screen.getByLabelText(MAX_LABEL) as HTMLInputElement).value).toBe('20');
+  });
+
+  test('shows a creativity slider from Precise to Creative, defaulting to 0', () => {
+    const props = renderControls();
+    const slider = screen.getByLabelText('Creativity') as HTMLInputElement;
+    expect(slider.value).toBe('0');
+    expect(slider.min).toBe('0');
+    expect(slider.max).toBe('1');
+    expect(screen.getByText('Precise')).toBeInTheDocument();
+    expect(screen.getByText('Creative')).toBeInTheDocument();
+    fireEvent.change(slider, { target: { value: '0.7' } });
+    expect(props.onSummaryTemperatureChange).toHaveBeenCalledWith(0.7);
   });
 
   test('hides the cap field when the limit is off', () => {

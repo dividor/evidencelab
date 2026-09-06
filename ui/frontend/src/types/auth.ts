@@ -38,6 +38,8 @@ export interface SearchSettings {
   summaryLimitResults?: boolean;
   /** AI summary: the cap, when summaryLimitResults is on. */
   summaryMaxResults?: number;
+  /** AI summary: sampling temperature, 0 (precise) to 1 (creative). */
+  summaryTemperature?: number;
   greetingMessage?: string;
 }
 

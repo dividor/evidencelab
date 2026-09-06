@@ -366,6 +366,7 @@ _GROUP_SETTING_MAP = {
     "wideLimit": "wide_limit",
     "summaryLimitResults": "summary_limit_results",
     "summaryMaxResults": "max_results",
+    "summaryTemperature": "temperature",
 }
 
 

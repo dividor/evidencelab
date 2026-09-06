@@ -67,6 +67,7 @@ describe('SYSTEM_DEFAULTS', () => {
     expect(SYSTEM_DEFAULTS.wideLimit).toBe(20);
     expect(SYSTEM_DEFAULTS.summaryLimitResults).toBe(true);
     expect(SYSTEM_DEFAULTS.summaryMaxResults).toBe(20);
+    expect(SYSTEM_DEFAULTS.summaryTemperature).toBe(0);
   });
 });
 
@@ -153,6 +154,15 @@ describe('getSearchStateFromURL with groupDefaults', () => {
     state = getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults);
     expect(state.summaryLimitResults).toBe(true);
     expect(state.summaryMaxResults).toBe(8);
+  });
+
+  test('summary temperature falls back to system default, then group default, then URL', () => {
+    setURL('?q=test');
+    expect(getSearchStateFromURL([], DEFAULT_SECTION_TYPES).summaryTemperature).toBe(0);
+    const groupDefaults: SearchSettings = { summaryTemperature: 0.6 };
+    expect(getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults).summaryTemperature).toBe(0.6);
+    setURL('?q=test&summary_temp=0.3');
+    expect(getSearchStateFromURL([], DEFAULT_SECTION_TYPES, groupDefaults).summaryTemperature).toBe(0.3);
   });
 
   test('wide search settings fall back to system defaults, then group defaults, then URL', () => {

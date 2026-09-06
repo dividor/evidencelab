@@ -204,4 +204,20 @@ describe('GroupSettingsManager', () => {
       });
     });
   });
+
+  test('the AI summary temperature is saved as a group override', async () => {
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+    render(<GroupSettingsManager />);
+    await waitFor(() => {
+      expect(screen.getByText('AI Summary')).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText('Creativity'), { target: { value: '0.5' } });
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+        search_settings: { summaryTemperature: 0.5 },
+        summary_prompt: '',
+      });
+    });
+  });
 });

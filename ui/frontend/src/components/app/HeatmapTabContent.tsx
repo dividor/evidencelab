@@ -104,6 +104,8 @@ interface HeatmapTabContentProps {
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
   onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -1211,6 +1213,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onSummaryLimitResultsChange,
   summaryMaxResults,
   onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -2829,6 +2833,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onSummaryLimitResultsChange,
     summaryMaxResults,
     onSummaryMaxResultsChange,
+    summaryTemperature,
+    onSummaryTemperatureChange,
     fieldBoostEnabled,
     onFieldBoostToggle,
     fieldBoostFields,

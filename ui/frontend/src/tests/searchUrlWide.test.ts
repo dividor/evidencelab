@@ -22,6 +22,11 @@ describe('buildSearchURL wide search params', () => {
     expect(changed.get('summary_max')).toBe('35');
   });
 
+  test('writes the summary temperature only when it is not the default', () => {
+    expect(new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, false, 5, 20, true, 20, 0)).has('summary_temp')).toBe(false);
+    expect(new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, false, 5, 20, true, 20, 0.7)).get('summary_temp')).toBe('0.7');
+  });
+
   test('writes wide=true and non-default sizes', () => {
     const url = new URLSearchParams(buildSearchURL('q', {}, ...NO_SETTINGS, true, 3, 40));
     expect(url.get('wide')).toBe('true');

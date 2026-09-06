@@ -26,6 +26,7 @@ export interface SearchStateFromURL {
   wideLimit: number;
   summaryLimitResults: boolean;
   summaryMaxResults: number;
+  summaryTemperature: number;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -68,6 +69,7 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   wideLimit: 20,
   summaryLimitResults: true,
   summaryMaxResults: SUMMARY_RESULT_LIMIT,
+  summaryTemperature: 0,
   greetingMessage: '',
 };
 
@@ -247,6 +249,7 @@ export const getSearchStateFromURL = (
     wideLimit: parseIntParam(params, 'wide_limit', d.wideLimit ?? SYSTEM_DEFAULTS.wideLimit),
     summaryLimitResults: parseBooleanParam(params, 'summary_limit', d.summaryLimitResults ?? SYSTEM_DEFAULTS.summaryLimitResults),
     summaryMaxResults: parseIntParam(params, 'summary_max', d.summaryMaxResults ?? SYSTEM_DEFAULTS.summaryMaxResults),
+    summaryTemperature: parseFloatParam(params, 'summary_temp', d.summaryTemperature ?? SYSTEM_DEFAULTS.summaryTemperature),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -335,7 +338,8 @@ export const buildSearchURL = (
   wideGroupSize?: number,
   wideLimit?: number,
   summaryLimitResults?: boolean,
-  summaryMaxResults?: number
+  summaryMaxResults?: number,
+  summaryTemperature?: number
 ): string => {
   const params = new URLSearchParams();
   setParamIfNonEmpty(params, 'q', query);
@@ -365,6 +369,7 @@ export const buildSearchURL = (
   setParamIfNotDefault(params, 'wide_limit', wideLimit, SYSTEM_DEFAULTS.wideLimit);
   setParamIfFalse(params, 'summary_limit', summaryLimitResults);
   setParamIfNotDefault(params, 'summary_max', summaryMaxResults, SYSTEM_DEFAULTS.summaryMaxResults);
+  setParamIfNotDefault(params, 'summary_temp', summaryTemperature, SYSTEM_DEFAULTS.summaryTemperature);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

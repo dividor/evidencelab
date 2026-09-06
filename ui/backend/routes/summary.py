@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import sys
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -118,6 +119,14 @@ def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
     )
 
 
+def _resolve_temperature(body: AISummaryRequest) -> Optional[float]:
+    """The request's explicit temperature (a user or team setting) wins over
+    the model combo's configured temperature."""
+    if body.temperature is not None:
+        return body.temperature
+    return body.summary_model_config.temperature if body.summary_model_config else None
+
+
 @router.post("/translate")
 @limiter.limit(RATE_LIMIT_TRANSLATE)
 async def translate(request: Request, body: TranslateRequest):
@@ -187,7 +196,7 @@ async def stream_summary(
             stream_metadata = {}
             summary_config = body.summary_model_config
             model_key = summary_config.model if summary_config else body.summary_model
-            temperature = summary_config.temperature if summary_config else None
+            temperature = _resolve_temperature(body)
             max_tokens = summary_config.max_tokens if summary_config else None
             logger.info(
                 "AI summary stream config: model_key=%s, temperature=%s, max_tokens=%s",
@@ -276,7 +285,7 @@ async def generate_summary(
         # Generate summary using LLM
         summary_config = body.summary_model_config
         model_key = summary_config.model if summary_config else body.summary_model
-        temperature = summary_config.temperature if summary_config else None
+        temperature = _resolve_temperature(body)
         max_tokens = summary_config.max_tokens if summary_config else None
         logger.info(
             "AI summary config: model_key=%s, temperature=%s, max_tokens=%s",

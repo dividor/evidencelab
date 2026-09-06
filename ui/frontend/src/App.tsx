@@ -785,6 +785,8 @@ function App() {
   const [summaryLimitResults, setSummaryLimitResults] = useState<boolean>(initialSearchState.summaryLimitResults);
   const [summaryMaxResults, setSummaryMaxResults] = useState<number>(initialSearchState.summaryMaxResults);
   const summaryResultCap = summaryLimitResults ? summaryMaxResults : null;
+  // AI summary sampling temperature: 0 = precise, 1 = creative
+  const [summaryTemperature, setSummaryTemperature] = useState<number>(initialSearchState.summaryTemperature);
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
@@ -849,6 +851,7 @@ function App() {
     wideLimit: setWideLimit,
     summaryLimitResults: setSummaryLimitResults,
     summaryMaxResults: setSummaryMaxResults,
+    summaryTemperature: setSummaryTemperature,
     greetingMessage: setGreetingMessage,
   });
 
@@ -975,6 +978,7 @@ function App() {
       setWideLimit(searchState.wideLimit);
       setSummaryLimitResults(searchState.summaryLimitResults);
       setSummaryMaxResults(searchState.summaryMaxResults);
+      setSummaryTemperature(searchState.summaryTemperature);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1562,7 +1566,8 @@ function App() {
         wideGroupSize,
         wideLimit,
         summaryLimitResults,
-        summaryMaxResults
+        summaryMaxResults,
+        summaryTemperature
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1610,6 +1615,7 @@ function App() {
     wideLimit,
     summaryLimitResults,
     summaryMaxResults,
+    summaryTemperature,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1715,6 +1721,7 @@ function App() {
       query: streamQuery,
       results: leanResults,
       summaryModelConfig,
+      temperature: summaryTemperature,
       // Server-side usage recording context: the backend accumulates this
       // stream's token usage onto the search's activity row (drill-down
       // streams reuse the same id, so their usage sums onto that row too).
@@ -1740,7 +1747,7 @@ function App() {
       setAiSummary(AI_SUMMARY_ERROR);
       setAiSummaryLoading(false);
     });
-  }, [dataSource, summaryModelConfig]);
+  }, [dataSource, summaryModelConfig, summaryTemperature]);
 
   const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
     if (!AI_SUMMARY_ON || summaryResults.length === 0) {
@@ -2841,6 +2848,8 @@ function App() {
       onSummaryLimitResultsChange={setSummaryLimitResults}
       summaryMaxResults={summaryMaxResults}
       onSummaryMaxResultsChange={setSummaryMaxResults}
+      summaryTemperature={summaryTemperature}
+      onSummaryTemperatureChange={setSummaryTemperature}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}
@@ -2957,6 +2966,8 @@ function App() {
       onSummaryLimitResultsChange={setSummaryLimitResults}
       summaryMaxResults={summaryMaxResults}
       onSummaryMaxResultsChange={setSummaryMaxResults}
+      summaryTemperature={summaryTemperature}
+      onSummaryTemperatureChange={setSummaryTemperature}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}

@@ -248,6 +248,7 @@ Select a group using the radio buttons at the top, then configure:
 | **Summary Prompt** | Custom system prompt for AI summaries. If empty, uses the built-in default. |
 | **Limit Results Used** | Build the summary from at most *Max results for summary* results. Off = every result on the page. Default: on. |
 | **Max results for summary** | The cap, when the limit is on. Default: 20. |
+| **Creativity** | Sampling temperature for the AI summary, from Precise (0) to Creative (1). Overrides the model combo's configured temperature. Default: 0. |
 
 Click **Save Settings** to apply, or **Reset to Defaults** to clear all group overrides.
 

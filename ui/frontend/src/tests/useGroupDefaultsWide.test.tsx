@@ -16,7 +16,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'denseWeight', 'rerank', 'recencyBoost', 'recencyWeight', 'recencyScaleDays', 'sectionTypes',
   'keywordBoostShortQueries', 'minChunkSize', 'semanticHighlighting', 'autoMinScore', 'deduplicate',
   'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'summaryLimitResults',
-  'summaryMaxResults', 'greetingMessage',
+  'summaryMaxResults', 'summaryTemperature', 'greetingMessage',
 ];
 
 const makeSetters = () =>
@@ -48,11 +48,12 @@ describe('useGroupDefaults applies wide search team defaults', () => {
 
   test('applies the AI summary cap team defaults', async () => {
     setURL('?q=test');
-    mockedAxios.get.mockResolvedValue({ data: { summaryLimitResults: false, summaryMaxResults: 60 } });
+    mockedAxios.get.mockResolvedValue({ data: { summaryLimitResults: false, summaryMaxResults: 60, summaryTemperature: 0.4 } });
     const setters = makeSetters();
     render(<Harness setters={setters} />);
     await waitFor(() => expect(setters.summaryLimitResults).toHaveBeenCalledWith(false));
     expect(setters.summaryMaxResults).toHaveBeenCalledWith(60);
+    expect(setters.summaryTemperature).toHaveBeenCalledWith(0.4);
   });
 
   test('a URL value wins over the team default for that key only', async () => {

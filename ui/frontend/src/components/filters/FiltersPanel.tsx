@@ -55,6 +55,8 @@ interface FiltersPanelProps {
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
   onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -113,6 +115,8 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   onSummaryLimitResultsChange,
   summaryMaxResults,
   onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -188,6 +192,8 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
             onSummaryLimitResultsChange={onSummaryLimitResultsChange}
             summaryMaxResults={summaryMaxResults}
             onSummaryMaxResultsChange={onSummaryMaxResultsChange}
+            summaryTemperature={summaryTemperature}
+            onSummaryTemperatureChange={onSummaryTemperatureChange}
             fieldBoostEnabled={fieldBoostEnabled}
             onFieldBoostToggle={onFieldBoostToggle}
             fieldBoostFields={fieldBoostFields}

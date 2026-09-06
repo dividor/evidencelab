@@ -1056,3 +1056,64 @@ async def test_search_endpoint_passes_wide_search_settings(monkeypatch):
     assert captured["wide_group_size"] == 3
     assert captured["wide_limit"] == 7
     assert result.total == 0
+
+
+def test_resolve_temperature_prefers_explicit_over_model_config():
+    from ui.backend.routes import summary as summary_routes
+
+    combo = SimpleNamespace(temperature=0.2)
+    resolve = summary_routes._resolve_temperature
+    assert resolve(SimpleNamespace(temperature=0.7, summary_model_config=combo)) == 0.7
+    assert resolve(SimpleNamespace(temperature=None, summary_model_config=combo)) == 0.2
+    assert resolve(SimpleNamespace(temperature=None, summary_model_config=None)) is None
+    # 0 is a real choice (precise), not "unset"
+    assert resolve(SimpleNamespace(temperature=0.0, summary_model_config=combo)) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_stream_summary_passes_requested_temperature_to_the_model(monkeypatch):
+    captured = {}
+
+    async def fake_stream(
+        query: str,
+        results: list,
+        max_results: int,
+        model_key: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
+    ):
+        captured["temperature"] = temperature
+        yield "a"
+
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
+        return "prompt"
+
+    llm_module = ModuleType("llm_service")
+    llm_module.stream_ai_summary = fake_stream
+    llm_module.render_prompt = fake_render
+    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+
+    from ui.backend.routes import summary as summary_routes
+
+    request = _make_request(method="POST", path="/ai-summary/stream")
+    body = main_module.AISummaryRequest(
+        query="q", results=[_make_search_result()], temperature=0.7
+    )
+    response = await summary_routes.stream_summary(
+        request, body, user=None, session=None
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["temperature"] == 0.7
+
+
+def test_summary_request_rejects_out_of_range_temperature():
+    with pytest.raises(ValueError):
+        main_module.AISummaryRequest(query="q", results=[], temperature=2.5)

@@ -38,6 +38,8 @@ interface SearchSettingsPanelProps {
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
   onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -46,6 +48,7 @@ interface SearchSettingsPanelProps {
 }
 
 const SUBSETTINGS_GROUP_CLASS = 'settings-subsettings-group';
+const SLIDER_LABEL_CLASS = 'recency-slider-label';
 
 const BOOST_FIELD_OPTIONS = [
   { value: 'country', label: 'Country' },
@@ -144,7 +147,7 @@ const RecencyControls = ({
     {recencyBoostEnabled && (
       <>
         <div className="recency-slider-group">
-          <label className="recency-slider-label">Recency Weight</label>
+          <label className={SLIDER_LABEL_CLASS}>Recency Weight</label>
           <input
             type="range"
             min="0.05"
@@ -161,7 +164,7 @@ const RecencyControls = ({
         </div>
 
         <div className="recency-slider-group">
-          <label className="recency-slider-label">Decay Scale</label>
+          <label className={SLIDER_LABEL_CLASS}>Decay Scale</label>
           <input
             type="range"
             min="180"
@@ -260,12 +263,43 @@ export const AiSummaryControls = ({
   onSummaryLimitResultsChange,
   summaryMaxResults,
   onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
 }: {
   summaryLimitResults: boolean;
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
   onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
 }) => (
+  <>
+  <div className="recency-slider-group">
+    <label className={SLIDER_LABEL_CLASS} htmlFor="summary-temperature">
+      Creativity <span className="summary-temperature-value">({summaryTemperature.toFixed(1)})</span>
+      <span
+        className="rerank-tooltip"
+        title="Sampling temperature for the AI Summary. Precise (0) sticks closely to the wording of the sources and is repeatable; Creative (1) paraphrases more freely and varies between runs."
+      >
+        ⓘ
+      </span>
+    </label>
+    <input
+      id="summary-temperature"
+      type="range"
+      min="0"
+      max="1"
+      step="0.1"
+      value={summaryTemperature}
+      aria-label="Creativity"
+      onChange={(event) => onSummaryTemperatureChange(parseFloat(event.target.value))}
+      className="score-slider recency-weight-slider"
+    />
+    <div className="score-range-labels">
+      <span>Precise</span>
+      <span>Creative</span>
+    </div>
+  </div>
   <div className={summaryLimitResults ? SUBSETTINGS_GROUP_CLASS : undefined}>
     <label className="rerank-checkbox-label">
       <input
@@ -303,6 +337,7 @@ export const AiSummaryControls = ({
       </div>
     )}
   </div>
+  </>
 );
 
 const SectionTypesSelector = ({
@@ -401,6 +436,8 @@ export const SearchSettingsPanel = ({
   onSummaryLimitResultsChange,
   summaryMaxResults,
   onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -685,6 +722,8 @@ export const SearchSettingsPanel = ({
             onSummaryLimitResultsChange={onSummaryLimitResultsChange}
             summaryMaxResults={summaryMaxResults}
             onSummaryMaxResultsChange={onSummaryMaxResultsChange}
+            summaryTemperature={summaryTemperature}
+            onSummaryTemperatureChange={onSummaryTemperatureChange}
           />
         </div>
       )}

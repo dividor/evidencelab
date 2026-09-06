@@ -82,6 +82,8 @@ const baseProps = {
   onSummaryLimitResultsChange: jest.fn(),
   summaryMaxResults: 20,
   onSummaryMaxResultsChange: jest.fn(),
+  summaryTemperature: 0,
+  onSummaryTemperatureChange: jest.fn(),
   fieldBoostEnabled: false,
   onFieldBoostToggle: jest.fn(),
   fieldBoostFields: {},
