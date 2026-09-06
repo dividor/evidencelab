@@ -8231,6 +8231,38 @@ li.ai-fact-active::before {
   flex-shrink: 0;
 }
 
+/* The Generate button and, while it is generating, an attached × that stops it. */
+.heatmap-search-group {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+.heatmap-search-group-generating .heatmap-search-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+.heatmap-search-stop {
+  height: 48px;
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--gray-500);
+  background: #fafafa;
+  border: 1px solid rgba(91, 143, 168, 0.8);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  cursor: pointer;
+}
+.heatmap-search-stop:hover {
+  background: var(--brand-accent);
+  color: var(--white);
+}
+
 /* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
 @media (max-width: 640px) {
   .heatmap-controls-row {
