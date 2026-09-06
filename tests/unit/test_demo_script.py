@@ -112,14 +112,14 @@ class TestEnsureDemoDatasource:
                         "summarize": {
                             "dense_model": "e5_large",
                             "llm_model": {
-                                "model": "Qwen/Qwen2.5-7B-Instruct",
+                                "model": "Qwen/Qwen2.5-72B-Instruct",
                                 "provider": "huggingface",
                             },
                         },
                         "tag": {
                             "dense_model": "e5_large",
                             "llm_model": {
-                                "model": "Qwen/Qwen2.5-7B-Instruct",
+                                "model": "Qwen/Qwen2.5-72B-Instruct",
                                 "provider": "huggingface",
                             },
                         },
@@ -148,7 +148,7 @@ class TestEnsureDemoDatasource:
         assert ds["pipeline"]["index"]["dense_models"] == ["e5_large"]
         assert (
             ds["pipeline"]["summarize"]["llm_model"]["model"]
-            == "Qwen/Qwen2.5-7B-Instruct"
+            == "Qwen/Qwen2.5-72B-Instruct"
         )
         assert ds["pipeline"]["summarize"]["llm_model"]["provider"] == "huggingface"
 
@@ -212,7 +212,7 @@ class TestPromptProvider:
     def test_select_huggingface(self):
         with mock.patch("builtins.input", return_value="2"):
             result = demo.prompt_provider()
-        assert result["name"] == "Huggingface / Together"
+        assert result["name"] == "Huggingface / Novita"
 
     def test_select_google(self):
         with mock.patch("builtins.input", return_value="3"):
