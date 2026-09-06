@@ -587,63 +587,100 @@ New pipeline stages should:
 ## 🔄 Release Process
 
 We use **release candidate branches** (`rc/vX.Y.Z`) to stage and stabilise
-changes before they reach `main`.
+changes before they reach `main`. The version of Evidence Lab is the git tag
+and the matching `CHANGELOG.md` entry; there is no version file to bump.
 
 ### Branch Strategy
 
 ```
-feature/fix branches ──► rc/vX.Y.Z ──► main
-                           (staging)     (stable)
+feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main (tag vX.Y.Z)
+                           (staging)      (changelog)       (stable)
 ```
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | Stable, production-ready code. Only receives merges from RC branches. |
+| `main` | Stable, production-ready code. Only receives merges from release branches. |
 | `rc/vX.Y.Z` | Release candidate. All feature and fix PRs target this branch. |
+| `release/vX.Y.Z` | Short-lived: the RC plus its `CHANGELOG.md` entry, merged to `main` by PR. |
 | `feat/*`, `fix/*`, etc. | Short-lived branches for individual changes. |
 
 ### Workflow
 
-1. **Create an RC branch** from `main` when starting a new release cycle:
+1. **Create an RC branch** from `main` when starting a new release cycle, then
+   point Dependabot at it and retarget any open PRs (steps 3 and 4):
    ```bash
-   git checkout main
+   git checkout main && git pull
    git checkout -b rc/v1.2.0
    git push -u origin rc/v1.2.0
    ```
 
-2. **Target PRs to the RC branch.** All feature and fix PRs should set
-   `rc/vX.Y.Z` as their base branch, not `main`:
+2. **Target PRs to the RC branch.** All feature and fix PRs set `rc/vX.Y.Z` as
+   their base branch, not `main`. CI runs only for PRs targeting `main`,
+   `develop` or `rc/**`, so never stack a PR on another feature branch:
    ```bash
    gh pr create --base rc/v1.2.0
    ```
 
-3. **Retarget existing PRs** if switching to a new RC branch:
+3. **Retarget existing PRs** when switching to a new RC branch:
    ```bash
    gh pr edit <PR_NUMBER> --base rc/v1.2.0
    ```
 
-4. **Dependabot PRs** also target the RC branch (configured via
-   `target-branch` in `.github/dependabot.yml`). Update this value
-   when creating a new RC branch.
+4. **Dependabot PRs** also target the RC branch (`target-branch` in
+   `.github/dependabot.yml`). Update the value in two PRs when a new RC is
+   created: one against the new RC and one against `main` (see #400 / #421 for
+   the v1.6.1 cycle).
 
-5. **Merge RC to main** once all PRs are merged and the release is validated:
+5. **Cut the release** once every PR for the cycle is merged and the RC is
+   green. Create `release/vX.Y.Z` from the RC, add the `CHANGELOG.md` entry
+   (format below) as its only commit, and open a PR to `main`:
    ```bash
-   git checkout main
-   git merge rc/v1.2.0
-   git tag v1.2.0
-   git push origin main --tags
+   git checkout -b release/v1.2.0 origin/rc/v1.2.0
+   # edit CHANGELOG.md, then:
+   git commit -am "docs: add v1.2.0 changelog entry"
+   git push -u origin release/v1.2.0
+   gh pr create --base main --title "Release v1.2.0" --body-file <changelog entry>
+   ```
+   Merge it with a **merge commit** (not squash or rebase) so `main` carries the
+   RC history. Nothing is ever committed directly to `main`.
+
+6. **Tag and publish** from the merge commit. The GitHub Release body is the
+   changelog entry, verbatim; the title is `Evidence Lab vX.Y.Z — <headline>`:
+   ```bash
+   git fetch origin main
+   git tag v1.2.0 origin/main
+   git push origin v1.2.0
+   gh release create v1.2.0 --title "Evidence Lab v1.2.0 — <headline>" --notes-file <changelog entry>
    ```
 
-6. **Create a GitHub Release** from the tag with release notes.
+7. **Start the next cycle**: go back to step 1 for `rc/vX.Y.(Z+1)`.
+
+### Changelog format
+
+`CHANGELOG.md` is the release notes. Each release is one entry, newest first:
+
+- `## [X.Y.Z] - YYYY-MM-DD`, followed by one paragraph saying what the
+  release is about.
+- `###` sections by theme, in the order users meet them (for example Brief,
+  Search, Map, Admin, Auth & UI fixes, Deployment & CI). Each bullet is one
+  change in the past tense and ends with its PR number: `(#123)`. Dependency
+  bumps are one bullet listing package, version and PR.
+- `### Upgrade Notes` last: new migrations (they apply automatically on
+  deploy), new or changed `config.json` keys, new environment variables, and
+  behaviour changes an operator must know about.
 
 ### Release Checklist
 
-1. All PRs merged into `rc/vX.Y.Z`
-2. CI passing on the RC branch
-3. Manual verification on staging/Docker environment
-4. Version bump in `pyproject.toml`
-5. Merge RC branch to `main`
-6. Tag release and create GitHub Release with notes
+1. All PRs for the cycle merged into `rc/vX.Y.Z`; open PRs retargeted to the next RC
+2. CI green on the RC (integration tests included; re-run a job that failed only on an external service)
+3. The production frontend image builds — CI runs the development build only, and a
+   dependency bump can break the production one (see #435):
+   `docker compose -f docker-compose.prod.yml build ui`
+4. Manual verification on a Docker stack with real data
+5. `CHANGELOG.md` entry written in the format above
+6. `release/vX.Y.Z` PR merged to `main` with a merge commit
+7. Tag pushed and GitHub Release published with the changelog entry
+8. Next RC created, Dependabot repointed on both `main` and the RC, open PRs retargeted
 
 ## 📞 Getting Help
 
