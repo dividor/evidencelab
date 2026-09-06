@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ResolvedTab, TAB_TOOLTIPS, TabKey, resolveTabs } from './tabConfig';
+import { useCloseOnOutsideClick } from '../../hooks/useCloseOnOutsideClick';
 
 type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
 
@@ -17,14 +18,13 @@ const MAIN_TABS: TabKey[] = ['search', 'assistant', 'brief', 'heatmap'];
 export const NavTabs = ({ activeTab, onTabChange, tabs }: NavTabsProps) => {
   const resolved = tabs ?? resolveTabs(undefined);
   const [monitorDropdownOpen, setMonitorDropdownOpen] = useState(false);
+  const monitorRef = useRef<HTMLDivElement>(null);
+  const closeMonitorDropdown = useCallback(() => setMonitorDropdownOpen(false), []);
+  useCloseOnOutsideClick(monitorRef, monitorDropdownOpen, closeMonitorDropdown);
   const monitorActive = activeTab === 'documents' || activeTab === 'pipeline' || activeTab === 'processing' || activeTab === 'stats';
 
   const handleToggleMonitorDropdown = () => {
     setMonitorDropdownOpen((open) => !open);
-  };
-
-  const handleMonitorBlur = () => {
-    setTimeout(() => setMonitorDropdownOpen(false), 200);
   };
 
   const handleMonitorSelect = (tab: 'documents' | 'pipeline' | 'processing' | 'stats') => {
@@ -50,11 +50,10 @@ export const NavTabs = ({ activeTab, onTabChange, tabs }: NavTabsProps) => {
           </button>
         ) : null,
       )}
-      <div className="dropdown-container nav-dropdown">
+      <div className="dropdown-container nav-dropdown" ref={monitorRef}>
         <button
           className={`nav-tab nav-tab-dropdown ${monitorActive ? ACTIVE_CLASS : ''}`}
           onClick={handleToggleMonitorDropdown}
-          onBlur={handleMonitorBlur}
         >
           <span>Monitor</span>
           <span className="dropdown-arrow">▾</span>

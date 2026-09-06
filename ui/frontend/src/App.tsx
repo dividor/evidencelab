@@ -631,12 +631,12 @@ function App() {
     setShowDomainTooltip(false);
   }, []);
 
-  const handleDomainBlur = useCallback(() => {
-    setTimeout(() => setDomainDropdownOpen(false), 200);
+  const handleCloseDomainDropdown = useCallback(() => {
+    setDomainDropdownOpen(false);
   }, []);
 
-  const handleModelBlur = useCallback(() => {
-    setTimeout(() => setModelDropdownOpen(false), 200);
+  const handleCloseModelDropdown = useCallback(() => {
+    setModelDropdownOpen(false);
   }, []);
 
   const handleSelectDomain = useCallback((domainName: string) => {
@@ -662,8 +662,8 @@ function App() {
     setModelDropdownOpen(false);
   }, [helpDropdownOpen]);
 
-  const handleHelpBlur = useCallback(() => {
-    setTimeout(() => setHelpDropdownOpen(false), 200);
+  const handleCloseHelpDropdown = useCallback(() => {
+    setHelpDropdownOpen(false);
   }, []);
 
   // Get current datasource config
@@ -2919,12 +2919,12 @@ function App() {
         onToggleModelDropdown={handleToggleModelDropdown}
         onDomainMouseEnter={handleDomainMouseEnter}
         onDomainMouseLeave={handleDomainMouseLeave}
-        onDomainBlur={handleDomainBlur}
-        onModelBlur={handleModelBlur}
+        onCloseDomainDropdown={handleCloseDomainDropdown}
+        onCloseModelDropdown={handleCloseModelDropdown}
         onSelectDomain={handleSelectDomain}
         onSelectModelCombo={handleSelectModelCombo}
         onToggleHelpDropdown={handleToggleHelpDropdown}
-        onHelpBlur={handleHelpBlur}
+        onCloseHelpDropdown={handleCloseHelpDropdown}
         onAboutClick={handleAboutClick}
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
