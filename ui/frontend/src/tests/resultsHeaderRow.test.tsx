@@ -12,6 +12,7 @@ const RESULTS: SearchResult[] = [
 ];
 const SORT_LABEL = 'Sort documents by';
 const EXPORT_BUTTON = 'Export to Word';
+const EXPAND_ALL = 'Expand all';
 
 describe('ResultsHeaderRow group-by-document checkbox', () => {
   const CHECKBOX = 'Group by document';
@@ -27,11 +28,17 @@ describe('ResultsHeaderRow group-by-document checkbox', () => {
     expect(screen.getByRole('checkbox', { name: CHECKBOX })).toBeChecked();
   });
 
-  test('sits left of the export button', () => {
-    render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument onGroupByDocumentToggle={jest.fn()} />);
-    const box = screen.getByRole('checkbox', { name: CHECKBOX });
-    const exportButton = screen.getByRole('button', { name: EXPORT_BUTTON });
-    expect(box.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  test('reads Expand all, Sort by, Group by document, Export to Word from left to right', () => {
+    render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument onGroupByDocumentToggle={jest.fn()} onToggleAllGroups={jest.fn()} onGroupSortByChange={jest.fn()} />);
+    const order = [
+      screen.getByRole('button', { name: EXPAND_ALL }),
+      screen.getByLabelText(SORT_LABEL),
+      screen.getByRole('checkbox', { name: CHECKBOX }),
+      screen.getByRole('button', { name: EXPORT_BUTTON }),
+    ];
+    for (let i = 0; i < order.length - 1; i += 1) {
+      expect(order[i].compareDocumentPosition(order[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 });
 
@@ -39,14 +46,14 @@ describe('ResultsHeaderRow sort control', () => {
   test('is absent in the flat list', () => {
     render(<ResultsHeaderRow results={RESULTS} query="q" />);
     expect(screen.queryByLabelText(SORT_LABEL)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull();
+    expect(screen.queryByRole('button', { name: EXPAND_ALL })).toBeNull();
     expect(screen.getByRole('button', { name: EXPORT_BUTTON })).toBeInTheDocument();
   });
 
   test('in group-by-document mode an expand-all button offers the opposite of the current state', () => {
     const onToggle = jest.fn();
     const view = render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument allGroupsExpanded={false} onToggleAllGroups={onToggle} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    fireEvent.click(screen.getByRole('button', { name: EXPAND_ALL }));
     expect(onToggle).toHaveBeenCalledWith(true);
     view.rerender(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument allGroupsExpanded onToggleAllGroups={onToggle} />);
     fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));

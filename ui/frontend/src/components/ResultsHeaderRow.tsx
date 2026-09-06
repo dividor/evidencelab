@@ -63,16 +63,6 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
         ) : null}
       </h3>
       <div className="search-results-heading-actions">
-        {onGroupByDocumentToggle && (
-          <label className="results-group-toggle">
-            <input
-              type="checkbox"
-              checked={Boolean(groupByDocument)}
-              onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
-            />
-            <span>Group by document</span>
-          </label>
-        )}
         {groupByDocument && (
           <button
             type="button"
@@ -93,6 +83,16 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
               <option value="relevance">Relevance</option>
               <option value="date">Publication Date</option>
             </select>
+          </label>
+        )}
+        {onGroupByDocumentToggle && (
+          <label className="results-group-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(groupByDocument)}
+              onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
+            />
+            <span>Group by document</span>
           </label>
         )}
         <ExportResultsButton
