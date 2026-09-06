@@ -53,6 +53,12 @@ Each result card shows:
 - **Text excerpt** with **semantic highlighting** — key phrases relevant to your query are shown in bold, even when the search was in a different language from the document
 - **Language indicator and translation** — click the language dropdown to translate the result snippet
 
+#### Group by Document
+
+Tick **Group by document** under **Search Settings** in the left sidebar to see one row per document instead of a flat list of excerpts. Each row shows the document title, organization and year, and how many excerpts matched. Rows start collapsed; click a row to expand it and see that document's excerpt cards (the same cards as the flat list, with page numbers, highlighting, translation and ratings), and click again to collapse it. **Expand all** and **Collapse all** act on every row, and a line above the rows tells you how many excerpts and documents you are looking at.
+
+Grouping changes only how results are shown: the search, its ranking and the AI summary are unchanged. Documents are ordered by their best-matching excerpt, and excerpts inside a row keep their rank order. Clicking a document in the carousel above expands its row. The setting is kept in the page link (`group_by_doc=true`) and administrators can set it as a team default under **Admin → Group Settings**.
+
 ---
 
 ### Filters

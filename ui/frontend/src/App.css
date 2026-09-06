@@ -5213,6 +5213,97 @@ li.ai-fact-active::before {
   gap: 1.25rem;
 }
 
+/* Group by document: one collapsible row per document */
+.results-group-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+}
+.results-group-actions .results-group-summary {
+  margin-right: auto;
+}
+.results-group-actions button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+.results-group-actions button:hover {
+  text-decoration: underline;
+}
+.result-group {
+  background: var(--white);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.result-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: var(--spacing-md) var(--spacing-lg);
+  font: inherit;
+  color: var(--gray-900);
+  cursor: pointer;
+}
+.result-group-header:hover {
+  background: var(--gray-50);
+}
+.result-group-header:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: -2px;
+}
+.result-group-expanded > .result-group-header {
+  background: rgba(91, 143, 168, 0.08);
+}
+.result-group-chevron {
+  flex-shrink: 0;
+  width: 1em;
+  color: var(--gray-500);
+}
+.result-group-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 1.0625rem;
+  line-height: 1.4;
+}
+.result-group-meta {
+  color: var(--gray-500);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+.result-group-count {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gray-700);
+  background: var(--gray-100);
+  border: 1px solid var(--gray-300);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  white-space: nowrap;
+}
+.result-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-lg) var(--spacing-lg);
+}
+@media (max-width: 640px) {
+  .result-group-meta {
+    display: none;
+  }
+}
+
 /* Result Cards */
 .result-card {
   background: var(--white);

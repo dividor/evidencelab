@@ -64,6 +64,8 @@ interface SearchTabContentProps {
   onWideGroupSizeChange: (value: number) => void;
   wideLimit: number;
   onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
   summaryLimitResults: boolean;
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
@@ -474,6 +476,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   onWideGroupSizeChange,
   wideLimit,
   onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
   summaryLimitResults,
   onSummaryLimitResultsChange,
   summaryMaxResults,
@@ -840,6 +844,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
         onWideGroupSizeChange={onWideGroupSizeChange}
         wideLimit={wideLimit}
         onWideLimitChange={onWideLimitChange}
+        groupByDocument={groupByDocument}
+        onGroupByDocumentToggle={onGroupByDocumentToggle}
         summaryLimitResults={summaryLimitResults}
         onSummaryLimitResultsChange={onSummaryLimitResultsChange}
         summaryMaxResults={summaryMaxResults}
@@ -992,6 +998,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
           <SearchResultsList
             results={hasActiveFilter && !isFixtureActive ? displayedResults : effectiveResults}
             minScore={hasActiveFilter ? 0 : minScore}
+            groupByDocument={groupByDocument}
+            defaultExpandedDocIds={filteredDocIds}
             loading={loading}
             query={query}
             hasSearchRun={hasSearchRun}

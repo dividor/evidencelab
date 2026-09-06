@@ -34,6 +34,8 @@ export interface SearchSettings {
   wideGroupSize?: number;
   /** Wide search: number of documents to return. */
   wideLimit?: number;
+  /** Search screen: show one collapsed row per document, expandable to its excerpts. */
+  groupByDocument?: boolean;
   /** AI summary: cap the results it is built from (off = use every result). */
   summaryLimitResults?: boolean;
   /** AI summary: the cap, when summaryLimitResults is on. */

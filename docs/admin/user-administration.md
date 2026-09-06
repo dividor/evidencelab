@@ -227,6 +227,7 @@ Select a group using the radio buttons at the top, then configure:
 | **Wide Search** | Return a set number of documents with at most a few results each, instead of the flat top results, so one document cannot crowd out the rest | Off |
 | **Max results per document** | Wide Search: the most results any one document can contribute | 5 |
 | **Number of documents** | Wide Search: how many documents to return | 20 |
+| **Group by document** | Search screen: show one collapsed row per document with its excerpt count; click a row to expand its excerpts. Display only, the search is unchanged | Off |
 
 #### Content Settings
 

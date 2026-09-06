@@ -9,7 +9,7 @@ import {
   SYSTEM_DEFAULTS,
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
-import { AiSummaryControls, WideSearchControls } from '../filters/SearchSettingsPanel';
+import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -36,6 +36,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'wideSearch',
   'wideGroupSize',
   'wideLimit',
+  'groupByDocument',
   'summaryLimitResults',
   'summaryMaxResults',
   'summaryTemperature',
@@ -626,6 +627,12 @@ const GroupSettingsManager: React.FC = () => {
                   onWideGroupSizeChange={(v) => update('wideGroupSize', v)}
                   wideLimit={values.wideLimit}
                   onWideLimitChange={(v) => update('wideLimit', v)}
+                />
+
+                {/* Group by document (Search screen display) */}
+                <GroupByDocumentControl
+                  groupByDocument={values.groupByDocument}
+                  onGroupByDocumentToggle={(v) => update('groupByDocument', v)}
                 />
 
                 {/* Field Level Boosting */}

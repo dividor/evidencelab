@@ -34,6 +34,8 @@ interface SearchSettingsPanelProps {
   onWideGroupSizeChange: (value: number) => void;
   wideLimit: number;
   onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
   summaryLimitResults: boolean;
   onSummaryLimitResultsChange: (value: boolean) => void;
   summaryMaxResults: number;
@@ -187,6 +189,35 @@ const RecencyControls = ({
 // Wide search: spread results across documents. When on, the search returns
 // `wideLimit` documents with at most `wideGroupSize` results each, documents
 // ranked by their best match, instead of a flat top-N of chunks.
+/**
+ * "Group by document" checkbox: the Search screen shows one collapsed row per
+ * document (with its excerpt count) instead of a flat list of excerpts. A
+ * display setting only; the search itself and its ranking are unchanged.
+ */
+export const GroupByDocumentControl = ({
+  groupByDocument,
+  onGroupByDocumentToggle,
+}: {
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+}) => (
+  <label className="rerank-checkbox-label">
+    <input
+      type="checkbox"
+      checked={groupByDocument}
+      onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
+      className="rerank-checkbox"
+    />
+    <span>Group by document</span>
+    <span
+      className="rerank-tooltip"
+      title="Show search results as one row per document, collapsed, with the number of matching excerpts. Click a row to expand its excerpts. Documents are ordered by their best-matching excerpt; the search itself is unchanged."
+    >
+      ⓘ
+    </span>
+  </label>
+);
+
 export const WideSearchControls = ({
   wideSearch,
   onWideSearchToggle,
@@ -433,6 +464,8 @@ export const SearchSettingsPanel = ({
   onWideGroupSizeChange,
   wideLimit,
   onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
   summaryLimitResults,
   onSummaryLimitResultsChange,
   summaryMaxResults,
@@ -586,6 +619,10 @@ export const SearchSettingsPanel = ({
             onWideGroupSizeChange={onWideGroupSizeChange}
             wideLimit={wideLimit}
             onWideLimitChange={onWideLimitChange}
+          />
+          <GroupByDocumentControl
+            groupByDocument={groupByDocument}
+            onGroupByDocumentToggle={onGroupByDocumentToggle}
           />
           <div className={fieldBoostEnabled ? SUBSETTINGS_GROUP_CLASS : undefined}>
           <label className="rerank-checkbox-label">

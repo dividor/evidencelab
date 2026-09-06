@@ -781,6 +781,7 @@ function App() {
   const [wideSearch, setWideSearch] = useState<boolean>(initialSearchState.wideSearch);
   const [wideGroupSize, setWideGroupSize] = useState<number>(initialSearchState.wideGroupSize);
   const [wideLimit, setWideLimit] = useState<number>(initialSearchState.wideLimit);
+  const [groupByDocument, setGroupByDocument] = useState<boolean>(initialSearchState.groupByDocument);
   // AI summary: how many results it is built from (null = every result)
   const [summaryLimitResults, setSummaryLimitResults] = useState<boolean>(initialSearchState.summaryLimitResults);
   const [summaryMaxResults, setSummaryMaxResults] = useState<number>(initialSearchState.summaryMaxResults);
@@ -849,6 +850,7 @@ function App() {
     wideSearch: setWideSearch,
     wideGroupSize: setWideGroupSize,
     wideLimit: setWideLimit,
+    groupByDocument: setGroupByDocument,
     summaryLimitResults: setSummaryLimitResults,
     summaryMaxResults: setSummaryMaxResults,
     summaryTemperature: setSummaryTemperature,
@@ -976,6 +978,7 @@ function App() {
       setWideSearch(searchState.wideSearch);
       setWideGroupSize(searchState.wideGroupSize);
       setWideLimit(searchState.wideLimit);
+      setGroupByDocument(searchState.groupByDocument);
       setSummaryLimitResults(searchState.summaryLimitResults);
       setSummaryMaxResults(searchState.summaryMaxResults);
       setSummaryTemperature(searchState.summaryTemperature);
@@ -1567,7 +1570,8 @@ function App() {
         wideLimit,
         summaryLimitResults,
         summaryMaxResults,
-        summaryTemperature
+        summaryTemperature,
+        groupByDocument
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1616,6 +1620,7 @@ function App() {
     summaryLimitResults,
     summaryMaxResults,
     summaryTemperature,
+    groupByDocument,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -2844,6 +2849,8 @@ function App() {
       onWideGroupSizeChange={setWideGroupSize}
       wideLimit={wideLimit}
       onWideLimitChange={setWideLimit}
+      groupByDocument={groupByDocument}
+      onGroupByDocumentToggle={setGroupByDocument}
       summaryLimitResults={summaryLimitResults}
       onSummaryLimitResultsChange={setSummaryLimitResults}
       summaryMaxResults={summaryMaxResults}
@@ -2962,6 +2969,8 @@ function App() {
       onWideGroupSizeChange={setWideGroupSize}
       wideLimit={wideLimit}
       onWideLimitChange={setWideLimit}
+      groupByDocument={groupByDocument}
+      onGroupByDocumentToggle={setGroupByDocument}
       summaryLimitResults={summaryLimitResults}
       onSummaryLimitResultsChange={setSummaryLimitResults}
       summaryMaxResults={summaryMaxResults}

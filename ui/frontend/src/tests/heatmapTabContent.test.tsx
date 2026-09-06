@@ -82,6 +82,8 @@ const baseProps = {
   onWideGroupSizeChange: jest.fn(),
   wideLimit: 20,
   onWideLimitChange: jest.fn(),
+  groupByDocument: false,
+  onGroupByDocumentToggle: jest.fn(),
   summaryLimitResults: true,
   onSummaryLimitResultsChange: jest.fn(),
   summaryMaxResults: 20,

@@ -15,7 +15,7 @@ jest.mock('../../src/config', () => ({
 const SETTING_KEYS: (keyof SearchSettings)[] = [
   'denseWeight', 'rerank', 'recencyBoost', 'recencyWeight', 'recencyScaleDays', 'sectionTypes',
   'keywordBoostShortQueries', 'minChunkSize', 'semanticHighlighting', 'autoMinScore', 'deduplicate',
-  'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'summaryLimitResults',
+  'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'groupByDocument', 'summaryLimitResults',
   'summaryMaxResults', 'summaryTemperature', 'greetingMessage',
 ];
 
@@ -44,6 +44,14 @@ describe('useGroupDefaults applies wide search team defaults', () => {
     await waitFor(() => expect(setters.wideSearch).toHaveBeenCalledWith(true));
     expect(setters.wideGroupSize).toHaveBeenCalledWith(3);
     expect(setters.wideLimit).toHaveBeenCalledWith(40);
+  });
+
+  test('applies the group-by-document team default', async () => {
+    setURL('?q=test');
+    mockedAxios.get.mockResolvedValue({ data: { groupByDocument: true } });
+    const setters = makeSetters();
+    render(<Harness setters={setters} />);
+    await waitFor(() => expect(setters.groupByDocument).toHaveBeenCalledWith(true));
   });
 
   test('applies the AI summary cap team defaults', async () => {
