@@ -436,6 +436,11 @@ The CI workflow in `.github/workflows/ci.yml` runs on push and PRs:
 Secrets and environment variables for integrations are configured in GitHub
 Actions (`HUGGINGFACE_API_KEY`, API URLs, etc.).
 
+Pull requests opened from a fork do not receive repository secrets. For those
+PRs the Docker Hub login step is skipped and `integration-tests` does not run.
+A maintainer runs the integration suite on a branch in this repository before
+merging a fork PR.
+
 ### Dependabot
 
 Dependabot is configured (`.github/dependabot.yml`) to automatically create weekly PRs for:
