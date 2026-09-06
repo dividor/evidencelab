@@ -425,8 +425,25 @@ jobs:
           done
 
       - name: Run integration tests
+        # Some integration tests call external services (e.g. the free Google
+        # Translate endpoint) that fail intermittently. After a failed run,
+        # rerun only the tests that failed, a few times with a pause, so a
+        # transient outage clears while a genuine failure stays red.
         run: |
-          docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s"
+          run_tests() {
+            docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s $1"
+          }
+          if run_tests ""; then
+            exit 0
+          fi
+          for attempt in 1 2 3 4 5; do
+            echo "::warning::Integration tests failed; retrying last-failed tests ($attempt/5) after 60s"
+            sleep 60
+            if run_tests "--last-failed"; then
+              exit 0
+            fi
+          done
+          exit 1
 
   ui-tests:
     runs-on: ubuntu-latest
