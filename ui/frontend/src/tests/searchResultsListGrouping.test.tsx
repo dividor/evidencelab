@@ -8,6 +8,7 @@ const result = (chunkId: string, docId: string, text: string): SearchResult => (
   title: `Document ${docId}`, organization: 'WFP', year: '2021', metadata: {},
 });
 
+const ARIA_EXPANDED = 'aria-expanded';
 const DOC_A = 'Document A';
 const DOC_B = 'Document B';
 
@@ -44,7 +45,7 @@ describe('SearchResultsList grouped by document', () => {
     renderList({ groupByDocument: true });
     expect(cards()).toHaveLength(0);
     expect(headers()).toHaveLength(2);
-    expect(row(DOC_A)).toHaveAttribute('aria-expanded', 'false');
+    expect(row(DOC_A)).toHaveAttribute(ARIA_EXPANDED, 'false');
     expect(row(DOC_B)).toBeInTheDocument();
     expect(screen.getByText('3 excerpts in 2 documents')).toBeInTheDocument();
   });
@@ -63,7 +64,7 @@ describe('SearchResultsList grouped by document', () => {
     renderList({ groupByDocument: true });
     const rowA = row(DOC_A);
     fireEvent.click(rowA);
-    expect(rowA).toHaveAttribute('aria-expanded', 'true');
+    expect(rowA).toHaveAttribute(ARIA_EXPANDED, 'true');
     expect(cards()).toHaveLength(2);
     fireEvent.click(rowA);
     expect(cards()).toHaveLength(0);
@@ -82,6 +83,32 @@ describe('SearchResultsList grouped by document', () => {
     expect(cards()).toHaveLength(1);
     fireEvent.click(row(DOC_B));
     expect(cards()).toHaveLength(0);
+  });
+
+  test('an expanded row stays open when the parent re-renders with the same results', () => {
+    // The AI summary streams tokens after a search; every token re-renders the
+    // list, often with a fresh array holding the same results.
+    const view = renderList({ groupByDocument: true });
+    fireEvent.click(row(DOC_A));
+    expect(cards()).toHaveLength(2);
+    for (let i = 0; i < 3; i += 1) {
+      view.rerender(
+        <SearchResultsList
+          results={[...RESULTS]}
+          minScore={0}
+          loading={false}
+          query="alpha"
+          hasSearchRun
+          selectedDoc={null}
+          onResultClick={jest.fn()}
+          onOpenMetadata={jest.fn()}
+          onLanguageChange={jest.fn()}
+          groupByDocument
+        />,
+      );
+    }
+    expect(row(DOC_A)).toHaveAttribute(ARIA_EXPANDED, 'true');
+    expect(cards()).toHaveLength(2);
   });
 
   test('a new result set collapses everything again', () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SearchResult } from '../types/api';
 import SearchResultCard from './SearchResultCard';
 import { DocumentResultGroup } from './DocumentResultGroup';
@@ -64,7 +64,10 @@ export const SearchResultsList = ({
   onSubmitRating,
   onDeleteRating,
 }: SearchResultsListProps) => {
-  const visibleResults = results.filter((result) => result.score >= minScore);
+  const visibleResults = useMemo(
+    () => results.filter((result) => result.score >= minScore),
+    [results, minScore],
+  );
 
   const renderCard = (result: SearchResult) => {
     const rating = ratingsMap?.get(result.chunk_id);
@@ -139,15 +142,21 @@ const GroupedResults = ({
   thumbnailDataSource?: string;
   renderCard: (result: SearchResult) => React.ReactNode;
 }) => {
-  const groups = groupResultsByDocument(results);
+  const groups = useMemo(() => groupResultsByDocument(results), [results]);
   // Explicit user choices per document; anything else follows the default.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // Collapse everything only when the set of documents changes (a new search
+  // or filter), not on every parent re-render: the AI summary streams tokens
+  // while the user is reading, and each token re-renders this list.
+  const documentKey = groups.map((group) => group.docId).join('|');
   useEffect(() => {
     setToggled({});
-  }, [results]);
+  }, [documentKey]);
 
-  const isExpanded = (docId: string) =>
-    toggled[docId] ?? (defaultExpandedDocIds?.includes(docId) ?? false);
+  const defaultExpanded = (docId: string) => defaultExpandedDocIds?.includes(docId) ?? false;
+  const isExpanded = (docId: string) => toggled[docId] ?? defaultExpanded(docId);
+  const toggle = (docId: string) =>
+    setToggled((prev) => ({ ...prev, [docId]: !(prev[docId] ?? defaultExpanded(docId)) }));
   const setAll = (expanded: boolean) =>
     setToggled(Object.fromEntries(groups.map((group) => [group.docId, expanded])));
 
@@ -168,7 +177,7 @@ const GroupedResults = ({
           results={group.results}
           thumbnailUrl={thumbnailUrlFor(group.results[0], thumbnailDataSource)}
           expanded={isExpanded(group.docId)}
-          onToggle={() => setToggled((prev) => ({ ...prev, [group.docId]: !isExpanded(group.docId) }))}
+          onToggle={() => toggle(group.docId)}
           renderResult={renderCard}
         />
       ))}
