@@ -112,3 +112,33 @@ The Activity panel shows:
 The export includes: Date, User Email, User Name, Query, Results count, Search/Summary/Heatmap timing, AI Summary text, URL, Has Ratings flag, and Search ID.
 
 > **Privacy note:** Activity logging works for both authenticated and anonymous users (anonymous users are tracked by session ID). All activity data is automatically anonymized when a user deletes their account.
+
+### LLM Token Usage (Admin)
+
+The **Admin Panel → Token Usage** tab rolls up LLM token consumption and cost
+from the activity log, bucketed by day / week / month and grouped by user or
+user group, with an optional activity-type filter and XLSX export.
+
+Token usage is recorded **server-side at the source**: the backend writes (or
+accumulates onto) the activity row the moment an LLM call finishes, so every
+token-consuming part of the system is covered — not just calls made from a
+browser tab. Tracked activity types:
+
+| Type | What it covers | Attributed to |
+|------|----------------|---------------|
+| `search` | Search AI summaries, including drill-down summaries (accumulated onto the search's row) | The searching user / session |
+| `assistant-basic` / `assistant-deep-research` | Research assistant turns (all internal agent steps summed) | The chatting user / session |
+| `brief` | One row per brief, accumulating outline generation, per-section deep research, and section edits | The brief's author |
+| `highlight` | Semantic highlighting LLM calls, accumulated per originating search | The viewing user / session |
+| `evaluation` | One row per evaluation run (AI-summary + LLM-judge calls, also visible per run in the Evaluation tab) | The admin who clicked **Run** |
+| `a2a-assistant` | Research assistant calls made through the A2A protocol server (the MCP server directs research to A2A; `mcp-assistant` is reserved for a future MCP research tool) | Anonymous; the caller's API identity is kept in the row's filters |
+| `pipeline` | Ingestion stages (summarization, TOC classification, taxonomy tagging) — one row per document per stage | Anonymous; stage, data source, and document id are kept in the row's filters |
+
+Cost (USD) is computed server-side per call from the pricing table in
+`ui/backend/utils/llm_costs.py`, keyed by the `supported_llms` model key.
+Models without a configured rate (e.g. self-hosted HuggingFace models) show
+token counts with a "—" cost.
+
+> **Not metered:** embedding and reranker calls. Rerankers report no token
+> counts, and the embedding client does not currently expose the provider's
+> usage envelope — both are candidates for a follow-up.

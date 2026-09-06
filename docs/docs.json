@@ -29,6 +29,7 @@
         { "title": "Pipeline Configuration", "path": "admin/pipeline-configuration.md" },
         { "title": "User Administration", "path": "admin/user-administration.md" },
         { "title": "Evaluation Harness", "path": "admin/evaluation.md" },
+        { "title": "TOC Validator", "path": "admin/toc-validator.md" },
         { "title": "API", "path": "admin/api-keys.md" },
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
         { "title": "MCP Server", "path": "admin/mcp-server.md" },

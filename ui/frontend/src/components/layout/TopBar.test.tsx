@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { TopBar } from './TopBar';
 
@@ -26,12 +26,12 @@ const baseProps: any = {
   onToggleModelDropdown: noop,
   onDomainMouseEnter: noop,
   onDomainMouseLeave: noop,
-  onDomainBlur: noop,
-  onModelBlur: noop,
+  onCloseDomainDropdown: noop,
+  onCloseModelDropdown: noop,
   onSelectDomain: noop,
   onSelectModelCombo: noop,
   onToggleHelpDropdown: noop,
-  onHelpBlur: noop,
+  onCloseHelpDropdown: noop,
   onAboutClick: noop,
   onTechClick: noop,
   onDataClick: noop,
@@ -77,5 +77,34 @@ describe('TopBar brand link', () => {
 
     expect(pushState).not.toHaveBeenCalled();
     pushState.mockRestore();
+  });
+});
+
+describe('TopBar dropdown dismissal', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('closes the open Info dropdown on mouse-down outside it, but not inside it', () => {
+    const onCloseHelpDropdown = jest.fn();
+    render(<TopBar {...baseProps} helpDropdownOpen onCloseHelpDropdown={onCloseHelpDropdown} />);
+    fireEvent.mouseDown(screen.getByText('About'));
+    expect(onCloseHelpDropdown).not.toHaveBeenCalled();
+    fireEvent.mouseDown(document.body);
+    expect(onCloseHelpDropdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an Info item clickable long after the trigger lost focus', () => {
+    jest.useFakeTimers();
+    const onAboutClick = jest.fn();
+    render(<TopBar {...baseProps} helpDropdownOpen onAboutClick={onAboutClick} />);
+    const item = screen.getByText('About');
+    fireEvent.mouseDown(item);
+    fireEvent.focusOut(screen.getByText('Info'));
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+    fireEvent.click(item);
+    expect(onAboutClick).toHaveBeenCalledTimes(1);
   });
 });

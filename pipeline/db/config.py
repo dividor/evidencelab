@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 from qdrant_client.http.models import Distance
@@ -322,6 +322,23 @@ def get_application_config() -> Dict[str, Any]:
     """Get application config from datasources config."""
     config = load_datasources_config()
     return config.get("application", {})
+
+
+def get_default_included_section_types() -> List[str]:
+    """Return the section types Search includes by default (config-driven).
+
+    Reads ``application.search.default_included_section_types`` from config.json
+    so Search and the admin TOC Validator share one definition and cannot drift.
+    Falls back to ``section_inclusion.DEFAULT_INCLUDED_SECTION_TYPES`` only when
+    the key is absent. Labels are normalised to lowercase to match stored tags.
+    """
+    from pipeline.validation.section_inclusion import DEFAULT_INCLUDED_SECTION_TYPES
+
+    search_config = get_application_config().get("search") or {}
+    configured = search_config.get("default_included_section_types")
+    if isinstance(configured, list) and configured:
+        return [str(item).strip().lower() for item in configured if str(item).strip()]
+    return list(DEFAULT_INCLUDED_SECTION_TYPES)
 
 
 VALID_METRICS = {

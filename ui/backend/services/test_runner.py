@@ -39,8 +39,10 @@ from ui.backend.auth.testing_models import (
     TestResult,
     TestRun,
 )
+from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
 from ui.backend.services.test_evaluators import evaluate_assertions
+from ui.backend.utils.filter_helpers import resolve_doc_level_filters
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +129,14 @@ def _storable_output(output: Any) -> Any:
 async def _run_search(
     case_input: Dict[str, Any], config: Dict[str, Any], db, pg, source: str
 ):
-    """Run search through the EXACT same pipeline as the UI ``/search`` route
+    """Run search through the same retrieval pipeline as the UI ``/search`` route
     (same retrieval, result building, field-boost/dedup post-processing), so an
     experiment reproduces what a user sees in the app.
+
+    Document-level filters (``doc_titles``, ``region``, ``language`` and the
+    data source's ``src_*`` fields) are resolved to ``doc_id`` filters here (via
+    :func:`resolve_doc_level_filters`) because the harness calls the chunk
+    search directly and so bypasses the route handler's own resolvers.
 
     Parameters default to the ``/search`` endpoint's own defaults; the
     experiment ``config`` overrides them (e.g. ``embedding_model``, ``rerank``,
@@ -146,12 +153,15 @@ async def _run_search(
     query = case_input.get("query", "")
     limit = int(params.get("limit", 50))
     min_chunk_size = int(params.get("min_chunk_size", 0))
+    filters = case_input.get("filters") or None
+    if filters:
+        filters = resolve_doc_level_filters(filters, pg, source)
     raw = await _run_search_chunks(
         query,
         limit=limit,
         dense_weight=params.get("dense_weight"),
         db=db,
-        filters=case_input.get("filters") or None,
+        filters=filters,
         rerank=bool(params.get("rerank", False)),
         recency_boost=bool(params.get("recency_boost", False)),
         recency_weight=float(params.get("recency_weight", 0.15)),
@@ -280,23 +290,22 @@ def _build_references(
                 "country": r.get("country"),
                 "doc_id": r.get("doc_id"),
                 "url": r.get("url") or r.get("link"),
+                # Page of the cited chunk, carried through so the rendered
+                # References can show ``p.<page>`` exactly as the search UI does.
+                "page_num": r.get("page_num"),
             }
         )
     return references
 
 
 def _references_text(references: List[Dict[str, Any]]) -> str:
-    """Render references as an appended, human/LLM-readable section."""
-    if not references:
+    """Render references as an appended section, grouped by document with each
+    citation's page number — the same shape the search UI shows (see
+    :mod:`ui.backend.services.citations`)."""
+    lines = render_reference_lines(references)
+    if not lines:
         return ""
-    lines = ["", "", "## References"]
-    for r in references:
-        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
-        suffix = f" ({meta})" if meta else ""
-        url = f" — {r['url']}" if r.get("url") else ""
-        title = r.get("title") or r.get("doc_id") or "Unknown"
-        lines.append(f"[{r['number']}] {title}{suffix}{url}")
-    return "\n".join(lines)
+    return "\n".join(["", "", "## References", *lines])
 
 
 def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
@@ -465,15 +474,12 @@ _JUDGE_CONTEXT_TEXT_LIMIT = 1200
 
 
 def _format_judge_references(references: List[Dict[str, Any]]) -> str:
-    """A plain numbered list of the cited documents (no markdown header)."""
-    if not references:
+    """Grouped, page-numbered citation list for the judge (no markdown header) —
+    the same rendering the search UI and the stored summary use (see
+    :mod:`ui.backend.services.citations`)."""
+    lines = render_reference_lines(references)
+    if not lines:
         return "(no citations resolved in the summary)"
-    lines = []
-    for r in references:
-        meta = ", ".join(str(x) for x in (r.get("organization"), r.get("year")) if x)
-        suffix = f" ({meta})" if meta else ""
-        title = r.get("title") or r.get("doc_id") or "Unknown"
-        lines.append(f"[{r.get('number')}] {title}{suffix}")
     return "\n".join(lines)
 
 
@@ -493,21 +499,31 @@ def _format_judge_context(output: Dict[str, Any]) -> str:
     return "\n\n".join(blocks) if blocks else "(no search results)"
 
 
-async def _judge_call(prompt: str, model_key: Optional[str]) -> str:
+async def _judge_call(
+    prompt: str, model_key: Optional[str]
+) -> Tuple[str, Dict[str, Any]]:
     """Raw LLM completion for judging — deliberately NOT routed through the
-    AI-summary templates (which would reframe the rubric as a search query)."""
+    AI-summary templates (which would reframe the rubric as a search query).
+
+    Returns ``(reply_text, usage)`` where ``usage`` is the token-usage payload
+    from ``summarize_usage_metadata`` so judge calls are cost-tracked.
+    """
+    from langchain_core.callbacks import UsageMetadataCallbackHandler
     from langchain_core.messages import HumanMessage, SystemMessage
 
+    from ui.backend.services.llm_service import summarize_usage_metadata
     from utils.llm_factory import get_llm
 
     llm = get_llm(model=model_key, temperature=0.0, max_tokens=300)
+    usage_handler = UsageMetadataCallbackHandler()
     response = await llm.ainvoke(
         [
             SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
-        ]
+        ],
+        config={"callbacks": [usage_handler]},
     )
-    return str(response.content)
+    return str(response.content), summarize_usage_metadata(usage_handler, model_key)
 
 
 def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
@@ -550,8 +566,12 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
             )
             full_prompt = f"SYSTEM:\n{_JUDGE_SYSTEM_PROMPT}\n\nUSER:\n{user_prompt}"
             logger.info("[LLM judge] model=%s rubric=%r", model_key, rubric[:300])
-            judged = await _judge_call(user_prompt, model_key)
+            judged, judge_usage = await _judge_call(user_prompt, model_key)
             logger.info("[LLM judge] response=%r", judged[:400])
+            if judge_usage and isinstance(output, dict):
+                # Stash judge usage on the case output so it is persisted in
+                # actual_output and rolled into the case's token totals.
+                output.setdefault("judge_usage", []).append(judge_usage)
             score, reason = _parse_judgement(judged)
             verdicts[rubric] = (score, reason, full_prompt)
         return lambda _text, rubric: verdicts.get(str(rubric), (0.0, "", ""))
@@ -562,6 +582,48 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
 # ---------------------------------------------------------------------------
 # Per-case evaluation (testable with an injected runner/judge factory)
 # ---------------------------------------------------------------------------
+
+
+_NO_CASE_USAGE = {"prompt_tokens": None, "completion_tokens": None, "cost_usd": None}
+
+
+def _case_usage_totals(output: Any) -> Dict[str, Any]:
+    """Combine a case's summary + judge usage into per-case token/cost totals.
+
+    Cost is summed per LLM call from each call's own model rate (summary and
+    judge models can differ), so mixed-model cases stay accurate. All values
+    are None when the case made no LLM calls (e.g. search-only experiments).
+
+    Monitoring only: a malformed usage payload must never fail a case that
+    ran successfully, so unexpected errors are logged and yield None totals.
+    """
+    from ui.backend.utils.llm_costs import compute_cost
+
+    try:
+        entries: List[Dict[str, Any]] = []
+        if isinstance(output, dict):
+            if isinstance(output.get("usage"), dict):
+                entries.append(output["usage"])
+            entries.extend(
+                e for e in output.get("judge_usage") or [] if isinstance(e, dict)
+            )
+        prompt = sum(int(e.get("prompt_tokens") or 0) for e in entries)
+        completion = sum(int(e.get("completion_tokens") or 0) for e in entries)
+        costs = []
+        for e in entries:
+            cost = compute_cost(
+                e.get("llm_model"), e.get("prompt_tokens"), e.get("completion_tokens")
+            )
+            if cost is not None:
+                costs.append(cost)
+        return {
+            "prompt_tokens": prompt or None,
+            "completion_tokens": completion or None,
+            "cost_usd": sum(costs) if costs else None,
+        }
+    except Exception:
+        logger.warning("Failed to total case LLM usage", exc_info=True)
+        return dict(_NO_CASE_USAGE)
 
 
 async def evaluate_case(
@@ -583,6 +645,7 @@ async def evaluate_case(
             "assertion_results": None,
             "latency_ms": int((time.time() - started) * 1000),
             "error_message": str(exc)[:500],
+            **_NO_CASE_USAGE,
         }
     latency_ms = int((time.time() - started) * 1000)
     judge_fn = await judge_factory(output, expectations) if judge_factory else None
@@ -596,6 +659,9 @@ async def evaluate_case(
         "assertion_results": assertion_results,
         "latency_ms": latency_ms,
         "error_message": None,
+        # Judge usage is stashed on the output by the judge factory, so the
+        # totals must be computed after the judge has run.
+        **_case_usage_totals(output),
     }
 
 
@@ -746,16 +812,69 @@ def _build_result_row(
     )
 
 
-async def _execute(session, experiment: TestExperiment) -> None:
+async def _record_run_usage(
+    experiment: TestExperiment, run: TestRun, dataset: TestDataset, cfg: Dict[str, Any]
+) -> None:
+    """Mirror a finished run's token totals into a ``user_activity`` row.
+
+    One aggregated row per run (keyed by the run's own id), typed
+    ``evaluation`` and attributed to the user who triggered the run, so the
+    admin Token Usage rollup includes evaluation spend without flooding the
+    activity list with per-case rows. Cost is the per-call-accurate total
+    from ``summary_stats``, not recomputed from the summed token counts.
+
+    Monitoring only: called after the run has already been committed as
+    completed — a recording failure must never flip that run to failed, so
+    errors are logged and swallowed.
+    """
+    from decimal import Decimal
+
+    from ui.backend.services.usage_recorder import record_llm_usage
+
+    try:
+        stats = run.summary_stats or {}
+        usage = {
+            "llm_model": cfg.get("summary_model") or cfg.get("judge_model"),
+            "prompt_tokens": stats.get("prompt_tokens"),
+            "completion_tokens": stats.get("completion_tokens"),
+        }
+        cost = stats.get("cost_usd")
+        await record_llm_usage(
+            usage=usage,
+            activity_type="evaluation",
+            query=f"Evaluation: {experiment.name} (run {run.run_number})",
+            user_id=run.created_by_user_id,
+            search_id=run.id,
+            server_owned=True,
+            filters_extra={
+                "experiment_id": str(experiment.id),
+                "experiment_name": experiment.name,
+                "run_id": str(run.id),
+                "run_number": run.run_number,
+                "data_source": dataset.data_source,
+                "cases": stats.get("total"),
+            },
+            cost_usd=Decimal(str(cost)) if cost is not None else None,
+        )
+    except Exception:
+        logger.warning("Failed to record evaluation run usage", exc_info=True)
+
+
+async def _execute(
+    session, experiment: TestExperiment, triggered_by_user_id=None
+) -> None:
     dataset = await session.get(TestDataset, experiment.dataset_id)
     started = time.time()
     # Each execution is a new run; prior runs and their results are preserved.
+    # The run is attributed to whoever clicked Run (falling back to the
+    # experiment's creator for programmatic invocations) so token usage is
+    # charged to the actual spender.
     run = TestRun(
         experiment_id=experiment.id,
         run_number=await _next_run_number(session, experiment.id),
         status=EXPERIMENT_RUNNING,
         started_at=_utcnow(),
-        created_by_user_id=experiment.created_by_user_id,
+        created_by_user_id=triggered_by_user_id or experiment.created_by_user_id,
     )
     session.add(run)
     experiment.status = EXPERIMENT_RUNNING
@@ -804,6 +923,7 @@ async def _execute(session, experiment: TestExperiment) -> None:
     run.finished_at = _utcnow()
     _mirror_run_to_experiment(experiment, run)
     await session.commit()
+    await _record_run_usage(experiment, run, dataset, config)
 
 
 async def recover_orphaned_runs(session_factory=None) -> None:
@@ -840,8 +960,15 @@ async def recover_orphaned_runs(session_factory=None) -> None:
         logger.exception("Failed to recover orphaned test runs")
 
 
-async def run_experiment(experiment_id, session_factory=None) -> None:
-    """Background entrypoint: load the experiment and execute one run of it."""
+async def run_experiment(
+    experiment_id, session_factory=None, triggered_by_user_id=None
+) -> None:
+    """Background entrypoint: load the experiment and execute one run of it.
+
+    ``triggered_by_user_id`` is the admin who clicked Run (captured at the
+    route boundary before the request context is gone) — the run and its
+    token usage are attributed to them.
+    """
     factory = session_factory or async_session_factory
     async with factory() as session:
         experiment = await session.get(TestExperiment, experiment_id)
@@ -849,7 +976,7 @@ async def run_experiment(experiment_id, session_factory=None) -> None:
             logger.error("run_experiment: experiment %s not found", experiment_id)
             return
         try:
-            await _execute(session, experiment)
+            await _execute(session, experiment, triggered_by_user_id)
         except Exception:
             logger.exception("Experiment %s failed unexpectedly", experiment_id)
             await _mark_failed(session, experiment, "Experiment failed")

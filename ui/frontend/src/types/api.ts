@@ -157,6 +157,26 @@ export interface SourceReference {
   index?: number;
   bbox?: any;
   headings?: string[];
+  // Public source links (document-level), supplied by the assistant/brief
+  // stream so the Word export can link citations to the actual PDF instead of
+  // the in-app deep link.
+  pdfUrl?: string;
+  reportUrl?: string;
+  // LLM semantic-highlight matches within the excerpt body (offsets relative
+  // to the text after the heading-breadcrumb line): the part of the excerpt
+  // that supports the citing claim. Absent → render the full excerpt plain.
+  semanticMatches?: Array<{ start: number; end: number; matchedText?: string }>;
+  // Per-claim LLM highlight matches: one entry per sentence citing this source
+  // (`claim` is the normalized sentence), so a source cited in several places
+  // shows the snippets for the sentence actually hovered.
+  claimMatches?: Array<{
+    claim: string;
+    matches: Array<{ start: number; end: number; matchedText?: string }>;
+  }>;
+  // Other chunks of the same document cited in the same section. Display
+  // combines a document's chunks under one number, so the hover card looks
+  // across these to show the chunk that actually supports the hovered claim.
+  variants?: SourceReference[];
 }
 
 export interface AgentState {
@@ -256,4 +276,30 @@ export interface DrilldownNode {
 // Dynamic search filters using core field names
 export interface SearchFilters {
   [coreField: string]: string | undefined;
+}
+
+/** One classified-TOC section flagged by the TOC validator */
+export interface TocValidationSection {
+  title: string;
+  label: string;
+  page: number | null;
+}
+
+/**
+ * Result of the admin TOC validator check for a single document: whether every
+ * section inside the human-set main-body page range uses a section type that
+ * Search includes by default.
+ */
+export interface TocValidationResult {
+  doc_id: string;
+  status: 'pass' | 'fail' | 'skipped';
+  range_start: number | null;
+  range_end: number | null;
+  sections_in_range: number;
+  num_excluded: number;
+  excluded_section_types: string[];
+  excluded_sections: TocValidationSection[];
+  reasons: string[];
+  validated_at: string;
+  validated_by: string | null;
 }

@@ -10,10 +10,12 @@ import type {
   TestRun,
 } from '../../../types/testing';
 import {
+  formatCostUsd,
   formatMs,
   formatPercent,
   formatScore,
   formatTimestamp,
+  formatTokens,
   prettyJson,
 } from './testingFormat';
 import RunPassRateChart from './RunPassRateChart';
@@ -64,6 +66,14 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
       <div className="testing-summary-stat">
         <span className="testing-summary-label">Duration</span>
         <span>{formatMs(stats?.duration_ms)}</span>
+      </div>
+      <div className="testing-summary-stat">
+        <span className="testing-summary-label">Tokens</span>
+        <span>{formatTokens(stats?.total_tokens)}</span>
+      </div>
+      <div className="testing-summary-stat">
+        <span className="testing-summary-label">Cost</span>
+        <span>{formatCostUsd(stats?.cost_usd)}</span>
       </div>
       <div className="testing-summary-stat">
         <span className="testing-summary-label">Started</span>

@@ -10,6 +10,17 @@ jest.mock('../config', () => ({
 }));
 jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
+// Brief Central (logged-in landing) loads briefs/templates/voices over axios.
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn().mockResolvedValue({ data: [] }),
+    post: jest.fn().mockResolvedValue({ data: {} }),
+    put: jest.fn().mockResolvedValue({ data: {} }),
+    delete: jest.fn().mockResolvedValue({ data: {} }),
+  },
+}));
+
 const mockRunDeepResearch = jest.fn();
 const mockRequestOutline = jest.fn();
 const mockResearchSection = jest.fn();
@@ -41,7 +52,10 @@ describe('Brief uses the group search settings when logged in', () => {
         searchSettings={{ denseWeight: 0.7, fieldBoost: true }}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Topic'), { target: { value: 'cash assistance' } });
+    // Logged-in users land on Brief Central: open the New-brief modal, name the
+    // brief and generate the outline from there.
+    fireEvent.click(screen.getByText('New brief'));
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'cash assistance' } });
     fireEvent.click(screen.getByText('Generate outline'));
 
     await waitFor(() => expect(mockRunDeepResearch).toHaveBeenCalled());

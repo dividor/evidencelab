@@ -640,6 +640,49 @@ class TestLogActivityUpsert:
         assert result == "ok"
 
     @pytest.mark.asyncio
+    async def test_update_preserves_server_recorded_usage_when_omitted(self):
+        """Regression: a re-POST without usage (every Brief save) must not
+        null out token counts recorded server-side by the streaming routes."""
+        sid = uuid.uuid4()
+        existing = _make_activity(
+            search_id=sid,
+            llm_model="gpt-4.1-mini",
+            prompt_tokens=1200,
+            completion_tokens=300,
+            cost_usd=Decimal("0.000960"),
+        )
+        body = _brief_body(sid)  # no usage fields
+        session = _fake_session()
+        with patch(
+            "ui.backend.routes.activity._find_existing_activity",
+            new=AsyncMock(return_value=existing),
+        ):
+            await log_activity(body, user=None, session=session)
+        assert existing.llm_model == "gpt-4.1-mini"
+        assert existing.prompt_tokens == 1200
+        assert existing.completion_tokens == 300
+        assert existing.cost_usd == Decimal("0.000960")
+
+    @pytest.mark.asyncio
+    async def test_update_applies_usage_when_provided(self):
+        """A re-POST that does carry usage still overwrites (patch semantics)."""
+        sid = uuid.uuid4()
+        existing = _make_activity(search_id=sid, prompt_tokens=10)
+        body = _brief_body(
+            sid, llm_model="gpt-4.1-mini", prompt_tokens=500, completion_tokens=100
+        )
+        session = _fake_session()
+        with patch(
+            "ui.backend.routes.activity._find_existing_activity",
+            new=AsyncMock(return_value=existing),
+        ):
+            await log_activity(body, user=None, session=session)
+        assert existing.prompt_tokens == 500
+        assert existing.completion_tokens == 100
+        assert existing.llm_model == "gpt-4.1-mini"
+        assert existing.cost_usd is not None
+
+    @pytest.mark.asyncio
     async def test_does_not_blank_summary_when_omitted(self):
         sid = uuid.uuid4()
         existing = _make_activity(search_id=sid, ai_summary="keep me")
