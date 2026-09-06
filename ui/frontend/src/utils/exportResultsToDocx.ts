@@ -34,10 +34,16 @@ import {
   PageNumber,
   Paragraph,
   ShadingType,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
+  WidthType,
   convertInchesToTwip,
 } from 'docx';
 import type { ChunkElement, SearchResult } from '../types/api';
+import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
+import type { GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
   isTextRedundantWithTable,
@@ -97,6 +103,10 @@ export interface ExportOptions {
    *    source (title, page, PDF link) is placed as a footnote on the same
    *    page. The end References/excerpt sections are still included. */
   citationStyle?: 'links' | 'footnotes';
+  /** Group-by-document mode: add a "Document List" table under References
+   *  (title linked to the document online, source, year, citation count),
+   *  in the same order as the on-screen rows. */
+  documentList?: { sortBy: GroupSortBy };
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -863,6 +873,88 @@ const buildSummarySection = (
   return out;
 };
 
+/** Link to the document itself (no page anchor). */
+const resolveDocumentLink = (r: SearchResult, siteOrigin: string, dataSource?: string): string =>
+  resolveResultLink({ ...r, page_num: undefined as unknown as number }, siteOrigin, dataSource);
+
+const tableCell = (children: InlineChild[], widthPct: number): TableCell =>
+  new TableCell({
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
+    children: [new Paragraph({ spacing: { before: 40, after: 40 }, children })],
+  });
+
+/** "Document List" table for group-by-document exports: one row per document
+ *  in the on-screen order, the title linked to the document online, its
+ *  source and year, and how many times it is cited in the AI summary. Placed
+ *  under References; when there is no summary (so no References section yet),
+ *  the References heading is added here. */
+const buildDocumentListParagraphs = (
+  summary: string,
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  sortBy: GroupSortBy,
+): (Paragraph | Table)[] => {
+  const groups = sortDocumentGroups(groupResultsByDocument(results), sortBy);
+  if (groups.length === 0) return [];
+  const citationCounts = new Map<string, number>();
+  for (const cited of buildGroupedReferences(summary, results)) {
+    for (const { result } of cited.refs) {
+      citationCounts.set(result.doc_id, (citationCounts.get(result.doc_id) ?? 0) + 1);
+    }
+  }
+  const out: (Paragraph | Table)[] = [];
+  if (!summary.trim()) {
+    out.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_2,
+        children: [new TextRun({ text: 'References' })],
+        spacing: { before: 240, after: 120 },
+      }),
+    );
+  }
+  out.push(
+    new Paragraph({
+      heading: HeadingLevel.HEADING_3,
+      children: [new TextRun({ text: 'Document List' })],
+      spacing: { before: 200, after: 100 },
+    }),
+  );
+  const header = new TableRow({
+    tableHeader: true,
+    children: [
+      tableCell([new TextRun({ text: 'Document', bold: true })], 55),
+      tableCell([new TextRun({ text: 'Source', bold: true })], 20),
+      tableCell([new TextRun({ text: 'Year', bold: true })], 10),
+      tableCell([new TextRun({ text: 'Citations', bold: true })], 15),
+    ],
+  });
+  const rows = groups.map((group) => {
+    const first = group.results[0];
+    const title = first.translated_title || first.title || 'Untitled';
+    const source = first.organization || first.metadata?.organization || '';
+    const year = String(first.year || first.metadata?.year || '');
+    return new TableRow({
+      children: [
+        tableCell(
+          [
+            new ExternalHyperlink({
+              link: resolveDocumentLink(first, siteOrigin, dataSource),
+              children: [new TextRun({ text: title, style: 'Hyperlink' })],
+            }),
+          ],
+          55,
+        ),
+        tableCell([new TextRun({ text: source })], 20),
+        tableCell([new TextRun({ text: year })], 10),
+        tableCell([new TextRun({ text: String(citationCounts.get(group.docId) ?? 0) })], 15),
+      ],
+    });
+  });
+  out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
+  return out;
+};
+
 /** The FULL excerpt (never truncated) rendered as a single bordered, shaded box
  *  at a smaller font — one paragraph so the box stays continuous across page
  *  breaks, with blank lines separating sub-blocks. Returns nothing when there is
@@ -1070,7 +1162,7 @@ export const buildExportDocument = (
     opts.citationStyle === 'footnotes' ? createFootnoteRegistry() : undefined;
 
   const tocBookmarkPrefix = 'briefheading';
-  const body: Paragraph[] = [
+  const body: (Paragraph | Table)[] = [
     ...buildCoverParagraphs(opts, now),
     ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
     ...buildSummarySection(
@@ -1082,6 +1174,15 @@ export const buildExportDocument = (
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
       footnotes,
     ),
+    ...(opts.documentList
+      ? buildDocumentListParagraphs(
+          opts.aiSummary ?? '',
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.documentList.sortBy,
+        )
+      : []),
     ...(opts.referenceList
       ? buildReferenceList(
           opts.results,

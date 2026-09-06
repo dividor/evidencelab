@@ -8,6 +8,7 @@ import { SearchResultsList } from '../SearchResultsList';
 import { ResultsHeaderRow } from '../ResultsHeaderRow';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
 import type { GroupSortBy } from '../../utils/resultGrouping';
+import type { ExpansionCommand } from '../SearchResultsList';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
@@ -605,6 +606,11 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
   // Order of the document rows in group-by-document mode
   const [groupSortBy, setGroupSortBy] = useState<GroupSortBy>('relevance');
+  const [expansionCommand, setExpansionCommand] = useState<ExpansionCommand | undefined>(undefined);
+  const [allGroupsExpanded, setAllGroupsExpanded] = useState(false);
+  const handleToggleAllGroups = useCallback((expand: boolean) => {
+    setExpansionCommand((prev) => ({ expand, id: (prev?.id ?? 0) + 1 }));
+  }, []);
 
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
@@ -988,6 +994,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             groupByDocument={groupByDocument}
             groupSortBy={groupSortBy}
             onGroupSortByChange={setGroupSortBy}
+            allGroupsExpanded={allGroupsExpanded}
+            onToggleAllGroups={handleToggleAllGroups}
           />
           {showFilters && (
             <SearchResultFilters
@@ -1017,6 +1025,8 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             defaultExpandedDocIds={filteredDocIds}
             thumbnailDataSource={selectedDomain}
             groupSortBy={groupSortBy}
+            expansionCommand={expansionCommand}
+            onAllExpandedChange={setAllGroupsExpanded}
             loading={loading}
             query={query}
             hasSearchRun={hasSearchRun}

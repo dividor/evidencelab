@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult } from '../types/api';
 import SearchResultCard from './SearchResultCard';
 import { DocumentResultGroup } from './DocumentResultGroup';
@@ -6,6 +6,12 @@ import { groupResultsByDocument, sortDocumentGroups } from '../utils/resultGroup
 import type { GroupSortBy } from '../utils/resultGrouping';
 import API_BASE_URL from '../config';
 import type { Rating } from '../hooks/useRatings';
+
+/** Expand or collapse every document row. A fresh id re-applies the same choice. */
+export interface ExpansionCommand {
+  expand: boolean;
+  id: number;
+}
 
 interface SearchResultsListProps {
   results: SearchResult[];
@@ -18,6 +24,10 @@ interface SearchResultsListProps {
   thumbnailDataSource?: string;
   /** Order of the document rows in grouped mode. */
   groupSortBy?: GroupSortBy;
+  /** Expand or collapse every row; a new id applies the command again. */
+  expansionCommand?: ExpansionCommand;
+  /** Reports whether every row is currently expanded (drives the header button). */
+  onAllExpandedChange?: (allExpanded: boolean) => void;
   loading: boolean;
   query: string;
   hasSearchRun?: boolean;
@@ -53,6 +63,8 @@ export const SearchResultsList = ({
   defaultExpandedDocIds,
   thumbnailDataSource,
   groupSortBy = 'relevance',
+  expansionCommand,
+  onAllExpandedChange,
   loading,
   query,
   hasSearchRun,
@@ -117,6 +129,8 @@ export const SearchResultsList = ({
           defaultExpandedDocIds={defaultExpandedDocIds}
           thumbnailDataSource={thumbnailDataSource}
           sortBy={groupSortBy}
+          expansionCommand={expansionCommand}
+          onAllExpandedChange={onAllExpandedChange}
           renderCard={renderCard}
         />
       ) : (
@@ -141,12 +155,16 @@ const GroupedResults = ({
   defaultExpandedDocIds,
   thumbnailDataSource,
   sortBy,
+  expansionCommand,
+  onAllExpandedChange,
   renderCard,
 }: {
   results: SearchResult[];
   defaultExpandedDocIds?: string[];
   thumbnailDataSource?: string;
   sortBy: GroupSortBy;
+  expansionCommand?: ExpansionCommand;
+  onAllExpandedChange?: (allExpanded: boolean) => void;
   renderCard: (result: SearchResult) => React.ReactNode;
 }) => {
   const groups = useMemo(
@@ -167,8 +185,18 @@ const GroupedResults = ({
   const isExpanded = (docId: string) => toggled[docId] ?? defaultExpanded(docId);
   const toggle = (docId: string) =>
     setToggled((prev) => ({ ...prev, [docId]: !(prev[docId] ?? defaultExpanded(docId)) }));
-  const setAll = (expanded: boolean) =>
-    setToggled(Object.fromEntries(groups.map((group) => [group.docId, expanded])));
+  // Expand all / collapse all from the results header: each command id is
+  // applied once, to the rows present at that moment.
+  const appliedCommandId = useRef(0);
+  useEffect(() => {
+    if (!expansionCommand || expansionCommand.id === appliedCommandId.current) return;
+    appliedCommandId.current = expansionCommand.id;
+    setToggled(Object.fromEntries(groups.map((group) => [group.docId, expansionCommand.expand])));
+  }, [expansionCommand, groups]);
+  const allExpanded = groups.length > 0 && groups.every((group) => isExpanded(group.docId));
+  useEffect(() => {
+    onAllExpandedChange?.(allExpanded);
+  }, [allExpanded, onAllExpandedChange]);
 
   if (groups.length === 0) return null;
   return (
@@ -178,8 +206,6 @@ const GroupedResults = ({
           {results.length} {results.length === 1 ? 'excerpt' : 'excerpts'} in {groups.length}{' '}
           {groups.length === 1 ? 'document' : 'documents'}
         </span>
-        <button type="button" onClick={() => setAll(true)}>Expand all</button>
-        <button type="button" onClick={() => setAll(false)}>Collapse all</button>
       </div>
       {groups.map((group) => (
         <DocumentResultGroup

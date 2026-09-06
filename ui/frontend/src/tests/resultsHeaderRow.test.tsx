@@ -16,7 +16,18 @@ describe('ResultsHeaderRow sort control', () => {
   test('is absent in the flat list', () => {
     render(<ResultsHeaderRow results={RESULTS} query="q" />);
     expect(screen.queryByLabelText(SORT_LABEL)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Export to Word' })).toBeInTheDocument();
+  });
+
+  test('in group-by-document mode an expand-all button offers the opposite of the current state', () => {
+    const onToggle = jest.fn();
+    const view = render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument allGroupsExpanded={false} onToggleAllGroups={onToggle} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    expect(onToggle).toHaveBeenCalledWith(true);
+    view.rerender(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument allGroupsExpanded onToggleAllGroups={onToggle} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(onToggle).toHaveBeenLastCalledWith(false);
   });
 
   test('in group-by-document mode it sits before the export button with both options', () => {

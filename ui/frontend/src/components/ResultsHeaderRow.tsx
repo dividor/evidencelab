@@ -22,6 +22,9 @@ interface ResultsHeaderRowProps {
   groupByDocument?: boolean;
   groupSortBy?: GroupSortBy;
   onGroupSortByChange?: (value: GroupSortBy) => void;
+  /** Whether every document row is expanded; the button offers the opposite. */
+  allGroupsExpanded?: boolean;
+  onToggleAllGroups?: (expand: boolean) => void;
 }
 
 /**
@@ -42,6 +45,8 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
   groupByDocument,
   groupSortBy = 'relevance',
   onGroupSortByChange,
+  allGroupsExpanded = false,
+  onToggleAllGroups,
 }) => {
   if (results.length === 0) return null;
   return (
@@ -55,6 +60,15 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
         ) : null}
       </h3>
       <div className="search-results-heading-actions">
+        {groupByDocument && (
+          <button
+            type="button"
+            className="export-results-button results-expand-all"
+            onClick={() => onToggleAllGroups?.(!allGroupsExpanded)}
+          >
+            {allGroupsExpanded ? 'Collapse all' : 'Expand all'}
+          </button>
+        )}
         {groupByDocument && (
           <label className="results-sort">
             <span>Sort by</span>
@@ -75,6 +89,8 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
           aiSummaryLoading={aiSummaryLoading}
           dataSource={dataSource}
           className="search-results-export"
+          groupByDocument={groupByDocument}
+          groupSortBy={groupSortBy}
         />
       </div>
     </div>

@@ -42,7 +42,11 @@ export const DocumentResultGroup: React.FC<DocumentResultGroupProps> = ({
         aria-expanded={expanded}
         onClick={onToggle}
       >
-        <span className="result-group-chevron" aria-hidden="true">{expanded ? '\u25be' : '\u25b8'}</span>
+        <span className={`result-group-chevron${expanded ? ' result-group-chevron-open' : ''}`} aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </span>
         <span className="result-group-thumb" aria-hidden="true">
           {thumbnailUrl && (
             <img

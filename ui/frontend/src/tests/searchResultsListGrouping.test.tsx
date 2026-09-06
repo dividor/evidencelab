@@ -75,11 +75,22 @@ describe('SearchResultsList grouped by document', () => {
     expect(cards()).toHaveLength(0);
   });
 
-  test('expand all and collapse all act on every row', () => {
-    renderList({ groupByDocument: true });
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+  test('an expansion command from the header expands or collapses every row and reports the state', () => {
+    const onAllExpandedChange = jest.fn();
+    const props = {
+      results: RESULTS, minScore: 0, loading: false, query: 'alpha', hasSearchRun: true, selectedDoc: null,
+      onResultClick: jest.fn(), onOpenMetadata: jest.fn(), onLanguageChange: jest.fn(), groupByDocument: true,
+      onAllExpandedChange,
+    };
+    const view = render(<SearchResultsList {...props} />);
+    expect(onAllExpandedChange).toHaveBeenLastCalledWith(false);
+    view.rerender(<SearchResultsList {...props} expansionCommand={{ expand: true, id: 1 }} />);
     expect(cards()).toHaveLength(3);
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(onAllExpandedChange).toHaveBeenLastCalledWith(true);
+    // Collapsing one row by hand turns the report back to "not all expanded"
+    fireEvent.click(row(DOC_B));
+    expect(onAllExpandedChange).toHaveBeenLastCalledWith(false);
+    view.rerender(<SearchResultsList {...props} expansionCommand={{ expand: false, id: 2 }} />);
     expect(cards()).toHaveLength(0);
   });
 

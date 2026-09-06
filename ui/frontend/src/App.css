@@ -5290,8 +5290,20 @@ li.ai-fact-active::before {
 }
 .result-group-chevron {
   flex-shrink: 0;
-  width: 1em;
-  color: var(--gray-500);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--gray-600);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.result-group-header:hover .result-group-chevron {
+  background: var(--gray-100);
+}
+.result-group-chevron-open {
+  transform: rotate(90deg);
 }
 .result-group-thumb {
   flex-shrink: 0;
