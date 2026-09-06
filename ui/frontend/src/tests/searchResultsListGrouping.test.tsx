@@ -106,6 +106,21 @@ describe('SearchResultsList grouped by document', () => {
     expect(screen.getByText('1 excerpt in 1 document')).toBeInTheDocument();
   });
 
+  test('each row shows the document thumbnail, source and year', () => {
+    renderList({ groupByDocument: true, thumbnailDataSource: 'wfp' });
+    const rowA = row(DOC_A);
+    expect(rowA.querySelector('.result-group-source')?.textContent).toBe('WFP');
+    expect(rowA.querySelector('.result-group-year')?.textContent).toBe('2021');
+    const img = rowA.querySelector('img.result-group-thumb-img') as HTMLImageElement;
+    expect(img.getAttribute('src')).toContain('/document/A/thumbnail?data_source=wfp');
+  });
+
+  test('a row without a data source shows the thumbnail placeholder instead of a broken image', () => {
+    renderList({ groupByDocument: true });
+    expect(document.querySelector('.result-group-thumb')).toBeInTheDocument();
+    expect(document.querySelector('img.result-group-thumb-img')).toBeNull();
+  });
+
   test('score threshold still applies before grouping', () => {
     renderList({ groupByDocument: true, minScore: 0.95 });
     expect(document.querySelector('.result-group')).toBeNull();

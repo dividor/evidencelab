@@ -266,6 +266,8 @@ const SearchResultFilters: React.FC<{
   canScrollRight: boolean;
   scrollThumbnails: (direction: 'left' | 'right') => void;
   onClearAll: () => void;
+  /** Group-by-document mode: rows carry the thumbnails, so the strip is not shown. */
+  hideDocumentStrip: boolean;
 }> = ({
   uniqueOrgs,
   coverageText,
@@ -283,9 +285,12 @@ const SearchResultFilters: React.FC<{
   canScrollRight,
   scrollThumbnails,
   onClearAll,
+  hideDocumentStrip,
 }) => (
   <div className="search-result-filters">
-    <span className="search-result-filters-hint">Click on documents or organizations to refine results</span>
+    <span className="search-result-filters-hint">
+      {hideDocumentStrip ? 'Click on organizations to refine results' : 'Click on documents or organizations to refine results'}
+    </span>
     {uniqueOrgs.length > 0 && (
       <div className="search-result-filters-orgs">
         {uniqueOrgs.map(({ org, count }) => (
@@ -312,6 +317,7 @@ const SearchResultFilters: React.FC<{
         </span>
       </div>
     )}
+    {!hideDocumentStrip && (
     <div className="search-result-filters-thumbnails">
       {canScrollLeft && (
         <button
@@ -387,6 +393,7 @@ const SearchResultFilters: React.FC<{
         </button>
       )}
     </div>
+    )}
     {hasActiveFilter && (
       <div className="search-result-filters-indicator">
         <span className="search-result-filters-indicator-text">
@@ -993,6 +1000,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
               canScrollRight={canScrollRight}
               scrollThumbnails={scrollThumbnails}
               onClearAll={handleClearCarouselFilters}
+              hideDocumentStrip={groupByDocument}
             />
           )}
           <SearchResultsList
@@ -1000,6 +1008,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             minScore={hasActiveFilter ? 0 : minScore}
             groupByDocument={groupByDocument}
             defaultExpandedDocIds={filteredDocIds}
+            thumbnailDataSource={selectedDomain}
             loading={loading}
             query={query}
             hasSearchRun={hasSearchRun}

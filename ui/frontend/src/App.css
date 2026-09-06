@@ -5270,8 +5270,29 @@ li.ai-fact-active::before {
   width: 1em;
   color: var(--gray-500);
 }
-.result-group-title {
+.result-group-thumb {
+  flex-shrink: 0;
+  width: 42px;
+  height: 56px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+}
+.result-group-thumb-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.result-group-text {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.result-group-title {
   font-weight: 600;
   font-size: 1.0625rem;
   line-height: 1.4;
@@ -5279,7 +5300,6 @@ li.ai-fact-active::before {
 .result-group-meta {
   color: var(--gray-500);
   font-size: 0.875rem;
-  white-space: nowrap;
 }
 .result-group-count {
   flex-shrink: 0;
@@ -5297,11 +5317,6 @@ li.ai-fact-active::before {
   flex-direction: column;
   gap: var(--spacing-md);
   padding: 0 var(--spacing-lg) var(--spacing-lg);
-}
-@media (max-width: 640px) {
-  .result-group-meta {
-    display: none;
-  }
 }
 
 /* Result Cards */

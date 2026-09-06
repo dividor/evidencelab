@@ -107,6 +107,30 @@ const SEL_SEARCH_RESULT_FILTERS_THUMBNAIL = '.search-result-filters-thumbnail';
 const SEL_SEARCH_RESULT_FILTERS = '.search-result-filters';
 const POPULAR_REPORT = 'Popular Report';
 
+describe('SearchTabContent grouped by document', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  const twoDocuments = () => [
+    buildResult({ chunk_id: 'c1', doc_id: 'doc-1', title: 'Report A', organization: 'UNICEF' }),
+    buildResult({ chunk_id: 'c2', doc_id: 'doc-2', title: 'Report B', organization: 'WFP' }),
+  ];
+
+  test('hides the document strip but keeps the organization chips', () => {
+    render(<SearchTabContent {...baseProps} groupByDocument results={twoDocuments()} />);
+    expect(document.querySelector('.search-result-filters-thumbnails')).toBeNull();
+    expect(document.querySelectorAll('.search-result-filters-org-label')).toHaveLength(2);
+    expect(screen.getByText('Click on organizations to refine results')).toBeInTheDocument();
+  });
+
+  test('shows the document strip when grouping is off', () => {
+    render(<SearchTabContent {...baseProps} groupByDocument={false} results={twoDocuments()} />);
+    expect(document.querySelector('.search-result-filters-thumbnails')).toBeInTheDocument();
+    expect(screen.getByText('Click on documents or organizations to refine results')).toBeInTheDocument();
+  });
+});
+
 describe('SearchTabContent result filters', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/');

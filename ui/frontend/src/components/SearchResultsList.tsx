@@ -3,6 +3,7 @@ import { SearchResult } from '../types/api';
 import SearchResultCard from './SearchResultCard';
 import { DocumentResultGroup } from './DocumentResultGroup';
 import { groupResultsByDocument } from '../utils/resultGrouping';
+import API_BASE_URL from '../config';
 import type { Rating } from '../hooks/useRatings';
 
 interface SearchResultsListProps {
@@ -12,6 +13,8 @@ interface SearchResultsListProps {
   groupByDocument?: boolean;
   /** Documents whose rows start expanded (for example, one picked in the carousel). */
   defaultExpandedDocIds?: string[];
+  /** Data source used for row thumbnails when a result does not carry its own. */
+  thumbnailDataSource?: string;
   loading: boolean;
   query: string;
   hasSearchRun?: boolean;
@@ -45,6 +48,7 @@ export const SearchResultsList = ({
   minScore,
   groupByDocument = false,
   defaultExpandedDocIds,
+  thumbnailDataSource,
   loading,
   query,
   hasSearchRun,
@@ -104,6 +108,7 @@ export const SearchResultsList = ({
         <GroupedResults
           results={visibleResults}
           defaultExpandedDocIds={defaultExpandedDocIds}
+          thumbnailDataSource={thumbnailDataSource}
           renderCard={renderCard}
         />
       ) : (
@@ -117,13 +122,21 @@ export const SearchResultsList = ({
  * Grouped view: one collapsible row per document, collapsed by default.
  * Rows a user has toggled are remembered until the result set changes.
  */
+const thumbnailUrlFor = (result: SearchResult, fallbackDataSource?: string): string | null => {
+  const dataSource = result.data_source || fallbackDataSource;
+  if (!result.doc_id || !dataSource) return null;
+  return `${API_BASE_URL}/document/${result.doc_id}/thumbnail?data_source=${dataSource}`;
+};
+
 const GroupedResults = ({
   results,
   defaultExpandedDocIds,
+  thumbnailDataSource,
   renderCard,
 }: {
   results: SearchResult[];
   defaultExpandedDocIds?: string[];
+  thumbnailDataSource?: string;
   renderCard: (result: SearchResult) => React.ReactNode;
 }) => {
   const groups = groupResultsByDocument(results);
@@ -153,6 +166,7 @@ const GroupedResults = ({
         <DocumentResultGroup
           key={group.docId}
           results={group.results}
+          thumbnailUrl={thumbnailUrlFor(group.results[0], thumbnailDataSource)}
           expanded={isExpanded(group.docId)}
           onToggle={() => setToggled((prev) => ({ ...prev, [group.docId]: !isExpanded(group.docId) }))}
           renderResult={renderCard}
