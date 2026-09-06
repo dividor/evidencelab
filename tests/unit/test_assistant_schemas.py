@@ -375,3 +375,28 @@ class TestAssistantSearchSettings:
         assert req.search_settings.field_boost_enabled is True
         assert req.search_settings.field_boost_fields == {"country": 0.5}
         assert req.search_settings.dense_weight == 0.7
+
+
+class TestAssistantSearchSettingsWide:
+    def test_accepts_wide_search_settings(self):
+        from ui.backend.auth.schemas import AssistantSearchSettings
+
+        settings = AssistantSearchSettings(
+            wide_search=True, wide_group_size=5, wide_limit=20
+        )
+        assert settings.model_dump(exclude_none=True) == {
+            "wide_search": True,
+            "wide_group_size": 5,
+            "wide_limit": 20,
+        }
+
+    def test_rejects_out_of_range_wide_settings(self):
+        import pytest
+        from pydantic import ValidationError
+
+        from ui.backend.auth.schemas import AssistantSearchSettings
+
+        with pytest.raises(ValidationError):
+            AssistantSearchSettings(wide_group_size=0)
+        with pytest.raises(ValidationError):
+            AssistantSearchSettings(wide_limit=1001)

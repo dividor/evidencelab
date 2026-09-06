@@ -348,9 +348,18 @@ const buildSearchParams = (options: {
   deduplicateEnabled: boolean;
   fieldBoostEnabled: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
+  if (options.wideSearch) {
+    // Cap chunks per document; the cell limit is the document cap so counts
+    // are not truncated to the Search tab's number-of-documents setting.
+    params.append('wide_search', 'true');
+    params.append('wide_group_size', options.wideGroupSize.toString());
+    params.append('wide_limit', HEATMAP_CELL_LIMIT);
+  }
   for (const [field, value] of options.filterEntries) {
     if (value) {
       params.append(field, value);
@@ -2409,6 +2418,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           deduplicateEnabled,
           fieldBoostEnabled,
           fieldBoostFields,
+          wideSearch,
+          wideGroupSize,
           dataSource,
         });
 
@@ -2419,6 +2430,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             const endpoint = useDocSearch ? 'docsearch' : 'search';
             if (useDocSearch) {
               params.delete('limit');  // no cap for document counts
+              // Filter-only listing has no relevance ranking, so wide search does not apply
+              params.delete('wide_search');
+              params.delete('wide_group_size');
+              params.delete('wide_limit');
             }
             const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`);
             const data = response.data as SearchResponse;
@@ -2454,6 +2469,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     columnDimension,
     buildCellQuery,
     dataSource,
+    fieldBoostEnabled,
+    fieldBoostFields,
     heatmapSelectedFilters,
     filteredColumnValues,
     filteredRowValues,
@@ -2470,6 +2487,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     searchModel,
     sectionTypes,
     updateHeatmapURL,
+    wideSearch,
+    wideGroupSize,
     logHeatmapActivity,
   ]);
 

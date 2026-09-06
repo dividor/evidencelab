@@ -757,7 +757,7 @@ async def search(
         5, ge=1, le=50, description="Wide search: max results per document"
     ),
     wide_limit: int = Query(
-        20, ge=1, le=200, description="Wide search: number of documents to return"
+        20, ge=1, le=1000, description="Wide search: number of documents to return"
     ),
     auto_min_score: bool = Query(
         False, description="Automatically filter bottom 30% of results by score"

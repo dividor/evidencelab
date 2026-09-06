@@ -58,10 +58,42 @@ def _format_search_result(r: Any) -> Dict[str, Any]:
     }
 
 
+def _spread_across_documents(points: List[Any], limit: int) -> List[Any]:
+    """Keep at most ``limit`` points, taking the best chunk of each document
+    first (in document order), then second chunks, and so on. Wide search
+    returns results document by document, so a plain cut would keep only the
+    first few documents' chunks; this keeps the coverage that wide search is
+    for while respecting the tool's result budget."""
+    by_doc: Dict[str, List[Any]] = {}
+    for point in points:
+        payload = getattr(point, "payload", None) or {}
+        key = str(payload.get("doc_id") or getattr(point, "id", ""))
+        by_doc.setdefault(key, []).append(point)
+    queues = list(by_doc.values())
+    selected: List[Any] = []
+    depth = 0
+    while len(selected) < limit:
+        added = False
+        for queue in queues:
+            if depth < len(queue) and len(selected) < limit:
+                selected.append(queue[depth])
+                added = True
+        if not added:
+            break
+        depth += 1
+    return selected
+
+
 class SearchTracker:
     """Track search calls and accumulate results for source extraction."""
 
     MAX_SEARCHES = 4  # Hard limit — after this, searches return a stop message
+
+    # Results handed to the model per tool search. In wide mode the search
+
+    # returns documents x per-document chunks; it is spread back to this many.
+
+    RESULTS_PER_SEARCH = 20
 
     def __init__(
         self,
@@ -125,6 +157,9 @@ class SearchTracker:
             "section_types": "section_types",
             "keyword_boost_short_queries": "keyword_boost_short_queries",
             "min_chunk_size": "min_chunk_size",
+            "wide_search": "wide_search",
+            "wide_group_size": "wide_group_size",
+            "wide_limit": "wide_limit",
         }
         for key, kwarg in mapping.items():
             if key not in _skip and s.get(key) is not None:
@@ -302,12 +337,14 @@ class SearchTracker:
             extra_kwargs = self._build_search_kwargs()
             raw = search_chunks(
                 query=query,
-                limit=20,
+                limit=self.RESULTS_PER_SEARCH,
                 data_source=self.data_source,
                 rerank=bool(self.reranker_model),
                 rerank_model=self.reranker_model,
                 **extra_kwargs,
             )
+            if extra_kwargs.get("wide_search"):
+                raw = _spread_across_documents(raw, self.RESULTS_PER_SEARCH)
             raw = self._apply_field_boost(raw, query)
             formatted = [_format_search_result(r) for r in raw]
             self._enrich_from_postgres(formatted, self.data_source)

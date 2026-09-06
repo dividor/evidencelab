@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { HeatmapTabContent } from '../components/app/HeatmapTabContent';
@@ -11,6 +12,9 @@ jest.mock('../components/filters/FiltersPanel', () => ({
 jest.mock('../components/SearchResultsList', () => ({
   SearchResultsList: () => <div>Search Results</div>,
 }));
+
+const GENERATE_HEATMAP = 'Generate Heatmap';
+const GRID_QUERY_PLACEHOLDER = 'Add a search query to filter the results for your heatmap ...';
 
 const buildFacets = (): Facets => ({
   facets: {
@@ -97,6 +101,12 @@ const baseProps = {
 };
 
 describe('HeatmapTabContent', () => {
+  // The component reads its initial state from the URL and writes back to it,
+  // so each test starts from a clean address.
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/heatmap');
+  });
+
   test('renders defaults and enables Generate Heatmap for dimension rows without query', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
@@ -112,7 +122,7 @@ describe('HeatmapTabContent', () => {
     expect(metricSelect.value).toBe('documents');
 
     // Dimension vs dimension: button enabled even without a query
-    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
+    const searchButton = screen.getByRole('button', { name: GENERATE_HEATMAP });
     expect(searchButton).toBeEnabled();
   });
 
@@ -129,10 +139,46 @@ describe('HeatmapTabContent', () => {
     const rowInputs = screen.getAllByPlaceholderText('Enter your search query');
     expect(rowInputs).toHaveLength(1);
 
-    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
+    const searchButton = screen.getByRole('button', { name: GENERATE_HEATMAP });
     expect(searchButton).toBeDisabled();
 
     fireEvent.change(rowInputs[0], { target: { value: 'climate' } });
     expect(searchButton).toBeEnabled();
+  });
+
+  test('with wide search on, every cell request carries the per-document cap and the cell limit as document cap', async () => {
+    const getSpy = jest.spyOn(axios, 'get').mockResolvedValue({ data: { results: [] } });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      render(<HeatmapTabContent {...baseProps} wideSearch wideGroupSize={3} />);
+      await waitFor(() => expect(screen.getByText('2020')).toBeInTheDocument());
+      // No query: cells list documents by filter alone, which has no relevance
+      // ranking, so wide search must not be sent there.
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(getSpy).toHaveBeenCalled());
+      const listingUrls = getSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/docsearch?'));
+      expect(listingUrls.length).toBeGreaterThan(0);
+      for (const url of listingUrls) {
+        expect(url).not.toContain('wide_search');
+      }
+      getSpy.mockClear();
+
+      // With a query, every cell is a relevance search and carries wide search
+      fireEvent.click(screen.getByRole('button', { name: /Tune your heatmap using a search query/ }));
+      fireEvent.change(screen.getByPlaceholderText(GRID_QUERY_PLACEHOLDER), { target: { value: 'school feeding' } });
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(getSpy).toHaveBeenCalled());
+      const cellUrls = getSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/search?'));
+      expect(cellUrls.length).toBeGreaterThan(0);
+      for (const url of cellUrls) {
+        const params = new URLSearchParams(url.split('?')[1]);
+        expect(params.get('wide_search')).toBe('true');
+        expect(params.get('wide_group_size')).toBe('3');
+        expect(params.get('wide_limit')).toBe(params.get('limit'));
+      }
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
   });
 });

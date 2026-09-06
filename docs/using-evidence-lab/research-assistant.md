@@ -66,5 +66,6 @@ The assistant respects the same search settings available in the Search tab. Thi
 - **Reranking model** — choose which reranking model scores the results
 - **Recency boost** — prioritize newer documents
 - **Field boost** — boost results matching detected field values (e.g., country names)
+- **Wide Search** — each of the assistant's searches spreads across documents (at most *Max results per document* from any one document). The assistant reads 20 results per search, so with Wide Search on it takes the best excerpt from each document first, giving it broader coverage of the library instead of many excerpts from one report.
 
 These settings are configured via the Search Settings panel and automatically forwarded to the assistant's search tool.

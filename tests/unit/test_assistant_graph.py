@@ -1,7 +1,7 @@
 """Unit tests for the deepagents research assistant graph."""
 
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch  # noqa: F811 — patch used as decorator below
 
 # ---------------------------------------------------------------------------
@@ -38,6 +38,7 @@ from ui.backend.services.assistant_graph import (  # noqa: E402
     _format_search_result,
     _load_system_prompt,
     _next_citation_index,
+    _spread_across_documents,
     build_research_agent,
 )
 from ui.backend.services.assistant_service import (  # noqa: E402
@@ -886,6 +887,14 @@ class TestSearchSettingsThreading:
         assert kwargs["keyword_boost_short_queries"] is False
         assert kwargs["min_chunk_size"] == 200
 
+    def test_build_search_kwargs_forwards_wide_search_settings(self):
+        """Group-saved wide search settings must reach search_chunks."""
+        settings = {"wide_search": True, "wide_group_size": 3, "wide_limit": 12}
+        tracker = SearchTracker(search_settings=settings)
+        kwargs = tracker._build_search_kwargs()
+
+        assert kwargs == {"wide_search": True, "wide_group_size": 3, "wide_limit": 12}
+
     def test_build_search_kwargs_empty_settings(self):
         """Empty settings should produce empty kwargs."""
         tracker = SearchTracker(search_settings={})
@@ -1275,3 +1284,55 @@ class TestLoadSystemPromptPriorSources:
         prompt = _load_system_prompt(data_source="wfp", prior_sources=prior)
         # New search results should be numbered starting from [8].
         assert "[8]" in prompt
+
+
+class TestSpreadAcrossDocuments:
+    """Wide search returns results document by document; the assistant keeps
+    its per-search budget by taking the best chunk of each document first."""
+
+    @staticmethod
+    def _point(doc_id, chunk):
+        return SimpleNamespace(id=f"{doc_id}-{chunk}", payload={"doc_id": doc_id})
+
+    def test_takes_best_chunk_of_each_document_before_second_chunks(self):
+        points = (
+            [self._point("a", i) for i in range(5)]
+            + [self._point("b", i) for i in range(5)]
+            + [self._point("c", i) for i in range(5)]
+        )
+
+        selected = _spread_across_documents(points, 5)
+
+        assert [p.id for p in selected] == ["a-0", "b-0", "c-0", "a-1", "b-1"]
+
+    def test_returns_everything_when_under_the_limit(self):
+        points = [self._point("a", 0), self._point("a", 1), self._point("b", 0)]
+
+        selected = _spread_across_documents(points, 20)
+
+        assert [p.id for p in selected] == ["a-0", "b-0", "a-1"]
+
+    def test_wide_search_results_are_spread_before_formatting(self):
+        """SearchTracker.search() applies the spread only in wide mode."""
+        points = [self._point("a", i) for i in range(30)] + [
+            self._point("b", i) for i in range(30)
+        ]
+        for p in points:
+            p.payload.update({"text": "t", "document_title": "d", "page_number": 1})
+            p.score = 0.5
+        with patch(
+            "ui.backend.services.assistant_graph.search_chunks", return_value=points
+        ):
+            wide = SearchTracker(
+                search_settings={"wide_search": True, "wide_limit": 20}
+            )
+            wide.search("q")
+            narrow = SearchTracker(search_settings={})
+            narrow.search("q")
+
+        wide_docs = {r["doc_id"] for r in wide.all_results}
+        narrow_docs = {r["doc_id"] for r in narrow.all_results}
+        assert len(wide.all_results) == SearchTracker.RESULTS_PER_SEARCH
+        assert wide_docs == {"a", "b"}
+        assert len(narrow.all_results) == len(points)
+        assert narrow_docs == {"a", "b"}

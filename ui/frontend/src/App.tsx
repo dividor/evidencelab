@@ -3052,6 +3052,9 @@ function App() {
               minChunkSize,
               fieldBoost: fieldBoostEnabled,
               fieldBoostFields,
+              wideSearch,
+              wideGroupSize,
+              wideLimit,
             }}
             exampleQueries={currentDataSourceConfig?.example_queries}
             onResultClick={handleResultClick}
@@ -3073,6 +3076,9 @@ function App() {
               minChunkSize,
               fieldBoost: fieldBoostEnabled,
               fieldBoostFields,
+              wideSearch,
+              wideGroupSize,
+              wideLimit,
             }}
             onResultClick={handleResultClick}
           />
