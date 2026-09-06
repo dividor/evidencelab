@@ -214,6 +214,7 @@ class SectionTypeTagger(BaseTagger):
                 llm_config=self.llm_config,
                 total_pages=total_pages,
                 retry_on_failure=True,
+                usage_collector=self.usage_collector,
             )
         else:
             llm_labels_by_index = dict(locked_labels_by_index)

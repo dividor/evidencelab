@@ -2,6 +2,55 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.1] - 2026-09-06
+
+Evidence Lab v1.6.1 turns **Brief** into a collaborative, server-side workspace — Brief Central with sharing, templates, voice & tone profiles, threaded comments, AI Edit / Get Updates and change diffs — and gives **Search** two new ways to read results: **Group by document** rows and **Wide Search**. It also adds the admin **TOC Validator**, config-driven evaluation-case filters, LLM token-usage tracking on every surface, and a set of auth, UI, translation and CI fixes.
+
+### Brief
+- Added **Brief Central**: server-side briefs with a landing page (My briefs, Shared with me, Templates, Voice & tone), viewer-only sharing by email or group, `/brief/<id>` deep links, templates saved from a brief, per-user voice & tone profiles applied at outline, research, regenerate and edit time, a live outline-generation panel, and responsive layout; anonymous users keep the local-only flow (#422)
+- Added **threaded comments** anchored to the passage they discuss, open to everyone with access to the brief, with inline markers, a comments rail and per-reader show/hide; the share dialog now suggests matching people and groups (#436)
+- Added per-section **AI Edit** and **AI Get Updates** (re-research restricted to sources published since the last run), a per-section **research log**, and a word-level **change diff** with Keep / Reject; **Regenerate All** and **Get All Recent Updates** on the toolbar (#401)
+- Per-section research **instructions**, an inline Research panel, and a confirmation before **Regenerate All**; made citation highlights actually visible (backfill no longer starts with a null model, no longer cancels itself, runs 6 excerpts concurrently newest-section first, highlights on hover, runs only in the visible tab); footnote markers render as superscripts (#424)
+- Per-claim citation snippets, so a source cited from several sentences shows the passage supporting each; stable `/brief/<id>` URLs across tab navigation (#423)
+- **Export to Word** links citations to the source PDF or report URL and offers a **Footnotes on page** format alongside the References list (#420)
+
+### Search
+- Added **Group by document**: one collapsed row per document with its thumbnail, title, source, year and excerpt count; expand a row (or Expand all) to its excerpt cards, with the row's semantic highlights requested at once; **Sort by** Relevance (cumulative score) or Publication Date; a matching checkbox in the results header; the Word export gains a **Document List** of cited documents and a **Raw Search Results** table (#459)
+- Added **Wide Search**: return a set number of documents with at most a few excerpts each, ranked by each document's best match (Qdrant grouped queries, hybrid fused at document level); applies to Search, Chat, Brief research and Map cells; **Max results per document** and **Number of documents** settable as team defaults (#458)
+- Added result-count badges to the document carousel, and made the AI summary's result cap a setting (**Limit Results Used**, **Max results for summary**) with a **Response variability** (temperature) slider; in wide mode the summary is built from the best excerpt of each document first (#458)
+- Added tooltips on the main navigation tabs and an explanation of what the organization result counts mean (#404)
+- Fixed translation of long AI summaries: texts over Google Translate's 5000-character cap are translated in paragraph-sized pieces instead of silently coming back untranslated (#403)
+
+### Map
+- Added an × next to the Generate button to stop a heatmap run in progress (#457)
+
+### Admin: TOC Validator, Evaluation & Usage
+- Added the admin **TOC Validator** screen, which flags documents whose body sections carry types that Search excludes by default (#398)
+- TOC Validator shows a **Human-approved** badge, lets admins approve from its own Contents modal, and reads the default-included section list from `config.json` (`application.search.default_included_section_types`), shared with Search (#437)
+- Evaluation cases can be filtered by document title, country/region and publication year (#405), with the case builder driven by the datasource's filter configuration and the harness resolving the same filters as `/search` (#440)
+- Evaluation AI-summary references now carry page numbers and match the on-screen References layout (#418)
+- **LLM token-usage tracking** now covers evaluations, briefs, search drill-downs, semantic highlighting, MCP/A2A and the pipeline through server-side recording (migration `0032`), with per-run totals in the experiment view (#443)
+
+### Auth & UI fixes
+- Sign Out always works, even with a stale session or a dead connection (#402)
+- Dropdown menus no longer swallow slow clicks: menus close on outside click instead of a 200 ms blur timer, keyboard users can tab into them, and always-on click diagnostics explain unusual presses in the console (#454)
+
+### Deployment, Sync & CI
+- Added `scripts/sync/repo/sync_repo_to_azure_devops.py` to mirror branches and tags to an Azure DevOps repository with git alone (#406)
+- Moved the Hugging Face model combo and the demo to `Qwen/Qwen2.5-72B-Instruct` via novita after Together AI retired serverless access to the 7B model (#460)
+- Fork pull requests skip the steps that need repository secrets (#462); the two Google Translate integration tests run in their own non-blocking CI step, so an outage of that free endpoint no longer blocks a merge (#466)
+- Pointed Dependabot at `rc/v1.6.1` (#400); pinned `docx` to 9.6.1 so the production build compiles (#435), re-pinned it after a Dependabot bump undid the fix, and told Dependabot to leave it (#465)
+- Documented the release flow as practised, with a production-image build on the checklist (#464)
+- Dependency bumps: langchain 1.3.18 / langchain-core 1.6.1 / langchain-openai 1.6.0 / langchain-anthropic 1.7.0 / langgraph 1.2.11 (#441), langchain-community 0.4.2 (#428), aiosmtplib 5.1.2 for CVE-2026-55558 (#442), nltk 3.10.3 (#439), requests 2.34.2 (#448), beautifulsoup4 4.15.0 (#445), pymupdf 1.28.2 (#446), docling-hierarchical-pdf 0.1.8 (#449), fastapi-users 15.0.5 (#450), psycopg2-binary 2.9.12 (#426), mcp ≥1.29.0 (#425), axios 1.20.0 (#434, #452), docx 9.7.1 (#429, #453), yaml 2.9.0 (#433), @playwright/test 1.62.1 (#432), @testing-library/react 16.3.3 (#447), @types/node 25.9.5 (#431), @typescript-eslint/parser 8.68.0 (#451), actions/setup-node v7 (#407), actions/setup-python v7 (#414), hadolint-action 3.5.0 (#427, #444)
+
+### Upgrade Notes
+- **Database migrations apply automatically on deploy.** The API container runs `alembic upgrade head` on startup, so redeploying picks up this release's migrations (`0030_add_brief_central`, `0031_add_brief_comments`, `0032_add_eval_token_usage`).
+- **Briefs move to the server.** On first login after the upgrade, a user's locally stored briefs are migrated to the server once; anonymous use keeps the local flow.
+- **`config.json`: new key** `application.search.default_included_section_types` (the seven current defaults) is read by Search and the TOC Validator. Deployments that maintain their own `config.json` should add it.
+- **`config.json`: Hugging Face combo model change.** The `Huggingface` combo and the demo now use `Qwen/Qwen2.5-72B-Instruct` via the novita provider; the retired `qwen2.5-7b-instruct` entry is removed. Deployments on the Google Vertex or Azure combos are unaffected.
+- **New optional env vars** (leave unset unless mirroring the repository): `AZURE_DEVOPS_REPO_URL`, `AZURE_DEVOPS_USERNAME`, `AZURE_DEVOPS_PASSWORD` — see `.env.example`.
+- **New team defaults** under Admin → Group Settings: Wide Search and its two sizes, Group by document, and the AI Summary result cap and response-variability settings.
+
 ## [1.6.0] - 2026-07-21
 
 Evidence Lab v1.6.0 is a feature release headlined by the new **Brief** tab — a header-driven deep-research document builder — and an admin **Testing** harness for evaluating Search and AI-Summary quality with LLM-judge experiments. It also adds exact in-document PDF search, Docker-native deployment branding, per-group feature-tab toggles, and a long list of search, heatmapper, and export fixes.

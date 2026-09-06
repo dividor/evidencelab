@@ -24,6 +24,7 @@ from pipeline.db import (
 )
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
+from ui.backend.services.search_wide import run_wide_search  # noqa: E402
 from ui.backend.utils.filter_helpers import build_doc_id_filter  # noqa: E402
 from ui.backend.utils.filter_helpers import collect_range_conditions
 from ui.backend.utils.language_codes import LANGUAGE_NAMES  # noqa: E402
@@ -634,6 +635,9 @@ def search_chunks(
     dense_model: Optional[str] = None,
     payload_fields: Optional[List[str]] = None,
     max_rerank_candidates: int = 0,
+    wide_search: bool = False,
+    wide_group_size: int = 5,
+    wide_limit: int = 20,
 ) -> List[Any]:
     """
     Hybrid search combining semantic (dense) and keyword (sparse) vectors.
@@ -666,6 +670,12 @@ def search_chunks(
         payload_fields: Optional list of fields to include in the payload.
                         If provided, only these fields are returned.
                         If None, full payload is returned.
+        wide_search: If True, spread results across documents with Qdrant grouped
+                     queries: ``wide_limit`` documents, at most ``wide_group_size``
+                     chunks each, documents ranked by their best chunk. ``limit``
+                     is ignored in favour of wide_limit * wide_group_size.
+        wide_group_size: Max chunks per document in wide search.
+        wide_limit: Number of documents to return in wide search.
 
 
     Returns:
@@ -687,8 +697,24 @@ def search_chunks(
 
     query_filter = _build_query_filter(filters, section_types, data_source)
     fetch_limit = _compute_fetch_limit(limit, min_chunk_size)
+    if wide_search:
+        limit = wide_limit * wide_group_size
 
-    if weight >= 0.99:
+    if wide_search:
+        search_result = run_wide_search(
+            db,
+            chunks_collection,
+            dense_vec,
+            sparse_vec,
+            dense_model,
+            query_filter,
+            payload_fields,
+            weight,
+            wide_limit,
+            wide_group_size,
+            search_params=_build_search_params(),
+        )
+    elif weight >= 0.99:
         search_result = _run_dense_search(
             db,
             chunks_collection,

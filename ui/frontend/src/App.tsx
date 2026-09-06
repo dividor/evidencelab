@@ -48,7 +48,8 @@ import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
 import { useGroupDefaults } from './hooks/useGroupDefaults';
-import { useActivityLogging } from './hooks/useActivityLogging';
+import { selectSummaryResults } from './utils/summarySelection';
+import { getSessionId, useActivityLogging } from './hooks/useActivityLogging';
 import { buildContextualSearchQuery, serializeDrilldownTree, serializeFullDrilldownTree, patchNodeInTree } from './utils/drilldownUtils';
 import { generateUUID } from './utils/uuid';
 import { mergeFacetField } from './utils/facetMerge';
@@ -57,10 +58,11 @@ import { AssistantTab } from './components/assistant/AssistantTab';
 import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
-import { streamAiSummary, AiSummaryUsage } from './utils/aiSummaryStream';
+import { streamAiSummary } from './utils/aiSummaryStream';
 import {
   highlightTextWithAPI,
   findSemanticMatches,
+  setHighlightSearchContext,
   TextMatch
 } from './utils/textHighlighting';
 // datasource config is now fetched dynamically
@@ -321,6 +323,9 @@ const buildSearchParams = ({
   deduplicateEnabled,
   fieldBoostEnabled,
   fieldBoostFields,
+  wideSearch,
+  wideGroupSize,
+  wideLimit,
 }: {
   query: string;
   filters: SearchFilters;
@@ -340,6 +345,9 @@ const buildSearchParams = ({
   deduplicateEnabled: boolean;
   fieldBoostEnabled: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
+  wideLimit: number;
 }): URLSearchParams => {
   const params = new URLSearchParams({ q: query, limit: SEARCH_RESULTS_PAGE_SIZE });
   for (const [field, value] of Object.entries(filters)) {
@@ -372,6 +380,11 @@ const buildSearchParams = ({
     params.append('auto_min_score', 'true');
   }
   params.append('deduplicate', deduplicateEnabled.toString());
+  if (wideSearch) {
+    params.append('wide_search', 'true');
+    params.append('wide_group_size', wideGroupSize.toString());
+    params.append('wide_limit', wideLimit.toString());
+  }
   params.append('field_boost', fieldBoostEnabled.toString());
   if (fieldBoostEnabled && Object.keys(fieldBoostFields).length > 0) {
     const encoded = Object.entries(fieldBoostFields)
@@ -422,6 +435,8 @@ const getTabFromPath = (): TabName => {
     return 'search';
   }
   const path = stripBasePath(window.location.pathname).replace('/', '').toLowerCase();
+  // /brief/<id> share links open the Brief tab (BriefTab reads the id itself).
+  if (path.startsWith('brief/')) return 'brief';
   return VALID_TABS.includes(path as TabName) ? (path as TabName) : 'search';
 };
 
@@ -628,12 +643,12 @@ function App() {
     setShowDomainTooltip(false);
   }, []);
 
-  const handleDomainBlur = useCallback(() => {
-    setTimeout(() => setDomainDropdownOpen(false), 200);
+  const handleCloseDomainDropdown = useCallback(() => {
+    setDomainDropdownOpen(false);
   }, []);
 
-  const handleModelBlur = useCallback(() => {
-    setTimeout(() => setModelDropdownOpen(false), 200);
+  const handleCloseModelDropdown = useCallback(() => {
+    setModelDropdownOpen(false);
   }, []);
 
   const handleSelectDomain = useCallback((domainName: string) => {
@@ -659,8 +674,8 @@ function App() {
     setModelDropdownOpen(false);
   }, [helpDropdownOpen]);
 
-  const handleHelpBlur = useCallback(() => {
-    setTimeout(() => setHelpDropdownOpen(false), 200);
+  const handleCloseHelpDropdown = useCallback(() => {
+    setHelpDropdownOpen(false);
   }, []);
 
   // Get current datasource config
@@ -762,6 +777,17 @@ function App() {
   const [minChunkSize, setMinChunkSize] = useState<number>(initialSearchState.minChunkSize);
   // Deduplicate cross-document results
   const [deduplicateEnabled, setDeduplicateEnabled] = useState<boolean>(initialSearchState.deduplicate);
+  // Wide search: spread results across documents (N documents x M results each)
+  const [wideSearch, setWideSearch] = useState<boolean>(initialSearchState.wideSearch);
+  const [wideGroupSize, setWideGroupSize] = useState<number>(initialSearchState.wideGroupSize);
+  const [wideLimit, setWideLimit] = useState<number>(initialSearchState.wideLimit);
+  const [groupByDocument, setGroupByDocument] = useState<boolean>(initialSearchState.groupByDocument);
+  // AI summary: how many results it is built from (null = every result)
+  const [summaryLimitResults, setSummaryLimitResults] = useState<boolean>(initialSearchState.summaryLimitResults);
+  const [summaryMaxResults, setSummaryMaxResults] = useState<number>(initialSearchState.summaryMaxResults);
+  const summaryResultCap = summaryLimitResults ? summaryMaxResults : null;
+  // AI summary sampling temperature: 0 = precise, 1 = creative
+  const [summaryTemperature, setSummaryTemperature] = useState<number>(initialSearchState.summaryTemperature);
   // Field-level boosting (country, organization, etc.)
   const [fieldBoostEnabled, setFieldBoostEnabled] = useState<boolean>(initialSearchState.fieldBoost);
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
@@ -821,6 +847,13 @@ function App() {
     deduplicate: setDeduplicateEnabled,
     fieldBoost: setFieldBoostEnabled,
     fieldBoostFields: setFieldBoostFields,
+    wideSearch: setWideSearch,
+    wideGroupSize: setWideGroupSize,
+    wideLimit: setWideLimit,
+    groupByDocument: setGroupByDocument,
+    summaryLimitResults: setSummaryLimitResults,
+    summaryMaxResults: setSummaryMaxResults,
+    summaryTemperature: setSummaryTemperature,
     greetingMessage: setGreetingMessage,
   });
 
@@ -942,6 +975,13 @@ function App() {
       setDeduplicateEnabled(searchState.deduplicate);
       setFieldBoostEnabled(searchState.fieldBoost);
       setFieldBoostFields(searchState.fieldBoostFields);
+      setWideSearch(searchState.wideSearch);
+      setWideGroupSize(searchState.wideGroupSize);
+      setWideLimit(searchState.wideLimit);
+      setGroupByDocument(searchState.groupByDocument);
+      setSummaryLimitResults(searchState.summaryLimitResults);
+      setSummaryMaxResults(searchState.summaryMaxResults);
+      setSummaryTemperature(searchState.summaryTemperature);
       setSearchModel(searchState.model);
       setSelectedModelCombo(searchState.modelCombo);
 
@@ -1524,7 +1564,14 @@ function App() {
         selectedModelCombo,
         selectedDomain,
         fieldBoostEnabled,
-        fieldBoostFields
+        fieldBoostFields,
+        wideSearch,
+        wideGroupSize,
+        wideLimit,
+        summaryLimitResults,
+        summaryMaxResults,
+        summaryTemperature,
+        groupByDocument
       );
       // Build URLSearchParams from the base search params
       const params = new URLSearchParams(searchParams || '');
@@ -1567,6 +1614,13 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    wideSearch,
+    wideGroupSize,
+    wideLimit,
+    summaryLimitResults,
+    summaryMaxResults,
+    summaryTemperature,
+    groupByDocument,
     searchModel,
     selectedModelCombo,
     selectedDomain,
@@ -1672,14 +1726,18 @@ function App() {
       query: streamQuery,
       results: leanResults,
       summaryModelConfig,
+      temperature: summaryTemperature,
+      // Server-side usage recording context: the backend accumulates this
+      // stream's token usage onto the search's activity row (drill-down
+      // streams reuse the same id, so their usage sums onto that row too).
+      searchId: activitySearchIdRef.current || null,
       signal: abortController.signal,
       handlers: {
         onPrompt: setAiPrompt,
         onToken: setAiSummary,
-        onDone: (data) => {
-          // Stash usage so the trailing updateActivitySummary effect can
-          // include token counts + model in the PATCH that fires next.
-          aiSummaryUsageRef.current = data?.usage;
+        onDone: () => {
+          // Token usage is recorded server-side against the search row —
+          // the client no longer echoes it through the activity routes.
           setAiSummaryLoading(false);
         },
         onError: (message: string) => {
@@ -1694,7 +1752,7 @@ function App() {
       setAiSummary(AI_SUMMARY_ERROR);
       setAiSummaryLoading(false);
     });
-  }, [dataSource, summaryModelConfig]);
+  }, [dataSource, summaryModelConfig, summaryTemperature]);
 
   const startAiSummaryStream = useCallback((summaryResults: SearchResult[]) => {
     if (!AI_SUMMARY_ON || summaryResults.length === 0) {
@@ -1714,11 +1772,11 @@ function App() {
     setAddingNodeParentId(null);
     setFindOutMoreDone(false);
 
-    const sliced = summaryResults.slice(0, 20);
+    const sliced = selectSummaryResults(summaryResults, wideSearch, summaryResultCap);
     setAiSummaryResults(sliced);
     setAiSummaryExpanded(false);
     launchSummaryStream(query, sliced);
-  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream]);
+  }, [query, summaryModelConfig, resetDrilldownTree, launchSummaryStream, wideSearch, summaryResultCap]);
 
   const handleAiSummaryForResults = useCallback((data: SearchResponse) => {
     startAiSummaryStream(data.results);
@@ -1800,11 +1858,14 @@ function App() {
       deduplicateEnabled,
       fieldBoostEnabled,
       fieldBoostFields,
+      wideSearch,
+      wideGroupSize,
+      wideLimit,
     });
 
     try {
       const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = response.data.results.slice(0, 20);
+      const freshResults = selectSummaryResults(response.data.results, wideSearch, summaryResultCap);
       setResults(freshResults);
       setAiSummaryResults(freshResults);
 
@@ -1831,7 +1892,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Navigate back to parent node in the drilldown tree
   const navigateBackDrilldown = useCallback(() => {
@@ -1887,10 +1949,10 @@ function App() {
           recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
           keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
           searchModel, dataSource, autoMinScore, deduplicateEnabled,
-          fieldBoostEnabled, fieldBoostFields,
+          fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
         });
         const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-        const freshResults = searchResp.data.results.slice(0, 20);
+        const freshResults = selectSummaryResults(searchResp.data.results, wideSearch, summaryResultCap);
 
         // Query inheritance (root + parent): same approach as startDrilldown above.
         // At root level parentContext is empty; deeper levels add the immediate
@@ -1909,6 +1971,9 @@ function App() {
           results: leanResults,
           max_results: 20,
           ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+          // Usage-recording context: accumulate onto the search's activity row.
+          search_id: activitySearchIdRef.current || undefined,
+          session_id: getSessionId(),
         });
 
         updateNodeDataInTree(nodeId, {
@@ -1929,7 +1994,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Add a custom node to the tree: create stub, search, summarize, update
   const handleAddNodeToTree = useCallback(async (parentId: string, userQuery: string) => {
@@ -1958,10 +2024,10 @@ function App() {
         recencyBoostEnabled, recencyWeight, recencyScaleDays, sectionTypes,
         keywordBoostShortQueries, minChunkSize, rerankModel, rerankModelPageSize,
         searchModel, dataSource, autoMinScore, deduplicateEnabled,
-        fieldBoostEnabled, fieldBoostFields,
+        fieldBoostEnabled, fieldBoostFields, wideSearch, wideGroupSize, wideLimit,
       });
       const searchResp = await axios.get<SearchResponse>(`${API_BASE_URL}/search?${params}`);
-      const freshResults = searchResp.data.results.slice(0, 20);
+      const freshResults = selectSummaryResults(searchResp.data.results, wideSearch, summaryResultCap);
 
       const leanResults = freshResults.map((r) => ({
         chunk_id: r.chunk_id, doc_id: r.doc_id, text: r.text,
@@ -1975,6 +2041,9 @@ function App() {
           results: leanResults,
           max_results: 20,
           ...(summaryModelConfig ? { summary_model_config: summaryModelConfig } : {}),
+          // Usage-recording context: accumulate onto the search's activity row.
+          search_id: activitySearchIdRef.current || undefined,
+          session_id: getSessionId(),
         }
       );
 
@@ -1991,7 +2060,8 @@ function App() {
       filters, searchDenseWeight, rerankEnabled, recencyBoostEnabled,
       recencyWeight, recencyScaleDays, sectionTypes, keywordBoostShortQueries,
       minChunkSize, rerankModel, rerankModelPageSize, searchModel, dataSource,
-      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields]);
+      autoMinScore, deduplicateEnabled, fieldBoostEnabled, fieldBoostFields,
+      wideSearch, wideGroupSize, wideLimit, summaryResultCap]);
 
   // Remove a node from the tree
   const handleRemoveNodeFromTree = useCallback((nodeId: string) => {
@@ -2157,6 +2227,9 @@ function App() {
         deduplicateEnabled,
         fieldBoostEnabled,
         fieldBoostFields,
+        wideSearch,
+        wideGroupSize,
+        wideLimit,
       });
 
       const searchStartTime = performance.now();
@@ -2182,6 +2255,9 @@ function App() {
         });
         activitySearchIdRef.current = searchId;
       }
+      // Semantic-highlight LLM calls made while viewing these results record
+      // their token usage against this search (server-side).
+      setHighlightSearchContext(searchId);
 
       // Reload facets to reflect search result distribution (with query)
       loadFacets({ includeQuery: true, queryValue: query });
@@ -2218,6 +2294,9 @@ function App() {
     deduplicateEnabled,
     fieldBoostEnabled,
     fieldBoostFields,
+    wideSearch,
+    wideGroupSize,
+    wideLimit,
     logSearch,
     searchId,
   ]);
@@ -2275,9 +2354,6 @@ function App() {
   const searchDurationMsRef = useRef<number>(0);
   const summaryStartMsRef = useRef<number>(0);
   const prevAiSummaryLoadingRef = useRef(false);
-  // Captured token usage from the AI summary SSE done event so the
-  // trailing PATCH /activity/{id}/summary can persist it.
-  const aiSummaryUsageRef = useRef<AiSummaryUsage | undefined>(undefined);
   useEffect(() => {
     // Detect transition from loading → done and log the completed summary
     if (
@@ -2298,9 +2374,7 @@ function App() {
         aiSummary,
         summaryDurationMs,
         drilldownTree ? serializeDrilldownTree(drilldownTree) : undefined,
-        aiSummaryUsageRef.current,
       );
-      aiSummaryUsageRef.current = undefined;
     }
     prevAiSummaryLoadingRef.current = aiSummaryLoading;
   }, [aiSummaryLoading, aiSummary, isDrilldown, updateActivitySummary, drilldownTree]);
@@ -2769,6 +2843,20 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      wideSearch={wideSearch}
+      onWideSearchToggle={setWideSearch}
+      wideGroupSize={wideGroupSize}
+      onWideGroupSizeChange={setWideGroupSize}
+      wideLimit={wideLimit}
+      onWideLimitChange={setWideLimit}
+      groupByDocument={groupByDocument}
+      onGroupByDocumentToggle={setGroupByDocument}
+      summaryLimitResults={summaryLimitResults}
+      onSummaryLimitResultsChange={setSummaryLimitResults}
+      summaryMaxResults={summaryMaxResults}
+      onSummaryMaxResultsChange={setSummaryMaxResults}
+      summaryTemperature={summaryTemperature}
+      onSummaryTemperatureChange={setSummaryTemperature}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}
@@ -2875,6 +2963,20 @@ function App() {
       onSectionTypesChange={setSectionTypes}
       deduplicateEnabled={deduplicateEnabled}
       onDeduplicateToggle={setDeduplicateEnabled}
+      wideSearch={wideSearch}
+      onWideSearchToggle={setWideSearch}
+      wideGroupSize={wideGroupSize}
+      onWideGroupSizeChange={setWideGroupSize}
+      wideLimit={wideLimit}
+      onWideLimitChange={setWideLimit}
+      groupByDocument={groupByDocument}
+      onGroupByDocumentToggle={setGroupByDocument}
+      summaryLimitResults={summaryLimitResults}
+      onSummaryLimitResultsChange={setSummaryLimitResults}
+      summaryMaxResults={summaryMaxResults}
+      onSummaryMaxResultsChange={setSummaryMaxResults}
+      summaryTemperature={summaryTemperature}
+      onSummaryTemperatureChange={setSummaryTemperature}
       fieldBoostEnabled={fieldBoostEnabled}
       onFieldBoostToggle={setFieldBoostEnabled}
       fieldBoostFields={fieldBoostFields}
@@ -2909,12 +3011,12 @@ function App() {
         onToggleModelDropdown={handleToggleModelDropdown}
         onDomainMouseEnter={handleDomainMouseEnter}
         onDomainMouseLeave={handleDomainMouseLeave}
-        onDomainBlur={handleDomainBlur}
-        onModelBlur={handleModelBlur}
+        onCloseDomainDropdown={handleCloseDomainDropdown}
+        onCloseModelDropdown={handleCloseModelDropdown}
         onSelectDomain={handleSelectDomain}
         onSelectModelCombo={handleSelectModelCombo}
         onToggleHelpDropdown={handleToggleHelpDropdown}
-        onHelpBlur={handleHelpBlur}
+        onCloseHelpDropdown={handleCloseHelpDropdown}
         onAboutClick={handleAboutClick}
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
@@ -2959,6 +3061,9 @@ function App() {
               minChunkSize,
               fieldBoost: fieldBoostEnabled,
               fieldBoostFields,
+              wideSearch,
+              wideGroupSize,
+              wideLimit,
             }}
             exampleQueries={currentDataSourceConfig?.example_queries}
             onResultClick={handleResultClick}
@@ -2968,6 +3073,7 @@ function App() {
           <BriefTab
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
+            semanticModelConfig={semanticHighlightModelConfig}
             rerankerModel={rerankModel}
             searchSettings={{
               denseWeight: searchDenseWeight,
@@ -2979,6 +3085,9 @@ function App() {
               minChunkSize,
               fieldBoost: fieldBoostEnabled,
               fieldBoostFields,
+              wideSearch,
+              wideGroupSize,
+              wideLimit,
             }}
             onResultClick={handleResultClick}
           />
@@ -2998,7 +3107,11 @@ function App() {
         onTabChange={handleTabChange}
       />
 
-      <AdminPanel isActive={activeTab === 'admin'} />
+      <AdminPanel
+        isActive={activeTab === 'admin'}
+        dataSource={dataSource}
+        dataSourceConfig={currentDataSourceConfig}
+      />
 
       <AppFooter>
         <button

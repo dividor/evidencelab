@@ -1,4 +1,5 @@
 import React from 'react';
+import axios from 'axios';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { HeatmapTabContent } from '../components/app/HeatmapTabContent';
@@ -11,6 +12,9 @@ jest.mock('../components/filters/FiltersPanel', () => ({
 jest.mock('../components/SearchResultsList', () => ({
   SearchResultsList: () => <div>Search Results</div>,
 }));
+
+const GENERATE_HEATMAP = 'Generate Heatmap';
+const GRID_QUERY_PLACEHOLDER = 'Add a search query to filter the results for your heatmap ...';
 
 const buildFacets = (): Facets => ({
   facets: {
@@ -72,6 +76,20 @@ const baseProps = {
   onAutoMinScoreToggle: jest.fn(),
   deduplicateEnabled: false,
   onDeduplicateToggle: jest.fn(),
+  wideSearch: false,
+  onWideSearchToggle: jest.fn(),
+  wideGroupSize: 5,
+  onWideGroupSizeChange: jest.fn(),
+  wideLimit: 20,
+  onWideLimitChange: jest.fn(),
+  groupByDocument: false,
+  onGroupByDocumentToggle: jest.fn(),
+  summaryLimitResults: true,
+  onSummaryLimitResultsChange: jest.fn(),
+  summaryMaxResults: 20,
+  onSummaryMaxResultsChange: jest.fn(),
+  summaryTemperature: 0,
+  onSummaryTemperatureChange: jest.fn(),
   fieldBoostEnabled: false,
   onFieldBoostToggle: jest.fn(),
   fieldBoostFields: {},
@@ -85,6 +103,12 @@ const baseProps = {
 };
 
 describe('HeatmapTabContent', () => {
+  // The component reads its initial state from the URL and writes back to it,
+  // so each test starts from a clean address.
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/heatmap');
+  });
+
   test('renders defaults and enables Generate Heatmap for dimension rows without query', async () => {
     render(<HeatmapTabContent {...baseProps} />);
 
@@ -100,7 +124,7 @@ describe('HeatmapTabContent', () => {
     expect(metricSelect.value).toBe('documents');
 
     // Dimension vs dimension: button enabled even without a query
-    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
+    const searchButton = screen.getByRole('button', { name: GENERATE_HEATMAP });
     expect(searchButton).toBeEnabled();
   });
 
@@ -117,10 +141,90 @@ describe('HeatmapTabContent', () => {
     const rowInputs = screen.getAllByPlaceholderText('Enter your search query');
     expect(rowInputs).toHaveLength(1);
 
-    const searchButton = screen.getByRole('button', { name: 'Generate Heatmap' });
+    const searchButton = screen.getByRole('button', { name: GENERATE_HEATMAP });
     expect(searchButton).toBeDisabled();
 
     fireEvent.change(rowInputs[0], { target: { value: 'climate' } });
     expect(searchButton).toBeEnabled();
+  });
+
+  test('with wide search on, every cell request carries the per-document cap and the cell limit as document cap', async () => {
+    const getSpy = jest.spyOn(axios, 'get').mockResolvedValue({ data: { results: [] } });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      render(<HeatmapTabContent {...baseProps} wideSearch wideGroupSize={3} />);
+      await waitFor(() => expect(screen.getByText('2020')).toBeInTheDocument());
+      // No query: cells list documents by filter alone, which has no relevance
+      // ranking, so wide search must not be sent there.
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(getSpy).toHaveBeenCalled());
+      const listingUrls = getSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/docsearch?'));
+      expect(listingUrls.length).toBeGreaterThan(0);
+      for (const url of listingUrls) {
+        expect(url).not.toContain('wide_search');
+      }
+      getSpy.mockClear();
+
+      // With a query, every cell is a relevance search and carries wide search
+      fireEvent.click(screen.getByRole('button', { name: /Tune your heatmap using a search query/ }));
+      fireEvent.change(screen.getByPlaceholderText(GRID_QUERY_PLACEHOLDER), { target: { value: 'school feeding' } });
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(getSpy).toHaveBeenCalled());
+      const cellUrls = getSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/search?'));
+      expect(cellUrls.length).toBeGreaterThan(0);
+      for (const url of cellUrls) {
+        const params = new URLSearchParams(url.split('?')[1]);
+        expect(params.get('wide_search')).toBe('true');
+        expect(params.get('wide_group_size')).toBe('3');
+        expect(params.get('wide_limit')).toBe(params.get('limit'));
+      }
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
+
+  test('the Generate button gets an × while generating that stops the run', async () => {
+    const isCellRequest = (url: unknown) => /\/(doc)?search\?/.test(String(url));
+    // Cell requests only settle when their signal is aborted, like a slow backend.
+    const getSpy = jest.spyOn(axios, 'get').mockImplementation((url, config) => {
+      if (!isCellRequest(url)) return Promise.resolve({ data: [] });
+      return new Promise((_, reject) => {
+        config?.signal?.addEventListener('abort', () =>
+          reject(new axios.CanceledError('canceled')),
+        );
+      });
+    });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      const { container } = render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2020')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+
+      const stop = await screen.findByRole('button', { name: 'Stop generating' });
+      // The Generate button itself is disabled and reads "Generating..." (one
+      // animated span per character, so match its text rather than its name).
+      const generating = container.querySelector('.heatmap-search-button') as HTMLButtonElement;
+      expect(generating).toBeDisabled();
+      expect(generating.textContent).toBe('Generating...');
+      const cellCalls = getSpy.mock.calls.filter(([url]) => isCellRequest(url));
+      expect(cellCalls.length).toBeGreaterThan(0);
+      const { signal } = cellCalls[0][1] as { signal: AbortSignal };
+      expect(signal.aborted).toBe(false);
+
+      fireEvent.click(stop);
+
+      expect(signal.aborted).toBe(true);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled(),
+      );
+      expect(screen.queryByRole('button', { name: 'Stop generating' })).toBeNull();
+      // A stop is not a failure: no error message.
+      expect(screen.queryByText(/failed to load|search failed/i)).toBeNull();
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
   });
 });

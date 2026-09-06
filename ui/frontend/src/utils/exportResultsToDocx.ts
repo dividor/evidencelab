@@ -24,6 +24,7 @@ import {
   Document,
   ExternalHyperlink,
   Footer,
+  FootnoteReferenceRun,
   HeadingLevel,
   ImageRun,
   InternalHyperlink,
@@ -33,10 +34,16 @@ import {
   PageNumber,
   Paragraph,
   ShadingType,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
+  WidthType,
   convertInchesToTwip,
 } from 'docx';
 import type { ChunkElement, SearchResult } from '../types/api';
+import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
+import type { DocumentResultGroup, GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
   isTextRedundantWithTable,
@@ -62,6 +69,10 @@ export interface ExportOptions {
   /** Heading for the per-result excerpts section (default "Search Results").
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
+  // Render a compact references list (no excerpts) instead of full result
+  // cards, mirroring the Brief's on-screen References section. 'grouped'
+  // collapses to one row per document.
+  referenceList?: 'flat' | 'grouped';
   /** Cover-page document title (default "Evidence Lab — Search Export").
    *  The Brief export passes "AI-generated Research Brief". */
   documentTitle?: string;
@@ -85,6 +96,18 @@ export interface ExportOptions {
   /** Injectable fetch implementation for deterministic tests. Defaults to the
    *  global `fetch` (bound to `globalThis`). */
   fetchFn?: typeof fetch;
+  /** How inline `[N]` citation markers are rendered in the prose:
+   *  - `'links'` (default): each `[N]` stays an inline bracketed hyperlink to
+   *    the cited source, matching the on-screen render.
+   *  - `'footnotes'`: each `[N]` becomes a Word footnote reference, and the
+   *    source (title, page, PDF link) is placed as a footnote on the same
+   *    page. The end References/excerpt sections are still included. */
+  citationStyle?: 'links' | 'footnotes';
+  /** Group-by-document mode: add a "Document List" table of the cited
+   *  documents under References (title linked to the document online,
+   *  source, year, citation count) and a "Raw Search Results" section listing
+   *  every document with its excerpt count, in the on-screen order. */
+  documentList?: { sortBy: GroupSortBy };
 }
 
 /** MIME type for a .docx file — exported so the call-site can set it on Blobs
@@ -162,9 +185,63 @@ const normaliseExcerpt = (s: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-/** Inline children of a Paragraph: either plain runs or hyperlink containers.
- *  `Paragraph.children` accepts both, so we expose this union. */
-type InlineChild = TextRun | ExternalHyperlink;
+/** Inline children of a Paragraph: plain runs, hyperlink containers, or (in
+ *  footnote mode) footnote reference marks. `Paragraph.children` accepts all
+ *  three, so we expose this union. */
+type InlineChild = TextRun | ExternalHyperlink | FootnoteReferenceRun;
+
+/** Collects Word footnotes as the prose is rendered. Each cited `[N]` marker
+ *  calls {@link FootnoteRegistry.add} to register a footnote (numbered by Word
+ *  in appearance order) and gets back its id for a {@link FootnoteReferenceRun}.
+ *  The accumulated `map` is handed to the `Document` `footnotes` option. */
+export interface FootnoteRegistry {
+  map: Record<string, { children: Paragraph[] }>;
+  add: (result: SearchResult, siteOrigin: string, dataSource?: string) => number;
+}
+
+/** Build a footnote content paragraph for a cited result: the document title
+ *  and page as text, followed by a clickable link to the actual PDF so a reader
+ *  can open the source straight from the footnote. */
+const buildFootnoteParagraph = (
+  result: SearchResult,
+  siteOrigin: string,
+  dataSource?: string,
+): Paragraph => {
+  const title = result.title || result.document_title || 'Untitled';
+  const meta: string[] = [];
+  if (result.organization) meta.push(String(result.organization));
+  if (result.year) meta.push(String(result.year));
+  if (typeof result.page_num === 'number') meta.push(`p.${result.page_num}`);
+  const label = title + (meta.length ? ` — ${meta.join(', ')}` : '') + '. ';
+  return new Paragraph({
+    children: [
+      new TextRun({ text: label, size: 18 }),
+      new ExternalHyperlink({
+        link: resolveResultLink(result, siteOrigin, dataSource),
+        children: [new TextRun({ text: 'Open PDF ›', style: 'Hyperlink', size: 18 })],
+      }),
+    ],
+  });
+};
+
+/** Create an empty footnote registry with an auto-incrementing id counter.
+ *  Word renders footnote markers in document order, so ids need only be unique
+ *  and stable; we start at 1 and never reuse (repeated citations of the same
+ *  source produce distinct footnotes, which is conventional footnote style). */
+const createFootnoteRegistry = (): FootnoteRegistry => {
+  const map: Record<string, { children: Paragraph[] }> = {};
+  let nextId = 1;
+  return {
+    map,
+    add(result, siteOrigin, dataSource) {
+      const id = nextId++;
+      map[String(id)] = {
+        children: [buildFootnoteParagraph(result, siteOrigin, dataSource)],
+      };
+      return id;
+    },
+  };
+};
 
 /** Optional context that lets {@link inlineRuns} convert `[N]` markers in a
  *  body paragraph into clickable hyperlinks pointing at the cited result's
@@ -178,6 +255,9 @@ export interface CitationContext {
    *  citations render the same renumbered value as the on-screen summary and
    *  the References section. Built once from the full summary text. */
   sequenceMap: Map<number, number>;
+  /** When present, `[N]` markers render as Word footnote references registered
+   *  here (footnote mode) instead of inline bracketed hyperlinks. */
+  footnotes?: FootnoteRegistry;
 }
 
 /** Build the inline children for a `[N]` / `[N, M]` citation marker. Each
@@ -189,6 +269,23 @@ const buildCitationRuns = (
   base: { size?: number },
   ctx: CitationContext,
 ): InlineChild[] => {
+  // Footnote mode: each valid `[N]` becomes a footnote reference mark (Word
+  // auto-numbers them in appearance order); the source detail lives in the
+  // footnote itself, so no brackets or inline numbers are emitted.
+  if (ctx.footnotes) {
+    const out: InlineChild[] = [];
+    for (const n of parseCitationNumbers(matched)) {
+      if (ctx.sequenceMap.get(n) === undefined) continue;
+      const result = ctx.results[n - 1];
+      if (!result) continue;
+      // Separate consecutive footnote marks with a (superscript) space so
+      // multiple citations after one sentence read as "¹ ²", not "¹²".
+      if (out.length) out.push(new TextRun({ text: ' ', superScript: true }));
+      const id = ctx.footnotes.add(result, ctx.siteOrigin, ctx.dataSource);
+      out.push(new FootnoteReferenceRun(id));
+    }
+    return out;
+  }
   const out: InlineChild[] = [new TextRun({ text: '[', size: base.size })];
   let rendered = 0;
   for (const n of parseCitationNumbers(matched)) {
@@ -750,6 +847,7 @@ const buildSummarySection = (
   dataSource?: string,
   heading = 'AI Summary',
   bookmarkPrefix?: string,
+  footnotes?: FootnoteRegistry,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
@@ -765,6 +863,7 @@ const buildSummarySection = (
     siteOrigin,
     dataSource,
     sequenceMap: buildCitationSequenceMap(summary, results),
+    footnotes,
   };
   // Demote any markdown headings inside the summary by 1 so the section's
   // own H1 stays unique. Pass the citation context so [N] markers in the
@@ -772,6 +871,106 @@ const buildSummarySection = (
   // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
   out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
   out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
+  return out;
+};
+
+/** Link to the document itself (no page anchor). */
+const resolveDocumentLink = (r: SearchResult, siteOrigin: string, dataSource?: string): string =>
+  resolveResultLink({ ...r, page_num: undefined as unknown as number }, siteOrigin, dataSource);
+
+const tableCell = (children: InlineChild[], widthPct: number): TableCell =>
+  new TableCell({
+    width: { size: widthPct, type: WidthType.PERCENTAGE },
+    children: [new Paragraph({ spacing: { before: 40, after: 40 }, children })],
+  });
+
+const heading2 = (text: string): Paragraph =>
+  new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    children: [new TextRun({ text })],
+    spacing: { before: 240, after: 120 },
+  });
+
+/** One table row per document: title linked to the document online, source,
+ *  year, and a count supplied by the caller. */
+const buildDocumentTable = (
+  groups: DocumentResultGroup[],
+  countLabel: string,
+  countFor: (group: DocumentResultGroup) => number,
+  siteOrigin: string,
+  dataSource: string | undefined,
+): Table => {
+  const header = new TableRow({
+    tableHeader: true,
+    children: [
+      tableCell([new TextRun({ text: 'Document', bold: true })], 55),
+      tableCell([new TextRun({ text: 'Source', bold: true })], 20),
+      tableCell([new TextRun({ text: 'Year', bold: true })], 10),
+      tableCell([new TextRun({ text: countLabel, bold: true })], 15),
+    ],
+  });
+  const rows = groups.map((group) => {
+    const first = group.results[0];
+    const title = first.translated_title || first.title || 'Untitled';
+    const source = first.organization || first.metadata?.organization || '';
+    const year = String(first.year || first.metadata?.year || '');
+    return new TableRow({
+      children: [
+        tableCell(
+          [
+            new ExternalHyperlink({
+              link: resolveDocumentLink(first, siteOrigin, dataSource),
+              children: [new TextRun({ text: title, style: 'Hyperlink' })],
+            }),
+          ],
+          55,
+        ),
+        tableCell([new TextRun({ text: source })], 20),
+        tableCell([new TextRun({ text: year })], 10),
+        tableCell([new TextRun({ text: String(countFor(group)) })], 15),
+      ],
+    });
+  });
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] });
+};
+
+/** Group-by-document exports: under References, a "Document List" of the
+ *  documents the AI summary cites (title linked to the document online,
+ *  source, year, citation count), then a "Raw Search Results" section listing
+ *  every document with its number of excerpts. Both follow the on-screen
+ *  order. Documents with no citations are left out of the Document List. */
+const buildDocumentListParagraphs = (
+  summary: string,
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  sortBy: GroupSortBy,
+): (Paragraph | Table)[] => {
+  const groups = sortDocumentGroups(groupResultsByDocument(results), sortBy);
+  if (groups.length === 0) return [];
+  const citationCounts = new Map<string, number>();
+  for (const cited of buildGroupedReferences(summary, results)) {
+    for (const { result } of cited.refs) {
+      citationCounts.set(result.doc_id, (citationCounts.get(result.doc_id) ?? 0) + 1);
+    }
+  }
+  const citations = (group: DocumentResultGroup) => citationCounts.get(group.docId) ?? 0;
+  const cited = groups.filter((group) => citations(group) > 0);
+  const out: (Paragraph | Table)[] = [];
+  if (cited.length > 0) {
+    out.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        children: [new TextRun({ text: 'Document List' })],
+        spacing: { before: 200, after: 100 },
+      }),
+      buildDocumentTable(cited, 'Citations', citations, siteOrigin, dataSource),
+    );
+  }
+  out.push(
+    heading2('Raw Search Results'),
+    buildDocumentTable(groups, 'Excerpts', (group) => group.results.length, siteOrigin, dataSource),
+  );
   return out;
 };
 
@@ -881,6 +1080,66 @@ const buildResultCard = (
   return out;
 };
 
+/**
+ * A compact references list: one line per citation (flat) or per document
+ * (grouped), title hyperlinked to the source, no excerpt text. Mirrors what
+ * the Brief shows on screen so the export matches the reader's view.
+ */
+const buildReferenceList = (
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  grouped: boolean,
+  sectionTitle = 'References',
+): Paragraph[] => {
+  const titleOf = (r: SearchResult): string =>
+    (r.title && r.title.trim()) ||
+    (typeof r.document_title === 'string' && r.document_title.trim()) ||
+    '(untitled document)';
+
+  const rows: Array<{ label: string; title: string; result: SearchResult }> = [];
+  if (grouped) {
+    const byDoc = new Map<string, { nums: number[]; result: SearchResult }>();
+    results.forEach((r, idx) => {
+      const key = r.doc_id || titleOf(r);
+      const found = byDoc.get(key);
+      if (found) found.nums.push(idx + 1);
+      else byDoc.set(key, { nums: [idx + 1], result: r });
+    });
+    byDoc.forEach(({ nums, result }) =>
+      rows.push({ label: nums.join(', '), title: titleOf(result), result }),
+    );
+  } else {
+    results.forEach((r, idx) => {
+      const page = r.page_num ? `, p.${r.page_num}` : '';
+      rows.push({ label: String(idx + 1), title: `${titleOf(r)}${page}`, result: r });
+    });
+  }
+
+  const out: Paragraph[] = [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      children: [new TextRun({ text: sectionTitle })],
+      spacing: { before: 360, after: 120 },
+    }),
+  ];
+  rows.forEach(({ label, title, result }) => {
+    out.push(
+      new Paragraph({
+        spacing: { after: 60 },
+        children: [
+          new TextRun({ text: `${label}. `, bold: true }),
+          new ExternalHyperlink({
+            link: resolveResultLink(result, siteOrigin, dataSource),
+            children: [new TextRun({ text: title, style: 'Hyperlink' })],
+          }),
+        ],
+      }),
+    );
+  });
+  return out;
+};
+
 const buildResultsSection = (
   results: SearchResult[],
   siteOrigin: string,
@@ -916,8 +1175,13 @@ export const buildExportDocument = (
   const now = (opts.now ?? (() => new Date()))();
   const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
 
+  // In footnote mode, citations register footnotes as the prose renders; the
+  // accumulated map is handed to the Document below.
+  const footnotes =
+    opts.citationStyle === 'footnotes' ? createFootnoteRegistry() : undefined;
+
   const tocBookmarkPrefix = 'briefheading';
-  const body: Paragraph[] = [
+  const body: (Paragraph | Table)[] = [
     ...buildCoverParagraphs(opts, now),
     ...(opts.tableOfContents ? buildManualToc(opts.aiSummary ?? '', tocBookmarkPrefix) : []),
     ...buildSummarySection(
@@ -927,18 +1191,39 @@ export const buildExportDocument = (
       opts.dataSource,
       opts.summaryHeading,
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
+      footnotes,
     ),
-    ...buildResultsSection(
-      opts.results,
-      siteOrigin,
-      opts.dataSource,
-      opts.resultsSectionTitle,
-      images,
-    ),
+    ...(opts.documentList
+      ? buildDocumentListParagraphs(
+          opts.aiSummary ?? '',
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.documentList.sortBy,
+        )
+      : []),
+    ...(opts.referenceList
+      ? buildReferenceList(
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.referenceList === 'grouped',
+          opts.resultsSectionTitle,
+        )
+      : buildResultsSection(
+          opts.results,
+          siteOrigin,
+          opts.dataSource,
+          opts.resultsSectionTitle,
+          images,
+        )),
   ];
 
   return new Document({
     creator: 'Evidence Lab',
+    ...(footnotes && Object.keys(footnotes.map).length
+      ? { footnotes: footnotes.map }
+      : {}),
     title: opts.documentTitle ? opts.documentTitle : `Evidence Lab Search — ${opts.query}`,
     description: `Export of ${opts.results.length} search results` +
       (opts.aiSummary ? ' and the AI summary' : ''),

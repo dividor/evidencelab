@@ -1,5 +1,7 @@
+import config from '../config.json';
 import { SearchFilters } from '../types/api';
 import type { SearchSettings } from '../types/auth';
+import { SUMMARY_RESULT_LIMIT } from './summarySelection';
 
 export interface SearchStateFromURL {
   query: string;
@@ -19,6 +21,13 @@ export interface SearchStateFromURL {
   deduplicate: boolean;
   fieldBoost: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
+  wideLimit: number;
+  groupByDocument: boolean;
+  summaryLimitResults: boolean;
+  summaryMaxResults: number;
+  summaryTemperature: number;
   model: string | null;
   modelCombo: string | null;
   dataset: string | null;
@@ -26,15 +35,20 @@ export interface SearchStateFromURL {
 
 export const DEFAULT_FIELD_BOOST_FIELDS: Record<string, number> = { country: 1, organization: 0.5 };
 
-export const DEFAULT_SECTION_TYPES = [
-  'executive_summary',
-  'context',
-  'methodology',
-  'findings',
-  'conclusions',
-  'recommendations',
-  'other',
-];
+// The section types Search includes by default. Sourced from
+// `config.application.search.default_included_section_types` in config.json so
+// Search and the admin TOC Validator share one definition and cannot drift.
+// The literal here is only a safety net for a config.json missing the key.
+export const DEFAULT_SECTION_TYPES: string[] =
+  (config.application as any).search?.default_included_section_types ?? [
+    'executive_summary',
+    'context',
+    'methodology',
+    'findings',
+    'conclusions',
+    'recommendations',
+    'other',
+  ];
 
 /** Hardcoded system defaults for all search/content settings. */
 export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
@@ -51,6 +65,13 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   deduplicate: true,
   fieldBoost: true,
   fieldBoostFields: { ...DEFAULT_FIELD_BOOST_FIELDS },
+  wideSearch: false,
+  wideGroupSize: 5,
+  wideLimit: 20,
+  groupByDocument: false,
+  summaryLimitResults: true,
+  summaryMaxResults: SUMMARY_RESULT_LIMIT,
+  summaryTemperature: 0,
   greetingMessage: '',
 };
 
@@ -196,6 +217,18 @@ const parseFieldBoostFields = (params: URLSearchParams): Record<string, number> 
   return Object.keys(result).length > 0 ? result : { ...DEFAULT_FIELD_BOOST_FIELDS };
 };
 
+/**
+ * Group defaults layered over the system defaults. Group settings are stored
+ * as JSON, so a key can be present with a null value; nulls fall through to
+ * the system default.
+ */
+const resolveDefaults = (groupDefaults?: SearchSettings): Required<SearchSettings> => {
+  const overrides = Object.fromEntries(
+    Object.entries(groupDefaults ?? {}).filter(([, value]) => value !== null && value !== undefined),
+  );
+  return { ...SYSTEM_DEFAULTS, ...overrides } as Required<SearchSettings>;
+};
+
 export const getSearchStateFromURL = (
   coreFields: string[],
   defaultSectionTypes: string[],
@@ -205,26 +238,33 @@ export const getSearchStateFromURL = (
   const { filters, selectedFilters, rangeFilters } = parseFilters(params, coreFields);
 
   // For each setting: URL param wins, then group default, then system default.
-  const d = { ...SYSTEM_DEFAULTS, ...groupDefaults };
+  const d = resolveDefaults(groupDefaults);
 
   return {
     query: params.get('q') || '',
     filters,
     selectedFilters,
     rangeFilters,
-    denseWeight: parseFloatParam(params, 'weight', d.denseWeight ?? SYSTEM_DEFAULTS.denseWeight),
-    rerank: parseBooleanParam(params, 'rerank', d.rerank ?? SYSTEM_DEFAULTS.rerank),
-    recencyBoost: parseBooleanParam(params, 'recency', d.recencyBoost ?? SYSTEM_DEFAULTS.recencyBoost),
-    recencyWeight: parseFloatParam(params, 'recency_weight', d.recencyWeight ?? SYSTEM_DEFAULTS.recencyWeight),
-    recencyScaleDays: parseIntParam(params, 'recency_scale', d.recencyScaleDays ?? SYSTEM_DEFAULTS.recencyScaleDays),
-    sectionTypes: parseSectionTypes(params, d.sectionTypes ?? defaultSectionTypes),
-    keywordBoostShortQueries: parseBooleanParam(params, 'keyword_boost', d.keywordBoostShortQueries ?? SYSTEM_DEFAULTS.keywordBoostShortQueries),
-    minChunkSize: parseIntParam(params, 'min_chunk_size', d.minChunkSize ?? SYSTEM_DEFAULTS.minChunkSize),
-    semanticHighlighting: parseBooleanParam(params, 'highlight', d.semanticHighlighting ?? SYSTEM_DEFAULTS.semanticHighlighting),
-    autoMinScore: parseBooleanParam(params, 'auto_min_score', d.autoMinScore ?? SYSTEM_DEFAULTS.autoMinScore),
-    deduplicate: parseBooleanParam(params, 'deduplicate', d.deduplicate ?? SYSTEM_DEFAULTS.deduplicate),
-    fieldBoost: parseBooleanParam(params, 'field_boost', d.fieldBoost ?? SYSTEM_DEFAULTS.fieldBoost),
+    denseWeight: parseFloatParam(params, 'weight', d.denseWeight),
+    rerank: parseBooleanParam(params, 'rerank', d.rerank),
+    recencyBoost: parseBooleanParam(params, 'recency', d.recencyBoost),
+    recencyWeight: parseFloatParam(params, 'recency_weight', d.recencyWeight),
+    recencyScaleDays: parseIntParam(params, 'recency_scale', d.recencyScaleDays),
+    sectionTypes: parseSectionTypes(params, groupDefaults?.sectionTypes ?? defaultSectionTypes),
+    keywordBoostShortQueries: parseBooleanParam(params, 'keyword_boost', d.keywordBoostShortQueries),
+    minChunkSize: parseIntParam(params, 'min_chunk_size', d.minChunkSize),
+    semanticHighlighting: parseBooleanParam(params, 'highlight', d.semanticHighlighting),
+    autoMinScore: parseBooleanParam(params, 'auto_min_score', d.autoMinScore),
+    deduplicate: parseBooleanParam(params, 'deduplicate', d.deduplicate),
+    fieldBoost: parseBooleanParam(params, 'field_boost', d.fieldBoost),
     fieldBoostFields: parseFieldBoostFields(params),
+    wideSearch: parseBooleanParam(params, 'wide', d.wideSearch),
+    wideGroupSize: parseIntParam(params, 'wide_group_size', d.wideGroupSize),
+    wideLimit: parseIntParam(params, 'wide_limit', d.wideLimit),
+    groupByDocument: parseBooleanParam(params, 'group_by_doc', d.groupByDocument),
+    summaryLimitResults: parseBooleanParam(params, 'summary_limit', d.summaryLimitResults),
+    summaryMaxResults: parseIntParam(params, 'summary_max', d.summaryMaxResults),
+    summaryTemperature: parseFloatParam(params, 'summary_temp', d.summaryTemperature),
     model: params.get('model'),
     modelCombo: params.get('model_combo'),
     dataset: params.get('dataset'),
@@ -308,7 +348,14 @@ export const buildSearchURL = (
   modelCombo?: string | null,
   dataset?: string | null,
   fieldBoost?: boolean,
-  fieldBoostFields?: Record<string, number>
+  fieldBoostFields?: Record<string, number>,
+  wideSearch?: boolean,
+  wideGroupSize?: number,
+  wideLimit?: number,
+  summaryLimitResults?: boolean,
+  summaryMaxResults?: number,
+  summaryTemperature?: number,
+  groupByDocument?: boolean
 ): string => {
   const params = new URLSearchParams();
   setParamIfNonEmpty(params, 'q', query);
@@ -333,6 +380,13 @@ export const buildSearchURL = (
       .join(',');
     params.set('field_boost_fields', encoded);
   }
+  setParamIfTrue(params, 'wide', wideSearch);
+  setParamIfNotDefault(params, 'wide_group_size', wideGroupSize, SYSTEM_DEFAULTS.wideGroupSize);
+  setParamIfNotDefault(params, 'wide_limit', wideLimit, SYSTEM_DEFAULTS.wideLimit);
+  setParamIfFalse(params, 'summary_limit', summaryLimitResults);
+  setParamIfNotDefault(params, 'summary_max', summaryMaxResults, SYSTEM_DEFAULTS.summaryMaxResults);
+  setParamIfNotDefault(params, 'summary_temp', summaryTemperature, SYSTEM_DEFAULTS.summaryTemperature);
+  setParamIfTrue(params, 'group_by_doc', groupByDocument);
   setParamIfNonEmpty(params, 'model', model);
   setParamIfNonEmpty(params, 'model_combo', modelCombo);
   setParamIfNonEmpty(params, 'dataset', dataset);

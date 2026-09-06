@@ -4,6 +4,32 @@ import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
+// The live outline-generation panel: spinner + streamed research activity.
+// Shown by BriefSeed (anonymous) and BriefTab's Brief Central flow (logged in).
+export const BriefGeneratingPanel: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
+  <div className="brief-seed">
+    <div className="brief-eyebrow">EVIDENCE BRIEF</div>
+    <h2 className="brief-seed-title">Researching “{brief.query.trim()}”</h2>
+    <p className="brief-seed-lede">
+      Surveying the document library to shape an outline grounded in what the system contains…
+    </p>
+    <div className="brief-generating">
+      <div className="brief-researching-head">
+        <span className="brief-spinner" />
+        <span className="brief-researching-label">Deep research in progress</span>
+      </div>
+      <div className="brief-activity">
+        {brief.generatingActivity.map((ev, i) => (
+          <div className="brief-activity-row" key={`${ev.tag}-${i}`}>
+            <span className={tagClass(ev.tag)}>{ev.tag}</span>
+            <span>{ev.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
 interface BriefSeedProps {
   brief: UseBriefReturn;
 }
@@ -24,29 +50,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
 
   // While the outline-generation deep research runs, show its live activity.
   if (outlineLoading) {
-    return (
-      <div className="brief-seed">
-        <div className="brief-eyebrow">EVIDENCE BRIEF</div>
-        <h2 className="brief-seed-title">Researching “{query.trim()}”</h2>
-        <p className="brief-seed-lede">
-          Surveying the document library to shape an outline grounded in what the system contains…
-        </p>
-        <div className="brief-generating">
-          <div className="brief-researching-head">
-            <span className="brief-spinner" />
-            <span className="brief-researching-label">Deep research in progress</span>
-          </div>
-          <div className="brief-activity">
-            {brief.generatingActivity.map((ev, i) => (
-              <div className="brief-activity-row" key={`${ev.tag}-${i}`}>
-                <span className={tagClass(ev.tag)}>{ev.tag}</span>
-                <span>{ev.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <BriefGeneratingPanel brief={brief} />;
   }
 
   return (
@@ -105,7 +109,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
         <div className="brief-seed-actions">
           <button
             className="brief-btn brief-btn-primary"
-            onClick={generateOutline}
+            onClick={() => void generateOutline()}
             disabled={!query.trim()}
           >
             <IconSparkle /> Generate outline

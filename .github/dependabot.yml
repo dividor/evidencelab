@@ -32,6 +32,10 @@ updates:
       # Ignore major version updates (React 18/CRA5 ecosystem)
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # docx 9.7.x ships an ESM bundle that react-scripts cannot compile in the
+      # production build (#435); stay on 9.6.1 until the frontend toolchain moves.
+      - dependency-name: "docx"
+        versions: [">9.6.1"]
 
   # Docker dependencies - root directory
   - package-ecosystem: "docker"

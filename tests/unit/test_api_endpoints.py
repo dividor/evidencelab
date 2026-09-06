@@ -136,7 +136,7 @@ async def test_datasources_config(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_generate_summary(monkeypatch):
-    async def fake_generate(
+    async def fake_generate_with_usage(
         query: str,
         results: list,
         max_results: int,
@@ -145,7 +145,11 @@ async def test_generate_summary(monkeypatch):
         max_tokens: int | None = None,
         system_prompt_override: str | None = None,
     ):
-        return "summary"
+        return "summary", {
+            "llm_model": "gpt-4.1-mini",
+            "prompt_tokens": 12,
+            "completion_tokens": 3,
+        }
 
     def fake_render(
         query: str,
@@ -156,7 +160,7 @@ async def test_generate_summary(monkeypatch):
         return "prompt"
 
     llm_module = ModuleType("llm_service")
-    llm_module.generate_ai_summary = fake_generate
+    llm_module.generate_ai_summary_with_usage = fake_generate_with_usage
     llm_module.render_prompt = fake_render
     monkeypatch.setitem(sys.modules, "llm_service", llm_module)
 
@@ -171,6 +175,10 @@ async def test_generate_summary(monkeypatch):
     assert response.summary == "summary"
     assert response.prompt == "prompt"
     assert response.results_count == 1
+    # Usage is no longer discarded — it is returned to the caller.
+    assert response.usage is not None
+    assert response.usage.prompt_tokens == 12
+    assert response.usage.completion_tokens == 3
 
 
 @pytest.mark.asyncio
@@ -419,6 +427,9 @@ async def test_search_endpoint(monkeypatch):
         model=None,
         rerank_model=None,
         rerank_model_page_size=None,
+        wide_search=False,
+        wide_group_size=5,
+        wide_limit=20,
         auto_min_score=False,
         deduplicate=True,
         field_boost=True,
@@ -974,3 +985,135 @@ def test_language_facets_map_codes_to_full_names():
     assert lang_values["French"] == 10
     # Unknown codes pass through unchanged
     assert lang_values["Unknown"] == 3
+
+
+@pytest.mark.asyncio
+async def test_search_endpoint_passes_wide_search_settings(monkeypatch):
+    # The main.py wrapper copies its globals into the routes module on every
+    # call, which outlives monkeypatch; snapshot and restore so this test does
+    # not leak its fakes into later modules.
+    import ui.backend.routes.search as search_routes
+
+    rebound = ("search_chunks", "get_db_for_source", "get_pg_for_source")
+    saved = {
+        name: getattr(search_routes, name)
+        for name in rebound
+        if hasattr(search_routes, name)
+    }
+
+    db = _make_db_mock()
+    monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
+    pg = SimpleNamespace()
+    pg.fetch_docs = lambda doc_ids: {}
+    pg.fetch_chunks = lambda chunk_ids: {}
+    pg.fetch_indexed_doc_ids = lambda: []
+    monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: pg)
+
+    captured = {}
+
+    def fake_search_chunks(*_args, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(main_module, "search_chunks", fake_search_chunks)
+
+    try:
+        result = await main_module.search(
+            _make_request(path="/search"),
+            q="school feeding",
+            limit=50,
+            organization=None,
+            title=None,
+            published_year=None,
+            document_type=None,
+            country=None,
+            language=None,
+            dense_weight=None,
+            rerank=False,
+            recency_boost=False,
+            recency_weight=0.15,
+            recency_scale_days=365,
+            section_types=None,
+            keyword_boost_short_queries=True,
+            data_source=None,
+            min_chunk_size=0,
+            model=None,
+            rerank_model=None,
+            rerank_model_page_size=None,
+            wide_search=True,
+            wide_group_size=3,
+            wide_limit=7,
+            auto_min_score=False,
+            deduplicate=True,
+            field_boost=True,
+            field_boost_fields=None,
+        )
+    finally:
+        for name, value in saved.items():
+            setattr(search_routes, name, value)
+
+    assert captured["wide_search"] is True
+    assert captured["wide_group_size"] == 3
+    assert captured["wide_limit"] == 7
+    assert result.total == 0
+
+
+def test_resolve_temperature_prefers_explicit_over_model_config():
+    from ui.backend.routes import summary as summary_routes
+
+    combo = SimpleNamespace(temperature=0.2)
+    resolve = summary_routes._resolve_temperature
+    assert resolve(SimpleNamespace(temperature=0.7, summary_model_config=combo)) == 0.7
+    assert resolve(SimpleNamespace(temperature=None, summary_model_config=combo)) == 0.2
+    assert resolve(SimpleNamespace(temperature=None, summary_model_config=None)) is None
+    # 0 is a real choice (precise), not "unset"
+    assert resolve(SimpleNamespace(temperature=0.0, summary_model_config=combo)) == 0.0
+
+
+@pytest.mark.asyncio
+async def test_stream_summary_passes_requested_temperature_to_the_model(monkeypatch):
+    captured = {}
+
+    async def fake_stream(
+        query: str,
+        results: list,
+        max_results: int,
+        model_key: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        system_prompt_override: str | None = None,
+    ):
+        captured["temperature"] = temperature
+        yield "a"
+
+    def fake_render(
+        query: str,
+        results: list,
+        max_results: int,
+        system_prompt_override: str | None = None,
+    ):
+        return "prompt"
+
+    llm_module = ModuleType("llm_service")
+    llm_module.stream_ai_summary = fake_stream
+    llm_module.render_prompt = fake_render
+    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+
+    from ui.backend.routes import summary as summary_routes
+
+    request = _make_request(method="POST", path="/ai-summary/stream")
+    body = main_module.AISummaryRequest(
+        query="q", results=[_make_search_result()], temperature=0.7
+    )
+    response = await summary_routes.stream_summary(
+        request, body, user=None, session=None
+    )
+    async for _chunk in response.body_iterator:
+        pass
+
+    assert captured["temperature"] == 0.7
+
+
+def test_summary_request_rejects_out_of_range_temperature():
+    with pytest.raises(ValueError):
+        main_module.AISummaryRequest(query="q", results=[], temperature=2.5)

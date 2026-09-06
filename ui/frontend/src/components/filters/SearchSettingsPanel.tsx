@@ -28,12 +28,29 @@ interface SearchSettingsPanelProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
   onFieldBoostFieldsChange: (fields: Record<string, number>) => void;
   availableBoostFields: string[];
 }
+
+const SUBSETTINGS_GROUP_CLASS = 'settings-subsettings-group';
+const SLIDER_LABEL_CLASS = 'recency-slider-label';
 
 const BOOST_FIELD_OPTIONS = [
   { value: 'country', label: 'Country' },
@@ -112,7 +129,7 @@ const RecencyControls = ({
   recencyScaleDays: number;
   onRecencyScaleDaysChange: (value: number) => void;
 }) => (
-  <div className={recencyBoostEnabled ? 'settings-subsettings-group' : undefined}>
+  <div className={recencyBoostEnabled ? SUBSETTINGS_GROUP_CLASS : undefined}>
     <label className="rerank-checkbox-label">
       <input
         type="checkbox"
@@ -132,7 +149,7 @@ const RecencyControls = ({
     {recencyBoostEnabled && (
       <>
         <div className="recency-slider-group">
-          <label className="recency-slider-label">Recency Weight</label>
+          <label className={SLIDER_LABEL_CLASS}>Recency Weight</label>
           <input
             type="range"
             min="0.05"
@@ -149,7 +166,7 @@ const RecencyControls = ({
         </div>
 
         <div className="recency-slider-group">
-          <label className="recency-slider-label">Decay Scale</label>
+          <label className={SLIDER_LABEL_CLASS}>Decay Scale</label>
           <input
             type="range"
             min="180"
@@ -167,6 +184,192 @@ const RecencyControls = ({
       </>
     )}
   </div>
+);
+
+// Wide search: spread results across documents. When on, the search returns
+// `wideLimit` documents with at most `wideGroupSize` results each, documents
+// ranked by their best match, instead of a flat top-N of chunks.
+/**
+ * "Group by document" checkbox: the Search screen shows one collapsed row per
+ * document (with its excerpt count) instead of a flat list of excerpts. A
+ * display setting only; the search itself and its ranking are unchanged.
+ */
+export const GroupByDocumentControl = ({
+  groupByDocument,
+  onGroupByDocumentToggle,
+}: {
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+}) => (
+  <label className="rerank-checkbox-label">
+    <input
+      type="checkbox"
+      checked={groupByDocument}
+      onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
+      className="rerank-checkbox"
+    />
+    <span>Group by document</span>
+    <span
+      className="rerank-tooltip"
+      title="Show search results as one row per document, collapsed, with the number of matching excerpts. Click a row to expand its excerpts. Documents are ordered by their best-matching excerpt; the search itself is unchanged."
+    >
+      ⓘ
+    </span>
+  </label>
+);
+
+export const WideSearchControls = ({
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+}: {
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+}) => (
+  <div className={wideSearch ? SUBSETTINGS_GROUP_CLASS : undefined}>
+    <label className="rerank-checkbox-label">
+      <input
+        type="checkbox"
+        checked={wideSearch}
+        onChange={(event) => onWideSearchToggle(event.target.checked)}
+        className="rerank-checkbox"
+      />
+      <span>Wide Search</span>
+      <span
+        className="rerank-tooltip"
+        title="Spread results across more documents: return a set number of documents with at most a few results each, ranked by each document's best match. Use it when one document is crowding out the rest."
+      >
+        ⓘ
+      </span>
+    </label>
+    {wideSearch && (
+      <div className="wide-search-fields">
+        <label className="wide-search-field">
+          <span className="wide-search-label">Max results per document</span>
+          <input
+            type="number"
+            min="1"
+            max="50"
+            step="1"
+            value={wideGroupSize}
+            aria-label="Max results per document"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onWideGroupSizeChange(Math.min(50, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+        <label className="wide-search-field">
+          <span className="wide-search-label">Number of documents</span>
+          <input
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            value={wideLimit}
+            aria-label="Number of documents"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onWideLimitChange(Math.min(200, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+      </div>
+    )}
+  </div>
+);
+
+// AI Summary: how many of the results it is built from. Off = every result.
+export const AiSummaryControls = ({
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
+}: {
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
+}) => (
+  <>
+  <div className="recency-slider-group">
+    <label className={SLIDER_LABEL_CLASS} htmlFor="summary-temperature">
+      Response variability{' '}
+      <span className="summary-temperature-value">(temperature {summaryTemperature.toFixed(1)})</span>
+      <span
+        className="rerank-tooltip"
+        title="Sampling temperature for the AI Summary. At 0 the model always takes its most likely wording, so the same results give the same summary every time. Higher values let it choose less likely wordings, so summaries vary more between runs and paraphrase more loosely."
+      >
+        ⓘ
+      </span>
+    </label>
+    <input
+      id="summary-temperature"
+      type="range"
+      min="0"
+      max="1"
+      step="0.1"
+      value={summaryTemperature}
+      aria-label="Response variability"
+      onChange={(event) => onSummaryTemperatureChange(parseFloat(event.target.value))}
+      className="score-slider recency-weight-slider"
+    />
+    <div className="score-range-labels">
+      <span>More Consistent</span>
+      <span>Creative Insights</span>
+    </div>
+  </div>
+  <div className={summaryLimitResults ? SUBSETTINGS_GROUP_CLASS : undefined}>
+    <label className="rerank-checkbox-label">
+      <input
+        type="checkbox"
+        checked={summaryLimitResults}
+        onChange={(event) => onSummaryLimitResultsChange(event.target.checked)}
+        className="rerank-checkbox"
+      />
+      <span>Limit Results Used</span>
+      <span
+        className="rerank-tooltip"
+        title="Build the AI Summary from at most this many results. Turn off to give the summary every result on the page (slower and costlier, but nothing is left out)."
+      >
+        ⓘ
+      </span>
+    </label>
+    {summaryLimitResults && (
+      <div className="wide-search-fields">
+        <label className="wide-search-field">
+          <span className="wide-search-label">Max results for summary</span>
+          <input
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            value={summaryMaxResults}
+            aria-label="Max results for summary"
+            onChange={(event) => {
+              const v = parseInt(event.target.value, 10);
+              if (!isNaN(v)) onSummaryMaxResultsChange(Math.min(200, Math.max(1, v)));
+            }}
+            className="wide-search-number"
+          />
+        </label>
+      </div>
+    )}
+  </div>
+  </>
 );
 
 const SectionTypesSelector = ({
@@ -255,6 +458,20 @@ export const SearchSettingsPanel = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -395,7 +612,19 @@ export const SearchSettingsPanel = ({
               ⓘ
             </span>
           </label>
-          <div className={fieldBoostEnabled ? 'settings-subsettings-group' : undefined}>
+          <WideSearchControls
+            wideSearch={wideSearch}
+            onWideSearchToggle={onWideSearchToggle}
+            wideGroupSize={wideGroupSize}
+            onWideGroupSizeChange={onWideGroupSizeChange}
+            wideLimit={wideLimit}
+            onWideLimitChange={onWideLimitChange}
+          />
+          <GroupByDocumentControl
+            groupByDocument={groupByDocument}
+            onGroupByDocumentToggle={onGroupByDocumentToggle}
+          />
+          <div className={fieldBoostEnabled ? SUBSETTINGS_GROUP_CLASS : undefined}>
           <label className="rerank-checkbox-label">
             <input
               type="checkbox"
@@ -512,6 +741,27 @@ export const SearchSettingsPanel = ({
           <SectionTypesSelector
             sectionTypes={sectionTypes}
             onSectionTypesChange={onSectionTypesChange}
+          />
+        </div>
+      )}
+    </div>
+
+    <div className="filter-section">
+      <div className="filter-section-header" onClick={() => onToggleFilter('ai_summary_settings')}>
+        <span className="filter-section-toggle">
+          {collapsedFilters.has('ai_summary_settings') ? '▼' : '▶'}
+        </span>
+        <span className="filter-section-title">AI Summary</span>
+      </div>
+      {collapsedFilters.has('ai_summary_settings') && (
+        <div className="filter-section-content">
+          <AiSummaryControls
+            summaryLimitResults={summaryLimitResults}
+            onSummaryLimitResultsChange={onSummaryLimitResultsChange}
+            summaryMaxResults={summaryMaxResults}
+            onSummaryMaxResultsChange={onSummaryMaxResultsChange}
+            summaryTemperature={summaryTemperature}
+            onSummaryTemperatureChange={onSummaryTemperatureChange}
           />
         </div>
       )}

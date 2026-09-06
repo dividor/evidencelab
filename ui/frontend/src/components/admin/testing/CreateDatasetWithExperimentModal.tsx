@@ -3,6 +3,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../../config';
 import type { TestCapability } from '../../../types/testing';
 import { parseQaCsv, QaCsvRow } from './csv';
+import FilterHelp from './FilterHelp';
 import { DEFAULT_THRESHOLD, importDatasetWithExperiment } from './experimentImport';
 import {
   ConfigDraft,
@@ -246,6 +247,7 @@ const CreateDatasetWithExperimentModal: React.FC<
                 style={{ display: 'none' }}
                 onChange={(e) => setFileName(e.target.files?.[0]?.name || '')}
               />
+              <FilterHelp />
             </div>
             <button type="submit" className="auth-submit" disabled={busy}>
               {busy ? 'Creating…' : 'Create Dataset + Experiment'}

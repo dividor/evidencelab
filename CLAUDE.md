@@ -116,6 +116,9 @@ python scripts/sync/db/sync_backup_to_remote.py \
 - **NEVER manually update `alembic_version`** or any Alembic internal tables. Direct `UPDATE alembic_version ...` only masks the underlying bug — it does not fix it. If a migration state is broken, diagnose the root cause and fix it properly: create a corrective migration, or surface the problem to the user so it can be resolved correctly.
 - **NEVER rename a migration's `revision` ID after it has been applied to any environment.** Doing so breaks every existing DB that has the old ID stored. If a revision ID is wrong (e.g., too long for varchar(32)), fix it before the migration is ever run anywhere — not after.
 
+### UI Style
+- **Never use side moustaches (left/side accent bars) on highlighted or active items** — e.g. `border-left` or inset box-shadow stripes on nav rows, list items, or cards. Indicate the active state with a background tint and/or type weight instead.
+
 ### Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.
 - **NEVER code fallbacks or graceful degradation unless explicitly requested.** If a dependency or feature is required, fail hard and loud. Silent fallbacks hide bugs.

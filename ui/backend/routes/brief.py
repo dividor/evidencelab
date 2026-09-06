@@ -12,18 +12,46 @@ full detail is logged server-side only.
 
 import logging
 import sys
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ui.backend.schemas import BriefHeading, BriefOutlineRequest, BriefOutlineResponse
+from ui.backend.auth.optional_user import resolve_optional_user as _resolve_user_dep
+from ui.backend.schemas import (
+    BriefHeading,
+    BriefOutlineRequest,
+    BriefOutlineResponse,
+    BriefReviseRequest,
+    BriefReviseResponse,
+)
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 _RL_SEARCH, _RL_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
+
+
+def _record_brief_usage(
+    usage: Dict[str, Any], query: str, body: Any, user: Any
+) -> None:
+    """Accumulate one brief LLM call's usage onto the brief's activity row.
+
+    Monitoring only: scheduled as a background task, so it adds no latency
+    to — and can never fail — the outline/revise response.
+    """
+    schedule_llm_usage_recording(
+        usage=usage,
+        activity_type="brief",
+        query=query,
+        # getattr: direct handler calls (tests) receive the Depends sentinel.
+        user_id=getattr(user, "id", None),
+        session_id=body.session_id,
+        search_id=body.activity_id,
+    )
+
 
 # Guardrail: a brief question is a short prompt, not a document.
 _MAX_QUESTION_CHARS = 2000
@@ -75,7 +103,9 @@ def _resolve_configured_model(data_source: str) -> Optional[str]:
 @router.post("/brief/outline", response_model=BriefOutlineResponse)
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_outline(
-    request: Request, body: BriefOutlineRequest
+    request: Request,
+    body: BriefOutlineRequest,
+    user=Depends(_resolve_user_dep),
 ) -> BriefOutlineResponse:
     """Generate a research-brief outline (title + section headings) from a question."""
     question = (body.question or "").strip()
@@ -100,13 +130,14 @@ async def generate_outline(
 
     try:
         llm_service = _get_llm_service()
-        _title, headings = await llm_service.generate_brief_outline(
+        _title, headings, usage = await llm_service.generate_brief_outline(
             question=question,
             model_key=model_key,
             sources=sources,
             instructions=body.instructions,
             num_headings=body.num_headings,
         )
+        _record_brief_usage(usage, question, body, user)
         # The brief title is the user's topic, per product spec.
         return BriefOutlineResponse(
             title=question,
@@ -115,3 +146,48 @@ async def generate_outline(
     except Exception:
         logger.error("Brief outline generation failed", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to generate outline")
+
+
+@router.post("/brief/revise", response_model=BriefReviseResponse)
+@limiter.limit(RATE_LIMIT_AI)
+async def revise_section(
+    request: Request,
+    body: BriefReviseRequest,
+    user=Depends(_resolve_user_dep),
+) -> BriefReviseResponse:
+    """Surgically revise a section's markdown per an instruction (Brief "Edit").
+
+    A single LLM copy-edit — NOT deep research — so the section keeps its wording
+    and inline [n] citations and only the smallest necessary changes are made.
+    """
+    content = body.content or ""
+    instruction = (body.instruction or "").strip()
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="content is required")
+    if not instruction:
+        raise HTTPException(status_code=400, detail="instruction is required")
+    if len(instruction) > _MAX_QUESTION_CHARS:
+        raise HTTPException(status_code=400, detail="instruction is too long")
+    _validate_data_source(body.data_source)
+
+    model_key = (body.model or "").strip() or _resolve_configured_model(
+        body.data_source
+    )
+    if not model_key:
+        raise HTTPException(
+            status_code=503, detail="No chat/deep-research model is configured"
+        )
+
+    try:
+        llm_service = _get_llm_service()
+        revised, usage = await llm_service.revise_brief_section(
+            content=content,
+            instruction=instruction,
+            model_key=model_key,
+            voice_instructions=(body.voice_instructions or "").strip() or None,
+        )
+        _record_brief_usage(usage, instruction, body, user)
+        return BriefReviseResponse(content=revised)
+    except Exception:
+        logger.error("Brief section revise failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to revise section")

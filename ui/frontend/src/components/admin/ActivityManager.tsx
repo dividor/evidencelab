@@ -635,7 +635,19 @@ const ActivityContextPanel: React.FC<{ row: ActivityRow }> = ({ row }) => {
 // ---------------------------------------------------------------------------
 // Static filter options — user_email is dynamic (computed from data), type from known set
 const STATIC_FILTER_OPTIONS: Record<string, string[]> = {
-  type: ['search', 'heatmap', 'chat', 'assistant-basic', 'assistant-deep-research'],
+  type: [
+    'search',
+    'heatmap',
+    'chat',
+    'assistant-basic',
+    'assistant-deep-research',
+    'brief',
+    'highlight',
+    'evaluation',
+    'mcp-assistant',
+    'a2a-assistant',
+    'pipeline',
+  ],
 };
 
 interface FilterPopoverProps {

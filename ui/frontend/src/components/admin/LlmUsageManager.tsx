@@ -45,6 +45,12 @@ const ACTIVITY_TYPES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'chat', label: 'Chat' },
   { value: 'assistant-basic', label: 'Assistant (basic)' },
   { value: 'assistant-deep-research', label: 'Assistant (deep)' },
+  { value: 'brief', label: 'Brief' },
+  { value: 'highlight', label: 'Highlighting' },
+  { value: 'evaluation', label: 'Evaluations' },
+  { value: 'mcp-assistant', label: 'MCP assistant' },
+  { value: 'a2a-assistant', label: 'A2A assistant' },
+  { value: 'pipeline', label: 'Pipeline' },
 ];
 
 const NULL_CELL = '—';

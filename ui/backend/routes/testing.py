@@ -379,7 +379,12 @@ async def run_experiment_endpoint(
     experiment.status = EXPERIMENT_PENDING
     await session.commit()
     await session.refresh(experiment)
-    background_tasks.add_task(run_experiment, experiment.id)
+    # Capture the triggering admin's id here — the request context is gone by
+    # the time the background task runs — so the run's token usage is
+    # attributed to the user who actually clicked Run.
+    background_tasks.add_task(
+        run_experiment, experiment.id, triggered_by_user_id=admin.id
+    )
     return experiment
 
 

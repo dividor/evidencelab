@@ -247,6 +247,22 @@ def _normalize_model_key(value: Any) -> Optional[str]:
     return None
 
 
+def resolve_effective_model_key(model: Optional[str]) -> Optional[str]:
+    """Return the model key a ``get_llm(model=...)`` call actually uses.
+
+    Mirrors ``get_llm``'s own default resolution (explicit arg, then the
+    ``LLM_MODEL`` env var, then the configured default) so token-usage
+    recording can label calls with the real model even when the caller
+    passed ``model=None`` — without this, such usage rows carry no model
+    and can never be costed.
+    """
+    if model:
+        return model
+    return os.getenv("LLM_MODEL") or _normalize_model_key(
+        _load_llm_config().get("model")
+    )
+
+
 def _normalize_default_max_tokens(value: Any) -> int:
     if isinstance(value, int):
         return value

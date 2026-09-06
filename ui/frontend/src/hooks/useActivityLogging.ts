@@ -18,16 +18,26 @@ export interface ActivityUsage {
 
 /**
  * Return a stable anonymous session ID (persisted in localStorage).
- * Used to correlate activity records for non-authenticated visitors.
+ * Used to correlate activity records for non-authenticated visitors, and
+ * sent with LLM requests so the backend can record token usage
+ * server-side against the right owner.
+ *
+ * Never throws: browsers with blocked storage (some private modes) fall
+ * back to a per-call random ID so callers (search logging, highlighting,
+ * streams) are never broken by storage access errors.
  */
-function getSessionId(): string {
+export function getSessionId(): string {
   const KEY = 'evidencelab_session_id';
-  let id = localStorage.getItem(KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(KEY, id);
+  try {
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
   }
-  return id;
 }
 
 /**

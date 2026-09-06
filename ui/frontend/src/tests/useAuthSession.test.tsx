@@ -309,7 +309,27 @@ describe('useAuthState — inactivity timeout', () => {
 
     expect(axios.post).toHaveBeenCalledWith(
       expect.stringContaining('/auth/cookie-login/logout'),
+      undefined,
+      expect.objectContaining({ timeout: expect.any(Number) }),
     );
+    jest.useRealTimers();
+  });
+
+  it('expires the session immediately even when the logout request hangs', async () => {
+    jest.useFakeTimers();
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('true');
+
+    // Simulate a dead connection (e.g. after a VPN drop): the logout POST
+    // never settles. The session must still end.
+    (axios.post as jest.Mock).mockImplementation(() => new Promise(() => {}));
+
+    await act(async () => { jest.advanceTimersByTime(60 * 60 * 1000 + 100); });
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('false');
+    expect(screen.getByTestId('session-expired').textContent).toBe('true');
     jest.useRealTimers();
   });
 });
@@ -434,5 +454,42 @@ describe('useAuthState — login/logout session state', () => {
 
     expect(screen.getByTestId('session-expired').textContent).toBe('false');
     expect(screen.getByTestId('authenticated').textContent).toBe('false');
+  });
+
+  it('signs out immediately even when the logout request hangs', async () => {
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    await act(async () => {
+      await latestAuth.login({ username: 'test@test.com', password: 'pass1234' }); // pragma: allowlist secret
+    });
+    expect(screen.getByTestId('authenticated').textContent).toBe('true');
+
+    // Simulate a dead connection (e.g. after a VPN drop): the logout POST
+    // never settles. Clicking Sign Out must still sign the user out.
+    (axios.post as jest.Mock).mockImplementation(() => new Promise(() => {}));
+
+    act(() => {
+      latestAuth.logout();
+    });
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('false');
+    expect(screen.getByTestId('session-expired').textContent).toBe('false');
+  });
+
+  it('sends the logout request with a timeout so it cannot hang forever', async () => {
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    (axios.post as jest.Mock).mockClear();
+    await act(async () => {
+      await latestAuth.logout();
+    });
+
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/cookie-login/logout'),
+      undefined,
+      expect.objectContaining({ timeout: expect.any(Number) }),
+    );
   });
 });

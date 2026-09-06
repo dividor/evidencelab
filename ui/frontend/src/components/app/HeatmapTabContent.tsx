@@ -94,6 +94,20 @@ interface HeatmapTabContentProps {
   onSectionTypesChange: (next: string[]) => void;
   deduplicateEnabled: boolean;
   onDeduplicateToggle: (value: boolean) => void;
+  wideSearch: boolean;
+  onWideSearchToggle: (value: boolean) => void;
+  wideGroupSize: number;
+  onWideGroupSizeChange: (value: number) => void;
+  wideLimit: number;
+  onWideLimitChange: (value: number) => void;
+  groupByDocument: boolean;
+  onGroupByDocumentToggle: (value: boolean) => void;
+  summaryLimitResults: boolean;
+  onSummaryLimitResultsChange: (value: boolean) => void;
+  summaryMaxResults: number;
+  onSummaryMaxResultsChange: (value: number) => void;
+  summaryTemperature: number;
+  onSummaryTemperatureChange: (value: number) => void;
   fieldBoostEnabled: boolean;
   onFieldBoostToggle: (value: boolean) => void;
   fieldBoostFields: Record<string, number>;
@@ -336,9 +350,18 @@ const buildSearchParams = (options: {
   deduplicateEnabled: boolean;
   fieldBoostEnabled: boolean;
   fieldBoostFields: Record<string, number>;
+  wideSearch: boolean;
+  wideGroupSize: number;
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
+  if (options.wideSearch) {
+    // Cap chunks per document; the cell limit is the document cap so counts
+    // are not truncated to the Search tab's number-of-documents setting.
+    params.append('wide_search', 'true');
+    params.append('wide_group_size', options.wideGroupSize.toString());
+    params.append('wide_limit', HEATMAP_CELL_LIMIT);
+  }
   for (const [field, value] of options.filterEntries) {
     if (value) {
       params.append(field, value);
@@ -384,7 +407,9 @@ const buildSearchParams = (options: {
   return params;
 };
 
-const runTasksInBatches = async (tasks: Array<() => Promise<void>>) => {
+// Runs the cell requests a few at a time. Stops scheduling further batches
+// once `signal` is aborted (the user pressed the × on the Generate button).
+const runTasksInBatches = async (tasks: Array<() => Promise<void>>, signal?: AbortSignal) => {
   const delayBetweenBatchesMs = 500;
   const batchSize = 3;
   const sleep = (ms: number) => new Promise((resolve) => {
@@ -392,6 +417,7 @@ const runTasksInBatches = async (tasks: Array<() => Promise<void>>) => {
   });
 
   for (let i = 0; i < tasks.length; i += batchSize) {
+    if (signal?.aborted) return;
     const batch = tasks.slice(i, i + batchSize);
     await Promise.all(batch.map((task) => task()));
     if (i + batchSize < tasks.length) {
@@ -589,12 +615,14 @@ const HeatmapActionButtons = ({
   hasCompletedGridSearch,
   handleDownloadExcel,
   executeGridSearch,
+  stopGridSearch,
   gridLoading,
   hasGridSearchQuery,
 }: {
   hasCompletedGridSearch: boolean;
   handleDownloadExcel: () => void;
   executeGridSearch: () => void;
+  stopGridSearch: () => void;
   gridLoading: boolean;
   hasGridSearchQuery: boolean;
 }) => (
@@ -615,13 +643,26 @@ const HeatmapActionButtons = ({
       </span>
       Download Heatmap
     </button>
-    <button
-      className="search-button heatmap-search-button"
-      onClick={executeGridSearch}
-      disabled={gridLoading || !hasGridSearchQuery}
-    >
-      <HeatmapSearchButtonContent gridLoading={gridLoading} />
-    </button>
+    <div className={`heatmap-search-group${gridLoading ? ' heatmap-search-group-generating' : ''}`}>
+      <button
+        className="search-button heatmap-search-button"
+        onClick={executeGridSearch}
+        disabled={gridLoading || !hasGridSearchQuery}
+      >
+        <HeatmapSearchButtonContent gridLoading={gridLoading} />
+      </button>
+      {gridLoading && (
+        <button
+          type="button"
+          className="heatmap-search-stop"
+          onClick={stopGridSearch}
+          aria-label="Stop generating"
+          title="Stop generating the heatmap"
+        >
+          ×
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -1050,7 +1091,10 @@ const getTranslatedSemanticMatches = async (
       translatedText,
       queryText,
       SEMANTIC_HIGHLIGHT_THRESHOLD,
-      semanticHighlightModelConfig
+      semanticHighlightModelConfig,
+      // Heatmap highlighting is not tied to the results-tab search — detach
+      // from the search usage context so tokens record standalone.
+      null
     );
   } catch (error) {
     console.error('Heatmap translated highlight failed', error);
@@ -1188,6 +1232,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   onSectionTypesChange,
   deduplicateEnabled,
   onDeduplicateToggle,
+  wideSearch,
+  onWideSearchToggle,
+  wideGroupSize,
+  onWideGroupSizeChange,
+  wideLimit,
+  onWideLimitChange,
+  groupByDocument,
+  onGroupByDocumentToggle,
+  summaryLimitResults,
+  onSummaryLimitResultsChange,
+  summaryMaxResults,
+  onSummaryMaxResultsChange,
+  summaryTemperature,
+  onSummaryTemperatureChange,
   fieldBoostEnabled,
   onFieldBoostToggle,
   fieldBoostFields,
@@ -1242,6 +1300,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   // --- Heatmap rating & activity logging ---
   const { isAuthenticated } = useAuth();
   const heatmapIdRef = useRef<string>('');
+  const gridAbortRef = useRef<AbortController | null>(null);
   const heatmapDurationRef = useRef<number>(0);
 
   // Heatmap filters are now completely isolated from global filters
@@ -2327,6 +2386,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     rowQueries, gridQuery, heatmapSelectedFilters,
   ]);
 
+  // Abort the in-flight grid search: cells already loaded stay, the rest are
+  // left unloaded, and the Generate button returns to its idle state.
+  const stopGridSearch = useCallback(() => {
+    gridAbortRef.current?.abort();
+  }, []);
+
+  // Abort any in-flight grid search when the tab unmounts.
+  useEffect(() => () => gridAbortRef.current?.abort(), []);
+
   const executeGridSearch = useCallback(async () => {
     if (filteredColumnValues.length === 0) {
       setGridResults({});
@@ -2341,6 +2409,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridResults({});
     setCappedCells(new Set());
     userAdjustedCutoffRef.current = false;
+    const controller = new AbortController();
+    gridAbortRef.current = controller;
     const tasks: Array<() => Promise<void>> = [];
     const accumulatedResults: RawCellResults = {};
     let failedRequests = 0;
@@ -2382,6 +2452,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           deduplicateEnabled,
           fieldBoostEnabled,
           fieldBoostFields,
+          wideSearch,
+          wideGroupSize,
           dataSource,
         });
 
@@ -2392,8 +2464,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
             const endpoint = useDocSearch ? 'docsearch' : 'search';
             if (useDocSearch) {
               params.delete('limit');  // no cap for document counts
+              // Filter-only listing has no relevance ranking, so wide search does not apply
+              params.delete('wide_search');
+              params.delete('wide_group_size');
+              params.delete('wide_limit');
             }
-            const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`);
+            const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`, {
+              signal: controller.signal,
+            });
             const data = response.data as SearchResponse;
             accumulatedResults[cellKey] = data.results;
             setGridResults((prev) => ({ ...prev, [cellKey]: data.results }));
@@ -2401,6 +2479,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               setCappedCells((prev) => new Set(prev).add(cellKey));
             }
           } catch (error) {
+            // Cancelled by the user's Stop: leave the cell unloaded, not failed.
+            if (axios.isCancel(error)) return;
             failedRequests += 1;
             accumulatedResults[cellKey] = [];
             setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
@@ -2410,8 +2490,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     });
 
     try {
-      await runTasksInBatches(tasks);
-      if (failedRequests > 0) {
+      await runTasksInBatches(tasks, controller.signal);
+      if (!controller.signal.aborted && failedRequests > 0) {
         setGridError('Some grid cells failed to load.');
       }
     } catch (error) {
@@ -2427,6 +2507,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     columnDimension,
     buildCellQuery,
     dataSource,
+    fieldBoostEnabled,
+    fieldBoostFields,
     heatmapSelectedFilters,
     filteredColumnValues,
     filteredRowValues,
@@ -2443,6 +2525,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     searchModel,
     sectionTypes,
     updateHeatmapURL,
+    wideSearch,
+    wideGroupSize,
     logHeatmapActivity,
   ]);
 
@@ -2600,7 +2684,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           text,
           queryText,
           SEMANTIC_HIGHLIGHT_THRESHOLD,
-          semanticHighlightModelConfig
+          semanticHighlightModelConfig,
+          // Heatmap highlighting is not tied to the results-tab search.
+          null
         );
         const rowKey = rowDimension === 'queries'
           ? `row-${activeCell.rowIndex}`
@@ -2794,6 +2880,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     onSectionTypesChange,
     deduplicateEnabled,
     onDeduplicateToggle,
+    wideSearch,
+    onWideSearchToggle,
+    wideGroupSize,
+    onWideGroupSizeChange,
+    wideLimit,
+    onWideLimitChange,
+    groupByDocument,
+    onGroupByDocumentToggle,
+    summaryLimitResults,
+    onSummaryLimitResultsChange,
+    summaryMaxResults,
+    onSummaryMaxResultsChange,
+    summaryTemperature,
+    onSummaryTemperatureChange,
     fieldBoostEnabled,
     onFieldBoostToggle,
     fieldBoostFields,
@@ -2888,6 +2988,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   hasCompletedGridSearch={hasCompletedGridSearch}
                   handleDownloadExcel={handleDownloadExcel}
                   executeGridSearch={executeGridSearch}
+                  stopGridSearch={stopGridSearch}
                   gridLoading={gridLoading}
                   hasGridSearchQuery={hasGridSearchQuery}
                 />

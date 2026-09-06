@@ -246,6 +246,194 @@ class SavedResearch(Base):
     )
 
 
+class VoiceProfile(Base):
+    """User-owned voice & tone profile applied when brief sections are written."""
+
+    __tablename__ = "voice_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class BriefTemplate(Base):
+    """User-owned brief template: a saved heading structure (optionally with text)."""
+
+    __tablename__ = "brief_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # List of {"title": str, "sub": bool, "text": str | None}
+    headings: Mapped[list] = mapped_column(JSONB, nullable=False)
+    with_text: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class Brief(Base):
+    """User-owned evidence brief (sections, references and metadata)."""
+
+    __tablename__ = "briefs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    voice_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("voice_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Full SavedBrief payload from the frontend (sections, source counts, ...)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    shares: Mapped[list["BriefShare"]] = relationship(
+        "BriefShare", back_populates="brief", cascade="all, delete-orphan"
+    )
+
+
+class BriefComment(Base):
+    """A comment on a brief, optionally anchored to a quoted passage.
+
+    Threads are one level deep: a reply carries ``parent_id`` pointing at the
+    comment that opened the thread. Anchors store the quoted text (plus a
+    little surrounding context) rather than character offsets, so a comment
+    survives the section being re-researched and re-flowed.
+    """
+
+    __tablename__ = "brief_comments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    brief_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Replies point at the comment that started the thread (one level deep).
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brief_comments.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    # Which section the anchor lives in; null for a whole-brief comment.
+    section_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # The highlighted text, with a little context either side so it can be
+    # re-located after the surrounding prose changes.
+    quote: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quote_prefix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quote_suffix: Mapped[str | None] = mapped_column(Text, nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    resolved_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class BriefShare(Base):
+    """Viewer-only grant on a brief for a user or a group."""
+
+    __tablename__ = "brief_shares"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    brief_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    shared_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_groups.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    brief: Mapped["Brief"] = relationship("Brief", back_populates="shares")
+
+
 class ConversationThread(Base):
     """Research assistant conversation thread."""
 

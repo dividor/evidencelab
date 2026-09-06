@@ -1,4 +1,5 @@
 import { API_KEY } from '../config';
+import { getSessionId } from '../hooks/useActivityLogging';
 import { SearchResult, SummaryModelConfig } from '../types/api';
 
 export interface AiSummaryUsage {
@@ -9,6 +10,8 @@ export interface AiSummaryUsage {
 
 interface AiSummaryDoneData {
   langsmith_trace_url?: string;
+  // Informational only: the backend records usage server-side against the
+  // search's activity row when the request carried a searchId.
   usage?: AiSummaryUsage;
 }
 
@@ -25,6 +28,14 @@ interface AiSummaryStreamOptions {
   query: string;
   results: SearchResult[];
   summaryModelConfig?: SummaryModelConfig | null;
+  // Sampling temperature chosen in the AI Summary settings; overrides the
+  // model combo's configured temperature on the server.
+  temperature?: number | null;
+  // Activity row (search_id) the backend records this summary's token usage
+  // onto, server-side (drill-downs reuse the parent search's id and
+  // accumulate onto the same row). The anonymous session id is resolved
+  // internally.
+  searchId?: string | null;
   handlers: AiSummaryStreamHandlers;
   signal?: AbortSignal;
 }
@@ -145,6 +156,8 @@ export const streamAiSummary = async ({
   query,
   results,
   summaryModelConfig,
+  temperature,
+  searchId,
   handlers,
   signal,
 }: AiSummaryStreamOptions): Promise<void> => {
@@ -157,6 +170,9 @@ export const streamAiSummary = async ({
       max_results: results.length,
       summary_model: summaryModelConfig?.model || undefined,
       summary_model_config: summaryModelConfig || undefined,
+      temperature: temperature ?? undefined,
+      search_id: searchId || undefined,
+      session_id: getSessionId(),
     }),
     signal,
   });

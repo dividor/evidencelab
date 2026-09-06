@@ -34,6 +34,8 @@ Click any cell in the heatmap to drill down into the underlying data. You can:
 
 ### Tips
 
+- **Wide Search** applies here too: with it on, each cell counts at most *Max results per document* paragraphs from any one document, so the **Paragraphs** metric reflects breadth rather than one long report. Document counts are not capped by the *Number of documents* setting. Cell searches take longer with Wide Search on.
+
 - Start with broad attribute combinations to get an overview, then add search queries to focus on specific topics.
 - Use Heatmapper alongside [Search](/docs/using-evidence-lab/search.md) — if you spot an interesting pattern in the heatmap, run a search to explore the underlying evidence.
 - Export data for inclusion in presentations or reports.

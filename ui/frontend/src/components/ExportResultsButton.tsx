@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { saveAs } from 'file-saver';
 import API_BASE_URL from '../config';
 import type { SearchResult } from '../types/api';
+import type { GroupSortBy } from '../utils/resultGrouping';
 import {
   buildExportFilename,
   exportResultsToDocxBlob,
@@ -21,6 +22,10 @@ interface ExportResultsButtonProps {
   dataSource?: string;
   /** Optional className so parents can position the button. */
   className?: string;
+  /** Group-by-document mode: add the Document List table under References. */
+  groupByDocument?: boolean;
+  /** Order of the on-screen document rows, mirrored in the Document List. */
+  groupSortBy?: GroupSortBy;
 }
 
 /**
@@ -37,6 +42,8 @@ export const ExportResultsButton: React.FC<ExportResultsButtonProps> = ({
   aiSummaryLoading,
   dataSource,
   className,
+  groupByDocument,
+  groupSortBy,
 }) => {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -61,6 +68,7 @@ export const ExportResultsButton: React.FC<ExportResultsButtonProps> = ({
         // Same API base the on-screen cards use to load table/figure
         // screenshots, so the export embeds those exact images.
         fileBaseUrl: API_BASE_URL,
+        documentList: groupByDocument ? { sortBy: groupSortBy ?? 'relevance' } : undefined,
       });
       saveAs(blob, buildExportFilename(query, new Date()));
     } catch (err) {
@@ -72,7 +80,7 @@ export const ExportResultsButton: React.FC<ExportResultsButtonProps> = ({
     } finally {
       setBusy(false);
     }
-  }, [busy, results, query, aiSummary, aiSummaryLoading, dataSource]);
+  }, [busy, results, query, aiSummary, aiSummaryLoading, dataSource, groupByDocument, groupSortBy]);
 
   const disabled = busy || results.length === 0 || !!aiSummaryLoading;
   const titleText = (() => {

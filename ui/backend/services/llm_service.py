@@ -2,6 +2,7 @@
 LLM Service for generating AI summaries using LangChain
 """
 
+import html
 import json
 import logging
 import os
@@ -120,6 +121,8 @@ _system_template = jinja_env.get_template("ai_summary_system.j2")
 _user_template = jinja_env.get_template("ai_summary_user.j2")
 _brief_outline_system_template = jinja_env.get_template("brief_outline_system.j2")
 _brief_outline_user_template = jinja_env.get_template("brief_outline_user.j2")
+_brief_revise_system_template = jinja_env.get_template("brief_revise_system.j2")
+_brief_revise_user_template = jinja_env.get_template("brief_revise_user.j2")
 
 
 def render_prompt(
@@ -438,7 +441,7 @@ async def generate_brief_outline(
     sources: Optional[List[Dict[str, Any]]] = None,
     instructions: str | None = None,
     num_headings: int | None = None,
-) -> tuple[str, List[Dict[str, Any]]]:
+) -> tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
     """Generate research-brief section headings for a topic.
 
     ``question`` is the brief topic. ``instructions`` is optional author
@@ -448,9 +451,10 @@ async def generate_brief_outline(
     grounded in the themes actually present in the library. Prompts live in
     ``prompts/brief_outline_*.j2``.
 
-    Returns ``(title, headings)``; ``title`` falls back to the topic when the
-    model does not supply one (callers typically force the title to the topic).
-    Each heading is ``{"title": str, "level": 1 | 2}``.
+    Returns ``(title, headings, usage)``; ``title`` falls back to the topic
+    when the model does not supply one (callers typically force the title to
+    the topic). Each heading is ``{"title": str, "level": 1 | 2}``; ``usage``
+    is the token-usage payload from ``summarize_usage_metadata``.
     """
     system_prompt = _brief_outline_system_template.render()
     user_prompt = _brief_outline_user_template.render(
@@ -468,10 +472,174 @@ async def generate_brief_outline(
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt),
     ]
-    response = await llm.ainvoke(messages)  # type: ignore[arg-type]
+    usage_handler = UsageMetadataCallbackHandler()
+    response = await llm.ainvoke(
+        messages, config={"callbacks": [usage_handler]}  # type: ignore[arg-type]
+    )
     raw = str(response.content).strip()
     logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
-    return parse_brief_outline(raw, fallback_title=question.strip())
+    title, headings = parse_brief_outline(raw, fallback_title=question.strip())
+    return title, headings, summarize_usage_metadata(usage_handler, model_key)
+
+
+def _strip_section_wrapper(text: str) -> str:
+    """Drop an accidental ```markdown fence or matching triple-quote wrapper the
+    model sometimes adds around the returned section."""
+    t = text.strip()
+    if t.startswith("```"):
+        # Remove leading ```lang line and a trailing ``` if present.
+        lines = t.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        t = "\n".join(lines).strip()
+    if t.startswith('"""') and t.endswith('"""') and len(t) >= 6:
+        t = t[3:-3].strip()
+    return t
+
+
+async def revise_brief_section(
+    content: str,
+    instruction: str,
+    model_key: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    voice_instructions: str | None = None,
+) -> tuple[str, Dict[str, Any]]:
+    """Surgically revise one brief section's markdown per an instruction.
+
+    A single LLM call — NOT deep research — so the existing wording and inline
+    ``[n]`` citation markers are preserved and only the smallest necessary
+    changes are made. Returns ``(revised_markdown, usage)`` where ``usage`` is
+    the token-usage payload from ``summarize_usage_metadata``.
+    Prompts live in ``prompts/brief_revise_*.j2``.
+    """
+    # The shared prompt Jinja env autoescapes (Bandit requires it), but these
+    # templates emit a plain-text LLM prompt, not HTML — escaping would turn
+    # quotes into entities (&#34;) that the model then echoes back into the
+    # revised section verbatim. The user template disables autoescape in-place
+    # ({% autoescape false %}), so pass the values as plain strings; unescape
+    # entities already baked into stored content by renders predating this fix.
+    system_prompt = _brief_revise_system_template.render()
+    user_prompt = _brief_revise_user_template.render(
+        instruction=html.unescape(instruction.strip()),
+        content=html.unescape(content),
+        voice_instructions=(
+            html.unescape(voice_instructions.strip()) if voice_instructions else None
+        ),
+    )
+    llm = get_llm(
+        model=model_key,
+        temperature=temperature if temperature is not None else 0.2,
+        max_tokens=max_tokens or 3000,
+    )
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+    usage_handler = UsageMetadataCallbackHandler()
+    response = await llm.ainvoke(
+        messages, config={"callbacks": [usage_handler]}  # type: ignore[arg-type]
+    )
+    # Some models HTML-escape quotes/ampersands in their output (e.g. &#34;),
+    # which would render literally in the section. Decode entities back to plain
+    # text so the stored markdown is clean.
+    revised = html.unescape(_strip_section_wrapper(str(response.content)))
+    return revised, summarize_usage_metadata(usage_handler, model_key)
+
+
+# GoogleTranslator rejects requests of 5000+ characters outright, so long
+# texts (AI summaries easily exceed this; search-result chunks never do) must
+# be translated in pieces. The margin below 5000 absorbs marker inflation and
+# keeps every request safely inside the cap.
+_TRANSLATE_CHAR_LIMIT = 4500
+
+
+def _pack_units(units: List[str], limit: int, joiner: str) -> List[str]:
+    """Greedily pack string units into chunks of at most ``limit`` characters.
+
+    A single unit longer than ``limit`` becomes its own (oversized) chunk for
+    the caller to split further.
+
+    Args:
+        units: Ordered pieces of text to pack.
+        limit: Maximum chunk length in characters.
+        joiner: String placed between units within a chunk.
+
+    Returns:
+        List of packed chunks, in order.
+    """
+    chunks: List[str] = []
+    current = ""
+    for unit in units:
+        candidate = f"{current}{joiner}{unit}" if current else unit
+        if not current or len(candidate) <= limit:
+            current = candidate
+        else:
+            chunks.append(current)
+            current = unit
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _translate_oversized_paragraph(translator: GoogleTranslator, chunk: str) -> str:
+    """Translate a single paragraph that alone exceeds the request cap.
+
+    Splits on sentence ends first; a pathological single sentence is packed on
+    word boundaries as a last resort.
+
+    Args:
+        translator: Configured GoogleTranslator instance.
+        chunk: Protected paragraph text longer than the request cap.
+
+    Returns:
+        The translated paragraph.
+    """
+    out: List[str] = []
+    for sentence_chunk in _pack_units(
+        re.split(r"(?<=[.!?])\s+", chunk), _TRANSLATE_CHAR_LIMIT, " "
+    ):
+        if len(sentence_chunk) > _TRANSLATE_CHAR_LIMIT:
+            word_chunks = _pack_units(
+                sentence_chunk.split(" "), _TRANSLATE_CHAR_LIMIT, " "
+            )
+            out.extend(translator.translate(w) or w for w in word_chunks)
+        else:
+            out.append(translator.translate(sentence_chunk) or sentence_chunk)
+    return " ".join(out)
+
+
+def _translate_protected(translator: GoogleTranslator, protected: str) -> str:
+    """Translate protected text, keeping every request under the service cap.
+
+    Short texts go through in one request (the common search-result case).
+    Longer texts (AI summaries) are split at paragraph markers — natural
+    translation units — and each piece is translated separately, then
+    re-joined with the paragraph marker so the restore step behaves exactly
+    as in the single-request case.
+
+    Args:
+        translator: Configured GoogleTranslator instance.
+        protected: Text with references and newlines already marker-protected.
+
+    Returns:
+        The translated text, markers preserved.
+    """
+    if len(protected) <= _TRANSLATE_CHAR_LIMIT:
+        return translator.translate(protected)
+    para_chunks = _pack_units(
+        protected.split(" __PARA__ "), _TRANSLATE_CHAR_LIMIT, " __PARA__ "
+    )
+    return " __PARA__ ".join(
+        (
+            _translate_oversized_paragraph(translator, chunk)
+            if len(chunk) > _TRANSLATE_CHAR_LIMIT
+            else translator.translate(chunk) or chunk
+        )
+        for chunk in para_chunks
+    )
 
 
 async def translate_text(
@@ -555,8 +723,11 @@ async def translate_text(
 
         # 3. Perform translation
         # deep-translator is synchronous, suitable for direct call here.
+        # Long texts (e.g. AI summaries) are split into chunks below the
+        # service's per-request character cap — a single oversized request
+        # is rejected outright with NotValidLength.
         translator = GoogleTranslator(source=source_lang_code, target=target_lang_code)
-        translated_text = translator.translate(protected_text)
+        translated_text = _translate_protected(translator, protected_text)
 
         # 4. Restore references: __REF_64__ -> [64]
         if translated_text:
