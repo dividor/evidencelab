@@ -118,7 +118,7 @@ pytest-playwright==0.9.0
 playwright==1.58.0
 types-requests==2.32.4.20260107
 types-beautifulsoup4==4.12.0.7
-types-html5lib==1.1.11.20251117
+types-html5lib==1.1.11.20260518
 types-openpyxl==3.1.5.20260316
 watchdog==4.0.0
 requests-toolbelt
