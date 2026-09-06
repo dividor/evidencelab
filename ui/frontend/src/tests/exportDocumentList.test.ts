@@ -12,10 +12,12 @@ const BRAVO = 'Bravo Review';
 const ALPHA_PDF = 'https://docs.example.org/alpha.pdf';
 const DOC_LIST = 'Document List';
 
+const CHARLIE = 'Charlie Notes';
 const RESULTS = [
   result('a1', 'A', ALPHA, 0.5, '2019', { pdf_url: ALPHA_PDF }),
   result('a2', 'A', ALPHA, 0.5, '2019', { pdf_url: ALPHA_PDF }),
   result('b1', 'B', BRAVO, 0.9, '2024'),
+  result('c1', 'C', CHARLIE, 0.2, '2021'),
 ];
 const SUMMARY = 'Alpha says this [1] and again [2]. Bravo adds [3].';
 
@@ -35,15 +37,24 @@ describe('Word export Document List', () => {
     expect(xml).not.toContain(DOC_LIST);
   });
 
-  test('lists each document once with source, year, citation count and an online link, in on-screen order', async () => {
+  test('Document List has only cited documents, in on-screen order, with source, year, citation count and an online link', async () => {
     const { xml, rels } = await buildXml({ query: 'q', aiSummary: SUMMARY, results: RESULTS, documentList: { sortBy: 'relevance' } });
     expect(xml).toContain(DOC_LIST);
     const cells = cellTexts(xml);
     expect(cells.slice(0, 4)).toEqual(['Document', 'Source', 'Year', 'Citations']);
-    // Alpha: two excerpts at 0.5 (cumulative 1.0) outranks Bravo's single 0.9
+    // Alpha: two excerpts at 0.5 (cumulative 1.0) outranks Bravo's single 0.9; Charlie is never cited
     expect(cells.slice(4, 12)).toEqual([ALPHA, 'WFP', '2019', '2', BRAVO, 'WFP', '2024', '1']);
+    expect(cells[12]).toBe('Document');
     expect(rels).toContain(`Target="${ALPHA_PDF}"`);
     expect(rels).toContain('Target="https://lab.example.org/document/B"');
+  });
+
+  test('Raw Search Results lists every document with its excerpt count', async () => {
+    const { xml } = await buildXml({ query: 'q', aiSummary: SUMMARY, results: RESULTS, documentList: { sortBy: 'relevance' } });
+    expect(xml).toContain('Raw Search Results');
+    const cells = cellTexts(xml);
+    expect(cells.slice(12, 16)).toEqual(['Document', 'Source', 'Year', 'Excerpts']);
+    expect(cells.slice(16, 28)).toEqual([ALPHA, 'WFP', '2019', '2', BRAVO, 'WFP', '2024', '1', CHARLIE, 'WFP', '2021', '1']);
   });
 
   test('follows the publication-date order when asked', async () => {
@@ -53,10 +64,10 @@ describe('Word export Document List', () => {
     expect(cells[8]).toBe(ALPHA);
   });
 
-  test('without an AI summary it still lists the documents under a References heading with zero citations', async () => {
+  test('without an AI summary there is no Document List, but Raw Search Results still lists everything', async () => {
     const { xml } = await buildXml({ query: 'q', results: RESULTS, documentList: { sortBy: 'relevance' } });
-    expect(xml).toContain('References');
-    expect(xml).toContain(DOC_LIST);
-    expect(cellTexts(xml).slice(4, 8)).toEqual([ALPHA, 'WFP', '2019', '0']);
+    expect(xml).not.toContain(DOC_LIST);
+    expect(xml).toContain('Raw Search Results');
+    expect(cellTexts(xml).slice(4, 8)).toEqual([ALPHA, 'WFP', '2019', '2']);
   });
 });

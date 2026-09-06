@@ -43,7 +43,7 @@ import {
 } from 'docx';
 import type { ChunkElement, SearchResult } from '../types/api';
 import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
-import type { GroupSortBy } from './resultGrouping';
+import type { DocumentResultGroup, GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
   isTextRedundantWithTable,
@@ -103,9 +103,10 @@ export interface ExportOptions {
    *    source (title, page, PDF link) is placed as a footnote on the same
    *    page. The end References/excerpt sections are still included. */
   citationStyle?: 'links' | 'footnotes';
-  /** Group-by-document mode: add a "Document List" table under References
-   *  (title linked to the document online, source, year, citation count),
-   *  in the same order as the on-screen rows. */
+  /** Group-by-document mode: add a "Document List" table of the cited
+   *  documents under References (title linked to the document online,
+   *  source, year, citation count) and a "Raw Search Results" section listing
+   *  every document with its excerpt count, in the on-screen order. */
   documentList?: { sortBy: GroupSortBy };
 }
 
@@ -883,50 +884,29 @@ const tableCell = (children: InlineChild[], widthPct: number): TableCell =>
     children: [new Paragraph({ spacing: { before: 40, after: 40 }, children })],
   });
 
-/** "Document List" table for group-by-document exports: one row per document
- *  in the on-screen order, the title linked to the document online, its
- *  source and year, and how many times it is cited in the AI summary. Placed
- *  under References; when there is no summary (so no References section yet),
- *  the References heading is added here. */
-const buildDocumentListParagraphs = (
-  summary: string,
-  results: SearchResult[],
+const heading2 = (text: string): Paragraph =>
+  new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    children: [new TextRun({ text })],
+    spacing: { before: 240, after: 120 },
+  });
+
+/** One table row per document: title linked to the document online, source,
+ *  year, and a count supplied by the caller. */
+const buildDocumentTable = (
+  groups: DocumentResultGroup[],
+  countLabel: string,
+  countFor: (group: DocumentResultGroup) => number,
   siteOrigin: string,
   dataSource: string | undefined,
-  sortBy: GroupSortBy,
-): (Paragraph | Table)[] => {
-  const groups = sortDocumentGroups(groupResultsByDocument(results), sortBy);
-  if (groups.length === 0) return [];
-  const citationCounts = new Map<string, number>();
-  for (const cited of buildGroupedReferences(summary, results)) {
-    for (const { result } of cited.refs) {
-      citationCounts.set(result.doc_id, (citationCounts.get(result.doc_id) ?? 0) + 1);
-    }
-  }
-  const out: (Paragraph | Table)[] = [];
-  if (!summary.trim()) {
-    out.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        children: [new TextRun({ text: 'References' })],
-        spacing: { before: 240, after: 120 },
-      }),
-    );
-  }
-  out.push(
-    new Paragraph({
-      heading: HeadingLevel.HEADING_3,
-      children: [new TextRun({ text: 'Document List' })],
-      spacing: { before: 200, after: 100 },
-    }),
-  );
+): Table => {
   const header = new TableRow({
     tableHeader: true,
     children: [
       tableCell([new TextRun({ text: 'Document', bold: true })], 55),
       tableCell([new TextRun({ text: 'Source', bold: true })], 20),
       tableCell([new TextRun({ text: 'Year', bold: true })], 10),
-      tableCell([new TextRun({ text: 'Citations', bold: true })], 15),
+      tableCell([new TextRun({ text: countLabel, bold: true })], 15),
     ],
   });
   const rows = groups.map((group) => {
@@ -947,11 +927,50 @@ const buildDocumentListParagraphs = (
         ),
         tableCell([new TextRun({ text: source })], 20),
         tableCell([new TextRun({ text: year })], 10),
-        tableCell([new TextRun({ text: String(citationCounts.get(group.docId) ?? 0) })], 15),
+        tableCell([new TextRun({ text: String(countFor(group)) })], 15),
       ],
     });
   });
-  out.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] }));
+  return new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [header, ...rows] });
+};
+
+/** Group-by-document exports: under References, a "Document List" of the
+ *  documents the AI summary cites (title linked to the document online,
+ *  source, year, citation count), then a "Raw Search Results" section listing
+ *  every document with its number of excerpts. Both follow the on-screen
+ *  order. Documents with no citations are left out of the Document List. */
+const buildDocumentListParagraphs = (
+  summary: string,
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  sortBy: GroupSortBy,
+): (Paragraph | Table)[] => {
+  const groups = sortDocumentGroups(groupResultsByDocument(results), sortBy);
+  if (groups.length === 0) return [];
+  const citationCounts = new Map<string, number>();
+  for (const cited of buildGroupedReferences(summary, results)) {
+    for (const { result } of cited.refs) {
+      citationCounts.set(result.doc_id, (citationCounts.get(result.doc_id) ?? 0) + 1);
+    }
+  }
+  const citations = (group: DocumentResultGroup) => citationCounts.get(group.docId) ?? 0;
+  const cited = groups.filter((group) => citations(group) > 0);
+  const out: (Paragraph | Table)[] = [];
+  if (cited.length > 0) {
+    out.push(
+      new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        children: [new TextRun({ text: 'Document List' })],
+        spacing: { before: 200, after: 100 },
+      }),
+      buildDocumentTable(cited, 'Citations', citations, siteOrigin, dataSource),
+    );
+  }
+  out.push(
+    heading2('Raw Search Results'),
+    buildDocumentTable(groups, 'Excerpts', (group) => group.results.length, siteOrigin, dataSource),
+  );
   return out;
 };
 
