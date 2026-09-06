@@ -426,7 +426,17 @@ jobs:
 
       - name: Run integration tests
         run: |
-          docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s"
+          docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration -v -s --ignore=tests/integration/test_translation_integration.py"
+
+      # The translation tests call Google's free translate endpoint, which
+      # intermittently answers CI runners with an error page for hours at a
+      # time. They still run on every PR and report their result here, but a
+      # third-party outage must not block a merge, so this step cannot fail
+      # the job. A failure shows as a warning annotation on the run.
+      - name: Run translation integration tests (external service, non-blocking)
+        continue-on-error: true
+        run: |
+          docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration/test_translation_integration.py -v -s"
 
   ui-tests:
     runs-on: ubuntu-latest

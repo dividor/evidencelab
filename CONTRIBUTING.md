@@ -327,6 +327,8 @@ API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 \
 # Run all tests (pipeline container)
 docker compose exec pipeline pytest -v
 ```
+> The two Google Translate integration tests (`tests/integration/test_translation_integration.py`) call a free third-party endpoint that intermittently refuses CI runners. CI runs them in a separate, non-blocking step: they still execute and report on every PR, but their failure shows as a warning and does not block a merge. Run them locally against the real service when touching translation.
+
 
 For additional test details, see `tests/README.md`.
 
