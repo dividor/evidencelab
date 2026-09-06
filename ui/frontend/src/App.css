@@ -5137,6 +5137,20 @@ li.ai-fact-active::before {
   align-items: center;
   gap: var(--spacing-md);
 }
+.results-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-heading);
+  font-size: 0.8125rem;
+  color: var(--gray-700);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.results-group-toggle input {
+  margin: 0;
+  cursor: pointer;
+}
 .results-sort {
   display: inline-flex;
   align-items: center;

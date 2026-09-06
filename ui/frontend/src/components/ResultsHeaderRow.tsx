@@ -20,6 +20,8 @@ interface ResultsHeaderRowProps {
   showFixtureBadge?: boolean;
   /** Group-by-document mode: show the document sort control. */
   groupByDocument?: boolean;
+  /** Mirrors the Search Settings checkbox; shown whenever there are results. */
+  onGroupByDocumentToggle?: (value: boolean) => void;
   groupSortBy?: GroupSortBy;
   onGroupSortByChange?: (value: GroupSortBy) => void;
   /** Whether every document row is expanded; the button offers the opposite. */
@@ -43,6 +45,7 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
   dataSource,
   showFixtureBadge,
   groupByDocument,
+  onGroupByDocumentToggle,
   groupSortBy = 'relevance',
   onGroupSortByChange,
   allGroupsExpanded = false,
@@ -60,6 +63,16 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
         ) : null}
       </h3>
       <div className="search-results-heading-actions">
+        {onGroupByDocumentToggle && (
+          <label className="results-group-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(groupByDocument)}
+              onChange={(event) => onGroupByDocumentToggle(event.target.checked)}
+            />
+            <span>Group by document</span>
+          </label>
+        )}
         {groupByDocument && (
           <button
             type="button"

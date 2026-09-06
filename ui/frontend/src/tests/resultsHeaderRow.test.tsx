@@ -11,13 +11,36 @@ const RESULTS: SearchResult[] = [
   { chunk_id: 'c1', doc_id: 'd1', text: 't', page_num: 1, headings: [], score: 0.9, title: 'Doc', metadata: {} },
 ];
 const SORT_LABEL = 'Sort documents by';
+const EXPORT_BUTTON = 'Export to Word';
+
+describe('ResultsHeaderRow group-by-document checkbox', () => {
+  const CHECKBOX = 'Group by document';
+
+  test('is shown in both modes, mirrors the setting, and reports a change', () => {
+    const onToggle = jest.fn();
+    const view = render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument={false} onGroupByDocumentToggle={onToggle} />);
+    const box = screen.getByRole('checkbox', { name: CHECKBOX });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(onToggle).toHaveBeenCalledWith(true);
+    view.rerender(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument onGroupByDocumentToggle={onToggle} />);
+    expect(screen.getByRole('checkbox', { name: CHECKBOX })).toBeChecked();
+  });
+
+  test('sits left of the export button', () => {
+    render(<ResultsHeaderRow results={RESULTS} query="q" groupByDocument onGroupByDocumentToggle={jest.fn()} />);
+    const box = screen.getByRole('checkbox', { name: CHECKBOX });
+    const exportButton = screen.getByRole('button', { name: EXPORT_BUTTON });
+    expect(box.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
 
 describe('ResultsHeaderRow sort control', () => {
   test('is absent in the flat list', () => {
     render(<ResultsHeaderRow results={RESULTS} query="q" />);
     expect(screen.queryByLabelText(SORT_LABEL)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Expand all' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Export to Word' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: EXPORT_BUTTON })).toBeInTheDocument();
   });
 
   test('in group-by-document mode an expand-all button offers the opposite of the current state', () => {
@@ -36,7 +59,7 @@ describe('ResultsHeaderRow sort control', () => {
     const select = screen.getByLabelText(SORT_LABEL) as HTMLSelectElement;
     expect(select.value).toBe('relevance');
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Relevance', 'Publication Date']);
-    const exportButton = screen.getByRole('button', { name: 'Export to Word' });
+    const exportButton = screen.getByRole('button', { name: EXPORT_BUTTON });
     expect(select.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.change(select, { target: { value: 'date' } });
     expect(onChange).toHaveBeenCalledWith('date');

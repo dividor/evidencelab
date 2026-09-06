@@ -133,6 +133,18 @@ describe('SearchTabContent grouped by document', () => {
     expect(screen.queryByLabelText('Sort documents by')).toBeNull();
   });
 
+  test('the header checkbox mirrors the setting in both modes and toggles it', () => {
+    const onToggle = jest.fn();
+    const flat = render(<SearchTabContent {...baseProps} groupByDocument={false} onGroupByDocumentToggle={onToggle} results={twoDocuments()} />);
+    const box = screen.getByRole('checkbox', { name: 'Group by document' });
+    expect(box).not.toBeChecked();
+    fireEvent.click(box);
+    expect(onToggle).toHaveBeenCalledWith(true);
+    flat.unmount();
+    render(<SearchTabContent {...baseProps} groupByDocument onGroupByDocumentToggle={onToggle} results={twoDocuments()} />);
+    expect(screen.getByRole('checkbox', { name: 'Group by document' })).toBeChecked();
+  });
+
   test('shows the document strip when grouping is off', () => {
     render(<SearchTabContent {...baseProps} groupByDocument={false} results={twoDocuments()} />);
     expect(document.querySelector('.search-result-filters-thumbnails')).toBeInTheDocument();

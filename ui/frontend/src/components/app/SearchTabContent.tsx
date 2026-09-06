@@ -992,6 +992,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
             groupByDocument={groupByDocument}
+            onGroupByDocumentToggle={onGroupByDocumentToggle}
             groupSortBy={groupSortBy}
             onGroupSortByChange={setGroupSortBy}
             allGroupsExpanded={allGroupsExpanded}
