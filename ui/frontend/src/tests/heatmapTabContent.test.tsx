@@ -181,4 +181,48 @@ describe('HeatmapTabContent', () => {
       postSpy.mockRestore();
     }
   });
+
+  test('the Generate button gets an × while generating that stops the run', async () => {
+    const isCellRequest = (url: unknown) => /\/(doc)?search\?/.test(String(url));
+    // Cell requests only settle when their signal is aborted, like a slow backend.
+    const getSpy = jest.spyOn(axios, 'get').mockImplementation((url, config) => {
+      if (!isCellRequest(url)) return Promise.resolve({ data: [] });
+      return new Promise((_, reject) => {
+        config?.signal?.addEventListener('abort', () =>
+          reject(new axios.CanceledError('canceled')),
+        );
+      });
+    });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      const { container } = render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2020')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+
+      const stop = await screen.findByRole('button', { name: 'Stop generating' });
+      // The Generate button itself is disabled and reads "Generating..." (one
+      // animated span per character, so match its text rather than its name).
+      const generating = container.querySelector('.heatmap-search-button') as HTMLButtonElement;
+      expect(generating).toBeDisabled();
+      expect(generating.textContent).toBe('Generating...');
+      const cellCalls = getSpy.mock.calls.filter(([url]) => isCellRequest(url));
+      expect(cellCalls.length).toBeGreaterThan(0);
+      const { signal } = cellCalls[0][1] as { signal: AbortSignal };
+      expect(signal.aborted).toBe(false);
+
+      fireEvent.click(stop);
+
+      expect(signal.aborted).toBe(true);
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled(),
+      );
+      expect(screen.queryByRole('button', { name: 'Stop generating' })).toBeNull();
+      // A stop is not a failure: no error message.
+      expect(screen.queryByText(/failed to load|search failed/i)).toBeNull();
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
 });
