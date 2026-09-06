@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { SearchResult } from '../types/api';
 import SearchResultCard from './SearchResultCard';
 import { DocumentResultGroup } from './DocumentResultGroup';
-import { groupResultsByDocument } from '../utils/resultGrouping';
+import { groupResultsByDocument, sortDocumentGroups } from '../utils/resultGrouping';
+import type { GroupSortBy } from '../utils/resultGrouping';
 import API_BASE_URL from '../config';
 import type { Rating } from '../hooks/useRatings';
 
@@ -15,6 +16,8 @@ interface SearchResultsListProps {
   defaultExpandedDocIds?: string[];
   /** Data source used for row thumbnails when a result does not carry its own. */
   thumbnailDataSource?: string;
+  /** Order of the document rows in grouped mode. */
+  groupSortBy?: GroupSortBy;
   loading: boolean;
   query: string;
   hasSearchRun?: boolean;
@@ -49,6 +52,7 @@ export const SearchResultsList = ({
   groupByDocument = false,
   defaultExpandedDocIds,
   thumbnailDataSource,
+  groupSortBy = 'relevance',
   loading,
   query,
   hasSearchRun,
@@ -112,6 +116,7 @@ export const SearchResultsList = ({
           results={visibleResults}
           defaultExpandedDocIds={defaultExpandedDocIds}
           thumbnailDataSource={thumbnailDataSource}
+          sortBy={groupSortBy}
           renderCard={renderCard}
         />
       ) : (
@@ -135,20 +140,25 @@ const GroupedResults = ({
   results,
   defaultExpandedDocIds,
   thumbnailDataSource,
+  sortBy,
   renderCard,
 }: {
   results: SearchResult[];
   defaultExpandedDocIds?: string[];
   thumbnailDataSource?: string;
+  sortBy: GroupSortBy;
   renderCard: (result: SearchResult) => React.ReactNode;
 }) => {
-  const groups = useMemo(() => groupResultsByDocument(results), [results]);
+  const groups = useMemo(
+    () => sortDocumentGroups(groupResultsByDocument(results), sortBy),
+    [results, sortBy],
+  );
   // Explicit user choices per document; anything else follows the default.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   // Collapse everything only when the set of documents changes (a new search
   // or filter), not on every parent re-render: the AI summary streams tokens
   // while the user is reading, and each token re-renders this list.
-  const documentKey = groups.map((group) => group.docId).join('|');
+  const documentKey = groups.map((group) => group.docId).sort().join('|');
   useEffect(() => {
     setToggled({});
   }, [documentKey]);

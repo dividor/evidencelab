@@ -3,9 +3,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { SearchResultsList } from '../components/SearchResultsList';
 import type { SearchResult } from '../types/api';
 
-const result = (chunkId: string, docId: string, text: string): SearchResult => ({
-  chunk_id: chunkId, doc_id: docId, text, page_num: 3, headings: [], score: 0.9,
-  title: `Document ${docId}`, organization: 'WFP', year: '2021', metadata: {},
+const result = (chunkId: string, docId: string, text: string, score = 0.9, year = '2021'): SearchResult => ({
+  chunk_id: chunkId, doc_id: docId, text, page_num: 3, headings: [], score,
+  title: `Document ${docId}`, organization: 'WFP', year, metadata: {},
 });
 
 const ARIA_EXPANDED = 'aria-expanded';
@@ -50,10 +50,15 @@ describe('SearchResultsList grouped by document', () => {
     expect(screen.getByText('3 excerpts in 2 documents')).toBeInTheDocument();
   });
 
-  test('documents are ordered by their best match, and excerpts inside keep rank order', () => {
-    renderList({ groupByDocument: true });
-    const titles = Array.from(document.querySelectorAll('.result-group-title')).map((el) => el.textContent);
-    expect(titles).toEqual([DOC_A, DOC_B]);
+  const rowTitles = () => Array.from(document.querySelectorAll('.result-group-title')).map((el) => el.textContent);
+
+  test('documents are ordered by cumulative relevance by default, and excerpts inside keep rank order', () => {
+    // B has the single best excerpt, but A's two excerpts add up to more.
+    renderList({
+      groupByDocument: true,
+      results: [result('b1', 'B', 'bravo one', 0.95), result('a1', 'A', 'alpha one', 0.6), result('a2', 'A', 'alpha two', 0.5)],
+    });
+    expect(rowTitles()).toEqual([DOC_A, DOC_B]);
     fireEvent.click(row(DOC_A));
     const texts = Array.from(document.querySelectorAll('.result-group-body .result-card')).map((el) => el.textContent);
     expect(texts[0]).toContain('alpha one');
@@ -146,6 +151,32 @@ describe('SearchResultsList grouped by document', () => {
     renderList({ groupByDocument: true });
     expect(document.querySelector('.result-group-thumb')).toBeInTheDocument();
     expect(document.querySelector('img.result-group-thumb-img')).toBeNull();
+  });
+
+  test('sorting by publication date puts the newest document first and keeps rows open', () => {
+    const view = renderList({
+      groupByDocument: true,
+      results: [result('a1', 'A', 'alpha one', 0.9, '2019'), result('b1', 'B', 'bravo one', 0.5, '2024')],
+    });
+    expect(rowTitles()).toEqual([DOC_A, DOC_B]);
+    fireEvent.click(row(DOC_A));
+    view.rerender(
+      <SearchResultsList
+        results={[result('a1', 'A', 'alpha one', 0.9, '2019'), result('b1', 'B', 'bravo one', 0.5, '2024')]}
+        minScore={0}
+        loading={false}
+        query="alpha"
+        hasSearchRun
+        selectedDoc={null}
+        onResultClick={jest.fn()}
+        onOpenMetadata={jest.fn()}
+        onLanguageChange={jest.fn()}
+        groupByDocument
+        groupSortBy="date"
+      />,
+    );
+    expect(rowTitles()).toEqual([DOC_B, DOC_A]);
+    expect(row(DOC_A)).toHaveAttribute(ARIA_EXPANDED, 'true');
   });
 
   test('score threshold still applies before grouping', () => {

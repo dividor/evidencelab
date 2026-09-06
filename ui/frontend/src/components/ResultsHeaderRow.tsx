@@ -1,6 +1,7 @@
 import React from 'react';
 import type { SearchResult } from '../types/api';
 import { ExportResultsButton } from './ExportResultsButton';
+import type { GroupSortBy } from '../utils/resultGrouping';
 
 interface ResultsHeaderRowProps {
   /** Effective results (may be fixture data in dev mode) used to drive both
@@ -17,6 +18,10 @@ interface ResultsHeaderRowProps {
   dataSource?: string;
   /** When true, render a small "dev fixture" badge next to the heading. */
   showFixtureBadge?: boolean;
+  /** Group-by-document mode: show the document sort control. */
+  groupByDocument?: boolean;
+  groupSortBy?: GroupSortBy;
+  onGroupSortByChange?: (value: GroupSortBy) => void;
 }
 
 /**
@@ -34,6 +39,9 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
   aiSummaryLoading,
   dataSource,
   showFixtureBadge,
+  groupByDocument,
+  groupSortBy = 'relevance',
+  onGroupSortByChange,
 }) => {
   if (results.length === 0) return null;
   return (
@@ -46,14 +54,29 @@ export const ResultsHeaderRow: React.FC<ResultsHeaderRowProps> = ({
           </span>
         ) : null}
       </h3>
-      <ExportResultsButton
-        results={results}
-        query={query}
-        aiSummary={aiSummary}
-        aiSummaryLoading={aiSummaryLoading}
-        dataSource={dataSource}
-        className="search-results-export"
-      />
+      <div className="search-results-heading-actions">
+        {groupByDocument && (
+          <label className="results-sort">
+            <span>Sort by</span>
+            <select
+              aria-label="Sort documents by"
+              value={groupSortBy}
+              onChange={(event) => onGroupSortByChange?.(event.target.value as GroupSortBy)}
+            >
+              <option value="relevance">Relevance</option>
+              <option value="date">Publication Date</option>
+            </select>
+          </label>
+        )}
+        <ExportResultsButton
+          results={results}
+          query={query}
+          aiSummary={aiSummary}
+          aiSummaryLoading={aiSummaryLoading}
+          dataSource={dataSource}
+          className="search-results-export"
+        />
+      </div>
     </div>
   );
 };

@@ -124,6 +124,14 @@ describe('SearchTabContent grouped by document', () => {
     expect(screen.getByText('Click on organizations to refine results')).toBeInTheDocument();
   });
 
+  test('offers the document sort control only in grouped mode', () => {
+    const grouped = render(<SearchTabContent {...baseProps} groupByDocument results={twoDocuments()} />);
+    expect(screen.getByLabelText('Sort documents by')).toBeInTheDocument();
+    grouped.unmount();
+    render(<SearchTabContent {...baseProps} groupByDocument={false} results={twoDocuments()} />);
+    expect(screen.queryByLabelText('Sort documents by')).toBeNull();
+  });
+
   test('shows the document strip when grouping is off', () => {
     render(<SearchTabContent {...baseProps} groupByDocument={false} results={twoDocuments()} />);
     expect(document.querySelector('.search-result-filters-thumbnails')).toBeInTheDocument();

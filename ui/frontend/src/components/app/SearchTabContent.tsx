@@ -7,6 +7,7 @@ import { MobileFiltersToggle } from '../MobileFiltersToggle';
 import { SearchResultsList } from '../SearchResultsList';
 import { ResultsHeaderRow } from '../ResultsHeaderRow';
 import { useCarouselScroll } from '../../hooks/useCarouselScroll';
+import type { GroupSortBy } from '../../utils/resultGrouping';
 import { useRatings } from '../../hooks/useRatings';
 import { useAuth } from '../../hooks/useAuth';
 import RatingModal from '../ratings/RatingModal';
@@ -602,6 +603,9 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   const aiRatingScope = resolveAiRatingScope(aiDrilldownCurrentNodeId);
   const aiRating = aiSummaryRatings.get(aiRatingScope.key);
 
+  // Order of the document rows in group-by-document mode
+  const [groupSortBy, setGroupSortBy] = useState<GroupSortBy>('relevance');
+
   // Score-filtered results (same threshold used throughout)
   const visibleResults = useMemo(() =>
     results.filter((r) => r.score >= minScore),
@@ -981,6 +985,9 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             aiSummaryLoading={aiSummaryLoading}
             dataSource={dataSource}
             showFixtureBadge={isFixtureActive}
+            groupByDocument={groupByDocument}
+            groupSortBy={groupSortBy}
+            onGroupSortByChange={setGroupSortBy}
           />
           {showFilters && (
             <SearchResultFilters
@@ -1009,6 +1016,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
             groupByDocument={groupByDocument}
             defaultExpandedDocIds={filteredDocIds}
             thumbnailDataSource={selectedDomain}
+            groupSortBy={groupSortBy}
             loading={loading}
             query={query}
             hasSearchRun={hasSearchRun}
