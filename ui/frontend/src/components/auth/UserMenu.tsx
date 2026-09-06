@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useCloseOnOutsideClick } from '../../hooks/useCloseOnOutsideClick';
 import LoginModal from './LoginModal';
 import ProfileModal from './ProfileModal';
 import SavedResearchModal from '../SavedResearchModal';
@@ -18,6 +19,9 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
   const [showLogin, setShowLogin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSavedResearch, setShowSavedResearch] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  useCloseOnOutsideClick(containerRef, menuOpen, closeMenu);
 
   // Auto-open the login modal when a verification message arrives
   useEffect(() => {
@@ -42,11 +46,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
         .toUpperCase()
         .slice(0, 2)
     : user?.email?.charAt(0).toUpperCase() || '?';
-
-  const handleBlur = () => {
-    // Delay to allow click events on dropdown items
-    setTimeout(() => setMenuOpen(false), 200);
-  };
 
   if (!isAuthenticated) {
     return (
@@ -73,11 +72,10 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
 
   return (
     <>
-      <div className="dropdown-container">
+      <div className="dropdown-container" ref={containerRef}>
         <button
           className="user-menu-trigger"
           onClick={() => setMenuOpen(!menuOpen)}
-          onBlur={handleBlur}
           title={user?.email || 'User menu'}
         >
           {initials}
