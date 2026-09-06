@@ -297,8 +297,8 @@ export const AiSummaryControls = ({
       className="score-slider recency-weight-slider"
     />
     <div className="score-range-labels">
-      <span>Consistent</span>
-      <span>Varied</span>
+      <span>More Consistent</span>
+      <span>Creative Insights</span>
     </div>
   </div>
   <div className={summaryLimitResults ? SUBSETTINGS_GROUP_CLASS : undefined}>
