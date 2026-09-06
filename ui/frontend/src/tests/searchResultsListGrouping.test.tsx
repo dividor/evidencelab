@@ -34,7 +34,23 @@ const cards = () => document.querySelectorAll('.result-card');
 const headers = () => Array.from(document.querySelectorAll('.result-group-header'));
 const row = (title: string) => screen.getByRole('button', { name: new RegExp(`^.?${title}.*excerpts?$`) });
 
+// Cards observe their own visibility to request highlights lazily; jsdom has
+// no IntersectionObserver, so provide an inert one. The row-expansion path
+// under test does not depend on it.
+class InertIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 describe('SearchResultsList grouped by document', () => {
+  beforeAll(() => {
+    (globalThis as any).IntersectionObserver = InertIntersectionObserver;
+  });
+  afterAll(() => {
+    delete (globalThis as any).IntersectionObserver;
+  });
+
   test('flat mode is unchanged: one card per excerpt and no group rows', () => {
     renderList();
     expect(cards()).toHaveLength(3);
@@ -188,6 +204,31 @@ describe('SearchResultsList grouped by document', () => {
     );
     expect(rowTitles()).toEqual([DOC_B, DOC_A]);
     expect(row(DOC_A)).toHaveAttribute(ARIA_EXPANDED, 'true');
+  });
+
+  test('expanding a row requests semantic highlights for its excerpts once', () => {
+    const onRequestHighlight = jest.fn();
+    renderList({ groupByDocument: true, onRequestHighlight });
+    expect(onRequestHighlight).not.toHaveBeenCalled();
+    fireEvent.click(row(DOC_A));
+    expect(onRequestHighlight.mock.calls).toEqual([['a1', 'alpha one'], ['a2', 'alpha two']]);
+    // Collapsing and re-expanding does not ask again
+    fireEvent.click(row(DOC_A));
+    fireEvent.click(row(DOC_A));
+    expect(onRequestHighlight).toHaveBeenCalledTimes(2);
+    fireEvent.click(row(DOC_B));
+    expect(onRequestHighlight).toHaveBeenLastCalledWith('b1', 'bravo one');
+  });
+
+  test('already highlighted excerpts are not requested when their row expands', () => {
+    const onRequestHighlight = jest.fn();
+    renderList({
+      groupByDocument: true,
+      onRequestHighlight,
+      results: [{ ...result('a1', 'A', 'alpha one'), highlightedText: 'alpha one' }, result('a2', 'A', 'alpha two')],
+    });
+    fireEvent.click(row(DOC_A));
+    expect(onRequestHighlight.mock.calls).toEqual([['a2', 'alpha two']]);
   });
 
   test('score threshold still applies before grouping', () => {

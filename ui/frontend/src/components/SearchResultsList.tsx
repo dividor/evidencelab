@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult } from '../types/api';
 import SearchResultCard from './SearchResultCard';
 import { DocumentResultGroup } from './DocumentResultGroup';
@@ -131,6 +131,7 @@ export const SearchResultsList = ({
           sortBy={groupSortBy}
           expansionCommand={expansionCommand}
           onAllExpandedChange={onAllExpandedChange}
+          onRequestHighlight={onRequestHighlight}
           renderCard={renderCard}
         />
       ) : (
@@ -157,6 +158,7 @@ const GroupedResults = ({
   sortBy,
   expansionCommand,
   onAllExpandedChange,
+  onRequestHighlight,
   renderCard,
 }: {
   results: SearchResult[];
@@ -165,6 +167,7 @@ const GroupedResults = ({
   sortBy: GroupSortBy;
   expansionCommand?: ExpansionCommand;
   onAllExpandedChange?: (allExpanded: boolean) => void;
+  onRequestHighlight?: (chunkId: string, text: string) => void;
   renderCard: (result: SearchResult) => React.ReactNode;
 }) => {
   const groups = useMemo(
@@ -177,14 +180,37 @@ const GroupedResults = ({
   // or filter), not on every parent re-render: the AI summary streams tokens
   // while the user is reading, and each token re-renders this list.
   const documentKey = groups.map((group) => group.docId).sort().join('|');
+  // Excerpts whose highlights this list has already asked for (see below).
+  const highlightRequested = useRef(new Set<string>());
   useEffect(() => {
     setToggled({});
+    highlightRequested.current = new Set();
   }, [documentKey]);
 
-  const defaultExpanded = (docId: string) => defaultExpandedDocIds?.includes(docId) ?? false;
-  const isExpanded = (docId: string) => toggled[docId] ?? defaultExpanded(docId);
+  const defaultExpanded = useCallback(
+    (docId: string) => defaultExpandedDocIds?.includes(docId) ?? false,
+    [defaultExpandedDocIds],
+  );
+  const isExpanded = useCallback(
+    (docId: string) => toggled[docId] ?? defaultExpanded(docId),
+    [toggled, defaultExpanded],
+  );
   const toggle = (docId: string) =>
     setToggled((prev) => ({ ...prev, [docId]: !(prev[docId] ?? defaultExpanded(docId)) }));
+
+  // Expanding a row is an explicit action, so ask for its excerpts' semantic
+  // highlights at once instead of waiting for each card to scroll into view.
+  const expandedGroups = useMemo(() => groups.filter((group) => isExpanded(group.docId)), [groups, isExpanded]);
+  useEffect(() => {
+    if (!onRequestHighlight) return;
+    expandedGroups.forEach((group) =>
+      group.results.forEach((result) => {
+        if (result.highlightedText || highlightRequested.current.has(result.chunk_id)) return;
+        highlightRequested.current.add(result.chunk_id);
+        onRequestHighlight(result.chunk_id, result.text);
+      }),
+    );
+  }, [expandedGroups, onRequestHighlight]);
   // Expand all / collapse all from the results header: each command id is
   // applied once, to the rows present at that moment.
   const appliedCommandId = useRef(0);
