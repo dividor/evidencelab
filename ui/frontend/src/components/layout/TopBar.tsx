@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ModelComboConfig } from '../../types/api';
 import { APP_BASE_PATH, USER_MODULE } from '../../config';
 import UserMenu from '../auth/UserMenu';
 import { ModelComboPanel } from './ModelComboPanel';
+import { useCloseOnOutsideClick } from '../../hooks/useCloseOnOutsideClick';
 
 interface TopBarProps {
   selectedDomain: string;
@@ -19,12 +20,12 @@ interface TopBarProps {
   onToggleModelDropdown: () => void;
   onDomainMouseEnter: () => void;
   onDomainMouseLeave: () => void;
-  onDomainBlur: () => void;
-  onModelBlur: () => void;
+  onCloseDomainDropdown: () => void;
+  onCloseModelDropdown: () => void;
   onSelectDomain: (domainName: string) => void;
   onSelectModelCombo: (comboName: string) => void;
   onToggleHelpDropdown: () => void;
-  onHelpBlur: () => void;
+  onCloseHelpDropdown: () => void;
   onAboutClick: () => void;
   onTechClick: () => void;
   onDataClick: () => void;
@@ -49,12 +50,12 @@ export const TopBar = ({
   onToggleModelDropdown,
   onDomainMouseEnter,
   onDomainMouseLeave,
-  onDomainBlur,
-  onModelBlur,
+  onCloseDomainDropdown,
+  onCloseModelDropdown,
   onSelectDomain,
   onSelectModelCombo,
   onToggleHelpDropdown,
-  onHelpBlur,
+  onCloseHelpDropdown,
   onAboutClick,
   onTechClick,
   onDataClick,
@@ -64,6 +65,12 @@ export const TopBar = ({
   navTabs,
 }: TopBarProps) => {
   const [hoveredModelCombo, setHoveredModelCombo] = useState<string | null>(null);
+  const domainRef = useRef<HTMLDivElement>(null);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
+  useCloseOnOutsideClick(domainRef, domainDropdownOpen, onCloseDomainDropdown);
+  useCloseOnOutsideClick(modelRef, modelDropdownOpen, onCloseModelDropdown);
+  useCloseOnOutsideClick(helpRef, helpDropdownOpen, onCloseHelpDropdown);
 
   useEffect(() => {
     if (!modelDropdownOpen) {
@@ -160,13 +167,12 @@ export const TopBar = ({
             <h1 className="app-title">Evidence Lab</h1>
           </a>
           <div className="top-bar-controls">
-            <div className="dropdown-container">
+            <div className="dropdown-container" ref={domainRef}>
             <button
               className="dropdown-trigger dropdown-trigger-domain"
               onClick={onToggleDomainDropdown}
               onMouseEnter={onDomainMouseEnter}
               onMouseLeave={onDomainMouseLeave}
-              onBlur={onDomainBlur}
               style={datasetTriggerMinWidth ? { minWidth: datasetTriggerMinWidth } : undefined}
             >
               <span className="dropdown-label">Dataset</span>
@@ -193,11 +199,10 @@ export const TopBar = ({
             )}
           </div>
 
-            <div className="dropdown-container">
+            <div className="dropdown-container" ref={modelRef}>
             <button
               className="dropdown-trigger"
               onClick={onToggleModelDropdown}
-              onBlur={onModelBlur}
               style={modelTriggerMinWidth ? { minWidth: modelTriggerMinWidth } : undefined}
             >
               <span className="dropdown-label">Models</span>
@@ -230,11 +235,10 @@ export const TopBar = ({
         </div>
 
         <div className="top-bar-right">
-          <div className="dropdown-container">
+          <div className="dropdown-container" ref={helpRef}>
             <button
               className="dropdown-trigger dropdown-trigger-help"
               onClick={onToggleHelpDropdown}
-              onBlur={onHelpBlur}
             >
               <span className="dropdown-value">Info</span>
               <span className="dropdown-arrow">▾</span>

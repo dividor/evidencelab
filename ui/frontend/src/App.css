@@ -596,6 +596,51 @@ h6,
   background: none;
 }
 
+/* Nav tab tooltips — describe each main tab on hover/keyboard focus.
+   Reuses the app tooltip look (dark bubble + arrow) from .tooltip-text, but
+   wraps to a readable width instead of a single nowrap line. */
+.nav-tab-tooltip {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: max-content;
+  max-width: 240px;
+  padding: 0.625rem 0.875rem;
+  background: var(--gray-900);
+  color: var(--white);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  z-index: 1000;
+}
+
+.nav-tab-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--gray-900);
+}
+
+.nav-tab:hover .nav-tab-tooltip,
+.nav-tab:focus-visible .nav-tab-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
 /* Search Container */
 .search-container {
   background: var(--white);
@@ -3789,8 +3834,8 @@ h6,
   z-index: 1000;
   width: 360px;
   max-width: calc(100vw - 24px);
-  max-height: 320px;
-  overflow-y: auto;
+  max-height: 420px;
+  overflow: hidden;
   background: var(--white);
   border: 1px solid var(--gray-200);
   border-radius: 8px;
@@ -3816,10 +3861,26 @@ h6,
   line-height: 1.5;
   color: var(--gray-700);
 }
+
+/* Excerpt body inside the citation hover card: Search's own text formatter
+   lays the chunk out, so lists and indentation match a search result. */
+.citation-hover-body .formatted-text-block {
+  white-space: pre-wrap;
+}
+
+/* The span(s) the LLM picked out as supporting the hovered claim. Search marks
+   matches with weight alone; a tint reads better in the smaller card. */
+.citation-hover-excerpt mark,
+.citation-hover-excerpt .search-highlight {
+  background: rgba(91, 143, 168, 0.22);
+  color: inherit;
+  font-weight: inherit;
+  padding: 0 1px;
+}
+
 /* Heading breadcrumb shown as an italic section path at the top of the excerpt. */
 .citation-hover-section {
   margin-bottom: 6px;
-  font-style: italic;
   font-size: 0.75rem;
   line-height: 1.4;
   color: var(--gray-500);
@@ -8170,6 +8231,38 @@ li.ai-fact-active::before {
   flex-shrink: 0;
 }
 
+/* The Generate button and, while it is generating, an attached × that stops it. */
+.heatmap-search-group {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+.heatmap-search-group-generating .heatmap-search-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+.heatmap-search-stop {
+  height: 48px;
+  width: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--gray-500);
+  background: #fafafa;
+  border: 1px solid rgba(91, 143, 168, 0.8);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  cursor: pointer;
+}
+.heatmap-search-stop:hover {
+  background: var(--brand-accent);
+  color: var(--white);
+}
+
 /* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
 @media (max-width: 640px) {
   .heatmap-controls-row {
@@ -8541,6 +8634,73 @@ li.ai-fact-active::before {
   font-style: italic;
   color: var(--gray-400);
   white-space: nowrap;
+}
+
+/* Info affordance explaining what the org result counts mean.
+   Shares the dark-bubble tooltip look used elsewhere in the app. */
+.result-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.result-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--gray-400);
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.result-info-icon:hover,
+.result-info-icon:focus-visible {
+  color: var(--primary-blue);
+}
+
+.result-info-tooltip {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  width: max-content;
+  max-width: 280px;
+  padding: 0.625rem 0.875rem;
+  background: var(--gray-900);
+  color: var(--white);
+  border-radius: var(--radius-md);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  z-index: 1000;
+}
+
+.result-info-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom-color: var(--gray-900);
+}
+
+.result-info:hover .result-info-tooltip,
+.result-info:focus-within .result-info-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
 }
 
 .search-result-filters-org-label {
@@ -11999,6 +12159,77 @@ a.admin-citation-clickable:hover {
   font-size: 0.75rem;
 }
 
+.testing-tag-remove {
+  background: none;
+  border: none;
+  padding: 0 0 0 0.3rem;
+  font: inherit;
+  line-height: 1;
+  color: var(--color-text-muted, #57606a);
+  cursor: pointer;
+}
+.testing-tag-remove:hover {
+  color: var(--color-danger, #cf222e);
+}
+
+/* Document-title typeahead multiselect (case editor filter builder) */
+.testing-doc-select {
+  position: relative;
+}
+.testing-doc-select input {
+  width: 100%;
+}
+.testing-doc-suggestions {
+  list-style: none;
+  margin: 0.15rem 0 0;
+  padding: 0.2rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-border, #d0d7de);
+  border-radius: 6px;
+  background: var(--color-surface, #fff);
+}
+.testing-doc-suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.testing-doc-suggestion:hover {
+  background: var(--color-surface-alt, #f6f8fa);
+}
+
+/* Range-field min/max inputs in the case editor */
+.testing-range-inputs {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.testing-range-inputs input {
+  width: 6rem;
+}
+
+/* Collapsible filter-format help */
+.testing-filter-help {
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8rem;
+}
+.testing-filter-help-body {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.testing-filter-help-body code {
+  font-size: 0.72rem;
+  word-break: break-word;
+}
+
 .testing-notes {
   font-size: 0.8rem;
   color: var(--color-text-muted, #57606a);
@@ -12119,4 +12350,217 @@ a.admin-citation-clickable:hover {
 /* Inline case editor wrapper (matches the case-card surface). */
 .testing-case-editor-wrap {
   display: contents;
+}
+
+/* ---------------------------------------------------------------------------
+   Admin: TOC Validator
+   --------------------------------------------------------------------------- */
+.toc-validator-toolbar {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-lg);
+}
+
+.toc-validator-toolbar .admin-search-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  background: var(--white);
+}
+
+.toc-validator-toolbar .admin-search-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+
+.toc-validator-spacer {
+  flex: 1;
+}
+
+.toc-validator-select-col {
+  width: 32px;
+  text-align: center;
+}
+
+.toc-validator-empty {
+  text-align: center;
+  padding: var(--spacing-lg);
+  color: var(--gray-500);
+}
+
+.toc-validator-pagination {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--spacing-lg);
+}
+
+.toc-validator-row-changed {
+  background: #eff6ff;
+}
+
+/* Verdict cell — reuses .status-badge; adds verdict-specific colours. */
+.toc-validation-cell {
+  min-width: 190px;
+}
+
+.status-pass {
+  background: var(--color-success);
+  color: white;
+}
+
+.status-fail {
+  background: var(--color-danger);
+  color: white;
+}
+
+.status-skipped {
+  background: var(--gray-400);
+  color: white;
+}
+
+.status-untested {
+  background: transparent;
+  color: var(--gray-500);
+  border: 1px dashed var(--gray-300);
+}
+
+/* Status chip + approval badge sit on one row above the detail lines. */
+.toc-validation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Human-approval marker: deliberately high-contrast so an approved document is
+   obvious at a glance, independent of the pass/fail verdict beside it. */
+.toc-approved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-success);
+  color: white;
+}
+
+/* Subtle full-row tint reinforcing approval (no side accent bar, per UI rules). */
+.toc-validator-row-approved td {
+  background: #ecfdf5;
+}
+
+.toc-validation-detail {
+  font-size: 0.78rem;
+  color: var(--gray-600);
+  margin-top: 4px;
+}
+
+.toc-validation-meta {
+  font-size: 0.72rem;
+  color: var(--gray-500);
+  margin-top: 2px;
+}
+
+/* Link-styled buttons (accessible alternative to href="#" action links). */
+button.doc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 var(--spacing-sm) 0 0;
+  font: inherit;
+  color: var(--color-link);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.doc-link:hover {
+  color: var(--color-link-hover);
+}
+
+/* TOC Validator — filterable column header layout + popover backdrop. */
+.toc-validator-table th .toc-th-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+}
+
+.toc-validator-table .filter-icon-button {
+  flex-shrink: 0;
+}
+
+/* Click-away layer; sits just under .filter-popover (z-index: 1000). */
+.filter-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+/* Hover card: the highlight for this citation is being computed on demand. */
+.citation-hover-pending {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--gray-500);
+}
+.citation-hover-spinner {
+  width: 11px;
+  height: 11px;
+  border-width: 2px;
+}
+
+/* Excerpt is clipped until "Show more"; expanded it scrolls, so the scrollbar
+   only appears once the reader has asked for the longer text. */
+.citation-hover-excerpt {
+  max-height: 132px;
+  overflow: hidden;
+}
+.citation-hover-excerpt-open {
+  max-height: 300px;
+  /* 'scroll', not 'auto': the scrollbar is visible the moment the reader
+     expands, so it is obvious there is more text below. */
+  overflow-y: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-400) transparent;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar {
+  width: 9px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-track {
+  background: var(--gray-100);
+  border-radius: 5px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb {
+  background: var(--gray-400);
+  border-radius: 5px;
+}
+.citation-hover-excerpt-open::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-500);
+}
+.citation-hover-more {
+  display: block;
+  margin-top: 6px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-family: var(--font-heading, inherit);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.citation-hover-more:hover {
+  text-decoration: underline;
 }

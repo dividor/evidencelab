@@ -204,8 +204,14 @@ def invoke_and_parse_toc(
     toc_entries: List[Dict[str, Any]],
     locked_labels_by_index: Dict[int, str],
     additional_instruction: Optional[str],
+    usage_collector: Optional[Any] = None,
+    model_key: Optional[str] = None,
 ) -> Optional[Dict[int, str]]:
-    """Invoke the LLM and parse/validate the TOC classification output."""
+    """Invoke the LLM and parse/validate the TOC classification output.
+
+    When *usage_collector* is provided, the response's reported token usage
+    is accumulated under *model_key* for pipeline cost tracking.
+    """
     messages: List[BaseMessage] = [SystemMessage(content=system_prompt)]
     if additional_instruction:
         messages.append(SystemMessage(content=additional_instruction))
@@ -215,6 +221,8 @@ def invoke_and_parse_toc(
         response = invoke_with_retry(llm, messages)
     except Exception:  # pylint: disable=broad-exception-caught
         return None
+    if usage_collector is not None:
+        usage_collector.add_response(response, model_key)
     response_text = str(response.content).strip()
 
     try:
@@ -308,6 +316,7 @@ def call_llm_for_toc(
     llm_config: Dict[str, Any],
     total_pages: Optional[int] = None,
     retry_on_failure: bool = True,
+    usage_collector: Optional[Any] = None,
 ) -> Dict[int, str]:
     """
     Call LLM to label TOC entries. Locked labels are included in the payload
@@ -317,6 +326,9 @@ def call_llm_for_toc(
 
     When the TOC is too large for the context window, entries are split into
     equal batches and each batch is classified independently.
+
+    When *usage_collector* is provided, every LLM call's reported token usage
+    is accumulated under the configured model key for pipeline cost tracking.
     """
     model_key, provider, temperature, max_tokens, inference_provider = (
         resolve_llm_config(llm_config)
@@ -384,6 +396,8 @@ def call_llm_for_toc(
                 if any(e["index"] == k for e in batch)
             },
             additional_instruction=None,
+            usage_collector=usage_collector,
+            model_key=model_key,
         )
         if labels_by_index:
             merged_labels.update(labels_by_index)
@@ -404,6 +418,8 @@ def call_llm_for_toc(
                     "Return valid JSON only. No prose. No markdown. "
                     "Output must be a JSON array."
                 ),
+                usage_collector=usage_collector,
+                model_key=model_key,
             )
             if labels_by_index:
                 merged_labels.update(labels_by_index)

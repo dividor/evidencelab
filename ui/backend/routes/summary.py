@@ -7,8 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
-from ui.backend.schemas import AISummaryRequest, AISummaryResponse, TranslateRequest
+from ui.backend.schemas import (
+    AISummaryRequest,
+    AISummaryResponse,
+    LlmUsagePayload,
+    TranslateRequest,
+)
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import (
     get_rate_limit_translate,
     get_rate_limits,
@@ -83,6 +89,33 @@ async def _resolve_summary_prompt(user, session) -> str | None:
         "No group summary prompt found for user=%s", getattr(user, "email", "unknown")
     )
     return None
+
+
+def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
+    """Accumulate a summary call's usage onto its search activity row.
+
+    Server-side recording keyed by the ``search_id`` the frontend sends with
+    the request — this covers drill-down summaries too (same id, so their
+    usage sums onto the parent search's row) without relying on the client
+    echoing usage back through the activity routes. Requests without a
+    ``search_id`` are left to the legacy client echo path — recording them
+    here as well would double-count against older bundles that still PATCH
+    usage through the activity routes.
+
+    Monitoring only: scheduled as a background task, so it adds no latency
+    to — and can never fail — the summary path.
+    """
+    if not body.search_id:
+        return
+    schedule_llm_usage_recording(
+        usage=usage,
+        activity_type=None,
+        query=body.query,
+        # getattr: direct handler calls (tests) receive the Depends sentinel.
+        user_id=getattr(user, "id", None),
+        session_id=body.session_id,
+        search_id=body.search_id,
+    )
 
 
 @router.post("/translate")
@@ -190,8 +223,9 @@ async def stream_summary(
                 completion_data["langsmith_trace_url"] = stream_metadata[
                     "langsmith_trace_url"
                 ]
-            # Forward LLM usage so the frontend can include it in the
-            # activity-log PATCH that fires after the stream ends.
+            # Record usage server-side against the search's activity row (the
+            # authoritative path), and still forward it on the done event for
+            # transparency / older clients that PATCH it themselves.
             usage_payload = {
                 k: stream_metadata[k]
                 for k in ("llm_model", "prompt_tokens", "completion_tokens")
@@ -199,6 +233,7 @@ async def stream_summary(
             }
             if usage_payload:
                 completion_data["usage"] = usage_payload
+                _record_summary_usage(usage_payload, body, user)
             yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
@@ -249,7 +284,7 @@ async def generate_summary(
             temperature,
             max_tokens,
         )
-        summary = await llm_service.generate_ai_summary(
+        summary, usage = await llm_service.generate_ai_summary_with_usage(
             query=body.query,
             results=results_dicts,
             max_results=body.max_results,
@@ -258,6 +293,7 @@ async def generate_summary(
             max_tokens=max_tokens,
             system_prompt_override=system_prompt_override,
         )
+        _record_summary_usage(usage, body, user)
 
         # Get the rendered prompt for debugging/transparency
         prompt = llm_service.render_prompt(
@@ -272,6 +308,7 @@ async def generate_summary(
             query=body.query,
             results_count=len(body.results),
             prompt=prompt,
+            usage=LlmUsagePayload(**usage) if usage else None,
         )
 
     except Exception as e:

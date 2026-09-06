@@ -78,6 +78,11 @@ export interface SummaryStats {
   pass_rate: number;
   mean_score?: number | null;
   duration_ms: number;
+  // Total LLM usage across the run's cases (summary + judge calls).
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number | null;
   error?: string;
   progress?: RunProgress | null;
 }

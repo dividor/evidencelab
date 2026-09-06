@@ -7,7 +7,6 @@ import { SearchSettings } from '../../types/auth';
 import {
   streamAssistantChat,
   AssistantStreamHandlers,
-  AssistantUsage,
 } from '../../utils/assistantStream';
 import { useActivityLogging } from '../../hooks/useActivityLogging';
 import RatingModal from '../ratings/RatingModal';
@@ -256,8 +255,10 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // Captured from the SSE done event so logSearch can persist tokens/model.
-    let lastUsage: AssistantUsage | undefined;
+    // Generated up front and sent with the stream request so the backend can
+    // record this turn's token usage server-side against the same activity
+    // row logSearch upserts below.
+    const activityId = crypto.randomUUID();
 
     const handlers: AssistantStreamHandlers = {
       onPhase: (phase) => setStreamingPhase(phase),
@@ -280,7 +281,6 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           setActiveThreadId(data.threadId);
           if (isAuthenticated) loadThreads();
         }
-        lastUsage = data.usage;
         setLastResponseDeep(deepResearch);
       },
       onError: (message) => {
@@ -326,6 +326,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
         searchSettings: searchSettings,
         deepResearch,
         conversationHistory: history,
+        activityId,
         handlers,
         signal: controller.signal,
       });
@@ -348,8 +349,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           },
         ]);
 
-        // Log assistant interaction to activity
-        const activityId = crypto.randomUUID();
+        // Log assistant interaction to activity (same id the stream recorded
+        // its token usage under, so both land on one row)
         const searchResults: SearchResult[] = finalToolCalls.flatMap((tc) =>
           (tc.results || []).map((r) => ({
             chunk_id: '',
@@ -372,7 +373,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
               text: r.text || '',
             })),
           })),
-        }, searchResults, undefined, finalContent, lastUsage);
+        }, searchResults, undefined, finalContent);
       }
     } finally {
       // Always clear streaming state, even on error/abort

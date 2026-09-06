@@ -31,6 +31,7 @@ from pipeline.processors.base import BaseProcessor
 from pipeline.utilities.embedding_service import EmbeddingService
 from pipeline.utilities.llm_retry import invoke_with_retry
 from pipeline.utilities.logging_utils import _log_context
+from pipeline.utilities.usage_recorder import UsageCollector, record_pipeline_usage
 from utils import llm_factory
 from utils.langsmith_util import setup_langsmith_tracing
 
@@ -86,7 +87,7 @@ class SummarizeProcessor(BaseProcessor):
     name = "SummarizeProcessor"
     stage_name = "summarize"
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], data_source: Optional[str] = None):
         """
         Initialize summarizer configuration.
 
@@ -97,9 +98,13 @@ class SummarizeProcessor(BaseProcessor):
                     - llm_workers: Concurrency limit (default 1)
                     - temperature: LLM temperature (default 0.1)
                     - max_tokens: Output token limit
+            data_source: Datasource key, used to attribute recorded LLM
+                token usage (see ``pipeline.utilities.usage_recorder``).
         """
         super().__init__()
         self.config = config
+        self.data_source = data_source
+        self._usage = UsageCollector()
         self._embedding_model = None
         self._hf_token: Optional[str] = None
 
@@ -243,6 +248,9 @@ class SummarizeProcessor(BaseProcessor):
 
         logger.info("Summarizing: %s", title)
 
+        # No reset here: record_pipeline_usage in the finally below drains the
+        # collector, and an explicit reset would drop other documents'
+        # in-flight counts when scripts share one processor across threads.
         try:
             markdown_path = self._find_markdown_file(parsed_folder)
             if not markdown_path:
@@ -261,6 +269,16 @@ class SummarizeProcessor(BaseProcessor):
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.error("Exception summarizing %s: %s", title, e)
             return self._build_failure(doc, str(e), str(e))
+        finally:
+            # Record whatever the doc consumed — including partial usage from
+            # a failed map-reduce — as one 'pipeline' activity row per model.
+            record_pipeline_usage(
+                self._usage,
+                stage=self.stage_name,
+                data_source=self.data_source,
+                doc_id=str(doc.get("id") or ""),
+                query=f"{self.stage_name}: {title}",
+            )
 
     def _find_markdown_file(self, parsed_folder: str) -> Optional[str]:
         markdown_files = list(Path(parsed_folder).glob("*.md"))
@@ -489,6 +507,9 @@ class SummarizeProcessor(BaseProcessor):
             inference_provider=self.inference_provider if include_inference else None,
         )
         response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
+        # Attribute usage to the configured model key (the pricing-table key),
+        # regardless of whether the call resolved it to a provider model id.
+        self._usage.add_response(response, self.model_key)
         if hasattr(response, "content"):
             return response.content.strip()
         return str(response).strip()

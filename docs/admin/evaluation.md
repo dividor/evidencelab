@@ -35,7 +35,7 @@ The CSV is the **same format as the dataset upload** (see [Add test cases](#add-
 | `expectation` | yes | Free text describing the expected answer. Becomes that row's **LLM‑judge rubric** (per‑case override). |
 | `tags` | no | Separated by `;` within the cell. |
 | `notes` | no | Free text. |
-| `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
+| `filters` | no | JSON object — see [Filtering a case](#filtering-a-case). |
 
 In the **Create Dataset and Experiment** dialog you provide:
 
@@ -82,7 +82,36 @@ The CSV columns are:
 | `query` | yes | The search query / question. |
 | `tags` | no | Separated by `;` within the cell, e.g. `regression;baseline`. |
 | `notes` | no | Free text. |
-| `filters` | no | JSON object, e.g. `{"country": "Kenya"}`. |
+| `filters` | no | JSON object — see [Filtering a case](#filtering-a-case). |
+
+#### Filtering a case
+
+Filters restrict which documents a case searches, using the **same filter
+fields the search page offers** for the dataset's data source — they come from
+the data source's configuration (`config.json`), not from a fixed list. With
+**+ Add case** the editor shows one control per configured field: a **document
+picker** (type to search real document titles) when the source declares a
+title filter, a **value picker** for each facet field (populated from the data
+source's values, e.g. country, region, document type, language), and **min /
+max inputs** for each numeric range field (e.g. publication year). Anything a
+case carries beyond those fields (e.g. `params` from an import) is shown
+read-only and kept unchanged when saving. In a CSV `filters` cell you provide
+a JSON object:
+
+| Filter | Format | Example |
+|--------|--------|---------|
+| Specific documents | `doc_titles`: a list of **exact document titles as they appear in the UI** (matched case-insensitively) | `{"doc_titles": ["Evaluation of X", "Annual Report 2021"]}` |
+| Facet fields | the configured field name with a list of values | `{"country": ["Kenya"], "region": ["Asia and the Pacific"]}` |
+| Range fields | `<field>_min` / `<field>_max` (numbers) | `{"published_year_min": 2018, "published_year_max": 2022}` |
+
+Document-level fields — `doc_titles`, `region`, `language` and the source's
+`src_*` fields — are resolved to the matching document IDs at run time, exactly
+as the search page does, so you filter by the human-readable value rather than
+an internal ID (this also matches documents whose value is not stamped on
+individual chunks). A document-level value that matches no document yields
+**zero** results for that case (it is never silently ignored), so prefer the
+pickers to avoid typos. Search behaviour (e.g. `rerank`, `limit`) belongs in a
+case's separate `params` key — set via the API or an import, not a filter.
 
 ---
 
