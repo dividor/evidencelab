@@ -23,7 +23,7 @@ At the top of your results, Evidence Lab generates an **AI Summary** — a synth
 - Use the **language dropdown** (top-right of the summary card) to translate the summary into 10+ languages.
 - Click **"Find out more"** next to a heading to drill into that sub-topic as a new search — this launches a **Research Tree** (see [Research Trees](/docs/using-evidence-lab/research-trees.md)).
 - You can also **highlight any text** within the summary and click the popup button to research that specific phrase further.
-- The **Creativity** slider under **AI Summary** in the left sidebar sets the model's sampling temperature. **Precise** (0, the default) sticks closely to the wording of the sources and gives repeatable summaries; **Creative** (1) paraphrases more freely and varies between runs.
+- The **Response variability** slider under **AI Summary** in the left sidebar sets the model's sampling temperature, shown beside the label. At **Consistent** (temperature 0, the default) the model always takes its most likely wording, so the same results give the same summary every time. Towards **Varied** (1) it may choose less likely wordings, so summaries differ between runs and paraphrase more loosely.
 - By default the summary is built from the top **20** results. Under **AI Summary** in the left sidebar you can change that number, or untick **Limit Results Used** to give it every result on the page (slower and costlier, but nothing is left out). With Wide Search on, the results are spread across documents first.
 
 > *Note: The AI summary is generated in real-time and may take a few seconds to stream in. A disclaimer reminds you that AI can make mistakes — always verify important findings against the source documents.*

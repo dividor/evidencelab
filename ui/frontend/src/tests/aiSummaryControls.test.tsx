@@ -25,14 +25,15 @@ describe('AiSummaryControls', () => {
     expect((screen.getByLabelText(MAX_LABEL) as HTMLInputElement).value).toBe('20');
   });
 
-  test('shows a creativity slider from Precise to Creative, defaulting to 0', () => {
+  test('shows a response variability slider from Consistent to Varied, defaulting to 0', () => {
     const props = renderControls();
-    const slider = screen.getByLabelText('Creativity') as HTMLInputElement;
+    const slider = screen.getByLabelText('Response variability') as HTMLInputElement;
     expect(slider.value).toBe('0');
     expect(slider.min).toBe('0');
     expect(slider.max).toBe('1');
-    expect(screen.getByText('Precise')).toBeInTheDocument();
-    expect(screen.getByText('Creative')).toBeInTheDocument();
+    expect(screen.getByText('Consistent')).toBeInTheDocument();
+    expect(screen.getByText('Varied')).toBeInTheDocument();
+    expect(screen.getByText('(temperature 0.0)')).toBeInTheDocument();
     fireEvent.change(slider, { target: { value: '0.7' } });
     expect(props.onSummaryTemperatureChange).toHaveBeenCalledWith(0.7);
   });

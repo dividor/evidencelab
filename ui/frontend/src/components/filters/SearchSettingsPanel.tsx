@@ -276,10 +276,11 @@ export const AiSummaryControls = ({
   <>
   <div className="recency-slider-group">
     <label className={SLIDER_LABEL_CLASS} htmlFor="summary-temperature">
-      Creativity <span className="summary-temperature-value">({summaryTemperature.toFixed(1)})</span>
+      Response variability{' '}
+      <span className="summary-temperature-value">(temperature {summaryTemperature.toFixed(1)})</span>
       <span
         className="rerank-tooltip"
-        title="Sampling temperature for the AI Summary. Precise (0) sticks closely to the wording of the sources and is repeatable; Creative (1) paraphrases more freely and varies between runs."
+        title="Sampling temperature for the AI Summary. At 0 the model always takes its most likely wording, so the same results give the same summary every time. Higher values let it choose less likely wordings, so summaries vary more between runs and paraphrase more loosely."
       >
         ⓘ
       </span>
@@ -291,13 +292,13 @@ export const AiSummaryControls = ({
       max="1"
       step="0.1"
       value={summaryTemperature}
-      aria-label="Creativity"
+      aria-label="Response variability"
       onChange={(event) => onSummaryTemperatureChange(parseFloat(event.target.value))}
       className="score-slider recency-weight-slider"
     />
     <div className="score-range-labels">
-      <span>Precise</span>
-      <span>Creative</span>
+      <span>Consistent</span>
+      <span>Varied</span>
     </div>
   </div>
   <div className={summaryLimitResults ? SUBSETTINGS_GROUP_CLASS : undefined}>
