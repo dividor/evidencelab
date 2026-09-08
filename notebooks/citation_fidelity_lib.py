@@ -15,6 +15,7 @@ see ``tests/unit/test_citation_fidelity_lib.py``.
 
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Tuple
 
 # `[1]`, `[1, 3]` — same as CITATION_REGEX in CitedContent.tsx.
@@ -212,6 +213,35 @@ def cited_context_texts(section: Dict[str, Any]) -> List[str]:
         seen.add(chunk_key)
         contexts.append(text)
     return contexts
+
+
+def match_claim_to_sentences(
+    claim: str, markdown: str, top_n: int = 2
+) -> List[Tuple[str, float]]:
+    """The brief sentence(s) a RAGAS atomic claim most likely came from.
+
+    RAGAS decomposes a section into paraphrased atomic claims without keeping
+    a link to the originating text, so the mapping is recovered by fuzzy
+    similarity (``normalize_claim_text`` on both sides). The score blends
+    sequence similarity with claim-token recall: a short atomic claim pulled
+    out of a long list-style sentence shares few characters proportionally
+    with it, and on sequence similarity alone a similar-*length* but wrong
+    sentence would outrank the true origin. Returns up to ``top_n``
+    ``(sentence, score)`` pairs, best first; headings are skipped.
+    """
+    key = normalize_claim_text(claim)
+    claim_tokens = {token for token in key.split() if len(token) > 2}
+    scored: List[Tuple[float, str]] = []
+    for sentence in split_sentences(markdown):
+        if sentence.startswith("#"):
+            continue
+        norm = normalize_claim_text(sentence)
+        ratio = SequenceMatcher(None, key, norm).ratio()
+        tokens = {token for token in norm.split() if len(token) > 2}
+        recall = len(claim_tokens & tokens) / len(claim_tokens) if claim_tokens else 0.0
+        scored.append((0.5 * ratio + 0.5 * recall, sentence))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [(sentence, round(score, 3)) for score, sentence in scored[:top_n]]
 
 
 def build_faithfulness_input(

@@ -18,6 +18,7 @@ from citation_fidelity_lib import (  # noqa: E402
     extract_citation_pairs,
     extract_cited_numbers,
     find_claim_match,
+    match_claim_to_sentences,
     normalize_claim_text,
     normalize_ws,
     parse_section_breadcrumb,
@@ -188,6 +189,45 @@ class TestCitedContextTexts:
         contexts = cited_context_texts(self._section())
         assert "Uncited chunk." not in contexts
         assert "" not in contexts
+
+
+@pytest.mark.unit
+class TestMatchClaimToSentences:
+    MARKDOWN = (
+        "## Outcomes\n"
+        "School meals in Mali raised enrollment by 10 percentage points [1]. "
+        "Attendance in Kenya improved for girls [2]. "
+        "Costs per child fell over time [3]."
+    )
+
+    def test_match_claim_to_sentences_when_paraphrased_then_origin_ranked_first(self):
+        claim = "In Mali, school meals increased enrollment by 10 percentage points."
+        matches = match_claim_to_sentences(claim, self.MARKDOWN)
+        assert matches[0][0] == (
+            "School meals in Mali raised enrollment by 10 percentage points [1]."
+        )
+        assert matches[0][1] > matches[1][1]
+
+    def test_match_claim_to_sentences_when_top_n_then_limited_and_headings_skipped(
+        self,
+    ):
+        matches = match_claim_to_sentences("Anything.", self.MARKDOWN, top_n=3)
+        assert len(matches) == 3
+        assert all(not sentence.startswith("#") for sentence, _ in matches)
+
+    def test_match_claim_to_sentences_when_claim_from_long_list_sentence_then_found(
+        self,
+    ):
+        # An atomic claim pulled out of a long list-style sentence must beat a
+        # similar-length but semantically wrong sentence (length bias guard).
+        markdown = (
+            "Programs influence outcomes, including learning, attendance, "
+            "cognitive development, and academic performance [1]. "
+            "Programs often positively influence girls' education [2]."
+        )
+        claim = "Programs influence cognitive development."
+        matches = match_claim_to_sentences(claim, markdown)
+        assert "cognitive development" in matches[0][0]
 
 
 @pytest.mark.unit
