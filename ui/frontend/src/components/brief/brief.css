@@ -75,11 +75,17 @@
   flex-wrap: wrap;
   align-items: center;
 }
-/* The three buttons flow left and wrap left. "Load a saved brief" used to
-   carry margin-left: auto to sit apart on the right, but the card is capped at
-   720px (676px inside) and the buttons need about 675px, so the row only ever
-   fit on one line by a pixel; on any narrower window it wrapped and the auto
-   margin stranded that button alone on the right of its own line. */
+/* The three buttons share the row: at the card's full width (720px, 676px
+   inside) they sit on one line, and on a narrower window they wrap and each
+   line's buttons grow to fill it, so no button is ever stranded alone on the
+   right. Slightly tighter padding than the default button keeps the three
+   comfortably on one line at full width. */
+.brief-seed-actions .brief-btn {
+  flex: 1 1 auto;
+  padding-left: 18px;
+  padding-right: 18px;
+  white-space: nowrap;
+}
 
 /* ---------- buttons ---------- */
 .brief-btn {
