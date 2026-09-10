@@ -219,10 +219,25 @@ describe('brief Word export — references list layouts', () => {
     expect(refs).toContain(', p.40');
   });
 
-  test('grouped: one line per document listing its citation numbers', async () => {
+  test('grouped: one line per document, laid out as on screen — "Title, [1] p. 26, [2] p. 40"', async () => {
     const refs = await referencesXml(withList('grouped'));
-    expect(refs).toContain('1, 2. ');
+    // The visible text of the row, in order, with the XML stripped.
+    const text = refs.replace(/<[^>]+>/g, '');
+    expect(text).toContain(`${DOC_TITLE}, [1] p. 26, [2] p. 40`);
+    // Neither the flat "1. " label nor the flat ", p.26" form appears.
+    expect(refs).not.toContain('1. ');
     expect(refs).not.toContain(', p.26');
+  });
+
+  test('grouped: the title links to the document and each [n] to its cited page', async () => {
+    const opts = {
+      ...withList('grouped'),
+      results: two.map((r) => ({ ...r, report_url: PDF_URL })),
+    };
+    const rels = await relTargets(buildExportDocument(opts));
+    expect(rels).toContain(`${PDF_URL}"`); // document link, no page anchor
+    expect(rels).toContain(`${PDF_URL}#page=26`);
+    expect(rels).toContain(`${PDF_URL}#page=40`);
   });
 
   test('document: one line per document-level citation and no page numbers', async () => {
