@@ -19,11 +19,15 @@ Behaviour:
 - Streamed responses (more than one body message) are compressed chunk by
   chunk with a sync flush after each chunk, so downloads still progress as
   the server produces them.
+- Compression runs in the threadpool, not on the event loop. zlib releases
+  the interpreter lock while deflating, so a 16 MB page (about 275 ms at
+  level 6) no longer stalls every other request on the worker.
 """
 
 import zlib
 from typing import Optional
 
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -101,7 +105,7 @@ class _GZipResponder:
         body = message.get("body", b"")
         more_body = message.get("more_body", False)
         if self._body_started:
-            message["body"] = self._compress(body, more_body)
+            message["body"] = await run_in_threadpool(self._compress, body, more_body)
             await self._send(message)
             return
 
@@ -119,7 +123,7 @@ class _GZipResponder:
         self._compressor = zlib.compressobj(
             self._compresslevel, zlib.DEFLATED, _GZIP_WBITS
         )
-        message["body"] = self._compress(body, more_body)
+        message["body"] = await run_in_threadpool(self._compress, body, more_body)
         if more_body:
             del headers["Content-Length"]
         else:

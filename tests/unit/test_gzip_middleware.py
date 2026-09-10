@@ -198,6 +198,64 @@ class TestSelectiveGZipMiddleware:
 
 
 @pytest.mark.unit
+class TestCompressionOffEventLoop:
+    """Compression must run in a worker thread so the event loop keeps serving others."""
+
+    @pytest.mark.asyncio
+    async def test_large_json_when_compressed_then_deflate_runs_off_the_loop_thread(
+        self,
+    ):
+        import threading
+        from unittest.mock import patch
+
+        from ui.backend.utils import gzip_middleware
+
+        loop_thread = threading.get_ident()
+        seen_threads = []
+        original = gzip_middleware._GZipResponder._compress
+
+        def recording_compress(responder, body, more_body):
+            seen_threads.append(threading.get_ident())
+            return original(responder, body, more_body)
+
+        with patch.object(
+            gzip_middleware._GZipResponder, "_compress", recording_compress
+        ):
+            headers, bodies = await _call_asgi(_make_app(), "/large", GZIP_REQUEST)
+
+        assert headers["content-encoding"] == "gzip"
+        assert json.loads(gzip.decompress(b"".join(bodies))) == LARGE_PAYLOAD
+        assert seen_threads, "compression never ran"
+        assert all(t != loop_thread for t in seen_threads)
+
+    @pytest.mark.asyncio
+    async def test_streamed_csv_when_compressed_then_every_chunk_deflates_off_the_loop_thread(
+        self,
+    ):
+        import threading
+        from unittest.mock import patch
+
+        from ui.backend.utils import gzip_middleware
+
+        loop_thread = threading.get_ident()
+        seen_threads = []
+        original = gzip_middleware._GZipResponder._compress
+
+        def recording_compress(responder, body, more_body):
+            seen_threads.append(threading.get_ident())
+            return original(responder, body, more_body)
+
+        with patch.object(
+            gzip_middleware._GZipResponder, "_compress", recording_compress
+        ):
+            headers, bodies = await _call_asgi(_make_app(), "/csv", GZIP_REQUEST)
+
+        assert headers["content-encoding"] == "gzip"
+        assert len(seen_threads) == len(bodies)
+        assert all(t != loop_thread for t in seen_threads)
+
+
+@pytest.mark.unit
 class TestAppRegistration:
     """The real API app registers the middleware from environment settings."""
 
