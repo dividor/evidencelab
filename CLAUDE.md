@@ -198,6 +198,7 @@ Before submitting, verify: no hardcoded secrets, input validation in place, no d
 - Connection pooling: `get_db_for_source()` and `get_pg_for_source()` in `ui/backend/utils/app_state.py` cache DB clients per data source.
 - Pydantic models for all request/response schemas with `.model_dump()`.
 - Timing instrumentation: `t0 = time.time()` ... `logger.info("[TIMING] operation: %.3fs", t1 - t0)`.
+- **NEVER run CPU-bound or blocking work synchronously on the event loop.** The API runs one uvicorn worker, so anything that blocks the loop (compression, big serialisation, file I/O, sync DB or HTTP calls, hashing, model inference) pauses every user's request, not just the caller's. Hand it to `run_in_threadpool()` (or a process pool for pure-Python CPU work that holds the GIL) and measure concurrent request latency before and after. Middleware counts too: response gzip measured 405 ms stalls for other users when done inline, 104 ms in the threadpool.
 
 ### Frontend (React/TypeScript)
 - State management: React Context + custom hooks (no Redux). See `useAuth`, `useDrilldownTree`, `useActivityLogging`.
