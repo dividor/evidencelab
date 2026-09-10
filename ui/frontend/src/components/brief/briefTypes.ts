@@ -71,6 +71,9 @@ export interface BriefSection {
   guidance?: string;
   // Voice & tone profile override for this section (null/absent = brief default).
   voiceId?: string | null;
+  // Length target override for this section, in words (null/absent = the
+  // brief's target). See briefLength.ts.
+  targetWords?: number | null;
 }
 
 export interface SavedBriefSection {
@@ -86,6 +89,7 @@ export interface SavedBriefSection {
   lastResearchedAt?: number;
   voiceId?: string | null;
   guidance?: string;
+  targetWords?: number | null;
 }
 
 export interface SavedBrief {
@@ -105,6 +109,9 @@ export interface SavedBrief {
   activityId?: string;
   // Brief-level voice & tone profile id (sections may override individually).
   voiceId?: string | null;
+  // Brief-level section length target in words (sections may override).
+  // Absent/null = no target: the model decides.
+  targetWords?: number | null;
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';

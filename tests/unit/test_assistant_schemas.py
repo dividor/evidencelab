@@ -400,3 +400,18 @@ class TestAssistantSearchSettingsWide:
             AssistantSearchSettings(wide_group_size=0)
         with pytest.raises(ValidationError):
             AssistantSearchSettings(wide_limit=1001)
+
+
+class TestAssistantChatRequestTargetWords:
+    """target_words: optional length target for the written answer."""
+
+    def test_defaults_to_none(self):
+        assert AssistantChatRequest(query="q").target_words is None
+
+    def test_accepts_a_target(self):
+        assert AssistantChatRequest(query="q", target_words=350).target_words == 350
+
+    @pytest.mark.parametrize("value", [0, 49, 5001, -10])
+    def test_rejects_out_of_range_targets(self, value):
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(query="q", target_words=value)

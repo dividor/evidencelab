@@ -3,6 +3,18 @@
     "ai_summary": {
       "enabled": true
     },
+    "brief": {
+      "target_words": {
+        "presets": [
+          { "label": "Short", "words": 150 },
+          { "label": "Standard", "words": 350 },
+          { "label": "Long", "words": 700 }
+        ],
+        "min": 50,
+        "max": 3000,
+        "tolerance": 0.25
+      }
+    },
     "assistant": {
       "enabled": true,
       "max_search_results": 20,

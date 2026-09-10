@@ -377,6 +377,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       brief.setInstructions(args.instructions);
       brief.setNumHeadings(args.numHeadings);
       brief.setBriefVoiceId(args.voiceId);
+      brief.setTargetWords(args.targetWords);
       if (args.mode === 'ai') {
         void brief.generateOutline({
           topic: args.title,
@@ -453,7 +454,12 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     ) : (
       <>
         {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-        <BriefCentral central={central} onOpenBrief={openBrief} onCreateBrief={createBrief} />
+        <BriefCentral
+          central={central}
+          onOpenBrief={openBrief}
+          onCreateBrief={createBrief}
+          defaultTargetWords={brief.targetWords}
+        />
       </>
     )
   ) : (
@@ -521,8 +527,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           voices={brief.voices}
           briefVoiceId={brief.briefVoiceId}
           instructions={brief.instructions}
+          targetWords={brief.targetWords}
           hasSectionVoices={brief.sections.some((s) => !!s.voiceId)}
-          onSubmit={({ instructions, voiceId, applyVoiceToAllSections }) => {
+          onSubmit={({ instructions, voiceId, targetWords, applyVoiceToAllSections }) => {
             if (applyVoiceToAllSections) {
               brief.sections.forEach((s) => {
                 if (s.voiceId) brief.setSectionVoiceId(s.id, null);
@@ -531,7 +538,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
             setWorkspaceModal(null);
             // Passed explicitly: the research loop reads refs, which React
             // would not have updated from the setters by the time it starts.
-            void brief.startResearch({ instructions, voiceId });
+            void brief.startResearch({ instructions, voiceId, targetWords });
           }}
           onClose={() => setWorkspaceModal(null)}
         />

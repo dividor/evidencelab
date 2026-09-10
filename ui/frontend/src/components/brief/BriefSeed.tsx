@@ -1,5 +1,6 @@
 import React from 'react';
 import { IconHistory, IconSparkle } from './BriefIcons';
+import { BriefLengthControl } from './BriefLengthControl';
 import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
@@ -42,6 +43,8 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
     setInstructions,
     numHeadings,
     setNumHeadings,
+    targetWords,
+    setTargetWords,
     generateOutline,
     startManual,
     outlineLoading,
@@ -102,6 +105,16 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
             onChange={(e) =>
               setNumHeadings(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
             }
+          />
+        </div>
+        <div className="brief-seed-num brief-seed-length">
+          <label className="brief-label" htmlFor="brief-target-words">
+            Section length
+          </label>
+          <BriefLengthControl
+            id="brief-target-words"
+            value={targetWords}
+            onChange={setTargetWords}
           />
         </div>
 
