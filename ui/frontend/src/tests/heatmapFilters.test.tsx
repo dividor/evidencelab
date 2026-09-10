@@ -20,11 +20,19 @@ const buildFacets = (): Facets => ({
     published_year: [{ value: '2024', count: 5 }],
     document_type: [{ value: 'IAHE', count: 2 }, { value: 'Activity', count: 3 }],
     country: [{ value: 'Kenya', count: 4 }],
+    region: [{ value: 'Asia and the Pacific', count: 3 }, { value: 'Eastern and Southern Africa', count: 2 }],
+    tag_sdg: [
+      { value: 'sdg1 - SDG1 - No Poverty', count: 3 },
+      { value: 'sdg2 - SDG2 - Zero Hunger', count: 2 },
+      { value: 'sdg4 - SDG4 - Quality Education', count: 1 },
+    ],
   },
   filter_fields: {
     published_year: 'Year Published',
     document_type: 'Document Type',
     country: 'Country',
+    region: 'Region',
+    tag_sdg: 'United Nations Sustainable Development Goals',
   },
 });
 
@@ -242,6 +250,42 @@ describe('Heatmap side filters', () => {
       fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
       await waitFor(() => expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled());
       expect(cellTexts(container)).toEqual(['3', '3']);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
+
+  test('narrowing a taxonomy axis in the row/column filter keeps only the picked values', async () => {
+    // Regression: the modal listed SDGs by their clean name while the axis and
+    // the selection used the raw "sdg1 - SDG1 - …" value, so ticking a goal
+    // appended a name that never matched and every column stayed.
+    const getSpy = jest.spyOn(axios, 'get').mockResolvedValue({ data: { results: [] } });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      fireEvent.change(screen.getByLabelText('Rows'), { target: { value: 'region' } });
+      fireEvent.change(screen.getByLabelText('Columns'), { target: { value: 'tag_sdg' } });
+      await waitFor(() => expect(screen.getAllByText('SDG1 - No Poverty').length).toBeGreaterThan(0));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Filter United Nations Sustainable Development Goals' }));
+      // Everything starts selected; clear, then keep a single goal.
+      fireEvent.click(screen.getByLabelText('Select all'));
+      const noPoverty = screen.getByLabelText(/SDG1 - No Poverty/) as HTMLInputElement;
+      fireEvent.click(noPoverty);
+      expect(noPoverty.checked).toBe(true);
+      expect((screen.getByLabelText(/SDG2 - Zero Hunger/) as HTMLInputElement).checked).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled());
+      const params = cellRequestParams(getSpy);
+      // Two regions × the one remaining SDG column, sent as the raw value.
+      expect(params).toHaveLength(2);
+      for (const cell of params) {
+        expect(cell.get('tag_sdg')).toBe('sdg1 - SDG1 - No Poverty');
+      }
     } finally {
       getSpy.mockRestore();
       postSpy.mockRestore();

@@ -2042,10 +2042,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
-    // Transform taxonomy values to display clean names
+    // Show taxonomy values by their clean name but keep the raw value: the
+    // selection and the axis values are raw, so a renamed value would never
+    // match and the axis could not be narrowed.
     const transformedValues = baseValues.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
+      label: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
     }));
     const orderedValues = sortFacetValues(transformedValues, modalSelectedValues);
     return {
@@ -2063,10 +2065,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (!results) {
       return heatmapFacetSearchResults;
     }
-    // Transform taxonomy values to display clean names
+    // Clean name for display only; the raw value stays the filter value.
     const transformedResults = results.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, field),
+      label: extractTaxonomyName(facetValue.value, field),
     }));
     return {
       ...heatmapFacetSearchResults,
