@@ -108,8 +108,12 @@ python scripts/sync/db/sync_backup_to_remote.py \
 - Use Conventional Commits format: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`, `ci:`, `build:`.
 
 ### Documentation
-- **All docs MUST go in `docs/` at the repo root.** The directory `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
+- **`docs/` is end-user documentation only.** Everything under it is published to users: `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
 - **`docs/docs.json` is the source of truth** for the docs sidebar. Add new pages here.
+- **Plans, analyses and working notes do NOT go in `docs/` and are NOT committed.** Write them to an untracked `plan.md` at the repo root, show the plan to the user, and wait for approval before starting implementation. Never open a PR for a plan.
+
+### Working Data Location
+- **All local data, parsed output and database work lives on `/Volumes/bigdisky/evidencelab/evidencelab-ai/`** (7.3 TB). The older copy on `/Volumes/disco1/data/evidencelab-ai/` is retained for reference only; do not write new trees there (it is nearly full).
 
 ### Database
 - **NEVER run ad-hoc database commands** (ALTER, UPDATE, DELETE, DROP, etc.) unless explicitly requested by the user. All schema changes MUST go through Alembic migrations. All data fixes must be scripted and reviewed.
