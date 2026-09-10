@@ -46,6 +46,10 @@ class FakeDB:
         self._scroll_calls.append({"filter": query_filter, "end_idx": end_idx})
         return self.scroll_results[:end_idx]
 
+    def facet_documents(self, key, filter_conditions=None, limit=10, exact=False):
+        """Mock facet values (no "; "-joined payload values by default)."""
+        return {}
+
 
 def create_fake_document(doc_id, title, organization, year, summary="Test summary"):
     """Helper to create fake document points."""
@@ -914,3 +918,47 @@ async def test_docsearch_title_multi_select_resolves_exact_titles(mock_pg):
         for c in combined.must
         if getattr(c, "must", None)
     )
+
+
+@pytest.mark.asyncio
+async def test_docsearch_country_filter_matches_joined_payload_values(mock_pg):
+    """A country selection also matches documents whose payload stores several
+    countries as one "; "-joined string (regression: Kenya facet 26, filter 8)."""
+    fake_db = FakeDB(scroll_results=[create_fake_document("1", "A", "WFP", "2023")])
+    fake_db.facet_documents = lambda key, **kwargs: {
+        "Kenya": 8,
+        "Kenya; Ethiopia": 3,
+        "Malawi": 5,
+    }
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1"]
+
+    mock_request = Mock(spec=Request)
+    mock_request.query_params = {}
+
+    with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country="Kenya",
+                    language=None,
+                    data_source="uneg",
+                )
+
+    assert result.filters["country"] == ["Kenya", "Kenya; Ethiopia"]
+    combined = fake_db._scroll_calls[0]["filter"]
+    country_matches = [
+        c.must[0].match
+        for c in combined.must
+        if getattr(c, "must", None) and c.must[0].key == "map_country"
+    ]
+    assert len(country_matches) == 1
+    assert isinstance(country_matches[0], qmodels.MatchAny)
+    assert country_matches[0].any == ["Kenya", "Kenya; Ethiopia"]

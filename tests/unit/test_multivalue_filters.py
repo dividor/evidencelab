@@ -21,8 +21,94 @@ from ui.backend.routes.search import (
     _resolve_title_doc_ids,
     _title_candidates,
 )
+from ui.backend.utils.filter_helpers import (
+    _is_expandable_filter,
+    expand_multivalue_filters,
+)
 
 pytestmark = pytest.mark.unit
+
+
+def _db_with_values(values):
+    db = MagicMock()
+    db.facet_documents.return_value = {v: 1 for v in values}
+    return db
+
+
+class TestExpandMultivalueFilters:
+    def test_single_value_when_joined_payloads_exist_then_expanded_to_list(self):
+        db = _db_with_values(["Kenya", "Kenya; Ethiopia", "Malawi"])
+        core = {"country": "Kenya"}
+        expand_multivalue_filters(db, core, "wfp")
+        assert core["country"] == ["Kenya", "Kenya; Ethiopia"]
+        db.facet_documents.assert_called_once()
+        assert db.facet_documents.call_args.kwargs["key"] == "map_country"
+
+    def test_multi_select_when_joined_payloads_exist_then_all_kept(self):
+        db = _db_with_values(["Kenya", "Kenya; Ethiopia", "Malawi", "Niger; Malawi"])
+        core = {"country": "Kenya,Malawi"}
+        expand_multivalue_filters(db, core, "wfp")
+        assert core["country"] == [
+            "Kenya",
+            "Kenya; Ethiopia",
+            "Malawi",
+            "Niger; Malawi",
+        ]
+
+    def test_value_when_nothing_to_add_then_left_as_string(self):
+        db = _db_with_values(["Activity", "Thematic"])
+        core = {"document_type": "Activity"}
+        expand_multivalue_filters(db, core, "wfp")
+        assert core["document_type"] == "Activity"
+
+    def test_skipped_fields_when_present_then_never_looked_up(self):
+        db = MagicMock()
+        core = {
+            "title": "A title",
+            "doc_id": "1,2",
+            "language": "en",
+            "region": "Asia",
+            "published_year": "2024",
+            "src_evaluation_category": "CE",
+            "tag_sdg": "sdg1 - SDG1",
+            "score_min": "3",
+            "country": None,
+            "theme": "",
+        }
+        before = dict(core)
+        expand_multivalue_filters(db, core, "wfp")
+        assert core == before
+        db.facet_documents.assert_not_called()
+
+    def test_list_value_when_already_expanded_then_left_untouched(self):
+        db = MagicMock()
+        core = {"country": ["Kenya", "Kenya; Ethiopia"]}
+        expand_multivalue_filters(db, core, "wfp")
+        assert core["country"] == ["Kenya", "Kenya; Ethiopia"]
+        db.facet_documents.assert_not_called()
+
+
+class TestIsExpandableFilter:
+    @pytest.mark.parametrize(
+        "field, value, expected",
+        [
+            ("country", "Kenya", True),
+            ("organization", "WFP", True),
+            ("theme", "Nutrition", True),
+            ("title", "x", False),
+            ("region", "x", False),
+            ("published_year", "2024", False),
+            ("src_quality_rating", "x", False),
+            ("tag_sdg", "x", False),
+            ("num_citations_max", "5", False),
+            ("country", "", False),
+            ("country", "   ", False),
+            ("country", ["Kenya"], False),
+            ("country", None, False),
+        ],
+    )
+    def test_field_and_value_then_expected(self, field, value, expected):
+        assert _is_expandable_filter(field, value) is expected
 
 
 class TestFilterMatch:

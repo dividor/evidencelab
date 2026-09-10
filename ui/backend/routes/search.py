@@ -39,6 +39,7 @@ from ui.backend.utils.filter_helpers import (
     build_core_filters_from_params,
     build_needed_fields,
     collect_range_bounds,
+    expand_multivalue_filters,
     normalize_language_filter,
     resolve_storage_field,
     split_filter_values,
@@ -857,6 +858,8 @@ async def search(
         _convert_language_to_doc_ids(core_filters, pg)
         _convert_region_to_doc_ids(core_filters, pg)
         _convert_src_fields_to_doc_ids(core_filters, pg, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
@@ -1078,6 +1081,8 @@ async def docsearch(
         # Heatmapper counts match the facets. Without this a "language" or
         # "evaluation category" axis returns zero/under-counted results.
         _resolve_pg_filter_fields(core_filters, pg, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
@@ -1191,6 +1196,8 @@ async def get_facets(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
         title_filter = core_filters.get("title")
         if title_filter and q:
             title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
