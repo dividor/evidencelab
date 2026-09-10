@@ -9,10 +9,18 @@ Covers three defects surfaced by Heatmapper:
 * the resolved title doc_ids must AND with other document-level constraints.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 from qdrant_client.http import models as qmodels
 
-from ui.backend.routes.search import _filter_match
+from ui.backend.routes.search import (
+    _NO_MATCH_DOC_ID,
+    _filter_match,
+    _handle_title_filter,
+    _resolve_title_doc_ids,
+    _title_candidates,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -32,3 +40,77 @@ class TestFilterMatch:
         match = _filter_match(["2024", 2025])
         assert isinstance(match, qmodels.MatchAny)
         assert match.any == ["2024", "2025"]
+
+
+class TestTitleCandidates:
+    def test_single_title_then_only_itself(self):
+        assert _title_candidates("Evaluation of X") == ["Evaluation of X"]
+
+    def test_two_titles_then_each_and_joined(self):
+        candidates = _title_candidates("Title A,Title B")
+        assert "Title A" in candidates
+        assert "Title B" in candidates
+        assert "Title A,Title B" in candidates
+
+    def test_title_with_comma_then_reconstructed_with_space(self):
+        candidates = _title_candidates("Partnerships in East Africa, 2016-2020")
+        assert "Partnerships in East Africa, 2016-2020" in candidates
+
+    def test_two_titles_one_with_comma_then_both_reconstructed(self):
+        candidates = _title_candidates("Title A,Region Study, 2016-2020,Title C")
+        assert "Title A" in candidates
+        assert "Region Study, 2016-2020" in candidates
+        assert "Title C" in candidates
+
+    def test_blank_parts_then_dropped(self):
+        assert _title_candidates(" , ,A, ") == [", ,A,", "A"]
+
+    def test_many_parts_then_only_parts_and_whole(self):
+        parts = [f"T{i}" for i in range(60)]
+        candidates = _title_candidates(",".join(parts))
+        assert set(parts) <= set(candidates)
+        assert len(candidates) == len(parts) + 1
+
+
+class TestResolveTitleDocIds:
+    def test_exact_and_substring_matches_then_unioned_sorted(self):
+        pg = MagicMock()
+        pg.fetch_doc_ids_by_exact_titles.return_value = ["d3", "d1"]
+        pg.fetch_doc_ids_by_title.return_value = ["d2", "d1"]
+        assert _resolve_title_doc_ids(pg, "Title A,Title B") == ["d1", "d2", "d3"]
+        pg.fetch_doc_ids_by_title.assert_called_once_with("Title A,Title B")
+
+
+class TestHandleTitleFilter:
+    def test_title_when_resolved_then_intersected_with_existing_doc_id(self):
+        # Regression: the title doc_ids used to overwrite a language/region
+        # constraint instead of ANDing with it.
+        core = {"title": "Title A", "doc_id": "d1,d2"}
+        with patch(
+            "ui.backend.routes.search._resolve_title_doc_ids",
+            return_value=["d2", "d9"],
+        ):
+            assert _handle_title_filter(MagicMock(), core, "q") is None
+        assert "title" not in core
+        assert core["doc_id"] == "d2"
+
+    def test_title_when_disjoint_from_existing_then_sentinel(self):
+        core = {"title": "Title A", "doc_id": "d1"}
+        with patch(
+            "ui.backend.routes.search._resolve_title_doc_ids", return_value=["d9"]
+        ):
+            _handle_title_filter(MagicMock(), core, "q")
+        assert core["doc_id"] == _NO_MATCH_DOC_ID
+
+    def test_title_when_no_match_then_empty_response(self):
+        core = {"title": "Nope"}
+        with patch("ui.backend.routes.search._resolve_title_doc_ids", return_value=[]):
+            response = _handle_title_filter(MagicMock(), core, "q")
+        assert response is not None
+        assert response.total == 0
+        assert response.filters == {"title": ["Nope"]}
+
+    def test_no_title_then_untouched(self):
+        core = {"country": "Kenya"}
+        assert _handle_title_filter(MagicMock(), core, "q") is None
+        assert core == {"country": "Kenya"}

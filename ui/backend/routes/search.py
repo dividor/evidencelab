@@ -565,15 +565,51 @@ async def perform_title_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Above this many comma-separated parts a title filter is matched part by part
+# only, instead of trying every contiguous run of parts.
+_MAX_TITLE_PARTS = 50
+
+
+def _title_candidates(title_filter: str) -> List[str]:
+    """Exact-title candidates encoded in a comma-joined title filter.
+
+    The UI joins multi-select filter values with commas, but display titles
+    themselves often contain commas (``"…, 2016-2021"``), so the filter cannot
+    simply be split. Every contiguous run of the comma-split parts is rejoined
+    (with and without the space after the comma) and offered as a candidate, so
+    both ``"Title A,Title B"`` and a single ``"Region, 2016-2020"`` resolve to
+    the titles the user picked.
+    """
+    parts = [part.strip() for part in title_filter.split(",") if part.strip()]
+    candidates = {title_filter.strip(), *parts}
+    if len(parts) <= _MAX_TITLE_PARTS:
+        for start in range(len(parts)):
+            for end in range(start + 2, len(parts) + 1):
+                candidates.add(", ".join(parts[start:end]))
+                candidates.add(",".join(parts[start:end]))
+    return sorted(candidate for candidate in candidates if candidate)
+
+
+def _resolve_title_doc_ids(pg, title_filter: str) -> List[str]:
+    """doc_ids for a title filter: exact display titles (one or several, as
+    picked in the UI) unioned with the partial substring match of the raw value
+    that API callers rely on."""
+    doc_ids = set(pg.fetch_doc_ids_by_exact_titles(_title_candidates(title_filter)))
+    doc_ids.update(pg.fetch_doc_ids_by_title(title_filter))
+    return sorted(doc_ids)
+
+
 def _handle_title_filter(
     pg, core_filters: Dict[str, Any], q: str
 ) -> Optional[SearchResponse]:
+    """Replace a title filter with a doc_id constraint (intersected with any
+    existing one). Returns an empty response when no document matches."""
     title_filter = core_filters.get("title")
     if not title_filter:
         return None
 
     t_title_filter_start = time.time()
-    title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
+    title_doc_ids = _resolve_title_doc_ids(pg, title_filter)
     t_title_filter_end = time.time()
     logger.info(
         "[TIMING] title_doc_id_fetch: %.3fs (%s matches)",
@@ -588,7 +624,7 @@ def _handle_title_filter(
             filters={"title": [title_filter]},
         )
     core_filters.pop("title", None)
-    core_filters["doc_id"] = title_doc_ids
+    _intersect_doc_id_filter(core_filters, title_doc_ids)
     return None
 
 
@@ -908,16 +944,9 @@ def _build_metadata_filter_condition(
 
     A multi-select (list, or the UI's comma-joined string) becomes ``MatchAny``
     so the selected values OR within the field, exactly as in chunk search;
-    a single value is an exact ``MatchValue``.
+    a single value is an exact ``MatchValue``. ``title`` never reaches here:
+    it is resolved to a doc_id constraint by ``_handle_title_filter``.
     """
-    if core_field == "title":
-        return qmodels.Filter(
-            should=[
-                qmodels.FieldCondition(
-                    key=storage_field, match=qmodels.MatchText(text=value)
-                )
-            ]
-        )
     return qmodels.Filter(
         must=[qmodels.FieldCondition(key=storage_field, match=_filter_match(value))]
     )
@@ -1050,6 +1079,11 @@ async def docsearch(
         # "evaluation category" axis returns zero/under-counted results.
         _resolve_pg_filter_fields(core_filters, pg, source)
 
+        title_filter = core_filters.get("title")
+        early_response = _handle_title_filter(pg, core_filters, q)
+        if early_response:
+            return early_response
+
         combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
         if combined_filter is None:
             return SearchResponse(results=[], total=0, query=q, filters={})
@@ -1075,9 +1109,7 @@ async def docsearch(
             len(documents),
         )
 
-        filters_response = _build_filters_response(
-            core_filters, core_filters.get("title")
-        )
+        filters_response = _build_filters_response(core_filters, title_filter)
         return SearchResponse(
             results=documents, total=len(documents), query=q, filters=filters_response
         )
