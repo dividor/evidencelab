@@ -2756,7 +2756,6 @@ function App() {
   );
 
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
-  const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
   // When search results are displayed, compute facet counts directly from
   // the actual results (deduped by doc_id) so counts exactly match what the
@@ -2921,7 +2920,6 @@ function App() {
       loadingConfig={loadingConfig}
       facetsDataSource={facetsDataSource}
       filtersExpanded={heatmapFiltersExpanded}
-      activeFiltersCount={heatmapActiveFiltersCount}
       onToggleFiltersExpanded={toggleHeatmapFiltersExpanded}
       onClearFilters={handleClearHeatmapFilters}
       facets={facets}
