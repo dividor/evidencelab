@@ -121,6 +121,7 @@ python scripts/sync/db/sync_backup_to_remote.py \
 
 ### Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.
+- **NEVER suppress, demote, or hide type or lint errors in tooling or environment config either** — no `TSC_COMPILE_ON_ERROR`, `ESLINT_NO_DEV_ERRORS`, `DISABLE_ESLINT_PLUGIN`, closing a compile-error overlay and carrying on, or any equivalent, not even for a throwaway local dev server. Find the cause (a stale package, a wrong config) and fix that.
 - **NEVER code fallbacks or graceful degradation unless explicitly requested.** If a dependency or feature is required, fail hard and loud. Silent fallbacks hide bugs.
 - **NEVER install packages ad-hoc.** New dependencies MUST be added to `requirements.txt` (root) and/or `ui/backend/requirements.txt` so they are part of the build environment. Both CI and Docker must pick them up.
 - **NEVER use deprecated APIs or methods.** Check library documentation for current recommended usage before implementing.
