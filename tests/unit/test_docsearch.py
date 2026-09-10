@@ -329,6 +329,30 @@ def test_get_indexed_doc_ids_returns_empty_list_when_no_indexed_docs():
     mock_pg.fetch_indexed_doc_ids.assert_called_once()
 
 
+def test_build_metadata_filter_condition_multi_select_uses_match_any():
+    """A comma-joined multi-select (as sent by the UI) ORs the values, so
+    picking two document types in attribute mode no longer returns nothing."""
+    result = _build_metadata_filter_condition(
+        "document_type", "Activity,Thematic", "map_document_type"
+    )
+
+    assert isinstance(result, qmodels.Filter)
+    assert len(result.must) == 1
+    assert result.must[0].key == "map_document_type"
+    assert isinstance(result.must[0].match, qmodels.MatchAny)
+    assert result.must[0].match.any == ["Activity", "Thematic"]
+
+
+def test_build_metadata_filter_condition_list_value_uses_match_any():
+    """An expanded (list) filter value is applied as MatchAny."""
+    result = _build_metadata_filter_condition(
+        "country", ["Kenya", "Kenya; Ethiopia"], "map_country"
+    )
+
+    assert isinstance(result.must[0].match, qmodels.MatchAny)
+    assert result.must[0].match.any == ["Kenya", "Kenya; Ethiopia"]
+
+
 def test_build_metadata_filter_condition_title_uses_match_text():
     """Test _build_metadata_filter_condition uses MatchText for title field."""
     result = _build_metadata_filter_condition("title", "Education", "map_title")

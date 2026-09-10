@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -470,6 +470,18 @@ def _build_search_results(
     return filtered_results
 
 
+def _filter_match(value: Any) -> Union[qmodels.MatchAny, qmodels.MatchValue]:
+    """Qdrant match for a filter value: ``MatchAny`` when the value is a list or
+    a comma-joined multi-select (values OR within a field), else ``MatchValue``.
+    """
+    if isinstance(value, (list, tuple, set)):
+        return qmodels.MatchAny(any=[str(item) for item in value])
+    multi_values = split_filter_values(value)
+    if multi_values:
+        return qmodels.MatchAny(any=multi_values)
+    return qmodels.MatchValue(value=value)
+
+
 def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
     """Build a Qdrant filter from core filter fields for restricting facet counts."""
     facet_conditions: List[qmodels.Condition] = []
@@ -480,16 +492,8 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
         storage_field = resolve_storage_field(core_field, data_source)
         if core_field == "published_year":
             value = str(value)
-        multi_values = split_filter_values(value)
         facet_conditions.append(
-            qmodels.FieldCondition(
-                key=storage_field,
-                match=(
-                    qmodels.MatchAny(any=multi_values)
-                    if multi_values
-                    else qmodels.MatchValue(value=value)
-                ),
-            )
+            qmodels.FieldCondition(key=storage_field, match=_filter_match(value))
         )
 
     for sf, bounds in collect_range_bounds(core_filters, data_source).items():
@@ -900,7 +904,12 @@ def _get_indexed_doc_ids(pg, source: str) -> List[str]:
 def _build_metadata_filter_condition(
     core_field: str, value: Any, storage_field: str
 ) -> qmodels.Filter:
-    """Build a Qdrant filter condition for a single metadata field."""
+    """Build a Qdrant filter condition for a single metadata field.
+
+    A multi-select (list, or the UI's comma-joined string) becomes ``MatchAny``
+    so the selected values OR within the field, exactly as in chunk search;
+    a single value is an exact ``MatchValue``.
+    """
     if core_field == "title":
         return qmodels.Filter(
             should=[
@@ -910,11 +919,7 @@ def _build_metadata_filter_condition(
             ]
         )
     return qmodels.Filter(
-        must=[
-            qmodels.FieldCondition(
-                key=storage_field, match=qmodels.MatchValue(value=value)
-            )
-        ]
+        must=[qmodels.FieldCondition(key=storage_field, match=_filter_match(value))]
     )
 
 
