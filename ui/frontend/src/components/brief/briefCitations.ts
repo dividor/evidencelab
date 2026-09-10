@@ -1,8 +1,22 @@
 import { SourceReference } from '../../types/api';
 import { extractCitedNumbers } from '../citations/CitedContent';
-import { BriefSection } from './briefTypes';
+import { BriefSection, ReferenceGrouping } from './briefTypes';
 
 const CITATION_RE = /\[(\d+(?:,\s*\d+)*)\]/g;
+// Two markers side by side that carry the same number(s) — `[1][1]`, `[1] [1]`.
+// Combining citations by document produces these wherever the model cited two
+// passages of one report back to back, and the reader should see `[1]` once.
+const ADJACENT_DUPLICATE_RE = /\[(\d+(?:, \d+)*)\]\s*\[\1\]/g;
+
+const collapseAdjacentDuplicates = (content: string): string => {
+  let out = content;
+  let prev: string;
+  do {
+    prev = out;
+    out = out.replace(ADJACENT_DUPLICATE_RE, '[$1]');
+  } while (out !== prev);
+  return out;
+};
 
 // Normalise a line to compare it against a heading title: drop markdown heading
 // hashes, leading "1." / "2.1" numbering, and emphasis markers.
@@ -46,24 +60,34 @@ export interface SectionDisplay {
   sources: SourceReference[];
 }
 
+/** The identity a citation number is assigned to: the cited passage (chunk),
+ *  or — for single-per-document grouping — the document itself. */
+const citationKey = (src: SourceReference, grouping: ReferenceGrouping): string =>
+  grouping === 'document-single'
+    ? `doc:${src.docId || src.title}`
+    : src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
+
 /**
- * Renumber citations across the whole brief into one consecutive sequence,
- * combined by document: every section's per-section `[n]` markers are remapped
- * to a global number (same document → same number everywhere), and the compiled
- * References list is built from the same global registry. Used for both the
- * on-screen render (inline citations, per-section Evidence panels, References)
- * and the Word export, so all three stay in sync as sections are researched.
+ * Renumber citations across the whole brief into one consecutive sequence:
+ * every section's per-section `[n]` markers are remapped to a global number,
+ * and the compiled References list is built from the same global registry.
+ * Used for both the on-screen render (inline citations, per-section Evidence
+ * panels, References) and the Word export, so all three stay in sync as
+ * sections are researched.
+ *
+ * With the default grouping there is one number per cited passage, exactly as
+ * the AI summary numbers its sources (assistant_graph assigns global_index per
+ * chunk): a report cited from p.32 and p.56 gets two numbers, and the reader
+ * can see which page each claim came from. With 'document-single' grouping
+ * every passage of a document shares one number and the reference carries no
+ * page, so the list reads at the document level only.
  */
 export const buildGlobalCitations = (
   sections: BriefSection[],
+  grouping: ReferenceGrouping = 'passage',
 ): { refs: GlobalRef[]; display: Map<string, SectionDisplay> } => {
-  // One citation number per cited passage, exactly as the AI summary numbers
-  // its sources (assistant_graph assigns global_index per chunk). A report
-  // cited from p.32 and p.56 therefore gets two numbers, and the reader can
-  // see which page each claim came from.
-  const chunkKey = (src: SourceReference): string =>
-    src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
-  const chunkToGlobal = new Map<string, number>();
+  const perDocument = grouping === 'document-single';
+  const keyToGlobal = new Map<string, number>();
   const refs: GlobalRef[] = [];
   // A section mid-Edit/Update (revising) keeps its old content on screen, so
   // it stays in the numbering — otherwise citations would jump twice per run.
@@ -74,10 +98,12 @@ export const buildGlobalCitations = (
     if (!isVisible(s)) return;
     extractCitedNumbers(s.content).forEach((localN) => {
       const src = s.sources.find((x) => x.index === localN);
-      if (!src || chunkToGlobal.has(chunkKey(src))) return;
+      if (!src || keyToGlobal.has(citationKey(src, grouping))) return;
       const n = refs.length + 1;
-      chunkToGlobal.set(chunkKey(src), n);
-      refs.push({ n, title: src.title, page: src.page, source: src });
+      keyToGlobal.set(citationKey(src, grouping), n);
+      // A document-level reference has no page; its source is the first cited
+      // passage, so clicking the reference still opens the document.
+      refs.push({ n, title: src.title, page: perDocument ? undefined : src.page, source: src });
     });
   });
   // Build per-section display content + sources keyed by the global number.
@@ -86,29 +112,41 @@ export const buildGlobalCitations = (
     if (!isVisible(s)) return;
     const localToGlobal = new Map<number, number>();
     const sources: SourceReference[] = [];
-    const seen = new Set<number>();
+    const byGlobal = new Map<number, SourceReference>();
     s.sources.forEach((src) => {
       if (src.index == null) return;
-      const g = chunkToGlobal.get(chunkKey(src));
+      const g = keyToGlobal.get(citationKey(src, grouping));
       if (g == null) return;
       localToGlobal.set(src.index, g);
-      // Each number belongs to one passage, so there is nothing to merge.
-      if (seen.has(g)) return;
-      seen.add(g);
-      sources.push({ ...src, index: g });
+      const existing = byGlobal.get(g);
+      if (!existing) {
+        const entry = { ...src, index: g };
+        byGlobal.set(g, entry);
+        sources.push(entry);
+        return;
+      }
+      // Per passage, each number belongs to one passage, so there is nothing to
+      // merge. Per document, the other passages ride along as variants so the
+      // hover card can still show the passage that supports the hovered claim.
+      if (perDocument && src.chunkId !== existing.chunkId) {
+        existing.variants = [...(existing.variants || []), src];
+      }
     });
-    const content = stripLeadingTitle(s.content, s.title).replace(CITATION_RE, (_m, nums: string) => {
-      const mapped = Array.from(
-        new Set(
-          nums
-            .split(',')
-            .map((x) => localToGlobal.get(parseInt(x.trim(), 10)))
-            .filter((g): g is number => g != null),
-        ),
-      );
-      return mapped.length ? `[${mapped.join(', ')}]` : '';
-    });
-    display.set(s.id, { content, sources });
+    const renumbered = stripLeadingTitle(s.content, s.title).replace(
+      CITATION_RE,
+      (_m, nums: string) => {
+        const mapped = Array.from(
+          new Set(
+            nums
+              .split(',')
+              .map((x) => localToGlobal.get(parseInt(x.trim(), 10)))
+              .filter((g): g is number => g != null),
+          ),
+        );
+        return mapped.length ? `[${mapped.join(', ')}]` : '';
+      },
+    );
+    display.set(s.id, { content: collapseAdjacentDuplicates(renumbered), sources });
   });
   return { refs, display };
 };

@@ -2,6 +2,15 @@ import { SourceReference } from '../../types/api';
 import { BriefActivityEvent } from '../../utils/briefStream';
 
 export type BriefStage = 'seed' | 'outline' | 'research' | 'done';
+
+// How the compiled References list is laid out — and, because the list and the
+// inline `[n]` markers share one numbering, how citations are numbered:
+//   'passage'           one number per cited passage; one row per number.
+//   'document-multiple' one number per cited passage; rows collapsed to one per
+//                       document, each number shown with its page.
+//   'document-single'   one number per document, no page numbers: every passage
+//                       of a document cites the same `[n]`.
+export type ReferenceGrouping = 'passage' | 'document-multiple' | 'document-single';
 export type SectionStatus = 'pending' | 'researching' | 'done';
 
 // What kind of AI operation produced a version of a section. `generate` is the
@@ -62,14 +71,6 @@ export interface BriefSection {
   guidance?: string;
   // Voice & tone profile override for this section (null/absent = brief default).
   voiceId?: string | null;
-}
-
-export interface BriefReference {
-  n: number;
-  title: string;
-  page?: number;
-  section: string;
-  source: SourceReference; // for click-through to the document preview
 }
 
 export interface SavedBriefSection {

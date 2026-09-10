@@ -55,6 +55,9 @@ import {
   type DocumentGroup,
 } from './citations';
 
+/** Layout of the compact references list (see {@link ExportOptions.referenceList}). */
+export type ReferenceListLayout = 'flat' | 'grouped' | 'document';
+
 export interface ExportOptions {
   query: string;
   aiSummary?: string;
@@ -70,9 +73,8 @@ export interface ExportOptions {
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
   // Render a compact references list (no excerpts) instead of full result
-  // cards, mirroring the Brief's on-screen References section. 'grouped'
-  // collapses to one row per document.
-  referenceList?: 'flat' | 'grouped';
+  // cards, mirroring the Brief's on-screen References section.
+  referenceList?: ReferenceListLayout;
   /** Cover-page document title (default "Evidence Lab — Search Export").
    *  The Brief export passes "AI-generated Research Brief". */
   documentTitle?: string;
@@ -1081,15 +1083,17 @@ const buildResultCard = (
 };
 
 /**
- * A compact references list: one line per citation (flat) or per document
- * (grouped), title hyperlinked to the source, no excerpt text. Mirrors what
- * the Brief shows on screen so the export matches the reader's view.
+ * A compact references list, title hyperlinked to the source, no excerpt text:
+ * one line per citation with its page ('flat'), one line per document listing
+ * each of its citation numbers ('grouped'), or one line per document-level
+ * citation with no page ('document'). Mirrors what the Brief shows on screen
+ * so the export matches the reader's view.
  */
 const buildReferenceList = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource: string | undefined,
-  grouped: boolean,
+  layout: ReferenceListLayout,
   sectionTitle = 'References',
 ): Paragraph[] => {
   const titleOf = (r: SearchResult): string =>
@@ -1098,7 +1102,7 @@ const buildReferenceList = (
     '(untitled document)';
 
   const rows: Array<{ label: string; title: string; result: SearchResult }> = [];
-  if (grouped) {
+  if (layout === 'grouped') {
     const byDoc = new Map<string, { nums: number[]; result: SearchResult }>();
     results.forEach((r, idx) => {
       const key = r.doc_id || titleOf(r);
@@ -1111,7 +1115,7 @@ const buildReferenceList = (
     );
   } else {
     results.forEach((r, idx) => {
-      const page = r.page_num ? `, p.${r.page_num}` : '';
+      const page = layout === 'flat' && r.page_num ? `, p.${r.page_num}` : '';
       rows.push({ label: String(idx + 1), title: `${titleOf(r)}${page}`, result: r });
     });
   }
@@ -1207,7 +1211,7 @@ export const buildExportDocument = (
           opts.results,
           siteOrigin,
           opts.dataSource,
-          opts.referenceList === 'grouped',
+          opts.referenceList,
           opts.resultsSectionTitle,
         )
       : buildResultsSection(

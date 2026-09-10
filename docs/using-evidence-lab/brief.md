@@ -68,7 +68,7 @@ For each completed section you can:
 - **Edit text** — tweak the generated prose by hand.
 - **Regenerate** — re-run the research, optionally with new guidance.
 
-Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief, one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers.
+Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief. By default there is one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers. Two **Group by document** checkboxes above the References list change how the list is laid out, and the single-per-document option also changes the numbering itself (see [Export to Word](#5-export-to-word) below).
 
 ---
 
@@ -86,7 +86,11 @@ From a card you can **open**, **share** or **delete** a brief. **New brief** sta
 
 When your brief is ready, click **Export to Word** at the top right.
 
-The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkbox above that list. Leave it off for one line per citation; tick it to collapse the list to one line per document — `Title, [1] p. 32, [2] p. 56` — which is more compact when a brief leans on a handful of reports.
+The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkboxes above that list (tick at most one):
+
+- **Neither ticked** — one line per citation, with its page: `[1] Title, p.32`.
+- **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
+- **Group by document (single per document)** — one number per document and no page numbers: `[1] Title`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
 
 ![Export to Word button](/docs/images/brief/brief-export-button.png)
 
