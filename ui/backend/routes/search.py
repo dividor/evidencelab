@@ -115,8 +115,12 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
     (the ``src_doc_raw_metadata`` JSONB). Filtering those against the Qdrant
     payload returns wrong/zero counts, so resolve each to its matching doc_ids
     here — the same source the facet counts come from — and AND them together.
-    Qdrant-resident fields (document_type, published_year, organization,
-    country, region, …) are left in ``core_filters`` as payload filters.
+    ``region`` is resolved the same way as in chunk search: its payload value is
+    a ``"; "``-joined string and region names contain commas, so only the
+    PostgreSQL containment lookup handles multi-region documents and
+    multi-select correctly. Qdrant-resident fields (document_type,
+    published_year, organization, country, …) are left in ``core_filters`` as
+    payload filters.
     """
     language = core_filters.pop("language", None)
     if language:
@@ -125,6 +129,7 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
             doc_ids_from_pg_field(pg, "sys_language", str(language).split(",")),
         )
 
+    _convert_region_to_doc_ids(core_filters, pg)
     _convert_src_fields_to_doc_ids(core_filters, pg, source)
 
 

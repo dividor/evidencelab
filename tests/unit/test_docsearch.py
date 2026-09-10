@@ -523,6 +523,36 @@ def test_resolve_pg_filter_fields_language_to_sys_language_doc_ids():
     assert mock_field.call_args.args[1] == "sys_language"
 
 
+def test_resolve_pg_filter_fields_region_to_doc_ids():
+    """region is resolved via the PostgreSQL containment lookup (like chunk
+    search) instead of an exact Qdrant payload match, so multi-region documents
+    and a multi-select of regions both count."""
+    pg = Mock()
+    pg.fetch_doc_ids_by_region.return_value = ["2", "5"]
+    core_filters = {"region": "Asia and the Pacific,Eastern and Southern Africa"}
+
+    _resolve_pg_filter_fields(core_filters, pg, "wfp")
+
+    assert "region" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"2", "5"}
+    pg.fetch_doc_ids_by_region.assert_called_once_with(
+        "Asia and the Pacific,Eastern and Southern Africa"
+    )
+
+
+def test_resolve_pg_filter_fields_region_and_language_intersect():
+    """region and language doc_id sets AND together."""
+    pg = Mock()
+    pg.fetch_doc_ids_by_region.return_value = ["2", "5", "7"]
+    core_filters = {"language": "en", "region": "Asia and the Pacific"}
+    with patch(
+        "ui.backend.routes.search.doc_ids_from_pg_field", return_value=["5", "7", "9"]
+    ):
+        _resolve_pg_filter_fields(core_filters, pg, "wfp")
+
+    assert set(core_filters["doc_id"].split(",")) == {"5", "7"}
+
+
 def test_resolve_pg_filter_fields_src_field_to_jsonb_doc_ids():
     """src_* fields are resolved via the src_doc_raw_metadata JSONB column."""
     core_filters = {"src_evaluation_category": "DE", "document_type": "Activity"}
