@@ -72,6 +72,7 @@ export const SYSTEM_DEFAULTS: Required<SearchSettings> = {
   summaryLimitResults: true,
   summaryMaxResults: SUMMARY_RESULT_LIMIT,
   summaryTemperature: 0,
+  briefTargetWords: null,
   greetingMessage: '',
 };
 

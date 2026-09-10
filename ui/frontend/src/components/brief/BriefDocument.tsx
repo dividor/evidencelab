@@ -11,6 +11,8 @@ import {
   IconShare,
   IconSparkle,
 } from './BriefIcons';
+import { BriefLengthControl } from './BriefLengthControl';
+import { countWords, describeTarget } from './briefLength';
 import { BriefReferences } from './BriefReferences';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
@@ -117,6 +119,12 @@ interface SectionViewProps {
   activeThreadId?: string | null;
 }
 
+// Tooltip for a section's word count: which target (if any) it was written to.
+const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): string => {
+  const target = section.targetWords ?? briefTarget;
+  return target ? `Target: about ${target} words` : 'No length target';
+};
+
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
 const GuidancePanel: React.FC<{
@@ -166,6 +174,13 @@ const GuidancePanel: React.FC<{
           </div>
         </>
       )}
+      <div className="brief-regen-voice-label">Section length</div>
+      <BriefLengthControl
+        value={section.targetWords}
+        onChange={(target) => brief.setSectionTargetWords(section.id, target)}
+        inheritLabel={`Use brief target — ${describeTarget(brief.targetWords)}`}
+        ariaLabel="Length target for this section"
+      />
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
@@ -478,6 +493,11 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onBlur={brief.commitEdits}
           readOnly={readOnly}
         />
+        {isDone && (
+          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
+            {countWords(section.content).toLocaleString()} words
+          </span>
+        )}
       </div>
 
       {isDone && !readOnly && (
@@ -828,6 +848,12 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           <span>{sections.length} sections</span>
           <span>·</span>
           <span>{brief.totalSources} sources synthesised</span>
+          {brief.totalWords > 0 && (
+            <>
+              <span>·</span>
+              <span>{brief.totalWords.toLocaleString()} words</span>
+            </>
+          )}
           {readOnly && brief.ownerName && (
             <>
               <span>·</span>

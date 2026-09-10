@@ -3104,3 +3104,43 @@
 .brief-comment .brief-comment-actions {
   margin-left: 29px;
 }
+
+/* ---------- section length target ---------- */
+.brief-length-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.brief-length-control .bc-select {
+  min-width: 220px;
+}
+.brief-length-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+}
+.brief-length-custom .brief-number {
+  width: 90px;
+}
+/* "Number of sections" and "Section length" side by side; each field keeps
+   its own label-then-control row, and they wrap when the card is narrow. */
+.brief-seed-num-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 32px;
+}
+.brief-seed-num-row .brief-seed-num {
+  margin-top: 16px;
+}
+/* Word count beside a researched section's title. */
+.brief-doc-section-words {
+  flex: none;
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+  white-space: nowrap;
+}

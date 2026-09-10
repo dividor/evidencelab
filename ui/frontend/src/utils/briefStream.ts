@@ -203,6 +203,8 @@ export interface RunDeepResearchOptions {
   // turn's token usage onto the brief's activity row (typed 'brief' via
   // the stream's usageContext).
   activityId?: string | null;
+  // Target length of the written text in words (see briefLength.ts).
+  targetWords?: number | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -221,6 +223,7 @@ export const runDeepResearch = async ({
   searchSettings = null,
   publishedAfter = null,
   activityId = null,
+  targetWords = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -238,6 +241,7 @@ export const runDeepResearch = async ({
     publishedAfter: publishedAfter ?? null,
     activityId: activityId ?? null,
     usageContext: 'brief',
+    targetWords: targetWords ?? null,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -307,6 +311,8 @@ export interface ResearchSectionOptions {
   outlineContext?: string | null;
   // Usage-recording context (see RunDeepResearchOptions).
   activityId?: string | null;
+  // Target length of the section in words (see briefLength.ts).
+  targetWords?: number | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -370,11 +376,18 @@ const buildGenerateQuery = (args: {
  * text with no [n] citation markers. Such a result is treated as a failed run
  * (fail loud, keep the section pending) rather than stored as content.
  */
-export const isLikelyNonAnswer = (content: string, sourceCount: number): boolean => {
+export const isLikelyNonAnswer = (
+  content: string,
+  sourceCount: number,
+  targetWords?: number | null,
+): boolean => {
   const text = (content || '').trim();
   if (!text) return true;
   const hasCitations = /\[\d+(?:,\s*\d+)*\]/.test(text);
-  return sourceCount >= 3 && !hasCitations && text.length < 800;
+  // A short section is only suspicious relative to the length asked for: with
+  // a target of 100 words, 700 characters is a complete answer, not narration.
+  const shortLimit = targetWords ? Math.min(800, targetWords * 3) : 800;
+  return sourceCount >= 3 && !hasCitations && text.length < shortLimit;
 };
 
 // A minimal shape of the brief's sections for outline context.
@@ -521,6 +534,7 @@ export const researchBriefSection = ({
   voiceInstructions,
   outlineContext,
   activityId,
+  targetWords,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -549,6 +563,7 @@ export const researchBriefSection = ({
     // prompt instruction above).
     publishedAfter: mode === 'update' ? publishedAfterIso : null,
     activityId,
+    targetWords,
     handlers,
     signal,
   });

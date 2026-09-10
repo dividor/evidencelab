@@ -7,6 +7,7 @@ SSE streaming and conversation persistence.
 
 import asyncio
 import logging
+import math
 import sys
 import uuid as uuid_mod
 from pathlib import Path
@@ -23,6 +24,32 @@ from ui.backend.services.assistant_graph import (
 from ui.backend.services.llm_service import summarize_usage_metadata
 
 logger = logging.getLogger(__name__)
+
+
+# Token ceiling for a requested length in words. English prose runs at about
+# 1.3 tokens per word; inline [n] citations and markdown headings push that
+# up, and the model needs room to finish its last sentence rather than be cut
+# off mid-citation, hence the ratio and the fixed headroom.
+TOKENS_PER_WORD = 1.6
+TARGET_LENGTH_HEADROOM_TOKENS = 400
+
+
+def max_tokens_for_target(
+    max_tokens: Optional[int], target_words: Optional[int]
+) -> Optional[int]:
+    """Raise the configured ``max_tokens`` so a ``target_words`` answer fits.
+
+    The configured ceiling (e.g. 2000 tokens, roughly 1,400 words) silently
+    truncates longer targets, so when a target is given the ceiling becomes
+    at least what that many words need. It is never lowered: a small target
+    is enforced by the prompt (and the Brief's condense pass), not by cutting
+    the model off, which would also starve the researcher sub-agent that
+    shares this limit.
+    """
+    if not target_words:
+        return max_tokens
+    needed = math.ceil(target_words * TOKENS_PER_WORD) + TARGET_LENGTH_HEADROOM_TOKENS
+    return max(max_tokens or 0, needed)
 
 
 def _get_llm(model_key=None, temperature=None, max_tokens=None):
@@ -312,9 +339,13 @@ async def stream_research_response(
     search_settings: Optional[Dict[str, Any]] = None,
     system_prompt_override: Optional[str] = None,
     deep_research: bool = False,
+    target_words: Optional[int] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Stream a research response via SSE events.
+
+    ``target_words`` (deep research only) asks the coordinator for an answer
+    of about that length and raises the token ceiling to fit it.
 
     Runs the deepagents research agent and yields structured events
     as the agent searches, plans, and synthesizes its response.
@@ -333,29 +364,40 @@ async def stream_research_response(
     tracker = None
     usage_handler = UsageMetadataCallbackHandler()
     logger.info(
-        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s",
+        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s target_words=%s",
         run_id,
         deep_research,
         model_key,
         data_source,
+        target_words,
     )
 
     try:
         llm = _get_llm(
             model_key=model_key,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens_for_target(max_tokens, target_words),
         )
         prior_sources = _extract_prior_sources(conversation_messages)
-        builder = build_deep_research_agent if deep_research else build_research_agent
-        agent, tracker = builder(
-            llm,
-            data_source,
-            reranker_model,
-            search_settings,
-            system_prompt_override=system_prompt_override,
-            prior_sources=prior_sources,
-        )
+        if deep_research:
+            agent, tracker = build_deep_research_agent(
+                llm,
+                data_source,
+                reranker_model,
+                search_settings,
+                system_prompt_override=system_prompt_override,
+                prior_sources=prior_sources,
+                target_words=target_words,
+            )
+        else:
+            agent, tracker = build_research_agent(
+                llm,
+                data_source,
+                reranker_model,
+                search_settings,
+                system_prompt_override=system_prompt_override,
+                prior_sources=prior_sources,
+            )
         messages = _build_conversation_messages(query, conversation_messages)
         if prior_sources:
             logger.info(
