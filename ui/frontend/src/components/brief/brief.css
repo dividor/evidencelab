@@ -75,9 +75,11 @@
   flex-wrap: wrap;
   align-items: center;
 }
-.brief-seed-load {
-  margin-left: auto;
-}
+/* The three buttons flow left and wrap left. "Load a saved brief" used to
+   carry margin-left: auto to sit apart on the right, but the card is capped at
+   720px (676px inside) and the buttons need about 675px, so the row only ever
+   fit on one line by a pixel; on any narrower window it wrapped and the auto
+   margin stranded that button alone on the right of its own line. */
 
 /* ---------- buttons ---------- */
 .brief-btn {
