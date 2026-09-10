@@ -364,11 +364,12 @@ async def stream_research_response(
     tracker = None
     usage_handler = UsageMetadataCallbackHandler()
     logger.info(
-        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s",
+        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s target_words=%s",
         run_id,
         deep_research,
         model_key,
         data_source,
+        target_words,
     )
 
     try:

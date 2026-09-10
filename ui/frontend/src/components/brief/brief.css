@@ -3125,8 +3125,16 @@
 .brief-length-custom .brief-number {
   width: 90px;
 }
-.brief-seed-length {
-  margin-top: 12px;
+/* "Number of sections" and "Section length" side by side; each field keeps
+   its own label-then-control row, and they wrap when the card is narrow. */
+.brief-seed-num-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 32px;
+}
+.brief-seed-num-row .brief-seed-num {
+  margin-top: 16px;
 }
 /* Word count beside a researched section's title. */
 .brief-doc-section-words {
