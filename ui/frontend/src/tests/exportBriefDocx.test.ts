@@ -5,13 +5,15 @@ import type { SearchResult } from '../types/api';
 
 const TOPIC = 'girls education in Kenya';
 const REF_EXCERPTS = 'Reference Excerpts';
+const REFERENCES = 'References';
+const DOC_TITLE = 'Breaking Barriers for Girls Education in Niger';
 const DOC_XML = 'word/document.xml';
 
 const result = (over: Partial<SearchResult>): SearchResult =>
   ({
     chunk_id: 'c1',
     doc_id: 'd1',
-    title: 'Breaking Barriers for Girls Education in Niger',
+    title: DOC_TITLE,
     text: 'Full excerpt sentence one. Full excerpt sentence two that should appear in italics.',
     score: 0.5,
     page_num: 26,
@@ -150,7 +152,7 @@ describe('brief Word export — footnote citation style', () => {
   test('footnote holds the source title, page and a clickable PDF link', async () => {
     const zip = await zipOf(footOpts);
     const footnotes = await zip.file('word/footnotes.xml')!.async('string');
-    expect(footnotes).toContain('Breaking Barriers for Girls Education in Niger');
+    expect(footnotes).toContain(DOC_TITLE);
     expect(footnotes).toContain('p.26');
     expect(footnotes).toContain('Open PDF');
     const rels = await zip.file('word/_rels/footnotes.xml.rels')!.async('string');
@@ -191,5 +193,86 @@ describe('brief Word export — footnote citation style', () => {
     expect(xml).not.toContain('<w:footnoteReference');
     // …and keeps the inline bracketed citation marker instead.
     expect(xml).toContain('[');
+  });
+});
+
+describe('brief Word export — references list layouts', () => {
+  const two = [
+    result({ chunk_id: 'c1', doc_id: 'd1', page_num: 26 }),
+    result({ chunk_id: 'c2', doc_id: 'd1', page_num: 40 }),
+  ];
+  const withList = (referenceList: 'flat' | 'grouped' | 'document') => ({
+    ...BRIEF_OPTS,
+    aiSummary: '# Access\n\nEnrolment has risen [1] and stayed up [2].\n',
+    results: two,
+    resultsSectionTitle: REFERENCES,
+    referenceList,
+  });
+  const referencesXml = async (opts: ReturnType<typeof withList>): Promise<string> => {
+    const xml = await documentXml(opts);
+    return xml.slice(xml.lastIndexOf(REFERENCES));
+  };
+
+  test('flat: one line per citation with its page', async () => {
+    const refs = await referencesXml(withList('flat'));
+    expect(refs).toContain(', p.26');
+    expect(refs).toContain(', p.40');
+  });
+
+  test('grouped: one line per document, laid out as on screen — "Title, [1] p. 26, [2] p. 40"', async () => {
+    const refs = await referencesXml(withList('grouped'));
+    // The visible text of the row, in order, with the XML stripped.
+    const text = refs.replace(/<[^>]+>/g, '');
+    expect(text).toContain(`${DOC_TITLE}, [1] p. 26, [2] p. 40`);
+    // Neither the flat "1. " label nor the flat ", p.26" form appears.
+    expect(refs).not.toContain('1. ');
+    expect(refs).not.toContain(', p.26');
+  });
+
+  test('grouped: the title links to the document and each [n] to its cited page', async () => {
+    const opts = {
+      ...withList('grouped'),
+      results: two.map((r) => ({ ...r, report_url: PDF_URL })),
+    };
+    const rels = await relTargets(buildExportDocument(opts));
+    expect(rels).toContain(`${PDF_URL}"`); // document link, no page anchor
+    expect(rels).toContain(`${PDF_URL}#page=26`);
+    expect(rels).toContain(`${PDF_URL}#page=40`);
+  });
+
+  test('document: one line per document-level citation and no page numbers', async () => {
+    // With single-per-document grouping the brief hands over one result per
+    // document; the list shows its number and title only.
+    const refs = await referencesXml({ ...withList('document'), results: [two[0]] });
+    expect(refs).toContain('1. ');
+    expect(refs).toContain(DOC_TITLE);
+    expect(refs).not.toContain('p.26');
+  });
+});
+
+describe('brief Word export — a single References section', () => {
+  // Count "References" heading paragraphs (w:pStyle Heading1/Heading2) in the
+  // document body.
+  const referenceHeadings = (xml: string): number =>
+    (xml.match(/<w:pStyle w:val="Heading[12]"\/>(?:(?!<\/w:p>)[^])*?>References<\/w:t>/g) || []).length;
+
+  test.each(['flat', 'grouped', 'document'] as const)(
+    'the brief export (%s layout) has exactly one References section',
+    async (referenceList) => {
+      const xml = await documentXml({
+        ...BRIEF_OPTS,
+        resultsSectionTitle: REFERENCES,
+        referenceList,
+      });
+      expect(referenceHeadings(xml)).toBe(1);
+    },
+  );
+
+  test('the search export keeps its references under the prose before the result cards', async () => {
+    // No referenceList: the search export's embedded grouped references plus
+    // the result-card section (whose heading is not "References").
+    const xml = await documentXml({ ...BRIEF_OPTS, resultsSectionTitle: 'Search Results' });
+    expect(referenceHeadings(xml)).toBe(1);
+    expect(xml).toContain('Search Results (1)');
   });
 });

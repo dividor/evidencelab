@@ -16,10 +16,10 @@ import {
 } from '../../utils/briefStream';
 import {
   BRIEF_HISTORY_KEY,
-  BriefReference,
   BriefSection,
   BriefStage,
   DEFAULT_BRIEF_TITLE,
+  ReferenceGrouping,
   SavedBrief,
   SectionAuditEntry,
   VoiceProfile,
@@ -163,35 +163,6 @@ const computeNumbers = (sections: BriefSection[]): string[] => {
   });
 };
 
-// Compiled footnotes: the actually-cited sources across done sections, one
-// entry per document (grouped/deduped), like the search summary's references.
-const computeReferences = (sections: BriefSection[]): BriefReference[] => {
-  const seen = new Set<string>();
-  const refs: BriefReference[] = [];
-  sections.forEach((s) => {
-    // Sections mid-Edit/Update keep their (old) content on screen, so they
-    // keep their footnotes too — no renumbering while a revise runs.
-    if (s.status !== 'done' && !s.revising) return;
-    const cited = new Set(extractCitedNumbers(s.content));
-    s.sources.forEach((src: SourceReference) => {
-      if (src.index == null || !cited.has(src.index)) return;
-      // One entry per cited passage, matching the numbering in
-      // buildGlobalCitations (and the AI summary), not one per document.
-      const key = src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      refs.push({
-        n: refs.length + 1,
-        title: src.title,
-        page: src.page,
-        section: s.title,
-        source: src,
-      });
-    });
-  });
-  return refs;
-};
-
 export const useBrief = ({
   apiBaseUrl,
   dataSource,
@@ -211,9 +182,10 @@ export const useBrief = ({
   const [query, setQuery] = useState(''); // the brief topic
   const [instructions, setInstructions] = useState('');
   const [numHeadings, setNumHeadings] = useState(6);
-  // References list: one row per document (off) vs grouped by document (on).
-  // Also chooses how the Word export lays its references out.
-  const [groupReferences, setGroupReferences] = useState(false);
+  // How the References list is laid out and how citations are numbered (one
+  // number per passage or per document) — see ReferenceGrouping. Drives the
+  // inline [n] markers, the References list and the Word export together.
+  const [referenceGrouping, setReferenceGrouping] = useState<ReferenceGrouping>('passage');
   const [newHeading, setNewHeading] = useState('');
   const [regenFor, setRegenFor] = useState<string | null>(null);
   const [regenText, setRegenText] = useState('');
@@ -1354,7 +1326,6 @@ export const useBrief = ({
 
   // ---- derived ----
   const numbers = useMemo(() => computeNumbers(sections), [sections]);
-  const references = useMemo(() => computeReferences(sections), [sections]);
   const doneCount = sections.filter((s) => s.status === 'done').length;
   const totalProgress = sections.length
     ? Math.round(
@@ -1371,7 +1342,6 @@ export const useBrief = ({
     currentBriefId: briefIdRef.current,
     sections,
     numbers,
-    references,
     query,
     instructions,
     numHeadings,
@@ -1403,8 +1373,8 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
-    groupReferences,
-    setGroupReferences,
+    referenceGrouping,
+    setReferenceGrouping,
     requestSourceHighlight,
     setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>

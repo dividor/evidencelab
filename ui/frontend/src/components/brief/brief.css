@@ -75,8 +75,16 @@
   flex-wrap: wrap;
   align-items: center;
 }
-.brief-seed-load {
-  margin-left: auto;
+/* The three buttons share the row: at the card's full width (720px, 676px
+   inside) they sit on one line, and on a narrower window they wrap and each
+   line's buttons grow to fill it, so no button is ever stranded alone on the
+   right. Slightly tighter padding than the default button keeps the three
+   comfortably on one line at full width. */
+.brief-seed-actions .brief-btn {
+  flex: 1 1 auto;
+  padding-left: 18px;
+  padding-right: 18px;
+  white-space: nowrap;
 }
 
 /* ---------- buttons ---------- */
@@ -2522,6 +2530,12 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.brief-footnotes-group-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
 .brief-footnotes-group-toggle {
   display: inline-flex;
   align-items: center;
@@ -2536,9 +2550,10 @@
   height: 15px;
   cursor: pointer;
 }
-/* Grouped view: one document per row, with its citation numbers. */
-/* "Title, [1] p. 32, [2] p. 56" — the title then each inline citation with
-   the page it points at. */
+/* Grouped view (multiple per document): one document per row, with its
+   citation numbers — "Title, [1] p. 32, [2] p. 56", the title then each inline
+   citation with the page it points at. The single-per-document view reuses the
+   flat rows: "[1] Title", one number per document and no pages. */
 .brief-footnote-group {
   display: block;
   padding: 3px 0;
