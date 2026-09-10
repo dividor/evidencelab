@@ -72,7 +72,13 @@ def _intersect_doc_id_filter(core_filters: Dict[str, Any], doc_ids: List[str]) -
 
 
 def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
-    """Replace language filter with doc_id filter (language not on chunks)."""
+    """Replace language filter with a doc_id filter (language is not on chunks).
+
+    The resolved doc_ids are intersected with any existing doc_id constraint so
+    document-level filters combine with AND, and a language that matches no
+    document pins the sentinel id so the search returns nothing instead of
+    silently dropping the filter.
+    """
     lang = core_filters.pop("language", None)
     if not lang:
         return
@@ -80,8 +86,7 @@ def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     if not lang_code:
         return
     doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
-    if doc_ids:
-        core_filters["doc_id"] = ",".join(doc_ids)
+    _intersect_doc_id_filter(core_filters, doc_ids)
 
 
 def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
