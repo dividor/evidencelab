@@ -73,7 +73,9 @@ export interface ExportOptions {
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
   // Render a compact references list (no excerpts) instead of full result
-  // cards, mirroring the Brief's on-screen References section.
+  // cards, mirroring the Brief's on-screen References section. This is then
+  // the document's only References section: the grouped list the search
+  // export embeds under its prose is not added.
   referenceList?: ReferenceListLayout;
   /** Cover-page document title (default "Evidence Lab — Search Export").
    *  The Brief export passes "AI-generated Research Brief". */
@@ -850,6 +852,11 @@ const buildSummarySection = (
   heading = 'AI Summary',
   bookmarkPrefix?: string,
   footnotes?: FootnoteRegistry,
+  // The search export lists its references directly under the prose, before
+  // the result cards. The Brief export instead renders one References section
+  // laid out per the reader's grouping (see ExportOptions.referenceList), so
+  // it turns this embedded list off to avoid two References sections.
+  embeddedReferences = true,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
@@ -872,7 +879,9 @@ const buildSummarySection = (
   // body become clickable links, renumbered to match the screen. When a
   // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
   out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
-  out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
+  if (embeddedReferences) {
+    out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
+  }
   return out;
 };
 
@@ -1196,6 +1205,7 @@ export const buildExportDocument = (
       opts.summaryHeading,
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
       footnotes,
+      !opts.referenceList,
     ),
     ...(opts.documentList
       ? buildDocumentListParagraphs(
