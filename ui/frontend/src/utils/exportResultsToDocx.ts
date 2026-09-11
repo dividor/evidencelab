@@ -55,6 +55,9 @@ import {
   type DocumentGroup,
 } from './citations';
 
+/** Layout of the compact references list (see {@link ExportOptions.referenceList}). */
+export type ReferenceListLayout = 'flat' | 'grouped' | 'document';
+
 export interface ExportOptions {
   query: string;
   aiSummary?: string;
@@ -70,9 +73,10 @@ export interface ExportOptions {
    *  The Brief export passes "Reference Excerpts". */
   resultsSectionTitle?: string;
   // Render a compact references list (no excerpts) instead of full result
-  // cards, mirroring the Brief's on-screen References section. 'grouped'
-  // collapses to one row per document.
-  referenceList?: 'flat' | 'grouped';
+  // cards, mirroring the Brief's on-screen References section. This is then
+  // the document's only References section: the grouped list the search
+  // export embeds under its prose is not added.
+  referenceList?: ReferenceListLayout;
   /** Cover-page document title (default "Evidence Lab — Search Export").
    *  The Brief export passes "AI-generated Research Brief". */
   documentTitle?: string;
@@ -848,6 +852,11 @@ const buildSummarySection = (
   heading = 'AI Summary',
   bookmarkPrefix?: string,
   footnotes?: FootnoteRegistry,
+  // The search export lists its references directly under the prose, before
+  // the result cards. The Brief export instead renders one References section
+  // laid out per the reader's grouping (see ExportOptions.referenceList), so
+  // it turns this embedded list off to avoid two References sections.
+  embeddedReferences = true,
 ): Paragraph[] => {
   if (!summary.trim()) return [];
   const out: Paragraph[] = [];
@@ -870,7 +879,9 @@ const buildSummarySection = (
   // body become clickable links, renumbered to match the screen. When a
   // bookmarkPrefix is set, headings are bookmarked for the manual TOC.
   out.push(...markdownToParagraphs(summary, 1, citations, bookmarkPrefix));
-  out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
+  if (embeddedReferences) {
+    out.push(...buildReferenceParagraphs(buildGroupedReferences(summary, results), citations));
+  }
   return out;
 };
 
@@ -1080,65 +1091,113 @@ const buildResultCard = (
   return out;
 };
 
+const referenceTitleOf = (r: SearchResult): string =>
+  (r.title && r.title.trim()) ||
+  (typeof r.document_title === 'string' && r.document_title.trim()) ||
+  '(untitled document)';
+
 /**
- * A compact references list: one line per citation (flat) or per document
- * (grouped), title hyperlinked to the source, no excerpt text. Mirrors what
- * the Brief shows on screen so the export matches the reader's view.
+ * One row per document, exactly as the Brief shows it on screen with
+ * "Group by document (multiple per document)":
+ *   Title, [1] p. 32, [2] p. 56
+ * The title links to the document; each [n] and its page link to that
+ * citation's page. As on screen, a number is shown once per run of the same
+ * citation, so a document cited from many pages reads "[1] p. 9, p. 11".
+ */
+const buildGroupedReferenceRows = (
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+): Paragraph[] => {
+  type Cite = { n: number; page: number; result: SearchResult };
+  const byDoc = new Map<string, { result: SearchResult; cites: Cite[] }>();
+  results.forEach((result, idx) => {
+    const key = result.doc_id || referenceTitleOf(result);
+    const cite = { n: idx + 1, page: result.page_num || 0, result };
+    const found = byDoc.get(key);
+    if (found) found.cites.push(cite);
+    else byDoc.set(key, { result, cites: [cite] });
+  });
+
+  const rows: Paragraph[] = [];
+  byDoc.forEach(({ result, cites }) => {
+    cites.sort((a, b) => a.page - b.page || a.n - b.n);
+    const children: InlineChild[] = [
+      new ExternalHyperlink({
+        link: resolveDocumentLink(result, siteOrigin, dataSource),
+        children: [new TextRun({ text: referenceTitleOf(result), style: 'Hyperlink' })],
+      }),
+    ];
+    cites.forEach((cite, i) => {
+      const link = resolveResultLink(cite.result, siteOrigin, dataSource);
+      children.push(new TextRun({ text: ', ' }));
+      if (i === 0 || cites[i - 1].n !== cite.n) {
+        children.push(
+          new ExternalHyperlink({
+            link,
+            children: [new TextRun({ text: `[${cite.n}]`, style: 'Hyperlink' })],
+          }),
+        );
+      }
+      if (cite.page) {
+        children.push(
+          new ExternalHyperlink({
+            link,
+            children: [new TextRun({ text: ` p. ${cite.page}`, style: 'Hyperlink' })],
+          }),
+        );
+      }
+    });
+    rows.push(new Paragraph({ spacing: { after: 60 }, children }));
+  });
+  return rows;
+};
+
+/** One row per citation — "1. Title, p.26" — or, for document-level
+ *  citations, "1. Title" with no page. */
+const buildNumberedReferenceRows = (
+  results: SearchResult[],
+  siteOrigin: string,
+  dataSource: string | undefined,
+  withPages: boolean,
+): Paragraph[] =>
+  results.map((result, idx) => {
+    const page = withPages && result.page_num ? `, p.${result.page_num}` : '';
+    return new Paragraph({
+      spacing: { after: 60 },
+      children: [
+        new TextRun({ text: `${idx + 1}. `, bold: true }),
+        new ExternalHyperlink({
+          link: resolveResultLink(result, siteOrigin, dataSource),
+          children: [new TextRun({ text: `${referenceTitleOf(result)}${page}`, style: 'Hyperlink' })],
+        }),
+      ],
+    });
+  });
+
+/**
+ * A compact references list, title hyperlinked to the source, no excerpt text:
+ * one line per citation with its page ('flat'), one line per document listing
+ * each of its citation numbers with their pages ('grouped'), or one line per
+ * document-level citation with no page ('document'). Mirrors what the Brief
+ * shows on screen so the export matches the reader's view.
  */
 const buildReferenceList = (
   results: SearchResult[],
   siteOrigin: string,
   dataSource: string | undefined,
-  grouped: boolean,
+  layout: ReferenceListLayout,
   sectionTitle = 'References',
-): Paragraph[] => {
-  const titleOf = (r: SearchResult): string =>
-    (r.title && r.title.trim()) ||
-    (typeof r.document_title === 'string' && r.document_title.trim()) ||
-    '(untitled document)';
-
-  const rows: Array<{ label: string; title: string; result: SearchResult }> = [];
-  if (grouped) {
-    const byDoc = new Map<string, { nums: number[]; result: SearchResult }>();
-    results.forEach((r, idx) => {
-      const key = r.doc_id || titleOf(r);
-      const found = byDoc.get(key);
-      if (found) found.nums.push(idx + 1);
-      else byDoc.set(key, { nums: [idx + 1], result: r });
-    });
-    byDoc.forEach(({ nums, result }) =>
-      rows.push({ label: nums.join(', '), title: titleOf(result), result }),
-    );
-  } else {
-    results.forEach((r, idx) => {
-      const page = r.page_num ? `, p.${r.page_num}` : '';
-      rows.push({ label: String(idx + 1), title: `${titleOf(r)}${page}`, result: r });
-    });
-  }
-
-  const out: Paragraph[] = [
-    new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      children: [new TextRun({ text: sectionTitle })],
-      spacing: { before: 360, after: 120 },
-    }),
-  ];
-  rows.forEach(({ label, title, result }) => {
-    out.push(
-      new Paragraph({
-        spacing: { after: 60 },
-        children: [
-          new TextRun({ text: `${label}. `, bold: true }),
-          new ExternalHyperlink({
-            link: resolveResultLink(result, siteOrigin, dataSource),
-            children: [new TextRun({ text: title, style: 'Hyperlink' })],
-          }),
-        ],
-      }),
-    );
-  });
-  return out;
-};
+): Paragraph[] => [
+  new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    children: [new TextRun({ text: sectionTitle })],
+    spacing: { before: 360, after: 120 },
+  }),
+  ...(layout === 'grouped'
+    ? buildGroupedReferenceRows(results, siteOrigin, dataSource)
+    : buildNumberedReferenceRows(results, siteOrigin, dataSource, layout === 'flat')),
+];
 
 const buildResultsSection = (
   results: SearchResult[],
@@ -1192,6 +1251,7 @@ export const buildExportDocument = (
       opts.summaryHeading,
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
       footnotes,
+      !opts.referenceList,
     ),
     ...(opts.documentList
       ? buildDocumentListParagraphs(
@@ -1207,7 +1267,7 @@ export const buildExportDocument = (
           opts.results,
           siteOrigin,
           opts.dataSource,
-          opts.referenceList === 'grouped',
+          opts.referenceList,
           opts.resultsSectionTitle,
         )
       : buildResultsSection(

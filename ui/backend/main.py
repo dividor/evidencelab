@@ -189,6 +189,18 @@ MAX_REQUEST_BODY_BYTES = int(
     os.environ.get("MAX_REQUEST_BODY_BYTES", str(2 * 1024 * 1024))  # 2 MB
 )
 
+# Response compression. Cloud Run rejects uncompressed HTTP/1 responses
+# above 32 MiB, and nginx only gzips proxied responses that carry cache
+# headers, so the API compresses its own JSON. Event streams are excluded
+# (see ui/backend/utils/gzip_middleware.py).
+API_GZIP_ENABLED = os.environ.get("API_GZIP_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+API_GZIP_MIN_BYTES = int(os.environ.get("API_GZIP_MIN_BYTES", "1024"))
+API_GZIP_LEVEL = int(os.environ.get("API_GZIP_LEVEL", "6"))
+
 _main_logger = logging.getLogger(__name__)
 
 # Debug flag — when true, exception handlers return full error details.
@@ -671,6 +683,17 @@ if not CORS_HEADERS:
         "Accept",
         "Accept-Language",
     ]
+
+# Innermost middleware: compresses route responses; outer middlewares only
+# add headers or reject requests, and their own bodies are small.
+if API_GZIP_ENABLED:
+    from ui.backend.utils.gzip_middleware import SelectiveGZipMiddleware  # noqa: E402
+
+    app.add_middleware(
+        SelectiveGZipMiddleware,
+        minimum_size=API_GZIP_MIN_BYTES,
+        compresslevel=API_GZIP_LEVEL,
+    )
 
 app.add_middleware(
     CORSMiddleware,

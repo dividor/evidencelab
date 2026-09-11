@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BriefLengthControl } from './BriefLengthControl';
 import {
   addBriefShare,
   getBrief,
@@ -49,6 +50,8 @@ export interface NewBriefSubmit {
   instructions: string;
   voiceId: string | null;
   numHeadings: number;
+  // Section length target in words; null = no target.
+  targetWords: number | null;
   template: BriefTemplate | null;
 }
 
@@ -56,14 +59,17 @@ export const BriefNewModal: React.FC<{
   templates: BriefTemplate[];
   voices: VoiceProfile[];
   initialTemplateId?: string | null;
+  // The group's default section length, if the team set one.
+  defaultTargetWords?: number | null;
   onSubmit: (args: NewBriefSubmit) => void;
   onClose: () => void;
-}> = ({ templates, voices, initialTemplateId, onSubmit, onClose }) => {
+}> = ({ templates, voices, initialTemplateId, defaultTargetWords, onSubmit, onClose }) => {
   const [mode, setMode] = useState<'ai' | 'manual'>(initialTemplateId ? 'manual' : 'ai');
   const [title, setTitle] = useState('');
   const [instructions, setInstructions] = useState('');
   const [voiceId, setVoiceId] = useState<string | null>(null);
   const [numHeadings, setNumHeadings] = useState(6);
+  const [targetWords, setTargetWords] = useState<number | null>(defaultTargetWords ?? null);
   const [templateId, setTemplateId] = useState<string>(initialTemplateId || '');
 
   const template = templates.find((t) => t.id === templateId) || null;
@@ -74,7 +80,15 @@ export const BriefNewModal: React.FC<{
   );
 
   const submit = () => {
-    onSubmit({ mode, title: title.trim(), instructions: instructions.trim(), voiceId, numHeadings, template });
+    onSubmit({
+      mode,
+      title: title.trim(),
+      instructions: instructions.trim(),
+      voiceId,
+      numHeadings,
+      targetWords,
+      template,
+    });
   };
 
   return (
@@ -210,6 +224,15 @@ export const BriefNewModal: React.FC<{
             </>
           )}
 
+          <div className="bc-field">
+            <label className="brief-label brief-label-spaced" htmlFor="bc-new-length">
+              Section length
+            </label>
+            <BriefLengthControl id="bc-new-length" value={targetWords} onChange={setTargetWords} />
+            <div className="bc-hint">
+              About this many words per section. Sections that run long are condensed automatically.
+            </div>
+          </div>
           <div className="bc-modal-actions">
             <button className="brief-btn brief-btn-primary" onClick={submit} disabled={!title.trim() && mode === 'ai'}>
               {mode === 'ai' ? <IconSparkle size={15} /> : <IconPlus />}
@@ -750,6 +773,8 @@ export const BriefShareModal: React.FC<{
 export interface RegenAllSubmit {
   instructions: string;
   voiceId: string | null;
+  // Section length target in words; null = no target.
+  targetWords: number | null;
   // Clear each section's own profile so the chosen one applies document-wide.
   applyVoiceToAllSections: boolean;
 }
@@ -763,12 +788,22 @@ export const BriefRegenAllModal: React.FC<{
   voices: VoiceProfile[];
   briefVoiceId: string | null;
   instructions: string;
+  targetWords: number | null;
   hasSectionVoices: boolean;
   onSubmit: (submit: RegenAllSubmit) => void;
   onClose: () => void;
-}> = ({ voices, briefVoiceId, instructions: initial, hasSectionVoices, onSubmit, onClose }) => {
+}> = ({
+  voices,
+  briefVoiceId,
+  instructions: initial,
+  targetWords: initialTarget,
+  hasSectionVoices,
+  onSubmit,
+  onClose,
+}) => {
   const [instructions, setInstructions] = useState(initial);
   const [voiceId, setVoiceId] = useState<string | null>(briefVoiceId);
+  const [targetWords, setTargetWords] = useState<number | null>(initialTarget);
   const [applyToAll, setApplyToAll] = useState(false);
   const selected = voices.find((v) => v.id === voiceId) || null;
 
@@ -815,6 +850,13 @@ export const BriefRegenAllModal: React.FC<{
             ))}
           </select>
           {selected && <div className="bc-voice-hint">{selected.description}</div>}
+          <label className="brief-label brief-label-spaced" htmlFor="bc-regen-length">
+            Section length
+          </label>
+          <BriefLengthControl id="bc-regen-length" value={targetWords} onChange={setTargetWords} />
+          <div className="bc-hint">
+            About this many words per section; sections with their own length keep it.
+          </div>
           {hasSectionVoices && (
             <>
               <div className="bc-voice-hint">
@@ -834,7 +876,7 @@ export const BriefRegenAllModal: React.FC<{
             <button
               className="brief-btn brief-btn-primary"
               onClick={() =>
-                onSubmit({ instructions, voiceId, applyVoiceToAllSections: applyToAll })
+                onSubmit({ instructions, voiceId, targetWords, applyVoiceToAllSections: applyToAll })
               }
             >
               <IconSparkle /> Regenerate all sections

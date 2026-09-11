@@ -2,6 +2,33 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.2] - 2026-09-11
+
+Evidence Lab v1.6.2 is a **Brief** release: sections can be written to a **length target** that is enforced rather than merely requested, citations can be grouped **one number per document** with the numbering flowing through the prose and the Word export, and the Word export now mirrors the on-screen References exactly. Under the hood, large API responses are compressed without stalling event streams, the API image stops downgrading FastAPI, and the pipeline scanner is safe to re-run over refreshed data.
+
+### Brief
+- Added **Section length**: choose Short (~150), Standard (~350) or Long (~700) words per section, a custom count, or no target — on the start screen and the New-brief modal, for the whole brief in **AI Regenerate All**, or per section in its research panel; the target is saved with the brief and can be set as a team default. The research prompt asks for that length in place of its "at least 3-4 paragraphs" default, the model's output limit rises to fit long targets, and a section that comes back more than a quarter over its target is condensed with an AI edit that keeps every citation; each section shows its word count and the brief its total (#478)
+- Added **Group by document (single per document)** above the References list, giving each document one citation number and no page numbers, with the inline `[n]` markers renumbered to match; the existing toggle is renamed **Group by document (multiple per document)**. Clicking a document-level reference opens its first cited passage, and hovering an inline number still shows the passage behind that claim (#477)
+- **Export to Word** now writes a single References section laid out per the on-screen grouping — previously the document carried two — and the grouped rows read exactly as on screen (`Title, [1] p. 26, [2] p. 40`, each number and page linked to its cited page) (#477)
+- The start screen's three action buttons share one line and wrap cleanly on narrow windows instead of stranding **Load a saved brief** on the right (#477)
+
+### API & Deployment
+- Large API responses are gzipped by a selective ASGI middleware that leaves `text/event-stream` and already-encoded responses untouched and flushes streamed files per chunk, so the assistant and AI-summary streams keep flowing; compression runs in the threadpool so the event loop keeps serving other requests. Settable with `API_GZIP_ENABLED`, `API_GZIP_MIN_BYTES` and `API_GZIP_LEVEL` (#476)
+- Aligned the backend requirement pins with the root file so the API image no longer downgrades FastAPI on build (the image now runs FastAPI 0.135.1, uvicorn 0.49.0, SQLAlchemy 2.0.49, Starlette 1.6.0, the versions CI tests), with a test that fails if a package pinned in both files ever differs again (#476)
+
+### Pipeline
+- Re-scanning a data source whose documents have changed is now safe: an existing document's metadata is merged into its point instead of replacing it (keeping the document embedding, tags and duplicate flag), metadata changes propagate to every chunk's search payload, and a changed file has its chunks removed and its status reset so it is parsed again (#475)
+
+### Contributor docs
+- Forbade suppressing or demoting type and lint errors in tooling and dev-server configuration, not only in source (#477)
+
+### Upgrade Notes
+- **No database migrations** in this release.
+- **`config.json`: new required key** `application.brief.target_words` with `presets`, `min`, `max` and `tolerance` (see the repository `config.json` for the values). The UI image still builds without it, but the app then stops at startup with a blank page and a console error naming the key, so deployments that maintain their own `config.json` must add the block before deploying this release.
+- **New optional env vars** `API_GZIP_ENABLED` (default `true`), `API_GZIP_MIN_BYTES` (`1024`) and `API_GZIP_LEVEL` (`6`) — see `.env.example`. Deployments that added Starlette's `GZipMiddleware` locally should remove it, otherwise their event streams stay buffered until the stream closes.
+- **API image dependency versions change on rebuild** (FastAPI 0.115.6 → 0.135.1, Starlette 0.41.3 → 1.6.0). No code changes are needed, but rebuild and smoke-test the API image rather than reusing a cached one.
+- **New team default** under Admin → Group Settings → Brief: **Default section length**.
+
 ## [1.6.1] - 2026-09-06
 
 Evidence Lab v1.6.1 turns **Brief** into a collaborative, server-side workspace — Brief Central with sharing, templates, voice & tone profiles, threaded comments, AI Edit / Get Updates and change diffs — and gives **Search** two new ways to read results: **Group by document** rows and **Wide Search**. It also adds the admin **TOC Validator**, config-driven evaluation-case filters, LLM token-usage tracking on every surface, and a set of auth, UI, translation and CI fixes.

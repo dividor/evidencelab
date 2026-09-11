@@ -1,5 +1,6 @@
 import React from 'react';
 import { IconHistory, IconSparkle } from './BriefIcons';
+import { BriefLengthControl } from './BriefLengthControl';
 import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
@@ -42,6 +43,8 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
     setInstructions,
     numHeadings,
     setNumHeadings,
+    targetWords,
+    setTargetWords,
     generateOutline,
     startManual,
     outlineLoading,
@@ -88,21 +91,33 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
           rows={2}
         />
 
-        <div className="brief-seed-num">
-          <label className="brief-label" htmlFor="brief-numheadings">
-            Number of sections
-          </label>
-          <input
-            id="brief-numheadings"
-            type="number"
-            min={1}
-            max={20}
-            className="brief-number"
-            value={numHeadings}
-            onChange={(e) =>
-              setNumHeadings(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
-            }
-          />
+        <div className="brief-seed-num-row">
+          <div className="brief-seed-num">
+            <label className="brief-label" htmlFor="brief-numheadings">
+              Number of sections
+            </label>
+            <input
+              id="brief-numheadings"
+              type="number"
+              min={1}
+              max={20}
+              className="brief-number"
+              value={numHeadings}
+              onChange={(e) =>
+                setNumHeadings(Math.max(1, Math.min(20, Number(e.target.value) || 1)))
+              }
+            />
+          </div>
+          <div className="brief-seed-num brief-seed-length">
+            <label className="brief-label" htmlFor="brief-target-words">
+              Section length
+            </label>
+            <BriefLengthControl
+              id="brief-target-words"
+              value={targetWords}
+              onChange={setTargetWords}
+            />
+          </div>
         </div>
 
         {error && <div className="brief-error">{error}</div>}

@@ -60,9 +60,12 @@ function applyGroupDefaults(defaults: SearchSettings, setters: Setters): void {
       setters[key](value);
     }
   }
-  // greetingMessage has no URL param — apply directly if present
+  // greetingMessage and briefTargetWords have no URL param — apply directly
   if (defaults.greetingMessage !== undefined && setters.greetingMessage) {
     setters.greetingMessage(defaults.greetingMessage);
+  }
+  if (defaults.briefTargetWords !== undefined && setters.briefTargetWords) {
+    setters.briefTargetWords(defaults.briefTargetWords);
   }
 }
 

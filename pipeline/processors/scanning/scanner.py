@@ -285,7 +285,9 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
             return [
                 p
                 for p in search_dir.rglob("*.json")
-                if "parsed" not in p.parts and "cache" not in p.parts
+                if "parsed" not in p.parts
+                and "cache" not in p.parts
+                and not p.name.startswith("._")
             ]
         return self._scan_metadata_files()
 
@@ -313,8 +315,12 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
     def _upsert_single_result(self, result: Optional[tuple]) -> None:
         if not result:
             return
-        doc_id_value, payload = result
-        self.db.upsert_document(doc_id_value, payload)
+        doc_id_value, payload = result[0], result[1]
+        is_existing = result[2] if len(result) > 2 else False
+        if is_existing:
+            self._merge_document_payload(str(doc_id_value), payload)
+        else:
+            self.db.upsert_document(doc_id_value, payload)
 
     def _resolve_doc_uuid(
         self, json_path: Path, metadata: Dict[str, Any]
@@ -356,22 +362,35 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
         return None
 
     def _flush_batch(self, batch: List[Any]) -> None:
-        """Helper to upsert a batch of documents."""
+        """Write a batch of scanned documents to Qdrant.
+
+        Documents that already exist are merged with ``set_payload`` rather than
+        replaced: the point also carries the document-level embedding written by
+        the indexer, the ``tag_*`` fields written by the tagger and the
+        ``is_duplicate`` flag, none of which the scanner knows about. Replacing
+        the point would silently drop them.
+        """
         if not batch:
             return
 
         points = []
-        for doc_id, payload in batch:
+        for entry in batch:
+            doc_id, payload = entry[0], entry[1]
+            is_existing = entry[2] if len(entry) > 2 else False
+            if is_existing:
+                self._merge_document_payload(doc_id, payload)
+                continue
             # Construct Qdrant Point
             points.append(
                 models.PointStruct(
                     id=doc_id,
                     payload=payload,
-                    vector={},  # Scan currently doesn't add vectors, but we must respect existing?
-                    # Upsert usually overwrites if same ID?
-                    # db.upsert_document typically uses 'Update' or 'Upload Points'
+                    vector={},
                 )
             )
+
+        if not points:
+            return
 
         # We need to access the qdrant client directly to do batch upsert
         # DB wrapper might not expose it easily, but usually self.db.client is accessible
@@ -383,13 +402,23 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
             logger.info("  -> Batched upsert of %s documents", len(points))
         except Exception as e:
             logger.error("Failed to upsert batch: %s", e)
-            # Fallback to single? Or just log.
-            # If batch fails, maybe try one by one.
-            for doc_id, payload in batch:
+            for point in points:
                 try:
-                    self.db.upsert_document(doc_id, payload)
+                    self.db.upsert_document(point.id, point.payload)
                 except Exception as ex:
-                    logger.error("Single upsert failed for %s: %s", doc_id, ex)
+                    logger.error("Single upsert failed for %s: %s", point.id, ex)
+
+    def _merge_document_payload(self, doc_id: str, payload: Dict[str, Any]) -> None:
+        """Merge scanned fields into an existing document point."""
+        try:
+            self.db.client.set_payload(
+                collection_name=self.db.documents_collection,
+                payload=payload,
+                points=[doc_id],
+                wait=False,
+            )
+        except Exception as exc:
+            logger.error("Failed to merge payload for %s: %s", doc_id, exc)
 
     def _scan_metadata_files(self) -> List[Path]:
         """Scan for JSON metadata files."""
@@ -405,6 +434,10 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
         json_files = []
         for f in base_path.rglob("*"):
             if not f.name.endswith(".json"):
+                continue
+            # macOS writes an AppleDouble sidecar next to every file on
+            # non-native filesystems (ExFAT); it is not metadata.
+            if f.name.startswith("._"):
                 continue
             if "parsed" in f.parts or "cache" in f.parts:
                 continue
@@ -791,6 +824,7 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
         )
 
         if should_upsert:
+            self._apply_change_side_effects(str(doc_id), change_type)
             qdrant_metadata = self._upsert_doc_payload(
                 doc_id=str(doc_id),
                 metadata=metadata,
@@ -807,9 +841,76 @@ class ScanProcessor(ScannerMappingMixin, BaseProcessor):
             if change_type:
                 logger.info("  🔄 Updated (%s): %s", change_type, file_path_display)
 
-            return (doc_id, qdrant_metadata)
+            if change_type in ("metadata", "both"):
+                self._propagate_to_chunks(str(doc_id), qdrant_metadata)
+
+            return (doc_id, qdrant_metadata, existing is not None)
 
         return None
+
+    def _apply_change_side_effects(self, doc_id: str, change_type: str) -> None:
+        """React to a document whose file content changed.
+
+        The scanner records the new checksum, but nothing downstream re-reads
+        it: the document keeps its status and its stale chunks. Reset it to
+        ``downloaded`` and clear the parsed output so the normal stage
+        collection picks it up for a fresh parse.
+        """
+        if change_type not in ("file", "both"):
+            return
+        logger.info("  ♻️  Content changed, queueing re-parse: %s", doc_id)
+        try:
+            removed = self.db.delete_document_chunks(doc_id)
+            if removed:
+                logger.info("     removed %s stale chunks", removed)
+        except Exception as exc:
+            logger.error("Failed to delete chunks for %s: %s", doc_id, exc)
+        if self.pg:
+            try:
+                self.pg.merge_doc_sys_fields(
+                    doc_id=doc_id,
+                    sys_fields={
+                        "sys_status": "downloaded",
+                        "sys_parsed_folder": None,
+                        "sys_chunk_count": 0,
+                        "sys_error_message": None,
+                    },
+                )
+            except Exception as exc:
+                logger.error("Failed to reset status for %s: %s", doc_id, exc)
+
+    def _propagate_to_chunks(
+        self, doc_id: str, qdrant_metadata: Dict[str, Any]
+    ) -> None:
+        """Push changed document fields onto the document's chunk payloads.
+
+        The indexer denormalises ``src_*``, ``map_*``, ``tag_*`` and
+        ``sys_language`` onto every chunk so search can filter without a join.
+        A metadata-only change never reaches them otherwise, leaving search
+        filters matching the old values.
+        """
+        fields = {
+            key: value
+            for key, value in qdrant_metadata.items()
+            if key.startswith(("src_", "map_")) and value is not None
+        }
+        if not fields:
+            return
+        try:
+            self.db.client.set_payload(
+                collection_name=self.db.chunks_collection,
+                payload=fields,
+                points=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="doc_id", match=models.MatchValue(value=doc_id)
+                        )
+                    ]
+                ),
+                wait=False,
+            )
+        except Exception as exc:
+            logger.error("Failed to propagate fields to chunks of %s: %s", doc_id, exc)
 
     def _mark_duplicates(self) -> int:
         """

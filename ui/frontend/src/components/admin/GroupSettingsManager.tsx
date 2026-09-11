@@ -10,6 +10,7 @@ import {
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
 import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
+import { BriefLengthControl } from '../brief/BriefLengthControl';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -40,6 +41,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'summaryLimitResults',
   'summaryMaxResults',
   'summaryTemperature',
+  'briefTargetWords',
   'greetingMessage',
 ];
 
@@ -867,6 +869,34 @@ const GroupSettingsManager: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* Brief Settings */}
+            <div className="filter-section">
+              <div className="filter-section-header" onClick={() => toggleSection('brief')}>
+                <span className="filter-section-toggle">
+                  {collapsedSections.has('brief') ? '▼' : '▶'}
+                </span>
+                <span className="filter-section-title">Brief</span>
+              </div>
+              {collapsedSections.has('brief') && (
+                <div className="filter-section-content">
+                  <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
+                    <span>Default section length</span>
+                    <span
+                      className="rerank-tooltip"
+                      title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
+                    >
+                      ⓘ
+                    </span>
+                  </label>
+                  <BriefLengthControl
+                    id="group-brief-target-words"
+                    value={values.briefTargetWords}
+                    onChange={(v) => update('briefTargetWords', v)}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Actions */}

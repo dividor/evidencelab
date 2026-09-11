@@ -56,6 +56,9 @@ interface AssistantStreamOptions {
   // resolved internally.
   activityId?: string | null;
   usageContext?: 'brief' | null;
+  // Target length of the written answer in words (deep research). The backend
+  // asks the coordinator for that length and raises its token ceiling to fit.
+  targetWords?: number | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -236,6 +239,7 @@ export const streamAssistantChat = async ({
   publishedAfter,
   activityId,
   usageContext,
+  targetWords,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -261,6 +265,7 @@ export const streamAssistantChat = async ({
       activity_id: activityId || undefined,
       session_id: getSessionId(),
       usage_context: usageContext || undefined,
+      target_words: targetWords || undefined,
     }),
     signal,
   });

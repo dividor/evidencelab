@@ -255,6 +255,12 @@ Click **Save Settings** to apply, or **Reset to Defaults** to clear all group ov
 
 ---
 
+#### Brief
+
+| Setting | Description |
+|---------|-------------|
+| **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
+
 ### User Self-Service
 
 Users have access to a **Profile** modal (click avatar → Profile) where they can:

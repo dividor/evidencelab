@@ -793,6 +793,8 @@ function App() {
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
   // Group greeting message (overrides search placeholder on landing page)
   const [greetingMessage, setGreetingMessage] = useState<string>('');
+  // Group default section length for new briefs (null = no target)
+  const [briefTargetWords, setBriefTargetWords] = useState<number | null>(null);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -854,6 +856,7 @@ function App() {
     summaryLimitResults: setSummaryLimitResults,
     summaryMaxResults: setSummaryMaxResults,
     summaryTemperature: setSummaryTemperature,
+    briefTargetWords: setBriefTargetWords,
     greetingMessage: setGreetingMessage,
   });
 
@@ -3088,6 +3091,7 @@ function App() {
               wideSearch,
               wideGroupSize,
               wideLimit,
+              briefTargetWords,
             }}
             onResultClick={handleResultClick}
           />

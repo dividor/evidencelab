@@ -24,7 +24,7 @@ Click the **Brief** tab and you'll land on the start screen.
 
 You have three ways to start:
 
-- **Generate outline** — enter a **Topic** (e.g. *girls education in Kenya*), optionally add **Instructions** to steer the headings (e.g. *focus on East Africa, prioritise RCTs since 2018, structure around outcomes*), choose the **Number of sections**, and click **Generate outline**. Evidence Lab runs a deep-research survey across the document library and proposes headings grounded in what the collection actually contains.
+- **Generate outline** — enter a **Topic** (e.g. *girls education in Kenya*), optionally add **Instructions** to steer the headings (e.g. *focus on East Africa, prioritise RCTs since 2018, structure around outcomes*), choose the **Number of sections** and the **Section length** (see [Section length](#section-length) below), and click **Generate outline**. Evidence Lab runs a deep-research survey across the document library and proposes headings grounded in what the collection actually contains.
 - **Write my own headings** — skip the survey and start from a small set of placeholder headings you edit yourself.
 - **Load a saved brief** — reopen any brief from your history.
 
@@ -66,9 +66,23 @@ When a section finishes, it shows the written text with inline citations.
 For each completed section you can:
 
 - **Edit text** — tweak the generated prose by hand.
-- **Regenerate** — re-run the research, optionally with new guidance.
+- **Regenerate** — re-run the research, optionally with new guidance or a different length.
 
-Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief, one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers.
+Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
+
+#### Section length
+
+A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **AI Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
+
+The target is enforced three ways, because a model on its own only approximates a word count:
+
+1. The research prompt asks for about that many words, in place of its usual "at least three or four paragraphs".
+2. The model's output limit is raised so a long target is never cut off mid-sentence.
+3. When a section comes back more than a quarter longer than its target, Evidence Lab condenses it with an AI edit that keeps every citation. You will see *Condensing to about N words* in the section's activity while that runs, and the edit is recorded in the section's **Log**.
+
+Sections that come back short are left as they are: the target is a ceiling on length as much as a goal, and padding a section would only dilute its evidence. The presets, the allowed range and the tolerance are set in `config.json` under `application.brief.target_words`.
+
+Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers are renumbered consecutively across the whole brief. By default there is one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers. Two **Group by document** checkboxes above the References list change how the list is laid out, and the single-per-document option also changes the numbering itself (see [Export to Word](#5-export-to-word) below).
 
 ---
 
@@ -86,7 +100,11 @@ From a card you can **open**, **share** or **delete** a brief. **New brief** sta
 
 When your brief is ready, click **Export to Word** at the top right.
 
-The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkbox above that list. Leave it off for one line per citation; tick it to collapse the list to one line per document — `Title, [1] p. 32, [2] p. 56` — which is more compact when a brief leans on a handful of reports.
+The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkboxes above that list (tick at most one):
+
+- **Neither ticked** — one line per citation, with its page: `[1] Title, p.32`.
+- **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
+- **Group by document (single per document)** — one number per document and no page numbers: `[1] Title`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
 
 ![Export to Word button](/docs/images/brief/brief-export-button.png)
 

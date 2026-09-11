@@ -1,10 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
-import {
-  CitedMarkdown,
-  CitedReferences,
-  extractCitedNumbers,
-} from '../citations/CitedContent';
+import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import {
   IconClock,
@@ -15,6 +11,9 @@ import {
   IconShare,
   IconSparkle,
 } from './BriefIcons';
+import { BriefLengthControl } from './BriefLengthControl';
+import { countWords, describeTarget } from './briefLength';
+import { BriefReferences } from './BriefReferences';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
 import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
@@ -103,60 +102,6 @@ const AiInstructionPanel: React.FC<{
   </div>
 );
 
-// One row per document: its title, then each citation number pointing into it
-// with that number's page — "Title, [1] p. 32, [2] p. 56". No excerpts.
-const groupReferencesByDoc = (
-  refs: Array<{ n: number; title: string; page?: number; source: SourceReference }>,
-): Array<{
-  key: string;
-  title: string;
-  cites: Array<{ n: number; page: number; source: SourceReference }>;
-}> => {
-  const byDoc = new Map<
-    string,
-    {
-      key: string;
-      title: string;
-      cites: Array<{ n: number; page: number; source: SourceReference }>;
-    }
-  >();
-  // Numbers are per cited passage, so a document collects each of its own
-  // numbers with the page that number points at.
-  for (const r of refs) {
-    const key = r.source.docId || r.title;
-    const cite = { n: r.n, page: r.page ?? 0, source: r.source };
-    const found = byDoc.get(key);
-    if (found) found.cites.push(cite);
-    else byDoc.set(key, { key, title: r.title, cites: [cite] });
-  }
-  byDoc.forEach((g) => g.cites.sort((a, b) => a.page - b.page || a.n - b.n));
-  return Array.from(byDoc.values());
-};
-
-/**
- * Every cited chunk of each document, as the page and the source behind it.
- * The grouped references row lists these after the title, each labelled with
- * the citation number that appears inline in the prose.
- */
-const citedPagesByDoc = (
-  sections: BriefSection[],
-): Map<string, Array<{ page: number; source: SourceReference }>> => {
-  const map = new Map<string, Array<{ page: number; source: SourceReference }>>();
-  sections.forEach((s) => {
-    if (!(s.status === 'done' || s.revising) || !s.content) return;
-    const cited = new Set(extractCitedNumbers(s.content));
-    s.sources.forEach((src) => {
-      if (src.index == null || !cited.has(src.index) || src.page == null) return;
-      const key = src.docId || src.title;
-      const hits = map.get(key) || [];
-      if (!hits.some((h) => h.page === src.page)) hits.push({ page: src.page, source: src });
-      map.set(key, hits);
-    });
-  });
-  map.forEach((hits) => hits.sort((a, b) => a.page - b.page));
-  return map;
-};
-
 interface SectionViewProps {
   section: BriefSection;
   num: string;
@@ -173,6 +118,12 @@ interface SectionViewProps {
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
 }
+
+// Tooltip for a section's word count: which target (if any) it was written to.
+const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): string => {
+  const target = section.targetWords ?? briefTarget;
+  return target ? `Target: about ${target} words` : 'No length target';
+};
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
@@ -223,6 +174,13 @@ const GuidancePanel: React.FC<{
           </div>
         </>
       )}
+      <div className="brief-regen-voice-label">Section length</div>
+      <BriefLengthControl
+        value={section.targetWords}
+        onChange={(target) => brief.setSectionTargetWords(section.id, target)}
+        inheritLabel={`Use brief target — ${describeTarget(brief.targetWords)}`}
+        ariaLabel="Length target for this section"
+      />
       <div className="brief-regen-actions">
         <button
           className="brief-btn brief-btn-primary"
@@ -452,6 +410,7 @@ const SectionDoneBody: React.FC<{
         collapsible
         labelPrefix="Evidence"
         className="brief-evidence"
+        hidePages={brief.referenceGrouping === 'document-single'}
       />
     </>
   );
@@ -534,6 +493,11 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onBlur={brief.commitEdits}
           readOnly={readOnly}
         />
+        {isDone && (
+          <span className="brief-doc-section-words" title={sectionWordsTitle(section, brief.targetWords)}>
+            {countWords(section.content).toLocaleString()} words
+          </span>
+        )}
       </div>
 
       {isDone && !readOnly && (
@@ -616,7 +580,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
 };
 
 // "Export to Word": one button. The document mirrors the on-screen
-// references, so its layout follows the "Group by document" toggle.
+// references, so its layout follows the "Group by document" toggles.
 const ExportButton: React.FC<{
   disabled: boolean;
   busy: boolean;
@@ -791,7 +755,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const [logOpen, setLogOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
-  const { refs: references, display } = useMemo(() => buildGlobalCitations(sections), [sections]);
+  const { refs: references, display } = useMemo(
+    () => buildGlobalCitations(sections, brief.referenceGrouping),
+    [sections, brief.referenceGrouping],
+  );
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
@@ -881,6 +848,12 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           <span>{sections.length} sections</span>
           <span>·</span>
           <span>{brief.totalSources} sources synthesised</span>
+          {brief.totalWords > 0 && (
+            <>
+              <span>·</span>
+              <span>{brief.totalWords.toLocaleString()} words</span>
+            </>
+          )}
           {readOnly && brief.ownerName && (
             <>
               <span>·</span>
@@ -987,82 +960,12 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         </div>
       )}
 
-      {references.length > 0 && (
-        <section className="brief-footnotes">
-          <div className="brief-footnotes-head">
-            <h2 className="brief-footnotes-title">References</h2>
-            <label className="brief-footnotes-group-toggle">
-              <input
-                type="checkbox"
-                checked={brief.groupReferences}
-                onChange={(e) => brief.setGroupReferences(e.target.checked)}
-              />
-              Group by document
-            </label>
-          </div>
-          <div className="brief-footnotes-list">
-            {brief.groupReferences
-              ? groupReferencesByDoc(references).map((g) => (
-                  <div className="brief-footnote-group" key={g.key}>
-                    <span className="brief-footnote-text">{g.title}</span>
-                    {g.cites.map((c, i) => (
-                      <span className="brief-footnote-cite" key={`${c.n}-${c.page}-${i}`}>
-                        {/* The number is shown once per run of the same
-                            citation, so a document cited from many pages reads
-                            "[1] p. 9, p. 11" rather than repeating "[1]". */}
-                        {(i === 0 || g.cites[i - 1].n !== c.n) && (
-                          <span className="citation-doc-group">
-                            <a
-                              href="#"
-                              className="ai-summary-citation"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleSourceClick(c.source);
-                              }}
-                            >
-                              {c.n}
-                            </a>
-                          </span>
-                        )}
-                        {c.page ? (
-                          <a
-                            href="#"
-                            className="brief-footnote-page-link"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleSourceClick(c.source);
-                            }}
-                          >
-                            {` p. ${c.page}`}
-                          </a>
-                        ) : null}
-                      </span>
-                    ))}
-                  </div>
-                ))
-              : references.map((r) => (
-                  <div className="brief-footnote-row" key={r.n}>
-                    <a
-                      href="#"
-                      className="brief-footnote-link"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleSourceClick(r.source);
-                      }}
-                    >
-                      <span className="citation-doc-group">
-                        <span className="ai-summary-citation">{r.n}</span>
-                      </span>
-                      <span className="brief-footnote-text">
-                        {r.title}
-                        {r.page ? `, p.${r.page}` : ''}
-                      </span>
-                    </a>
-                  </div>
-                ))}
-          </div>
-        </section>
-      )}
+      <BriefReferences
+        references={references}
+        grouping={brief.referenceGrouping}
+        onGroupingChange={brief.setReferenceGrouping}
+        onSourceClick={handleSourceClick}
+      />
 
       <ResearchStatusBar brief={brief} />
     </div>

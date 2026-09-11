@@ -4,11 +4,9 @@ import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
-import {
-  buildExportFilename,
-  exportResultsToDocxBlob,
-} from '../../utils/exportResultsToDocx';
+import { buildExportFilename, exportResultsToDocxBlob, ReferenceListLayout } from '../../utils/exportResultsToDocx';
 import { buildGlobalCitations } from './briefCitations';
+import { ReferenceGrouping } from './briefTypes';
 import { BriefCentral } from './BriefCentral';
 import {
   BriefRegenAllModal,
@@ -70,9 +68,9 @@ export const sourceToResult = (src: SourceReference, dataSource: string): Search
 /**
  * Flatten the brief into one Markdown body + a global SearchResult[] so it can
  * reuse the search summary's .docx exporter. Uses the same global citation
- * model as the on-screen render (combined by document), so `[n]` in the body
- * lines up with the references list and citations link to the source document
- * at the cited page.
+ * model (and the same reference grouping) as the on-screen render, so `[n]` in
+ * the body lines up with the references list and citations link to the source
+ * document at the cited page.
  */
 // Shown as a call-out box on the exported Word cover so readers treat the
 // AI-generated content as a draft to verify, not a finished product.
@@ -81,11 +79,18 @@ const BRIEF_DISCLAIMER =
   'Please verify any factual claims closely, and review for coverage and accuracy. ' +
   'This is meant as a guide for humans as part of the writing process, not as a final product.';
 
+// The Word export's references layout for each on-screen grouping.
+const REFERENCE_LIST_LAYOUT: Record<ReferenceGrouping, ReferenceListLayout> = {
+  passage: 'flat',
+  'document-multiple': 'grouped',
+  'document-single': 'document',
+};
+
 const assembleBriefForExport = (
   brief: ReturnType<typeof useBrief>,
   dataSource: string,
 ): { summary: string; results: SearchResult[] } => {
-  const { refs, display } = buildGlobalCitations(brief.sections);
+  const { refs, display } = buildGlobalCitations(brief.sections, brief.referenceGrouping);
   const lines: string[] = [];
   brief.sections.forEach((s, i) => {
     // The summary section's own H1 is the brief topic; sections sit one level
@@ -372,6 +377,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       brief.setInstructions(args.instructions);
       brief.setNumHeadings(args.numHeadings);
       brief.setBriefVoiceId(args.voiceId);
+      brief.setTargetWords(args.targetWords);
       if (args.mode === 'ai') {
         void brief.generateOutline({
           topic: args.title,
@@ -405,10 +411,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           tableOfContents: true,
           resultsSectionTitle: 'References',
           // The document mirrors the on-screen References section: inline [n]
-          // citations and a compact list, grouped by document when the reader
-          // has that turned on.
+          // citations and a compact list laid out per the reader's grouping.
           citationStyle: 'links',
-          referenceList: brief.groupReferences ? 'grouped' : 'flat',
+          referenceList: REFERENCE_LIST_LAYOUT[brief.referenceGrouping],
           siteOrigin:
             typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
           // Same API base the on-screen cards use to load table/figure
@@ -449,7 +454,12 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     ) : (
       <>
         {brief.error && <div className="brief-error brief-error-banner">{brief.error}</div>}
-        <BriefCentral central={central} onOpenBrief={openBrief} onCreateBrief={createBrief} />
+        <BriefCentral
+          central={central}
+          onOpenBrief={openBrief}
+          onCreateBrief={createBrief}
+          defaultTargetWords={brief.targetWords}
+        />
       </>
     )
   ) : (
@@ -517,8 +527,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           voices={brief.voices}
           briefVoiceId={brief.briefVoiceId}
           instructions={brief.instructions}
+          targetWords={brief.targetWords}
           hasSectionVoices={brief.sections.some((s) => !!s.voiceId)}
-          onSubmit={({ instructions, voiceId, applyVoiceToAllSections }) => {
+          onSubmit={({ instructions, voiceId, targetWords, applyVoiceToAllSections }) => {
             if (applyVoiceToAllSections) {
               brief.sections.forEach((s) => {
                 if (s.voiceId) brief.setSectionVoiceId(s.id, null);
@@ -527,7 +538,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
             setWorkspaceModal(null);
             // Passed explicitly: the research loop reads refs, which React
             // would not have updated from the setters by the time it starts.
-            void brief.startResearch({ instructions, voiceId });
+            void brief.startResearch({ instructions, voiceId, targetWords });
           }}
           onClose={() => setWorkspaceModal(null)}
         />
