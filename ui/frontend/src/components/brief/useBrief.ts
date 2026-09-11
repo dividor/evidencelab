@@ -208,6 +208,10 @@ export const useBrief = ({
   // False when the open brief was shared with (not owned by) this user.
   const [canEdit, setCanEdit] = useState(true);
   const [ownerName, setOwnerName] = useState<string | null>(null);
+  // The data source a saved brief was researched in, from its server record.
+  // Null for a new or local brief, whose sources are in the app's selected
+  // data source. The Word export looks cited documents up in this source.
+  const [briefDataSource, setBriefDataSource] = useState<string | null>(null);
 
   const briefIdRef = useRef<string | null>(null);
   // Stable Activity-log id for the current brief (one row per brief).
@@ -651,6 +655,7 @@ export const useBrief = ({
       briefIdRef.current = uid();
       briefActivityIdRef.current = activityId;
       remoteSavedRef.current = false;
+      setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(toTitleCase(topic));
@@ -673,6 +678,7 @@ export const useBrief = ({
     briefIdRef.current = uid();
     briefActivityIdRef.current = newActivityId();
     remoteSavedRef.current = false;
+    setBriefDataSource(null);
     setCanEdit(true);
     setOwnerName(null);
     setBriefTitle(DEFAULT_BRIEF_TITLE);
@@ -694,6 +700,7 @@ export const useBrief = ({
       briefIdRef.current = uid();
       briefActivityIdRef.current = newActivityId();
       remoteSavedRef.current = false;
+      setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(title.trim() || DEFAULT_BRIEF_TITLE);
@@ -1248,11 +1255,17 @@ export const useBrief = ({
   const applyLoadedBrief = useCallback(
     (
       entry: SavedBrief,
-      access: { canEdit: boolean; ownerName: string | null; saved: boolean },
+      access: {
+        canEdit: boolean;
+        ownerName: string | null;
+        saved: boolean;
+        dataSource: string | null;
+      },
     ) => {
       abortRef.current?.abort();
       briefIdRef.current = entry.id;
       remoteSavedRef.current = access.saved;
+      setBriefDataSource(access.dataSource);
       briefActivityIdRef.current = entry.activityId || newActivityId();
       setBriefTitle(entry.title);
       setQuery(entry.query);
@@ -1352,6 +1365,7 @@ export const useBrief = ({
               canEdit: full.can_edit,
               ownerName: full.owner_name,
               saved: true,
+              dataSource: full.data_source,
             }),
           )
           .catch((e) =>
@@ -1359,7 +1373,7 @@ export const useBrief = ({
           );
         return;
       }
-      applyLoadedBrief(entry, { canEdit: true, ownerName: null, saved: false });
+      applyLoadedBrief(entry, { canEdit: true, ownerName: null, saved: false, dataSource: null });
     },
     [remote, applyLoadedBrief],
   );
@@ -1394,6 +1408,7 @@ export const useBrief = ({
               canEdit: true,
               ownerName: null,
               saved: true,
+              dataSource: created.data_source,
             });
           })
           .catch((e) =>
@@ -1419,6 +1434,7 @@ export const useBrief = ({
     briefIdRef.current = null;
     briefActivityIdRef.current = null;
     remoteSavedRef.current = false;
+    setBriefDataSource(null);
     setStage('seed');
     setSections([]);
     setRegenFor(null);
@@ -1477,6 +1493,7 @@ export const useBrief = ({
     briefVoiceId,
     canEdit,
     ownerName,
+    briefDataSource,
     remote,
     voices: voices || [],
     // setters / actions

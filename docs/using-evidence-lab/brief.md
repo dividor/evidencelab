@@ -100,11 +100,11 @@ From a card you can **open**, **share** or **delete** a brief. **New brief** sta
 
 When your brief is ready, click **Export to Word** at the top right.
 
-The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkboxes above that list (tick at most one):
+The exported document mirrors what you see on screen: inline `[n]` citation numbers in the prose and a compiled **References** list at the end, laid out according to the **Group by document** checkboxes above that list (tick at most one). Each reference adds the document's publication year after its title; a document with no recorded year shows its title alone.
 
-- **Neither ticked** — one line per citation, with its page: `[1] Title, p.32`.
-- **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
-- **Group by document (single per document)** — one number per document and no page numbers: `[1] Title`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
+- **Neither ticked** — one line per citation, with its page: `[1] Title, 2021, p.32`.
+- **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, 2021, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
+- **Group by document (single per document)** — one number per document and no page numbers: `[1] Title, 2021`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
 
 ![Export to Word button](/docs/images/brief/brief-export-button.png)
 
