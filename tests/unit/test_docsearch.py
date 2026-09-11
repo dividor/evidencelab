@@ -46,6 +46,10 @@ class FakeDB:
         self._scroll_calls.append({"filter": query_filter, "end_idx": end_idx})
         return self.scroll_results[:end_idx]
 
+    def facet_documents(self, key, filter_conditions=None, limit=10, exact=False):
+        """Mock facet values (no "; "-joined payload values by default)."""
+        return {}
+
 
 def create_fake_document(doc_id, title, organization, year, summary="Test summary"):
     """Helper to create fake document points."""
@@ -329,15 +333,28 @@ def test_get_indexed_doc_ids_returns_empty_list_when_no_indexed_docs():
     mock_pg.fetch_indexed_doc_ids.assert_called_once()
 
 
-def test_build_metadata_filter_condition_title_uses_match_text():
-    """Test _build_metadata_filter_condition uses MatchText for title field."""
-    result = _build_metadata_filter_condition("title", "Education", "map_title")
+def test_build_metadata_filter_condition_multi_select_uses_match_any():
+    """A comma-joined multi-select (as sent by the UI) ORs the values, so
+    picking two document types in attribute mode no longer returns nothing."""
+    result = _build_metadata_filter_condition(
+        "document_type", "Activity,Thematic", "map_document_type"
+    )
 
     assert isinstance(result, qmodels.Filter)
-    assert len(result.should) == 1
-    assert result.should[0].key == "map_title"
-    assert isinstance(result.should[0].match, qmodels.MatchText)
-    assert result.should[0].match.text == "Education"
+    assert len(result.must) == 1
+    assert result.must[0].key == "map_document_type"
+    assert isinstance(result.must[0].match, qmodels.MatchAny)
+    assert result.must[0].match.any == ["Activity", "Thematic"]
+
+
+def test_build_metadata_filter_condition_list_value_uses_match_any():
+    """An expanded (list) filter value is applied as MatchAny."""
+    result = _build_metadata_filter_condition(
+        "country", ["Kenya", "Kenya; Ethiopia"], "map_country"
+    )
+
+    assert isinstance(result.must[0].match, qmodels.MatchAny)
+    assert result.must[0].match.any == ["Kenya", "Kenya; Ethiopia"]
 
 
 def test_build_metadata_filter_condition_taxonomy_uses_full_value():
@@ -521,6 +538,36 @@ def test_resolve_pg_filter_fields_language_to_sys_language_doc_ids():
     assert set(core_filters["doc_id"].split(",")) == {"1", "3"}
     assert core_filters["published_year"] == "2023"
     assert mock_field.call_args.args[1] == "sys_language"
+
+
+def test_resolve_pg_filter_fields_region_to_doc_ids():
+    """region is resolved via the PostgreSQL containment lookup (like chunk
+    search) instead of an exact Qdrant payload match, so multi-region documents
+    and a multi-select of regions both count."""
+    pg = Mock()
+    pg.fetch_doc_ids_by_region.return_value = ["2", "5"]
+    core_filters = {"region": "Asia and the Pacific,Eastern and Southern Africa"}
+
+    _resolve_pg_filter_fields(core_filters, pg, "wfp")
+
+    assert "region" not in core_filters
+    assert set(core_filters["doc_id"].split(",")) == {"2", "5"}
+    pg.fetch_doc_ids_by_region.assert_called_once_with(
+        "Asia and the Pacific,Eastern and Southern Africa"
+    )
+
+
+def test_resolve_pg_filter_fields_region_and_language_intersect():
+    """region and language doc_id sets AND together."""
+    pg = Mock()
+    pg.fetch_doc_ids_by_region.return_value = ["2", "5", "7"]
+    core_filters = {"language": "en", "region": "Asia and the Pacific"}
+    with patch(
+        "ui.backend.routes.search.doc_ids_from_pg_field", return_value=["5", "7", "9"]
+    ):
+        _resolve_pg_filter_fields(core_filters, pg, "wfp")
+
+    assert set(core_filters["doc_id"].split(",")) == {"5", "7"}
 
 
 def test_resolve_pg_filter_fields_src_field_to_jsonb_doc_ids():
@@ -819,3 +866,99 @@ async def test_docsearch_filters_out_documents_without_payload(mock_pg):
     assert len(result.results) == 2
     assert result.results[0].doc_id == "1"
     assert result.results[1].doc_id == "3"
+
+
+def _extract_has_id_from_filter(combined):
+    """Return the HasIdCondition ids from a combined docsearch filter."""
+    for cond in combined.must:
+        should = getattr(cond, "should", None)
+        if should and isinstance(should[0], qmodels.HasIdCondition):
+            return should[0].has_id
+    return None
+
+
+@pytest.mark.asyncio
+async def test_docsearch_title_multi_select_resolves_exact_titles(mock_pg):
+    """Two titles picked in the UI arrive comma-joined; each is resolved to its
+    document (exact display title) and applied as a doc_id constraint, not as
+    one substring match on the joined string (which matched nothing)."""
+    fake_db = FakeDB(scroll_results=[create_fake_document("1", "A", "WFP", "2023")])
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1", "2", "3"]
+    mock_pg.fetch_doc_ids_by_exact_titles.return_value = ["1", "3"]
+    mock_pg.fetch_doc_ids_by_title.return_value = []
+
+    mock_request = Mock(spec=Request)
+    mock_request.query_params = {}
+
+    with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title="Title A,Title B",
+                    published_year=None,
+                    document_type=None,
+                    country=None,
+                    language=None,
+                    data_source="uneg",
+                )
+
+    assert result.filters == {"title": ["Title A,Title B"]}
+    candidates = mock_pg.fetch_doc_ids_by_exact_titles.call_args.args[0]
+    assert "Title A" in candidates and "Title B" in candidates
+    combined = fake_db._scroll_calls[0]["filter"]
+    assert _extract_has_id_from_filter(combined) == ["1", "3"]
+    # No payload MatchText condition on map_title remains.
+    assert not any(
+        getattr(getattr(c, "must", [None])[0], "key", None) == "map_title"
+        for c in combined.must
+        if getattr(c, "must", None)
+    )
+
+
+@pytest.mark.asyncio
+async def test_docsearch_country_filter_matches_joined_payload_values(mock_pg):
+    """A country selection also matches documents whose payload stores several
+    countries as one "; "-joined string (regression: Kenya facet 26, filter 8)."""
+    fake_db = FakeDB(scroll_results=[create_fake_document("1", "A", "WFP", "2023")])
+    fake_db.facet_documents = lambda key, **kwargs: {
+        "Kenya": 8,
+        "Kenya; Ethiopia": 3,
+        "Malawi": 5,
+    }
+    mock_pg.fetch_indexed_doc_ids.return_value = ["1"]
+
+    mock_request = Mock(spec=Request)
+    mock_request.query_params = {}
+
+    with patch("ui.backend.routes.search.get_db_for_source", return_value=fake_db):
+        with patch("ui.backend.routes.search.get_pg_for_source", return_value=mock_pg):
+            with patch("ui.backend.routes.search.run_in_threadpool") as mock_threadpool:
+                mock_threadpool.side_effect = lambda func, **kwargs: func(**kwargs)
+                result = await docsearch(
+                    request=mock_request,
+                    q="",
+                    limit=10,
+                    organization=None,
+                    title=None,
+                    published_year=None,
+                    document_type=None,
+                    country="Kenya",
+                    language=None,
+                    data_source="uneg",
+                )
+
+    assert result.filters["country"] == ["Kenya", "Kenya; Ethiopia"]
+    combined = fake_db._scroll_calls[0]["filter"]
+    country_matches = [
+        c.must[0].match
+        for c in combined.must
+        if getattr(c, "must", None) and c.must[0].key == "map_country"
+    ]
+    assert len(country_matches) == 1
+    assert isinstance(country_matches[0], qmodels.MatchAny)
+    assert country_matches[0].any == ["Kenya", "Kenya; Ethiopia"]

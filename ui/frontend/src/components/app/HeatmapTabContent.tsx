@@ -49,7 +49,6 @@ interface HeatmapTabContentProps {
   loadingConfig: boolean;
   facetsDataSource: string | null;
   filtersExpanded: boolean;
-  activeFiltersCount: number;
   onToggleFiltersExpanded: () => void;
   onClearFilters: () => void;
   facets: Facets | null;
@@ -318,6 +317,13 @@ const ThumbnailCarousel = ({ documents, selectedDomain, filteredDocId, onSelectD
     </div>
   );
 };
+
+// Identifies the query a sensitivity cutoff was computed for: the row queries
+// when rows are search queries, otherwise the grid query.
+const buildCutoffQueryKey = (rowDimension: string, rowQueries: string[], gridQuery: string) =>
+  rowDimension === 'queries'
+    ? `queries:${rowQueries.map((query) => query.trim()).join(' ')}`
+    : `grid:${gridQuery.trim()}`;
 
 const buildExcludedFilterFields = (rowDimension: string, columnDimension: string) => {
   const excludedFields = new Set<string>();
@@ -1187,7 +1193,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   loadingConfig,
   facetsDataSource,
   filtersExpanded,
-  activeFiltersCount,
   onToggleFiltersExpanded,
   onClearFilters,
   facets,
@@ -1292,7 +1297,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
-  const userAdjustedCutoffRef = useRef(false);
+  // The sensitivity cutoff is pinned once set (auto-computed for a query, moved
+  // by the user, or read from the URL) so filter-only re-runs keep comparing
+  // against the same threshold; it is re-computed only when the query changes.
+  const cutoffPinnedRef = useRef(false);
+  const cutoffQueryKeyRef = useRef<string | null>(null);
   const heatmapUrlInitRef = useRef(false);
   const heatmapUrlHadYearFilterRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
@@ -1711,6 +1720,23 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     [getFieldValues, heatmapSelectedFilters]
   );
 
+  // Filters the next run will actually send: axis fields count when narrowed
+  // below all their values, every other field when it has a selection.
+  const heatmapActiveFiltersCount = useMemo(() => {
+    const axisFields = buildExcludedFilterFields(rowDimension, columnDimension);
+    return Object.entries(heatmapSelectedFilters).filter(([field, values]) =>
+      axisFields.has(field) ? isHeatmapFieldFiltered(field) : values.length > 0
+    ).length;
+  }, [columnDimension, heatmapSelectedFilters, isHeatmapFieldFiltered, rowDimension]);
+
+  // The heatmap keeps its own filter state, so "Clear filters" must reset it
+  // here; the parent's handler only clears the parent's copy.
+  const clearHeatmapFilters = useCallback(() => {
+    setHeatmapSelectedFilters({});
+    setHeatmapFilterSearchTerms({});
+    onClearFilters();
+  }, [onClearFilters]);
+
   const updateHeatmapURL = useCallback(
     (options?: { run?: boolean }) => {
       const url = new URL(window.location.href);
@@ -1789,6 +1815,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const parsedSensitivity = urlSensitivity ? Number(urlSensitivity) : NaN;
     if (!Number.isNaN(parsedSensitivity)) {
       setSimilarityCutoff(parsedSensitivity);
+      // A shared link carries its sensitivity: pin it to the link's query so
+      // the auto-run does not replace it.
+      cutoffPinnedRef.current = true;
+      cutoffQueryKeyRef.current = buildCutoffQueryKey(
+        urlRow && rowOptions.some((option) => option.value === urlRow) ? urlRow : rowDimension,
+        urlRowQueries.length > 0 ? urlRowQueries : rowQueries,
+        urlQuery ?? gridQuery
+      );
     }
     if (urlRow === 'queries' && urlRowQueries.length > 0) {
       setRowQueries(urlRowQueries);
@@ -2008,10 +2042,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
-    // Transform taxonomy values to display clean names
+    // Show taxonomy values by their clean name but keep the raw value: the
+    // selection and the axis values are raw, so a renamed value would never
+    // match and the axis could not be narrowed.
     const transformedValues = baseValues.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
+      label: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
     }));
     const orderedValues = sortFacetValues(transformedValues, modalSelectedValues);
     return {
@@ -2029,10 +2065,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (!results) {
       return heatmapFacetSearchResults;
     }
-    // Transform taxonomy values to display clean names
+    // Clean name for display only; the raw value stays the filter value.
     const transformedResults = results.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, field),
+      label: extractTaxonomyName(facetValue.value, field),
     }));
     return {
       ...heatmapFacetSearchResults,
@@ -2282,11 +2318,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [gridResults]);
 
   useEffect(() => {
-    if (!scoreBounds.hasScores || userAdjustedCutoffRef.current) {
+    if (!scoreBounds.hasScores || cutoffPinnedRef.current) {
       return;
     }
     const cutoff = scoreBounds.max - HEATMAP_SCORE_PERCENTILE * (scoreBounds.max - scoreBounds.min);
     setSimilarityCutoff(cutoff);
+    cutoffPinnedRef.current = true;
   }, [scoreBounds]);
 
   const maxCellCount = useMemo(() => {
@@ -2408,7 +2445,15 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridError(null);
     setGridResults({});
     setCappedCells(new Set());
-    userAdjustedCutoffRef.current = false;
+    // Only a changed query gets a fresh auto-computed cutoff. A re-run that
+    // merely changes filters keeps the current one, so excluding the documents
+    // that were above the threshold really empties the cells instead of
+    // promoting the next-best chunks.
+    const cutoffQueryKey = buildCutoffQueryKey(rowDimension, rowQueries, gridQuery);
+    if (cutoffQueryKeyRef.current !== cutoffQueryKey) {
+      cutoffQueryKeyRef.current = cutoffQueryKey;
+      cutoffPinnedRef.current = false;
+    }
     const controller = new AbortController();
     gridAbortRef.current = controller;
     const tasks: Array<() => Promise<void>> = [];
@@ -2521,6 +2566,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     rerankEnabled,
     rerankModel,
     rowDimension,
+    rowQueries,
     searchDenseWeight,
     searchModel,
     sectionTypes,
@@ -2912,7 +2958,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     <div className="main-content">
       <MobileFiltersToggle
         filtersExpanded={filtersExpanded}
-        activeFiltersCount={activeFiltersCount}
+        activeFiltersCount={heatmapActiveFiltersCount}
         onToggle={onToggleFiltersExpanded}
         label="More Filters"
       />
@@ -2921,7 +2967,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         <HeatmapFiltersColumn
           filtersExpanded={filtersExpanded}
           onToggleFiltersExpanded={onToggleFiltersExpanded}
-          onClearFilters={onClearFilters}
+          onClearFilters={clearHeatmapFilters}
           filtersPanelProps={filtersPanelProps}
         />
 
@@ -3000,7 +3046,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
                   onCutoffChange={(value: number) => {
-                    userAdjustedCutoffRef.current = true;
+                    cutoffPinnedRef.current = true;
                     setSimilarityCutoff(value);
                   }}
                 />
@@ -3013,7 +3059,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
                   onCutoffChange={(value: number) => {
-                    userAdjustedCutoffRef.current = true;
+                    cutoffPinnedRef.current = true;
                     setSimilarityCutoff(value);
                   }}
                 />

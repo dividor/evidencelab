@@ -32,7 +32,6 @@ const baseProps = {
   loadingConfig: false,
   facetsDataSource: 'wfp',
   filtersExpanded: false,
-  activeFiltersCount: 0,
   onToggleFiltersExpanded: jest.fn(),
   onClearFilters: jest.fn(),
   facets: buildFacets(),

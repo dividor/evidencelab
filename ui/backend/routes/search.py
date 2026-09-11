@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -39,6 +39,7 @@ from ui.backend.utils.filter_helpers import (
     build_core_filters_from_params,
     build_needed_fields,
     collect_range_bounds,
+    expand_multivalue_filters,
     normalize_language_filter,
     resolve_storage_field,
     split_filter_values,
@@ -72,7 +73,13 @@ def _intersect_doc_id_filter(core_filters: Dict[str, Any], doc_ids: List[str]) -
 
 
 def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
-    """Replace language filter with doc_id filter (language not on chunks)."""
+    """Replace language filter with a doc_id filter (language is not on chunks).
+
+    The resolved doc_ids are intersected with any existing doc_id constraint so
+    document-level filters combine with AND, and a language that matches no
+    document pins the sentinel id so the search returns nothing instead of
+    silently dropping the filter.
+    """
     lang = core_filters.pop("language", None)
     if not lang:
         return
@@ -80,8 +87,7 @@ def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     if not lang_code:
         return
     doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
-    if doc_ids:
-        core_filters["doc_id"] = ",".join(doc_ids)
+    _intersect_doc_id_filter(core_filters, doc_ids)
 
 
 def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
@@ -110,8 +116,12 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
     (the ``src_doc_raw_metadata`` JSONB). Filtering those against the Qdrant
     payload returns wrong/zero counts, so resolve each to its matching doc_ids
     here — the same source the facet counts come from — and AND them together.
-    Qdrant-resident fields (document_type, published_year, organization,
-    country, region, …) are left in ``core_filters`` as payload filters.
+    ``region`` is resolved the same way as in chunk search: its payload value is
+    a ``"; "``-joined string and region names contain commas, so only the
+    PostgreSQL containment lookup handles multi-region documents and
+    multi-select correctly. Qdrant-resident fields (document_type,
+    published_year, organization, country, …) are left in ``core_filters`` as
+    payload filters.
     """
     language = core_filters.pop("language", None)
     if language:
@@ -120,6 +130,7 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
             doc_ids_from_pg_field(pg, "sys_language", str(language).split(",")),
         )
 
+    _convert_region_to_doc_ids(core_filters, pg)
     _convert_src_fields_to_doc_ids(core_filters, pg, source)
 
 
@@ -460,6 +471,18 @@ def _build_search_results(
     return filtered_results
 
 
+def _filter_match(value: Any) -> Union[qmodels.MatchAny, qmodels.MatchValue]:
+    """Qdrant match for a filter value: ``MatchAny`` when the value is a list or
+    a comma-joined multi-select (values OR within a field), else ``MatchValue``.
+    """
+    if isinstance(value, (list, tuple, set)):
+        return qmodels.MatchAny(any=[str(item) for item in value])
+    multi_values = split_filter_values(value)
+    if multi_values:
+        return qmodels.MatchAny(any=multi_values)
+    return qmodels.MatchValue(value=value)
+
+
 def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
     """Build a Qdrant filter from core filter fields for restricting facet counts."""
     facet_conditions: List[qmodels.Condition] = []
@@ -470,16 +493,8 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
         storage_field = resolve_storage_field(core_field, data_source)
         if core_field == "published_year":
             value = str(value)
-        multi_values = split_filter_values(value)
         facet_conditions.append(
-            qmodels.FieldCondition(
-                key=storage_field,
-                match=(
-                    qmodels.MatchAny(any=multi_values)
-                    if multi_values
-                    else qmodels.MatchValue(value=value)
-                ),
-            )
+            qmodels.FieldCondition(key=storage_field, match=_filter_match(value))
         )
 
     for sf, bounds in collect_range_bounds(core_filters, data_source).items():
@@ -551,15 +566,51 @@ async def perform_title_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# Above this many comma-separated parts a title filter is matched part by part
+# only, instead of trying every contiguous run of parts.
+_MAX_TITLE_PARTS = 50
+
+
+def _title_candidates(title_filter: str) -> List[str]:
+    """Exact-title candidates encoded in a comma-joined title filter.
+
+    The UI joins multi-select filter values with commas, but display titles
+    themselves often contain commas (``"…, 2016-2021"``), so the filter cannot
+    simply be split. Every contiguous run of the comma-split parts is rejoined
+    (with and without the space after the comma) and offered as a candidate, so
+    both ``"Title A,Title B"`` and a single ``"Region, 2016-2020"`` resolve to
+    the titles the user picked.
+    """
+    parts = [part.strip() for part in title_filter.split(",") if part.strip()]
+    candidates = {title_filter.strip(), *parts}
+    if len(parts) <= _MAX_TITLE_PARTS:
+        for start in range(len(parts)):
+            for end in range(start + 2, len(parts) + 1):
+                candidates.add(", ".join(parts[start:end]))
+                candidates.add(",".join(parts[start:end]))
+    return sorted(candidate for candidate in candidates if candidate)
+
+
+def _resolve_title_doc_ids(pg, title_filter: str) -> List[str]:
+    """doc_ids for a title filter: exact display titles (one or several, as
+    picked in the UI) unioned with the partial substring match of the raw value
+    that API callers rely on."""
+    doc_ids = set(pg.fetch_doc_ids_by_exact_titles(_title_candidates(title_filter)))
+    doc_ids.update(pg.fetch_doc_ids_by_title(title_filter))
+    return sorted(doc_ids)
+
+
 def _handle_title_filter(
     pg, core_filters: Dict[str, Any], q: str
 ) -> Optional[SearchResponse]:
+    """Replace a title filter with a doc_id constraint (intersected with any
+    existing one). Returns an empty response when no document matches."""
     title_filter = core_filters.get("title")
     if not title_filter:
         return None
 
     t_title_filter_start = time.time()
-    title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
+    title_doc_ids = _resolve_title_doc_ids(pg, title_filter)
     t_title_filter_end = time.time()
     logger.info(
         "[TIMING] title_doc_id_fetch: %.3fs (%s matches)",
@@ -574,7 +625,7 @@ def _handle_title_filter(
             filters={"title": [title_filter]},
         )
     core_filters.pop("title", None)
-    core_filters["doc_id"] = title_doc_ids
+    _intersect_doc_id_filter(core_filters, title_doc_ids)
     return None
 
 
@@ -807,6 +858,8 @@ async def search(
         _convert_language_to_doc_ids(core_filters, pg)
         _convert_region_to_doc_ids(core_filters, pg)
         _convert_src_fields_to_doc_ids(core_filters, pg, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
 
         title_filter = core_filters.get("title")
         early_response = _handle_title_filter(pg, core_filters, q)
@@ -890,21 +943,15 @@ def _get_indexed_doc_ids(pg, source: str) -> List[str]:
 def _build_metadata_filter_condition(
     core_field: str, value: Any, storage_field: str
 ) -> qmodels.Filter:
-    """Build a Qdrant filter condition for a single metadata field."""
-    if core_field == "title":
-        return qmodels.Filter(
-            should=[
-                qmodels.FieldCondition(
-                    key=storage_field, match=qmodels.MatchText(text=value)
-                )
-            ]
-        )
+    """Build a Qdrant filter condition for a single metadata field.
+
+    A multi-select (list, or the UI's comma-joined string) becomes ``MatchAny``
+    so the selected values OR within the field, exactly as in chunk search;
+    a single value is an exact ``MatchValue``. ``title`` never reaches here:
+    it is resolved to a doc_id constraint by ``_handle_title_filter``.
+    """
     return qmodels.Filter(
-        must=[
-            qmodels.FieldCondition(
-                key=storage_field, match=qmodels.MatchValue(value=value)
-            )
-        ]
+        must=[qmodels.FieldCondition(key=storage_field, match=_filter_match(value))]
     )
 
 
@@ -1034,6 +1081,13 @@ async def docsearch(
         # Heatmapper counts match the facets. Without this a "language" or
         # "evaluation category" axis returns zero/under-counted results.
         _resolve_pg_filter_fields(core_filters, pg, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
+
+        title_filter = core_filters.get("title")
+        early_response = _handle_title_filter(pg, core_filters, q)
+        if early_response:
+            return early_response
 
         combined_filter = _build_docsearch_filters(q, core_filters, indexed_doc_ids, db)
         if combined_filter is None:
@@ -1060,9 +1114,7 @@ async def docsearch(
             len(documents),
         )
 
-        filters_response = _build_filters_response(
-            core_filters, core_filters.get("title")
-        )
+        filters_response = _build_filters_response(core_filters, title_filter)
         return SearchResponse(
             results=documents, total=len(documents), query=q, filters=filters_response
         )
@@ -1144,6 +1196,8 @@ async def get_facets(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
+        # Country/theme/… payloads may be "; "-joined; match the joined values too.
+        expand_multivalue_filters(db, core_filters, source)
         title_filter = core_filters.get("title")
         if title_filter and q:
             title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)

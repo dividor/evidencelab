@@ -11,7 +11,10 @@ from pipeline.db import (
     get_taxonomy_filter_fields,
 )
 from ui.backend.utils.document_utils import map_core_field_to_storage
-from ui.backend.utils.facet_helpers import doc_ids_from_pg_jsonb
+from ui.backend.utils.facet_helpers import (
+    doc_ids_from_pg_jsonb,
+    expand_multivalue_filter,
+)
 from ui.backend.utils.language_codes import LANGUAGE_CODES
 
 
@@ -368,3 +371,45 @@ def resolve_doc_level_filters(
     resolved_ids = set.intersection(*constraints)
     result["doc_id"] = sorted(resolved_ids) if resolved_ids else [NO_MATCH_DOC_ID]
     return result
+
+
+# Core fields whose stored values are never "; "-joined, or that are resolved
+# to a doc_id constraint elsewhere, so multi-value expansion skips them.
+_MULTIVALUE_EXPANSION_SKIP = frozenset(
+    {"title", "doc_id", "language", "region", "published_year"}
+)
+
+
+def _is_expandable_filter(core_field: str, value: Any) -> bool:
+    """True for keyword payload filters whose stored values may be "; "-joined."""
+    if not isinstance(value, str) or not value.strip():
+        return False
+    if core_field in _MULTIVALUE_EXPANSION_SKIP:
+        return False
+    if core_field.startswith(("src_", "tag_")):
+        return False
+    return not core_field.endswith(("_min", "_max"))
+
+
+def expand_multivalue_filters(
+    db, core_filters: Dict[str, Any], data_source: Optional[str]
+) -> None:
+    """Expand keyword filters in place so "; "-joined payload values match.
+
+    Multi-valued document fields (country, theme, topic, …) are stored as one
+    ``"; "``-joined string (``"Kenya; Ethiopia"``) and faceted as individual
+    values, but a payload filter matches the whole string exactly, so selecting
+    ``Kenya`` misses every multi-country document. For each keyword filter this
+    adds the raw joined values that contain a selected value (see
+    :func:`expand_multivalue_filter`), turning the filter into a list that the
+    query builders apply as ``MatchAny``. A filter that gains nothing is left
+    untouched so single values keep their exact match.
+    """
+    for core_field, value in list(core_filters.items()):
+        if not _is_expandable_filter(core_field, value):
+            continue
+        selected = split_filter_values(value) or [value.strip()]
+        storage_field = resolve_storage_field(core_field, data_source)
+        expanded = expand_multivalue_filter(db, storage_field, selected)
+        if len(expanded) > len(selected):
+            core_filters[core_field] = sorted(expanded)
