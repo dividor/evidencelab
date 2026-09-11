@@ -24,7 +24,7 @@ Evidence Lab v1.6.2 is a **Brief** release: sections can be written to a **lengt
 
 ### Upgrade Notes
 - **No database migrations** in this release.
-- **`config.json`: new required key** `application.brief.target_words` with `presets`, `min`, `max` and `tolerance` (see the repository `config.json` for the values). The frontend build fails without it, so deployments that maintain their own `config.json` must add the block before rebuilding the UI image.
+- **`config.json`: new required key** `application.brief.target_words` with `presets`, `min`, `max` and `tolerance` (see the repository `config.json` for the values). The UI image still builds without it, but the app then stops at startup with a blank page and a console error naming the key, so deployments that maintain their own `config.json` must add the block before deploying this release.
 - **New optional env vars** `API_GZIP_ENABLED` (default `true`), `API_GZIP_MIN_BYTES` (`1024`) and `API_GZIP_LEVEL` (`6`) — see `.env.example`. Deployments that added Starlette's `GZipMiddleware` locally should remove it, otherwise their event streams stay buffered until the stream closes.
 - **API image dependency versions change on rebuild** (FastAPI 0.115.6 → 0.135.1, Starlette 0.41.3 → 1.6.0). No code changes are needed, but rebuild and smoke-test the API image rather than reusing a cached one.
 - **New team default** under Admin → Group Settings → Brief: **Default section length**.
