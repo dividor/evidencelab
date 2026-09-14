@@ -48,6 +48,10 @@ class FakeDB:
         """Mock facet values (no "; "-joined payload values by default)."""
         return {}
 
+    def indexed_payload_keys(self, collection_name):
+        """Mock payload indexes: the core map_* fields are faceted."""
+        return {"map_organization", "map_document_type", "map_country", "map_theme"}
+
     def hybrid_search(self, **kwargs):
         """Mock hybrid search for chunks."""
         self._search_calls.append(kwargs)

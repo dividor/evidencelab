@@ -404,12 +404,22 @@ def expand_multivalue_filters(
     :func:`expand_multivalue_filter`), turning the filter into a list that the
     query builders apply as ``MatchAny``. A filter that gains nothing is left
     untouched so single values keep their exact match.
+
+    The expansion reads the field's values through a Qdrant facet query, which
+    Qdrant only serves for indexed payload fields, so fields without an index in
+    the documents collection keep their exact match instead of failing the
+    whole search (e.g. ``map_topic`` on sources that never index it).
     """
+    indexed_keys: Optional[Set[str]] = None
     for core_field, value in list(core_filters.items()):
         if not _is_expandable_filter(core_field, value):
             continue
-        selected = split_filter_values(value) or [value.strip()]
+        if indexed_keys is None:
+            indexed_keys = db.indexed_payload_keys(db.documents_collection)
         storage_field = resolve_storage_field(core_field, data_source)
+        if storage_field not in indexed_keys:
+            continue
+        selected = split_filter_values(value) or [value.strip()]
         expanded = expand_multivalue_filter(db, storage_field, selected)
         if len(expanded) > len(selected):
             core_filters[core_field] = sorted(expanded)
