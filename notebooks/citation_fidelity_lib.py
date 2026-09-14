@@ -238,8 +238,9 @@ def build_judge_messages(
 # Footnote markers the parser leaves in chunk text, e.g. "[^70]".
 FOOTNOTE_RE = re.compile(r"\[\^\d+\]")
 
-# How a judge marks a gap between two quoted fragments.
-ELLIPSIS_RE = re.compile(r"\s*(?:\[?\.\.\.\]?|\[?…\]?)\s*")
+# How a judge marks a gap between two quoted fragments: an ellipsis, or a
+# blank line when it copies two separate paragraphs or list items.
+ELLIPSIS_RE = re.compile(r"\s*(?:\[?\.\.\.\]?|\[?…\]?)\s*|\n[ \t]*\n\s*")
 
 # Similarity (0-1) above which a quote counts as "near-verbatim": the same
 # words modulo PDF extraction artefacts such as "G overnment" or "highl y".
@@ -261,7 +262,8 @@ def match_key(text: str) -> str:
 
 
 def quote_fragments(quote: str) -> List[str]:
-    """A quote may join distant sentences with "..."; each piece is checked."""
+    """A quote may join distant sentences with "..." or a blank line; each
+    piece is checked on its own."""
     return [part for part in ELLIPSIS_RE.split(quote) if match_key(part)]
 
 

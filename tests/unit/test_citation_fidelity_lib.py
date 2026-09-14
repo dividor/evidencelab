@@ -306,6 +306,16 @@ class TestQuoteMatching:
         ]
         assert quote_fragments("...") == []
 
+    def test_quote_fragments_when_blank_line_then_split(self):
+        assert quote_fragments(
+            "Early actions:\n\n· Forward purchasing.\n\n· Pre-positioning"
+        ) == [
+            "Early actions:",
+            "· Forward purchasing.",
+            "· Pre-positioning",
+        ]
+        assert quote_fragments("one line\nnext line") == ["one line\nnext line"]
+
     def test_find_fragment_when_punctuation_differs_then_verbatim_with_span(self):
         status, span = find_fragment(
             "In Kenya, at the Government's request, WFP launched", self.BODY
