@@ -13,7 +13,6 @@ from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -67,7 +66,11 @@ from ui.backend.services.search import (
     search_facet_values,
     search_titles,
 )
-from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_limits import (
+    get_rate_limits,
+    limiter,
+    rate_limit_exceeded_handler,
+)
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 
 # Add parent directory to path for imports
@@ -178,7 +181,7 @@ app.openapi = _custom_openapi  # type: ignore[method-assign]
 
 # Add rate limiter to app
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.state.highlight_cache = highlight_routes._highlight_cache
 
 

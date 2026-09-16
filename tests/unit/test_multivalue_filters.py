@@ -29,9 +29,11 @@ from ui.backend.utils.filter_helpers import (
 pytestmark = pytest.mark.unit
 
 
-def _db_with_values(values):
+def _db_with_values(values, indexed=("map_country", "map_document_type", "map_theme")):
     db = MagicMock()
+    db.documents_collection = "documents_test"
     db.facet_documents.return_value = {v: 1 for v in values}
+    db.indexed_payload_keys.return_value = set(indexed)
     return db
 
 
@@ -79,6 +81,24 @@ class TestExpandMultivalueFilters:
         expand_multivalue_filters(db, core, "wfp")
         assert core == before
         db.facet_documents.assert_not_called()
+
+    def test_field_without_payload_index_then_left_untouched_and_not_faceted(self):
+        # Regression: Qdrant rejects facets on un-indexed fields ("No
+        # appropriate index for faceting"), which failed the whole search for
+        # e.g. a topic filter. Such fields keep their exact match.
+        db = _db_with_values(["Health", "Health; Nutrition"], indexed=("map_country",))
+        core = {"topic": "Health"}
+        expand_multivalue_filters(db, core, "worldbank")
+        assert core["topic"] == "Health"
+        db.indexed_payload_keys.assert_called_once_with("documents_test")
+        db.facet_documents.assert_not_called()
+
+    def test_several_fields_then_index_schema_read_once(self):
+        db = _db_with_values(["Kenya", "Kenya; Ethiopia", "Activity"])
+        core = {"country": "Kenya", "document_type": "Activity"}
+        expand_multivalue_filters(db, core, "wfp")
+        assert db.indexed_payload_keys.call_count == 1
+        assert db.facet_documents.call_count == 2
 
     def test_list_value_when_already_expanded_then_left_untouched(self):
         db = MagicMock()

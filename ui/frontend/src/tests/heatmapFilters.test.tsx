@@ -292,3 +292,91 @@ describe('Heatmap side filters', () => {
     }
   });
 });
+
+const axiosFailure = (status: number, headers: Record<string, string> = {}) =>
+  Object.assign(new Error(`Request failed with status code ${status}`), {
+    isAxiosError: true,
+    response: { status, headers, data: {} },
+  });
+
+describe('Heatmap cell request failures', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/heatmap');
+  });
+
+  test('a rate-limited cell is retried after Retry-After and loads without an error', async () => {
+    // One 429 per cell (two cells), then success: the grid completes cleanly.
+    const limitedUrls = new Set<string>();
+    const getSpy = jest.spyOn(axios, 'get').mockImplementation((url) => {
+      const key = String(url);
+      if (!/\/(doc)?search\?/.test(key)) return Promise.resolve({ data: [] });
+      if (!limitedUrls.has(key)) {
+        limitedUrls.add(key);
+        return Promise.reject(axiosFailure(429, { 'retry-after': '0' }));
+      }
+      return Promise.resolve(resultsWithScores([0.9, 0.5]));
+    });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      const { container } = render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      setGridQuery('girls education');
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(cellTexts(container)).toEqual(['1', '1']));
+      await waitFor(() => expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled());
+      expect(screen.queryByText(/failed to load/i)).toBeNull();
+      // Each cell was requested twice: the limited attempt and the retry.
+      expect(cellRequestParams(getSpy)).toHaveLength(4);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
+
+  test('a server error is not retried and the message says how many cells failed', async () => {
+    const getSpy = jest.spyOn(axios, 'get').mockImplementation((url) =>
+      /\/(doc)?search\?/.test(String(url))
+        ? Promise.reject(axiosFailure(500))
+        : Promise.resolve({ data: [] })
+    );
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      expect(
+        await screen.findByText('2 of 2 grid cells failed to load: the server returned errors (details in the browser console).')
+      ).toBeInTheDocument();
+      expect(cellRequestParams(getSpy)).toHaveLength(2);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  test('cells that stay rate limited report the rate limit', async () => {
+    const getSpy = jest.spyOn(axios, 'get').mockImplementation((url) =>
+      /\/(doc)?search\?/.test(String(url))
+        ? Promise.reject(axiosFailure(429, { 'retry-after': '0' }))
+        : Promise.resolve({ data: [] })
+    );
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      expect(
+        await screen.findByText('2 of 2 grid cells failed to load: the search rate limit was reached. Wait a minute and generate again.')
+      ).toBeInTheDocument();
+      // 1 attempt + 3 retries per cell.
+      expect(cellRequestParams(getSpy)).toHaveLength(8);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+});
