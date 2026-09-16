@@ -113,7 +113,8 @@ python scripts/sync/db/sync_backup_to_remote.py \
 - **Plans, analyses and working notes do NOT go in `docs/` and are NOT committed.** Write them to an untracked `plan.md` at the repo root, show the plan to the user, and wait for approval before starting implementation. Never open a PR for a plan.
 
 ### Working Data Location
-- **All local data, parsed output and database work lives on `/Volumes/bigdisky/evidencelab/evidencelab-ai/`** (7.3 TB). The older copy on `/Volumes/disco1/data/evidencelab-ai/` is retained for reference only; do not write new trees there (it is nearly full).
+- **All local data, parsed output and database work lives on `/Volumes/disco1/data/evidencelab-ai/`** (APFS, 1.8 TB). This is the working disk: data files under `data-files/data/<source>/`, database dumps under `db-backups/`.
+- The `bigdisky` volume failed in September 2026 and is gone. Nothing should reference it. It was ExFAT, which cost dearly: macOS sidecar (`._*`) files beside every file, no symlinks, and directory lookups measured at 1.2–2.9 s in directories holding tens of thousands of entries. Prefer APFS for any future working disk.
 
 ### Database
 - **NEVER run ad-hoc database commands** (ALTER, UPDATE, DELETE, DROP, etc.) unless explicitly requested by the user. All schema changes MUST go through Alembic migrations. All data fixes must be scripted and reviewed.
