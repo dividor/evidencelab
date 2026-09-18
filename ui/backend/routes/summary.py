@@ -15,6 +15,11 @@ from ui.backend.schemas import (
     TranslateRequest,
 )
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import (
+    TranslationConfigError,
+    TranslationDisabledError,
+)
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import (
     get_rate_limit_translate,
@@ -141,8 +146,7 @@ async def translate(request: Request, body: TranslateRequest):
             body.target_language,
             body.text[:100],
         )
-        llm_service = _get_llm_service()
-        translated_text = await llm_service.translate_text(
+        translated_text = await translation_service.translate_text(
             body.text, body.target_language, body.source_language
         )
         logging.info(
@@ -153,6 +157,8 @@ async def translate(request: Request, body: TranslateRequest):
 
         return {"translated_text": translated_text}
 
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
     except Exception as e:
         logger.error(f"Translation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
