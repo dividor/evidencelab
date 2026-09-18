@@ -9,7 +9,8 @@ export interface AiSummaryUsage {
 }
 
 interface AiSummaryDoneData {
-  langsmith_trace_url?: string;
+  // Link to the LLM trace behind this summary, when the deployment traces calls.
+  trace_url?: string;
   // Informational only: the backend records usage server-side against the
   // search's activity row when the request carried a searchId.
   usage?: AiSummaryUsage;
@@ -98,7 +99,7 @@ const handleStreamedData = (
   }
   if (streamedData.type === 'done') {
     handlers.onDone({
-      langsmith_trace_url: streamedData.langsmith_trace_url,
+      trace_url: streamedData.trace_url,
       usage: streamedData.usage,
     });
     return fullText;

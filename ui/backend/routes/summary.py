@@ -97,8 +97,10 @@ async def _resolve_summary_prompt(user, session) -> str | None:
     return None
 
 
-def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
-    """Accumulate a summary call's usage onto its search activity row.
+def _record_summary_usage(
+    usage: dict, body: AISummaryRequest, user, trace_url: Optional[str] = None
+) -> None:
+    """Accumulate a summary call's usage (and trace link) onto its search activity row.
 
     Server-side recording keyed by the ``search_id`` the frontend sends with
     the request — this covers drill-down summaries too (same id, so their
@@ -121,6 +123,7 @@ def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
         user_id=getattr(user, "id", None),
         session_id=body.session_id,
         search_id=body.search_id,
+        trace_url=trace_url,
     )
 
 
@@ -233,11 +236,13 @@ async def stream_summary(
                 "results_count": len(body.results),
                 "summary": full_summary,
             }
-            # Include LangSmith trace URL if available
-            if stream_metadata.get("langsmith_trace_url"):
-                completion_data["langsmith_trace_url"] = stream_metadata[
-                    "langsmith_trace_url"
-                ]
+            # Trace link from the configured tracing backend. The legacy
+            # langsmith_trace_url key is emitted alongside trace_url for one
+            # release so older frontend bundles keep working.
+            trace_url = stream_metadata.get("trace_url")
+            if trace_url:
+                completion_data["trace_url"] = trace_url
+                completion_data["langsmith_trace_url"] = trace_url
             # Record usage server-side against the search's activity row (the
             # authoritative path), and still forward it on the done event for
             # transparency / older clients that PATCH it themselves.
@@ -248,7 +253,7 @@ async def stream_summary(
             }
             if usage_payload:
                 completion_data["usage"] = usage_payload
-                _record_summary_usage(usage_payload, body, user)
+                _record_summary_usage(usage_payload, body, user, trace_url)
             yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:

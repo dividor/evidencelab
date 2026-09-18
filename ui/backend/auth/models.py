@@ -550,7 +550,10 @@ class UserActivity(Base):
     search_results: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    langsmith_trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Link to the LLM trace behind this row, from whichever tracing backend
+    # utils.tracing is configured with (migration 0033 renamed it from
+    # langsmith_trace_url).
+    trace_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     llm_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
