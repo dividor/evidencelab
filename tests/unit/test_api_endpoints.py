@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from ui.backend import main as main_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import TranslationDisabledError
 from ui.backend.utils import facet_helpers as facet_module
 from ui.backend.utils import filter_helpers as filter_helpers_module
 from ui.backend.utils.language_codes import LANGUAGE_CODES, LANGUAGE_NAMES
@@ -45,9 +47,7 @@ async def test_translate_success(monkeypatch):
     ) -> str:
         return f"{text}-{target_language}"
 
-    llm_module = ModuleType("llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     request = _make_request(method="POST", path="/translate")
     body = main_module.TranslateRequest(text="hello", target_language="fr")
@@ -63,9 +63,7 @@ async def test_translate_error(monkeypatch):
     ) -> str:
         raise RuntimeError("boom")
 
-    llm_module = ModuleType("llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     request = _make_request(method="POST", path="/translate")
     body = main_module.TranslateRequest(text="hello", target_language="fr")
@@ -73,6 +71,26 @@ async def test_translate_error(monkeypatch):
         await main_module.translate(request, body)
 
     assert exc.value.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_translate_disabled_returns_501(monkeypatch):
+    """``TRANSLATION_PROVIDER=off`` is reported as Not Implemented, not 500."""
+
+    async def fake_translate(
+        text: str, target_language: str, source_language: str | None = None
+    ) -> str:
+        raise TranslationDisabledError("Translation is disabled on this deployment")
+
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
+
+    request = _make_request(method="POST", path="/translate")
+    body = main_module.TranslateRequest(text="hello", target_language="fr")
+    with pytest.raises(HTTPException) as exc:
+        await main_module.translate(request, body)
+
+    assert exc.value.status_code == 501
+    assert "disabled" in exc.value.detail
 
 
 def test_root_endpoint():
@@ -329,9 +347,7 @@ async def test_get_documents_translation(monkeypatch):
     ) -> str:
         return f"{text}-{target_language}"
 
-    llm_module = ModuleType("ui.backend.services.llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "ui.backend.services.llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     result = await main_module.get_documents(
         organization=None,

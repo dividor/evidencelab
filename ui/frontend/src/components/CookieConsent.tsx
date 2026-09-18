@@ -1,29 +1,26 @@
 import React, { useState } from 'react';
-import { GA_MEASUREMENT_ID } from '../config';
-
-const GA_CONSENT_KEY = 'ga-consent';
-
-export const getGaConsent = (): string | null => localStorage.getItem(GA_CONSENT_KEY);
-
-export const setGaConsent = (value: 'granted' | 'denied') => {
-  localStorage.setItem(GA_CONSENT_KEY, value);
-};
+import {
+  getAnalyticsConsent,
+  grantAnalyticsConsent,
+  isAnalyticsConfigured,
+  revokeAnalyticsConsent,
+} from '../utils/analytics';
 
 export const CookieConsent: React.FC = () => {
   const [visible, setVisible] = useState(
-    () => !!GA_MEASUREMENT_ID && getGaConsent() === null
+    () => isAnalyticsConfigured() && getAnalyticsConsent() === null
   );
 
   if (!visible) return null;
 
   const handleAccept = () => {
-    setGaConsent('granted');
+    // Loads the analytics provider in place; no page reload needed.
+    grantAnalyticsConsent();
     setVisible(false);
-    window.location.reload();
   };
 
   const handleDecline = () => {
-    setGaConsent('denied');
+    revokeAnalyticsConsent();
     setVisible(false);
   };
 
