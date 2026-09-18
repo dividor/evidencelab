@@ -241,6 +241,19 @@ This makes it easy to debug classification and summarization issues and improve 
 - **API service** (TOC reprocessing via UI, AI search summaries): `docker compose logs api | grep "LLM"`
 - **Real-time monitoring**: `docker compose logs -f pipeline` or `docker compose logs -f api`
 
+### Translation Prompt
+
+#### `translate_system.j2`
+System prompt for the `llm` translation provider (`TRANSLATION_PROVIDER=llm`; see `docs/admin/third-party-services.md`). The text to translate is sent as the user message.
+
+**Purpose**: Ask the deployment's own LLM for a faithful translation while leaving the wrapper's placeholder tokens (`__REF_12__`, `__PARA__`, `__BR__`) untouched so citation numbers and paragraph breaks survive the round trip.
+
+**Variables**:
+- `source` (string or none): Full name of the source language, or none to let the model detect it
+- `target` (string): Full name of the target language
+
+---
+
 ## Grep Patterns for Log Analysis
 
 ```bash

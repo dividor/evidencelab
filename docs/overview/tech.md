@@ -79,7 +79,7 @@ Search powered by hybrid retrieval and AI.
 * **Field Boosting**: Configurable per data source, detects field values (e.g., country names, organizations) mentioned in the query and boosts matching results. At weight < 1.0, uses a multiplicative bonus (`score * (1 + weight)`) so non-matching results are never penalized. At weight = 1.0, acts as a hard filter — results whose metadata field does not match the detected value are excluded entirely.
 * **Faceted Navigation**: Filter by Organization, Year, Language, and Format.
 * **Cross-Lingual features**:
-  * **Translation**: Translate search results (titles + snippets) into 10+ languages on request.
+  * **Translation**: Translate search results (titles + snippets) into 10+ languages on request. The translation provider is configurable — Google Translate, a self-hosted LibreTranslate server, or the deployment's own LLM — see [Optional Third-Party Services](/docs/admin/third-party-services.md).
   * **Semantic Highlighting**: Highlights relevant phrases in the result snippet effectively, even when the search terms are in a different language from the result.
 * **AI Search Summary**: Generates a direct answer to the user's query by synthesizing the top search results.
 * **Drilldown Research**: Highlight text in an AI summary or click "Find out more" on the top heading to automatically drill into sub-topics. Each sub-query inherits the root search query plus the immediate parent topic for context, building an explorable tree of research. The tree view lets you navigate back to any previous node to review its results and summary. Sub-queries also inherit all active filters (data source, date range, etc.) from the parent search.

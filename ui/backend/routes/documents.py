@@ -14,7 +14,11 @@ from qdrant_client.http import models as qmodels
 import pipeline.utilities.tasks as pipeline_tasks
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
-from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import (
+    TranslationConfigError,
+    TranslationDisabledError,
+)
 from ui.backend.utils.app_limits import get_rate_limits
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.document_utils import normalize_document_payload
@@ -25,13 +29,9 @@ celery_app = pipeline_tasks.app
 router = APIRouter()
 
 
-def _get_llm_service():
-    """Resolve the LLM service module from runtime or fallback imports."""
-    return (
-        sys.modules.get("llm_service")
-        or sys.modules.get("ui.backend.services.llm_service")
-        or llm_service_module
-    )
+def _translation_unavailable(exc: Exception) -> HTTPException:
+    """Map a disabled or misconfigured translation provider to a 501."""
+    return HTTPException(status_code=501, detail=str(exc))
 
 
 def _resolve_parsed_folder(doc: Dict[str, Any]) -> Optional[str]:
@@ -187,7 +187,6 @@ async def _translate_documents(
 ) -> None:
     if not target_language or target_language.lower() == "en":
         return
-    llm_service = _get_llm_service()
 
     async def translate_doc(doc):
         doc_lang = doc.get("language", "en") or "en"
@@ -200,7 +199,7 @@ async def _translate_documents(
         doc["_translated"] = True
 
         if doc.get("title"):
-            doc["title"] = await llm_service.translate_text(
+            doc["title"] = await translation_service.translate_text(
                 doc["title"], target_language
             )
 
@@ -209,11 +208,11 @@ async def _translate_documents(
             if len(summary) > 2000:
                 parts = summary[:2000].rsplit(".", 1)
                 to_translate = parts[0] + "."
-                doc["full_summary"] = await llm_service.translate_text(
+                doc["full_summary"] = await translation_service.translate_text(
                     to_translate, target_language
                 )
             else:
-                doc["full_summary"] = await llm_service.translate_text(
+                doc["full_summary"] = await translation_service.translate_text(
                     summary, target_language
                 )
 
@@ -311,6 +310,8 @@ async def get_documents(
         await _translate_documents(result["documents"], target_language)
         return result
 
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise _translation_unavailable(exc)
     except Exception as e:
         logger.error(f"Error getting documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -581,14 +582,13 @@ async def get_document_chunks(
             doc_lang = (doc.get("language") if doc else "en") or "en"
 
             if not doc_lang.lower().startswith(target_language.lower()):
-                llm_service = _get_llm_service()
 
                 async def translate_chunk(chunk):
                     """Translate a chunk's text into the target language."""
                     if chunk.get("text"):
                         chunk["_original_text"] = chunk["text"]
                         chunk["_translated"] = True
-                        chunk["text"] = await llm_service.translate_text(
+                        chunk["text"] = await translation_service.translate_text(
                             chunk["text"], target_language
                         )
 
@@ -598,6 +598,8 @@ async def get_document_chunks(
 
         return {"chunks": formatted_chunks, "total": len(formatted_chunks)}
 
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise _translation_unavailable(exc)
     except Exception as e:
         logger.error(f"Chunks fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
