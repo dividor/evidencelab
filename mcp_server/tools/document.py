@@ -31,13 +31,16 @@ async def mcp_get_document(
     Raises:
         ValueError: If the document is not found.
     """
+    from pipeline.db.moderation import is_hidden
     from ui.backend.utils.app_state import get_pg_for_source
 
     pg = get_pg_for_source(data_source)
     docs = pg.fetch_docs([doc_id])
     doc = docs.get(str(doc_id))
 
-    if not doc:
+    # A document hidden by an administrator is indistinguishable from a
+    # missing one to every client.
+    if not doc or is_hidden(doc):
         raise ValueError(f"Document not found: {doc_id}")
 
     # Merge sys_data sub-fields into the top level for convenience

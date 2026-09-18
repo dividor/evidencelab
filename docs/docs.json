@@ -34,7 +34,8 @@
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
         { "title": "MCP Server", "path": "admin/mcp-server.md" },
         { "title": "A2A Server", "path": "admin/a2a-server.md" },
-        { "title": "Customization & Branding", "path": "admin/customization.md" }
+        { "title": "Customization & Branding", "path": "admin/customization.md" },
+        { "title": "Optional Third-Party Services", "path": "admin/third-party-services.md" }
       ]
     }
   ]

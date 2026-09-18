@@ -2,7 +2,7 @@
 LLM Factory for creating LangChain LLM instances with provider-agnostic interface.
 
 This module provides a unified way to instantiate LLMs from different providers
-(HuggingFace, OpenAI, Anthropic, etc.) with automatic LangSmith tracing.
+(HuggingFace, OpenAI, Anthropic, etc.) with tracing per utils.tracing.
 
 Configuration via environment variables:
 - LLM_PROVIDER: "huggingface", "openai", "anthropic", or "openai-compatible"
@@ -26,10 +26,11 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import SecretStr
 
-from utils.langsmith_util import setup_langsmith_tracing
+from utils.tracing import get_trace_recorder
 
-# Setup LangSmith tracing
-setup_langsmith_tracing()
+# Resolve the tracing backend up front so LangChain sees its environment
+# (e.g. the LANGCHAIN_* variables LangSmith needs) before any LLM is built.
+get_trace_recorder()
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +121,7 @@ def get_llm(
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
     """
-    Get or create an LLM instance with automatic LangSmith tracing.
+    Get or create an LLM instance (traced per the configured tracing backend).
 
     Args:
         provider: LLM provider ("huggingface", "openai", "anthropic",
