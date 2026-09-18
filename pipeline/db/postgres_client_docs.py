@@ -115,6 +115,9 @@ class PostgresDocMixin:
     """Document queries for Postgres sidecar."""
 
     docs_table: str
+    # Set alongside docs_table on the composed client; a document's chunks are
+    # needed to tell a genuinely indexed document from one that indexed nothing.
+    chunks_table: str
 
     def _get_conn(self):
         raise NotImplementedError
@@ -404,6 +407,25 @@ class PostgresDocMixin:
                 for doc_id, sys_data in cur.fetchall():
                     results[str(doc_id)] = sys_data or {}
         return results
+
+    def fetch_doc_ids_indexed_without_chunks(self) -> List[str]:
+        """Return ids of documents marked indexed that have no chunk rows.
+
+        Such a document is a silent failure: it answers no search and every
+        later run skips it, because its status says the work is done.
+        """
+        query = f"""
+            SELECT d.doc_id
+            FROM {self.docs_table} d
+            WHERE d.sys_status = 'indexed'
+              AND NOT EXISTS (
+                  SELECT 1 FROM {self.chunks_table} c WHERE c.doc_id = d.doc_id
+              )
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                return [str(row[0]) for row in cur.fetchall()]
 
     def fetch_docs_by_status(
         self, status: str, year: int | None = None
