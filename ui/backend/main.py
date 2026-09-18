@@ -778,6 +778,7 @@ if USER_MODULE:
     from ui.backend.routes import brief_central as brief_central_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
+    from ui.backend.routes import moderation as moderation_routes
     from ui.backend.routes import ratings as ratings_routes
     from ui.backend.routes import research as research_routes
     from ui.backend.routes import testing as testing_routes
@@ -793,6 +794,9 @@ if USER_MODULE:
     app.include_router(testing_routes.router, prefix="/testing", tags=["testing"])
     app.include_router(
         toc_validator_routes.router, prefix="/toc-validator", tags=["toc-validator"]
+    )
+    app.include_router(
+        moderation_routes.router, prefix="/moderation", tags=["moderation"]
     )
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 

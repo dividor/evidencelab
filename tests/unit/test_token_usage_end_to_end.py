@@ -27,6 +27,7 @@ separate concern and lives in ``scripts/quality/verify_token_usage.py``.
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any, Dict
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -308,6 +309,28 @@ class TestAssistantDoneEventEndToEnd:
             event["usage"]["completion_tokens"],
         )
         assert recomputed == _expected_cost(model_key, prompt_tokens, completion_tokens)
+
+    def test_done_event_carries_trace_url_under_both_keys(self):
+        """``trace_url`` is the vendor-neutral key; ``langsmith_trace_url``
+        rides along for one release so older bundles keep working."""
+        handler = SimpleNamespace(usage_metadata={})
+        with patch.object(
+            assistant_service, "_get_trace_url", return_value="https://t.example/r/1"
+        ):
+            event = assistant_service._build_done_event(
+                uuid4(), usage_handler=handler, model_key="gpt-4.1-mini"
+            )
+        assert event["trace_url"] == "https://t.example/r/1"
+        assert event["langsmith_trace_url"] == "https://t.example/r/1"
+
+    def test_done_event_without_tracing_has_no_trace_keys(self):
+        handler = SimpleNamespace(usage_metadata={})
+        with patch.object(assistant_service, "_get_trace_url", return_value=None):
+            event = assistant_service._build_done_event(
+                uuid4(), usage_handler=handler, model_key="gpt-4.1-mini"
+            )
+        assert "trace_url" not in event
+        assert "langsmith_trace_url" not in event
 
     def test_done_event_with_no_usage_omits_payload(self):
         """A handler with no provider data should not synthesize one."""

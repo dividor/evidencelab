@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from ui.backend import main as main_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import TranslationDisabledError
 from ui.backend.utils import facet_helpers as facet_module
 from ui.backend.utils import filter_helpers as filter_helpers_module
 from ui.backend.utils.language_codes import LANGUAGE_CODES, LANGUAGE_NAMES
@@ -45,9 +47,7 @@ async def test_translate_success(monkeypatch):
     ) -> str:
         return f"{text}-{target_language}"
 
-    llm_module = ModuleType("llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     request = _make_request(method="POST", path="/translate")
     body = main_module.TranslateRequest(text="hello", target_language="fr")
@@ -63,9 +63,7 @@ async def test_translate_error(monkeypatch):
     ) -> str:
         raise RuntimeError("boom")
 
-    llm_module = ModuleType("llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     request = _make_request(method="POST", path="/translate")
     body = main_module.TranslateRequest(text="hello", target_language="fr")
@@ -73,6 +71,26 @@ async def test_translate_error(monkeypatch):
         await main_module.translate(request, body)
 
     assert exc.value.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_translate_disabled_returns_501(monkeypatch):
+    """``TRANSLATION_PROVIDER=off`` is reported as Not Implemented, not 500."""
+
+    async def fake_translate(
+        text: str, target_language: str, source_language: str | None = None
+    ) -> str:
+        raise TranslationDisabledError("Translation is disabled on this deployment")
+
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
+
+    request = _make_request(method="POST", path="/translate")
+    body = main_module.TranslateRequest(text="hello", target_language="fr")
+    with pytest.raises(HTTPException) as exc:
+        await main_module.translate(request, body)
+
+    assert exc.value.status_code == 501
+    assert "disabled" in exc.value.detail
 
 
 def test_root_endpoint():
@@ -329,9 +347,7 @@ async def test_get_documents_translation(monkeypatch):
     ) -> str:
         return f"{text}-{target_language}"
 
-    llm_module = ModuleType("ui.backend.services.llm_service")
-    llm_module.translate_text = fake_translate
-    monkeypatch.setitem(sys.modules, "ui.backend.services.llm_service", llm_module)
+    monkeypatch.setattr(translation_service, "translate_text", fake_translate)
 
     result = await main_module.get_documents(
         organization=None,
@@ -593,6 +609,13 @@ async def test_update_document_metadata_uses_pg_when_no_update(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_document_chunks(monkeypatch):
+    # main.py rebinds its globals into the routes module on every call, which
+    # outlives monkeypatch; register the current binding so it is restored.
+    import ui.backend.routes.documents as documents_routes
+
+    monkeypatch.setattr(
+        documents_routes, "get_pg_for_source", documents_routes.get_pg_for_source
+    )
     db = _make_db_mock()
     db.client.scroll = lambda **kwargs: (
         [
@@ -612,6 +635,10 @@ async def test_get_document_chunks(monkeypatch):
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
     class PgMock:
+        def fetch_docs(self, doc_ids):
+            # The route checks the document is not hidden before scrolling.
+            return {str(d): {"doc_id": str(d), "sys_data": {}} for d in doc_ids}
+
         def fetch_chunks(self, chunk_ids):
             return {
                 str(cid): {
@@ -770,7 +797,16 @@ async def test_get_highlights(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_highlights_uses_pg(monkeypatch):
+    import ui.backend.routes.highlight as highlight_routes
+
+    monkeypatch.setattr(
+        highlight_routes, "get_pg_for_source", highlight_routes.get_pg_for_source
+    )
+
     class PgMock:
+        def fetch_docs(self, doc_ids):
+            return {str(d): {"doc_id": str(d), "sys_data": {}} for d in doc_ids}
+
         def fetch_chunks_for_doc(self, doc_id):
             return [
                 {

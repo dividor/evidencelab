@@ -15,6 +15,11 @@ from ui.backend.schemas import (
     TranslateRequest,
 )
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import (
+    TranslationConfigError,
+    TranslationDisabledError,
+)
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import (
     get_rate_limit_translate,
@@ -92,8 +97,10 @@ async def _resolve_summary_prompt(user, session) -> str | None:
     return None
 
 
-def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
-    """Accumulate a summary call's usage onto its search activity row.
+def _record_summary_usage(
+    usage: dict, body: AISummaryRequest, user, trace_url: Optional[str] = None
+) -> None:
+    """Accumulate a summary call's usage (and trace link) onto its search activity row.
 
     Server-side recording keyed by the ``search_id`` the frontend sends with
     the request — this covers drill-down summaries too (same id, so their
@@ -116,6 +123,7 @@ def _record_summary_usage(usage: dict, body: AISummaryRequest, user) -> None:
         user_id=getattr(user, "id", None),
         session_id=body.session_id,
         search_id=body.search_id,
+        trace_url=trace_url,
     )
 
 
@@ -141,8 +149,7 @@ async def translate(request: Request, body: TranslateRequest):
             body.target_language,
             body.text[:100],
         )
-        llm_service = _get_llm_service()
-        translated_text = await llm_service.translate_text(
+        translated_text = await translation_service.translate_text(
             body.text, body.target_language, body.source_language
         )
         logging.info(
@@ -153,6 +160,8 @@ async def translate(request: Request, body: TranslateRequest):
 
         return {"translated_text": translated_text}
 
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise HTTPException(status_code=501, detail=str(exc))
     except Exception as e:
         logger.error(f"Translation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,11 +236,13 @@ async def stream_summary(
                 "results_count": len(body.results),
                 "summary": full_summary,
             }
-            # Include LangSmith trace URL if available
-            if stream_metadata.get("langsmith_trace_url"):
-                completion_data["langsmith_trace_url"] = stream_metadata[
-                    "langsmith_trace_url"
-                ]
+            # Trace link from the configured tracing backend. The legacy
+            # langsmith_trace_url key is emitted alongside trace_url for one
+            # release so older frontend bundles keep working.
+            trace_url = stream_metadata.get("trace_url")
+            if trace_url:
+                completion_data["trace_url"] = trace_url
+                completion_data["langsmith_trace_url"] = trace_url
             # Record usage server-side against the search's activity row (the
             # authoritative path), and still forward it on the done event for
             # transparency / older clients that PATCH it themselves.
@@ -242,7 +253,7 @@ async def stream_summary(
             }
             if usage_payload:
                 completion_data["usage"] = usage_payload
-                _record_summary_usage(usage_payload, body, user)
+                _record_summary_usage(usage_payload, body, user, trace_url)
             yield f"data: {json.dumps(completion_data)}\n\n"
 
         except Exception as e:
