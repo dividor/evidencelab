@@ -193,6 +193,7 @@ def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> No
         user_id=getattr(user, "id", None),
         session_id=body.session_id,
         search_id=body.activity_id,
+        trace_url=event.get("trace_url"),
     )
 
 
@@ -264,6 +265,7 @@ async def stream_assistant_chat(
                 search_settings=search_kwargs,
                 system_prompt_override=group_prompt,
                 deep_research=body.deep_research,
+                target_words=body.target_words,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

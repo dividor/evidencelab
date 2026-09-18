@@ -22,6 +22,7 @@ from pipeline.db import (
     get_default_filter_fields,
     get_field_mapping,
 )
+from pipeline.db.moderation import exclude_hidden, hidden_condition  # noqa: E402
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from ui.backend.services import search_models  # noqa: E402
 from ui.backend.services.search_wide import run_wide_search  # noqa: E402
@@ -390,6 +391,9 @@ def _build_query_filter(
                 must_conditions.append(condition)
 
         must_conditions.extend(collect_range_conditions(filters))
+
+    # Documents hidden by an administrator never reach a search result.
+    must_not_conditions.append(hidden_condition())
 
     return models.Filter(
         must=must_conditions if must_conditions else None,
@@ -1179,9 +1183,8 @@ def _scroll_title_batch(
         "collection_name": collection_name,
         "limit": fetch_limit,
         "with_payload": True,
+        "scroll_filter": exclude_hidden(query_filter),
     }
-    if query_filter is not None:
-        scroll_kwargs["scroll_filter"] = query_filter
     if offset is not None:
         scroll_kwargs["offset"] = offset
 
@@ -1348,6 +1351,7 @@ def search_facet_values(
             result = db.client.facet(
                 collection_name=db.documents_collection,
                 key=target_field,
+                facet_filter=exclude_hidden(None),
                 limit=limit,
                 exact=False,
             )

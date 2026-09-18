@@ -11,13 +11,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastembed import TextEmbedding
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.messages import HumanMessage, SystemMessage
-from langsmith import traceable
 
 from pipeline.db import Database, PostgresClient
 from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_llm import resolve_llm_config
 from pipeline.utilities.llm_retry import invoke_with_retry
 from utils.llm_factory import get_llm
+from utils.tracing import traceable
 
 logger = logging.getLogger(__name__)
 

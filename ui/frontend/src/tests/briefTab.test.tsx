@@ -177,4 +177,53 @@ describe('BriefTab (Document Builder)', () => {
     // Brief name is capitalised too.
     expect(screen.getByDisplayValue('Cash Assistance')).toBeInTheDocument();
   });
+
+  test('single-per-document grouping renumbers the inline citations and the References list', () => {
+    const src = (index: number, docId: string, title: string, page: number) => ({
+      chunkId: `${docId}-${page}`, docId, title, text: 'passage', score: 0, page, index,
+    });
+    localStorage.setItem(
+      'evidencelab_brief_history_v1',
+      JSON.stringify([
+        {
+          id: 'b1', title: 'Cited brief', query: 'q', date: 1, sectionCount: 1, sourceCount: 5,
+          sections: [
+            {
+              id: 's1', title: 'Findings', level: 1, status: 'done',
+              content: 'A fact happened. [1][3] Then something else [2][4][5]',
+              sources: [
+                src(1, 'doc1', 'Doc One', 10), src(2, 'doc2', 'Doc Two', 4), src(3, 'doc1', 'Doc One', 20),
+                src(4, 'doc3', 'Doc Three', 7), src(5, 'doc1', 'Doc One', 30),
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+    render(<BriefTab dataSource="wfp" />);
+    fireEvent.click(screen.getByText('Write my own headings'));
+    fireEvent.click(screen.getByText('Cited brief'));
+
+    const inlineNumbers = () =>
+      Array.from(document.querySelectorAll('.brief-doc-content .ai-summary-citation')).map((el) => el.textContent);
+    const referenceRows = () =>
+      Array.from(document.querySelectorAll('.brief-footnotes-list .brief-footnote-row')).map((el) => el.textContent);
+
+    // Default: one number per cited passage, references carry pages.
+    expect(inlineNumbers()).toEqual(['1', '3', '2', '4', '5']);
+    expect(referenceRows()).toEqual([
+      '1Doc One, p.10', '2Doc Two, p.4', '3Doc One, p.20', '4Doc Three, p.7', '5Doc One, p.30',
+    ]);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Group by document (single per document)' }));
+
+    // One number per document: [1][3] collapses to [1], [5] becomes [1], and
+    // the list has one row per document with no page numbers.
+    expect(inlineNumbers()).toEqual(['1', '2', '3', '1']);
+    expect(referenceRows()).toEqual(['1Doc One', '2Doc Two', '3Doc Three']);
+
+    // Back off: the original per-passage numbering returns.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Group by document (single per document)' }));
+    expect(inlineNumbers()).toEqual(['1', '3', '2', '4', '5']);
+  });
 });

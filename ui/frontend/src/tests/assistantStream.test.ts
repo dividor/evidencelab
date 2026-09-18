@@ -76,7 +76,7 @@ describe('Assistant Stream Utilities', () => {
         type: 'done',
         threadId: 'thread-123',
         messageId: 'msg-456',
-        langsmith_trace_url: 'https://smith.langchain.com/trace/123',
+        trace_url: 'https://tracing.example.org/trace/123',
       };
       const line = `data: ${JSON.stringify(data)}`;
       const payload = line.trim().slice(6);

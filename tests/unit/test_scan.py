@@ -150,7 +150,8 @@ class TestScanProcessor:
             )
 
             assert result is not None
-            _, metadata = result
+            # (doc_id, payload, already_existed)
+            _, metadata = result[0], result[1]
             assert metadata["sys_status"] == "download_error"
 
     def test_compute_file_checksum(self):
@@ -225,7 +226,8 @@ class TestScanProcessor:
 
             # Check that upsert was called with relative path
             assert result is not None
-            _, metadata = result
+            # (doc_id, payload, already_existed)
+            _, metadata = result[0], result[1]
 
             # Should have relative path
             assert metadata["sys_filepath"].startswith("data/")

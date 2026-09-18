@@ -42,6 +42,8 @@ export interface SearchSettings {
   summaryMaxResults?: number;
   /** AI summary: sampling temperature, 0 (precise) to 1 (creative). */
   summaryTemperature?: number;
+  /** Brief: default section length target in words for new briefs (null = no target). */
+  briefTargetWords?: number | null;
   greetingMessage?: string;
 }
 

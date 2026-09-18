@@ -108,8 +108,12 @@ python scripts/sync/db/sync_backup_to_remote.py \
 - Use Conventional Commits format: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`, `ci:`, `build:`.
 
 ### Documentation
-- **All docs MUST go in `docs/` at the repo root.** The directory `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
+- **`docs/` is end-user documentation only.** Everything under it is published to users: `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
 - **`docs/docs.json` is the source of truth** for the docs sidebar. Add new pages here.
+- **Plans, analyses and working notes do NOT go in `docs/` and are NOT committed.** Write them to an untracked `plan.md` at the repo root, show the plan to the user, and wait for approval before starting implementation. Never open a PR for a plan.
+
+### Working Data Location
+- **All local data, parsed output and database work lives on `/Volumes/bigdisky/evidencelab/evidencelab-ai/`** (7.3 TB). The older copy on `/Volumes/disco1/data/evidencelab-ai/` is retained for reference only; do not write new trees there (it is nearly full).
 
 ### Database
 - **NEVER run ad-hoc database commands** (ALTER, UPDATE, DELETE, DROP, etc.) unless explicitly requested by the user. All schema changes MUST go through Alembic migrations. All data fixes must be scripted and reviewed.
@@ -121,6 +125,7 @@ python scripts/sync/db/sync_backup_to_remote.py \
 
 ### Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.
+- **NEVER suppress, demote, or hide type or lint errors in tooling or environment config either** — no `TSC_COMPILE_ON_ERROR`, `ESLINT_NO_DEV_ERRORS`, `DISABLE_ESLINT_PLUGIN`, closing a compile-error overlay and carrying on, or any equivalent, not even for a throwaway local dev server. Find the cause (a stale package, a wrong config) and fix that.
 - **NEVER code fallbacks or graceful degradation unless explicitly requested.** If a dependency or feature is required, fail hard and loud. Silent fallbacks hide bugs.
 - **NEVER install packages ad-hoc.** New dependencies MUST be added to `requirements.txt` (root) and/or `ui/backend/requirements.txt` so they are part of the build environment. Both CI and Docker must pick them up.
 - **NEVER use deprecated APIs or methods.** Check library documentation for current recommended usage before implementing.
@@ -198,6 +203,7 @@ Before submitting, verify: no hardcoded secrets, input validation in place, no d
 - Connection pooling: `get_db_for_source()` and `get_pg_for_source()` in `ui/backend/utils/app_state.py` cache DB clients per data source.
 - Pydantic models for all request/response schemas with `.model_dump()`.
 - Timing instrumentation: `t0 = time.time()` ... `logger.info("[TIMING] operation: %.3fs", t1 - t0)`.
+- **NEVER run CPU-bound or blocking work synchronously on the event loop.** The API runs one uvicorn worker, so anything that blocks the loop (compression, big serialisation, file I/O, sync DB or HTTP calls, hashing, model inference) pauses every user's request, not just the caller's. Hand it to `run_in_threadpool()` (or a process pool for pure-Python CPU work that holds the GIL) and measure concurrent request latency before and after. Middleware counts too: response gzip measured 405 ms stalls for other users when done inline, 104 ms in the threadpool.
 
 ### Frontend (React/TypeScript)
 - State management: React Context + custom hooks (no Redux). See `useAuth`, `useDrilldownTree`, `useActivityLogging`.

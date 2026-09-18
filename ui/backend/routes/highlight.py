@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from qdrant_client.http import models as qmodels
 
+from pipeline.db.moderation import is_hidden
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.optional_user import resolve_optional_user as _resolve_user_dep
 from ui.backend.schemas import (
@@ -236,8 +237,15 @@ async def get_highlights(
     """
     try:
         results = []
+        # A document hidden by an administrator has no highlights for anyone.
         try:
             pg = get_pg_for_source(data_source)
+            doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+        except Exception:
+            doc = None
+        if is_hidden(doc):
+            return HighlightResponse(highlights=[], total=0)
+        try:
             results = pg.fetch_chunks_for_doc(doc_id)
         except Exception:
             results = []

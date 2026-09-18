@@ -416,7 +416,8 @@ const RefGroupLinks: React.FC<{
   group: DocGroup;
   sources: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
-}> = ({ group, sources, onSourceClick }) => (
+  hidePages?: boolean;
+}> = ({ group, sources, onSourceClick, hidePages }) => (
   <div className="ai-summary-ref-group">
     {group.title}
     {' | '}
@@ -435,7 +436,7 @@ const RefGroupLinks: React.FC<{
           <span className="citation-doc-group">
             <span className="ai-summary-citation">{idx}</span>
           </span>
-          {group.page ? ` p.${group.page}` : ''}
+          {!hidePages && group.page ? ` p.${group.page}` : ''}
         </a>
       </React.Fragment>
     ))}
@@ -450,6 +451,9 @@ export const CitedReferences: React.FC<{
   collapsible?: boolean;
   labelPrefix?: string;
   className?: string;
+  // Document-level citations (one number per document): list the documents
+  // without page numbers.
+  hidePages?: boolean;
 }> = ({
   content,
   sources,
@@ -457,6 +461,7 @@ export const CitedReferences: React.FC<{
   collapsible = true,
   labelPrefix = 'References',
   className = '',
+  hidePages = false,
 }) => {
   const [expanded, setExpanded] = useState(!collapsible);
   const groups = useMemo(() => groupCitedSourcesByDoc(content, sources), [content, sources]);
@@ -473,6 +478,7 @@ export const CitedReferences: React.FC<{
           group={group}
           sources={sources}
           onSourceClick={onSourceClick}
+          hidePages={hidePages}
         />
       ))}
     </div>
