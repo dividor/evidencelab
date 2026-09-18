@@ -36,6 +36,8 @@ SYSTEM_FIELD_MAP = {
     "error_message": "sys_error_message",
     "taxonomies": "sys_taxonomies",
     "ocr_applied": "sys_ocr_applied",
+    "hidden": "sys_hidden",
+    "hidden_reason": "sys_hidden_reason",
 }
 
 
