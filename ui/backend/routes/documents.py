@@ -6,13 +6,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from qdrant_client.http import models as qmodels
 
 import pipeline.utilities.tasks as pipeline_tasks
+from pipeline.db.moderation import is_hidden
 from pipeline.utilities.text_cleaning import clean_text
+from ui.backend.auth.optional_user import resolve_optional_user
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
 from ui.backend.services import translation_service
 from ui.backend.services.translation_providers import (
@@ -27,6 +29,15 @@ from ui.backend.utils.documents_sys_merge import merge_sys_data_for_doc
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 celery_app = pipeline_tasks.app
 router = APIRouter()
+
+
+def _is_superuser(user: Any) -> bool:
+    return bool(user) and bool(getattr(user, "is_superuser", False))
+
+
+def _hidden_or_missing(doc: Optional[Dict[str, Any]]) -> HTTPException:
+    """A hidden document answers exactly like a missing one."""
+    return HTTPException(status_code=404, detail="Document not found")
 
 
 def _translation_unavailable(exc: Exception) -> HTTPException:
@@ -257,6 +268,14 @@ async def get_documents(
     ),
     sort_by: str = Query("year", description="Field to sort by"),
     order: str = Query("desc", description="Sort order (asc/desc)"),
+    include_hidden: bool = Query(
+        False,
+        description="Include documents hidden by moderation (superusers only)",
+    ),
+    hidden: Optional[bool] = Query(
+        None, description="Only hidden (true) documents (superusers only)"
+    ),
+    user: Any = Depends(resolve_optional_user),
 ):
     """
     Get documents with optional filtering and pagination.
@@ -282,6 +301,12 @@ async def get_documents(
             cross_cutting_theme,
             ocr_applied,
         )
+        # Hidden (moderated) documents are only listed for administrators who
+        # ask for them; everyone else never sees them.
+        if _is_superuser(user) and (include_hidden or hidden):
+            filters["include_hidden"] = True
+            if hidden:
+                filters["hidden"] = True
 
         # Run blocking Postgres call in a separate thread to avoid blocking the event loop
         result = await run_in_threadpool(
@@ -337,8 +362,8 @@ async def get_document(
         if not doc:
             db = get_db_for_source(data_source)
             doc = db.get_document(doc_id) if db else None
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
         doc = normalize_document_payload(doc)
 
         # Clean metadata fields
@@ -347,6 +372,8 @@ async def get_document(
                 doc[key] = clean_text(doc[key])
 
         return doc
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Document fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -365,8 +392,8 @@ async def get_document_thumbnail(
         pg = get_pg_for_source(source)
         doc = pg.fetch_docs([doc_id]).get(str(doc_id))
 
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
 
         # Try to get sys_parsed_folder from document (check multiple locations)
         parsed_folder = doc.get("sys_parsed_folder") or doc.get("sys_data", {}).get(
@@ -538,6 +565,8 @@ async def get_document_chunks(
     try:
         db = get_db_for_source(data_source)
         pg = get_pg_for_source(data_source)
+        if is_hidden(pg.fetch_docs([doc_id]).get(str(doc_id))):
+            raise _hidden_or_missing(None)
 
         # Query chunks from Qdrant for this document
         results, _ = db.client.scroll(
@@ -598,6 +627,8 @@ async def get_document_chunks(
 
         return {"chunks": formatted_chunks, "total": len(formatted_chunks)}
 
+    except HTTPException:
+        raise
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise _translation_unavailable(exc)
     except Exception as e:
@@ -730,8 +761,8 @@ async def serve_pdf(
             db = get_db_for_source(data_source)
             doc = db.get_document(doc_id) if db else None
         doc = normalize_document_payload(doc) if doc else doc
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
 
         filepath = doc.get("filepath") or doc.get("sys_filepath")
         if not filepath:
