@@ -5,8 +5,8 @@ Evidence Lab's core runs entirely on open-source components: FastAPI, React, Pos
 | Feature | Default | Switch | Open alternatives |
 |---------|---------|--------|-------------------|
 | Translation of results and summaries | Google Translate (free endpoint, no key) | `TRANSLATION_PROVIDER` | LibreTranslate (self-hosted), the deployment's own LLM, or off |
-| LLM tracing | Off | `LANGSMITH_API_KEY` (unset = off) | Self-hosted LangSmith via `LANGCHAIN_ENDPOINT`, or off |
-| Web analytics | Off | `REACT_APP_GA_MEASUREMENT_ID` (unset = off) | Off, or swap the loader script for another provider |
+| LLM tracing | Off | `TRACING_PROVIDER` | OpenTelemetry (any collector), self-hosted LangSmith, or off |
+| Web analytics | Off | `REACT_APP_GA_MEASUREMENT_ID` (unset = off) | Off, or another provider via the analytics module |
 
 The LLM and embedding models themselves are chosen in `config.json` and can be commercial APIs (OpenAI, Anthropic, Azure, Vertex) or self-hosted open models (Hugging Face, any OpenAI-compatible server). See [Pipeline Configuration](pipeline-configuration.md).
 
@@ -45,8 +45,38 @@ The language codes Evidence Lab sends are ISO 639-1 (`fr`, `zh`, ...), which Lib
 
 ## LLM tracing
 
-Tracing records each LLM call (prompt, response, token counts) for debugging and quality work. It is a developer tool, not a product feature, and is **off unless configured**: with `LANGSMITH_API_KEY` unset, no trace is sent anywhere and no trace links appear. The client library is MIT-licensed and honours `LANGCHAIN_ENDPOINT`, so a self-hosted LangSmith instance can replace the hosted service.
+Tracing records each LLM call (prompt, response, token counts) for debugging and quality work. It is a developer tool, not a product feature, and is **off unless configured**. All tracing goes through one project-owned port, `utils/tracing.py`, so the backend is a deployment choice made with `TRACING_PROVIDER` in `.env`:
+
+| Value | What it does | Extra settings |
+|-------|--------------|----------------|
+| `none` (default) | No tracing. Nothing is sent anywhere and no trace links appear. | none |
+| `opentelemetry` | Spans are exported over OTLP/HTTP to any [OpenTelemetry](https://opentelemetry.io/) collector (Jaeger, Grafana Tempo, SigNoz, ...), all open source and self-hostable. Each traced step is a span; each LLM call is a child span carrying the model, run id and token counts. | `OTEL_EXPORTER_OTLP_ENDPOINT` (collector URL), `OTEL_SERVICE_NAME` (default `evidence-lab`), `TRACE_URL_TEMPLATE` (optional; `{run_id}` is substituted to build a link to the trace) |
+| `langsmith` | LangSmith, hosted or self-hosted. The client library is MIT-licensed and honours `LANGCHAIN_ENDPOINT`, so a self-hosted instance can replace the hosted service. | `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGCHAIN_ENDPOINT` (self-hosted) |
+
+When `TRACING_PROVIDER` is unset, LangSmith is used if `LANGSMITH_API_KEY` is set and nothing otherwise, so deployments that predate the setting keep the behaviour they had.
+
+Trace links are stored in the vendor-neutral `user_activity.trace_url` column and returned on the AI summary and assistant completion events as `trace_url`. Adding another backend means implementing the four-method `TraceRecorder` class in `utils/tracing.py`.
+
+### Running an OpenTelemetry collector alongside Evidence Lab
+
+Jaeger's all-in-one image accepts OTLP directly:
+
+```yaml
+jaeger:
+  image: jaegertracing/all-in-one:1.60
+  ports:
+    - "16686:16686"   # UI
+    - "4318:4318"     # OTLP/HTTP
+```
+
+```bash
+TRACING_PROVIDER=opentelemetry
+OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+OTEL_SERVICE_NAME=evidence-lab
+```
 
 ## Web analytics
 
 Google Analytics is loaded only when `REACT_APP_GA_MEASUREMENT_ID` is set at build time **and** the visitor accepts analytics cookies in the consent banner. With the variable unset, no analytics script is loaded and no third-party request is made. Visitors can withdraw consent from the Privacy page at any time. See [Privacy](../overview/privacy.md) for what is collected.
+
+The vendor script is injected by `ui/frontend/src/utils/analytics.ts`, not by the HTML page, and the Content-Security-Policy carries no inline-script hash. To use another provider (for example self-hosted [Plausible](https://plausible.io/) or [Matomo](https://matomo.org/)), implement the two-method `AnalyticsProvider` interface in that file and return it from `createAnalyticsProvider()`; the consent banner and the Privacy-page toggle work unchanged.
