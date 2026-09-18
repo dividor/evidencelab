@@ -609,6 +609,13 @@ async def test_update_document_metadata_uses_pg_when_no_update(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_document_chunks(monkeypatch):
+    # main.py rebinds its globals into the routes module on every call, which
+    # outlives monkeypatch; register the current binding so it is restored.
+    import ui.backend.routes.documents as documents_routes
+
+    monkeypatch.setattr(
+        documents_routes, "get_pg_for_source", documents_routes.get_pg_for_source
+    )
     db = _make_db_mock()
     db.client.scroll = lambda **kwargs: (
         [
@@ -628,6 +635,10 @@ async def test_get_document_chunks(monkeypatch):
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
     class PgMock:
+        def fetch_docs(self, doc_ids):
+            # The route checks the document is not hidden before scrolling.
+            return {str(d): {"doc_id": str(d), "sys_data": {}} for d in doc_ids}
+
         def fetch_chunks(self, chunk_ids):
             return {
                 str(cid): {
@@ -786,7 +797,16 @@ async def test_get_highlights(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_highlights_uses_pg(monkeypatch):
+    import ui.backend.routes.highlight as highlight_routes
+
+    monkeypatch.setattr(
+        highlight_routes, "get_pg_for_source", highlight_routes.get_pg_for_source
+    )
+
     class PgMock:
+        def fetch_docs(self, doc_ids):
+            return {str(d): {"doc_id": str(d), "sys_data": {}} for d in doc_ids}
+
         def fetch_chunks_for_doc(self, doc_id):
             return [
                 {
