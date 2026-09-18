@@ -12,7 +12,8 @@ export interface AssistantUsage {
 export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
-  langsmith_trace_url?: string;
+  // Link to the LLM trace behind this turn, when the deployment traces calls.
+  trace_url?: string;
   // Informational only: the backend records usage server-side against the
   // activity row when the request carried an activityId.
   usage?: AssistantUsage;
@@ -149,7 +150,7 @@ const handleStreamedData = (
       handlers.onDone({
         threadId: streamedData.threadId,
         messageId: streamedData.messageId,
-        langsmith_trace_url: streamedData.langsmith_trace_url,
+        trace_url: streamedData.trace_url,
         usage: streamedData.usage,
       });
       return fullText;

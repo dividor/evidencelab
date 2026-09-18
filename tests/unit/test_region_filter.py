@@ -122,3 +122,29 @@ class TestFetchDocIdsByRegion:
         assert "Middle East" not in sql
         assert params[0] == "Middle East, Northern Africa, and Eastern Europe"
         assert "%s ILIKE" in sql
+
+
+class TestConvertLanguageToDocIds:
+    def test_language_when_no_docs_match_then_sentinel_doc_id(self):
+        # Regression: a language matching no document used to drop the filter
+        # and return every chunk.
+        core = {"language": "xx"}
+        pg = MagicMock()
+        pg.fetch_doc_ids_by_language.return_value = []
+        _convert_language_to_doc_ids(core, pg)
+        assert "language" not in core
+        assert core["doc_id"] == _NO_MATCH_DOC_ID
+
+    def test_language_when_doc_id_already_set_then_intersected(self):
+        core = {"language": "en", "doc_id": "d1,d2"}
+        pg = MagicMock()
+        pg.fetch_doc_ids_by_language.return_value = ["d2", "d3"]
+        _convert_language_to_doc_ids(core, pg)
+        assert core["doc_id"] == "d2"
+
+    def test_language_when_absent_then_filters_unchanged(self):
+        core = {"organization": "WFP"}
+        pg = MagicMock()
+        _convert_language_to_doc_ids(core, pg)
+        assert core == {"organization": "WFP"}
+        pg.fetch_doc_ids_by_language.assert_not_called()

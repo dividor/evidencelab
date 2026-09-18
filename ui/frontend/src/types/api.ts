@@ -221,6 +221,7 @@ export interface SearchResponse {
 export interface FacetValue {
   value: string;
   count: number;
+  label?: string;  // Display text when it differs from the raw filter value (e.g. taxonomy names)
   organization?: string;  // For title facets - associated org
   published_year?: string;  // For title facets - associated year
 }

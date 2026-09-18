@@ -43,7 +43,8 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
-import { CookieConsent, getGaConsent } from './components/CookieConsent';
+import { CookieConsent } from './components/CookieConsent';
+import { getAnalyticsConsent } from './utils/analytics';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
@@ -1464,7 +1465,7 @@ function App() {
       fetch(`${withBasePath('/docs/overview/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
         .then(text => {
-          if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
+          if (GA_MEASUREMENT_ID && getAnalyticsConsent() !== 'denied') {
             const gaSection = [
               '',
               '## Analytics',
@@ -2759,7 +2760,6 @@ function App() {
   );
 
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
-  const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
   // When search results are displayed, compute facet counts directly from
   // the actual results (deduped by doc_id) so counts exactly match what the
@@ -2924,7 +2924,6 @@ function App() {
       loadingConfig={loadingConfig}
       facetsDataSource={facetsDataSource}
       filtersExpanded={heatmapFiltersExpanded}
-      activeFiltersCount={heatmapActiveFiltersCount}
       onToggleFiltersExpanded={toggleHeatmapFiltersExpanded}
       onClearFilters={handleClearHeatmapFilters}
       facets={facets}

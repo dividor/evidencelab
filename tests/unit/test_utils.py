@@ -1,8 +1,7 @@
-import os
 from types import SimpleNamespace
 
 import pipeline.db as pipeline_db
-from utils import config_validator, langsmith_util, llm_factory
+from utils import config_validator, llm_factory
 
 
 def test_validate_llm_model_reference_empty_key():
@@ -58,20 +57,6 @@ def test_validate_all_llm_references_invalid_entries():
     }
     errors = config_validator.validate_all_llm_references(config)
     assert any("missing" in error for error in errors)
-
-
-def test_setup_langsmith_tracing_maps_env(monkeypatch):
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test_value")  # pragma: allowlist secret
-    monkeypatch.setenv("LANGSMITH_PROJECT", "project")
-    monkeypatch.delenv("LANGCHAIN_API_KEY", raising=False)  # pragma: allowlist secret
-    monkeypatch.delenv("LANGCHAIN_PROJECT", raising=False)
-    monkeypatch.delenv("LANGCHAIN_TRACING_V2", raising=False)
-
-    langsmith_util.setup_langsmith_tracing()
-
-    assert os.environ["LANGCHAIN_API_KEY"] == "test_value"  # pragma: allowlist secret
-    assert os.environ["LANGCHAIN_PROJECT"] == "project"
-    assert os.environ["LANGCHAIN_TRACING_V2"] == "true"
 
 
 def test_resolve_model_key_from_supported(monkeypatch):

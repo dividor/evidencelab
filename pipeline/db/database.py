@@ -8,7 +8,7 @@ import os
 import time
 import warnings
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 from qdrant_client.http import models
@@ -1096,6 +1096,16 @@ class Database:
         else:
             hits = result.hits
         return {hit.value: hit.count for hit in hits}
+
+    def indexed_payload_keys(self, collection_name: str) -> Set[str]:
+        """Payload fields that have an index in ``collection_name``.
+
+        Qdrant can only facet on indexed payload fields, so callers that build
+        facet queries dynamically (e.g. multi-value filter expansion) use this
+        to skip fields that would be rejected with "No appropriate index".
+        """
+        info = self.client.get_collection(collection_name)
+        return set((info.payload_schema or {}).keys())
 
     def facet_documents(
         self,

@@ -1096,10 +1096,18 @@ const referenceTitleOf = (r: SearchResult): string =>
   (typeof r.document_title === 'string' && r.document_title.trim()) ||
   '(untitled document)';
 
+/** The document's publication year as a title suffix — ", 2021" — so a
+ *  reference reads "Title, 2021". Empty when the result carries no year, so
+ *  the row reads as before. */
+const referenceYearOf = (r: SearchResult): string => {
+  const year = r.year ? String(r.year).trim() : '';
+  return year ? `, ${year}` : '';
+};
+
 /**
- * One row per document, exactly as the Brief shows it on screen with
- * "Group by document (multiple per document)":
- *   Title, [1] p. 32, [2] p. 56
+ * One row per document, as the Brief shows it on screen with "Group by
+ * document (multiple per document)", plus the document's year:
+ *   Title, 2021, [1] p. 32, [2] p. 56
  * The title links to the document; each [n] and its page link to that
  * citation's page. As on screen, a number is shown once per run of the same
  * citation, so a document cited from many pages reads "[1] p. 9, p. 11".
@@ -1128,6 +1136,8 @@ const buildGroupedReferenceRows = (
         children: [new TextRun({ text: referenceTitleOf(result), style: 'Hyperlink' })],
       }),
     ];
+    const year = referenceYearOf(result);
+    if (year) children.push(new TextRun({ text: year }));
     cites.forEach((cite, i) => {
       const link = resolveResultLink(cite.result, siteOrigin, dataSource);
       children.push(new TextRun({ text: ', ' }));
@@ -1153,8 +1163,8 @@ const buildGroupedReferenceRows = (
   return rows;
 };
 
-/** One row per citation — "1. Title, p.26" — or, for document-level
- *  citations, "1. Title" with no page. */
+/** One row per citation — "1. Title, 2021, p.26" — or, for document-level
+ *  citations, "1. Title, 2021" with no page. */
 const buildNumberedReferenceRows = (
   results: SearchResult[],
   siteOrigin: string,
@@ -1163,13 +1173,14 @@ const buildNumberedReferenceRows = (
 ): Paragraph[] =>
   results.map((result, idx) => {
     const page = withPages && result.page_num ? `, p.${result.page_num}` : '';
+    const label = `${referenceTitleOf(result)}${referenceYearOf(result)}${page}`;
     return new Paragraph({
       spacing: { after: 60 },
       children: [
         new TextRun({ text: `${idx + 1}. `, bold: true }),
         new ExternalHyperlink({
           link: resolveResultLink(result, siteOrigin, dataSource),
-          children: [new TextRun({ text: `${referenceTitleOf(result)}${page}`, style: 'Hyperlink' })],
+          children: [new TextRun({ text: label, style: 'Hyperlink' })],
         }),
       ],
     });
@@ -1180,7 +1191,8 @@ const buildNumberedReferenceRows = (
  * one line per citation with its page ('flat'), one line per document listing
  * each of its citation numbers with their pages ('grouped'), or one line per
  * document-level citation with no page ('document'). Mirrors what the Brief
- * shows on screen so the export matches the reader's view.
+ * shows on screen so the export matches the reader's view, adding each
+ * document's publication year after its title as the search export does.
  */
 const buildReferenceList = (
   results: SearchResult[],
