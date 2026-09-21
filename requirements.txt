@@ -68,6 +68,12 @@ httpx-oauth==0.16.1
 asyncpg==0.31.0
 aiosmtplib==5.1.2
 
+# LLM tracing backends behind utils/tracing.py (TRACING_PROVIDER).
+# langsmith itself comes with langchain-core; OpenTelemetry is the open alternative.
+opentelemetry-api==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
+
 # LangChain and LLM integration
 langchain==1.3.18
 langchain-core==1.6.1

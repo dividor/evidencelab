@@ -8,11 +8,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage, SystemMessage
-from langsmith import traceable
 
 import utils.llm_factory as llm_factory
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.schemas import HighlightBox, HighlightMatch, UnifiedHighlightRequest
+from utils.tracing import traceable
 
 HIGHLIGHT_CACHE: Dict[Tuple[str, int], str] = {}
 

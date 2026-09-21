@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
+from pipeline.db.moderation import HIDDEN_SQL_CLAUSE
 from ui.backend.schemas import FacetValue, RangeInfo
 from ui.backend.utils.language_codes import LANGUAGE_NAMES
 
@@ -124,6 +125,7 @@ def build_facets_from_pg(pg, storage_field: str) -> Dict[str, int]:
         SELECT {storage_field}, COUNT(*) AS count
         FROM {pg.docs_table}
         WHERE {storage_field} IS NOT NULL AND {storage_field} != ''
+          AND {HIDDEN_SQL_CLAUSE}
         GROUP BY {storage_field}
         ORDER BY count DESC
     """
@@ -250,6 +252,7 @@ def build_facets_from_pg_jsonb(pg, raw_key: str) -> Dict[str, int]:
         FROM {pg.docs_table}
         WHERE src_doc_raw_metadata->>%s IS NOT NULL
           AND src_doc_raw_metadata->>%s != ''
+          AND {HIDDEN_SQL_CLAUSE}
         GROUP BY value
         ORDER BY count DESC
     """

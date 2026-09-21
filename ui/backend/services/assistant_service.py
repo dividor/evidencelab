@@ -64,14 +64,21 @@ def _get_llm(model_key=None, temperature=None, max_tokens=None):
     )
 
 
-def _get_langsmith_trace_url(run_id: uuid_mod.UUID) -> Optional[str]:
-    """Get LangSmith trace URL if tracing is enabled."""
+def _get_trace_url(run_id: uuid_mod.UUID) -> Optional[str]:
+    """Trace link for ``run_id`` from the configured tracing backend, if any."""
     try:
-        from ui.backend.services.llm_service import get_langsmith_trace_url
+        from ui.backend.services.llm_service import get_trace_url
 
-        return get_langsmith_trace_url(run_id)
+        return get_trace_url(run_id)
     except Exception:
         return None
+
+
+def _trace_callbacks() -> List[Any]:
+    """LangChain callbacks the tracing backend needs on the agent's config."""
+    from utils.tracing import get_trace_recorder
+
+    return get_trace_recorder().callbacks()
 
 
 def _build_conversation_messages(
@@ -120,7 +127,11 @@ def _build_done_event(
     usage_handler: Optional[UsageMetadataCallbackHandler] = None,
     model_key: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build the completion event with optional LangSmith trace URL.
+    """Build the completion event with an optional trace URL.
+
+    ``trace_url`` is the vendor-neutral key; ``langsmith_trace_url`` is
+    emitted alongside it for one release so older frontend bundles keep
+    reading it.
 
     When *usage_handler* is provided, attach the accumulated token usage
     (summed across every LLM hop the agent took) and the configured
@@ -131,9 +142,10 @@ def _build_done_event(
         "type": "done",
         "messageId": str(uuid_mod.uuid4()),
     }
-    langsmith_url = _get_langsmith_trace_url(run_id)
-    if langsmith_url:
-        done_event["langsmith_trace_url"] = langsmith_url
+    trace_url = _get_trace_url(run_id)
+    if trace_url:
+        done_event["trace_url"] = trace_url
+        done_event["langsmith_trace_url"] = trace_url
     if usage_handler is not None:
         usage = summarize_usage_metadata(usage_handler, model_key)
         if usage:
@@ -452,7 +464,7 @@ async def _stream_normal_research(
         config={
             "run_id": str(run_id),
             "recursion_limit": recursion_limit,
-            "callbacks": [usage_handler],
+            "callbacks": [usage_handler, *_trace_callbacks()],
         },
         stream_mode="updates",
     ):
@@ -504,7 +516,7 @@ async def _stream_deep_research(
                 config={
                     "run_id": str(run_id),
                     "recursion_limit": recursion_limit,
-                    "callbacks": [usage_handler],
+                    "callbacks": [usage_handler, *_trace_callbacks()],
                 },
                 stream_mode="updates",
             ):

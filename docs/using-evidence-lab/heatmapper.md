@@ -38,6 +38,7 @@ Click any cell in the heatmap to drill down into the underlying data. You can:
 
 - **Search sensitivity** is set automatically the first time a query runs, from the scores that query returned. It then stays put while you re-run the same query with different filters, so excluding a document type, country or year really empties the cells it was in. Move the slider to change it by hand; it is recomputed only when you change the query.
 - Filters on multi-valued attributes (for example a document covering several countries) match every document that lists the value, so the heatmap counts agree with the filter panel.
+- Every cell is one search request. If a large grid reports that cells failed to load because the search rate limit was reached, wait a minute and generate again; the grid already waits and retries when the server asks it to.
 - Start with broad attribute combinations to get an overview, then add search queries to focus on specific topics.
 - Use Heatmapper alongside [Search](/docs/using-evidence-lab/search.md) — if you spot an interesting pattern in the heatmap, run a search to explore the underlying evidence.
 - Export data for inclusion in presentations or reports.

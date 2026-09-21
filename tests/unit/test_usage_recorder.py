@@ -141,6 +141,51 @@ class TestRecordLlmUsage:
         assert row.cost_usd == _USAGE_COST
 
     @pytest.mark.asyncio
+    async def test_record_when_trace_url_given_then_stored_on_new_row(self):
+        session = _FakeSession(existing=None)
+        recorded = await record_llm_usage(
+            usage=_USAGE,
+            activity_type="assistant-basic",
+            query="q",
+            session_id="sess-1",
+            search_id=uuid.uuid4(),
+            trace_url="https://tracing.example.org/r/abc",
+            session_factory=_factory(session),
+        )
+        assert recorded is True
+        (row,) = session.added
+        assert row.trace_url == "https://tracing.example.org/r/abc"
+
+    @pytest.mark.asyncio
+    async def test_record_when_trace_url_given_then_existing_row_updated(self):
+        existing = _existing_row(trace_url="https://tracing.example.org/r/old")
+        session = _FakeSession(existing=existing)
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type=None,
+            query="q",
+            session_id="sess-1",
+            search_id=existing.search_id,
+            trace_url="https://tracing.example.org/r/new",
+            session_factory=_factory(session),
+        )
+        assert existing.trace_url == "https://tracing.example.org/r/new"
+
+    @pytest.mark.asyncio
+    async def test_record_when_no_trace_url_then_existing_link_kept(self):
+        existing = _existing_row(trace_url="https://tracing.example.org/r/old")
+        session = _FakeSession(existing=existing)
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type=None,
+            query="q",
+            session_id="sess-1",
+            search_id=existing.search_id,
+            session_factory=_factory(session),
+        )
+        assert existing.trace_url == "https://tracing.example.org/r/old"
+
+    @pytest.mark.asyncio
     async def test_record_when_row_exists_then_accumulates(self):
         existing = _existing_row()
         session = _FakeSession(existing=existing)

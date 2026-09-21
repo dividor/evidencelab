@@ -80,8 +80,13 @@ def has_usage(usage: Optional[Dict[str, Any]]) -> bool:
     )
 
 
-def _accumulate_usage(row: Any, usage: Dict[str, Any], cost: Optional[Decimal]) -> None:
-    """Add a usage delta (tokens + its own cost) onto an existing row."""
+def _accumulate_usage(
+    row: Any,
+    usage: Dict[str, Any],
+    cost: Optional[Decimal],
+    trace_url: Optional[str] = None,
+) -> None:
+    """Add a usage delta (tokens + its own cost + trace link) onto an existing row."""
     prompt = _clean_tokens(usage.get("prompt_tokens"))
     completion = _clean_tokens(usage.get("completion_tokens"))
     if prompt:
@@ -92,6 +97,8 @@ def _accumulate_usage(row: Any, usage: Dict[str, Any], cost: Optional[Decimal]) 
         row.llm_model = str(usage["llm_model"])[:128]
     if cost is not None:
         row.cost_usd = (row.cost_usd or Decimal(0)) + cost
+    if trace_url:
+        row.trace_url = trace_url
 
 
 async def _find_row(
@@ -134,6 +141,7 @@ def _build_row(
     filters_extra: Optional[Dict[str, Any]],
     usage: Dict[str, Any],
     cost: Optional[Decimal],
+    trace_url: Optional[str] = None,
 ) -> UserActivity:
     """Build a fresh activity row for a usage record with no existing row."""
     filters: Dict[str, Any] = dict(filters_extra or {})
@@ -146,7 +154,7 @@ def _build_row(
         query=query[:_MAX_QUERY_CHARS],
         filters=filters or None,
     )
-    _accumulate_usage(row, usage, cost)
+    _accumulate_usage(row, usage, cost, trace_url)
     return row
 
 
@@ -175,6 +183,7 @@ async def record_llm_usage(
     cost_usd: Optional[Decimal] = None,
     server_owned: bool = False,
     session_factory: Any = None,
+    trace_url: Optional[str] = None,
 ) -> bool:
     """Record one LLM usage delta into ``user_activity`` (fire-and-forget).
 
@@ -197,6 +206,8 @@ async def record_llm_usage(
             alone. Client-supplied ids without owner context get a fresh
             row instead (see ``_find_row``).
         session_factory: Injectable async session factory (tests).
+        trace_url: Link to the call's trace from the configured tracing
+            backend; stored on the row (latest wins) when provided.
 
     Returns:
         True when a row was written, False when skipped or failed.
@@ -212,7 +223,7 @@ async def record_llm_usage(
                 session, search_uuid, user_id, session_id, server_owned
             )
             if row is not None:
-                _accumulate_usage(row, usage, cost)
+                _accumulate_usage(row, usage, cost, trace_url)
             else:
                 session.add(
                     _build_row(
@@ -224,6 +235,7 @@ async def record_llm_usage(
                         filters_extra=filters_extra,
                         usage=usage,
                         cost=cost,
+                        trace_url=trace_url,
                     )
                 )
             await session.commit()

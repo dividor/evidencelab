@@ -26,6 +26,10 @@ interface DocumentsTableProps {
   onOpenQueue: () => void;
   onOpenPdfPreview: (doc: any) => void;
   reprocessingDocId: string | null;
+  /** Superusers get a Hide/Restore column */
+  canModerate?: boolean;
+  moderatingDocId?: string | null;
+  onToggleHidden?: (doc: any) => void;
   filterText: string;
   onFilterTextChange: (value: string) => void;
   selectedCategory: string | null;
@@ -177,6 +181,9 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   onOpenQueue,
   onOpenPdfPreview,
   reprocessingDocId,
+  canModerate = false,
+  moderatingDocId = null,
+  onToggleHidden,
   filterText,
   onFilterTextChange,
   selectedCategory,
@@ -316,6 +323,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
               ))}
               <th>Chunks</th>
               {USER_FEEDBACK && <th>Actions</th>}
+              {canModerate && <th>Moderation</th>}
             </tr>
           </thead>
           <tbody>
@@ -337,6 +345,9 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 reprocessingDocId={reprocessingDocId}
                 dataSourceConfig={dataSourceConfig}
                 dataSource={dataSource}
+                canModerate={canModerate}
+                moderatingDocId={moderatingDocId}
+                onToggleHidden={onToggleHidden}
               />
             ))}
           </tbody>

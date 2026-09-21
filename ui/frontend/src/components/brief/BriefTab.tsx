@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { buildExportFilename, exportResultsToDocxBlob, ReferenceListLayout } from '../../utils/exportResultsToDocx';
+import { withDocumentYears } from '../../utils/briefExportYears';
 import { buildGlobalCitations } from './briefCitations';
 import { ReferenceGrouping } from './briefTypes';
 import { BriefCentral } from './BriefCentral';
@@ -400,10 +401,14 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       setExportBusy(true);
       try {
         const { summary, results } = assembleBriefForExport(brief, dataSource);
+        // The exported References list shows each document's year after its
+        // title. Brief sources don't carry it, so look it up per cited document
+        // in the data source the brief was researched in (a saved brief records
+        // it; a new brief's sources are in the app's selected data source).
         const blob = await exportResultsToDocxBlob({
           query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
           aiSummary: summary,
-          results,
+          results: await withDocumentYears(results, brief.briefDataSource ?? dataSource),
           dataSource,
           documentTitle: 'AI-generated Research Brief',
           summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,

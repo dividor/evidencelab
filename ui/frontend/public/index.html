@@ -20,31 +20,8 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <title>Evidence Lab</title>
-    <!-- Google Analytics (optional, enabled via REACT_APP_GA_MEASUREMENT_ID) -->
-    <!-- GA only loads after user grants cookie consent (GDPR) -->
-    <!-- CSP: SHA-256 of this script block is allowlisted in security_headers.py.
-         If you modify this script, recompute the hash:
-         python3 -c "import hashlib,base64,sys; s=sys.stdin.read(); print('sha256-'+base64.b64encode(hashlib.sha256(s.encode()).digest()).decode())"
-         Then update _GA_SCRIPT_HASH in ui/backend/auth/security_headers.py -->
-    <script>
-      (function() {
-        var gaId = '%REACT_APP_GA_MEASUREMENT_ID%';
-        if (gaId && gaId.startsWith('G-')) {
-          window.__GA_ID__ = gaId;
-          if (localStorage.getItem('ga-consent') !== 'granted') return;
-          var s = document.createElement('script');
-          s.async = true;
-          s.crossOrigin = 'anonymous';
-          s.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
-          document.head.appendChild(s);
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          window.gtag = gtag;
-          gtag('js', new Date());
-          gtag('config', gaId);
-        }
-      })();
-    </script>
+    <!-- Analytics (optional) is loaded by src/utils/analytics.ts after cookie
+         consent, so no inline script and no CSP hash are needed here. -->
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

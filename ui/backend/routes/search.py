@@ -134,6 +134,33 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
     _convert_src_fields_to_doc_ids(core_filters, pg, source)
 
 
+def _resolve_chunk_search_filters(
+    core_filters: Dict[str, Any], db, pg, source: str
+) -> None:
+    """Resolve document-level filters for the chunk search, in place.
+
+    Language, region and ``src_*`` fields are doc-level only (``src_*`` is only
+    sparsely stamped onto chunks); each becomes a doc_id constraint so they
+    intersect (AND) instead of dropping documents whose chunks lack the value.
+    Multi-valued payload fields are then expanded to their "; "-joined forms.
+    Every step queries PostgreSQL or Qdrant synchronously, so the routes call
+    this through ``run_in_threadpool`` to keep the event loop free.
+    """
+    _convert_language_to_doc_ids(core_filters, pg)
+    _convert_region_to_doc_ids(core_filters, pg)
+    _convert_src_fields_to_doc_ids(core_filters, pg, source)
+    expand_multivalue_filters(db, core_filters, source)
+
+
+def _resolve_docsearch_filters(
+    core_filters: Dict[str, Any], db, pg, source: str
+) -> None:
+    """Resolve document search filters, in place (blocking; see
+    :func:`_resolve_chunk_search_filters`)."""
+    _resolve_pg_filter_fields(core_filters, pg, source)
+    expand_multivalue_filters(db, core_filters, source)
+
+
 def _convert_src_fields_to_doc_ids(
     core_filters: Dict[str, Any], pg, source: str
 ) -> None:
@@ -851,18 +878,18 @@ async def search(
             language,
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Language, region and src_* fields are doc-level only (src_* is only
-        # sparsely stamped onto chunks); convert each to a doc_id filter for the
-        # chunk search so they intersect (AND) rather than dropping documents
-        # whose chunks lack the value.
-        _convert_language_to_doc_ids(core_filters, pg)
-        _convert_region_to_doc_ids(core_filters, pg)
-        _convert_src_fields_to_doc_ids(core_filters, pg, source)
-        # Country/theme/… payloads may be "; "-joined; match the joined values too.
-        expand_multivalue_filters(db, core_filters, source)
+        await run_in_threadpool(
+            _resolve_chunk_search_filters,
+            core_filters=core_filters,
+            db=db,
+            pg=pg,
+            source=source,
+        )
 
         title_filter = core_filters.get("title")
-        early_response = _handle_title_filter(pg, core_filters, q)
+        early_response = await run_in_threadpool(
+            _handle_title_filter, pg=pg, core_filters=core_filters, q=q
+        )
         if early_response:
             return early_response
 
@@ -1076,16 +1103,22 @@ async def docsearch(
             organization, title, published_year, document_type, country, language
         )
         add_dynamic_filters(core_filters, request.query_params, source)
-        # Fields faceted from PostgreSQL (language, src_* JSONB) aren't on the
-        # Qdrant document payload — resolve them to a doc_id constraint so
-        # Heatmapper counts match the facets. Without this a "language" or
-        # "evaluation category" axis returns zero/under-counted results.
-        _resolve_pg_filter_fields(core_filters, pg, source)
-        # Country/theme/… payloads may be "; "-joined; match the joined values too.
-        expand_multivalue_filters(db, core_filters, source)
+        # Fields faceted from PostgreSQL (language, region, src_* JSONB) aren't
+        # on the Qdrant document payload — resolve them to a doc_id constraint
+        # so Heatmapper counts match the facets, then expand "; "-joined
+        # payload values. Both query the databases, hence the threadpool.
+        await run_in_threadpool(
+            _resolve_docsearch_filters,
+            core_filters=core_filters,
+            db=db,
+            pg=pg,
+            source=source,
+        )
 
         title_filter = core_filters.get("title")
-        early_response = _handle_title_filter(pg, core_filters, q)
+        early_response = await run_in_threadpool(
+            _handle_title_filter, pg=pg, core_filters=core_filters, q=q
+        )
         if early_response:
             return early_response
 
@@ -1197,7 +1230,12 @@ async def get_facets(
         )
         add_dynamic_filters(core_filters, request.query_params, source)
         # Country/theme/… payloads may be "; "-joined; match the joined values too.
-        expand_multivalue_filters(db, core_filters, source)
+        await run_in_threadpool(
+            expand_multivalue_filters,
+            db=db,
+            core_filters=core_filters,
+            data_source=source,
+        )
         title_filter = core_filters.get("title")
         if title_filter and q:
             title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)

@@ -169,13 +169,14 @@ class TestCSPHeader:
                 assert "'unsafe-inline'" not in directive
 
     @pytest.mark.asyncio
-    async def test_csp_script_src_has_hash(self):
-        """script-src should contain a sha256 hash for the inline GA script."""
+    async def test_csp_script_src_has_no_inline_hash(self):
+        """The analytics loader lives in the bundle, so script-src carries no
+        inline-script hash (one would silently allow a stale inline block)."""
         app = _make_app()
         async with _client(app) as client:
             response = await client.get("/test")
         csp = response.headers["Content-Security-Policy"]
-        assert "'sha256-" in csp
+        assert "'sha256-" not in csp
 
     @pytest.mark.asyncio
     async def test_csp_script_src_allows_google_analytics(self):

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
+import { useAuth } from '../../hooks/useAuth';
 import { Facets } from '../../types/api';
 import { StatsData } from '../../types/documents';
 import {
@@ -26,6 +27,7 @@ import {
   openChunksModal,
   openPdfViewerWithChunk,
   reprocessDocument,
+  setDocumentHidden,
   toggleFilterPopover,
   updateSelectedCategory,
   updateSortState,
@@ -98,6 +100,10 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const [selectedLogsDocId, setSelectedLogsDocId] = useState<string>('');
   const [selectedLogsDocTitle, setSelectedLogsDocTitle] = useState<string>('');
   const [reprocessingDocId, setReprocessingDocId] = useState<string | null>(null);
+  const [moderatingDocId, setModeratingDocId] = useState<string | null>(null);
+  const { user } = useAuth();
+  // Superusers see hidden (moderated) documents and can hide or restore them.
+  const canModerate = Boolean(user?.is_superuser);
   const [queueModalOpen, setQueueModalOpen] = useState(false);
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
   const [pdfViewerDocId, setPdfViewerDocId] = useState<string>('');
@@ -126,7 +132,8 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
         sortField,
         sortDirection,
       });
-      const response = await axios.get(`${API_BASE_URL}/documents?${params}`);
+      const query = canModerate ? `${params}&include_hidden=true` : params;
+      const response = await axios.get(`${API_BASE_URL}/documents?${query}`);
       const data = response.data as {
         documents?: any[];
         total_pages?: number;
@@ -140,7 +147,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     } finally {
       setLoadingTable(false);
     }
-  }, [chartView, columnFilters, currentPage, dataSource, filterText, pageSize, selectedCategory, sortField, sortDirection]);
+  }, [canModerate, chartView, columnFilters, currentPage, dataSource, filterText, pageSize, selectedCategory, sortField, sortDirection]);
 
   const loadData = useCallback(async (refresh = false) => {
     try {
@@ -311,6 +318,32 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
       setReprocessingDocId,
       onRefresh: loadDocuments,
     });
+  };
+
+  const handleToggleHidden = async (doc: any) => {
+    const hiding = !doc.hidden;
+    let reason: string | null = null;
+    if (hiding) {
+      reason = window.prompt(
+        'Reason for hiding this document (recorded in the audit log):',
+        ''
+      );
+      if (reason === null) return; // cancelled
+    }
+    try {
+      await setDocumentHidden({
+        doc,
+        dataSource,
+        hidden: hiding,
+        reason,
+        moderatingDocId,
+        setModeratingDocId,
+        onRefresh: loadDocuments,
+      });
+    } catch (err) {
+      console.error('Error updating document visibility:', err);
+      window.alert('Could not update the document. See the console for details.');
+    }
   };
 
   const handleTocUpdated = (newToc: string) => {
@@ -505,6 +538,9 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     toggleChunk,
     closeChunksModal,
     handleReprocess,
+    handleToggleHidden,
+    canModerate,
+    moderatingDocId,
     handleTocUpdated,
     handleTocApprovedChange,
     handleOpenToc,

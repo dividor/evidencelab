@@ -8,7 +8,7 @@ import os
 import time
 import warnings
 from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Union
 from urllib.parse import urlparse
 
 from qdrant_client.http import models
@@ -31,6 +31,7 @@ from pipeline.db.config import (
     clean_model_name,
     load_datasources_config,
 )
+from pipeline.db.moderation import HIDDEN_FIELD, exclude_hidden
 from pipeline.db.postgres_client import PostgresClient
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,7 @@ class Database:
         # Fields to index for faceting and filtering
         facet_fields = [
             ("is_duplicate", models.PayloadSchemaType.BOOL),
+            (HIDDEN_FIELD, models.PayloadSchemaType.BOOL),
             ("map_organization", models.PayloadSchemaType.KEYWORD),
             ("map_document_type", models.PayloadSchemaType.KEYWORD),
             ("map_published_year", models.PayloadSchemaType.KEYWORD),
@@ -722,6 +724,7 @@ class Database:
             "error_message": "sys_error_message",
             "taxonomies": "sys_taxonomies",
             "ocr_applied": "sys_ocr_applied",
+            "hidden": "sys_hidden",
         }
         return field_map.get(key, key)
 
@@ -875,13 +878,15 @@ class Database:
         return start_idx, end_idx
 
     def _scroll_documents(self, query_filter: models.Filter, end_idx: int) -> List[Any]:
+        """Scroll the documents collection; hidden documents are never returned."""
         all_points: List[Any] = []
         next_offset = None
+        scroll_filter = exclude_hidden(query_filter)
         while len(all_points) < end_idx:
             chunk_limit = min(1000, end_idx - len(all_points))
             results, next_offset = self.client.scroll(
                 collection_name=self.documents_collection,
-                scroll_filter=query_filter,
+                scroll_filter=scroll_filter,
                 limit=chunk_limit,
                 offset=next_offset,
                 with_payload=True,
@@ -1083,11 +1088,13 @@ class Database:
 
         Returns:
             Dictionary mapping field values to their counts
+
+        Hidden documents (and their chunks) are always left out of the counts.
         """
         result = self.client.facet(
             collection_name=collection_name,
             key=key,
-            facet_filter=filter_conditions,
+            facet_filter=exclude_hidden(filter_conditions),
             limit=limit,
             exact=exact,
         )
@@ -1096,6 +1103,16 @@ class Database:
         else:
             hits = result.hits
         return {hit.value: hit.count for hit in hits}
+
+    def indexed_payload_keys(self, collection_name: str) -> Set[str]:
+        """Payload fields that have an index in ``collection_name``.
+
+        Qdrant can only facet on indexed payload fields, so callers that build
+        facet queries dynamically (e.g. multi-value filter expansion) use this
+        to skip fields that would be rejected with "No appropriate index".
+        """
+        info = self.client.get_collection(collection_name)
+        return set((info.payload_schema or {}).keys())
 
     def facet_documents(
         self,

@@ -20,6 +20,15 @@ export const DocumentStatusCell: React.FC<DocumentStatusCellProps> = ({
       >
         {doc.status || 'downloaded'}
       </span>
+      {doc.hidden && (
+        <span
+          className="status-badge status-hidden"
+          title={doc.hidden_reason ? `Hidden: ${doc.hidden_reason}` : 'Hidden from all users by an administrator'}
+          style={{ background: '#fce8e6', color: '#a50e0e' }}
+        >
+          hidden
+        </span>
+      )}
       <div style={{ display: 'flex', gap: '8px' }}>
         {doc.stages && (
           <a

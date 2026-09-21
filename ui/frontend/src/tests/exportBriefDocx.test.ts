@@ -250,6 +250,56 @@ describe('brief Word export — references list layouts', () => {
   });
 });
 
+describe('brief Word export — document year in the references list', () => {
+  const YEAR = '2021';
+  const dated = [
+    result({ chunk_id: 'c1', doc_id: 'd1', page_num: 26, year: YEAR }),
+    result({ chunk_id: 'c2', doc_id: 'd1', page_num: 40, year: YEAR }),
+  ];
+  const withList = (
+    referenceList: 'flat' | 'grouped' | 'document',
+    results: SearchResult[],
+  ) => ({
+    ...BRIEF_OPTS,
+    aiSummary: '# Access\n\nEnrolment has risen [1] and stayed up [2].\n',
+    results,
+    resultsSectionTitle: REFERENCES,
+    referenceList,
+  });
+  const referencesText = async (opts: ReturnType<typeof withList>): Promise<string> => {
+    const xml = await documentXml(opts);
+    return xml.slice(xml.lastIndexOf(REFERENCES)).replace(/<[^>]+>/g, '');
+  };
+
+  test('flat: the year follows the title, before the page — "Title, 2021, p.26"', async () => {
+    const text = await referencesText(withList('flat', dated));
+    expect(text).toContain(`1. ${DOC_TITLE}, ${YEAR}, p.26`);
+    expect(text).toContain(`2. ${DOC_TITLE}, ${YEAR}, p.40`);
+  });
+
+  test('grouped: the year follows the title, before the citations', async () => {
+    const text = await referencesText(withList('grouped', dated));
+    expect(text).toContain(`${DOC_TITLE}, ${YEAR}, [1] p. 26, [2] p. 40`);
+  });
+
+  test('document: the year follows the title and there is still no page', async () => {
+    const text = await referencesText(withList('document', [dated[0]]));
+    expect(text).toContain(`1. ${DOC_TITLE}, ${YEAR}`);
+    expect(text).not.toContain('p.26');
+  });
+
+  test.each(['flat', 'grouped', 'document'] as const)(
+    '%s: a result without a year keeps the title alone',
+    async (referenceList) => {
+      const text = await referencesText(
+        withList(referenceList, [result({ chunk_id: 'c1', doc_id: 'd1', page_num: 26 })]),
+      );
+      expect(text).toContain(DOC_TITLE);
+      expect(text).not.toMatch(new RegExp(`${DOC_TITLE}, \\d{4}`));
+    },
+  );
+});
+
 describe('brief Word export — a single References section', () => {
   // Count "References" heading paragraphs (w:pStyle Heading1/Heading2) in the
   // document body.

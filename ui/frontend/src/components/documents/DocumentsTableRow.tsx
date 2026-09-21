@@ -1,5 +1,5 @@
 import React from 'react';
-import { DocumentActionsCell } from './DocumentActionsCell';
+import { DocumentActionsCell, DocumentModerationCell } from './DocumentActionsCell';
 import { DocumentChunksCell } from './DocumentChunksCell';
 import { DocumentErrorCell } from './DocumentErrorCell';
 import { DocumentFormatCell } from './DocumentFormatCell';
@@ -70,6 +70,10 @@ export const DocumentsTableRow: React.FC<{
   reprocessingDocId: string | null;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
   dataSource?: string;
+  /** Superusers get a Hide/Restore column */
+  canModerate?: boolean;
+  moderatingDocId?: string | null;
+  onToggleHidden?: (doc: any) => void;
 }> = ({
   doc,
   index,
@@ -86,6 +90,9 @@ export const DocumentsTableRow: React.FC<{
   reprocessingDocId,
   dataSourceConfig,
   dataSource = '',
+  canModerate = false,
+  moderatingDocId = null,
+  onToggleHidden,
 }) => {
     const lastUpdated = formatTimestamp(getLastUpdatedTimestamp(doc.stages || {}));
 
@@ -156,6 +163,13 @@ export const DocumentsTableRow: React.FC<{
             reprocessingDocId={reprocessingDocId}
             onReprocess={onReprocess}
             onOpenQueue={onOpenQueue}
+          />
+        )}
+        {canModerate && onToggleHidden && (
+          <DocumentModerationCell
+            doc={doc}
+            moderatingDocId={moderatingDocId}
+            onToggleHidden={onToggleHidden}
           />
         )}
       </tr>

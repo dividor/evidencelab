@@ -22,16 +22,15 @@ _COOKIE_SECURE = os.environ.get("AUTH_COOKIE_SECURE", "true").lower() != "false"
 _HSTS_VALUE = "max-age=31536000; includeSubDomains; preload" if _COOKIE_SECURE else ""
 
 # Content-Security-Policy — configurable via CSP_POLICY env var.
-# SHA-256 hash of the inline GA consent-check script in index.html.
-# If the inline script changes, regenerate with:
-#   python3 -c "import hashlib,base64; ..." (see index.html comment)
-_GA_SCRIPT_HASH = (
-    "'sha256-+j8RgTT7AgjLIJM+Zq61Yo+VpZeip3D+e9hNGrkqHvw='"  # pragma: allowlist secret
-)
-
+# The optional analytics loader lives in the frontend bundle
+# (ui/frontend/src/utils/analytics.ts), not inline in index.html, so
+# script-src needs no inline hash. The Google Analytics hosts below are the
+# only third-party script origins the stock frontend can load, and only after
+# cookie consent; a deployment without analytics can tighten this via
+# CSP_POLICY.
 _CSP_DEFAULT = (
     "default-src 'self'; "
-    f"script-src 'self' {_GA_SCRIPT_HASH} "
+    "script-src 'self' "
     "https://www.googletagmanager.com https://www.google-analytics.com; "
     "style-src 'self' 'unsafe-inline'; "  # React style injection requires this
     "img-src 'self' data: https:; "

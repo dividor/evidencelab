@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { GA_MEASUREMENT_ID } from '../../config';
-import { getGaConsent, setGaConsent } from '../CookieConsent';
+import {
+  getAnalyticsConsent,
+  grantAnalyticsConsent,
+  isAnalyticsConfigured,
+  revokeAnalyticsConsent,
+} from '../../utils/analytics';
 import DocsPage from '../docs/DocsPage';
 
 type TabName = 'search' | 'assistant' | 'brief' | 'heatmap' | 'documents' | 'pipeline' | 'processing' | 'info' | 'tech' | 'data' | 'privacy' | 'terms' | 'stats' | 'admin' | 'docs';
@@ -73,17 +77,16 @@ const HelpTabContent = ({ content, currentTab, onTabChange }: { content: string;
 );
 
 const TrackingToggle = () => {
-  const [consent, setConsent] = useState(getGaConsent);
+  const [consent, setConsent] = useState(getAnalyticsConsent);
 
   const handleRevoke = () => {
-    setGaConsent('denied');
-    window[`ga-disable-${GA_MEASUREMENT_ID}` as any] = true as any;
+    revokeAnalyticsConsent();
     setConsent('denied');
   };
 
   const handleGrant = () => {
-    setGaConsent('granted');
-    window.location.reload();
+    grantAnalyticsConsent();
+    setConsent('granted');
   };
 
   if (consent === 'granted') {
@@ -109,6 +112,13 @@ const TrackingToggle = () => {
       <h3>Your cookie preferences</h3>
       <p>
         You have declined analytics cookies. Anonymous tracking is <strong>disabled</strong>.
+        {' '}
+        <a
+          href="#enable-tracking"
+          onClick={(e) => { e.preventDefault(); handleGrant(); }}
+        >
+          Enable tracking
+        </a>
       </p>
     </div>
   );
@@ -119,7 +129,7 @@ const PrivacyTabContent = ({ content, onTabChange }: { content: string; onTabCha
     <div className="about-page-container">
       <div className="about-content">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-        {GA_MEASUREMENT_ID && <TrackingToggle />}
+        {isAnalyticsConfigured() && <TrackingToggle />}
         <InfoFooterLinks currentTab="privacy" onTabChange={onTabChange} />
       </div>
     </div>

@@ -193,6 +193,7 @@ def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> No
         user_id=getattr(user, "id", None),
         session_id=body.session_id,
         search_id=body.activity_id,
+        trace_url=event.get("trace_url"),
     )
 
 

@@ -22,7 +22,6 @@ import numpy as np
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader
 from langchain_core.messages import HumanMessage
-from langsmith import traceable
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import util
 
@@ -33,12 +32,9 @@ from pipeline.utilities.llm_retry import invoke_with_retry
 from pipeline.utilities.logging_utils import _log_context
 from pipeline.utilities.usage_recorder import UsageCollector, record_pipeline_usage
 from utils import llm_factory
-from utils.langsmith_util import setup_langsmith_tracing
+from utils.tracing import traceable
 
 load_dotenv()
-
-# Setup LangSmith tracing
-setup_langsmith_tracing()
 
 # Ensure NLTK data is available
 try:
