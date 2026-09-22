@@ -114,7 +114,7 @@ the community.
 ## Reporting Guidelines
 
 If you believe someone is violating the Code of Conduct, we ask that you report
-it by emailing [INSERT EMAIL ADDRESS] or by creating a private issue in the
+it by emailing evidencelab@astrobagel.com or by creating a private issue in the
 repository.
 
 **If you believe anyone is in physical danger, call your local emergency
