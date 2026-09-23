@@ -46,6 +46,20 @@ export const HEATMAP_CELL_LIMIT = process.env.REACT_APP_HEATMAP_LIMIT || '1000';
 // Set REACT_APP_USER_FEEDBACK=1 in .env to enable (default: off)
 export const USER_FEEDBACK = process.env.REACT_APP_USER_FEEDBACK === '1';
 
+// Deployment facts shown on the Privacy and Terms pages (who operates this
+// instance, where it is hosted, its public address, how to reach them). Set
+// per deployment with REACT_APP_OPERATOR_NAME, REACT_APP_OPERATOR_ADDRESS,
+// REACT_APP_HOSTING_REGION, REACT_APP_SITE_URL and REACT_APP_CONTACT_EMAIL —
+// see docs/admin/customization.md. Unset values fall back to the reference
+// deployment (evidencelab.ai, Astrobagel, United States) in utils/deploymentText.
+export const DEPLOYMENT = {
+  operatorName: process.env.REACT_APP_OPERATOR_NAME || undefined,
+  operatorAddress: process.env.REACT_APP_OPERATOR_ADDRESS || undefined,
+  hostingRegion: process.env.REACT_APP_HOSTING_REGION || undefined,
+  siteUrl: process.env.REACT_APP_SITE_URL || undefined,
+  contactEmail: process.env.REACT_APP_CONTACT_EMAIL || undefined,
+};
+
 // Google Analytics Measurement ID (optional, set via REACT_APP_GA_MEASUREMENT_ID)
 export const GA_MEASUREMENT_ID: string | undefined =
   process.env.REACT_APP_GA_MEASUREMENT_ID || undefined;

@@ -45,6 +45,7 @@ import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent } from './components/CookieConsent';
 import { getAnalyticsConsent } from './utils/analytics';
+import { applyDeploymentFacts } from './utils/deploymentText';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
@@ -1464,7 +1465,8 @@ function App() {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => {
+        .then(raw => {
+          const text = applyDeploymentFacts(raw);
           if (GA_MEASUREMENT_ID && getAnalyticsConsent() !== 'denied') {
             const gaSection = [
               '',
@@ -1486,7 +1488,7 @@ function App() {
     if (activeTab === 'terms') {
       fetch(`${withBasePath('/docs/overview/terms.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setTermsContent(text))
+        .then(text => setTermsContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load terms content:', err));
     }
   }, [activeTab]);

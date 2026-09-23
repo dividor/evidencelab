@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { applyDeploymentFacts } from '../../utils/deploymentText';
 import remarkGfm from 'remark-gfm';
 import DocsSidebar from './DocsSidebar';
 
@@ -148,7 +149,8 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
     const docUrl = withBase('/docs/' + activePath);
     fetch(`${docUrl}?t=${Date.now()}`)
       .then((r) => r.text())
-      .then((text) => {
+      .then((raw) => {
+        const text = applyDeploymentFacts(raw);
         setContent(text);
         docCacheRef.current.set(activePath, text);
       })
@@ -196,7 +198,7 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
           const url = withBase('/docs/' + doc.path);
           return fetch(`${url}?t=${Date.now()}`)
             .then((r) => r.text())
-            .then((text) => ({ path: doc.path, text }))
+            .then((text) => ({ path: doc.path, text: applyDeploymentFacts(text) }))
             .catch(() => ({ path: doc.path, text: '' }));
         }
         )
