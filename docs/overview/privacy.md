@@ -69,7 +69,7 @@ You have the right to:
 
 Evidence Lab is designed and operated to comply with the EU General Data Protection Regulation (GDPR, Regulation (EU) 2016/679) and the UK GDPR. This section explains how.
 
-**Data controller.** This instance is operated by {{OPERATOR}}. Contact: {{CONTACT_EMAIL_LINK}}. Evidence Lab is open-source software; organisations that run their own instance are the data controller for that instance.
+**Data controller.** The {{SITE_HOST}} instance is operated by {{OPERATOR}}. Contact: {{CONTACT_EMAIL_LINK}}. Evidence Lab is open-source software; organisations that run their own instance are the data controller for that instance.
 
 **Legal basis for processing** (Article 6 GDPR):
 

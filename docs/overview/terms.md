@@ -6,7 +6,7 @@ By accessing or using Evidence Lab ("the Service"), you agree to these Terms of 
 
 ## Open-source software
 
-Evidence Lab is open-source software released under the [MIT License](https://github.com/dividor/evidencelab/blob/main/LICENSE). You are free to use, copy, modify, and distribute the software in accordance with that license. These Terms govern your use of the hosted instance at evidencelab.ai; self-hosted deployments are subject to the MIT License and any terms set by the operator.
+Evidence Lab is open-source software released under the [MIT License](https://github.com/dividor/evidencelab/blob/main/LICENSE). You are free to use, copy, modify, and distribute the software in accordance with that license. These Terms govern your use of the hosted instance at {{SITE_HOST}}; self-hosted deployments are subject to the MIT License and any terms set by the operator.
 
 ## The Service is provided "as is"
 
