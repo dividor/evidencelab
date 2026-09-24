@@ -261,6 +261,11 @@ services:
         - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
         - REACT_APP_API_KEY=${REACT_APP_API_KEY:-}
         - REACT_APP_USER_FEEDBACK=${REACT_APP_USER_FEEDBACK:-0}
+        - REACT_APP_OPERATOR_NAME=${REACT_APP_OPERATOR_NAME:-}
+        - REACT_APP_OPERATOR_ADDRESS=${REACT_APP_OPERATOR_ADDRESS:-}
+        - REACT_APP_HOSTING_REGION=${REACT_APP_HOSTING_REGION:-}
+        - REACT_APP_SITE_URL=${REACT_APP_SITE_URL:-}
+        - REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL:-}
     container_name: ui
     # Only visible inside Docker; Caddy reverse-proxies to this
     expose:

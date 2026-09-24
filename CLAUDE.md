@@ -113,7 +113,9 @@ python scripts/sync/db/sync_backup_to_remote.py \
 - **Plans, analyses and working notes do NOT go in `docs/` and are NOT committed.** Write them to an untracked `plan.md` at the repo root, show the plan to the user, and wait for approval before starting implementation. Never open a PR for a plan.
 
 ### Working Data Location
-- **All local data, parsed output and database work lives on `/Volumes/bigdisky/evidencelab/evidencelab-ai/`** (7.3 TB). The older copy on `/Volumes/disco1/data/evidencelab-ai/` is retained for reference only; do not write new trees there (it is nearly full).
+- **Local data, parsed output and database storage live outside the repo**, on a working disk of your choosing. Set the locations in `.env`: `DATA_MOUNT_PATH` (source documents and parsed output, mounted at `/app/data`), `DB_DATA_MOUNT` (Postgres and Qdrant storage), and `CACHE_MOUNT_PATH`. Never hardcode a path in code or docs — read it from the environment.
+- **Use a filesystem with symlink and POSIX permission support** (APFS, ext4, xfs). ExFAT is a poor choice and has cost real time: macOS writes a `._*` sidecar beside every file (the scanner has to filter them), symlinks silently fail, database storage cannot hold correct permissions, and directory lookups degrade badly at scale — measured at 1.2–2.9 s per lookup in directories holding tens of thousands of entries.
+- **Size it for the parsed output, not the source documents.** Parsing expands a corpus substantially: one data source held 17k source documents but 352 GB of parsed output, chunks, images and per-document vector backups.
 
 ### Database
 - **NEVER run ad-hoc database commands** (ALTER, UPDATE, DELETE, DROP, etc.) unless explicitly requested by the user. All schema changes MUST go through Alembic migrations. All data fixes must be scripted and reviewed.

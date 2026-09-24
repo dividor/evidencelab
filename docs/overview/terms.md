@@ -6,7 +6,7 @@ By accessing or using Evidence Lab ("the Service"), you agree to these Terms of 
 
 ## Open-source software
 
-Evidence Lab is open-source software released under the [MIT License](https://github.com/dividor/evidencelab/blob/main/LICENSE). You are free to use, copy, modify, and distribute the software in accordance with that license. These Terms govern your use of the hosted instance at evidencelab.ai; self-hosted deployments are subject to the MIT License and any terms set by the operator.
+Evidence Lab is open-source software released under the [MIT License](https://github.com/dividor/evidencelab/blob/main/LICENSE). You are free to use, copy, modify, and distribute the software in accordance with that license. These Terms govern your use of the hosted instance at {{SITE_HOST}}; self-hosted deployments are subject to the MIT License and any terms set by the operator.
 
 ## The Service is provided "as is"
 
@@ -35,7 +35,7 @@ The Service does not host content uploaded by users. Each instance's document li
 **Reporting.** Anyone can report content through either route:
 
 - **In the application:** every search result, document summary, AI summary, tag and chat answer has a rating control. Open it, give the item a one-star rating and state in the comment that you are reporting it and why (for example "illegal content", "personal data", "copyright"). Ratings capture the surrounding context so reviewers see exactly what was shown. Visitors without an account can report through the floating **Feedback** button, again with the reason in the comment.
-- **By email:** [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com). Include a link to the item and the reason.
+- **By email:** {{CONTACT_EMAIL_LINK}}. Include a link to the item and the reason.
 
 **Moderation.** Ratings and feedback go to an administrator queue where each one is triaged (open, acknowledged, information needed, resolved, won't fix) with reviewer notes, so a report is never lost among quality ratings: administrators filter the queue by low score and search comments for report keywords. An administrator can hide a document from the whole platform in one action, which removes it from search, listings, the research assistant and the AI protocol endpoints while keeping an audit record, and can restore it if the report is not upheld. Content that breaches this policy is hidden promptly on confirmation and, where appropriate, removed from the source library. We do not notify the reporter individually unless we need more information.
 
@@ -73,4 +73,4 @@ These Terms are governed by and construed in accordance with the laws of the Uni
 
 ## Contact
 
-If you have questions about these Terms, contact us at [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com).
+If you have questions about these Terms, contact us at {{CONTACT_EMAIL_LINK}}.

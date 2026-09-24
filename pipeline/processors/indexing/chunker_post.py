@@ -39,7 +39,19 @@ def post_process_chunks(
         )
         _sort_chunk_elements(filtered_elements)
         chunk["chunk_elements"] = filtered_elements
-        chunk["text"] = _build_chunk_text(filtered_elements)
+        # Elements are only built from provenance entries carrying a bounding
+        # box, so a document with no page geometry (any .docx or .doc) has
+        # none, and rebuilding from them would replace real text with an empty
+        # string. Keep what the chunker produced when the rebuild adds nothing.
+        rebuilt = _build_chunk_text(filtered_elements)
+        if rebuilt.strip():
+            chunk["text"] = rebuilt
+        elif filtered_elements:
+            logger.warning(
+                "Chunk %s: rebuilt text empty despite %s elements; keeping original",
+                chunk.get("chunk_index"),
+                len(filtered_elements),
+            )
         chunk["text"] = _inject_hierarchy_prefix(
             chunk["text"], chunk.get("headings", [])
         )

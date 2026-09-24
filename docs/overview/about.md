@@ -91,6 +91,6 @@ For more detailed information on how the above features have been implemented, m
 
 ## Get involved
 
-If you would like to have your public documents added to Evidence Lab for research, or would like to contribute to the project, please reach out to [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com).
+If you would like to have your public documents added to Evidence Lab for research, or would like to contribute to the project, please reach out to {{CONTACT_EMAIL_LINK}}.
 
 Also, for the latest news check out the [AstroBagel Blog](https://medium.com/@astrobagel).

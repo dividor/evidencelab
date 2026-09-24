@@ -31,6 +31,60 @@ from pipeline.db import get_db  # noqa: E402
 from pipeline.db.postgres_client import PostgresClient  # noqa: E402
 
 
+def delete_docs_and_chunks(pg, docs_table, chunks_table, doc_ids, batch_size=5000):
+    """Delete documents and their chunks.
+
+    The chunks table has no foreign key to the docs table, so nothing cascades:
+    the chunks must be deleted explicitly or they are silently left behind.
+    """
+    docs_deleted = chunks_deleted = 0
+    with pg._get_conn() as conn:
+        with conn.cursor() as cur:
+            for start in range(0, len(doc_ids), batch_size):
+                batch = doc_ids[start : start + batch_size]
+                placeholders = ",".join(["%s"] * len(batch))
+                cur.execute(
+                    f"DELETE FROM {chunks_table} WHERE doc_id IN ({placeholders})",
+                    batch,
+                )
+                chunks_deleted += cur.rowcount
+                cur.execute(
+                    f"DELETE FROM {docs_table} WHERE doc_id IN ({placeholders})", batch
+                )
+                docs_deleted += cur.rowcount
+        conn.commit()
+    return docs_deleted, chunks_deleted
+
+
+def find_qdrant_orphans(db, collection, known_doc_ids, payload_key=None, page=10000):
+    """Point ids in a collection whose document is not in Postgres.
+
+    prune_orphans() works outward from Postgres, so it cannot see points for
+    documents Postgres never had — vectors left by earlier ingestions. They
+    still answer searches, so a query can return a document the application
+    cannot display.
+    """
+    orphans = []
+    offset = None
+    while True:
+        points, offset = db.client.scroll(
+            collection_name=collection,
+            limit=page,
+            offset=offset,
+            with_payload=[payload_key] if payload_key else False,
+            with_vectors=False,
+        )
+        for point in points:
+            if payload_key:
+                doc_id = (point.payload or {}).get(payload_key)
+            else:
+                doc_id = point.id
+            if str(doc_id) not in known_doc_ids:
+                orphans.append(point.id)
+        if offset is None:
+            return orphans
+
+
 def prune_orphans(data_source: str, confirm: bool = False):
     print(f"\n{'=' * 70}")
     print(f"  Pruning orphaned documents: {data_source}")
@@ -174,31 +228,45 @@ def prune_orphans(data_source: str, confirm: bool = False):
 
     print(f"  Qdrant docs: deleted {qdrant_docs_deleted:,} in {time.time() - t0:.1f}s")
 
-    # ── 6. Delete from Postgres (CASCADE deletes chunks too) ────────────
-    print(f"\n  Deleting {len(orphaned_doc_ids):,} docs from Postgres (CASCADE) ...")
-    pg_deleted = 0
-    t0 = time.time()
+    # ── 6. Delete from Postgres ─────────────────────────────────────────
+    # There is no foreign key between the chunks and docs tables, so deleting a
+    # document leaves its chunks behind. This once left 84,590 orphaned chunk
+    # rows while the script reported removing none.
+    print(
+        f"\n  Deleting {len(orphaned_doc_ids):,} docs and their chunks from Postgres ..."
+    )
+    pg_deleted, pg_chunks_deleted = delete_docs_and_chunks(
+        pg, docs_table, chunks_table, orphaned_doc_ids, batch_size
+    )
+    print(f"  Postgres: deleted {pg_deleted:,} docs and {pg_chunks_deleted:,} chunks")
 
+    # ── 7. Points Qdrant holds for documents Postgres never had ─────────
+    # Everything above works outward from Postgres. Vectors left by earlier
+    # ingestions have no record at all, so nothing above can see them, yet they
+    # still answer searches.
+    print("\n  Scanning Qdrant for points with no document in Postgres ...")
     with pg._get_conn() as conn:
         with conn.cursor() as cur:
-            for i in range(0, len(orphaned_doc_ids), batch_size):
-                batch = orphaned_doc_ids[i : i + batch_size]
-                placeholders = ",".join(["%s"] * len(batch))
-                cur.execute(
-                    f"DELETE FROM {docs_table} WHERE doc_id IN ({placeholders})",
-                    batch,
-                )
-                pg_deleted += cur.rowcount
-                if pg_deleted % 10000 < batch_size:
-                    print(f"    Postgres: {pg_deleted:,}/{len(orphaned_doc_ids):,} ...")
-        conn.commit()
+            cur.execute(f"SELECT doc_id FROM {docs_table}")
+            known = {str(row[0]) for row in cur.fetchall()}
 
-    pg_elapsed = time.time() - t0
-    print(
-        f"  Postgres: deleted {pg_deleted:,} docs (+ cascaded chunks) in {pg_elapsed:.1f}s"
-    )
+    for collection, payload_key in (
+        (db.documents_collection, None),
+        (db.chunks_collection, "doc_id"),
+    ):
+        stray = find_qdrant_orphans(db, collection, known, payload_key)
+        if not stray:
+            print(f"    {collection}: none")
+            continue
+        print(f"    {collection}: {len(stray):,} stray points, deleting ...")
+        for start in range(0, len(stray), batch_size):
+            db.client.delete(
+                collection_name=collection,
+                points_selector=stray[start : start + batch_size],
+                wait=True,
+            )
 
-    # ── 7. Verify ───────────────────────────────────────────────────────
+    # ── 8. Verify ───────────────────────────────────────────────────────
     print("\n  Verifying ...")
     with pg._get_conn() as conn:
         with conn.cursor() as cur:

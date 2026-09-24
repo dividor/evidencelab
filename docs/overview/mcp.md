@@ -22,7 +22,7 @@ In the Claude desktop or web app:
 
 1. Click **+** → **Connectors** → **Manage Connectors**
 2. Click **+** → **Add custom connector**
-3. Enter a name (e.g. *Evidence Lab*) and the URL: `https://evidencelab.ai/mcp`
+3. Enter a name (e.g. *Evidence Lab*) and the URL: `{{SITE_URL}}/mcp`
 4. You will be prompted to log in with your Evidence Lab account
 
 ### Connecting ChatGPT
@@ -31,7 +31,7 @@ In ChatGPT:
 
 1. Click **+** → **More Add Sources**
 2. Click **Apps** → **Create Custom App**
-3. Enter a name and the URL: `https://evidencelab.ai/mcp`
+3. Enter a name and the URL: `{{SITE_URL}}/mcp`
 
 ### Available tools
 
@@ -67,7 +67,7 @@ Evidence Lab uses OAuth 2.0. When you add the connector, Claude and ChatGPT will
 npx @modelcontextprotocol/inspector
 ```
 
-Connect to `https://evidencelab.ai/mcp` and authenticate with your API key (`X-API-Key` header) to browse available tools and run queries.
+Connect to `{{SITE_URL}}/mcp` and authenticate with your API key (`X-API-Key` header) to browse available tools and run queries.
 
 ---
 
@@ -82,8 +82,8 @@ Where MCP exposes *tools* for an LLM to call, A2A exposes an *agent* that handle
 The A2A endpoint and Agent Card:
 
 ```
-POST  https://evidencelab.ai/a2a
-GET   https://evidencelab.ai/.well-known/agent.json
+POST  {{SITE_URL}}/a2a
+GET   {{SITE_URL}}/.well-known/agent.json
 ```
 
 Any A2A-compatible orchestrator can discover Evidence Lab's skills automatically from the Agent Card URL.
@@ -125,7 +125,7 @@ Semantic search returning raw document passages. Use when the calling agent want
 ### Sending a task
 
 ```http
-POST https://evidencelab.ai/a2a
+POST {{SITE_URL}}/a2a
 Content-Type: application/json
 X-API-Key: <key>
 
@@ -155,4 +155,4 @@ All A2A requests require authentication via `X-API-Key: <key>` or `Authorization
 npx a2a-inspector
 ```
 
-Connect to `https://evidencelab.ai/.well-known/agent.json` and set the `X-API-Key` header. The inspector loads the Agent Card, shows available skills, and lets you send tasks and inspect responses.
+Connect to `{{SITE_URL}}/.well-known/agent.json` and set the `X-API-Key` header. The inspector loads the Agent Card, shows available skills, and lets you send tasks and inspect responses.

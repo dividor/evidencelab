@@ -809,6 +809,15 @@ class IndexProcessor(BaseProcessor):
             doc_text = self._build_doc_text(doc)
             doc_embeddings = self._build_doc_embeddings(doc_text)
 
+            # A document that indexed nothing is not indexed. Recording it as
+            # such hides the failure: it is skipped by every later run, returns
+            # nothing in search, and is indistinguishable from a healthy
+            # document. Fail it instead, so it is visible and retryable.
+            if chunks_indexed_count == 0:
+                message = "Indexing produced no chunks"
+                logger.error("  ✗ %s: %s", message, doc.get("map_title", doc_id))
+                return self._build_failure(doc, message, message)
+
             # 4. Update document with embedding and status
             stage_updates = self.build_stage_updates(
                 doc, success=True, chunks_count=chunks_indexed_count

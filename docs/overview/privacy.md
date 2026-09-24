@@ -69,7 +69,7 @@ You have the right to:
 
 Evidence Lab is designed and operated to comply with the EU General Data Protection Regulation (GDPR, Regulation (EU) 2016/679) and the UK GDPR. This section explains how.
 
-**Data controller.** The evidencelab.ai instance is operated by [legal entity or full name], [address or country]. Contact: [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com). Evidence Lab is open-source software; organisations that run their own instance are the data controller for that instance.
+**Data controller.** The {{SITE_HOST}} instance is operated by {{OPERATOR}}. Contact: {{CONTACT_EMAIL_LINK}}. Evidence Lab is open-source software; organisations that run their own instance are the data controller for that instance.
 
 **Legal basis for processing** (Article 6 GDPR):
 
@@ -85,10 +85,10 @@ Evidence Lab is designed and operated to comply with the EU General Data Protect
 
 **Your rights under the GDPR.** In addition to the rights above, you may object to processing based on legitimate interest, ask us to restrict processing, request a copy of your data in a portable format, and withdraw consent at any time without affecting earlier processing. To exercise any right, use the Profile page or contact us at the address above; we respond within one month. You also have the right to lodge a complaint with your national data protection supervisory authority.
 
-**International transfers.** The service is hosted in [region]. If you accept analytics cookies, analytics data is processed by Google LLC, including on servers outside the European Economic Area, under the EU-US Data Privacy Framework and Google's standard contractual clauses. No other personal data is transferred outside the EEA.
+**International transfers.** The service is hosted in {{HOSTING_REGION}}. If you accept analytics cookies, analytics data is processed by Google LLC, including on servers outside the European Economic Area, under the EU-US Data Privacy Framework and Google's standard contractual clauses. No other personal data is transferred outside the EEA.
 
 **Security.** Passwords are stored only as one-way hashes, session tokens are held in httpOnly cookies, all traffic is encrypted in transit (HTTPS), and access to data sources is controlled per user group.
 
 ## Contact
 
-If you have questions about privacy or data handling, contact us at [evidencelab@astrobagel.com](mailto:evidencelab@astrobagel.com).
+If you have questions about privacy or data handling, contact us at {{CONTACT_EMAIL_LINK}}.
