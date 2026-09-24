@@ -509,6 +509,6 @@ Three groups of settings every deployment should review before going live; each 
 
 | Topic | Settings | Docs |
 |-------|----------|------|
-| Legal pages: who operates the instance, where it is hosted, public address, contact | `REACT_APP_OPERATOR_NAME`, `REACT_APP_OPERATOR_ADDRESS`, `REACT_APP_HOSTING_REGION`, `REACT_APP_SITE_URL`, `REACT_APP_CONTACT_EMAIL` (default to the evidencelab.ai values; baked into the UI at build time) | [Customization & Branding](docs/admin/customization.md) |
+| Deployment facts: who operates the instance, where it is hosted, public address, contact (legal pages, About, Connecting to AI Platforms, Contact dialog, Word export links) | `REACT_APP_OPERATOR_NAME`, `REACT_APP_OPERATOR_ADDRESS`, `REACT_APP_HOSTING_REGION`, `REACT_APP_SITE_URL`, `REACT_APP_CONTACT_EMAIL` (default to the evidencelab.ai values; baked into the UI at build time) | [Customization & Branding](docs/admin/customization.md) |
 | Optional third-party services: translation, LLM tracing, web analytics | `TRANSLATION_PROVIDER`, `TRACING_PROVIDER`, `REACT_APP_GA_MEASUREMENT_ID` and their companions | [Optional Third-Party Services](docs/admin/third-party-services.md) |
 | Content moderation: reports, hiding a document, audit trail | Superuser action in the Documents Library, `POST /moderation/documents/{id}/hidden`, `scripts/pipeline/hide_document.py` | [Content Moderation](docs/admin/content-moderation.md) |

@@ -142,9 +142,9 @@ my-branding/
 Stock builds (no `CUSTOMIZE_ASSETS`) copy nothing and are byte-identical to plain
 Evidence Lab.
 
-## Privacy and Terms pages: operator, contact and hosting region
+## Deployment facts: operator, contact, site URL and hosting region
 
-The Privacy Policy and Terms of Service are shared markdown (`docs/overview/privacy.md`, `docs/overview/terms.md`), but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. They are set with environment variables and substituted into the pages when they render:
+The pages the app renders from `docs/` (About, Privacy Policy, Terms of Service, Connecting to AI Platforms and the rest) are shared markdown, but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. The Contact dialog and the deep links in the Word export use the same facts. They are set with environment variables and substituted when the pages render:
 
 | Variable | Used for | Default (the evidencelab.ai reference deployment) | Example for your deployment |
 |----------|----------|------------------------------------------------------|-----------------------------|
