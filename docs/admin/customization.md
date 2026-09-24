@@ -142,9 +142,9 @@ my-branding/
 Stock builds (no `CUSTOMIZE_ASSETS`) copy nothing and are byte-identical to plain
 Evidence Lab.
 
-## Privacy and Terms pages: operator, contact and hosting region
+## Deployment facts: operator, contact, site URL and hosting region
 
-The Privacy Policy and Terms of Service are shared markdown (`docs/overview/privacy.md`, `docs/overview/terms.md`), but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. They are set with environment variables and substituted into the pages when they render:
+The pages the app renders from `docs/` (About, Privacy Policy, Terms of Service, Connecting to AI Platforms and the rest) are shared markdown, but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. The Contact dialog and the deep links in the Word export use the same facts. They are set with environment variables and substituted when the pages render:
 
 | Variable | Used for | Default (the evidencelab.ai reference deployment) | Example for your deployment |
 |----------|----------|------------------------------------------------------|-----------------------------|
@@ -156,7 +156,7 @@ The Privacy Policy and Terms of Service are shared markdown (`docs/overview/priv
 
 Set them in `.env` next to the other `REACT_APP_*` variables. Like every `REACT_APP_*` value they are **baked into the UI at build time**: `docker compose build ui` (or `-f docker-compose.prod.yml build ui`) after changing them. **A deployment that is not evidencelab.ai must set all of them**, otherwise its Privacy Policy names Astrobagel as the controller and the United States as the hosting region. Check both pages after the first build.
 
-The markdown carries the tokens `{{OPERATOR}}`, `{{HOSTING_REGION}}`, `{{SITE_URL}}`, `{{SITE_HOST}}` and `{{CONTACT_EMAIL_LINK}}`; a deployment that maintains its own copy of the pages can use the same tokens.
+The markdown carries the tokens `{{OPERATOR}}`, `{{HOSTING_REGION}}`, `{{SITE_URL}}`, `{{SITE_HOST}}` and `{{CONTACT_EMAIL_LINK}}`; every page the app renders from `docs/` (About, Data, Technical Info, Privacy, Terms, Connecting to AI Platforms and the docs viewer) has them substituted, so a deployment that maintains its own copy of a page can use the same tokens. The same values drive the Contact dialog's address and the public deep links in the Word export.
 
 ## Deploying config & infra from outside the repo
 
