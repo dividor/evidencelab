@@ -2,7 +2,7 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
-## [1.6.2] - 2026-09-17
+## [1.6.2] - 2026-09-24
 
 Evidence Lab v1.6.2 is a **Brief** release: sections can be written to a **length target** that is enforced rather than merely requested, citations can be grouped **one number per document** with the numbering flowing through the prose and the Word export, and the Word export now mirrors the on-screen References exactly and shows each document's year. Heatmapper and Search filters now do what the filter panel says, and large grids no longer fail on rate limits. Every optional third-party service is now switchable and has an open alternative: translation can run on LibreTranslate or the deployment's own LLM, LLM tracing can go to OpenTelemetry instead of LangSmith, and web analytics loads from a provider module. Administrators can now **hide a document** from the whole platform when it breaches the new content policy, and the Terms and Privacy pages carry an explicit content policy and a GDPR statement. Under the hood, large API responses are compressed without stalling event streams, the API image stops downgrading FastAPI, and the pipeline scanner is safe to re-run over refreshed data. The pipeline also stops losing Word documents: every `.doc` and `.docx` was being indexed with no text and still recorded as indexed, so it answered no search while looking perfectly healthy.
 
