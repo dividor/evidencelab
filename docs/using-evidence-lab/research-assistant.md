@@ -2,7 +2,7 @@
 
 The Research Assistant is an AI-powered chat interface that answers questions about your document collection by searching, analyzing, and synthesizing evidence with full citations.
 
-![Research Assistant](/docs/images/assistant/assistant-response.png)
+![Research Assistant](../images/assistant/assistant-response.png)
 
 ### Getting Started
 
@@ -30,7 +30,7 @@ The assistant will:
 
 For more complex questions that require broader investigation, enable **Deep Research** by checking the checkbox below the chat input.
 
-![Deep Research checkbox](/docs/images/assistant/deep-research-checkbox.png)
+![Deep Research checkbox](../images/assistant/deep-research-checkbox.png)
 
 Deep Research uses a coordinator/researcher sub-agent architecture:
 

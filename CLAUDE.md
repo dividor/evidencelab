@@ -110,6 +110,7 @@ python scripts/sync/db/sync_backup_to_remote.py \
 ### Documentation
 - **`docs/` is end-user documentation only.** Everything under it is published to users: `ui/frontend/public/docs/` is wiped and regenerated from `docs/` at every build by `copy-docs.js`. Anything written there will be lost on the next build.
 - **`docs/docs.json` is the source of truth** for the docs sidebar. Add new pages here.
+- **Links in `docs/` are relative to the markdown file, as GitHub renders them** (`pipeline-configuration.md`, `../overview/terms.md#content-policy`, `../images/x.png`, `../../scripts/x.sh`). NEVER link to an app route (`/terms`), root a path at `/docs/`, or pin a URL to a release tag. The viewer resolves relative links (`ui/frontend/src/utils/docLinks.ts`) and `docsLinksConvention.test.ts` fails on violations.
 - **Plans, analyses and working notes do NOT go in `docs/` and are NOT committed.** Write them to an untracked `plan.md` at the repo root, show the plan to the user, and wait for approval before starting implementation. Never open a PR for a plan.
 
 ### Working Data Location

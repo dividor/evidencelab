@@ -163,6 +163,15 @@ python scripts/quality/code_metrics.py --skip-js-cognitive
 
 Note: CI installs Node.js and frontend dependencies so JS/TS metrics run there.
 
+## 📚 Documentation
+
+The end-user documentation lives in `docs/` and is read in two places: on GitHub, and in the application's docs viewer, which serves the same files. Every link must work in both.
+
+- **Link relative to the markdown file, as GitHub renders it.** Another page is `pipeline-configuration.md` or `../overview/terms.md#content-policy`; an image is `../images/search-guide/filters-crop.png`; a file elsewhere in the repository is `../../scripts/custom/apply_branding.sh`. The viewer resolves these against the page it is showing (`ui/frontend/src/utils/docLinks.ts`).
+- **Never link to an application route** such as `/terms` or `/?tab=docs`, never root a path at `/docs/`, and **never pin a URL to a release tag** (`.../blob/v1.6.2/...`). Those work in one viewer and break in the other, or go stale as soon as the next release is cut.
+- The frontend test `docsLinksConvention.test.ts` checks every link in `docs/` for these rules and for a target that exists, so a broken link fails `npm test`.
+- New pages go in `docs/docs.json`, which is the sidebar.
+
 ## 🤖 CLAUDE.md (AI Assistant Context)
 
 The project includes a [`CLAUDE.md`](CLAUDE.md) file at the repository root that provides project context to AI coding assistants (Claude Code, Cursor, etc.). This file contains architecture overview, build/test/deploy commands, project rules, security protocols, code patterns, and non-obvious gotchas.

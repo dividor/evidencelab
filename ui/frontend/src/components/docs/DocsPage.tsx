@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { applyDeploymentFacts } from '../../utils/deploymentText';
+import { parseDocLink, repositoryFileUrl } from '../../utils/docLinks';
 import remarkGfm from 'remark-gfm';
 import DocsSidebar from './DocsSidebar';
 
@@ -46,6 +47,8 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DocNode[] | null>(null);
   const [activeHeading, setActiveHeading] = useState<string>('');
+  // Heading to scroll to once the page a link pointed at has rendered.
+  const [pendingAnchor, setPendingAnchor] = useState<string>('');
   // Use a ref for the cache to avoid triggering re-renders on cache updates
   const docCacheRef = useRef<Map<string, string>>(new Map());
   // Counter to trigger search re-evaluation after cache loads
@@ -126,6 +129,7 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
         const urlPath = params.get('path');
         const firstDoc = data.tree[0]?.children[0]?.path;
         setActivePath(initialPath || urlPath || firstDoc || '');
+        if (urlPath && window.location.hash) setPendingAnchor(window.location.hash.slice(1));
       })
       .catch((err) => console.error('Failed to load docs manifest:', err));
   }, [withBase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -211,9 +215,10 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
     }
   }, [searchQuery, allDocs, withBase, cacheVersion]);
 
-  const handleNavigate = useCallback((path: string) => {
+  const handleNavigate = useCallback((path: string, anchor = '') => {
     setActivePath(path);
     setActiveHeading('');
+    setPendingAnchor(anchor);
     const params = new URLSearchParams(window.location.search);
     params.set('tab', 'docs');
     params.set('path', path);
@@ -221,7 +226,18 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
     window.history.replaceState(null, '', newUrl);
   }, []);
 
-  // Custom ReactMarkdown components for heading IDs, image path resolution, and doc links
+  // Scroll to the heading a cross-page link asked for, once that page is rendered.
+  // Until the fetch resolves, `content` still holds the previous page, which the
+  // cache check tells apart from the page the anchor belongs to.
+  useEffect(() => {
+    if (!pendingAnchor || docCacheRef.current.get(activePath) !== content) return;
+    document.getElementById(pendingAnchor)?.scrollIntoView();
+    setPendingAnchor('');
+  }, [activePath, content, pendingAnchor]);
+
+  // Custom ReactMarkdown components for heading IDs, image path resolution, and doc links.
+  // Links and image paths are relative to the page being shown, as GitHub renders them
+  // (see utils/docLinks.ts).
   const markdownComponents = useMemo(
     () => ({
       h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
@@ -235,31 +251,38 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
         return <h3 id={id} {...props}>{children}</h3>;
       },
       img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
-        const resolved = src?.startsWith('/docs/') ? withBase(src) : src;
+        const link = parseDocLink(src, activePath);
+        const resolved = link.kind === 'image' ? withBase('/docs/' + link.path) : src;
         return <img src={resolved} alt={alt || ''} {...props} />;
       },
       a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-        // Intercept links to other docs pages (e.g. /docs/using-evidence-lab/search.md)
-        if (href?.startsWith('/docs/') && href.endsWith('.md')) {
-          const docPath = href.replace(/^\/docs\//, '');
+        const link = parseDocLink(href, activePath);
+        if (link.kind === 'page') {
+          // Another docs page: open it in the viewer, at its heading if one was given.
           return (
             <a
-              href="#"
-              onClick={(e) => { e.preventDefault(); handleNavigate(docPath); }}
+              href={withBase('/docs/' + link.path)}
+              onClick={(e) => { e.preventDefault(); handleNavigate(link.path, link.anchor); }}
               {...props}
             >
               {children}
             </a>
           );
         }
-        // External links open in new tab
-        if (href?.startsWith('http')) {
-          return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+        if (link.kind === 'repo-file') {
+          return (
+            <a href={repositoryFileUrl(link.path)} target="_blank" rel="noopener noreferrer" {...props}>
+              {children}
+            </a>
+          );
+        }
+        if (link.kind === 'external') {
+          return <a href={link.href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
         }
         return <a href={href} {...props}>{children}</a>;
       },
     }),
-    [withBase, handleNavigate]
+    [withBase, handleNavigate, activePath]
   );
 
   const handleTocClick = useCallback((id: string) => {

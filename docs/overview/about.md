@@ -1,12 +1,12 @@
 ## Evidence Lab
 
-![Evidence Lab Architecture](/docs/images/evidence-lab.png)
+![Evidence Lab Architecture](../images/evidence-lab.png)
 
 Evidence Lab is a free open source platform that provides a document pipeline, search, and AI-powered information discovery and evidence mining tools. The aim is to provide a quick start for those looking to use AI with their documents and a place where new ideas can be tested.
 
-You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with about 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations). See [Data](/data) for more information on these amazing documents.
+You can run the code yourself, or explore the online version at [evidencelab.ai](https://evidencelab.ai) which has so far been populated with about 20,000 United Nations humanitarian evaluation reports sourced from the [United Nations Evaluation Group](https://www.un.org/evaluations). See [Data](data.md) for more information on these amazing documents.
 
-Evidence Lab includes a built-in **Research Assistant** that uses AI agents to search, analyze, and synthesize findings from your documents with full citations. A **Deep Research** mode delegates to specialist sub-agents for more thorough multi-step investigations. See the [Research Assistant](/docs/using-evidence-lab/research-assistant) guide for details.
+Evidence Lab includes a built-in **Research Assistant** that uses AI agents to search, analyze, and synthesize findings from your documents with full citations. A **Deep Research** mode delegates to specialist sub-agents for more thorough multi-step investigations. See the [Research Assistant](../using-evidence-lab/research-assistant.md) guide for details.
 
 ## Philosophy
 
@@ -41,18 +41,18 @@ Evidence Lab document processing pipeline includes the following features:
 
 #### Research Assistant
 
-![Research Assistant](/docs/images/assistant/assistant-response.png)
+![Research Assistant](../images/assistant/assistant-response.png)
 
 - **Research Assistant** — chat-based AI agent that searches your documents, synthesizes findings into structured responses with inline citations, and supports multi-turn conversations with thread history
 
-![Deep Research](/docs/images/assistant/deep-research-checkbox.png)
+![Deep Research](../images/assistant/deep-research-checkbox.png)
 
 - **Deep Research mode** — enables a coordinator/researcher sub-agent architecture for more thorough, multi-step investigations across your document collection
 
 #### More features
 
 - **Drilldown research** — highlight text or click "Find out more" to automatically drill into sub-topics, building an explorable research tree with query inheritance (root + parent context)
-- Experimental features such as [Heatmapper](/?tab=heatmap&dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
+- Experimental features such as [Heatmapper]({{SITE_URL}}/?tab=heatmap&dataset=UN+Humanitarian+Evaluation+Reports&model=azure_small&model_combo=Azure+Foundry&hm_row=document_type&hm_col=published_year&hm_metric=documents&hm_sens=0.2&published_year=2021%2C2022%2C2023%2C2024%2C2025) for tracking trends in content
 - Filtering by metadata, in-document section types
 - Search and reranking settings to explore different models
 - Semantic highlighting in search results
@@ -81,13 +81,13 @@ Evidence Lab integrates with external AI systems via two open protocols:
 - **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server that lets Claude, ChatGPT, and other AI assistants call Evidence Lab as a tool directly from within your AI platform. Tools: `search` (semantic search with filters and citations) and `get_document` (full document metadata). Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT.
 - **A2A Agent** — [Agent-to-Agent protocol](https://a2a-protocol.org/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, Azure AI Foundry, etc.). Exposes a `research` skill — the same assistant as the UI — that returns synthesised answers with citations, and a `search` skill for raw evidence retrieval. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`.
 
-Both protocols share API key authentication, rate limiting, and audit logging. See [Connecting to AI Platforms](/docs/overview/mcp) for connection instructions.
+Both protocols share API key authentication, rate limiting, and audit logging. See [Connecting to AI Platforms](mcp.md) for connection instructions.
 
 ### REST API
 
-Evidence Lab provides a full REST API for programmatic access. All data endpoints are protected by API key authentication. Interactive API documentation is available via Swagger UI at `/api/docs`. Administrators can generate API keys from the **API Keys** tab in the admin panel. See [API](/docs/admin/api-keys) for details.
+Evidence Lab provides a full REST API for programmatic access. All data endpoints are protected by API key authentication. Interactive API documentation is available via Swagger UI at `/api/docs`. Administrators can generate API keys from the **API Keys** tab in the admin panel. See [API](../admin/api-keys.md) for details.
 
-For more detailed information on how the above features have been implemented, mosey on over to [Tech](/tech).
+For more detailed information on how the above features have been implemented, mosey on over to [Tech](tech.md).
 
 ## Get involved
 
