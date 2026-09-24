@@ -43,6 +43,7 @@ import {
 } from 'docx';
 import type { ChunkElement, SearchResult } from '../types/api';
 import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
+import { siteUrl } from './deploymentText';
 import type { DocumentResultGroup, GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
@@ -1244,7 +1245,8 @@ export const buildExportDocument = (
   images: Map<string, FetchedImage> = new Map(),
 ): Document => {
   const now = (opts.now ?? (() => new Date()))();
-  const siteOrigin = opts.siteOrigin || 'https://evidencelab.ai';
+  // Deep links point at this deployment's public address (REACT_APP_SITE_URL).
+  const siteOrigin = opts.siteOrigin || siteUrl();
 
   // In footnote mode, citations register footnotes as the prose renders; the
   // accumulated map is handed to the Document below.

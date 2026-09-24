@@ -45,7 +45,7 @@ import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent } from './components/CookieConsent';
 import { getAnalyticsConsent } from './utils/analytics';
-import { applyDeploymentFacts } from './utils/deploymentText';
+import { applyDeploymentFacts, contactEmail } from './utils/deploymentText';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
@@ -1444,21 +1444,21 @@ function App() {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/about.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setAboutContent(text))
+        .then(text => setAboutContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load about content:', err));
     }
     if (activeTab === 'tech') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/tech.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setTechContent(text))
+        .then(text => setTechContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load tech content:', err));
     }
     if (activeTab === 'data') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/data.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setDataContent(text))
+        .then(text => setDataContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load data content:', err));
     }
     if (activeTab === 'privacy') {
@@ -3171,7 +3171,7 @@ function App() {
               <p>
                 If you would like to have your public documents added to Evidence Lab for research,
                 or would like to contribute to the project, or have general feedback and questions,
-                please reach out to <a href="mailto:evidencelab@astrobagel.com">evidencelab@astrobagel.com</a>.
+                please reach out to <a href={`mailto:${contactEmail()}`}>{contactEmail()}</a>.
               </p>
             </div>
           </div>
