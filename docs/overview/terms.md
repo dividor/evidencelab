@@ -57,7 +57,7 @@ You agree not to:
 
 ## Data and privacy
 
-Your use of the Service is also governed by our [Privacy Policy](/privacy), which describes what data we collect and how we use it.
+Your use of the Service is also governed by our [Privacy Policy](privacy.md), which describes what data we collect and how we use it.
 
 ## Limitation of liability
 

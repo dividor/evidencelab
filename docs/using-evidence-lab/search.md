@@ -10,7 +10,7 @@ The search bar also contains a **Filters** toggle button (≡ Filters) that lets
 
 Click **Search** or press Enter to run your query.
 
-![Search results overview](/docs/images/search-guide/search-results-full.png)
+![Search results overview](../images/search-guide/search-results-full.png)
 
 ---
 
@@ -21,7 +21,7 @@ At the top of your results, Evidence Lab generates an **AI Summary** — a synth
 - The summary includes structured **headings** and **sub-topics** derived from your query.
 - Click **"See more"** to expand the full summary.
 - Use the **language dropdown** (top-right of the summary card) to translate the summary into 10+ languages.
-- Click **"Find out more"** next to a heading to drill into that sub-topic as a new search — this launches a **Research Tree** (see [Research Trees](/docs/using-evidence-lab/research-trees.md)).
+- Click **"Find out more"** next to a heading to drill into that sub-topic as a new search — this launches a **Research Tree** (see [Research Trees](research-trees.md)).
 - You can also **highlight any text** within the summary and click the popup button to research that specific phrase further.
 - The **Response variability** slider under **AI Summary** in the left sidebar sets the model's sampling temperature, shown beside the label. At **More Consistent** (temperature 0, the default) the model always takes its most likely wording, so the same results give the same summary every time. Towards **Creative Insights** (1) it may choose less likely wordings, so summaries differ between runs and paraphrase more loosely.
 - By default the summary is built from the top **20** results. Under **AI Summary** in the left sidebar you can change that number, or untick **Limit Results Used** to give it every result on the page (slower and costlier, but nothing is left out). With Wide Search on, the results are spread across documents first.
@@ -65,7 +65,7 @@ Grouping changes only how results are shown: the search, its ranking and the AI 
 
 The left sidebar provides **faceted navigation** to narrow your results:
 
-![Filters sidebar](/docs/images/search-guide/filters-crop.png)
+![Filters sidebar](../images/search-guide/filters-crop.png)
 
 | Filter | Description |
 |--------|-------------|
@@ -106,7 +106,7 @@ Administrators can set Wide Search and its two fields as defaults for a team und
 
 Click a **document title** or **page number badge** on any result to open the integrated PDF viewer. The viewer opens directly at the relevant page so you can see the source material in context.
 
-![Document preview](/docs/images/search-guide/doc-preview.png)
+![Document preview](../images/search-guide/doc-preview.png)
 
 The PDF viewer includes:
 
@@ -122,13 +122,13 @@ The PDF viewer includes:
 
 When you click a result to open the document preview, a **metadata card** appears alongside the PDF viewer. This card shows key information about the document at a glance — title, organization, year, document type, country, language, and the AI-generated summary. It gives you quick context without needing to read the full document.
 
-![Document metadata card](/docs/images/search-guide/metadata-card.png)
+![Document metadata card](../images/search-guide/metadata-card.png)
 
 ---
 
 ### Filters & Metadata Configuration
 
-The filter fields shown in the left sidebar and the metadata fields shown in the document panel are **configurable per datasource** by admin users via the [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) file. Each datasource defines its own `default_filter_fields` and `metadata_panel_fields`, so different teams can tailor the search experience to their data. See [Pipeline Configuration](/docs/admin/pipeline-configuration.md) for details.
+The filter fields shown in the left sidebar and the metadata fields shown in the document panel are **configurable per datasource** by admin users via the [`config.json`](https://github.com/dividor/evidencelab/blob/main/config.json) file. Each datasource defines its own `default_filter_fields` and `metadata_panel_fields`, so different teams can tailor the search experience to their data. See [Pipeline Configuration](../admin/pipeline-configuration.md) for details.
 
 ---
 
