@@ -156,7 +156,7 @@ The Privacy Policy and Terms of Service are shared markdown (`docs/overview/priv
 
 Set them in `.env` next to the other `REACT_APP_*` variables. Like every `REACT_APP_*` value they are **baked into the UI at build time**: `docker compose build ui` (or `-f docker-compose.prod.yml build ui`) after changing them. **A deployment that is not evidencelab.ai must set all of them**, otherwise its Privacy Policy names Astrobagel as the controller and the United States as the hosting region. Check both pages after the first build.
 
-The markdown carries the tokens `{{OPERATOR}}`, `{{HOSTING_REGION}}`, `{{SITE_URL}}`, `{{SITE_HOST}}` and `{{CONTACT_EMAIL_LINK}}`; a deployment that maintains its own copy of the pages can use the same tokens.
+The markdown carries the tokens `{{OPERATOR}}`, `{{HOSTING_REGION}}`, `{{SITE_URL}}`, `{{SITE_HOST}}` and `{{CONTACT_EMAIL_LINK}}`; every page the app renders from `docs/` (About, Data, Technical Info, Privacy, Terms, Connecting to AI Platforms and the docs viewer) has them substituted, so a deployment that maintains its own copy of a page can use the same tokens. The same values drive the Contact dialog's address and the public deep links in the Word export.
 
 ## Deploying config & infra from outside the repo
 

@@ -4,6 +4,7 @@ import {
   DEFAULT_OPERATOR_NAME,
   DEFAULT_SITE_URL,
   applyDeploymentFacts,
+  contactEmail,
   contactEmailLink,
   hostingRegionText,
   operatorText,
@@ -65,6 +66,12 @@ describe('deployment facts in the legal pages', () => {
     expect(contactEmailLink({ contactEmail: '' })).toBe(
       `[${DEFAULT_CONTACT_EMAIL}](mailto:${DEFAULT_CONTACT_EMAIL})`
     );
+  });
+
+  test('the plain contact address falls back to the default', () => {
+    expect(contactEmail({ contactEmail: ' x@y.z ' })).toBe('x@y.z');
+    expect(contactEmail({})).toBe(DEFAULT_CONTACT_EMAIL);
+    expect(contactEmail()).toBe(DEFAULT_CONTACT_EMAIL);
   });
 
   test('site host strips the scheme and trailing slash', () => {

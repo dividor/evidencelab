@@ -39,16 +39,20 @@ export const operatorText = (facts: DeploymentFacts): string => {
   return address ? `${name}, ${address}` : name;
 };
 
+/** The contact address itself, for places that render their own link. */
+export const contactEmail = (facts: DeploymentFacts = DEPLOYMENT): string =>
+  clean(facts.contactEmail) || DEFAULT_CONTACT_EMAIL;
+
 /** A markdown mailto link for the contact address. */
 export const contactEmailLink = (facts: DeploymentFacts): string => {
-  const email = clean(facts.contactEmail) || DEFAULT_CONTACT_EMAIL;
+  const email = contactEmail(facts);
   return `[${email}](mailto:${email})`;
 };
 
 export const hostingRegionText = (facts: DeploymentFacts): string =>
   clean(facts.hostingRegion) || DEFAULT_HOSTING_REGION;
 
-export const siteUrl = (facts: DeploymentFacts): string =>
+export const siteUrl = (facts: DeploymentFacts = DEPLOYMENT): string =>
   clean(facts.siteUrl) || DEFAULT_SITE_URL;
 
 /** The site's host name, e.g. "evidencelab.ai", for prose. */
