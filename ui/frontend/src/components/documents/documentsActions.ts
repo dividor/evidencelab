@@ -256,6 +256,44 @@ export const reprocessDocument = async ({
   }
 };
 
+/**
+ * Hide a document from every user-facing path, or restore it (superusers).
+ * Calls the moderation endpoint and refreshes the list; errors surface to the
+ * caller so the UI can show them.
+ */
+export const setDocumentHidden = async ({
+  doc,
+  dataSource,
+  hidden,
+  reason,
+  moderatingDocId,
+  setModeratingDocId,
+  onRefresh,
+}: {
+  doc: any;
+  dataSource: string;
+  hidden: boolean;
+  reason?: string | null;
+  moderatingDocId: string | null;
+  setModeratingDocId: (value: string | null) => void;
+  onRefresh: () => void;
+}): Promise<void> => {
+  if (!doc.id || moderatingDocId) {
+    return;
+  }
+  setModeratingDocId(doc.id);
+  try {
+    await axios.post(
+      `${API_BASE_URL}/moderation/documents/${doc.id}/hidden`,
+      { hidden, reason: reason || null },
+      { params: { data_source: dataSource } }
+    );
+    onRefresh();
+  } finally {
+    setModeratingDocId(null);
+  }
+};
+
 export const updateTocApprovalState = ({
   approved,
   selectedTocDocId,

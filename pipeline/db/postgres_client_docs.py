@@ -8,6 +8,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from psycopg2.extras import Json
 
+from pipeline.db.moderation import HIDDEN_FIELD, HIDDEN_REASON_FIELD, HIDDEN_SQL_CLAUSE
+
 
 def _normalize_sys_value(value: Any) -> Any:
     if isinstance(value, datetime):
@@ -115,6 +117,9 @@ class PostgresDocMixin:
     """Document queries for Postgres sidecar."""
 
     docs_table: str
+    # Set alongside docs_table on the composed client; a document's chunks are
+    # needed to tell a genuinely indexed document from one that indexed nothing.
+    chunks_table: str
 
     def _get_conn(self):
         raise NotImplementedError
@@ -404,6 +409,25 @@ class PostgresDocMixin:
                 for doc_id, sys_data in cur.fetchall():
                     results[str(doc_id)] = sys_data or {}
         return results
+
+    def fetch_doc_ids_indexed_without_chunks(self) -> List[str]:
+        """Return ids of documents marked indexed that have no chunk rows.
+
+        Such a document is a silent failure: it answers no search and every
+        later run skips it, because its status says the work is done.
+        """
+        query = f"""
+            SELECT d.doc_id
+            FROM {self.docs_table} d
+            WHERE d.sys_status = 'indexed'
+              AND NOT EXISTS (
+                  SELECT 1 FROM {self.chunks_table} c WHERE c.doc_id = d.doc_id
+              )
+        """
+        with self._get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                return [str(row[0]) for row in cur.fetchall()]
 
     def fetch_docs_by_status(
         self, status: str, year: int | None = None
@@ -907,47 +931,79 @@ class PostgresDocMixin:
         params.append(value)
         return f"{col} = %s"
 
+    @staticmethod
+    def _toc_approved_clause(value: Any) -> str:
+        if str(value).lower() == "true":
+            return "(sys_data ->> 'sys_toc_approved')::boolean IS TRUE"
+        cond = "(sys_data ->> 'sys_toc_approved')::boolean IS NOT TRUE"
+        return f"({cond} OR sys_data ->> 'sys_toc_approved' IS NULL)"
+
+    @staticmethod
+    def _ocr_applied_clause(value: Any, col: str) -> str:
+        if value:
+            return f"{col} IS TRUE"
+        return f"({col} IS NOT TRUE OR {col} IS NULL)"
+
+    def _special_clause(
+        self, key: str, value: Any, params: List[Any], filter_map: Dict[str, str]
+    ) -> Optional[str]:
+        """Clauses for filter keys that are not plain column comparisons.
+
+        Returns ``None`` when ``key`` is an ordinary column filter (handled
+        by ``_column_clause``) or unknown.
+        """
+        if key == "title":
+            params.append(f"%{value}%")
+            return "map_title ILIKE %s"
+        if key == "search":
+            params.extend([f"%{value}%", f"%{value}%"])
+            return "(map_title ILIKE %s OR sys_summary ILIKE %s)"
+        if key == "toc_approved":
+            return self._toc_approved_clause(value)
+        if key == "hidden":
+            return f"(sys_data ->> '{HIDDEN_FIELD}')::boolean IS TRUE"
+        if key == "ocr_applied":
+            return self._ocr_applied_clause(
+                value, filter_map.get(key, "sys_ocr_applied")
+            )
+        if key in ("sdg", "cross_cutting_theme"):
+            return self._taxonomy_clause(key, value, params) or None
+        return None
+
+    _SPECIAL_FILTER_KEYS = frozenset(
+        {
+            "title",
+            "search",
+            "toc_approved",
+            "hidden",
+            "ocr_applied",
+            "sdg",
+            "cross_cutting_theme",
+        }
+    )
+
     def _build_filter_clauses(
         self, filters: Dict[str, Any], filter_map: Dict[str, str]
     ) -> Tuple[List[str], List[Any]]:
         where_clauses: List[str] = []
         params: List[Any] = []
 
-        for key, value in filters.items():
-            if not value:
-                continue
+        # Hidden (moderated) documents are left out unless the caller, an
+        # administrator, asks for them explicitly.
+        if not filters.get("include_hidden"):
+            where_clauses.append(HIDDEN_SQL_CLAUSE)
 
-            if key == "title":
-                where_clauses.append("map_title ILIKE %s")
-                params.append(f"%{value}%")
-            elif key == "search":
-                term = f"%{value}%"
-                where_clauses.append("(map_title ILIKE %s OR sys_summary ILIKE %s)")
-                params.extend([term, term])
-            elif key == "toc_approved":
-                if str(value).lower() == "true":
-                    where_clauses.append(
-                        "(sys_data ->> 'sys_toc_approved')::boolean IS TRUE"
-                    )
-                else:
-                    cond = "(sys_data ->> 'sys_toc_approved')::boolean IS NOT TRUE"
-                    where_clauses.append(
-                        f"({cond} OR sys_data ->> 'sys_toc_approved' IS NULL)"
-                    )
-            elif key == "ocr_applied":
-                col = filter_map.get(key, "sys_ocr_applied")
-                if value:
-                    where_clauses.append(f"{col} IS TRUE")
-                else:
-                    where_clauses.append(f"({col} IS NOT TRUE OR {col} IS NULL)")
-            elif key in ("sdg", "cross_cutting_theme"):
-                clause = self._taxonomy_clause(key, value, params)
-                if clause:
-                    where_clauses.append(clause)
+        for key, value in filters.items():
+            if not value or key == "include_hidden":
+                continue
+            if key in self._SPECIAL_FILTER_KEYS:
+                clause = self._special_clause(key, value, params, filter_map)
             elif key in filter_map:
-                where_clauses.append(
-                    self._column_clause(filter_map[key], value, params)
-                )
+                clause = self._column_clause(filter_map[key], value, params)
+            else:
+                clause = None
+            if clause:
+                where_clauses.append(clause)
 
         return where_clauses, params
 
@@ -1071,11 +1127,15 @@ class PostgresDocMixin:
                     sys_toc_classified = None
                     sys_toc_approved = None
                     sys_filepath = None
+                    sys_hidden = None
+                    sys_hidden_reason = None
                     if isinstance(sys_data, dict):
                         sys_toc = sys_data.get("sys_toc")
                         sys_toc_classified = sys_data.get("sys_toc_classified")
                         sys_toc_approved = sys_data.get("sys_toc_approved")
                         sys_filepath = sys_data.get("sys_filepath")
+                        sys_hidden = sys_data.get(HIDDEN_FIELD)
+                        sys_hidden_reason = sys_data.get(HIDDEN_REASON_FIELD)
 
                     documents.append(
                         {
@@ -1099,6 +1159,8 @@ class PostgresDocMixin:
                             "sys_toc_classified": sys_toc_classified,
                             "sys_toc_approved": sys_toc_approved,
                             "sys_filepath": sys_filepath,
+                            "sys_hidden": sys_hidden,
+                            "sys_hidden_reason": sys_hidden_reason,
                             "map_title": map_title,
                             "map_organization": map_organization,
                             "map_published_year": map_published_year,

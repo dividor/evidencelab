@@ -181,6 +181,10 @@ From the Users panel you can:
 
 ---
 
+### Content Moderation
+
+Hiding a document that breaches the content policy, the reporting routes and the audit trail are described on their own page: [Content Moderation](content-moderation.md).
+
 ### Managing Groups
 
 The **Groups** tab lets you create and manage user groups. Groups control which datasets users can access and provide default search settings.
@@ -254,6 +258,12 @@ Select a group using the radio buttons at the top, then configure:
 Click **Save Settings** to apply, or **Reset to Defaults** to clear all group overrides.
 
 ---
+
+#### Brief
+
+| Setting | Description |
+|---------|-------------|
+| **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
 
 ### User Self-Service
 

@@ -13,7 +13,6 @@ from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -67,7 +66,11 @@ from ui.backend.services.search import (
     search_facet_values,
     search_titles,
 )
-from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_limits import (
+    get_rate_limits,
+    limiter,
+    rate_limit_exceeded_handler,
+)
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 
 # Add parent directory to path for imports
@@ -178,7 +181,7 @@ app.openapi = _custom_openapi  # type: ignore[method-assign]
 
 # Add rate limiter to app
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 app.state.highlight_cache = highlight_routes._highlight_cache
 
 
@@ -188,6 +191,18 @@ app.state.highlight_cache = highlight_routes._highlight_cache
 MAX_REQUEST_BODY_BYTES = int(
     os.environ.get("MAX_REQUEST_BODY_BYTES", str(2 * 1024 * 1024))  # 2 MB
 )
+
+# Response compression. Cloud Run rejects uncompressed HTTP/1 responses
+# above 32 MiB, and nginx only gzips proxied responses that carry cache
+# headers, so the API compresses its own JSON. Event streams are excluded
+# (see ui/backend/utils/gzip_middleware.py).
+API_GZIP_ENABLED = os.environ.get("API_GZIP_ENABLED", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+API_GZIP_MIN_BYTES = int(os.environ.get("API_GZIP_MIN_BYTES", "1024"))
+API_GZIP_LEVEL = int(os.environ.get("API_GZIP_LEVEL", "6"))
 
 _main_logger = logging.getLogger(__name__)
 
@@ -672,6 +687,17 @@ if not CORS_HEADERS:
         "Accept-Language",
     ]
 
+# Innermost middleware: compresses route responses; outer middlewares only
+# add headers or reject requests, and their own bodies are small.
+if API_GZIP_ENABLED:
+    from ui.backend.utils.gzip_middleware import SelectiveGZipMiddleware  # noqa: E402
+
+    app.add_middleware(
+        SelectiveGZipMiddleware,
+        minimum_size=API_GZIP_MIN_BYTES,
+        compresslevel=API_GZIP_LEVEL,
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -752,6 +778,7 @@ if USER_MODULE:
     from ui.backend.routes import brief_central as brief_central_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
+    from ui.backend.routes import moderation as moderation_routes
     from ui.backend.routes import ratings as ratings_routes
     from ui.backend.routes import research as research_routes
     from ui.backend.routes import testing as testing_routes
@@ -767,6 +794,9 @@ if USER_MODULE:
     app.include_router(testing_routes.router, prefix="/testing", tags=["testing"])
     app.include_router(
         toc_validator_routes.router, prefix="/toc-validator", tags=["toc-validator"]
+    )
+    app.include_router(
+        moderation_routes.router, prefix="/moderation", tags=["moderation"]
     )
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 

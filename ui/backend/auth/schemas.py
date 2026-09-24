@@ -742,6 +742,11 @@ class AssistantChatRequest(BaseModel):
     reranker_model: Optional[str] = None
     search_settings: Optional[AssistantSearchSettings] = None
     deep_research: bool = False
+    # Target length of the written answer, in words. The Brief tab sends its
+    # per-section target so the coordinator prompt asks for that length and
+    # the token ceiling is raised to fit it. None keeps the prompt's default
+    # ("at least 3-4 paragraphs").
+    target_words: Optional[int] = Field(None, ge=50, le=5000)
     conversation_history: Optional[List[Dict[str, Any]]] = Field(
         None,
         description=(

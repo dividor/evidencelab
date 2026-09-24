@@ -16,7 +16,7 @@ const SETTING_KEYS: (keyof SearchSettings)[] = [
   'denseWeight', 'rerank', 'recencyBoost', 'recencyWeight', 'recencyScaleDays', 'sectionTypes',
   'keywordBoostShortQueries', 'minChunkSize', 'semanticHighlighting', 'autoMinScore', 'deduplicate',
   'fieldBoost', 'fieldBoostFields', 'wideSearch', 'wideGroupSize', 'wideLimit', 'groupByDocument', 'summaryLimitResults',
-  'summaryMaxResults', 'summaryTemperature', 'greetingMessage',
+  'summaryMaxResults', 'summaryTemperature', 'briefTargetWords', 'greetingMessage',
 ];
 
 const makeSetters = () =>
@@ -72,5 +72,13 @@ describe('useGroupDefaults applies wide search team defaults', () => {
     await waitFor(() => expect(setters.wideSearch).toHaveBeenCalledWith(true));
     expect(setters.wideGroupSize).toHaveBeenCalledWith(3);
     expect(setters.wideLimit).not.toHaveBeenCalled();
+  });
+
+  test('applies the brief section-length team default (it has no URL param)', async () => {
+    setURL('?q=test');
+    mockedAxios.get.mockResolvedValue({ data: { briefTargetWords: 350 } });
+    const setters = makeSetters();
+    render(<Harness setters={setters} />);
+    await waitFor(() => expect(setters.briefTargetWords).toHaveBeenCalledWith(350));
   });
 });

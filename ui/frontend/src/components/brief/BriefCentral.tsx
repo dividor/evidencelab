@@ -161,12 +161,15 @@ interface BriefCentralProps {
   central: UseBriefCentralReturn;
   onOpenBrief: (id: string) => void;
   onCreateBrief: (args: NewBriefSubmit) => void;
+  // The team's default section length for a new brief (null = no target).
+  defaultTargetWords?: number | null;
 }
 
 export const BriefCentral: React.FC<BriefCentralProps> = ({
   central,
   onOpenBrief,
   onCreateBrief,
+  defaultTargetWords,
 }) => {
   const [modal, setModal] = useState<'new' | 'template' | 'voice' | 'share' | null>(null);
   const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
@@ -314,6 +317,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           templates={central.templates}
           voices={central.voices}
           initialTemplateId={newTemplateId}
+          defaultTargetWords={defaultTargetWords}
           onSubmit={submitNew}
           onClose={() => setModal(null)}
         />

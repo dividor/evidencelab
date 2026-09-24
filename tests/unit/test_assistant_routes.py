@@ -219,6 +219,50 @@ class TestStreamAssistantChat:
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_passes_target_words(self, mock_stream):
+        """A length target reaches the service alongside the model config."""
+
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        body = AssistantChatRequest(query="test", deep_research=True, target_words=300)
+        response = await stream_assistant_chat(
+            request=request, body=body, user=None, session=None
+        )
+        async for _chunk in response.body_iterator:
+            pass
+
+        assert mock_stream.call_args[1]["target_words"] == 300
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_target_words_defaults_to_none(self, mock_stream):
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        request = _make_request(path="/assistant/chat/stream")
+        response = await stream_assistant_chat(
+            request=request,
+            body=AssistantChatRequest(query="test"),
+            user=None,
+            session=None,
+        )
+        async for _chunk in response.body_iterator:
+            pass
+
+        assert mock_stream.call_args[1]["target_words"] is None
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
     async def test_handles_stream_error(self, mock_stream):
         """Errors during streaming should yield error events."""
 

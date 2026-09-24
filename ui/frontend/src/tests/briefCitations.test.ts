@@ -189,3 +189,106 @@ describe('footnotes react to citation changes', () => {
     expect(display.get('a')?.content).toBe('Still on screen [1].');
   });
 });
+
+describe('buildGlobalCitations with single-per-document grouping', () => {
+  // Doc One is cited from three pages, Doc Two and Doc Three once each.
+  const sections: BriefSection[] = [
+    section({
+      id: 'a',
+      content: 'A fact happened. [1][3] Then something else [2][4][5]',
+      sources: [
+        src({ index: 1, docId: 'doc1', title: 'Doc One', page: 10 }),
+        src({ index: 2, docId: 'doc2', title: 'Doc Two', page: 4 }),
+        src({ index: 3, docId: 'doc1', title: 'Doc One', page: 20 }),
+        src({ index: 4, docId: 'doc3', title: 'Doc Three', page: 7 }),
+        src({ index: 5, docId: 'doc1', title: 'Doc One', page: 30 }),
+      ],
+    }),
+  ];
+
+  test('per passage (default): one number per page, references carry pages', () => {
+    const { refs, display } = buildGlobalCitations(sections, 'passage');
+    expect(refs.map((r) => [r.n, r.title, r.page])).toEqual([
+      [1, 'Doc One', 10],
+      [2, 'Doc Two', 4],
+      [3, 'Doc One', 20],
+      [4, 'Doc Three', 7],
+      [5, 'Doc One', 30],
+    ]);
+    expect(display.get('a')?.content).toBe(
+      'A fact happened. [1][3] Then something else [2][4][5]',
+    );
+  });
+
+  test('per document: one number per document, no pages, prose renumbered', () => {
+    const { refs, display } = buildGlobalCitations(sections, 'document-single');
+    expect(refs.map((r) => [r.n, r.title, r.page])).toEqual([
+      [1, 'Doc One', undefined],
+      [2, 'Doc Two', undefined],
+      [3, 'Doc Three', undefined],
+    ]);
+    // [1][3] were both Doc One, so they collapse to a single [1]; [5] is
+    // Doc One again and keeps that number.
+    expect(display.get('a')?.content).toBe('A fact happened. [1] Then something else [2][3][1]');
+  });
+
+  test('per document: the reference opens the first cited passage of the document', () => {
+    const { refs } = buildGlobalCitations(sections, 'document-single');
+    expect(refs[0].source.page).toBe(10);
+    expect(refs[0].source.docId).toBe('doc1');
+  });
+
+  test('per document: the other passages ride along as variants of the display source', () => {
+    const { display } = buildGlobalCitations(sections, 'document-single');
+    const sources = display.get('a')!.sources;
+    expect(sources.map((x) => x.index)).toEqual([1, 2, 3]);
+    const docOne = sources.find((x) => x.index === 1)!;
+    expect(docOne.page).toBe(10);
+    expect((docOne.variants || []).map((v) => v.page)).toEqual([20, 30]);
+    // Single-passage documents carry no variants.
+    expect(sources.find((x) => x.index === 2)!.variants).toBeUndefined();
+  });
+
+  test('per document: one number for a document cited across sections', () => {
+    const two: BriefSection[] = [
+      section({
+        id: 'a',
+        content: 'First [1].',
+        sources: [src({ index: 1, docId: 'doc1', title: 'Doc One', page: 1 })],
+      }),
+      section({
+        id: 'b',
+        content: 'Second [7] and [8].',
+        sources: [
+          src({ index: 7, docId: 'doc2', title: 'Doc Two', page: 2 }),
+          src({ index: 8, docId: 'doc1', title: 'Doc One', page: 9 }),
+        ],
+      }),
+    ];
+    const { refs, display } = buildGlobalCitations(two, 'document-single');
+    expect(refs.map((r) => r.title)).toEqual(['Doc One', 'Doc Two']);
+    expect(display.get('b')?.content).toBe('Second [2] and [1].');
+  });
+
+  test('per document: a combined marker citing one document twice reads once', () => {
+    const one: BriefSection[] = [
+      section({
+        id: 'a',
+        content: 'Claim [1, 2].',
+        sources: [
+          src({ index: 1, docId: 'doc1', title: 'Doc One', page: 1 }),
+          src({ index: 2, docId: 'doc1', title: 'Doc One', page: 5 }),
+        ],
+      }),
+    ];
+    expect(buildGlobalCitations(one, 'document-single').display.get('a')?.content).toBe(
+      'Claim [1].',
+    );
+  });
+
+  test('multiple-per-document grouping numbers exactly like per passage', () => {
+    expect(buildGlobalCitations(sections, 'document-multiple')).toEqual(
+      buildGlobalCitations(sections, 'passage'),
+    );
+  });
+});

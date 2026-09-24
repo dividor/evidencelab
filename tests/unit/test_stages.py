@@ -248,7 +248,8 @@ class TestScanProcessorStages:
             )
 
             assert result is not None
-            _, metadata = result
+            # (doc_id, payload, already_existed)
+            _, metadata = result[0], result[1]
 
             assert "sys_stages" in metadata
             assert "download" in metadata["sys_stages"]
@@ -298,7 +299,8 @@ class TestScanProcessorStages:
             )
 
             assert result is not None
-            _, metadata = result
+            # (doc_id, payload, already_existed)
+            _, metadata = result[0], result[1]
 
             assert "sys_stages" in metadata
             assert "download" in metadata["sys_stages"]

@@ -241,7 +241,7 @@ const computeDisplayItems = (
 
   const filteredItems = orderFacetValuesForDisplay(
     coreField,
-    facetValues.filter((item) => item.value.toLowerCase().includes(searchTerm))
+    facetValues.filter((item) => (item.label ?? item.value).toLowerCase().includes(searchTerm))
   );
   const remaining = filteredItems.length - defaultDisplayCount;
   return {
@@ -263,7 +263,8 @@ const FilterCheckboxList = ({
   return (
     <React.Fragment>
       {items.map((item) => {
-        const displayValue = isTag ? stripTagPrefix(item.value) : item.value;
+        // item.value is always the raw filter value; only the text shown changes.
+        const displayValue = item.label ?? (isTag ? stripTagPrefix(item.value) : item.value);
         return (
           <label
             key={item.value}

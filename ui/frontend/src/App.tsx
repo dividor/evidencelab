@@ -43,7 +43,9 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
-import { CookieConsent, getGaConsent } from './components/CookieConsent';
+import { CookieConsent } from './components/CookieConsent';
+import { getAnalyticsConsent } from './utils/analytics';
+import { applyDeploymentFacts, contactEmail } from './utils/deploymentText';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
 import { AuthContext, useAuthState } from './hooks/useAuth';
@@ -793,6 +795,8 @@ function App() {
   const [fieldBoostFields, setFieldBoostFields] = useState<Record<string, number>>(initialSearchState.fieldBoostFields);
   // Group greeting message (overrides search placeholder on landing page)
   const [greetingMessage, setGreetingMessage] = useState<string>('');
+  // Group default section length for new briefs (null = no target)
+  const [briefTargetWords, setBriefTargetWords] = useState<number | null>(null);
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiSummaryLoading, setAiSummaryLoading] = useState<boolean>(false);
   const [aiPrompt, setAiPrompt] = useState<string>('');
@@ -854,6 +858,7 @@ function App() {
     summaryLimitResults: setSummaryLimitResults,
     summaryMaxResults: setSummaryMaxResults,
     summaryTemperature: setSummaryTemperature,
+    briefTargetWords: setBriefTargetWords,
     greetingMessage: setGreetingMessage,
   });
 
@@ -1439,29 +1444,30 @@ function App() {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/about.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setAboutContent(text))
+        .then(text => setAboutContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load about content:', err));
     }
     if (activeTab === 'tech') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/tech.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setTechContent(text))
+        .then(text => setTechContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load tech content:', err));
     }
     if (activeTab === 'data') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/data.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setDataContent(text))
+        .then(text => setDataContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load data content:', err));
     }
     if (activeTab === 'privacy') {
       // Add timestamp to prevent caching during development
       fetch(`${withBasePath('/docs/overview/privacy.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => {
-          if (GA_MEASUREMENT_ID && getGaConsent() !== 'denied') {
+        .then(raw => {
+          const text = applyDeploymentFacts(raw);
+          if (GA_MEASUREMENT_ID && getAnalyticsConsent() !== 'denied') {
             const gaSection = [
               '',
               '## Analytics',
@@ -1482,7 +1488,7 @@ function App() {
     if (activeTab === 'terms') {
       fetch(`${withBasePath('/docs/overview/terms.md')}?t=${Date.now()}`)
         .then(response => response.text())
-        .then(text => setTermsContent(text))
+        .then(text => setTermsContent(applyDeploymentFacts(text)))
         .catch(err => console.error('Failed to load terms content:', err));
     }
   }, [activeTab]);
@@ -2756,7 +2762,6 @@ function App() {
   );
 
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
-  const heatmapActiveFiltersCount = Object.values(heatmapFilters).filter(Boolean).length;
 
   // When search results are displayed, compute facet counts directly from
   // the actual results (deduped by doc_id) so counts exactly match what the
@@ -2921,7 +2926,6 @@ function App() {
       loadingConfig={loadingConfig}
       facetsDataSource={facetsDataSource}
       filtersExpanded={heatmapFiltersExpanded}
-      activeFiltersCount={heatmapActiveFiltersCount}
       onToggleFiltersExpanded={toggleHeatmapFiltersExpanded}
       onClearFilters={handleClearHeatmapFilters}
       facets={facets}
@@ -3088,6 +3092,7 @@ function App() {
               wideSearch,
               wideGroupSize,
               wideLimit,
+              briefTargetWords,
             }}
             onResultClick={handleResultClick}
           />
@@ -3166,7 +3171,7 @@ function App() {
               <p>
                 If you would like to have your public documents added to Evidence Lab for research,
                 or would like to contribute to the project, or have general feedback and questions,
-                please reach out to <a href="mailto:evidencelab@astrobagel.com">evidencelab@astrobagel.com</a>.
+                please reach out to <a href={`mailto:${contactEmail()}`}>{contactEmail()}</a>.
               </p>
             </div>
           </div>

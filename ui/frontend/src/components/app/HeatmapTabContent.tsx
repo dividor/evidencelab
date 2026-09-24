@@ -49,7 +49,6 @@ interface HeatmapTabContentProps {
   loadingConfig: boolean;
   facetsDataSource: string | null;
   filtersExpanded: boolean;
-  activeFiltersCount: number;
   onToggleFiltersExpanded: () => void;
   onClearFilters: () => void;
   facets: Facets | null;
@@ -319,6 +318,13 @@ const ThumbnailCarousel = ({ documents, selectedDomain, filteredDocId, onSelectD
   );
 };
 
+// Identifies the query a sensitivity cutoff was computed for: the row queries
+// when rows are search queries, otherwise the grid query.
+const buildCutoffQueryKey = (rowDimension: string, rowQueries: string[], gridQuery: string) =>
+  rowDimension === 'queries'
+    ? `queries:${rowQueries.map((query) => query.trim()).join('\n')}`
+    : `grid:${gridQuery.trim()}`;
+
 const buildExcludedFilterFields = (rowDimension: string, columnDimension: string) => {
   const excludedFields = new Set<string>();
   if (rowDimension !== 'queries') {
@@ -407,14 +413,77 @@ const buildSearchParams = (options: {
   return params;
 };
 
+const sleep = (ms: number) => new Promise((resolve) => {
+  window.setTimeout(resolve, ms);
+});
+
+// A cell request is retried on rate limiting and transient gateway errors;
+// anything else (4xx, 500) fails the cell straight away.
+const HEATMAP_CELL_MAX_RETRIES = 3;
+const RETRYABLE_CELL_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_RETRY_AFTER_SECONDS = 60;
+
+// The HTTP response attached to a failed request, if the error carries one.
+const failedResponse = (error: unknown): { status?: unknown; headers?: Record<string, unknown> } | undefined => {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const response = (error as { response?: unknown }).response;
+  return typeof response === 'object' && response !== null ? response : undefined;
+};
+
+const cellRequestStatus = (error: unknown): number | undefined => {
+  const status = failedResponse(error)?.status;
+  return typeof status === 'number' ? status : undefined;
+};
+
+// Honour the server's Retry-After (seconds) when it sends one, otherwise back
+// off exponentially: 1s, 2s, 4s.
+const cellRetryDelayMs = (error: unknown, attempt: number): number => {
+  const header = failedResponse(error)?.headers?.['retry-after'];
+  const retryAfter = Number(header);
+  if (header !== undefined && Number.isFinite(retryAfter) && retryAfter >= 0) {
+    return Math.min(retryAfter, MAX_RETRY_AFTER_SECONDS) * 1000;
+  }
+  return 1000 * 2 ** attempt;
+};
+
+const getCellWithRetry = async (url: string, signal: AbortSignal): Promise<SearchResponse> => {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await axios.get<SearchResponse>(url, { signal });
+      return response.data;
+    } catch (error) {
+      const status = cellRequestStatus(error);
+      const retryable = status !== undefined && RETRYABLE_CELL_STATUSES.has(status);
+      if (axios.isCancel(error) || !retryable || attempt >= HEATMAP_CELL_MAX_RETRIES) {
+        throw error;
+      }
+      await sleep(cellRetryDelayMs(error, attempt));
+      if (signal.aborted) {
+        throw new axios.CanceledError('canceled');
+      }
+    }
+  }
+};
+
+// One line the user can act on: how many cells failed and, when it is the
+// rate limit, that waiting fixes it. Details go to the console for support.
+const describeCellFailures = (statuses: Array<number | undefined>, total: number): string => {
+  const rateLimited = statuses.filter((status) => status === 429).length;
+  const base = `${statuses.length} of ${total} grid cells failed to load`;
+  if (rateLimited === statuses.length) {
+    return `${base}: the search rate limit was reached. Wait a minute and generate again.`;
+  }
+  if (rateLimited > 0) {
+    return `${base}: ${rateLimited} hit the search rate limit and the rest returned server errors.`;
+  }
+  return `${base}: the server returned errors (details in the browser console).`;
+};
+
 // Runs the cell requests a few at a time. Stops scheduling further batches
 // once `signal` is aborted (the user pressed the × on the Generate button).
 const runTasksInBatches = async (tasks: Array<() => Promise<void>>, signal?: AbortSignal) => {
   const delayBetweenBatchesMs = 500;
   const batchSize = 3;
-  const sleep = (ms: number) => new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 
   for (let i = 0; i < tasks.length; i += batchSize) {
     if (signal?.aborted) return;
@@ -1187,7 +1256,6 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   loadingConfig,
   facetsDataSource,
   filtersExpanded,
-  activeFiltersCount,
   onToggleFiltersExpanded,
   onClearFilters,
   facets,
@@ -1292,7 +1360,11 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   const [heatmapReady, setHeatmapReady] = useState<boolean>(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const processingHighlightsRef = useRef<Set<string>>(new Set());
-  const userAdjustedCutoffRef = useRef(false);
+  // The sensitivity cutoff is pinned once set (auto-computed for a query, moved
+  // by the user, or read from the URL) so filter-only re-runs keep comparing
+  // against the same threshold; it is re-computed only when the query changes.
+  const cutoffPinnedRef = useRef(false);
+  const cutoffQueryKeyRef = useRef<string | null>(null);
   const heatmapUrlInitRef = useRef(false);
   const heatmapUrlHadYearFilterRef = useRef(false);
   const heatmapAutoRunRef = useRef(false);
@@ -1711,6 +1783,23 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     [getFieldValues, heatmapSelectedFilters]
   );
 
+  // Filters the next run will actually send: axis fields count when narrowed
+  // below all their values, every other field when it has a selection.
+  const heatmapActiveFiltersCount = useMemo(() => {
+    const axisFields = buildExcludedFilterFields(rowDimension, columnDimension);
+    return Object.entries(heatmapSelectedFilters).filter(([field, values]) =>
+      axisFields.has(field) ? isHeatmapFieldFiltered(field) : values.length > 0
+    ).length;
+  }, [columnDimension, heatmapSelectedFilters, isHeatmapFieldFiltered, rowDimension]);
+
+  // The heatmap keeps its own filter state, so "Clear filters" must reset it
+  // here; the parent's handler only clears the parent's copy.
+  const clearHeatmapFilters = useCallback(() => {
+    setHeatmapSelectedFilters({});
+    setHeatmapFilterSearchTerms({});
+    onClearFilters();
+  }, [onClearFilters]);
+
   const updateHeatmapURL = useCallback(
     (options?: { run?: boolean }) => {
       const url = new URL(window.location.href);
@@ -1789,6 +1878,14 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const parsedSensitivity = urlSensitivity ? Number(urlSensitivity) : NaN;
     if (!Number.isNaN(parsedSensitivity)) {
       setSimilarityCutoff(parsedSensitivity);
+      // A shared link carries its sensitivity: pin it to the link's query so
+      // the auto-run does not replace it.
+      cutoffPinnedRef.current = true;
+      cutoffQueryKeyRef.current = buildCutoffQueryKey(
+        urlRow && rowOptions.some((option) => option.value === urlRow) ? urlRow : rowDimension,
+        urlRowQueries.length > 0 ? urlRowQueries : rowQueries,
+        urlQuery ?? gridQuery
+      );
     }
     if (urlRow === 'queries' && urlRowQueries.length > 0) {
       setRowQueries(urlRowQueries);
@@ -2008,10 +2105,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
       return null;
     }
     const baseValues = facets.facets[heatmapFilterModal.field] || [];
-    // Transform taxonomy values to display clean names
+    // Show taxonomy values by their clean name but keep the raw value: the
+    // selection and the axis values are raw, so a renamed value would never
+    // match and the axis could not be narrowed.
     const transformedValues = baseValues.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
+      label: extractTaxonomyName(facetValue.value, heatmapFilterModal.field),
     }));
     const orderedValues = sortFacetValues(transformedValues, modalSelectedValues);
     return {
@@ -2029,10 +2128,10 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     if (!results) {
       return heatmapFacetSearchResults;
     }
-    // Transform taxonomy values to display clean names
+    // Clean name for display only; the raw value stays the filter value.
     const transformedResults = results.map((facetValue) => ({
       ...facetValue,
-      value: extractTaxonomyName(facetValue.value, field),
+      label: extractTaxonomyName(facetValue.value, field),
     }));
     return {
       ...heatmapFacetSearchResults,
@@ -2282,11 +2381,12 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
   }, [gridResults]);
 
   useEffect(() => {
-    if (!scoreBounds.hasScores || userAdjustedCutoffRef.current) {
+    if (!scoreBounds.hasScores || cutoffPinnedRef.current) {
       return;
     }
     const cutoff = scoreBounds.max - HEATMAP_SCORE_PERCENTILE * (scoreBounds.max - scoreBounds.min);
     setSimilarityCutoff(cutoff);
+    cutoffPinnedRef.current = true;
   }, [scoreBounds]);
 
   const maxCellCount = useMemo(() => {
@@ -2408,12 +2508,20 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     setGridError(null);
     setGridResults({});
     setCappedCells(new Set());
-    userAdjustedCutoffRef.current = false;
+    // Only a changed query gets a fresh auto-computed cutoff. A re-run that
+    // merely changes filters keeps the current one, so excluding the documents
+    // that were above the threshold really empties the cells instead of
+    // promoting the next-best chunks.
+    const cutoffQueryKey = buildCutoffQueryKey(rowDimension, rowQueries, gridQuery);
+    if (cutoffQueryKeyRef.current !== cutoffQueryKey) {
+      cutoffQueryKeyRef.current = cutoffQueryKey;
+      cutoffPinnedRef.current = false;
+    }
     const controller = new AbortController();
     gridAbortRef.current = controller;
     const tasks: Array<() => Promise<void>> = [];
     const accumulatedResults: RawCellResults = {};
-    let failedRequests = 0;
+    const failedStatuses: Array<number | undefined> = [];
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
     const filterEntries = Object.entries(heatmapSelectedFilters)
       .filter(([field]) => !excludedFields.has(field))
@@ -2469,10 +2577,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
               params.delete('wide_group_size');
               params.delete('wide_limit');
             }
-            const response = await axios.get<SearchResponse>(`${API_BASE_URL}/${endpoint}?${params}`, {
-              signal: controller.signal,
-            });
-            const data = response.data as SearchResponse;
+            const url = `${API_BASE_URL}/${endpoint}?${params}`;
+            const data = await getCellWithRetry(url, controller.signal);
             accumulatedResults[cellKey] = data.results;
             setGridResults((prev) => ({ ...prev, [cellKey]: data.results }));
             if (!useDocSearch && data.results.length >= Number(HEATMAP_CELL_LIMIT)) {
@@ -2481,7 +2587,9 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
           } catch (error) {
             // Cancelled by the user's Stop: leave the cell unloaded, not failed.
             if (axios.isCancel(error)) return;
-            failedRequests += 1;
+            const status = cellRequestStatus(error);
+            failedStatuses.push(status);
+            console.error(`Heatmap cell ${cellKey} failed (HTTP ${status ?? 'n/a'}):`, error);
             accumulatedResults[cellKey] = [];
             setGridResults((prev) => ({ ...prev, [cellKey]: [] }));
           }
@@ -2491,8 +2599,8 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
     try {
       await runTasksInBatches(tasks, controller.signal);
-      if (!controller.signal.aborted && failedRequests > 0) {
-        setGridError('Some grid cells failed to load.');
+      if (!controller.signal.aborted && failedStatuses.length > 0) {
+        setGridError(describeCellFailures(failedStatuses, tasks.length));
       }
     } catch (error) {
       console.error('Heatmap grid search failed:', error);
@@ -2521,6 +2629,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     rerankEnabled,
     rerankModel,
     rowDimension,
+    rowQueries,
     searchDenseWeight,
     searchModel,
     sectionTypes,
@@ -2912,7 +3021,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     <div className="main-content">
       <MobileFiltersToggle
         filtersExpanded={filtersExpanded}
-        activeFiltersCount={activeFiltersCount}
+        activeFiltersCount={heatmapActiveFiltersCount}
         onToggle={onToggleFiltersExpanded}
         label="More Filters"
       />
@@ -2921,7 +3030,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
         <HeatmapFiltersColumn
           filtersExpanded={filtersExpanded}
           onToggleFiltersExpanded={onToggleFiltersExpanded}
-          onClearFilters={onClearFilters}
+          onClearFilters={clearHeatmapFilters}
           filtersPanelProps={filtersPanelProps}
         />
 
@@ -3000,7 +3109,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
                   onCutoffChange={(value: number) => {
-                    userAdjustedCutoffRef.current = true;
+                    cutoffPinnedRef.current = true;
                     setSimilarityCutoff(value);
                   }}
                 />
@@ -3013,7 +3122,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
                   scoreBounds={scoreBounds}
                   similarityCutoff={similarityCutoff}
                   onCutoffChange={(value: number) => {
-                    userAdjustedCutoffRef.current = true;
+                    cutoffPinnedRef.current = true;
                     setSimilarityCutoff(value);
                   }}
                 />

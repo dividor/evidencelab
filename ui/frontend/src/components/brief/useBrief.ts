@@ -3,6 +3,7 @@ import { SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { useActivityLogging } from '../../hooks/useActivityLogging';
 import { extractCitedNumbers } from '../citations/CitedContent';
+import { buildCondenseInstruction, countWords, exceedsTarget } from './briefLength';
 import {
   BriefActivityEvent,
   BriefSourceSample,
@@ -16,10 +17,10 @@ import {
 } from '../../utils/briefStream';
 import {
   BRIEF_HISTORY_KEY,
-  BriefReference,
   BriefSection,
   BriefStage,
   DEFAULT_BRIEF_TITLE,
+  ReferenceGrouping,
   SavedBrief,
   SectionAuditEntry,
   VoiceProfile,
@@ -163,35 +164,6 @@ const computeNumbers = (sections: BriefSection[]): string[] => {
   });
 };
 
-// Compiled footnotes: the actually-cited sources across done sections, one
-// entry per document (grouped/deduped), like the search summary's references.
-const computeReferences = (sections: BriefSection[]): BriefReference[] => {
-  const seen = new Set<string>();
-  const refs: BriefReference[] = [];
-  sections.forEach((s) => {
-    // Sections mid-Edit/Update keep their (old) content on screen, so they
-    // keep their footnotes too — no renumbering while a revise runs.
-    if (s.status !== 'done' && !s.revising) return;
-    const cited = new Set(extractCitedNumbers(s.content));
-    s.sources.forEach((src: SourceReference) => {
-      if (src.index == null || !cited.has(src.index)) return;
-      // One entry per cited passage, matching the numbering in
-      // buildGlobalCitations (and the AI summary), not one per document.
-      const key = src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      refs.push({
-        n: refs.length + 1,
-        title: src.title,
-        page: src.page,
-        section: s.title,
-        source: src,
-      });
-    });
-  });
-  return refs;
-};
-
 export const useBrief = ({
   apiBaseUrl,
   dataSource,
@@ -211,9 +183,14 @@ export const useBrief = ({
   const [query, setQuery] = useState(''); // the brief topic
   const [instructions, setInstructions] = useState('');
   const [numHeadings, setNumHeadings] = useState(6);
-  // References list: one row per document (off) vs grouped by document (on).
-  // Also chooses how the Word export lays its references out.
-  const [groupReferences, setGroupReferences] = useState(false);
+  // How the References list is laid out and how citations are numbered (one
+  // number per passage or per document) — see ReferenceGrouping. Drives the
+  // inline [n] markers, the References list and the Word export together.
+  const [referenceGrouping, setReferenceGrouping] = useState<ReferenceGrouping>('passage');
+  // Section length target in words for this brief (sections may override);
+  // null = no target, the model decides. Persisted with the brief. See
+  // briefLength.ts for how it is enforced.
+  const [targetWords, setTargetWordsState] = useState<number | null>(null);
   const [newHeading, setNewHeading] = useState('');
   const [regenFor, setRegenFor] = useState<string | null>(null);
   const [regenText, setRegenText] = useState('');
@@ -231,6 +208,10 @@ export const useBrief = ({
   // False when the open brief was shared with (not owned by) this user.
   const [canEdit, setCanEdit] = useState(true);
   const [ownerName, setOwnerName] = useState<string | null>(null);
+  // The data source a saved brief was researched in, from its server record.
+  // Null for a new or local brief, whose sources are in the app's selected
+  // data source. The Word export looks cited documents up in this source.
+  const [briefDataSource, setBriefDataSource] = useState<string | null>(null);
 
   const briefIdRef = useRef<string | null>(null);
   // Stable Activity-log id for the current brief (one row per brief).
@@ -249,6 +230,12 @@ export const useBrief = ({
   instructionsRef.current = instructions;
   const numberHeadingsRef = useRef(numberHeadings);
   numberHeadingsRef.current = numberHeadings;
+  // Read by the research loop, so it is written together with the state.
+  const targetWordsRef = useRef<number | null>(targetWords);
+  const setTargetWords = useCallback((target: number | null) => {
+    targetWordsRef.current = target;
+    setTargetWordsState(target);
+  }, []);
   const historyRef = useRef(history);
   historyRef.current = history;
   // Group search settings, read at research time so the research callbacks stay
@@ -265,6 +252,13 @@ export const useBrief = ({
   canEditRef.current = canEdit;
   // True once the current brief exists as a server row (remote mode).
   const remoteSavedRef = useRef(false);
+
+  // The team's default section length applies to a brief that has not started
+  // yet; once a brief is open its own (persisted) target stands.
+  const groupTargetWords = searchSettings?.briefTargetWords;
+  useEffect(() => {
+    if (stage === 'seed') setTargetWords(groupTargetWords ?? null);
+  }, [stage, groupTargetWords, setTargetWords]);
 
   // Resolve the style instructions for a section: its own profile wins, else
   // the brief default; null when neither is set (or the profile was deleted).
@@ -543,12 +537,14 @@ export const useBrief = ({
           lastResearchedAt: s.lastResearchedAt,
           voiceId: s.voiceId ?? undefined,
           guidance: s.guidance || undefined,
+          targetWords: s.targetWords ?? undefined,
         };
       }),
       outlineLog: outlineLogRef.current,
       numberHeadings: numberHeadingsRef.current,
       activityId: briefActivityIdRef.current ?? undefined,
       voiceId: briefVoiceIdRef.current,
+      targetWords: targetWordsRef.current ?? undefined,
     };
     if (remote) {
       pushRemoteSave(entry);
@@ -659,6 +655,7 @@ export const useBrief = ({
       briefIdRef.current = uid();
       briefActivityIdRef.current = activityId;
       remoteSavedRef.current = false;
+      setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(toTitleCase(topic));
@@ -681,6 +678,7 @@ export const useBrief = ({
     briefIdRef.current = uid();
     briefActivityIdRef.current = newActivityId();
     remoteSavedRef.current = false;
+    setBriefDataSource(null);
     setCanEdit(true);
     setOwnerName(null);
     setBriefTitle(DEFAULT_BRIEF_TITLE);
@@ -702,6 +700,7 @@ export const useBrief = ({
       briefIdRef.current = uid();
       briefActivityIdRef.current = newActivityId();
       remoteSavedRef.current = false;
+      setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(title.trim() || DEFAULT_BRIEF_TITLE);
@@ -777,6 +776,75 @@ export const useBrief = ({
   );
 
   // ---- research engine ----
+  // Condense a finished section that overshot its length target: one AI edit
+  // of the current draft (sources and [n] markers unchanged), recorded in the
+  // section's log. The long draft stays on screen, greyed, until the condensed
+  // text arrives; on failure the long draft is kept and the error surfaced.
+  const condenseSection = useCallback(
+    async (
+      id: string,
+      // The just-finished draft and its sources, passed explicitly: the state
+      // update that stored them may not have rendered into sectionsRef yet.
+      priorContent: string,
+      priorSources: SourceReference[],
+      target: number,
+      words: number,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      const section = sectionsRef.current.find((s) => s.id === id);
+      if (!section || signal.aborted) return;
+      updateSection(id, { status: 'researching', progress: 95, revising: true });
+      pushActivity(id, { tag: 'DRAFT', text: `Condensing to about ${target} words (was ${words})` });
+      try {
+        const revised = await requestBriefRevise({
+          apiBaseUrl,
+          dataSource,
+          content: priorContent,
+          instruction: buildCondenseInstruction(target, words),
+          voiceInstructions: voiceInstructionsFor(section.voiceId),
+          activityId: briefActivityIdRef.current,
+          signal,
+        });
+        if (signal.aborted) return;
+        const cur = sectionsRef.current.find((s) => s.id === id);
+        const entry: SectionAuditEntry = {
+          id: uid(),
+          kind: 'edit',
+          at: Date.now(),
+          instruction: buildCondenseInstruction(target, words),
+          sourceCount: priorSources.length,
+          addedSourceCount: 0,
+          before: priorContent,
+          after: revised,
+        };
+        const doneAt = Date.now();
+        const sources = priorSources.map(
+          ({ claimMatches: _cm, semanticMatches: _sm, ...rest }) => rest,
+        );
+        updateSection(id, {
+          status: 'done',
+          progress: 100,
+          content: revised,
+          sources,
+          audit: [...(cur?.audit || []), entry],
+          revising: undefined,
+        });
+        pushActivity(id, { tag: 'DONE', text: `Condensed to ${countWords(revised)} words` });
+        researchTokenRef.current[id] = doneAt;
+        setTimeout(() => enrichSectionHighlights(id, doneAt, revised, sources), 0);
+      } catch (e) {
+        if (signal.aborted) return;
+        updateSection(id, { status: 'done', progress: 100, revising: undefined });
+        setError(
+          `“${section.title}” came back at ${words} words against a target of ${target} and could not be condensed: ${
+            e instanceof Error ? e.message : 'condense failed'
+          }`,
+        );
+      }
+    },
+    [apiBaseUrl, dataSource, updateSection, pushActivity, voiceInstructionsFor, enrichSectionHighlights],
+  );
+
   const researchOne = useCallback(
     (
       id: string,
@@ -820,6 +888,11 @@ export const useBrief = ({
           : { status: 'researching', progress: 4, content: '', sources: [], activity: [] },
       );
       const briefTopic = queryRef.current.trim() || briefTitleRef.current;
+      // The section's own target wins over the brief's; null = no target.
+      const sectionTarget = section.targetWords ?? targetWordsRef.current;
+      // Set by onDone when the finished section overshoots its target; the
+      // research promise waits for it so a document-wide run stays sequential.
+      let condensePass: Promise<void> = Promise.resolve();
       return researchBriefSection({
         apiBaseUrl,
         dataSource,
@@ -837,6 +910,7 @@ export const useBrief = ({
         instruction,
         publishedAfterIso,
         voiceInstructions: voiceInstructionsFor(section.voiceId),
+        targetWords: sectionTarget,
         // The whole document structure (plus a gist of written sections), so
         // this section stays in scope and doesn't duplicate the others.
         outlineContext: buildOutlineContext(
@@ -863,7 +937,7 @@ export const useBrief = ({
             // A run that read sources but answered with process narration
             // ("I'll go research that…") instead of the section is a failure —
             // surface it and keep the section pending rather than storing it.
-            if (!isRevise && isLikelyNonAnswer(content, sources.length)) {
+            if (!isRevise && isLikelyNonAnswer(content, sources.length, sectionTarget)) {
               updateSection(id, { status: 'pending', progress: 0 });
               setError(
                 `The model did not return researched content for “${section.title}” — please try again.`,
@@ -903,6 +977,12 @@ export const useBrief = ({
             // synchronously so the deferred run can tell if it was superseded.
             researchTokenRef.current[id] = doneAt;
             setTimeout(() => enrichSectionHighlights(id, doneAt, content, sources), 0);
+            // A model only approximates a word count: a section that overshoots
+            // its target by more than the tolerance is condensed to it.
+            const words = countWords(content);
+            if (sectionTarget && exceedsTarget(words, sectionTarget)) {
+              condensePass = condenseSection(id, content, sources, sectionTarget, words, signal);
+            }
           },
           onError: (m) => {
             // A revise keeps its previous good content; a fresh research reverts.
@@ -915,14 +995,16 @@ export const useBrief = ({
             setError(m);
           },
         },
-      }).catch(() =>
-        updateSection(
-          id,
-          isRevise
-            ? { status: 'done', progress: 100, revising: undefined }
-            : { status: 'pending', progress: 0 },
-        ),
-      );
+      })
+        .catch(() =>
+          updateSection(
+            id,
+            isRevise
+              ? { status: 'done', progress: 100, revising: undefined }
+              : { status: 'pending', progress: 0 },
+          ),
+        )
+        .then(() => condensePass);
     },
     [
       apiBaseUrl,
@@ -932,6 +1014,7 @@ export const useBrief = ({
       pushActivity,
       voiceInstructionsFor,
       enrichSectionHighlights,
+      condenseSection,
     ],
   );
 
@@ -939,7 +1022,11 @@ export const useBrief = ({
   // refs as well as to state, because the research loop below reads the refs
   // and React will not have committed the setState by the time it runs.
   const startResearch = useCallback(
-    async (overrides?: { instructions?: string; voiceId?: string | null }) => {
+    async (overrides?: {
+      instructions?: string;
+      voiceId?: string | null;
+      targetWords?: number | null;
+    }) => {
       if (overrides?.instructions !== undefined) {
         instructionsRef.current = overrides.instructions;
         setInstructions(overrides.instructions);
@@ -948,6 +1035,7 @@ export const useBrief = ({
         briefVoiceIdRef.current = overrides.voiceId;
         setBriefVoiceId(overrides.voiceId);
       }
+      if (overrides?.targetWords !== undefined) setTargetWords(overrides.targetWords);
       const ids = sectionsRef.current.map((s) => s.id);
       if (!ids.length) return;
       setError(null);
@@ -966,7 +1054,7 @@ export const useBrief = ({
         saveCurrent();
       }
     },
-    [researchOne, saveCurrent],
+    [researchOne, saveCurrent, setTargetWords],
   );
 
   // Run "Get Updates" (fold in sources newer than each section's last run) on
@@ -1167,17 +1255,24 @@ export const useBrief = ({
   const applyLoadedBrief = useCallback(
     (
       entry: SavedBrief,
-      access: { canEdit: boolean; ownerName: string | null; saved: boolean },
+      access: {
+        canEdit: boolean;
+        ownerName: string | null;
+        saved: boolean;
+        dataSource: string | null;
+      },
     ) => {
       abortRef.current?.abort();
       briefIdRef.current = entry.id;
       remoteSavedRef.current = access.saved;
+      setBriefDataSource(access.dataSource);
       briefActivityIdRef.current = entry.activityId || newActivityId();
       setBriefTitle(entry.title);
       setQuery(entry.query);
       setCanEdit(access.canEdit);
       setOwnerName(access.ownerName);
       setBriefVoiceId(entry.voiceId ?? null);
+      setTargetWords(entry.targetWords ?? null);
       setSections(
         entry.sections.map((h) => ({
           ...makeSection(h.title, h.level),
@@ -1193,6 +1288,7 @@ export const useBrief = ({
           lastResearchedAt: h.lastResearchedAt,
           voiceId: h.voiceId ?? null,
           guidance: h.guidance || '',
+          targetWords: h.targetWords ?? null,
         })),
       );
       setGeneratingActivity(entry.outlineLog || []);
@@ -1269,6 +1365,7 @@ export const useBrief = ({
               canEdit: full.can_edit,
               ownerName: full.owner_name,
               saved: true,
+              dataSource: full.data_source,
             }),
           )
           .catch((e) =>
@@ -1276,7 +1373,7 @@ export const useBrief = ({
           );
         return;
       }
-      applyLoadedBrief(entry, { canEdit: true, ownerName: null, saved: false });
+      applyLoadedBrief(entry, { canEdit: true, ownerName: null, saved: false, dataSource: null });
     },
     [remote, applyLoadedBrief],
   );
@@ -1311,6 +1408,7 @@ export const useBrief = ({
               canEdit: true,
               ownerName: null,
               saved: true,
+              dataSource: created.data_source,
             });
           })
           .catch((e) =>
@@ -1336,6 +1434,7 @@ export const useBrief = ({
     briefIdRef.current = null;
     briefActivityIdRef.current = null;
     remoteSavedRef.current = false;
+    setBriefDataSource(null);
     setStage('seed');
     setSections([]);
     setRegenFor(null);
@@ -1354,7 +1453,6 @@ export const useBrief = ({
 
   // ---- derived ----
   const numbers = useMemo(() => computeNumbers(sections), [sections]);
-  const references = useMemo(() => computeReferences(sections), [sections]);
   const doneCount = sections.filter((s) => s.status === 'done').length;
   const totalProgress = sections.length
     ? Math.round(
@@ -1363,6 +1461,10 @@ export const useBrief = ({
       )
     : 0;
   const totalSources = sections.reduce((a, s) => a + s.sources.length, 0);
+  const totalWords = useMemo(
+    () => sections.reduce((a, s) => a + (s.status === 'done' ? countWords(s.content) : 0), 0),
+    [sections],
+  );
 
   return {
     // state
@@ -1371,7 +1473,6 @@ export const useBrief = ({
     currentBriefId: briefIdRef.current,
     sections,
     numbers,
-    references,
     query,
     instructions,
     numHeadings,
@@ -1387,9 +1488,12 @@ export const useBrief = ({
     doneCount,
     totalProgress,
     totalSources,
+    totalWords,
+    targetWords,
     briefVoiceId,
     canEdit,
     ownerName,
+    briefDataSource,
     remote,
     voices: voices || [],
     // setters / actions
@@ -1403,8 +1507,11 @@ export const useBrief = ({
     setError,
     setHistoryOpen,
     setBriefVoiceId,
-    groupReferences,
-    setGroupReferences,
+    referenceGrouping,
+    setReferenceGrouping,
+    setTargetWords,
+    setSectionTargetWords: (id: string, target: number | null) =>
+      updateSection(id, { targetWords: target }),
     requestSourceHighlight,
     setSectionGuidance: (id: string, guidance: string) => updateSection(id, { guidance }),
     setSectionVoiceId: (id: string, voiceId: string | null) =>

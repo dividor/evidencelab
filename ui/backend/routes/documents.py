@@ -6,15 +6,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response
 from qdrant_client.http import models as qmodels
 
 import pipeline.utilities.tasks as pipeline_tasks
+from pipeline.db.moderation import is_hidden
 from pipeline.utilities.text_cleaning import clean_text
+from ui.backend.auth.optional_user import resolve_optional_user
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
-from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services import translation_service
+from ui.backend.services.translation_providers import (
+    TranslationConfigError,
+    TranslationDisabledError,
+)
 from ui.backend.utils.app_limits import get_rate_limits
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.document_utils import normalize_document_payload
@@ -25,13 +31,18 @@ celery_app = pipeline_tasks.app
 router = APIRouter()
 
 
-def _get_llm_service():
-    """Resolve the LLM service module from runtime or fallback imports."""
-    return (
-        sys.modules.get("llm_service")
-        or sys.modules.get("ui.backend.services.llm_service")
-        or llm_service_module
-    )
+def _is_superuser(user: Any) -> bool:
+    return bool(user) and bool(getattr(user, "is_superuser", False))
+
+
+def _hidden_or_missing(doc: Optional[Dict[str, Any]]) -> HTTPException:
+    """A hidden document answers exactly like a missing one."""
+    return HTTPException(status_code=404, detail="Document not found")
+
+
+def _translation_unavailable(exc: Exception) -> HTTPException:
+    """Map a disabled or misconfigured translation provider to a 501."""
+    return HTTPException(status_code=501, detail=str(exc))
 
 
 def _resolve_parsed_folder(doc: Dict[str, Any]) -> Optional[str]:
@@ -187,7 +198,6 @@ async def _translate_documents(
 ) -> None:
     if not target_language or target_language.lower() == "en":
         return
-    llm_service = _get_llm_service()
 
     async def translate_doc(doc):
         doc_lang = doc.get("language", "en") or "en"
@@ -200,7 +210,7 @@ async def _translate_documents(
         doc["_translated"] = True
 
         if doc.get("title"):
-            doc["title"] = await llm_service.translate_text(
+            doc["title"] = await translation_service.translate_text(
                 doc["title"], target_language
             )
 
@@ -209,11 +219,11 @@ async def _translate_documents(
             if len(summary) > 2000:
                 parts = summary[:2000].rsplit(".", 1)
                 to_translate = parts[0] + "."
-                doc["full_summary"] = await llm_service.translate_text(
+                doc["full_summary"] = await translation_service.translate_text(
                     to_translate, target_language
                 )
             else:
-                doc["full_summary"] = await llm_service.translate_text(
+                doc["full_summary"] = await translation_service.translate_text(
                     summary, target_language
                 )
 
@@ -258,6 +268,14 @@ async def get_documents(
     ),
     sort_by: str = Query("year", description="Field to sort by"),
     order: str = Query("desc", description="Sort order (asc/desc)"),
+    include_hidden: bool = Query(
+        False,
+        description="Include documents hidden by moderation (superusers only)",
+    ),
+    hidden: Optional[bool] = Query(
+        None, description="Only hidden (true) documents (superusers only)"
+    ),
+    user: Any = Depends(resolve_optional_user),
 ):
     """
     Get documents with optional filtering and pagination.
@@ -283,6 +301,12 @@ async def get_documents(
             cross_cutting_theme,
             ocr_applied,
         )
+        # Hidden (moderated) documents are only listed for administrators who
+        # ask for them; everyone else never sees them.
+        if _is_superuser(user) and (include_hidden or hidden):
+            filters["include_hidden"] = True
+            if hidden:
+                filters["hidden"] = True
 
         # Run blocking Postgres call in a separate thread to avoid blocking the event loop
         result = await run_in_threadpool(
@@ -311,6 +335,8 @@ async def get_documents(
         await _translate_documents(result["documents"], target_language)
         return result
 
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise _translation_unavailable(exc)
     except Exception as e:
         logger.error(f"Error getting documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -336,8 +362,8 @@ async def get_document(
         if not doc:
             db = get_db_for_source(data_source)
             doc = db.get_document(doc_id) if db else None
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
         doc = normalize_document_payload(doc)
 
         # Clean metadata fields
@@ -346,6 +372,8 @@ async def get_document(
                 doc[key] = clean_text(doc[key])
 
         return doc
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Document fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -364,8 +392,8 @@ async def get_document_thumbnail(
         pg = get_pg_for_source(source)
         doc = pg.fetch_docs([doc_id]).get(str(doc_id))
 
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
 
         # Try to get sys_parsed_folder from document (check multiple locations)
         parsed_folder = doc.get("sys_parsed_folder") or doc.get("sys_data", {}).get(
@@ -537,6 +565,8 @@ async def get_document_chunks(
     try:
         db = get_db_for_source(data_source)
         pg = get_pg_for_source(data_source)
+        if is_hidden(pg.fetch_docs([doc_id]).get(str(doc_id))):
+            raise _hidden_or_missing(None)
 
         # Query chunks from Qdrant for this document
         results, _ = db.client.scroll(
@@ -581,14 +611,13 @@ async def get_document_chunks(
             doc_lang = (doc.get("language") if doc else "en") or "en"
 
             if not doc_lang.lower().startswith(target_language.lower()):
-                llm_service = _get_llm_service()
 
                 async def translate_chunk(chunk):
                     """Translate a chunk's text into the target language."""
                     if chunk.get("text"):
                         chunk["_original_text"] = chunk["text"]
                         chunk["_translated"] = True
-                        chunk["text"] = await llm_service.translate_text(
+                        chunk["text"] = await translation_service.translate_text(
                             chunk["text"], target_language
                         )
 
@@ -598,6 +627,10 @@ async def get_document_chunks(
 
         return {"chunks": formatted_chunks, "total": len(formatted_chunks)}
 
+    except HTTPException:
+        raise
+    except (TranslationDisabledError, TranslationConfigError) as exc:
+        raise _translation_unavailable(exc)
     except Exception as e:
         logger.error(f"Chunks fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -728,8 +761,8 @@ async def serve_pdf(
             db = get_db_for_source(data_source)
             doc = db.get_document(doc_id) if db else None
         doc = normalize_document_payload(doc) if doc else doc
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
+        if not doc or is_hidden(doc):
+            raise _hidden_or_missing(doc)
 
         filepath = doc.get("filepath") or doc.get("sys_filepath")
         if not filepath:

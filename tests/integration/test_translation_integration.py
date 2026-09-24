@@ -1,6 +1,6 @@
 """Integration tests for translation against the real translation service.
 
-The unit tests in ``tests/unit/test_translation.py`` mock GoogleTranslator, so
+The unit tests in ``tests/unit/test_translation.py`` use a fake provider, so
 they cannot catch real-service constraints — most importantly its hard
 5000-character per-request cap, which silently broke AI-summary translation
 (the bare except in ``translate_text`` returned the original English with a
@@ -13,7 +13,7 @@ Requires outbound network access (runs in the integration job / Docker stack).
 
 import pytest
 
-from ui.backend.services.llm_service import translate_text
+from ui.backend.services.translation_service import translate_text
 
 pytestmark = pytest.mark.integration
 
