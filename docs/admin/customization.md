@@ -142,6 +142,22 @@ my-branding/
 Stock builds (no `CUSTOMIZE_ASSETS`) copy nothing and are byte-identical to plain
 Evidence Lab.
 
+## Privacy and Terms pages: operator, contact and hosting region
+
+The Privacy Policy and Terms of Service are shared markdown (`docs/overview/privacy.md`, `docs/overview/terms.md`), but a few facts differ per deployment: who operates the instance (the data controller under the GDPR), where it is hosted, its public address, and how to contact the operator. They are set with environment variables and substituted into the pages when they render:
+
+| Variable | Used for | Default (the evidencelab.ai reference deployment) | Example for your deployment |
+|----------|----------|------------------------------------------------------|-----------------------------|
+| `REACT_APP_OPERATOR_NAME` | Data controller in the Privacy Policy | `Astrobagel` | `World Food Programme, Office of Evaluation` |
+| `REACT_APP_OPERATOR_ADDRESS` | Appended to the operator name | *(none)* | `Via Cesare Giulio Viola 68, 00148 Rome, Italy` |
+| `REACT_APP_HOSTING_REGION` | "The service is hosted in …" (international transfers) | `the United States` | `the European Union (Azure West Europe)` |
+| `REACT_APP_SITE_URL` | The instance's public address, named in the Privacy Policy and the Terms | `https://evidencelab.ai` | `https://evidence.example.org` |
+| `REACT_APP_CONTACT_EMAIL` | Contact links on both pages and the content-report route | `evidencelab@astrobagel.com` | `privacy@example.org` |
+
+Set them in `.env` next to the other `REACT_APP_*` variables. Like every `REACT_APP_*` value they are **baked into the UI at build time**: `docker compose build ui` (or `-f docker-compose.prod.yml build ui`) after changing them. **A deployment that is not evidencelab.ai must set all of them**, otherwise its Privacy Policy names Astrobagel as the controller and the United States as the hosting region. Check both pages after the first build.
+
+The markdown carries the tokens `{{OPERATOR}}`, `{{HOSTING_REGION}}`, `{{SITE_URL}}`, `{{SITE_HOST}}` and `{{CONTACT_EMAIL_LINK}}`; a deployment that maintains its own copy of the pages can use the same tokens.
+
 ## Deploying config & infra from outside the repo
 
 Branding isn't the only thing a deployment overrides. The datasource/model
