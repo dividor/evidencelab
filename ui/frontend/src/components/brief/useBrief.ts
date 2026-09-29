@@ -18,6 +18,7 @@ import {
 import {
   BRIEF_HISTORY_KEY,
   BriefSection,
+  BriefTemplateHeading,
   BriefStage,
   DEFAULT_BRIEF_TITLE,
   ReferenceGrouping,
@@ -61,6 +62,22 @@ const makeSection = (title: string, level = 1, sample = false): BriefSection => 
   activity: [],
   sample,
 });
+
+/**
+ * A new section from a template heading: its prompt becomes the section's
+ * research guidance, and its voice and length override the brief defaults.
+ * Saved text, when the template has it, starts the section as done.
+ */
+export const sectionFromTemplateHeading = (h: BriefTemplateHeading): BriefSection => {
+  const section: BriefSection = {
+    ...makeSection(h.title, h.sub ? 2 : 1, false),
+    guidance: h.prompt || undefined,
+    voiceId: h.voice_profile_id ?? null,
+    targetWords: h.target_words ?? null,
+  };
+  if (h.text) return { ...section, status: 'done', progress: 100, content: h.text };
+  return section;
+};
 
 export interface UseBriefOptions {
   apiBaseUrl: string;
@@ -545,6 +562,7 @@ export const useBrief = ({
       activityId: briefActivityIdRef.current ?? undefined,
       voiceId: briefVoiceIdRef.current,
       targetWords: targetWordsRef.current ?? undefined,
+      instructions: instructionsRef.current.trim() || undefined,
     };
     if (remote) {
       pushRemoteSave(entry);
@@ -581,7 +599,7 @@ export const useBrief = ({
     if (stage === 'seed' || !briefIdRef.current) return;
     const t = setTimeout(() => saveCurrent(), 500);
     return () => clearTimeout(t);
-  }, [stage, briefTitle, sections, numberHeadings, saveCurrent]);
+  }, [stage, briefTitle, sections, numberHeadings, instructions, saveCurrent]);
 
   // ---- outline ----
   // Generate headings by first running a deep-research survey of the document
@@ -691,12 +709,10 @@ export const useBrief = ({
     setStage('outline');
   }, []);
 
-  // Start a brief from a template's headings (optionally with saved text).
+  // Start a brief from a template's headings, with each heading's saved text,
+  // prompt, voice and length.
   const startFromTemplate = useCallback(
-    (
-      title: string,
-      headings: { title: string; sub: boolean; text?: string | null }[],
-    ) => {
+    (title: string, headings: BriefTemplateHeading[]) => {
       briefIdRef.current = uid();
       briefActivityIdRef.current = newActivityId();
       remoteSavedRef.current = false;
@@ -704,15 +720,7 @@ export const useBrief = ({
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(title.trim() || DEFAULT_BRIEF_TITLE);
-      setSections(
-        headings.map((h) => {
-          const section = makeSection(h.title, h.sub ? 2 : 1, false);
-          if (h.text) {
-            return { ...section, status: 'done' as const, progress: 100, content: h.text };
-          }
-          return section;
-        }),
-      );
+      setSections(headings.map(sectionFromTemplateHeading));
       setStage('outline');
     },
     [],
@@ -1273,6 +1281,8 @@ export const useBrief = ({
       setOwnerName(access.ownerName);
       setBriefVoiceId(entry.voiceId ?? null);
       setTargetWords(entry.targetWords ?? null);
+      // Briefs saved before instructions were kept have none.
+      setInstructions(entry.instructions ?? '');
       setSections(
         entry.sections.map((h) => ({
           ...makeSection(h.title, h.level),
@@ -1440,6 +1450,7 @@ export const useBrief = ({
     setRegenFor(null);
     setError(null);
     setQuery('');
+    setInstructions('');
     setNumberHeadings(false);
     setBriefVoiceId(null);
     setCanEdit(true);

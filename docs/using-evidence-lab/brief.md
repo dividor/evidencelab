@@ -16,9 +16,14 @@ The workspace itself has three parts:
 
 ---
 
-### 1. Generate an outline
+### 1. Start a brief
 
-Click the **Brief** tab and you'll land on the start screen.
+**Signed in**, click **New brief** in Brief Central. The dialog has two tabs:
+
+- **Generate using AI** — give a **Title**, optional **Instructions** (they steer the headings and, as the brief prompt, every section's research), a **Voice & tone profile**, the number of **Sections** and the **Section length**, then click **Generate outline**.
+- **Manual** — give a **Title** and pick a **Template**, or none for a blank outline. A template fills in its **Brief prompt**, **Voice & tone profile** and **Section length**, which you can change before clicking **Create brief** (see [Templates](#7-templates)).
+
+**Signed out**, the Brief tab opens on the start screen instead.
 
 ![Brief start screen — topic, instructions and number of sections](../images/brief/brief-seed.png)
 
@@ -53,11 +58,11 @@ To rename a heading, click its title in the document and type — the title is e
 
 ### 3. Research a heading with AI
 
-Each heading starts un-researched. To fill one in, open it and click **Research this section**. You can add optional focus or guidance for that section before running it.
+Each heading starts un-researched. To fill one in, open it and click **Research this section**. Its research panel holds that section's prompt (optional focus or guidance), its voice & tone profile and its length, all of which you can set before running it. A brief started from a template arrives with these already filled in.
 
 ![Researching a heading with optional guidance](../images/brief/brief-research-section.png)
 
-Evidence Lab runs deep research scoped to that heading — its searches take into account the brief topic, the heading's parent section (for sub-headings), and your guidance — then writes cited prose for the section. The research uses your Search settings, including **Wide Search**: with it on, each search spreads across documents (best excerpt of each first) instead of drawing many excerpts from one report. You can research sections one at a time, or click **Start deep research** to research the whole outline in sequence.
+Evidence Lab runs deep research scoped to that heading — its searches take into account the brief topic, the heading's parent section (for sub-headings), the brief prompt and the section's own guidance — then writes cited prose for the section. The brief prompt and each section's guidance are saved with the brief, so they still apply when you reopen it later. The research uses your Search settings, including **Wide Search**: with it on, each search spreads across documents (best excerpt of each first) instead of drawing many excerpts from one report. You can research sections one at a time, or click **Start deep research** to research the whole outline in sequence. **■ Stop** halts a run in progress.
 
 When a section finishes, it shows the written text with inline citations.
 
@@ -65,8 +70,15 @@ When a section finishes, it shows the written text with inline citations.
 
 For each completed section you can:
 
-- **Edit text** — tweak the generated prose by hand.
-- **Regenerate** — re-run the research, optionally with new guidance or a different length.
+- **Manually Edit** — change the prose by hand, then click **Done**.
+- **AI Regenerate** — re-run the research from scratch, optionally with new guidance, a different voice or a different length.
+- **AI Edit** — give an instruction (for example *make the viewpoint relate more to domestic policy*) and the section is revised to it, keeping its current text and citations rather than starting again.
+- **AI Get Updates** — search the library for sources published since the section was last researched and fold any new findings in, with an optional focus.
+- **Log** — the section's research log: every generation, edit and update, with the question or instruction used. Click an edit or update entry to see what it changed.
+
+After an AI Edit or Get Updates, the changes are shown as a comparison. Click **Keep Edits** to accept them or **Reject Edits** to go back to the text before.
+
+For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
 
@@ -90,7 +102,7 @@ Citations work like the rest of Evidence Lab: inline number badges link to the s
 
 Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
 
-From a card you can **open**, **share** or **delete** a brief. **New brief** starts again from the topic screen.
+Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
 
 > Signed out, briefs are kept in your browser's local storage instead, and sharing, templates, voice profiles and comments are unavailable.
 
@@ -127,7 +139,7 @@ Open a brief and click **Share**, or use **Share** on its card in Brief Central.
 
 Sharing is **viewer-only**: recipients can read the brief, follow its citations, export it and leave comments, but they cannot change the text, re-research a section, or re-share it. Only the owner can edit.
 
-- **Add people or groups** — start typing a name, email address or group name. Matching users and groups appear after two characters; pick one and click **Add**. Groups share with every current member.
+- **Add people or groups** — start typing a name, email address or group name. Matching users and groups appear after two characters; click one (or pick it with the arrow keys and press **Enter**) to share with it straight away. You can also type a full email address or group name and click **Add**. Groups share with every current member.
 - **Brief link** — copy the brief's URL (`/brief/<id>`) and send it. The link only opens for people you have added, so it is safe to paste into a channel where others might see it.
 - **Remove access** — click the **×** beside a person or group.
 
@@ -137,13 +149,21 @@ Briefs shared with you appear under **Shared with me** in Brief Central, labelle
 
 ### 7. Templates
 
-A template stores a heading structure so the next brief starts with the shape you want, rather than a blank outline or an AI-generated one.
+A template stores a heading structure, and the instructions for researching each heading, so the next brief starts with the shape and focus you want rather than a blank outline or an AI-generated one.
 
-- **Save a brief as a template** — open a brief and click **Save as Template**. You can edit the headings before saving, and choose whether to **include section text** (off by default, which saves the headings only).
-- **Create one from scratch** — on the **Templates** tab in Brief Central, click **New template** and add headings (and sub-headings) by hand.
-- **Use a template** — click **Use** on a template card, or pick it in the **Manual** tab of the New brief dialog. The brief opens with those headings ready to research.
+What a template keeps:
 
-Templates are private to you.
+- **Headings and sub-headings**, and optionally the text written under each.
+- **A prompt for each heading** — the research instructions for that section, the same thing you type in a section's Research panel (for example, *emphasise sub-Saharan Africa and evidence since 2020*).
+- **A voice & tone profile and a length for each heading**, when a section should differ from the rest of the brief.
+- **Settings for the whole brief** — a brief prompt applied to every section, a default voice & tone profile and a default section length.
+
+Working with templates:
+
+- **Save a brief as a template** — open a brief and click **Save as Template**. Each section's prompt, voice and length, and the brief's own prompt, voice and length, are carried into the template. Two switches decide what is kept: **Include section text** (off by default) and **Include prompts and settings** (on by default). You can edit everything before saving.
+- **Create one from scratch** — on the **Templates** tab in Brief Central, click **New template** and add headings (and sub-headings) by hand. Click **Prompt** beside a heading to give it a prompt, a voice and a length.
+- **Edit a template** — click **Edit** on a template you own. Changes apply to briefs started from it afterwards; briefs already started keep what they began with.
+- **Use a template** — click **Use Template** on a template card, or pick it in the **Manual** tab of the New brief dialog. The dialog fills in the template's brief prompt, voice and length, which you can change before creating the brief. Each section starts with its heading's prompt, voice and length, so **Research this section** and **Start deep research** use them without retyping, and you can still change them in the section's research panel.
 
 ---
 
@@ -152,14 +172,34 @@ Templates are private to you.
 A voice & tone profile is a set of style instructions applied whenever a section is written, so briefs read consistently for their audience — a donor board memo and a field-team summary need different registers.
 
 - **Create one** — on the **Voice & tone** tab in Brief Central, click **New voice & tone profile** and give it a name, a one-line description of when to use it, and the style instructions themselves (for example: *Write in plain English at CEFR B2. Lead each section with the finding, then the evidence. Avoid acronyms on first use.*).
-- **Apply it to a brief** — choose a profile in the New brief dialog, or in **AI Regenerate All**.
+- **Apply it to a brief** — choose a profile in the New brief dialog (either tab), or in **AI Regenerate All**. A template can also set one.
 - **Override it for one section** — a section's Research or Regenerate panel has its own profile selector; leave it on *Use brief default* to inherit the brief's.
 
 The instructions are passed to the model when the outline is generated, when a section is researched or regenerated, and when a section is revised with **AI Edit**.
 
 ---
 
-### 9. Comments
+### 9. Share templates and voice & tone profiles
+
+Templates and voice & tone profiles can be shared, so a team writes to the same structure and in the same register. A typical use: a team lead builds a template with a prompt for each heading and the team's voice & tone profile, and shares it with the team's group, so every brief the team starts from it is researched and written the same way.
+
+- **Share** — click **Share** on a template or profile you own, then add people by name or email address, or a whole group by name, exactly as for a brief: pick a suggestion to share with it straight away.
+- **What recipients can do** — shared templates and profiles appear in their Brief Central, labelled with the owner's name, and in every template and voice picker. They can use them, but only the owner can edit, delete or share them. When the owner edits one, recipients get the change.
+- **Make a copy** — click **Copy** on any template or profile to make your own private copy, which you can edit and share. Copying is how you adapt a shared template without changing the original.
+- **Stop sharing** — open **Share** and remove the person or group. It disappears from their lists.
+
+**Voices go with the template.** Sharing a template also shares the voice & tone profiles it uses that you own, with the same people and groups, so they receive it whole. A voice you add to the template later is shared with them too. Two limits:
+
+- A voice someone else shared with you cannot be passed on. Recipients see **Unavailable voice & tone profile** there until its owner shares it with them.
+- Stopping a template share leaves its voices shared, because you may have shared them for their own sake. Stop sharing a voice from its own **Share** dialog.
+
+A section whose voice is unavailable, because it was unshared or deleted, is written without a voice, and its Research panel says so until you pick another profile.
+
+**Where recipients find things.** Briefs shared with you are under **Shared with me** in Brief Central. Shared templates and voice & tone profiles are in your **Templates** and **Voice & tone** tabs, marked *Shared by* and the owner's name, and in every template and voice picker.
+
+---
+
+### 10. Comments
 
 Comments let reviewers respond to a brief in place, which is the usual next step after sharing one.
 

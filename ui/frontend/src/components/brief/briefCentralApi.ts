@@ -2,6 +2,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import {
   BriefListItem,
+  BriefShareTarget,
   BriefTemplate,
   BriefTemplateHeading,
   RemoteBrief,
@@ -105,23 +106,50 @@ export const removeBriefShare = async (
 
 // ---- templates ----
 
+/** Everything a template stores, as the editor and save-from-brief send it. */
+export interface TemplatePayload {
+  name: string;
+  description: string | null;
+  headings: BriefTemplateHeading[];
+  withText: boolean;
+  prompt: string | null;
+  voiceProfileId: string | null;
+  targetWords: number | null;
+}
+
+const templateBody = (args: TemplatePayload) => ({
+  name: args.name,
+  description: args.description,
+  headings: args.headings,
+  with_text: args.withText,
+  prompt: args.prompt,
+  voice_profile_id: args.voiceProfileId,
+  target_words: args.targetWords,
+});
+
+/** The user's own templates, then templates shared with them. */
 export const listTemplates = async (): Promise<BriefTemplate[]> => {
   const res = await axios.get(`${API_BASE_URL}/brief-templates/`);
   return expectArray<BriefTemplate>(res.data, 'templates');
 };
 
-export const createTemplate = async (args: {
-  name: string;
-  description: string | null;
-  headings: BriefTemplateHeading[];
-  withText: boolean;
-}): Promise<BriefTemplate> => {
-  const res = await axios.post(`${API_BASE_URL}/brief-templates/`, {
-    name: args.name,
-    description: args.description,
-    headings: args.headings,
-    with_text: args.withText,
-  });
+export const createTemplate = async (args: TemplatePayload): Promise<BriefTemplate> => {
+  const res = await axios.post(`${API_BASE_URL}/brief-templates/`, templateBody(args));
+  return res.data as BriefTemplate;
+};
+
+/** Replace a template's contents (owner only). Null prompt/voice/length clear them. */
+export const updateTemplate = async (
+  id: string,
+  args: TemplatePayload,
+): Promise<BriefTemplate> => {
+  const res = await axios.put(`${API_BASE_URL}/brief-templates/${id}`, templateBody(args));
+  return res.data as BriefTemplate;
+};
+
+/** Copy a template the user owns or was given into a new one they own. */
+export const copyTemplate = async (id: string): Promise<BriefTemplate> => {
+  const res = await axios.post(`${API_BASE_URL}/brief-templates/${id}/copy`);
   return res.data as BriefTemplate;
 };
 
@@ -160,4 +188,46 @@ export const updateVoiceProfile = async (
 
 export const deleteVoiceProfile = async (id: string): Promise<void> => {
   await axios.delete(`${API_BASE_URL}/voice-profiles/${id}`);
+};
+
+/** Copy a voice profile the user owns or was given into a new one they own. */
+export const copyVoiceProfile = async (id: string): Promise<VoiceProfile> => {
+  const res = await axios.post(`${API_BASE_URL}/voice-profiles/${id}/copy`);
+  return res.data as VoiceProfile;
+};
+
+// ---- sharing templates and voice profiles (owner only) ----
+
+/** Which kind of library item a share call is about. */
+export type LibraryKind = 'template' | 'voice';
+
+const libraryPath = (kind: LibraryKind): string =>
+  kind === 'template' ? 'brief-templates' : 'voice-profiles';
+
+export const listLibraryShares = async (
+  kind: LibraryKind,
+  id: string,
+): Promise<BriefShareTarget[]> => {
+  const res = await axios.get(`${API_BASE_URL}/${libraryPath(kind)}/${id}/shares`);
+  return expectArray<BriefShareTarget>(res.data, 'shares');
+};
+
+/** Share with a user (by email) or a group (by name); returns the updated list. */
+export const addLibraryShare = async (
+  kind: LibraryKind,
+  id: string,
+  target: string,
+): Promise<BriefShareTarget[]> => {
+  const res = await axios.post(`${API_BASE_URL}/${libraryPath(kind)}/${id}/shares`, {
+    target,
+  });
+  return expectArray<BriefShareTarget>(res.data, 'shares');
+};
+
+export const removeLibraryShare = async (
+  kind: LibraryKind,
+  id: string,
+  shareId: string,
+): Promise<void> => {
+  await axios.delete(`${API_BASE_URL}/${libraryPath(kind)}/${id}/shares/${shareId}`);
 };

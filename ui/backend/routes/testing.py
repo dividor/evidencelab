@@ -40,7 +40,6 @@ from ui.backend.auth.testing_models import (
     TestRun,
 )
 from ui.backend.auth.users import current_superuser
-from ui.backend.routes.brief_central import _user_group_ids
 from ui.backend.schemas.testing import (
     BriefCheckCandidate,
     BriefCitationCheckCreate,
@@ -58,6 +57,7 @@ from ui.backend.schemas.testing import (
     TestExperimentRead,
     TestExperimentUpdate,
 )
+from ui.backend.services.brief_sharing import user_group_ids
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
@@ -513,7 +513,7 @@ async def _accessible_briefs(
         await session.execute(select(Brief).where(Brief.user_id == user.id))
     ).scalars()
     briefs = [(b, False) for b in own]
-    group_ids = await _user_group_ids(session, user.id)
+    group_ids = await user_group_ids(session, user.id)
     condition = BriefShare.shared_user_id == user.id
     if group_ids:
         condition = condition | BriefShare.group_id.in_(group_ids)

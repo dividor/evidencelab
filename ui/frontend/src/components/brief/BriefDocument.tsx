@@ -18,6 +18,7 @@ import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
 import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
 import { BriefSection, SectionAuditEntry } from './briefTypes';
+import { BriefVoiceSelect, briefDefaultSuffix, voiceHint } from './BriefVoiceSelect';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
@@ -127,6 +128,7 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
 
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
+
 const GuidancePanel: React.FC<{
   section: BriefSection;
   brief: UseBriefReturn;
@@ -136,6 +138,7 @@ const GuidancePanel: React.FC<{
   const isPending = section.status === 'pending';
   const briefVoice = brief.voices.find((v) => v.id === brief.briefVoiceId) || null;
   const ownVoice = brief.voices.find((v) => v.id === section.voiceId) || null;
+  const showVoice = brief.voices.length > 0 || !!section.voiceId || !!brief.briefVoiceId;
   return (
     <div className="brief-regen-panel">
       <div className="brief-regen-title">
@@ -147,30 +150,19 @@ const GuidancePanel: React.FC<{
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />
-      {brief.voices.length > 0 && (
+      {showVoice && (
         <>
           <div className="brief-regen-voice-label">Voice &amp; tone profile</div>
-          <select
+          <BriefVoiceSelect
             className="brief-regen-voice-select"
-            value={section.voiceId || ''}
-            onChange={(e) => brief.setSectionVoiceId(section.id, e.target.value || null)}
-            aria-label="Voice and tone profile for this section"
-          >
-            <option value="">
-              Use brief default{briefVoice ? ` — ${briefVoice.name}` : ''}
-            </option>
-            {brief.voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
+            value={section.voiceId}
+            voices={brief.voices}
+            onChange={(id) => brief.setSectionVoiceId(section.id, id)}
+            emptyLabel={`Use brief default${briefDefaultSuffix(brief.briefVoiceId, briefVoice)}`}
+            ariaLabel="Voice and tone profile for this section"
+          />
           <div className="brief-regen-voice-hint">
-            {ownVoice
-              ? ownVoice.instructions.slice(0, 150)
-              : briefVoice
-                ? `Inherits the brief profile — ${briefVoice.instructions.slice(0, 120)}`
-                : 'No voice profile applied'}
+            {voiceHint(section.voiceId, ownVoice, brief.briefVoiceId, briefVoice)}
           </div>
         </>
       )}

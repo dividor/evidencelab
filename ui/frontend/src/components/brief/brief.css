@@ -1836,6 +1836,7 @@
 
 .bc-card-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -1888,6 +1889,53 @@
 
 .bc-card-act-right {
   margin-left: auto;
+}
+
+/* Template and voice card footer: details line, then the actions. */
+.bc-lib-foot {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.bc-lib-meta {
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+  text-align: left;
+}
+
+/* Use Template spans the card, filled, as the obvious next step; the owner's
+   smaller actions sit in one row beneath it. */
+.bc-lib-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.bc-use-btn {
+  width: 100%;
+  font-size: 13.5px;
+  padding: 9px 14px;
+  gap: 6px;
+}
+
+/* The smaller actions share the row equally, spanning the same width as the
+   filled button above them. */
+.bc-lib-secondary {
+  display: flex;
+  gap: 6px;
+}
+
+.bc-lib-secondary .bc-card-act {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 6px 4px;
+}
+
+.bc-card-act-danger:hover {
+  border-color: var(--brand-error);
+  color: var(--brand-error);
 }
 
 .bc-icon-btn {
@@ -2127,6 +2175,64 @@
   font-size: 13.5px;
 }
 
+/* A template heading plus its prompt and settings, when opened. */
+.bc-heading-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bc-heading-settings {
+  margin-left: 34px;
+  padding: 10px 12px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border-light);
+}
+
+.bc-heading-settings .bc-field-row {
+  margin-top: 8px;
+}
+
+/* Same width whether or not a prompt is set, and as tall as the heading
+   input beside it, so every row lines up. */
+.bc-prompt-toggle {
+  flex: 0 0 92px;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bc-prompt-toggle:hover,
+.bc-prompt-toggle[aria-expanded='true'] {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.bc-prompt-toggle-set {
+  color: var(--brand-primary);
+}
+
+/* "prompt" beside a heading that carries one, in template previews. */
+.bc-prompt-mark {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
+}
+
 .bc-add-dashed {
   margin-top: 10px;
   display: inline-flex;
@@ -2171,6 +2277,18 @@
 .bc-share-row .bc-input {
   flex: 1;
   min-width: 0;
+}
+
+/* Buttons beside an input (Add, Copy link) take their height from the input
+   rather than their own padding, so the row lines up. */
+.bc-share-row {
+  align-items: stretch;
+}
+
+.bc-share-row .brief-btn {
+  flex-shrink: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .bc-share-url {
@@ -2583,23 +2701,15 @@
   text-decoration: underline;
 }
 
-/* Share dialog: people/group suggestions under the input. */
-.bc-share-input-wrap {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
+/* Share dialog: people/group suggestions under the input. They sit in the
+   normal flow rather than floating, because the dialog scrolls and would clip
+   a floating list at its edge. */
 .bc-share-suggestions {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  z-index: 20;
+  margin-top: 4px;
   max-height: 220px;
   overflow-y: auto;
   background: var(--brand-surface);
   border: 1px solid var(--brand-border);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.12);
 }
 .bc-share-suggestion {
   display: flex;
@@ -2612,8 +2722,16 @@
   text-align: left;
   cursor: pointer;
 }
-.bc-share-suggestion:hover {
+.bc-share-suggestion:hover,
+.bc-share-suggestion-active {
   background: var(--brand-border-light);
+}
+.bc-share-suggestion-add {
+  margin-left: auto;
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-primary);
 }
 .bc-share-suggestion-main {
   display: flex;
