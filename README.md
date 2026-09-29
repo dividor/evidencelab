@@ -68,9 +68,9 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic language translation
 - PDF preview with in-document search
 - Built-in searchable documentation area with sidebar navigation
-- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review. See [Evaluation Harness](docs/admin/evaluation.md)
+- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review, and fact-check a finished Brief with a citation check that judges every cited passage against the exact source excerpts it cites. See [Evaluation Harness](docs/admin/evaluation.md)
 - Administration views to track pipeline, documents, performance and errors
-- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row). See [Evaluation Harness](docs/admin/evaluation.md)
+- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row), plus a Brief citation check with a filterable review table and Excel export. See [Evaluation Harness](docs/admin/evaluation.md)
 
 3. AI platform integrations
 
