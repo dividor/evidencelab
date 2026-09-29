@@ -196,25 +196,21 @@ async def _share_target(session: AsyncSession, share: Any) -> BriefShareTarget |
     )
 
 
-async def add_share(
+ShareTarget = tuple[uuid.UUID | None, uuid.UUID | None]
+
+
+async def ensure_share(
     session: AsyncSession,
     share_cls: Any,
     item_col: InstrumentedAttribute,
     item_id: uuid.UUID,
-    owner: User,
-    target: str,
-    item_label: str,
-) -> None:
-    """Share an item with a user (by email) or a group (by name).
+    target: ShareTarget,
+) -> bool:
+    """Add a share row for ``(user_id, group_id)`` unless one exists.
 
-    Raises 404 for an unknown target, 400 when the owner names themselves and
-    409 when the item is already shared with that target.
+    Returns True when a row was added. Does not commit.
     """
-    shared_user_id, group_id = await resolve_share_target(session, target.strip())
-    if shared_user_id == owner.id:
-        raise HTTPException(
-            status_code=400, detail=f"You already own this {item_label}"
-        )
+    shared_user_id, group_id = target
     existing = await session.execute(
         select(share_cls.id).where(
             item_col == item_id,
@@ -223,7 +219,7 @@ async def add_share(
         )
     )
     if existing.scalars().first() is not None:
-        raise HTTPException(status_code=409, detail="Already shared")
+        return False
     session.add(
         share_cls(
             **{item_col.key: item_id},
@@ -231,7 +227,46 @@ async def add_share(
             group_id=group_id,
         )
     )
+    return True
+
+
+async def add_share(
+    session: AsyncSession,
+    share_cls: Any,
+    item_col: InstrumentedAttribute,
+    item_id: uuid.UUID,
+    owner: User,
+    target: str,
+    item_label: str,
+) -> ShareTarget:
+    """Share an item with a user (by email) or a group (by name).
+
+    Returns the ``(user_id, group_id)`` it was shared with. Raises 404 for an
+    unknown target, 400 when the owner names themselves and 409 when the item
+    is already shared with that target.
+    """
+    resolved = await resolve_share_target(session, target.strip())
+    if resolved[0] == owner.id:
+        raise HTTPException(
+            status_code=400, detail=f"You already own this {item_label}"
+        )
+    if not await ensure_share(session, share_cls, item_col, item_id, resolved):
+        raise HTTPException(status_code=409, detail="Already shared")
     await session.commit()
+    return resolved
+
+
+async def item_share_targets(
+    session: AsyncSession,
+    share_cls: Any,
+    item_col: InstrumentedAttribute,
+    item_id: uuid.UUID,
+) -> list[ShareTarget]:
+    """Every ``(user_id, group_id)`` an item is shared with."""
+    result = await session.execute(
+        select(share_cls.shared_user_id, share_cls.group_id).where(item_col == item_id)
+    )
+    return [(row[0], row[1]) for row in result.all()]
 
 
 async def remove_share(

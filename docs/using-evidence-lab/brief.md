@@ -102,7 +102,7 @@ Citations work like the rest of Evidence Lab: inline number badges link to the s
 
 Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
 
-From a card you can **open**, **share** or **delete** a brief. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
+Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
 
 > Signed out, briefs are kept in your browser's local storage instead, and sharing, templates, voice profiles and comments are unavailable.
 
@@ -181,14 +181,21 @@ The instructions are passed to the model when the outline is generated, when a s
 
 ### 9. Share templates and voice & tone profiles
 
-Templates and voice & tone profiles can be shared, so a team writes to the same structure and in the same register.
+Templates and voice & tone profiles can be shared, so a team writes to the same structure and in the same register. A typical use: a team lead builds a template with a prompt for each heading and the team's voice & tone profile, and shares it with the team's group, so every brief the team starts from it is researched and written the same way.
 
 - **Share** — click **Share** on a template or profile you own, then add people by name or email address, or a whole group by name, exactly as for a brief: pick a suggestion to share with it straight away.
 - **What recipients can do** — shared templates and profiles appear in their Brief Central, labelled with the owner's name, and in every template and voice picker. They can use them, but only the owner can edit, delete or share them. When the owner edits one, recipients get the change.
 - **Make a copy** — click **Copy** on any template or profile to make your own private copy, which you can edit and share. Copying is how you adapt a shared template without changing the original.
 - **Stop sharing** — open **Share** and remove the person or group. It disappears from their lists.
 
-Sharing a template does not share the voice & tone profiles it names. Share those as well, or recipients see **Unavailable voice & tone profile** where the template uses one. A section whose voice is unavailable, because it was unshared or deleted, is written without a voice, and its Research panel says so until you pick another profile.
+**Voices go with the template.** Sharing a template also shares the voice & tone profiles it uses that you own, with the same people and groups, so they receive it whole. A voice you add to the template later is shared with them too. Two limits:
+
+- A voice someone else shared with you cannot be passed on. Recipients see **Unavailable voice & tone profile** there until its owner shares it with them.
+- Stopping a template share leaves its voices shared, because you may have shared them for their own sake. Stop sharing a voice from its own **Share** dialog.
+
+A section whose voice is unavailable, because it was unshared or deleted, is written without a voice, and its Research panel says so until you pick another profile.
+
+**Where recipients find things.** Briefs shared with you are under **Shared with me** in Brief Central. Shared templates and voice & tone profiles are in your **Templates** and **Voice & tone** tabs, marked *Shared by* and the owner's name, and in every template and voice picker.
 
 ---
 

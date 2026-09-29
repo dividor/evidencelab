@@ -5,6 +5,12 @@ Both are owned by the user who created them and can be shared with a user
 brief from a shared template or write with a shared voice, and can make their
 own copy, but only the owner can edit, delete or share the original. Owner
 edits reach recipients, since a share points at the item rather than a copy.
+
+Sharing a template also shares the voice & tone profiles it uses that its
+owner owns, with the same people and groups, so a team receives the template
+whole; a voice added to a shared template later is shared the same way.
+Voices someone else owns cannot be passed on. Stopping a template share
+leaves its voices shared, since they may be shared for their own sake.
 """
 
 import copy
@@ -13,6 +19,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
@@ -36,7 +43,10 @@ from ui.backend.auth.schemas import (
 )
 from ui.backend.auth.users import current_active_user
 from ui.backend.services.brief_sharing import (
+    ShareTarget,
     add_share,
+    ensure_share,
+    item_share_targets,
     list_accessible,
     load_accessible,
     owner_names,
@@ -164,6 +174,33 @@ async def _require_usable_voices(
         )
         if profile is None:
             raise HTTPException(status_code=400, detail=_UNKNOWN_VOICE)
+
+
+async def _share_template_voices(
+    session: AsyncSession,
+    template: BriefTemplate,
+    owner: User,
+    targets: list[ShareTarget],
+) -> None:
+    """Share the voices a template uses, that its owner owns, with ``targets``."""
+    voice_ids = _voice_ids(template.headings, template.voice_profile_id)
+    if not voice_ids or not targets:
+        return
+    owned = await session.execute(
+        select(VoiceProfile.id).where(
+            VoiceProfile.id.in_(voice_ids), VoiceProfile.user_id == owner.id
+        )
+    )
+    for voice_id in owned.scalars().all():
+        for target in targets:
+            await ensure_share(
+                session,
+                VoiceProfileShare,
+                VoiceProfileShare.voice_profile_id,
+                voice_id,
+                target,
+            )
+    await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +348,11 @@ async def update_template(
             setattr(template, field, getattr(body, field))
     await session.commit()
     await session.refresh(template)
+    # A voice added to an already-shared template reaches its recipients too.
+    recipients = await item_share_targets(
+        session, BriefTemplateShare, BriefTemplateShare.template_id, template.id
+    )
+    await _share_template_voices(session, template, user, recipients)
     counts = await share_counts(
         session, BriefTemplateShare, BriefTemplateShare.template_id, [template.id]
     )
@@ -406,9 +448,13 @@ async def add_template_share(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Share a template with a user (by email) or group (by name); owner only."""
+    """Share a template with a user (by email) or group (by name); owner only.
+
+    The voice & tone profiles the template uses that the owner owns are
+    shared with the same user or group.
+    """
     template = await _owned_template(session, template_id, user)
-    await add_share(
+    target = await add_share(
         session,
         BriefTemplateShare,
         BriefTemplateShare.template_id,
@@ -417,6 +463,7 @@ async def add_template_share(
         body.target,
         "template",
     )
+    await _share_template_voices(session, template, user, [target])
     return await share_targets(
         session, BriefTemplateShare, BriefTemplateShare.template_id, template.id
     )

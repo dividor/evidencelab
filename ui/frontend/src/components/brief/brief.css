@@ -1920,10 +1920,17 @@
   gap: 6px;
 }
 
+/* The smaller actions share the row equally, spanning the same width as the
+   filled button above them. */
 .bc-lib-secondary {
   display: flex;
-  flex-wrap: wrap;
   gap: 6px;
+}
+
+.bc-lib-secondary .bc-card-act {
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 6px 4px;
 }
 
 .bc-card-act-danger:hover {

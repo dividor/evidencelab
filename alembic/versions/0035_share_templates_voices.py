@@ -10,8 +10,8 @@ tone profile and a default section length. Per-heading prompts, voices and
 length targets live in the existing ``headings`` JSON and need no schema
 change.
 
-Revision ID: 0034_share_templates_voices
-Revises: 0033_rename_trace_url
+Revision ID: 0035_share_templates_voices
+Revises: 0034_add_brief_citation_checks
 Create Date: 2026-09-29
 
 Note: the revision ID is intentionally kept under 32 characters to fit the
@@ -23,8 +23,8 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from alembic import op
 
-revision = "0034_share_templates_voices"
-down_revision = "0033_rename_trace_url"
+revision = "0035_share_templates_voices"
+down_revision = "0034_add_brief_citation_checks"
 branch_labels = None
 depends_on = None
 

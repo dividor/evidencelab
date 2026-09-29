@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BriefCentral } from '../components/brief/BriefCentral';
 import { LibraryShareModal } from '../components/brief/BriefShareDialog';
-import { BriefTemplate, VoiceProfile } from '../components/brief/briefTypes';
+import { BriefListItem, BriefTemplate, VoiceProfile } from '../components/brief/briefTypes';
 import { CentralTab, UseBriefCentralReturn } from '../components/brief/useBriefCentral';
 
 jest.mock('../config', () => ({
@@ -178,7 +178,7 @@ const fakeCentral = (tab: CentralTab, overrides: Partial<UseBriefCentralReturn> 
     error: null,
     setError: jest.fn(),
     refresh: jest.fn(),
-    removeBrief: jest.fn(),
+    removeBrief: jest.fn().mockResolvedValue(undefined),
     saveTemplate: jest.fn(),
     copyTemplate: jest.fn().mockResolvedValue(template('t-copy', 'Copy of Their template')),
     removeTemplate: jest.fn().mockResolvedValue(undefined),
@@ -187,6 +187,7 @@ const fakeCentral = (tab: CentralTab, overrides: Partial<UseBriefCentralReturn> 
     copyVoice: jest.fn().mockResolvedValue(voice('v-copy', 'Copy of Their voice')),
     removeVoice: jest.fn().mockResolvedValue(undefined),
     setVoiceShareCount: jest.fn(),
+    refreshVoices: jest.fn().mockResolvedValue(undefined),
     voiceById: () => null,
     ...overrides,
   }) as unknown as UseBriefCentralReturn;
@@ -247,4 +248,65 @@ describe('Brief Central library cards', () => {
     expect(mine.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
     expect(mine.queryByRole('button', { name: 'Use Template' })).toBeNull();
   });
+});
+
+const briefItem = (id: string, title: string, extra: Partial<BriefListItem> = {}): BriefListItem => ({
+  id,
+  title,
+  query: null,
+  data_source: 'wfp',
+  voice_profile_id: null,
+  section_count: 3,
+  source_count: 12,
+  owner_name: null,
+  share_count: 0,
+  created_at: NOW,
+  updated_at: NOW,
+  ...extra,
+});
+
+describe('Brief Central saved-brief cards', () => {
+  test('an owned brief opens from a filled Open Brief, with Share and Delete beneath', () => {
+    const onOpen = jest.fn();
+    const central = fakeCentral('mine', {
+      myBriefs: [briefItem('b-1', 'School feeding', { share_count: 2 })],
+      voiceById: () => voice('v-mine', 'Donor memo'),
+    });
+    render(<BriefCentral central={central} onOpenBrief={onOpen} onCreateBrief={jest.fn()} />);
+    const mine = within(card('School feeding'));
+
+    expect(mine.getByRole('button', { name: 'Open Brief' })).toHaveClass('brief-btn-primary');
+    expect(mine.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(mine.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(mine.queryByRole('button', { name: '×' })).toBeNull();
+    expect(mine.getByText(/^Shared with 2 · Donor memo · /)).toBeInTheDocument();
+
+    fireEvent.click(mine.getByRole('button', { name: 'Open Brief' }));
+    expect(onOpen).toHaveBeenCalledWith('b-1');
+    fireEvent.click(mine.getByRole('button', { name: 'Delete' }));
+    expect(central.removeBrief).toHaveBeenCalledWith('b-1');
+  });
+
+  test('a brief shared with me names its owner and can only be opened', () => {
+    const central = fakeCentral('shared', {
+      sharedBriefs: [briefItem('b-2', 'Cash transfers', { owner_name: 'Priya' })],
+    });
+    render(<BriefCentral central={central} onOpenBrief={jest.fn()} onCreateBrief={jest.fn()} />);
+    const theirs = within(card('Cash transfers'));
+    expect(theirs.getByText(/^Shared by Priya · /)).toBeInTheDocument();
+    expect(theirs.getByRole('button', { name: 'Open Brief' })).toBeInTheDocument();
+    expect(theirs.queryByRole('button', { name: 'Share' })).toBeNull();
+    expect(theirs.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+});
+
+test('sharing a template reloads the voices, whose shares it may have changed', async () => {
+  const central = fakeCentral('templates');
+  render(<BriefCentral central={central} onOpenBrief={jest.fn()} onCreateBrief={jest.fn()} />);
+  fireEvent.click(within(card('My template')).getByRole('button', { name: /Share/ }));
+  expect(await screen.findByText(/voice & tone profiles it uses that you own are shared/)).toBeInTheDocument();
+  fireEvent.change(screen.getByPlaceholderText('Search people or groups'), { target: { value: 'OEV team' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+  await waitFor(() => expect(central.setTemplateShareCount).toHaveBeenCalledWith('t-mine', 2));
+  expect(central.refreshVoices).toHaveBeenCalled();
 });

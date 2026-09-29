@@ -322,7 +322,7 @@ export const BriefShareModal: React.FC<{
 
 const librarySubtitle = (kind: LibraryKind): string =>
   kind === 'template'
-    ? 'People you add can start briefs from this template and make their own copy. Only you can edit it, and your changes reach them.'
+    ? 'People you add can start briefs from this template and make their own copy. The voice & tone profiles it uses that you own are shared with them too. Only you can edit it, and your changes reach them.'
     : 'People you add can write with this voice & tone profile and make their own copy. Only you can edit it, and your changes reach them.';
 
 /** Share a template or a voice & tone profile: use-only. */

@@ -45,6 +45,57 @@ const TAB_LABELS: Record<CentralTab, (c: UseBriefCentralReturn) => string> = {
   voices: (c) => `Voice & tone (${c.voices.length})`,
 };
 
+interface CardAction {
+  label: string;
+  title: string;
+  onClick: () => void;
+  icon?: React.ReactNode;
+  danger?: boolean;
+}
+
+// The footer every Brief Central card shares: a left-aligned details line,
+// then the card's main action as a full-width filled button, then the
+// smaller actions in one row of equal-width buttons beneath it.
+const CardFoot: React.FC<{
+  meta: string;
+  primary?: CardAction;
+  actions: CardAction[];
+}> = ({ meta, primary, actions }) => (
+  <div className="bc-card-foot bc-lib-foot">
+    <div className="bc-lib-meta">{meta}</div>
+    <div className="bc-lib-actions">
+      {primary && (
+        <button className="brief-btn brief-btn-primary bc-use-btn" title={primary.title} onClick={primary.onClick}>
+          {primary.icon} {primary.label}
+        </button>
+      )}
+      {actions.length > 0 && (
+        <div className="bc-lib-secondary">
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              className={`bc-card-act${a.danger ? ' bc-card-act-danger' : ''}`}
+              title={a.title}
+              onClick={a.onClick}
+            >
+              {a.icon} {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const briefMeta = (brief: BriefListItem, voiceName: string | null, shared: boolean): string => {
+  const access = shared
+    ? `Shared by ${brief.owner_name}`
+    : brief.share_count
+      ? `Shared with ${brief.share_count}`
+      : 'Private';
+  return [access, shared ? null : voiceName, formatWhen(brief.updated_at)].filter(Boolean).join(' · ');
+};
+
 const BriefCard: React.FC<{
   brief: BriefListItem;
   voiceName: string | null;
@@ -52,49 +103,30 @@ const BriefCard: React.FC<{
   onOpen: () => void;
   onShare?: () => void;
   onDelete?: () => void;
-}> = ({ brief, voiceName, shared, onOpen, onShare, onDelete }) => (
-  <div className="bc-card">
-    <button className="bc-card-main" onClick={onOpen}>
-      <div className="bc-card-title">{brief.title}</div>
-      {brief.query && <div className="bc-card-query">{brief.query}</div>}
-      <div className="bc-card-meta">
-        {brief.section_count} sections · {brief.source_count} sources ·{' '}
-        {formatWhen(brief.updated_at)}
-      </div>
-    </button>
-    <div className="bc-card-foot">
-      {shared ? (
-        <>
-          <span className="bc-chip bc-chip-muted">Viewer</span>
-          <span className="bc-card-foot-note">Shared by {brief.owner_name}</span>
-        </>
-      ) : (
-        <>
-          <span className="bc-chip">{voiceName || 'No voice'}</span>
-          <span className="bc-card-foot-note">
-            {brief.share_count ? `Shared with ${brief.share_count}` : 'Private'}
-          </span>
-          <button className="bc-card-act" title="Share this brief" onClick={onShare}>
-            <IconShare size={12} /> Share
-          </button>
-          <button
-            className="bc-icon-btn bc-icon-danger"
-            title="Delete this brief"
-            aria-label="Delete this brief"
-            onClick={onDelete}
-          >
-            ×
-          </button>
-        </>
-      )}
+}> = ({ brief, voiceName, shared, onOpen, onShare, onDelete }) => {
+  const actions: CardAction[] = [];
+  if (onShare) actions.push({ label: 'Share', title: 'Share this brief', icon: <IconShare size={12} />, onClick: onShare });
+  if (onDelete) actions.push({ label: 'Delete', title: 'Delete this brief', danger: true, onClick: onDelete });
+  return (
+    <div className="bc-card">
+      <button className="bc-card-main" onClick={onOpen}>
+        <div className="bc-card-title">{brief.title}</div>
+        {brief.query && <div className="bc-card-query">{brief.query}</div>}
+        <div className="bc-card-meta">
+          {brief.section_count} sections · {brief.source_count} sources
+        </div>
+      </button>
+      <CardFoot
+        meta={briefMeta(brief, voiceName, shared)}
+        primary={{ label: 'Open Brief', title: 'Open this brief', onClick: onOpen }}
+        actions={actions}
+      />
     </div>
-  </div>
-);
+  );
+};
 
-// Footer of a template or voice card. A details line (who it is shared with,
-// or whose it is, then counts), left-aligned; below it the full-width, filled
-// Use Template, then the owner's Edit / Share / Copy / Delete in one row.
-// Recipients of a shared item only get Copy.
+// Footer of a template or voice card: Use Template (templates only), then the
+// owner's Edit / Share / Copy / Delete. Recipients of a shared item only get Copy.
 const LibraryFoot: React.FC<{
   item: { can_edit: boolean; owner_name: string | null; share_count: number };
   note?: string;
@@ -110,37 +142,30 @@ const LibraryFoot: React.FC<{
       ? `Shared with ${item.share_count}`
       : 'Private'
     : `Shared by ${item.owner_name}`;
+  const copy: CardAction = {
+    label: 'Copy',
+    title: `Make your own copy of this ${noun}`,
+    icon: <IconCopy size={12} />,
+    onClick: onCopy,
+  };
+  const actions: CardAction[] = item.can_edit
+    ? [
+        { label: 'Edit', title: `Edit this ${noun}`, icon: <IconEdit size={12} />, onClick: onEdit },
+        { label: 'Share', title: `Share this ${noun}`, icon: <IconShare size={12} />, onClick: onShare },
+        copy,
+        { label: 'Delete', title: `Delete this ${noun}`, danger: true, onClick: onDelete },
+      ]
+    : [copy];
   return (
-    <div className="bc-card-foot bc-lib-foot">
-      <div className="bc-lib-meta">{[access, note].filter(Boolean).join(' · ')}</div>
-      <div className="bc-lib-actions">
-        {onUse && (
-          <button className="brief-btn brief-btn-primary bc-use-btn" onClick={onUse}>
-            <IconPlus size={13} /> Use Template
-          </button>
-        )}
-        <div className="bc-lib-secondary">
-          {item.can_edit && (
-            <>
-              <button className="bc-card-act" title={`Edit this ${noun}`} onClick={onEdit}>
-                <IconEdit size={12} /> Edit
-              </button>
-              <button className="bc-card-act" title={`Share this ${noun}`} onClick={onShare}>
-                <IconShare size={12} /> Share
-              </button>
-            </>
-          )}
-          <button className="bc-card-act" title={`Make your own copy of this ${noun}`} onClick={onCopy}>
-            <IconCopy size={12} /> Copy
-          </button>
-          {item.can_edit && (
-            <button className="bc-card-act bc-card-act-danger" title={`Delete this ${noun}`} onClick={onDelete}>
-              Delete
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    <CardFoot
+      meta={[access, note].filter(Boolean).join(' · ')}
+      primary={
+        onUse
+          ? { label: 'Use Template', title: `Use this ${noun}`, icon: <IconPlus size={13} />, onClick: onUse }
+          : undefined
+      }
+      actions={actions}
+    />
   );
 };
 
@@ -428,11 +453,14 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           kind={libraryShare.kind}
           itemId={libraryShare.id}
           itemName={libraryShare.name}
-          onChanged={(count) =>
-            libraryShare.kind === 'template'
-              ? central.setTemplateShareCount(libraryShare.id, count)
-              : central.setVoiceShareCount(libraryShare.id, count)
-          }
+          onChanged={(count) => {
+            if (libraryShare.kind === 'voice') {
+              central.setVoiceShareCount(libraryShare.id, count);
+              return;
+            }
+            central.setTemplateShareCount(libraryShare.id, count);
+            void central.refreshVoices();
+          }}
           onClose={() => setModal(null)}
         />
       )}

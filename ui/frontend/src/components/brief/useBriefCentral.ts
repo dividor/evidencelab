@@ -140,6 +140,16 @@ export const useBriefCentral = (enabled: boolean) => {
     setVoices((prev) => prev.filter((v) => v.id !== id));
   }, []);
 
+  // Sharing a template also shares the voices it uses, so their share counts
+  // change; reload the voices without the page-wide loading state.
+  const refreshVoices = useCallback(async () => {
+    try {
+      setVoices(await listVoiceProfiles());
+    } catch (e) {
+      setError(errMessage(e, 'Could not reload voice & tone profiles.'));
+    }
+  }, []);
+
   const copyVoice = useCallback(async (id: string) => {
     const created = await copyVoiceProfile(id);
     setVoices((prev) => insertOwned(prev, created));
@@ -172,6 +182,7 @@ export const useBriefCentral = (enabled: boolean) => {
     copyVoice,
     removeVoice,
     setVoiceShareCount,
+    refreshVoices,
     voiceById,
   };
 };

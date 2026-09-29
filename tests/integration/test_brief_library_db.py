@@ -305,7 +305,11 @@ async def test_template_may_only_name_voices_the_author_can_use(session):
 
 async def test_copy_keeps_a_voice_the_copier_cannot_see_and_stays_editable(session):
     owner, reader = await _user(session, "owner"), await _user(session, "reader")
-    voice = await _voice(session, owner)
+    # A third person's voice, shared with the owner only: sharing the template
+    # cannot pass it on, so the reader never sees it.
+    third = await _user(session, "third")
+    voice = await _voice(session, third, "Third person's voice")
+    await _share_voice(session, third, voice.id, owner.email)
     template = await _template(session, owner, voice_profile_id=voice.id)
     await _share_template(session, owner, template.id, reader.email)
 
@@ -322,6 +326,94 @@ async def test_copy_keeps_a_voice_the_copier_cannot_see_and_stays_editable(sessi
     assert renamed.voice_profile_id == voice.id
     voices = await brief_library.list_voice_profiles(user=reader, session=session)
     assert voice.id not in [v.id for v in voices]
+
+
+async def _voice_ids_of(session, user):
+    voices = await brief_library.list_voice_profiles(user=user, session=session)
+    return {v.id for v in voices if not v.can_edit}
+
+
+async def test_sharing_a_template_shares_the_owners_voices_it_uses(session):
+    owner, member = await _user(session, "owner"), await _user(session, "member")
+    group = await _group(session, member)
+    brief_voice = await _voice(session, owner, "Board register")
+    section_voice = await _voice(session, owner, "Field register")
+    unused_voice = await _voice(session, owner, "Not in the template")
+    body = BriefTemplateCreate(
+        name="Team template",
+        headings=[
+            _heading("Summary"),
+            _heading("Detail", voice_profile_id=section_voice.id),
+        ],
+        voice_profile_id=brief_voice.id,
+    )
+    template = await brief_library.create_template(
+        body=body, user=owner, session=session
+    )
+
+    await _share_template(session, owner, template.id, group.name)
+
+    assert await _voice_ids_of(session, member) == {brief_voice.id, section_voice.id}
+    assert unused_voice.id not in await _voice_ids_of(session, member)
+
+
+async def test_voices_owned_by_someone_else_are_not_passed_on(session):
+    owner, reader, third = (
+        await _user(session, "owner"),
+        await _user(session, "reader"),
+        await _user(session, "third"),
+    )
+    theirs = await _voice(session, third, "Third person's voice")
+    await _share_voice(session, third, theirs.id, owner.email)
+    template = await _template(session, owner, voice_profile_id=theirs.id)
+
+    await _share_template(session, owner, template.id, reader.email)
+
+    assert await _voice_ids_of(session, reader) == set()
+
+
+async def test_a_voice_added_to_a_shared_template_reaches_its_recipients(session):
+    owner, reader = await _user(session, "owner"), await _user(session, "reader")
+    template = await _template(session, owner)
+    await _share_template(session, owner, template.id, reader.email)
+    voice = await _voice(session, owner)
+
+    await brief_library.update_template(
+        template_id=template.id,
+        body=BriefTemplateUpdate(voice_profile_id=voice.id),
+        user=owner,
+        session=session,
+    )
+
+    assert await _voice_ids_of(session, reader) == {voice.id}
+
+
+async def test_a_voice_already_shared_is_not_shared_twice(session):
+    owner, reader = await _user(session, "owner"), await _user(session, "reader")
+    voice = await _voice(session, owner)
+    await _share_voice(session, owner, voice.id, reader.email)
+    template = await _template(session, owner, voice_profile_id=voice.id)
+
+    await _share_template(session, owner, template.id, reader.email)
+
+    targets = await brief_library.list_voice_profile_shares(
+        profile_id=voice.id, user=owner, session=session
+    )
+    assert [t.kind for t in targets] == [reader.email]
+
+
+async def test_stopping_a_template_share_leaves_its_voices_shared(session):
+    owner, reader = await _user(session, "owner"), await _user(session, "reader")
+    voice = await _voice(session, owner)
+    template = await _template(session, owner, voice_profile_id=voice.id)
+    targets = await _share_template(session, owner, template.id, reader.email)
+
+    await brief_library.remove_template_share(
+        template_id=template.id, share_id=targets[0].id, user=owner, session=session
+    )
+
+    assert await brief_library.list_templates(user=reader, session=session) == []
+    assert await _voice_ids_of(session, reader) == {voice.id}
 
 
 async def test_deleting_a_voice_clears_it_from_templates(session):
