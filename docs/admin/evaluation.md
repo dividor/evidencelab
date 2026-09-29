@@ -174,7 +174,7 @@ Expand a run to see the per‑case results table, and expand a case to see:
 
 The **Testing (Brief)** tab checks a finished brief against its own sources. Where the experiments above judge an AI summary against a rubric you write, the citation check needs no expectations: for every sentence of the brief that carries a `[n]` citation, an LLM judge is shown that sentence and the **exact source excerpts it cites**, each introduced by its document title and section heading, and nothing else, and decides whether the sentence is supported by them. Context named in a title or heading (the country, programme or period a document is about) counts as the setting of its excerpt, so a sentence that names it is not overstating.
 
-![Testing (Brief): briefs you can check](/docs/images/admin/eval/brief-check-overview.png)
+![Testing (Brief): briefs you can check](../images/admin/eval/brief-check-overview.png)
 
 The list shows your own briefs and the briefs shared with you, with the number of researched sections and cited passages, and the outcome of the last check. The judge is the summarisation model of the model combo selected in the **Models** menu at the top of the page, so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
@@ -187,17 +187,17 @@ Each passage gets one of four verdicts:
 
 Anything other than *Supported* is **flagged** for review. The judge must also copy the quotes it relies on character for character from the excerpts; each quote is verified mechanically against the excerpt's text and its section heading path (a passage that restates a section title is supported by that title), and a passage whose quote cannot be found in its source is marked **quote not in source**, because a verdict resting on an invented quote deserves extra scrutiny.
 
-![Result of a brief citation check](/docs/images/admin/eval/brief-check-result.png)
+![Result of a brief citation check](../images/admin/eval/brief-check-result.png)
 
 The result page shows the verdict counts, the flagged share, tokens and cost, and the passages table. Hover a summary tile, a column heading or a verdict for a plain‑language explanation of what it means. Filter it by verdict, **Flagged only**, **Quote not in source**, section, or free text. The citation numbers in the **Cites** column open the cited passage in Evidence Lab's document preview. Expand a passage to read the problems the judge found, its explanation, its quotes with their verification status (the ⓘ icon explains where those quotes come from), and each cited excerpt; its heading opens the document at that passage. **Download Excel** saves the same data as three sheets: *Flagged*, *All judgements* and *Summary* (the per‑section verdict counts).
 
 A supported passage, with the quotes the judge relied on verified against the excerpt:
 
-![A supported passage in detail](/docs/images/admin/eval/brief-check-supported.png)
+![A supported passage in detail](../images/admin/eval/brief-check-supported.png)
 
 A flagged passage, with the problems the judge found:
 
-![A flagged passage in detail](/docs/images/admin/eval/brief-check-flagged.png)
+![A flagged passage in detail](../images/admin/eval/brief-check-flagged.png)
 
 > The judge sees only the stored excerpts, not the whole document. A passage can be flagged because the brief cites the wrong passage of the right document. Treat flags as a review list, not a final verdict.
 
