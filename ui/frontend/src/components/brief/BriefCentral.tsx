@@ -91,8 +91,10 @@ const BriefCard: React.FC<{
   </div>
 );
 
-// Footer of a template or voice card: who it is shared with (owner) or whose
-// it is (recipient), then the actions allowed on it.
+// Footer of a template or voice card. A details line (who it is shared with,
+// or whose it is, then counts), left-aligned; below it the full-width, filled
+// Use Template, then the owner's Edit / Share / Copy / Delete in one row.
+// Recipients of a shared item only get Copy.
 const LibraryFoot: React.FC<{
   item: { can_edit: boolean; owner_name: string | null; share_count: number };
   note?: string;
@@ -102,54 +104,45 @@ const LibraryFoot: React.FC<{
   onEdit: () => void;
   onShare: () => void;
   onDelete: () => void;
-}> = ({ item, note, noun, onUse, onCopy, onEdit, onShare, onDelete }) => (
-  <div className="bc-card-foot">
-    {item.can_edit ? (
-      <span className="bc-card-foot-note">
-        {item.share_count ? `Shared with ${item.share_count}` : 'Private'}
-        {note ? ` · ${note}` : ''}
-      </span>
-    ) : (
-      <>
-        <span className="bc-chip bc-chip-muted">Shared</span>
-        <span className="bc-card-foot-note">
-          by {item.owner_name}
-          {note ? ` · ${note}` : ''}
-        </span>
-      </>
-    )}
-    {onUse && (
-      <button className="bc-card-act bc-card-act-right" title={`Use this ${noun}`} onClick={onUse}>
-        <IconPlus size={12} /> Use
-      </button>
-    )}
-    <button
-      className={`bc-card-act${onUse ? '' : ' bc-card-act-right'}`}
-      title={`Make your own copy of this ${noun}`}
-      onClick={onCopy}
-    >
-      <IconCopy size={12} /> Copy
-    </button>
-    {item.can_edit && (
-      <>
-        <button className="bc-card-act" title={`Edit this ${noun}`} onClick={onEdit}>
-          <IconEdit size={12} /> Edit
-        </button>
-        <button className="bc-card-act" title={`Share this ${noun}`} onClick={onShare}>
-          <IconShare size={12} /> Share
-        </button>
-        <button
-          className="bc-icon-btn bc-icon-danger"
-          title={`Delete this ${noun}`}
-          aria-label={`Delete this ${noun}`}
-          onClick={onDelete}
-        >
-          ×
-        </button>
-      </>
-    )}
-  </div>
-);
+}> = ({ item, note, noun, onUse, onCopy, onEdit, onShare, onDelete }) => {
+  const access = item.can_edit
+    ? item.share_count
+      ? `Shared with ${item.share_count}`
+      : 'Private'
+    : `Shared by ${item.owner_name}`;
+  return (
+    <div className="bc-card-foot bc-lib-foot">
+      <div className="bc-lib-meta">{[access, note].filter(Boolean).join(' · ')}</div>
+      <div className="bc-lib-actions">
+        {onUse && (
+          <button className="brief-btn brief-btn-primary bc-use-btn" onClick={onUse}>
+            <IconPlus size={13} /> Use Template
+          </button>
+        )}
+        <div className="bc-lib-secondary">
+          {item.can_edit && (
+            <>
+              <button className="bc-card-act" title={`Edit this ${noun}`} onClick={onEdit}>
+                <IconEdit size={12} /> Edit
+              </button>
+              <button className="bc-card-act" title={`Share this ${noun}`} onClick={onShare}>
+                <IconShare size={12} /> Share
+              </button>
+            </>
+          )}
+          <button className="bc-card-act" title={`Make your own copy of this ${noun}`} onClick={onCopy}>
+            <IconCopy size={12} /> Copy
+          </button>
+          {item.can_edit && (
+            <button className="bc-card-act bc-card-act-danger" title={`Delete this ${noun}`} onClick={onDelete}>
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const templateNote = (template: BriefTemplate): string => {
   const prompts = template.headings.filter((h) => h.prompt).length + (template.prompt ? 1 : 0);

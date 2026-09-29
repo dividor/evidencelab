@@ -101,6 +101,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { suggestions, open: suggestOpen, setOpen: setSuggestOpen } = useShareSuggestions(input);
+  // The suggestion picked with the arrow keys (-1 = none; Enter adds what was typed).
+  const [active, setActive] = useState(-1);
+  const showSuggestions = suggestOpen && suggestions.length > 0;
 
   // Load once when the dialog opens; callers pass a new `load` each render.
   const loadRef = useRef(load);
@@ -119,22 +122,47 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
     };
   }, []);
 
-  const submit = useCallback(async () => {
-    const target = input.trim();
-    if (!target || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const updated = await add(target);
-      setTargets(updated);
-      setInput('');
-      onChanged?.(updated);
-    } catch (e) {
-      setError(errMessage(e, 'Could not share.'));
-    } finally {
-      setBusy(false);
+  // Share with `picked` (a chosen suggestion) or, without one, what was typed.
+  const submit = useCallback(
+    async (picked?: string) => {
+      const target = (picked ?? input).trim();
+      if (!target || busy) return;
+      setBusy(true);
+      setError(null);
+      setSuggestOpen(false);
+      setActive(-1);
+      try {
+        const updated = await add(target);
+        setTargets(updated);
+        setInput('');
+        onChanged?.(updated);
+      } catch (e) {
+        setInput(target);
+        setError(errMessage(e, 'Could not share.'));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [input, busy, add, onChanged, setSuggestOpen],
+  );
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' && suggestions.length > 0) {
+      e.preventDefault();
+      setSuggestOpen(true);
+      setActive((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp' && showSuggestions) {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const chosen = showSuggestions ? suggestions.find((_, i) => i === active) : undefined;
+      void submit(chosen?.value);
+    } else if (e.key === 'Escape') {
+      setSuggestOpen(false);
+      setActive(-1);
     }
-  }, [input, busy, add, onChanged]);
+  };
 
   const revoke = useCallback(
     async (shareId: string) => {
@@ -171,54 +199,52 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({
             Add people or groups
           </label>
           <div className="bc-share-row">
-            <div className="bc-share-input-wrap">
-              <input
-                id="bc-share-add"
-                className="bc-input"
-                value={input}
-                autoComplete="off"
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setSuggestOpen(true);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void submit();
-                  else if (e.key === 'Escape') setSuggestOpen(false);
-                }}
-                // Delayed so a click on a suggestion lands before it closes.
-                onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
-                onFocus={() => suggestions.length > 0 && setSuggestOpen(true)}
-                placeholder="Search people or groups"
-              />
-              {suggestOpen && suggestions.length > 0 && (
-                <div className="bc-share-suggestions" role="listbox">
-                  {suggestions.map((sug) => (
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={false}
-                      className="bc-share-suggestion"
-                      key={`${sug.kind}-${sug.value}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setInput(sug.value);
-                        setSuggestOpen(false);
-                      }}
-                    >
-                      <span className="bc-avatar">{initialsOf(sug.label)}</span>
-                      <span className="bc-share-suggestion-main">
-                        <span className="bc-share-suggestion-name">{sug.label}</span>
-                        <span className="bc-share-suggestion-sub">{sug.sub}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <input
+              id="bc-share-add"
+              className="bc-input"
+              value={input}
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={showSuggestions}
+              aria-controls="bc-share-suggestions"
+              onChange={(e) => {
+                setInput(e.target.value);
+                setSuggestOpen(true);
+                setActive(-1);
+              }}
+              onKeyDown={onKeyDown}
+              onFocus={() => suggestions.length > 0 && setSuggestOpen(true)}
+              placeholder="Search people or groups"
+            />
             <button className="brief-btn brief-btn-primary" disabled={busy} onClick={() => void submit()}>
               Add
             </button>
           </div>
+          {/* In the normal flow, not floating: the dialog scrolls, and a floating
+              list would be clipped at its edge. Choosing a suggestion shares
+              with it straight away. */}
+          {showSuggestions && (
+            <div id="bc-share-suggestions" className="bc-share-suggestions" role="listbox">
+              {suggestions.map((sug, i) => (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === active}
+                  className={`bc-share-suggestion${i === active ? ' bc-share-suggestion-active' : ''}`}
+                  key={`${sug.kind}-${sug.value}`}
+                  disabled={busy}
+                  onClick={() => void submit(sug.value)}
+                >
+                  <span className="bc-avatar">{initialsOf(sug.label)}</span>
+                  <span className="bc-share-suggestion-main">
+                    <span className="bc-share-suggestion-name">{sug.label}</span>
+                    <span className="bc-share-suggestion-sub">{sug.sub}</span>
+                  </span>
+                  <span className="bc-share-suggestion-add">Share</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="bc-share-list">
             {targets.map((t) => (
@@ -294,12 +320,10 @@ export const BriefShareModal: React.FC<{
   );
 };
 
-const LIBRARY_SUBTITLE: Record<LibraryKind, string> = {
-  template:
-    'People you add can start briefs from this template and make their own copy. Only you can edit it, and your changes reach them.',
-  voice:
-    'People you add can write with this voice & tone profile and make their own copy. Only you can edit it, and your changes reach them.',
-};
+const librarySubtitle = (kind: LibraryKind): string =>
+  kind === 'template'
+    ? 'People you add can start briefs from this template and make their own copy. Only you can edit it, and your changes reach them.'
+    : 'People you add can write with this voice & tone profile and make their own copy. Only you can edit it, and your changes reach them.';
 
 /** Share a template or a voice & tone profile: use-only. */
 export const LibraryShareModal: React.FC<{
@@ -311,7 +335,7 @@ export const LibraryShareModal: React.FC<{
 }> = ({ kind, itemId, itemName, onChanged, onClose }) => (
   <ShareDialog
     title={`Share “${itemName}”`}
-    subtitle={LIBRARY_SUBTITLE[kind]}
+    subtitle={librarySubtitle(kind)}
     accessLabel="Can use"
     load={() => listLibraryShares(kind, itemId)}
     add={(target) => addLibraryShare(kind, itemId, target)}
