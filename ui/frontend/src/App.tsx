@@ -3116,6 +3116,8 @@ function App() {
         isActive={activeTab === 'admin'}
         dataSource={dataSource}
         dataSourceConfig={currentDataSourceConfig}
+        modelCombo={selectedModelCombo}
+        onResultClick={handleResultClick}
       />
 
       <AppFooter>

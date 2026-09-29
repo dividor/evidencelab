@@ -158,3 +158,75 @@ class TestExperimentRead(BaseModel):
 
 class TestExperimentDetail(TestExperimentRead):
     runs: List[TestRunRead] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Brief citation check
+# ---------------------------------------------------------------------------
+
+
+class BriefCheckCandidate(BaseModel):
+    """A brief the current user may check (own or shared with them)."""
+
+    id: uuid.UUID
+    title: str
+    data_source: Optional[str] = None
+    updated_at: datetime
+    owner_name: str
+    shared: bool
+    researched_sections: int
+    cited_passages: int
+    last_check: Optional["BriefCitationCheckRead"] = None
+
+
+class BriefCitationCheckCreate(BaseModel):
+    brief_id: uuid.UUID
+    model_combo: Optional[str] = Field(default=None, max_length=255)
+
+
+class BriefCitationCheckRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    brief_id: uuid.UUID
+    brief_title: str
+    data_source: Optional[str] = None
+    created_by_user_id: Optional[uuid.UUID] = None
+    judge_model: Optional[str] = None
+    model_combo: Optional[str] = None
+    status: str
+    summary_stats: Optional[Dict[str, Any]] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class BriefCitationCheckPassageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    passage_id: int
+    brief_section: str
+    passage: str
+    citations: str
+    documents: str
+    sources: List[Dict[str, Any]]
+    dangling_citations: str
+    verdict: str
+    flagged: bool
+    confidence: Optional[float] = None
+    problems: List[str]
+    explanation: str
+    supporting_quotes: List[Dict[str, Any]]
+    quotes_verified: str
+    quote_not_in_source: bool
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    error_message: Optional[str] = None
+
+
+class BriefCitationCheckDetail(BriefCitationCheckRead):
+    passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
+
+
+BriefCheckCandidate.model_rebuild()

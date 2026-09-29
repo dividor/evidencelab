@@ -9,6 +9,8 @@ import LlmUsageManager from './LlmUsageManager';
 import McpAuditLog from './McpAuditLog';
 import RatingsManager from './RatingsManager';
 import TestingManager from './TestingManager';
+import BriefTestingManager from './BriefTestingManager';
+import type { SearchResult } from '../../types/api';
 import TocValidatorManager from './TocValidatorManager';
 import UserManager from './UserManager';
 
@@ -16,6 +18,11 @@ interface AdminPanelProps {
   isActive: boolean;
   dataSource?: string;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
+  // The model combo selected at the top of the page; the brief citation check
+  // judges with its summarisation model.
+  modelCombo?: string | null;
+  // Opens a cited document in the app's own preview (as search results do).
+  onResultClick?: (result: SearchResult) => void;
 }
 
 type AdminTab =
@@ -28,6 +35,7 @@ type AdminTab =
   | 'mcp-audit'
   | 'api-keys'
   | 'testing'
+  | 'testing-brief'
   | 'toc-validator';
 
 const TAB_USERS: AdminTab = 'users';
@@ -39,6 +47,7 @@ const TAB_LLM_USAGE: AdminTab = 'llm-usage';
 const TAB_MCP_AUDIT: AdminTab = 'mcp-audit';
 const TAB_API_KEYS: AdminTab = 'api-keys';
 const TAB_TESTING: AdminTab = 'testing';
+const TAB_TESTING_BRIEF: AdminTab = 'testing-brief';
 const TAB_TOC_VALIDATOR: AdminTab = 'toc-validator';
 const ACTIVE_CLASS = 'admin-tab-active';
 
@@ -49,6 +58,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   isActive,
   dataSource = '',
   dataSourceConfig,
+  modelCombo = null,
+  onResultClick,
 }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState<AdminTab>(TAB_USERS);
@@ -112,7 +123,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             className={tabClass(tab, TAB_TESTING)}
             onClick={() => setTab(TAB_TESTING)}
           >
-            Testing
+            Testing (Search + AI Summary)
+          </button>
+          <button
+            className={tabClass(tab, TAB_TESTING_BRIEF)}
+            onClick={() => setTab(TAB_TESTING_BRIEF)}
+          >
+            Testing (Brief)
           </button>
           <button
             className={tabClass(tab, TAB_TOC_VALIDATOR)}
@@ -132,6 +149,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         {tab === TAB_MCP_AUDIT && <McpAuditLog />}
         {tab === TAB_API_KEYS && <ApiKeyManager />}
         {tab === TAB_TESTING && <TestingManager />}
+        {tab === TAB_TESTING_BRIEF && (
+          <BriefTestingManager
+            dataSource={dataSource}
+            modelCombo={modelCombo}
+            onResultClick={onResultClick}
+          />
+        )}
         {tab === TAB_TOC_VALIDATOR && (
           <TocValidatorManager
             dataSource={dataSource}
