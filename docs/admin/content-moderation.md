@@ -1,6 +1,6 @@
 ## Content Moderation
 
-The [Content policy](/terms) in the Terms of Service defines what must not be in the library and how anyone can report it: a one-star rating with the reason in the comment, the floating **Feedback** button for visitors without an account, or email. Reports arrive in **Admin Panel → Ratings** with the triage statuses described under [Ratings & Feedback](../using-evidence-lab/ratings-feedback.md). Filter the queue by a score of 1 and search comments for report keywords such as "illegal", "personal data" or "copyright".
+The [Content policy](../overview/terms.md#content-policy) in the Terms of Service defines what must not be in the library and how anyone can report it: a one-star rating with the reason in the comment, the floating **Feedback** button for visitors without an account, or email. Reports arrive in **Admin Panel → Ratings** with the triage statuses described under [Ratings & Feedback](../using-evidence-lab/ratings-feedback.md). Filter the queue by a score of 1 and search comments for report keywords such as "illegal", "personal data" or "copyright".
 
 Once a report is upheld, a superuser can **hide the document** from the whole platform in one action. A hidden document:
 

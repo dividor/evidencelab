@@ -8,7 +8,7 @@ Evidence Lab provides built-in monitoring tools to track pipeline performance, d
 
 The Pipeline view gives you a high-level overview of your document processing status.
 
-![Pipeline view with Sankey diagram](/docs/images/monitor/pipeline-view.png)
+![Pipeline view with Sankey diagram](../images/monitor/pipeline-view.png)
 
 **Key Metrics Cards** — four summary cards at the top show:
 - **Total Reports** — total document count in the corpus
@@ -26,7 +26,7 @@ Hover over any node or link in the diagram to see detailed counts and tooltips.
 
 The Stats view shows interactive bar charts breaking down your document corpus by different attributes.
 
-![Stats view with bar charts](/docs/images/monitor/stats-view.png)
+![Stats view with bar charts](../images/monitor/stats-view.png)
 
 Toggle between seven breakdown views using the buttons at the top:
 
@@ -48,7 +48,7 @@ Each bar is color-coded by processing status. Click any bar to jump to the Docum
 
 The Processing view shows real-time performance metrics for your pipeline.
 
-![Processing performance charts](/docs/images/monitor/processing-view.png)
+![Processing performance charts](../images/monitor/processing-view.png)
 
 Toggle the time range: **Last 24 hours**, **Last 48 hours**, or **All Time**.
 
@@ -64,7 +64,7 @@ Three charts are shown:
 
 The Documents view is a full document library with detailed inspection tools.
 
-![Documents library](/docs/images/monitor/documents-view.png)
+![Documents library](../images/monitor/documents-view.png)
 
 Features include:
 
@@ -93,7 +93,7 @@ Click any document row to access detailed inspection modals:
 
 Administrators can track all search activity from the **Admin Panel → Activity** tab.
 
-![Admin Activity panel](/docs/images/admin/activity-panel.png)
+![Admin Activity panel](../images/admin/activity-panel.png)
 
 The Activity panel shows:
 

@@ -167,7 +167,7 @@ docker compose up -d api
 
 Access the Admin Panel by clicking your avatar in the top right, then selecting **Admin**. The **Users** tab shows all registered users.
 
-![Admin Users panel](/docs/images/admin/users-panel.png)
+![Admin Users panel](../images/admin/users-panel.png)
 
 From the Users panel you can:
 
@@ -189,7 +189,7 @@ Hiding a document that breaches the content policy, the reporting routes and the
 
 The **Groups** tab lets you create and manage user groups. Groups control which datasets users can access and provide default search settings.
 
-![Admin Groups panel](/docs/images/admin/groups-panel.png)
+![Admin Groups panel](../images/admin/groups-panel.png)
 
 The panel has two sections:
 
@@ -209,7 +209,7 @@ The panel has two sections:
 
 The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, but can still override them in the UI.
 
-![Admin Group Settings](/docs/images/admin/group-settings.png)
+![Admin Group Settings](../images/admin/group-settings.png)
 
 Select a group using the radio buttons at the top, then configure:
 

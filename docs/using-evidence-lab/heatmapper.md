@@ -2,7 +2,7 @@
 
 Heatmapper is a visual analysis tool for identifying trends, gaps, and patterns across your document corpus. It generates a color-coded grid showing how documents are distributed across combinations of attributes you define.
 
-![Heatmapper — Document Type × Year Published](/docs/images/heatmapper-overview.png)
+![Heatmapper — Document Type × Year Published](../images/heatmapper-overview.png)
 
 ### What Can You Visualize?
 
@@ -16,14 +16,14 @@ Think of Heatmapper as a configurable cross-tabulation. You choose what goes on 
 
 Heatmapper operates in two modes depending on whether you include search queries:
 
-![Heatmapper — Search query mode](/docs/images/heatmapper-query-mode.png)
+![Heatmapper — Search query mode](../images/heatmapper-query-mode.png)
 
 | Mode | When to Use | How It Counts |
 |------|-------------|---------------|
 | **Search Query Mode** | You provide search queries to filter results | Searches document content and counts unique documents among the top search hits. Best for focused analysis of specific topics. |
 | **Document Attribute Mode** | No search queries — just attribute filters | Counts all documents matching the selected attributes. Covers the full corpus and gives the broadest view. |
 
-![Heatmapper grid with data](/docs/images/heatmapper-grid-crop.png)
+![Heatmapper grid with data](../images/heatmapper-grid-crop.png)
 
 ### Data Drilldown
 
@@ -40,5 +40,5 @@ Click any cell in the heatmap to drill down into the underlying data. You can:
 - Filters on multi-valued attributes (for example a document covering several countries) match every document that lists the value, so the heatmap counts agree with the filter panel.
 - Every cell is one search request. If a large grid reports that cells failed to load because the search rate limit was reached, wait a minute and generate again; the grid already waits and retries when the server asks it to.
 - Start with broad attribute combinations to get an overview, then add search queries to focus on specific topics.
-- Use Heatmapper alongside [Search](/docs/using-evidence-lab/search.md) — if you spot an interesting pattern in the heatmap, run a search to explore the underlying evidence.
+- Use Heatmapper alongside [Search](search.md) — if you spot an interesting pattern in the heatmap, run a search to explore the underlying evidence.
 - Export data for inclusion in presentations or reports.

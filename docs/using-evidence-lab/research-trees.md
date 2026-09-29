@@ -8,7 +8,7 @@ Research Trees let you drill down into topics by building an explorable tree of 
 
 Run a search and look at the **AI Summary** at the top of your results. You'll notice a **"Find out more"** button next to each heading in the summary — this is your entry point into a Research Tree.
 
-![AI Summary with Find out more buttons](/docs/images/search-guide/ai-summary-find-out-more.png)
+![AI Summary with Find out more buttons](../images/search-guide/ai-summary-find-out-more.png)
 
 You have two ways to branch into a sub-topic:
 
@@ -21,7 +21,7 @@ You have two ways to branch into a sub-topic:
 
 After clicking "Find out more", Evidence Lab searches the document corpus for content specifically about that sub-topic. You'll see a **"Show tree"** button appear along with a status indicator while the system works.
 
-![Researching a sub-topic](/docs/images/search-guide/researching-status.png)
+![Researching a sub-topic](../images/search-guide/researching-status.png)
 
 Click **"Show tree"** at any time to see the full structure of your research so far.
 
@@ -31,7 +31,7 @@ Click **"Show tree"** at any time to see the full structure of your research so 
 
 The tree view shows all the branches you've explored, radiating out from your original search query. Each node represents a sub-topic with its own AI summary and source documents.
 
-![Research Tree view](/docs/images/search-guide/research-tree-view.png)
+![Research Tree view](../images/search-guide/research-tree-view.png)
 
 From the tree view you can:
 

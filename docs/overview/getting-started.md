@@ -91,7 +91,7 @@ python scripts/demo/run_demo.py --mode host --skip-pipeline  # Download only
    > ./scripts/pipeline/run_pipeline_host.sh --data-source uneg --num-records 10
    > ```
    >
-   > See [Pipeline Configuration → Running on the Host](/docs/admin/pipeline-configuration.md) for full details.
+   > See [Pipeline Configuration → Running on the Host](../admin/pipeline-configuration.md) for full details.
 
 5. **Access the Evidence Lab UI**
    - Open http://localhost:3000
