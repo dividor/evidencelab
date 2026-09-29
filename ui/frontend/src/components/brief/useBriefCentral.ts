@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  TemplatePayload,
+  copyTemplate as copyTemplateRemote,
+  copyVoiceProfile,
   createTemplate,
   createVoiceProfile,
   deleteBriefRemote,
@@ -9,24 +12,29 @@ import {
   listSharedBriefs,
   listTemplates,
   listVoiceProfiles,
+  updateTemplate,
   updateVoiceProfile,
 } from './briefCentralApi';
-import {
-  BriefListItem,
-  BriefTemplate,
-  BriefTemplateHeading,
-  VoiceProfile,
-} from './briefTypes';
+import { BriefListItem, BriefTemplate, VoiceProfile } from './briefTypes';
 
 export type CentralTab = 'mine' | 'shared' | 'templates' | 'voices';
 
 const errMessage = (e: unknown, fallback: string): string =>
   e instanceof Error ? e.message : fallback;
 
+// Lists hold the user's own items first, then items shared with them (the
+// server's order); a new item of the user's own goes at the end of their part.
+const insertOwned = <T extends { can_edit: boolean }>(list: T[], item: T): T[] => {
+  const firstShared = list.findIndex((x) => !x.can_edit);
+  if (firstShared < 0) return [...list, item];
+  return [...list.slice(0, firstShared), item, ...list.slice(firstShared)];
+};
+
 /**
  * State for the Brief Central landing page: the user's briefs, briefs shared
- * with them, their templates and voice & tone profiles — all server-backed.
- * Only used when the user module is enabled and a user is logged in.
+ * with them, and the templates and voice & tone profiles they own or were
+ * given — all server-backed. Only used when the user module is enabled and a
+ * user is logged in.
  */
 export const useBriefCentral = (enabled: boolean) => {
   const [tab, setTab] = useState<CentralTab>('mine');
@@ -68,19 +76,32 @@ export const useBriefCentral = (enabled: boolean) => {
     setMyBriefs((prev) => prev.filter((b) => b.id !== id));
   }, []);
 
-  const saveTemplate = useCallback(
-    async (args: {
-      name: string;
-      description: string | null;
-      headings: BriefTemplateHeading[];
-      withText: boolean;
-    }) => {
-      const created = await createTemplate(args);
-      setTemplates((prev) => [created, ...prev]);
-      return created;
-    },
-    [],
-  );
+  // Create a template, or update one the user owns when `id` is given.
+  const saveTemplate = useCallback(async (id: string | null, args: TemplatePayload) => {
+    if (id) {
+      const updated = await updateTemplate(id, args);
+      setTemplates((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      return updated;
+    }
+    const created = await createTemplate(args);
+    setTemplates((prev) => [created, ...prev]);
+    return created;
+  }, []);
+
+  // Copy a template the user owns or was given; the copy is theirs to edit.
+  const copyTemplate = useCallback(async (id: string) => {
+    const created = await copyTemplateRemote(id);
+    setTemplates((prev) => [created, ...prev]);
+    return created;
+  }, []);
+
+  // A template's or voice's share count changed in the Share dialog.
+  const setTemplateShareCount = useCallback((id: string, count: number) => {
+    setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, share_count: count } : t)));
+  }, []);
+  const setVoiceShareCount = useCallback((id: string, count: number) => {
+    setVoices((prev) => prev.map((v) => (v.id === id ? { ...v, share_count: count } : v)));
+  }, []);
 
   const removeTemplate = useCallback(async (id: string) => {
     await deleteTemplate(id);
@@ -108,7 +129,7 @@ export const useBriefCentral = (enabled: boolean) => {
         description: args.description,
         instructions: args.instructions,
       });
-      setVoices((prev) => [...prev, created]);
+      setVoices((prev) => insertOwned(prev, created));
       return created;
     },
     [],
@@ -117,6 +138,12 @@ export const useBriefCentral = (enabled: boolean) => {
   const removeVoice = useCallback(async (id: string) => {
     await deleteVoiceProfile(id);
     setVoices((prev) => prev.filter((v) => v.id !== id));
+  }, []);
+
+  const copyVoice = useCallback(async (id: string) => {
+    const created = await copyVoiceProfile(id);
+    setVoices((prev) => insertOwned(prev, created));
+    return created;
   }, []);
 
   const voiceById = useCallback(
@@ -138,9 +165,13 @@ export const useBriefCentral = (enabled: boolean) => {
     refresh,
     removeBrief,
     saveTemplate,
+    copyTemplate,
     removeTemplate,
+    setTemplateShareCount,
     saveVoice,
+    copyVoice,
     removeVoice,
+    setVoiceShareCount,
     voiceById,
   };
 };

@@ -1836,6 +1836,7 @@
 
 .bc-card-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -2125,6 +2126,57 @@
 .bc-heading-edit .bc-input {
   padding: 9px 10px;
   font-size: 13.5px;
+}
+
+/* A template heading plus its prompt and settings, when opened. */
+.bc-heading-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bc-heading-settings {
+  margin-left: 34px;
+  padding: 10px 12px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border-light);
+}
+
+.bc-heading-settings .bc-field-row {
+  margin-top: 8px;
+}
+
+.bc-prompt-toggle {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--brand-border);
+  color: var(--brand-text-secondary);
+  font-family: var(--font-heading);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bc-prompt-toggle:hover,
+.bc-prompt-toggle[aria-expanded='true'] {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.bc-prompt-toggle-set {
+  color: var(--brand-primary);
+}
+
+/* "prompt" beside a heading that carries one, in template previews. */
+.bc-prompt-mark {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-text-tertiary);
 }
 
 .bc-add-dashed {

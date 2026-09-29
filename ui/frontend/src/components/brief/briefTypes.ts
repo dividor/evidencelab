@@ -112,6 +112,9 @@ export interface SavedBrief {
   // Brief-level section length target in words (sections may override).
   // Absent/null = no target: the model decides.
   targetWords?: number | null;
+  // Brief-wide research instructions ("Brief prompt"), applied to every
+  // section alongside the section's own guidance. Absent = none.
+  instructions?: string;
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
@@ -127,7 +130,17 @@ export const BRIEF_MIGRATED_KEY = 'evidencelab_brief_migrated_v1';
 // Brief Central: templates, voice & tone profiles, sharing
 // ---------------------------------------------------------------------------
 
-export interface VoiceProfile {
+// Library items (templates and voice & tone profiles) are owned by their
+// creator and may be shared with other users or groups. `can_edit` is true for
+// the owner; a shared item is use-only and names its owner. `share_count` is
+// only filled in for the owner.
+interface LibraryItemAccess {
+  owner_name: string | null;
+  can_edit: boolean;
+  share_count: number;
+}
+
+export interface VoiceProfile extends LibraryItemAccess {
   id: string;
   name: string;
   description: string | null;
@@ -136,19 +149,29 @@ export interface VoiceProfile {
   updated_at: string;
 }
 
+// One heading of a template. `prompt` is the section's research instructions;
+// `voice_profile_id` and `target_words` override the brief defaults for that
+// section. Absent or null means "use the brief default".
 export interface BriefTemplateHeading {
   title: string;
   sub: boolean;
-  // Optional saved section text ("include section text" templates).
   text?: string | null;
+  prompt?: string | null;
+  voice_profile_id?: string | null;
+  target_words?: number | null;
 }
 
-export interface BriefTemplate {
+export interface BriefTemplate extends LibraryItemAccess {
   id: string;
   name: string;
   description: string | null;
   headings: BriefTemplateHeading[];
   with_text: boolean;
+  // Brief-wide defaults: research instructions for every section, the default
+  // voice & tone profile and the default section length.
+  prompt: string | null;
+  voice_profile_id: string | null;
+  target_words: number | null;
   use_count: number;
   created_at: string;
   updated_at: string;

@@ -1,22 +1,29 @@
 import React, { useState } from 'react';
-import { recordTemplateUse } from './briefCentralApi';
+import { LibraryKind, recordTemplateUse } from './briefCentralApi';
 import {
   BriefNewModal,
-  BriefShareModal,
-  BriefTemplateModal,
   BriefVoiceModal,
   NewBriefSubmit,
-  TemplateDraft,
   VoiceDraft,
   numberHeadings,
 } from './BriefCentralModals';
-import { IconEdit, IconPlus, IconShare } from './BriefIcons';
+import { IconCopy, IconEdit, IconPlus, IconShare } from './BriefIcons';
+import { BriefShareModal, LibraryShareModal } from './BriefShareDialog';
+import {
+  BriefTemplateModal,
+  TemplateDraft,
+  draftFromTemplate,
+  draftToPayload,
+  emptyTemplateDraft,
+} from './BriefTemplateModal';
 import { BriefListItem, BriefTemplate, VoiceProfile } from './briefTypes';
 import { CentralTab, UseBriefCentralReturn } from './useBriefCentral';
 
 /**
  * Brief Central — the Brief tab's landing page. Four tabs: the user's briefs,
- * briefs shared with them (viewer-only), templates and voice & tone profiles.
+ * briefs shared with them (viewer-only), and the templates and voice & tone
+ * profiles the user owns or was given. Shared templates and voices are
+ * use-only: they can be used or copied, and only their owner edits them.
  */
 
 const formatWhen = (iso: string): string => {
@@ -84,11 +91,90 @@ const BriefCard: React.FC<{
   </div>
 );
 
-const TemplateCard: React.FC<{
-  template: BriefTemplate;
-  onUse: () => void;
+// Footer of a template or voice card: who it is shared with (owner) or whose
+// it is (recipient), then the actions allowed on it.
+const LibraryFoot: React.FC<{
+  item: { can_edit: boolean; owner_name: string | null; share_count: number };
+  note?: string;
+  noun: string;
+  onUse?: () => void;
+  onCopy: () => void;
+  onEdit: () => void;
+  onShare: () => void;
   onDelete: () => void;
-}> = ({ template, onUse, onDelete }) => (
+}> = ({ item, note, noun, onUse, onCopy, onEdit, onShare, onDelete }) => (
+  <div className="bc-card-foot">
+    {item.can_edit ? (
+      <span className="bc-card-foot-note">
+        {item.share_count ? `Shared with ${item.share_count}` : 'Private'}
+        {note ? ` · ${note}` : ''}
+      </span>
+    ) : (
+      <>
+        <span className="bc-chip bc-chip-muted">Shared</span>
+        <span className="bc-card-foot-note">
+          by {item.owner_name}
+          {note ? ` · ${note}` : ''}
+        </span>
+      </>
+    )}
+    {onUse && (
+      <button className="bc-card-act bc-card-act-right" title={`Use this ${noun}`} onClick={onUse}>
+        <IconPlus size={12} /> Use
+      </button>
+    )}
+    <button
+      className={`bc-card-act${onUse ? '' : ' bc-card-act-right'}`}
+      title={`Make your own copy of this ${noun}`}
+      onClick={onCopy}
+    >
+      <IconCopy size={12} /> Copy
+    </button>
+    {item.can_edit && (
+      <>
+        <button className="bc-card-act" title={`Edit this ${noun}`} onClick={onEdit}>
+          <IconEdit size={12} /> Edit
+        </button>
+        <button className="bc-card-act" title={`Share this ${noun}`} onClick={onShare}>
+          <IconShare size={12} /> Share
+        </button>
+        <button
+          className="bc-icon-btn bc-icon-danger"
+          title={`Delete this ${noun}`}
+          aria-label={`Delete this ${noun}`}
+          onClick={onDelete}
+        >
+          ×
+        </button>
+      </>
+    )}
+  </div>
+);
+
+const templateNote = (template: BriefTemplate): string => {
+  const prompts = template.headings.filter((h) => h.prompt).length + (template.prompt ? 1 : 0);
+  return [
+    `${template.headings.length} heading${template.headings.length === 1 ? '' : 's'}`,
+    prompts ? `${prompts} prompt${prompts === 1 ? '' : 's'}` : '',
+    template.with_text ? 'includes text' : '',
+    template.use_count ? `used ${template.use_count} times` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+interface LibraryActions {
+  onUse?: () => void;
+  onCopy: () => void;
+  onEdit: () => void;
+  onShare: () => void;
+  onDelete: () => void;
+}
+
+const TemplateCard: React.FC<{ template: BriefTemplate } & LibraryActions> = ({
+  template,
+  ...actions
+}) => (
   <div className="bc-card">
     <div className="bc-card-main bc-card-static">
       <div className="bc-card-title">{template.name}</div>
@@ -98,36 +184,16 @@ const TemplateCard: React.FC<{
           <div key={i} className={`bc-heading-row${h.sub ? ' bc-heading-sub' : ''}`}>
             <span className="bc-heading-num">{h.num}</span>
             <span>{h.title}</span>
+            {h.hasPrompt && <span className="bc-prompt-mark">prompt</span>}
           </div>
         ))}
       </div>
     </div>
-    <div className="bc-card-foot">
-      <span className="bc-card-foot-note">
-        {template.headings.length} headings
-        {template.with_text ? ' · includes text' : ''}
-        {template.use_count ? ` · used ${template.use_count} times` : ''}
-      </span>
-      <button className="bc-card-act bc-card-act-right" title="Use this template" onClick={onUse}>
-        <IconPlus size={12} /> Use
-      </button>
-      <button
-        className="bc-icon-btn bc-icon-danger"
-        title="Delete template"
-        aria-label="Delete template"
-        onClick={onDelete}
-      >
-        ×
-      </button>
-    </div>
+    <LibraryFoot item={template} note={templateNote(template)} noun="template" {...actions} />
   </div>
 );
 
-const VoiceCard: React.FC<{
-  voice: VoiceProfile;
-  onEdit: () => void;
-  onDelete: () => void;
-}> = ({ voice, onEdit, onDelete }) => (
+const VoiceCard: React.FC<{ voice: VoiceProfile } & LibraryActions> = ({ voice, ...actions }) => (
   <div className="bc-card">
     <div className="bc-card-main bc-card-static">
       <div className="bc-card-title">{voice.name}</div>
@@ -141,19 +207,7 @@ const VoiceCard: React.FC<{
         </div>
       </div>
     </div>
-    <div className="bc-card-foot">
-      <button className="bc-card-act bc-card-act-right" title="Edit this profile" onClick={onEdit}>
-        <IconEdit size={12} /> Edit
-      </button>
-      <button
-        className="bc-icon-btn bc-icon-danger"
-        title="Delete profile"
-        aria-label="Delete profile"
-        onClick={onDelete}
-      >
-        ×
-      </button>
-    </div>
+    <LibraryFoot item={voice} noun="profile" {...actions} />
   </div>
 );
 
@@ -171,17 +225,28 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
   onCreateBrief,
   defaultTargetWords,
 }) => {
-  const [modal, setModal] = useState<'new' | 'template' | 'voice' | 'share' | null>(null);
+  const [modal, setModal] = useState<'new' | 'template' | 'voice' | 'share' | 'library-share' | null>(
+    null,
+  );
   const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<TemplateDraft | null>(null);
   const [voiceDraft, setVoiceDraft] = useState<VoiceDraft | null>(null);
   const [shareBrief, setShareBrief] = useState<BriefListItem | null>(null);
+  const [libraryShare, setLibraryShare] = useState<{
+    kind: LibraryKind;
+    id: string;
+    name: string;
+  } | null>(null);
 
-  const emptyTemplateDraft: TemplateDraft = {
-    fromBrief: false,
-    name: '',
-    description: '',
-    headings: [{ title: '', sub: false }],
-    withText: false,
+  const report = (e: unknown, what: string) =>
+    central.setError(e instanceof Error ? `${what}: ${e.message}` : what);
+  const openTemplate = (draft: TemplateDraft) => {
+    setTemplateDraft(draft);
+    setModal('template');
+  };
+  const openLibraryShare = (kind: LibraryKind, id: string, name: string) => {
+    setLibraryShare({ kind, id, name });
+    setModal('library-share');
   };
 
   const submitNew = (args: NewBriefSubmit) => {
@@ -215,7 +280,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
     if (tab === 'templates') {
       return (
         <>
-          <button className="bc-add-card" onClick={() => setModal('template')}>
+          <button className="bc-add-card" onClick={() => openTemplate(emptyTemplateDraft())}>
             <IconPlus size={15} /> New template
           </button>
           {central.templates.map((t) => (
@@ -226,6 +291,9 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
                 setNewTemplateId(t.id);
                 setModal('new');
               }}
+              onCopy={() => void central.copyTemplate(t.id).catch((e) => report(e, 'Could not copy'))}
+              onEdit={() => openTemplate(draftFromTemplate(t))}
+              onShare={() => openLibraryShare('template', t.id, t.name)}
               onDelete={() => void central.removeTemplate(t.id).catch(() => undefined)}
             />
           ))}
@@ -247,6 +315,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           <VoiceCard
             key={v.id}
             voice={v}
+            onCopy={() => void central.copyVoice(v.id).catch((e) => report(e, 'Could not copy'))}
             onEdit={() => {
               setVoiceDraft({
                 id: v.id,
@@ -256,6 +325,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
               });
               setModal('voice');
             }}
+            onShare={() => openLibraryShare('voice', v.id, v.name)}
             onDelete={() => void central.removeVoice(v.id).catch(() => undefined)}
           />
         ))}
@@ -322,16 +392,12 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           onClose={() => setModal(null)}
         />
       )}
-      {modal === 'template' && (
+      {modal === 'template' && templateDraft && (
         <BriefTemplateModal
-          draft={emptyTemplateDraft}
+          draft={templateDraft}
+          voices={central.voices}
           onSave={async (d) => {
-            await central.saveTemplate({
-              name: d.name,
-              description: d.description || null,
-              headings: d.headings,
-              withText: d.withText,
-            });
+            await central.saveTemplate(d.id, draftToPayload(d));
             setModal(null);
           }}
           onClose={() => setModal(null)}
@@ -361,6 +427,19 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           briefId={shareBrief.id}
           briefTitle={shareBrief.title}
           onChanged={() => void central.refresh()}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'library-share' && libraryShare && (
+        <LibraryShareModal
+          kind={libraryShare.kind}
+          itemId={libraryShare.id}
+          itemName={libraryShare.name}
+          onChanged={(count) =>
+            libraryShare.kind === 'template'
+              ? central.setTemplateShareCount(libraryShare.id, count)
+              : central.setVoiceShareCount(libraryShare.id, count)
+          }
           onClose={() => setModal(null)}
         />
       )}
