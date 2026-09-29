@@ -7,8 +7,8 @@ stack's databases directly and are meant to be run by a reviewer, not deployed.
 |---|---|
 | `llm_judge_citation_fidelity.ipynb` | Fact-checks one saved brief: extracts every cited passage with the exact source excerpts the system stored, has an LLM judge decide whether each passage is supported by those excerpts only, and lists the passages it flags for human review. |
 
-Helper code that is worth unit testing lives in `citation_fidelity_lib.py`
-(tests: `tests/unit/test_citation_fidelity_lib.py`); everything a reviewer
+Helper code that is worth unit testing lives in the app, in `ui/backend/services/citation_fidelity.py` (imported here through the `citation_fidelity_lib.py` shim)
+(tests: `tests/unit/test_citation_fidelity.py`); everything a reviewer
 should *see* (prompts, verdicts, tables) stays in the notebook cells.
 
 ## Setup

@@ -1,19 +1,14 @@
-"""Unit tests for notebooks/citation_fidelity_lib.py.
+"""Unit tests for ui/backend/services/citation_fidelity.py.
 
 The module ports the frontend's citation parsing (CitedContent.tsx,
-briefHighlights.ts) and adds the judge plumbing for the citation-fidelity
-notebook; these tests pin both to the cases the notebook relies on.
+briefHighlights.ts) and adds the judge plumbing for the brief citation check;
+these tests pin both to the cases the check relies on.
 """
-
-import sys
-from pathlib import Path
 
 import pytest
 from openpyxl import load_workbook
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "notebooks"))
-
-from citation_fidelity_lib import (  # noqa: E402
+from ui.backend.services.citation_fidelity import (
     FLAGGED_VERDICTS,
     QUOTE_MISSING,
     QUOTE_NEAR,
@@ -30,6 +25,7 @@ from citation_fidelity_lib import (  # noqa: E402
     parse_judge_response,
     parse_section_breadcrumb,
     passage_source_rows,
+    quotable_text,
     quote_fragments,
     researched_sections,
     source_body,
@@ -171,10 +167,13 @@ class TestJudgePrompt:
         passage = extract_cited_passages(SECTION)[1]
         text = format_excerpts(passage)
         assert (
-            "### Excerpt [1] Mali Evaluation, p. 12 — section: Findings > 3.2 Enrolment"
+            '### Excerpt [1] document: "Mali Evaluation", p. 12'
+            " — section: Findings > 3.2 Enrolment" in text
+        )
+        assert (
+            '### Excerpt [2] document: "Kenya Review"\nNumeracy improved in Kenya.'
             in text
         )
-        assert "### Excerpt [2] Kenya Review\nNumeracy improved in Kenya." in text
         assert "-- Findings" not in text  # breadcrumb line stripped
 
     def test_build_judge_messages_when_template_then_fields_filled(self):
@@ -383,3 +382,47 @@ def test_cited_passage_dataclass_when_no_sources_then_clean_text_still_available
     passage = CitedPassage(section_title="S", passage="Fact [4].", citation_indices=[4])
     assert passage.passage_clean == "Fact."
     assert not passage.dangling
+
+
+class TestQuotableText:
+    HEADED = {
+        "index": 41,
+        "headings": [
+            "2 Evaluation findings",
+            "2.2.3 Tensions arise where communities don't trust targeting decisions",
+        ],
+        "text": (
+            "166. Over the past years, WFP has made progress in communicating "
+            "with communities."
+        ),
+    }
+
+    def test_quotable_text_when_headings_present_then_heading_path_included(self):
+        text = quotable_text(self.HEADED)
+        assert text.startswith("2 Evaluation findings > 2.2.3 Tensions arise")
+        assert text.endswith("communicating with communities.")
+
+    def test_quotable_text_when_breadcrumb_line_then_used_as_heading(self):
+        src = {
+            "index": 1,
+            "text": "-- Findings > 3.1 Coverage --\nCoverage rose to 80 percent.",
+        }
+        assert (
+            quotable_text(src)
+            == "Findings > 3.1 Coverage\nCoverage rose to 80 percent."
+        )
+
+    def test_verify_quotes_when_quote_is_the_section_title_then_verbatim(self):
+        passage = CitedPassage(
+            section_title="S",
+            passage="Tensions arise where communities don't trust targeting decisions [41].",
+            citation_indices=[41],
+            sources=[self.HEADED],
+        )
+        quotes = [
+            {
+                "citation": 41,
+                "quote": "Tensions arise where communities don't trust targeting decisions",
+            }
+        ]
+        assert verify_quotes(passage, quotes)[0]["status"] == QUOTE_VERBATIM
