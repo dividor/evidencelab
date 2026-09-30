@@ -473,52 +473,72 @@ export const useBrief = ({
     [remote, history, persist],
   );
 
-  // Serialise remote saves: one in flight at a time; a save requested while one
-  // runs re-runs once it finishes (latest state wins — entries are rebuilt).
+  // Serialise remote saves: one in flight at a time. A save requested while one
+  // runs is parked (latest state wins — entries are rebuilt) and sent as soon as
+  // the running one finishes. The queue only goes idle once nothing is parked,
+  // so a save requested at any moment is never left behind; refreshing the
+  // saved-brief list happens after that, outside the queue.
   const remoteSaveBusyRef = useRef(false);
   const remoteSavePendingRef = useRef<SavedBrief | null>(null);
 
-  const pushRemoteSave = useCallback(
-    (entry: SavedBrief) => {
-      if (remoteSaveBusyRef.current) {
-        remoteSavePendingRef.current = entry;
+  const saveRemoteOnce = useCallback(
+    async (current: SavedBrief): Promise<void> => {
+      if (remoteSavedRef.current && briefIdRef.current) {
+        await updateBriefRemote(briefIdRef.current, {
+          title: current.title,
+          query: current.query || null,
+          voiceProfileId: current.voiceId ?? null,
+          content: current,
+        });
         return;
       }
-      remoteSaveBusyRef.current = true;
-      const run = async (current: SavedBrief): Promise<void> => {
-        if (remoteSavedRef.current && briefIdRef.current) {
-          await updateBriefRemote(briefIdRef.current, {
-            title: current.title,
-            query: current.query || null,
-            voiceProfileId: current.voiceId ?? null,
-            content: current,
-          });
-        } else {
-          const created = await createBriefRemote({
-            title: current.title,
-            query: current.query || null,
-            dataSource: dataSource || null,
-            voiceProfileId: current.voiceId ?? null,
-            content: current,
-          });
-          // Adopt the server id so subsequent saves update the same row.
-          briefIdRef.current = created.id;
-          remoteSavedRef.current = true;
-        }
-        const pending = remoteSavePendingRef.current;
-        remoteSavePendingRef.current = null;
-        if (pending) return run({ ...pending, id: briefIdRef.current || pending.id });
-      };
-      run(entry)
-        .then(() => refreshRemoteHistory())
-        .catch((e) =>
-          setError(e instanceof Error ? e.message : 'Could not save the brief.'),
-        )
-        .finally(() => {
-          remoteSaveBusyRef.current = false;
-        });
+      const created = await createBriefRemote({
+        title: current.title,
+        query: current.query || null,
+        dataSource: dataSource || null,
+        voiceProfileId: current.voiceId ?? null,
+        content: current,
+      });
+      // Adopt the server id so subsequent saves update the same row.
+      briefIdRef.current = created.id;
+      remoteSavedRef.current = true;
     },
-    [dataSource, refreshRemoteHistory],
+    [dataSource],
+  );
+
+  const pushRemoteSave = useCallback(
+    (entry: SavedBrief) => {
+      remoteSavePendingRef.current = entry;
+      if (remoteSaveBusyRef.current) return;
+      const drain = async (): Promise<void> => {
+        let next = remoteSavePendingRef.current;
+        while (next) {
+          remoteSavePendingRef.current = null;
+          // A brief created by an earlier save in this run has its server id now.
+          await saveRemoteOnce({ ...next, id: briefIdRef.current || next.id });
+          next = remoteSavePendingRef.current;
+        }
+      };
+      const run = () => {
+        remoteSaveBusyRef.current = true;
+        drain()
+          .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'))
+          .finally(() => {
+            remoteSaveBusyRef.current = false;
+            // A save parked after the loop's last check (or while a save
+            // failed) still goes out before the queue goes idle.
+            if (remoteSavePendingRef.current) {
+              run();
+              return;
+            }
+            refreshRemoteHistory().catch((e) =>
+              setError(e instanceof Error ? e.message : 'Could not load your briefs.'),
+            );
+          });
+      };
+      run();
+    },
+    [saveRemoteOnce, refreshRemoteHistory],
   );
 
   const saveCurrent = useCallback(() => {
