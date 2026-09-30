@@ -4,7 +4,7 @@ All notable changes to Evidence Lab will be documented in this file.
 
 ## [1.6.4] - 2026-09-30
 
-Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the research prompt, voice & tone profile and length for each heading and for the brief as a whole, and templates and voice & tone profiles can be shared with people and groups, so a team lead can give a team one complete, consistent starting point. Administrators also get a **citation check** that fact-checks a finished brief, sentence by sentence, against the sources it cites.
+Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the research prompt, voice & tone profile and length for each heading and for the brief as a whole, and templates and voice & tone profiles can be shared with people and groups, so a team lead can give a team one complete, consistent starting point. Administrators also get a **citation check** that fact-checks a finished brief, sentence by sentence, against the sources it cites, and an **All Briefs** view of every brief in the system. Top-level headings are now written as short introductions to their sub-headings, and two saving bugs are fixed: a section could finish on screen but not be saved, and opening then closing a brief could duplicate it.
 
 ### Brief
 - **Templates keep prompts, not just headings.** Each heading can carry a research prompt (the guidance typed in a section's Research panel), a voice & tone profile and a length target, and a template keeps a whole-brief prompt, default voice and default length. **Save as Template** carries all of these from the brief, behind an **Include prompts and settings** switch; the template editor gains a **Prompt** control per heading and templates can now be edited; starting a brief from a template fills in the brief prompt, voice and length in the New brief dialog and starts each section with its heading's prompt, voice and length (#504)
@@ -14,16 +14,22 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 - Fixed a brief's whole-brief prompt not being saved: it applied to research only until the brief was reopened, and could carry over into the next brief. It is now saved with the brief (#504)
 - Fixed the Share dialog's suggestions being clipped at the dialog's edge, so a group lower in the list could be seen but not picked. Choosing a suggestion now shares with it straight away, and the arrow keys and Enter pick one (#504)
 - Brief Central cards share one layout: a details line, a full-width **Open Brief** or **Use Template**, and equal-width Edit / Share / Copy / **Delete** beneath (Delete replaces the ×) (#504)
+- **All Briefs (Admin).** Administrators get a new Brief Central tab listing every brief in the system with its owner's name and email, and a search box that filters by brief name or user. **Open Brief** opens any brief read-only and **Copy** puts a copy in the administrator's own Saved Briefs. Administrators still cannot edit, share or delete other people's briefs, and opening or copying a brief they neither own nor were sent is recorded in the audit log (`brief_admin_viewed`, `brief_admin_copied`) (#509)
+- **Top-level headings are written as introductions.** A heading with sub-headings is now written as one short introduction to them (about 120 words by default, never longer than the brief's own length): no headings of its own, and none of the findings that belong under its sub-headings. A whole-brief run writes the sub-sections first so the introduction can point to them. An introduction that still comes back with headings is researched again once; if it still has them it is kept, with a warning on the section and a note in its Log. This applies to Research, AI Regenerate, AI Get Updates and AI Edit (#506)
+- Fixed a researched section sometimes showing on screen but not being saved: a save requested while the saved-brief list was refreshing, or behind a failed save, was dropped (#507)
+- Fixed opening a brief and closing it again sometimes leaving a duplicate in Saved Briefs, or writing one brief's content into another opened straight after. Every save now goes to its own brief, and opening a brief no longer saves it when nothing has changed (#508)
 
 ### Evaluation
 - Added a **Brief citation check** to the admin Evaluation Harness, on a new **Testing (Brief)** tab. For every cited sentence of a brief, an LLM judge (the summarisation model of the selected combo) sees the sentence and the exact excerpts it cites and rules supported, partially supported, unsupported or cannot assess, quoting the words it relied on; each quote is then verified against the excerpt, and anything not fully supported is flagged. The result page has summary tiles, a filterable passages table with drill-down to the judge's reasoning and the cited excerpts, citation links into the document preview, and **Download Excel** with the review workbook. This replaces the citation fidelity notebook for reviewers (#503)
 
 ### Documentation
 - The Brief guide covers prompts in templates, sharing templates and voices, the signed-in New brief dialog and the section and whole-brief AI tools (AI Edit, AI Get Updates, the Log with Keep/Reject Edits, AI Regenerate All, Stop). The docs viewer now gives level-4 headings ids, so in-page links to them resolve (#504)
+- The Brief guide explains introductions (#506) and the All Briefs tab, and the user administration guide covers administrators' access to every brief and its audit events (#509)
 
 ### Upgrade Notes
 - **Database migrations apply automatically on deploy.** This release adds `0034_add_brief_citation_checks` (the citation check's results) and `0035_share_templates_voices` (two share tables, and prompt, voice and length columns on `brief_templates`).
-- No new `config.json` keys, environment variables or Python/npm dependencies. Rebuild the `api` and `ui` images.
+- **New required `config.json` key** `application.brief.introductions`, with `target_words` (120) and `heading_retries` (1); see the repository `config.json`. The UI stops at startup with an error naming the key if it is missing, so deployments that keep their own `config.json` (for example the WFP config repository) must add it before deploying (#506)
+- No new environment variables or Python/npm dependencies. Rebuild the `api` and `ui` images.
 - Existing templates keep working and simply have no prompts; open one with **Edit** to add them.
 
 ## [1.6.3] - 2026-09-24
