@@ -7,6 +7,11 @@ Instruction: {{ instruction }}
 Voice & tone profile (apply to any text you rewrite; do not rewrite untouched text just to restyle it):
 {{ voice_instructions }}
 {% endif %}
+{% if intro_sub_sections %}
+This section is the introduction to a heading whose detail is covered by its sub-sections:
+{% for sub in intro_sub_sections %}- {{ sub }}
+{% endfor %}Keep it an introduction while applying the instruction: no headings of any level, and do not add findings, figures, examples or cases that belong in those sub-sections.
+{% endif %}
 
 Current section markdown:
 """

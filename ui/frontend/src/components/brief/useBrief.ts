@@ -34,6 +34,13 @@ import {
   updateBrief as updateBriefRemote,
 } from './briefCentralApi';
 import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
+import {
+  BRIEF_INTRO,
+  extraHeadingLines,
+  researchOrder,
+  sectionTargetWords,
+  subSectionTitles,
+} from './briefIntro';
 import { highlightOneSource, highlightSectionSources } from './briefHighlights';
 import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
@@ -77,6 +84,57 @@ export const sectionFromTemplateHeading = (h: BriefTemplateHeading): BriefSectio
   };
   if (h.text) return { ...section, status: 'done', progress: 100, content: h.text };
   return section;
+};
+
+const headingCount = (n: number): string => `${n} heading${n === 1 ? '' : 's'}`;
+
+/** The Log note for an introduction kept with headings after its re-runs. */
+export const introHeadingNote = (headings: number, reruns: number): string =>
+  `This introduction still has ${headingCount(headings)} of its own after ${reruns} re-run${
+    reruns === 1 ? '' : 's'
+  }. Edit them out, or use AI Regenerate.`;
+
+/** Headings an introduction's text has of its own, for its warning; undefined
+ *  for a section that is not an introduction or has none. An edit cannot be
+ *  re-run like research, so its result is only flagged. */
+const introWarningFor = (sections: BriefSection[], id: string, content: string): number | undefined =>
+  subSectionTitles(sections, id).length ? extraHeadingLines(content).length || undefined : undefined;
+
+const timesText = (n: number): string => (n === 1 ? 'once' : `${n} times`);
+
+/** The Log note for an introduction that needed re-running to lose its headings. */
+export const introRerunNote = (reruns: number): string =>
+  `Re-run ${timesText(reruns)}: the earlier draft had headings of its own, which an introduction should not.`;
+
+/**
+ * What a finished draft means for an introduction: how many headings of its
+ * own it has, and whether it should be re-run (re-runs left) rather than kept.
+ * A section that is not an introduction never has either.
+ */
+const introOutcome = (
+  subSectionCount: number,
+  content: string,
+  attempt: number,
+): { headings: number; rerun: boolean } => {
+  const headings = subSectionCount ? extraHeadingLines(content).length : 0;
+  return { headings, rerun: headings > 0 && attempt < BRIEF_INTRO.heading_retries };
+};
+
+/** The Log note for a kept draft: headings left after re-runs, or re-runs that fixed it. */
+const introAuditNote = (headings: number, attempt: number): string | undefined => {
+  if (headings) return introHeadingNote(headings, attempt);
+  return attempt > 0 ? introRerunNote(attempt) : undefined;
+};
+
+const rerunActivityText = (headings: number, attempt: number): string =>
+  `The introduction came back with ${headingCount(headings)}; re-running (${attempt + 1} of ${
+    BRIEF_INTRO.heading_retries
+  })`;
+
+/** The sub-headings a section introduces, for a revise request; null if none. */
+const introSubSectionsOf = (sections: BriefSection[], id: string): string[] | null => {
+  const subs = subSectionTitles(sections, id);
+  return subs.length ? subs : null;
 };
 
 export interface UseBriefOptions {
@@ -234,6 +292,18 @@ export const useBrief = ({
   // Stable Activity-log id for the current brief (one row per brief).
   const briefActivityIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Set to researchOne once it is defined; it re-runs itself for an
+  // introduction that came back with headings.
+  const researchOneRef = useRef<
+    (
+      id: string,
+      context: string | null,
+      signal: AbortSignal,
+      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+    ) => Promise<void>
+  >(() => {
+    throw new Error('researchOne used before it was defined');
+  });
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
   const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
@@ -555,6 +625,7 @@ export const useBrief = ({
           voiceId: s.voiceId ?? undefined,
           guidance: s.guidance || undefined,
           targetWords: s.targetWords ?? undefined,
+          introHeadingWarning: s.introHeadingWarning || undefined,
         };
       }),
       outlineLog: outlineLogRef.current,
@@ -810,6 +881,7 @@ export const useBrief = ({
           content: priorContent,
           instruction: buildCondenseInstruction(target, words),
           voiceInstructions: voiceInstructionsFor(section.voiceId),
+          introducesSubSections: introSubSectionsOf(sectionsRef.current, id),
           activityId: briefActivityIdRef.current,
           signal,
         });
@@ -834,6 +906,7 @@ export const useBrief = ({
           progress: 100,
           content: revised,
           sources,
+          introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           audit: [...(cur?.audit || []), entry],
           revising: undefined,
         });
@@ -858,7 +931,8 @@ export const useBrief = ({
       id: string,
       context: string | null,
       signal: AbortSignal,
-      opts?: { mode?: SectionResearchMode; instruction?: string | null },
+      // `attempt` counts re-runs of an introduction that came back with headings.
+      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
     ): Promise<void> => {
       const list = sectionsRef.current;
       const idx = list.findIndex((s) => s.id === id);
@@ -867,6 +941,7 @@ export const useBrief = ({
       const mode: SectionResearchMode = opts?.mode ?? 'generate';
       const isRevise = mode === 'edit' || mode === 'update';
       const instruction = (opts?.instruction || '').trim() || null;
+      const attempt = opts?.attempt ?? 0;
       // Snapshot the pre-op state for the audit row + the "show changes" diff.
       const priorContent = section.content;
       const priorSources = section.sources;
@@ -889,18 +964,26 @@ export const useBrief = ({
       // Generate clears the section; Edit/Update keep the current draft in place
       // (rendered greyed-out, still in the citation numbering) and swap
       // atomically on completion.
+      // A re-run keeps the activity so far, including why it re-ran.
+      const activityReset = attempt > 0 ? {} : { activity: [] };
       updateSection(
         id,
         isRevise
-          ? { status: 'researching', progress: 4, activity: [], revising: true }
-          : { status: 'researching', progress: 4, content: '', sources: [], activity: [] },
+          ? { status: 'researching', progress: 4, ...activityReset, revising: true }
+          : { status: 'researching', progress: 4, content: '', sources: [], ...activityReset },
       );
       const briefTopic = queryRef.current.trim() || briefTitleRef.current;
-      // The section's own target wins over the brief's; null = no target.
-      const sectionTarget = section.targetWords ?? targetWordsRef.current;
+      // A top-level heading with sub-headings is their introduction: the
+      // backend writes it without headings or their detail, at the shorter
+      // introduction length unless the section has its own (see briefIntro.ts).
+      const subSections = subSectionTitles(list, id);
+      const sectionTarget = sectionTargetWords(section.targetWords, subSections, targetWordsRef.current);
       // Set by onDone when the finished section overshoots its target; the
       // research promise waits for it so a document-wide run stays sequential.
       let condensePass: Promise<void> = Promise.resolve();
+      // Set by onDone when an introduction came back with headings and has
+      // re-runs left; the promise then researches it again instead.
+      let rerun = false;
       return researchBriefSection({
         apiBaseUrl,
         dataSource,
@@ -919,6 +1002,7 @@ export const useBrief = ({
         publishedAfterIso,
         voiceInstructions: voiceInstructionsFor(section.voiceId),
         targetWords: sectionTarget,
+        introducesSubSections: subSections.length ? subSections : null,
         // The whole document structure (plus a gist of written sections), so
         // this section stays in scope and doesn't duplicate the others.
         outlineContext: buildOutlineContext(
@@ -952,6 +1036,14 @@ export const useBrief = ({
               );
               return;
             }
+            // An introduction must not have headings of its own: re-run it
+            // while re-runs are left, then keep it with a visible warning.
+            const intro = introOutcome(subSections.length, content, attempt);
+            if (intro.rerun) {
+              rerun = true;
+              pushActivity(id, { tag: 'DRAFT', text: rerunActivityText(intro.headings, attempt) });
+              return;
+            }
             const priorKeys = new Set(priorSources.map((s) => s.docId));
             const added = sources.filter((s) => !priorKeys.has(s.docId)).length;
             const entry: SectionAuditEntry = {
@@ -966,6 +1058,7 @@ export const useBrief = ({
               // Keep the before/after for a revise so its diff stays viewable.
               before: isRevise ? priorContent : undefined,
               after: isRevise ? content : undefined,
+              note: introAuditNote(intro.headings, attempt),
             };
             const cur = sectionsRef.current.find((s) => s.id === id);
             const doneAt = Date.now();
@@ -974,6 +1067,7 @@ export const useBrief = ({
               progress: 100,
               content,
               sources,
+              introHeadingWarning: intro.headings || undefined,
               audit: [...(cur?.audit || []), entry],
               lastResearchedAt: doneAt,
               revising: undefined,
@@ -1012,7 +1106,11 @@ export const useBrief = ({
               : { status: 'pending', progress: 0 },
           ),
         )
-        .then(() => condensePass);
+        .then(() =>
+          rerun
+            ? researchOneRef.current(id, context, signal, { ...opts, attempt: attempt + 1 })
+            : condensePass,
+        );
     },
     [
       apiBaseUrl,
@@ -1025,6 +1123,9 @@ export const useBrief = ({
       condenseSection,
     ],
   );
+  // researchOne re-runs itself for an introduction that came back with
+  // headings; the ref gives it the current function without a self-reference.
+  researchOneRef.current = researchOne;
 
   // `overrides` come from the Regenerate-all modal. They are written to the
   // refs as well as to state, because the research loop below reads the refs
@@ -1044,7 +1145,8 @@ export const useBrief = ({
         setBriefVoiceId(overrides.voiceId);
       }
       if (overrides?.targetWords !== undefined) setTargetWords(overrides.targetWords);
-      const ids = sectionsRef.current.map((s) => s.id);
+      // Sub-sections before their introduction, so it can see what they say.
+      const ids = researchOrder(sectionsRef.current);
       if (!ids.length) return;
       setError(null);
       const controller = new AbortController();
@@ -1151,6 +1253,7 @@ export const useBrief = ({
           content: priorContent,
           instruction: instruction.trim(),
           voiceInstructions: voiceInstructionsFor(section.voiceId),
+          introducesSubSections: introSubSectionsOf(sectionsRef.current, id),
           activityId: briefActivityIdRef.current,
             signal: controller.signal,
         });
@@ -1171,6 +1274,7 @@ export const useBrief = ({
           status: 'done',
           progress: 100,
           content: revised,
+          introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           // Sources unchanged — a surgical edit preserves the [n] markers. The
           // claims moved though, so drop stale excerpt highlights to recompute.
           sources: section.sources.map(({ claimMatches: _cm, semanticMatches: _sm, ...rest }) => rest),
@@ -1299,6 +1403,7 @@ export const useBrief = ({
           voiceId: h.voiceId ?? null,
           guidance: h.guidance || '',
           targetWords: h.targetWords ?? null,
+          introHeadingWarning: h.introHeadingWarning || undefined,
         })),
       );
       setGeneratingActivity(entry.outlineLog || []);
