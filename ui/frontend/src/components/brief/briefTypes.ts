@@ -201,6 +201,8 @@ export interface BriefListItem {
   section_count: number;
   source_count: number;
   owner_name: string | null;
+  // Filled in for the admin "All Briefs" list, so it can be searched by user.
+  owner_email?: string | null;
   share_count: number;
   created_at: string;
   updated_at: string;

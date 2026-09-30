@@ -862,7 +862,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           {readOnly && brief.ownerName && (
             <>
               <span>·</span>
-              <span className="brief-viewer-chip">Shared by {brief.ownerName} — view only</span>
+              <span className="brief-viewer-chip">Owned by {brief.ownerName} — view only</span>
             </>
           )}
           {hasOutlineLog && (
