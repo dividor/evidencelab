@@ -86,7 +86,7 @@ Each researched section shows its word count next to its heading, and the line u
 
 A top-level heading that has sub-headings is written as a short **introduction**: it frames the theme and says what each sub-heading goes on to examine, and leaves the findings to the sub-sections. It never adds headings of its own, and it does not cover in detail what its sub-headings will.
 
-- **Length** — an introduction is kept short: about 120 words unless you set a length on that section itself in its research panel. It is never longer than the brief's own section length. Administrators set the default in `config.json` under `application.brief.introductions`.
+- **Length** — an introduction is kept short: about 120 words unless you set a length on that section itself in its research panel. It is never longer than the brief's own section length. Administrators can change the default length (`target_words`) and the number of automatic re-runs (`heading_retries`) in `config.json` under `application.brief.introductions`; if the setting is left out, 120 words and one re-run are used.
 - **Order** — **Start deep research** and **AI Regenerate All** write each heading's sub-sections first and its introduction last, so the introduction can point to what the sub-sections actually say.
 - **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Log**, so you can edit them out or use **AI Regenerate**.
 - **Edits** — **AI Edit** and **AI Get Updates** keep an introduction an introduction.
