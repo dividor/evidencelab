@@ -3262,3 +3262,18 @@
   color: var(--brand-text-tertiary);
   white-space: nowrap;
 }
+
+/* An introduction that kept headings of its own after its re-runs. */
+.brief-section-warning {
+  margin: 8px 0 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--brand-text-primary);
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-error);
+}
+
+.brief-audit-note {
+  color: var(--brand-error);
+}

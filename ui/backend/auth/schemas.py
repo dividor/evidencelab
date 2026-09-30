@@ -3,10 +3,16 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi_users import schemas
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_validator,
+)
 
 # ---------------------------------------------------------------------------
 # JSONB safety helpers
@@ -791,6 +797,12 @@ class AssistantChatRequest(BaseModel):
     # the token ceiling is raised to fit it. None keeps the prompt's default
     # ("at least 3-4 paragraphs").
     target_words: Optional[int] = Field(None, ge=50, le=5000)
+    # Brief only: set when the section being written is a top-level heading
+    # with sub-headings. The answer is then a short introduction to these
+    # sub-sections: no headings of its own and none of their detail.
+    introduces_sub_sections: Optional[
+        List[Annotated[str, StringConstraints(min_length=1, max_length=500)]]
+    ] = Field(None, min_length=1, max_length=50)
     conversation_history: Optional[List[Dict[str, Any]]] = Field(
         None,
         description=(
