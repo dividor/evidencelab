@@ -24,11 +24,11 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 
 ### Documentation
 - The Brief guide covers prompts in templates, sharing templates and voices, the signed-in New brief dialog and the section and whole-brief AI tools (AI Edit, AI Get Updates, the Log with Keep/Reject Edits, AI Regenerate All, Stop). The docs viewer now gives level-4 headings ids, so in-page links to them resolve (#504)
-- The Brief guide explains introductions (#506) and the All Briefs tab, and the user administration guide covers administrators' access to every brief and its audit events (#509)
+- The Brief guide explains introductions and their settings (#506, #510) and the All Briefs tab, and the user administration guide covers administrators' access to every brief and its audit events (#509)
 
 ### Upgrade Notes
 - **Database migrations apply automatically on deploy.** This release adds `0034_add_brief_citation_checks` (the citation check's results) and `0035_share_templates_voices` (two share tables, and prompt, voice and length columns on `brief_templates`).
-- **New required `config.json` key** `application.brief.introductions`, with `target_words` (120) and `heading_retries` (1); see the repository `config.json`. The UI stops at startup with an error naming the key if it is missing, so deployments that keep their own `config.json` (for example the WFP config repository) must add it before deploying (#506)
+- **New optional `config.json` setting** `application.brief.introductions`, with `target_words` (the default introduction length) and `heading_retries` (how many times an introduction that comes back with headings is re-run); see the repository `config.json`. Deployments that keep their own `config.json` (for example the WFP config repository) need no change: if the setting or either value is left out, 120 words and 1 re-run are used. A value that is present but not a whole number in range stops the UI at startup with an error naming it (#506, #510)
 - No new environment variables or Python/npm dependencies. Rebuild the `api` and `ui` images.
 - Existing templates keep working and simply have no prompts; open one with **Edit** to add them.
 
