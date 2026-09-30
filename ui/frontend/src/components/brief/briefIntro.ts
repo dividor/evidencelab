@@ -8,8 +8,11 @@ import configJson from '../../config.json';
  * but has no headings of its own and none of their detail. The research
  * request carries the sub-headings so the backend prompt applies those rules,
  * the introduction gets its own shorter length, and one that still comes back
- * with headings is re-researched. The length and the number of re-runs come
- * from config.json (application.brief.introductions), never from code.
+ * with headings is re-researched. The length and the number of re-runs are
+ * set in config.json (application.brief.introductions). A deployment whose
+ * config.json predates the setting, or leaves out one of its values, gets
+ * BRIEF_INTRO_DEFAULTS for what is missing; a value that is present but
+ * invalid stops the app with an error naming it.
  */
 export interface BriefIntroConfig {
   // Default length of an introduction that has no length of its own.
@@ -19,12 +22,46 @@ export interface BriefIntroConfig {
   heading_retries: number;
 }
 
-const configured = (configJson as { application: { brief?: { introductions?: BriefIntroConfig } } })
-  .application.brief?.introductions;
-if (!configured) {
-  throw new Error('config.json is missing application.brief.introductions');
-}
-export const BRIEF_INTRO: BriefIntroConfig = configured;
+export const BRIEF_INTRO_DEFAULTS: BriefIntroConfig = { target_words: 120, heading_retries: 1 };
+
+const INTRO_KEY = 'application.brief.introductions';
+
+const checkedSetting = (
+  value: unknown,
+  name: keyof BriefIntroConfig,
+  min: number,
+  fallback: number,
+): number => {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min) {
+    throw new Error(`config.json ${INTRO_KEY}.${name} must be a whole number of at least ${min}`);
+  }
+  return value;
+};
+
+/** The introduction settings from config.json, with the defaults for any
+ *  that are not set. */
+export const resolveIntroConfig = (raw: unknown): BriefIntroConfig => {
+  if (raw === undefined) return { ...BRIEF_INTRO_DEFAULTS };
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`config.json ${INTRO_KEY} must be an object`);
+  }
+  const settings = raw as Record<string, unknown>;
+  return {
+    target_words: checkedSetting(settings.target_words, 'target_words', 1, BRIEF_INTRO_DEFAULTS.target_words),
+    heading_retries: checkedSetting(
+      settings.heading_retries,
+      'heading_retries',
+      0,
+      BRIEF_INTRO_DEFAULTS.heading_retries,
+    ),
+  };
+};
+
+export const BRIEF_INTRO: BriefIntroConfig = resolveIntroConfig(
+  (configJson as { application: { brief?: { introductions?: unknown } } }).application.brief
+    ?.introductions,
+);
 
 export interface OutlineEntry {
   id: string;
