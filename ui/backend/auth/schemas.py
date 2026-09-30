@@ -706,6 +706,8 @@ class BriefListItem(BaseModel):
     section_count: int = 0
     source_count: int = 0
     owner_name: Optional[str] = None
+    # Filled in for the admin "All Briefs" list, so it can be searched by user.
+    owner_email: Optional[str] = None
     share_count: int = 0
     created_at: datetime
     updated_at: datetime

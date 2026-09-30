@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { LibraryKind, recordTemplateUse } from './briefCentralApi';
 import {
   BriefNewModal,
@@ -16,6 +16,7 @@ import {
   draftToPayload,
   emptyTemplateDraft,
 } from './BriefTemplateModal';
+import { filterBriefs } from './briefSearch';
 import { BriefListItem, BriefTemplate, VoiceProfile } from './briefTypes';
 import { CentralTab, UseBriefCentralReturn } from './useBriefCentral';
 
@@ -38,11 +39,14 @@ const formatWhen = (iso: string): string => {
   }
 };
 
+const COPY_FAILED = 'Could not copy';
+
 const TAB_LABELS: Record<CentralTab, (c: UseBriefCentralReturn) => string> = {
   mine: (c) => `Saved Briefs (${c.myBriefs.length})`,
   shared: (c) => `Shared with me (${c.sharedBriefs.length})`,
   templates: (c) => `Templates (${c.templates.length})`,
   voices: (c) => `Voice & tone (${c.voices.length})`,
+  all: () => 'All Briefs (Admin)',
 };
 
 interface CardAction {
@@ -123,6 +127,99 @@ const BriefCard: React.FC<{
       />
     </div>
   );
+};
+
+const ownerText = (brief: BriefListItem): string => {
+  const name = brief.owner_name || 'Unknown owner';
+  return brief.owner_email && brief.owner_email !== name ? `${name} (${brief.owner_email})` : name;
+};
+
+// A card in the admin All Briefs tab: whose brief it is, then Open and Copy.
+const AdminBriefCard: React.FC<{
+  brief: BriefListItem;
+  onOpen: () => void;
+  onCopy: () => void;
+}> = ({ brief, onOpen, onCopy }) => (
+  <div className="bc-card">
+    <button className="bc-card-main" onClick={onOpen}>
+      <div className="bc-card-title">{brief.title}</div>
+      {brief.query && <div className="bc-card-query">{brief.query}</div>}
+      <div className="bc-card-meta">
+        {brief.section_count} sections · {brief.source_count} sources
+      </div>
+    </button>
+    <CardFoot
+      meta={`Owner: ${ownerText(brief)} · ${formatWhen(brief.updated_at)}`}
+      primary={{ label: 'Open Brief', title: 'Open this brief (read-only unless it is yours)', onClick: onOpen }}
+      actions={[
+        {
+          label: 'Copy',
+          title: 'Copy this brief into your own Saved Briefs',
+          icon: <IconCopy size={12} />,
+          onClick: onCopy,
+        },
+      ]}
+    />
+  </div>
+);
+
+// The administrators' All Briefs tab: every brief in the system, searchable
+// by brief name or owner. Opening someone else's brief is read-only; Copy puts
+// a copy in the admin's own Saved Briefs.
+const AllBriefsPanel: React.FC<{
+  central: UseBriefCentralReturn;
+  onOpenBrief: (id: string) => void;
+}> = ({ central, onOpenBrief }) => {
+  const [search, setSearch] = useState('');
+  const [notice, setNotice] = useState<string | null>(null);
+  const shown = useMemo(() => filterBriefs(central.allBriefs, search), [central.allBriefs, search]);
+  const copy = (brief: BriefListItem) => {
+    setNotice(null);
+    central
+      .copyBrief(brief.id)
+      .then((created) => setNotice(`Copied to your Saved Briefs as “${created.title}”.`))
+      .catch((e) => central.setError(e instanceof Error ? `${COPY_FAILED}: ${e.message}` : COPY_FAILED));
+  };
+  const empty = central.allBriefs.length ? 'No briefs match your search.' : 'There are no briefs yet.';
+  return (
+    <>
+      <div className="bc-admin-bar">
+        <input
+          type="search"
+          className="bc-input bc-admin-search"
+          aria-label="Search all briefs by name or user"
+          placeholder="Search by brief name or user"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <span className="bc-admin-count">
+          {shown.length} of {central.allBriefs.length} briefs
+        </span>
+      </div>
+      {notice && (
+        <div className="bc-notice" role="status">
+          {notice}
+        </div>
+      )}
+      <div className="bc-grid">
+        {shown.map((b) => (
+          <AdminBriefCard key={b.id} brief={b} onOpen={() => onOpenBrief(b.id)} onCopy={() => copy(b)} />
+        ))}
+      </div>
+      {!shown.length && <div className="bc-empty">{empty}</div>}
+    </>
+  );
+};
+
+// The body under the tab bar: the admin panel for All Briefs, else a card grid.
+const CentralTabBody: React.FC<{
+  central: UseBriefCentralReturn;
+  onOpenBrief: (id: string) => void;
+  grid: (tab: CentralTab) => React.ReactNode;
+}> = ({ central, onOpenBrief, grid }) => {
+  if (central.loading) return <div className="bc-empty">Loading…</div>;
+  if (central.tab === 'all') return <AllBriefsPanel central={central} onOpenBrief={onOpenBrief} />;
+  return <div className="bc-grid">{grid(central.tab)}</div>;
 };
 
 // Footer of a template or voice card: Use Template (templates only), then the
@@ -309,7 +406,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
                 setNewTemplateId(t.id);
                 setModal('new');
               }}
-              onCopy={() => void central.copyTemplate(t.id).catch((e) => report(e, 'Could not copy'))}
+              onCopy={() => void central.copyTemplate(t.id).catch((e) => report(e, COPY_FAILED))}
               onEdit={() => openTemplate(draftFromTemplate(t))}
               onShare={() => openLibraryShare('template', t.id, t.name)}
               onDelete={() => void central.removeTemplate(t.id).catch(() => undefined)}
@@ -333,7 +430,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           <VoiceCard
             key={v.id}
             voice={v}
-            onCopy={() => void central.copyVoice(v.id).catch((e) => report(e, 'Could not copy'))}
+            onCopy={() => void central.copyVoice(v.id).catch((e) => report(e, COPY_FAILED))}
             onEdit={() => {
               setVoiceDraft({
                 id: v.id,
@@ -375,7 +472,9 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
       {central.error && <div className="brief-error brief-error-banner">{central.error}</div>}
 
       <div className="bc-tabs" role="tablist">
-        {(Object.keys(TAB_LABELS) as CentralTab[]).map((t) => (
+        {(Object.keys(TAB_LABELS) as CentralTab[])
+          .filter((t) => t !== 'all' || central.isAdmin)
+          .map((t) => (
           <button
             key={t}
             role="tab"
@@ -388,11 +487,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
         ))}
       </div>
 
-      {central.loading ? (
-        <div className="bc-empty">Loading…</div>
-      ) : (
-        <div className="bc-grid">{gridFor(central.tab)}</div>
-      )}
+      <CentralTabBody central={central} onOpenBrief={onOpenBrief} grid={gridFor} />
       {!central.loading && central.tab === 'mine' && central.myBriefs.length === 0 && (
         <div className="bc-empty">No briefs yet — create your first with “New brief”.</div>
       )}

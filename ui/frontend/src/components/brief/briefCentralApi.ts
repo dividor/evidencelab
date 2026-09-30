@@ -33,6 +33,18 @@ export const listSharedBriefs = async (): Promise<BriefListItem[]> => {
   return expectArray<BriefListItem>(res.data, 'shared briefs');
 };
 
+/** Every brief in the system, with its owner (administrators only). */
+export const listAllBriefs = async (): Promise<BriefListItem[]> => {
+  const res = await axios.get(`${API_BASE_URL}/briefs/all`);
+  return expectArray<BriefListItem>(res.data, 'all briefs');
+};
+
+/** Copy a brief into a new one the user owns (their own, or any for admins). */
+export const copyBrief = async (id: string): Promise<RemoteBrief> => {
+  const res = await axios.post(`${API_BASE_URL}/briefs/${id}/copy`);
+  return res.data as RemoteBrief;
+};
+
 export const getBrief = async (id: string): Promise<RemoteBrief> => {
   const res = await axios.get(`${API_BASE_URL}/briefs/${id}`);
   return res.data as RemoteBrief;
