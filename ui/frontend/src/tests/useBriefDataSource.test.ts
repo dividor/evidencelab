@@ -16,10 +16,22 @@ jest.mock('../utils/briefStream', () => ({
   runDeepResearch: jest.fn(),
 }));
 
+// Saving a brief also mirrors it to the activity log over axios.
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    get: () => Promise.resolve({ data: [] }),
+    post: () => Promise.resolve({ data: {} }),
+    put: () => Promise.resolve({ data: {} }),
+    delete: () => Promise.resolve({ data: {} }),
+  },
+}));
+
 const mockGetBrief = jest.fn();
+const mockCreateBrief = jest.fn();
 jest.mock('../components/brief/briefCentralApi', () => ({
   __esModule: true,
-  createBrief: jest.fn(),
+  createBrief: (...args: unknown[]) => mockCreateBrief(...args),
   deleteBriefRemote: jest.fn(),
   getBrief: (...args: unknown[]) => mockGetBrief(...args),
   listMyBriefs: jest.fn(async () => []),
@@ -95,5 +107,51 @@ describe('useBrief briefDataSource', () => {
       result.current.startManual();
     });
     expect(result.current.briefDataSource).toBeNull();
+  });
+});
+
+describe('useBrief brief prompt', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    localStorage.clear();
+    mockCreateBrief.mockImplementation(async (args: { content: unknown }) => ({
+      ...remoteBrief('uneg'),
+      content: args.content,
+    }));
+  });
+
+  test('is restored when a saved brief is opened', async () => {
+    const saved = remoteBrief('wfp');
+    saved.content = { ...saved.content, instructions: 'Focus on East Africa' };
+    mockGetBrief.mockResolvedValue(saved);
+    const { result } = renderBrief();
+    await act(async () => {
+      result.current.openBriefById('b-1');
+    });
+    await waitFor(() => expect(result.current.instructions).toBe('Focus on East Africa'));
+  });
+
+  test('a brief saved without one opens with none, not the previous brief\'s', async () => {
+    mockGetBrief.mockResolvedValue(remoteBrief('wfp'));
+    const { result } = renderBrief();
+    act(() => {
+      result.current.setInstructions('Left over from another brief');
+    });
+    await act(async () => {
+      result.current.openBriefById('b-1');
+    });
+    await waitFor(() => expect(result.current.briefTitle).toBe(TITLE));
+    expect(result.current.instructions).toBe('');
+  });
+
+  test('is saved with the brief', async () => {
+    const { result } = renderBrief();
+    act(() => {
+      result.current.setInstructions('  Cover 2020 onward  ');
+      result.current.startFromTemplate('From a template', [{ title: 'Findings', sub: false }]);
+    });
+    await waitFor(() => expect(mockCreateBrief).toHaveBeenCalled());
+    const content = mockCreateBrief.mock.calls[0][0].content;
+    expect(content.instructions).toBe('Cover 2020 onward');
   });
 });

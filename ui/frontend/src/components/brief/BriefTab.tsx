@@ -9,13 +9,14 @@ import { withDocumentYears } from '../../utils/briefExportYears';
 import { buildGlobalCitations } from './briefCitations';
 import { ReferenceGrouping } from './briefTypes';
 import { BriefCentral } from './BriefCentral';
+import { BriefRegenAllModal, NewBriefSubmit } from './BriefCentralModals';
+import { BriefShareModal } from './BriefShareDialog';
 import {
-  BriefRegenAllModal,
-  BriefShareModal,
   BriefTemplateModal,
-  NewBriefSubmit,
   TemplateDraft,
-} from './BriefCentralModals';
+  draftHeading,
+  draftToPayload,
+} from './BriefTemplateModal';
 import { BriefDocument } from './BriefDocument';
 import { BriefComments, BriefCommentComposer, BriefThreadModal } from './BriefComments';
 import { CommentMark } from './briefCommentMarks';
@@ -299,7 +300,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const loggedIn = userKey != null;
   // Logged-in users get Brief Central: server-side briefs, sharing, templates
   // and voice & tone profiles. Anonymous users keep the localStorage flow.
-  const central = useBriefCentral(loggedIn);
+  // Administrators (superusers) also get the All Briefs tab.
+  const isAdmin = loggedIn && !!auth.user?.is_superuser;
+  const central = useBriefCentral(loggedIn, isAdmin);
   const brief = useBrief({
     apiBaseUrl: API_BASE_URL,
     dataSource,
@@ -435,17 +438,29 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [exportBusy, brief, dataSource],
   );
 
-  // The template draft when saving the open brief's headings as a template.
+  // The template draft when saving the open brief as a template: its headings
+  // with each section's text, prompt, voice and length, and the brief's own
+  // prompt, voice and length. The editor's switches decide what is kept.
   const templateFromBrief: TemplateDraft = {
+    id: null,
     fromBrief: true,
     name: `${brief.briefTitle.slice(0, 40)} template`,
     description: 'Saved from a brief',
-    headings: brief.sections.map((s) => ({
-      title: s.title,
-      sub: s.level === 2,
-      text: s.content || null,
-    })),
+    headings: brief.sections.map((s) =>
+      draftHeading({
+        title: s.title,
+        sub: s.level === 2,
+        text: s.content || null,
+        prompt: s.guidance || null,
+        voice_profile_id: s.voiceId ?? null,
+        target_words: s.targetWords ?? null,
+      }),
+    ),
     withText: false,
+    withSettings: true,
+    prompt: brief.instructions,
+    voiceId: brief.briefVoiceId,
+    targetWords: brief.targetWords,
   };
 
   // Logged-in outline generation runs from the New-brief modal — surface the
@@ -512,16 +527,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       {workspaceModal === 'template' && (
         <BriefTemplateModal
           draft={templateFromBrief}
+          voices={brief.voices}
           onSave={async (d) => {
-            await central.saveTemplate({
-              name: d.name,
-              description: d.description || null,
-              headings: d.headings.map((h) => ({
-                ...h,
-                text: d.withText ? h.text : null,
-              })),
-              withText: d.withText,
-            });
+            await central.saveTemplate(null, draftToPayload(d));
             setWorkspaceModal(null);
           }}
           onClose={() => setWorkspaceModal(null)}

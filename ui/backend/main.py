@@ -284,9 +284,11 @@ async def startup_event():
     # Recover test runs orphaned by a previous restart: their background task
     # did not survive, so a "running" row on startup is always stale.
     if USER_MODULE:
+        from ui.backend.services.citation_check_runner import recover_orphaned_checks
         from ui.backend.services.test_runner import recover_orphaned_runs
 
         await recover_orphaned_runs()
+        await recover_orphaned_checks()
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
     elif USE_EMBEDDING_SERVER:
@@ -776,6 +778,7 @@ if USER_MODULE:
     from ui.backend.routes import activity as activity_routes
     from ui.backend.routes import api_keys as api_keys_routes
     from ui.backend.routes import brief_central as brief_central_routes
+    from ui.backend.routes import brief_library as brief_library_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
     from ui.backend.routes import moderation as moderation_routes
@@ -788,6 +791,7 @@ if USER_MODULE:
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
     app.include_router(research_routes.router, prefix="/research", tags=["research"])
     app.include_router(brief_central_routes.router, tags=["brief-central"])
+    app.include_router(brief_library_routes.router, tags=["brief-library"])
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])

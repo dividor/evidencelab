@@ -13,6 +13,10 @@
         "min": 50,
         "max": 3000,
         "tolerance": 0.25
+      },
+      "introductions": {
+        "target_words": 120,
+        "heading_retries": 1
       }
     },
     "assistant": {

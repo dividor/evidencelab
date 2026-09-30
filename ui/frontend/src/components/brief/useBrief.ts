@@ -18,6 +18,7 @@ import {
 import {
   BRIEF_HISTORY_KEY,
   BriefSection,
+  BriefTemplateHeading,
   BriefStage,
   DEFAULT_BRIEF_TITLE,
   ReferenceGrouping,
@@ -33,6 +34,13 @@ import {
   updateBrief as updateBriefRemote,
 } from './briefCentralApi';
 import { listItemToStub, migrateLocalBriefs, remoteToSaved } from './briefRemote';
+import {
+  BRIEF_INTRO,
+  extraHeadingLines,
+  researchOrder,
+  sectionTargetWords,
+  subSectionTitles,
+} from './briefIntro';
 import { highlightOneSource, highlightSectionSources } from './briefHighlights';
 import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
@@ -61,6 +69,131 @@ const makeSection = (title: string, level = 1, sample = false): BriefSection => 
   activity: [],
   sample,
 });
+
+/**
+ * A new section from a template heading: its prompt becomes the section's
+ * research guidance, and its voice and length override the brief defaults.
+ * Saved text, when the template has it, starts the section as done.
+ */
+export const sectionFromTemplateHeading = (h: BriefTemplateHeading): BriefSection => {
+  const section: BriefSection = {
+    ...makeSection(h.title, h.sub ? 2 : 1, false),
+    guidance: h.prompt || undefined,
+    voiceId: h.voice_profile_id ?? null,
+    targetWords: h.target_words ?? null,
+  };
+  if (h.text) return { ...section, status: 'done', progress: 100, content: h.text };
+  return section;
+};
+
+const headingCount = (n: number): string => `${n} heading${n === 1 ? '' : 's'}`;
+
+/** The Log note for an introduction kept with headings after its re-runs. */
+export const introHeadingNote = (headings: number, reruns: number): string =>
+  `This introduction still has ${headingCount(headings)} of its own after ${reruns} re-run${
+    reruns === 1 ? '' : 's'
+  }. Edit them out, or use AI Regenerate.`;
+
+/** Headings an introduction's text has of its own, for its warning; undefined
+ *  for a section that is not an introduction or has none. An edit cannot be
+ *  re-run like research, so its result is only flagged. */
+const introWarningFor = (sections: BriefSection[], id: string, content: string): number | undefined =>
+  subSectionTitles(sections, id).length ? extraHeadingLines(content).length || undefined : undefined;
+
+const timesText = (n: number): string => (n === 1 ? 'once' : `${n} times`);
+
+/** The Log note for an introduction that needed re-running to lose its headings. */
+export const introRerunNote = (reruns: number): string =>
+  `Re-run ${timesText(reruns)}: the earlier draft had headings of its own, which an introduction should not.`;
+
+/**
+ * What a finished draft means for an introduction: how many headings of its
+ * own it has, and whether it should be re-run (re-runs left) rather than kept.
+ * A section that is not an introduction never has either.
+ */
+const introOutcome = (
+  subSectionCount: number,
+  content: string,
+  attempt: number,
+): { headings: number; rerun: boolean } => {
+  const headings = subSectionCount ? extraHeadingLines(content).length : 0;
+  return { headings, rerun: headings > 0 && attempt < BRIEF_INTRO.heading_retries };
+};
+
+/** The Log note for a kept draft: headings left after re-runs, or re-runs that fixed it. */
+const introAuditNote = (headings: number, attempt: number): string | undefined => {
+  if (headings) return introHeadingNote(headings, attempt);
+  return attempt > 0 ? introRerunNote(attempt) : undefined;
+};
+
+const rerunActivityText = (headings: number, attempt: number): string =>
+  `The introduction came back with ${headingCount(headings)}; re-running (${attempt + 1} of ${
+    BRIEF_INTRO.heading_retries
+  })`;
+
+/** The sub-headings a section introduces, for a revise request; null if none. */
+const introSubSectionsOf = (sections: BriefSection[], id: string): string[] | null => {
+  const subs = subSectionTitles(sections, id);
+  return subs.length ? subs : null;
+};
+
+/** The working state of a brief that is saved (see toSavedBrief). */
+export interface BriefSnapshot {
+  id: string;
+  title: string;
+  query: string;
+  sections: BriefSection[];
+  outlineLog: BriefActivityEvent[];
+  numberHeadings: boolean;
+  activityId: string | null;
+  voiceId: string | null;
+  targetWords: number | null;
+  instructions: string;
+}
+
+/** The saved form of a brief: what goes to the server or local storage. */
+export const toSavedBrief = (b: BriefSnapshot): SavedBrief => ({
+  id: b.id,
+  title: b.title,
+  query: b.query,
+  date: Date.now(),
+  sectionCount: b.sections.length,
+  sourceCount: b.sections.reduce((a, s) => a + s.sources.length, 0),
+  // Persist only completed sections' content; a section that was mid- or
+  // un-researched reverts to its last stable (pending) state on reload —
+  // never a stuck "Researching…".
+  sections: b.sections.map((s) => {
+    // A mid-revise section still holds its last good content — persist it
+    // as done so an interrupted Edit/Update never loses the section.
+    const done = s.status === 'done' || !!s.revising;
+    return {
+      // Persist the id so comments anchored to this section survive a
+      // reload; a fresh id each load would orphan every thread.
+      id: s.id,
+      title: s.title,
+      level: s.level,
+      status: done ? 'done' : 'pending',
+      content: done ? s.content : '',
+      sources: done ? s.sources : [],
+      audit: s.audit && s.audit.length ? s.audit : undefined,
+      lastResearchedAt: s.lastResearchedAt,
+      voiceId: s.voiceId ?? undefined,
+      guidance: s.guidance || undefined,
+      targetWords: s.targetWords ?? undefined,
+      introHeadingWarning: s.introHeadingWarning || undefined,
+    };
+  }),
+  outlineLog: b.outlineLog,
+  numberHeadings: b.numberHeadings,
+  activityId: b.activityId ?? undefined,
+  voiceId: b.voiceId,
+  targetWords: b.targetWords ?? undefined,
+  instructions: b.instructions.trim() || undefined,
+});
+
+/** Everything a save would write except its timestamp, to tell whether a
+ *  save would change anything. */
+export const savedSignature = (entry: SavedBrief): string => JSON.stringify({ ...entry, date: 0 });
 
 export interface UseBriefOptions {
   apiBaseUrl: string;
@@ -217,6 +350,18 @@ export const useBrief = ({
   // Stable Activity-log id for the current brief (one row per brief).
   const briefActivityIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Set to researchOne once it is defined; it re-runs itself for an
+  // introduction that came back with headings.
+  const researchOneRef = useRef<
+    (
+      id: string,
+      context: string | null,
+      signal: AbortSignal,
+      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+    ) => Promise<void>
+  >(() => {
+    throw new Error('researchOne used before it was defined');
+  });
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
   const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
@@ -251,7 +396,13 @@ export const useBrief = ({
   const canEditRef = useRef(canEdit);
   canEditRef.current = canEdit;
   // True once the current brief exists as a server row (remote mode).
-  const remoteSavedRef = useRef(false);
+  // The server id of every brief this session knows is on the server, keyed by
+  // the id the brief had when saved (a local id before its first save, then
+  // the server id). A brief opened from the server maps to itself.
+  const serverIdsRef = useRef<Map<string, string>>(new Map());
+  // The signature (see savedSignature) of each brief as last opened or saved,
+  // keyed by server id, or local id before the first save.
+  const lastSavedSigRef = useRef<Map<string, string>>(new Map());
 
   // The team's default section length applies to a brief that has not started
   // yet; once a brief is open its own (persisted) target stands.
@@ -456,52 +607,83 @@ export const useBrief = ({
     [remote, history, persist],
   );
 
-  // Serialise remote saves: one in flight at a time; a save requested while one
-  // runs re-runs once it finishes (latest state wins — entries are rebuilt).
+  // Serialise remote saves: one in flight at a time. A save requested while one
+  // runs is parked, one per brief (latest state wins — entries are rebuilt),
+  // and sent as soon as the running one finishes. The queue only goes idle once
+  // nothing is parked, so no save is left behind; refreshing the saved-brief
+  // list happens after that, outside the queue.
+  //
+  // Each save carries its own brief: whether it updates or creates is decided
+  // from that brief's id, never from which brief is open when it is sent. So a
+  // save still queued when its brief is closed, or when another is opened,
+  // still reaches its own brief — it can neither create a duplicate nor write
+  // into the brief now open.
   const remoteSaveBusyRef = useRef(false);
-  const remoteSavePendingRef = useRef<SavedBrief | null>(null);
+  const remoteSavePendingRef = useRef<Map<string, SavedBrief>>(new Map());
+
+  const saveRemoteOnce = useCallback(
+    async (entry: SavedBrief): Promise<void> => {
+      const serverId = serverIdsRef.current.get(entry.id);
+      if (serverId) {
+        await updateBriefRemote(serverId, {
+          title: entry.title,
+          query: entry.query || null,
+          voiceProfileId: entry.voiceId ?? null,
+          content: { ...entry, id: serverId },
+        });
+        lastSavedSigRef.current.set(serverId, savedSignature(entry));
+        return;
+      }
+      const created = await createBriefRemote({
+        title: entry.title,
+        query: entry.query || null,
+        dataSource: dataSource || null,
+        voiceProfileId: entry.voiceId ?? null,
+        content: entry,
+      });
+      // Later saves of this brief, under its local id or its new server id,
+      // update the row just created.
+      serverIdsRef.current.set(entry.id, created.id);
+      serverIdsRef.current.set(created.id, created.id);
+      lastSavedSigRef.current.set(created.id, savedSignature(entry));
+      // If the brief is still open, it now goes by its server id (URL, saves).
+      if (briefIdRef.current === entry.id) briefIdRef.current = created.id;
+    },
+    [dataSource],
+  );
 
   const pushRemoteSave = useCallback(
     (entry: SavedBrief) => {
-      if (remoteSaveBusyRef.current) {
-        remoteSavePendingRef.current = entry;
-        return;
-      }
-      remoteSaveBusyRef.current = true;
-      const run = async (current: SavedBrief): Promise<void> => {
-        if (remoteSavedRef.current && briefIdRef.current) {
-          await updateBriefRemote(briefIdRef.current, {
-            title: current.title,
-            query: current.query || null,
-            voiceProfileId: current.voiceId ?? null,
-            content: current,
-          });
-        } else {
-          const created = await createBriefRemote({
-            title: current.title,
-            query: current.query || null,
-            dataSource: dataSource || null,
-            voiceProfileId: current.voiceId ?? null,
-            content: current,
-          });
-          // Adopt the server id so subsequent saves update the same row.
-          briefIdRef.current = created.id;
-          remoteSavedRef.current = true;
+      const pending = remoteSavePendingRef.current;
+      pending.set(serverIdsRef.current.get(entry.id) ?? entry.id, entry);
+      if (remoteSaveBusyRef.current) return;
+      const drain = async (): Promise<void> => {
+        for (let next = pending.entries().next(); !next.done; next = pending.entries().next()) {
+          const [key, queued] = next.value;
+          pending.delete(key);
+          await saveRemoteOnce(queued);
         }
-        const pending = remoteSavePendingRef.current;
-        remoteSavePendingRef.current = null;
-        if (pending) return run({ ...pending, id: briefIdRef.current || pending.id });
       };
-      run(entry)
-        .then(() => refreshRemoteHistory())
-        .catch((e) =>
-          setError(e instanceof Error ? e.message : 'Could not save the brief.'),
-        )
-        .finally(() => {
-          remoteSaveBusyRef.current = false;
-        });
+      const run = () => {
+        remoteSaveBusyRef.current = true;
+        drain()
+          .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'))
+          .finally(() => {
+            remoteSaveBusyRef.current = false;
+            // A save parked after the loop's last check (or while a save
+            // failed) still goes out before the queue goes idle.
+            if (pending.size) {
+              run();
+              return;
+            }
+            refreshRemoteHistory().catch((e) =>
+              setError(e instanceof Error ? e.message : 'Could not load your briefs.'),
+            );
+          });
+      };
+      run();
     },
-    [dataSource, refreshRemoteHistory],
+    [saveRemoteOnce, refreshRemoteHistory],
   );
 
   const saveCurrent = useCallback(() => {
@@ -510,46 +692,27 @@ export const useBrief = ({
     if (!id || !snap.length) return;
     // Never write back a brief someone else owns (viewer-only).
     if (remote && !canEditRef.current) return;
-    const entry: SavedBrief = {
+    const entry = toSavedBrief({
       id,
       title: briefTitleRef.current,
       query: queryRef.current,
-      date: Date.now(),
-      sectionCount: snap.length,
-      sourceCount: snap.reduce((a, s) => a + s.sources.length, 0),
-      // Persist only completed sections' content; a section that was mid- or
-      // un-researched reverts to its last stable (pending) state on reload —
-      // never a stuck "Researching…".
-      sections: snap.map((s) => {
-        // A mid-revise section still holds its last good content — persist it
-        // as done so an interrupted Edit/Update never loses the section.
-        const done = s.status === 'done' || !!s.revising;
-        return {
-          // Persist the id so comments anchored to this section survive a
-          // reload; a fresh id each load would orphan every thread.
-          id: s.id,
-          title: s.title,
-          level: s.level,
-          status: done ? 'done' : 'pending',
-          content: done ? s.content : '',
-          sources: done ? s.sources : [],
-          audit: s.audit && s.audit.length ? s.audit : undefined,
-          lastResearchedAt: s.lastResearchedAt,
-          voiceId: s.voiceId ?? undefined,
-          guidance: s.guidance || undefined,
-          targetWords: s.targetWords ?? undefined,
-        };
-      }),
+      sections: snap,
       outlineLog: outlineLogRef.current,
       numberHeadings: numberHeadingsRef.current,
-      activityId: briefActivityIdRef.current ?? undefined,
+      activityId: briefActivityIdRef.current,
       voiceId: briefVoiceIdRef.current,
-      targetWords: targetWordsRef.current ?? undefined,
-    };
+      targetWords: targetWordsRef.current,
+      instructions: instructionsRef.current,
+    });
+    // Nothing changed since it was opened or last saved: send nothing. Opening
+    // a brief therefore never writes it back.
+    const key = serverIdsRef.current.get(id) ?? id;
+    if (lastSavedSigRef.current.get(key) === savedSignature(entry)) return;
     if (remote) {
       pushRemoteSave(entry);
     } else {
       persist([entry, ...historyRef.current.filter((e) => e.id !== id)].slice(0, 10));
+      lastSavedSigRef.current.set(key, savedSignature(entry));
     }
 
     // Mirror the brief into the Activity log as a "brief" row, upserted on each
@@ -581,7 +744,7 @@ export const useBrief = ({
     if (stage === 'seed' || !briefIdRef.current) return;
     const t = setTimeout(() => saveCurrent(), 500);
     return () => clearTimeout(t);
-  }, [stage, briefTitle, sections, numberHeadings, saveCurrent]);
+  }, [stage, briefTitle, sections, numberHeadings, instructions, saveCurrent]);
 
   // ---- outline ----
   // Generate headings by first running a deep-research survey of the document
@@ -654,7 +817,6 @@ export const useBrief = ({
       });
       briefIdRef.current = uid();
       briefActivityIdRef.current = activityId;
-      remoteSavedRef.current = false;
       setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
@@ -677,7 +839,6 @@ export const useBrief = ({
   const startManual = useCallback(() => {
     briefIdRef.current = uid();
     briefActivityIdRef.current = newActivityId();
-    remoteSavedRef.current = false;
     setBriefDataSource(null);
     setCanEdit(true);
     setOwnerName(null);
@@ -691,28 +852,17 @@ export const useBrief = ({
     setStage('outline');
   }, []);
 
-  // Start a brief from a template's headings (optionally with saved text).
+  // Start a brief from a template's headings, with each heading's saved text,
+  // prompt, voice and length.
   const startFromTemplate = useCallback(
-    (
-      title: string,
-      headings: { title: string; sub: boolean; text?: string | null }[],
-    ) => {
+    (title: string, headings: BriefTemplateHeading[]) => {
       briefIdRef.current = uid();
       briefActivityIdRef.current = newActivityId();
-      remoteSavedRef.current = false;
       setBriefDataSource(null);
       setCanEdit(true);
       setOwnerName(null);
       setBriefTitle(title.trim() || DEFAULT_BRIEF_TITLE);
-      setSections(
-        headings.map((h) => {
-          const section = makeSection(h.title, h.sub ? 2 : 1, false);
-          if (h.text) {
-            return { ...section, status: 'done' as const, progress: 100, content: h.text };
-          }
-          return section;
-        }),
-      );
+      setSections(headings.map(sectionFromTemplateHeading));
       setStage('outline');
     },
     [],
@@ -802,6 +952,7 @@ export const useBrief = ({
           content: priorContent,
           instruction: buildCondenseInstruction(target, words),
           voiceInstructions: voiceInstructionsFor(section.voiceId),
+          introducesSubSections: introSubSectionsOf(sectionsRef.current, id),
           activityId: briefActivityIdRef.current,
           signal,
         });
@@ -826,6 +977,7 @@ export const useBrief = ({
           progress: 100,
           content: revised,
           sources,
+          introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           audit: [...(cur?.audit || []), entry],
           revising: undefined,
         });
@@ -850,7 +1002,8 @@ export const useBrief = ({
       id: string,
       context: string | null,
       signal: AbortSignal,
-      opts?: { mode?: SectionResearchMode; instruction?: string | null },
+      // `attempt` counts re-runs of an introduction that came back with headings.
+      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
     ): Promise<void> => {
       const list = sectionsRef.current;
       const idx = list.findIndex((s) => s.id === id);
@@ -859,6 +1012,7 @@ export const useBrief = ({
       const mode: SectionResearchMode = opts?.mode ?? 'generate';
       const isRevise = mode === 'edit' || mode === 'update';
       const instruction = (opts?.instruction || '').trim() || null;
+      const attempt = opts?.attempt ?? 0;
       // Snapshot the pre-op state for the audit row + the "show changes" diff.
       const priorContent = section.content;
       const priorSources = section.sources;
@@ -881,18 +1035,26 @@ export const useBrief = ({
       // Generate clears the section; Edit/Update keep the current draft in place
       // (rendered greyed-out, still in the citation numbering) and swap
       // atomically on completion.
+      // A re-run keeps the activity so far, including why it re-ran.
+      const activityReset = attempt > 0 ? {} : { activity: [] };
       updateSection(
         id,
         isRevise
-          ? { status: 'researching', progress: 4, activity: [], revising: true }
-          : { status: 'researching', progress: 4, content: '', sources: [], activity: [] },
+          ? { status: 'researching', progress: 4, ...activityReset, revising: true }
+          : { status: 'researching', progress: 4, content: '', sources: [], ...activityReset },
       );
       const briefTopic = queryRef.current.trim() || briefTitleRef.current;
-      // The section's own target wins over the brief's; null = no target.
-      const sectionTarget = section.targetWords ?? targetWordsRef.current;
+      // A top-level heading with sub-headings is their introduction: the
+      // backend writes it without headings or their detail, at the shorter
+      // introduction length unless the section has its own (see briefIntro.ts).
+      const subSections = subSectionTitles(list, id);
+      const sectionTarget = sectionTargetWords(section.targetWords, subSections, targetWordsRef.current);
       // Set by onDone when the finished section overshoots its target; the
       // research promise waits for it so a document-wide run stays sequential.
       let condensePass: Promise<void> = Promise.resolve();
+      // Set by onDone when an introduction came back with headings and has
+      // re-runs left; the promise then researches it again instead.
+      let rerun = false;
       return researchBriefSection({
         apiBaseUrl,
         dataSource,
@@ -911,6 +1073,7 @@ export const useBrief = ({
         publishedAfterIso,
         voiceInstructions: voiceInstructionsFor(section.voiceId),
         targetWords: sectionTarget,
+        introducesSubSections: subSections.length ? subSections : null,
         // The whole document structure (plus a gist of written sections), so
         // this section stays in scope and doesn't duplicate the others.
         outlineContext: buildOutlineContext(
@@ -944,6 +1107,14 @@ export const useBrief = ({
               );
               return;
             }
+            // An introduction must not have headings of its own: re-run it
+            // while re-runs are left, then keep it with a visible warning.
+            const intro = introOutcome(subSections.length, content, attempt);
+            if (intro.rerun) {
+              rerun = true;
+              pushActivity(id, { tag: 'DRAFT', text: rerunActivityText(intro.headings, attempt) });
+              return;
+            }
             const priorKeys = new Set(priorSources.map((s) => s.docId));
             const added = sources.filter((s) => !priorKeys.has(s.docId)).length;
             const entry: SectionAuditEntry = {
@@ -958,6 +1129,7 @@ export const useBrief = ({
               // Keep the before/after for a revise so its diff stays viewable.
               before: isRevise ? priorContent : undefined,
               after: isRevise ? content : undefined,
+              note: introAuditNote(intro.headings, attempt),
             };
             const cur = sectionsRef.current.find((s) => s.id === id);
             const doneAt = Date.now();
@@ -966,6 +1138,7 @@ export const useBrief = ({
               progress: 100,
               content,
               sources,
+              introHeadingWarning: intro.headings || undefined,
               audit: [...(cur?.audit || []), entry],
               lastResearchedAt: doneAt,
               revising: undefined,
@@ -1004,7 +1177,11 @@ export const useBrief = ({
               : { status: 'pending', progress: 0 },
           ),
         )
-        .then(() => condensePass);
+        .then(() =>
+          rerun
+            ? researchOneRef.current(id, context, signal, { ...opts, attempt: attempt + 1 })
+            : condensePass,
+        );
     },
     [
       apiBaseUrl,
@@ -1017,6 +1194,9 @@ export const useBrief = ({
       condenseSection,
     ],
   );
+  // researchOne re-runs itself for an introduction that came back with
+  // headings; the ref gives it the current function without a self-reference.
+  researchOneRef.current = researchOne;
 
   // `overrides` come from the Regenerate-all modal. They are written to the
   // refs as well as to state, because the research loop below reads the refs
@@ -1036,7 +1216,8 @@ export const useBrief = ({
         setBriefVoiceId(overrides.voiceId);
       }
       if (overrides?.targetWords !== undefined) setTargetWords(overrides.targetWords);
-      const ids = sectionsRef.current.map((s) => s.id);
+      // Sub-sections before their introduction, so it can see what they say.
+      const ids = researchOrder(sectionsRef.current);
       if (!ids.length) return;
       setError(null);
       const controller = new AbortController();
@@ -1143,6 +1324,7 @@ export const useBrief = ({
           content: priorContent,
           instruction: instruction.trim(),
           voiceInstructions: voiceInstructionsFor(section.voiceId),
+          introducesSubSections: introSubSectionsOf(sectionsRef.current, id),
           activityId: briefActivityIdRef.current,
             signal: controller.signal,
         });
@@ -1163,6 +1345,7 @@ export const useBrief = ({
           status: 'done',
           progress: 100,
           content: revised,
+          introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           // Sources unchanged — a surgical edit preserves the [n] markers. The
           // claims moved though, so drop stale excerpt highlights to recompute.
           sources: section.sources.map(({ claimMatches: _cm, semanticMatches: _sm, ...rest }) => rest),
@@ -1264,7 +1447,7 @@ export const useBrief = ({
     ) => {
       abortRef.current?.abort();
       briefIdRef.current = entry.id;
-      remoteSavedRef.current = access.saved;
+      if (access.saved) serverIdsRef.current.set(entry.id, entry.id);
       setBriefDataSource(access.dataSource);
       briefActivityIdRef.current = entry.activityId || newActivityId();
       setBriefTitle(entry.title);
@@ -1273,8 +1456,9 @@ export const useBrief = ({
       setOwnerName(access.ownerName);
       setBriefVoiceId(entry.voiceId ?? null);
       setTargetWords(entry.targetWords ?? null);
-      setSections(
-        entry.sections.map((h) => ({
+      // Briefs saved before instructions were kept have none.
+      setInstructions(entry.instructions ?? '');
+      const sections: BriefSection[] = entry.sections.map((h) => ({
           ...makeSection(h.title, h.level),
           // Keep the saved id: comments anchor to it, and a fresh id each load
           // would orphan every thread. Briefs saved before ids were persisted
@@ -1289,7 +1473,27 @@ export const useBrief = ({
           voiceId: h.voiceId ?? null,
           guidance: h.guidance || '',
           targetWords: h.targetWords ?? null,
-        })),
+          introHeadingWarning: h.introHeadingWarning || undefined,
+        }));
+      setSections(sections);
+      // Record the brief as opened, so the autosave sends nothing until
+      // something actually changes (opening never writes a brief back).
+      lastSavedSigRef.current.set(
+        entry.id,
+        savedSignature(
+          toSavedBrief({
+            id: entry.id,
+            title: entry.title,
+            query: entry.query,
+            sections,
+            outlineLog: entry.outlineLog || [],
+            numberHeadings: entry.numberHeadings ?? false,
+            activityId: briefActivityIdRef.current,
+            voiceId: entry.voiceId ?? null,
+            targetWords: entry.targetWords ?? null,
+            instructions: entry.instructions ?? '',
+          }),
+        ),
       );
       setGeneratingActivity(entry.outlineLog || []);
       setNumberHeadings(entry.numberHeadings ?? false);
@@ -1433,13 +1637,13 @@ export const useBrief = ({
     abortRef.current?.abort();
     briefIdRef.current = null;
     briefActivityIdRef.current = null;
-    remoteSavedRef.current = false;
     setBriefDataSource(null);
     setStage('seed');
     setSections([]);
     setRegenFor(null);
     setError(null);
     setQuery('');
+    setInstructions('');
     setNumberHeadings(false);
     setBriefVoiceId(null);
     setCanEdit(true);

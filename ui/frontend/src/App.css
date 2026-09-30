@@ -12771,3 +12771,94 @@ button.doc-link:hover {
 .citation-hover-more:hover {
   text-decoration: underline;
 }
+
+/* ---- Evaluation harness: brief citation check ---- */
+.testing-brief-intro {
+  margin: 0 0 0.75rem;
+  max-width: 60rem;
+}
+.testing-brief-legend {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+.testing-scope-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.testing-search-input {
+  min-width: 14rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--brand-border, #d0d7de);
+  border-radius: 4px;
+  font: inherit;
+}
+.testing-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.testing-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.testing-check-filters {
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+.testing-check-table td {
+  vertical-align: top;
+}
+.testing-check-passage {
+  min-width: 22rem;
+  line-height: 1.4;
+}
+.testing-citation-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.testing-link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--brand-primary, #5b8fa8);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.testing-link-btn:disabled {
+  color: var(--brand-text-tertiary, #777);
+  text-decoration: none;
+  cursor: default;
+}
+.testing-check-detail-row td {
+  background: var(--brand-bg, #f6f8fa);
+}
+.testing-check-passage-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem 0.25rem;
+}
+.testing-check-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  line-height: 1.45;
+}
+.testing-badge-warn {
+  margin-left: 0.4rem;
+  color: var(--brand-warning, #9a6700);
+  border-color: var(--brand-warning, #9a6700);
+}
+.testing-has-help {
+  cursor: help;
+}
+.testing-help-icon {
+  cursor: help;
+  color: var(--brand-text-tertiary, #777);
+  font-size: 0.9em;
+}

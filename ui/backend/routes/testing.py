@@ -9,7 +9,7 @@ per SECURITY.md; full detail is logged server-side only.
 
 import logging
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import (
     APIRouter,
@@ -23,15 +23,17 @@ from fastapi import (
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.db import get_async_session
-from ui.backend.auth.models import User
+from ui.backend.auth.models import Brief, BriefShare, User
 from ui.backend.auth.testing_models import (
     EXPERIMENT_DRAFT,
     EXPERIMENT_FAILED,
     EXPERIMENT_PENDING,
     EXPERIMENT_RUNNING,
     VALID_CAPABILITIES,
+    BriefCitationCheck,
     TestCase,
     TestDataset,
     TestExperiment,
@@ -39,6 +41,11 @@ from ui.backend.auth.testing_models import (
 )
 from ui.backend.auth.users import current_superuser
 from ui.backend.schemas.testing import (
+    BriefCheckCandidate,
+    BriefCitationCheckCreate,
+    BriefCitationCheckDetail,
+    BriefCitationCheckPassageRead,
+    BriefCitationCheckRead,
     TestCaseCreate,
     TestCaseRead,
     TestCaseUpdate,
@@ -50,6 +57,14 @@ from ui.backend.schemas.testing import (
     TestExperimentRead,
     TestExperimentUpdate,
 )
+from ui.backend.services.brief_sharing import user_group_ids
+from ui.backend.services.citation_check_runner import (
+    build_review_workbook,
+    count_cited_passages,
+    resolve_judge_model,
+    run_check,
+)
+from ui.backend.services.citation_fidelity import researched_sections
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -479,3 +494,270 @@ async def delete_experiment(
     await session.delete(experiment)
     await session.commit()
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Brief citation checks (Evaluation Harness "Brief" type)
+# ---------------------------------------------------------------------------
+
+_BRIEF_NOT_FOUND = "Brief not found"
+_CHECK_NOT_FOUND = "Check not found"
+
+
+async def _accessible_briefs(
+    session: AsyncSession, user: User
+) -> List[Tuple[Brief, bool]]:
+    """The user's own briefs plus those shared with them (directly or via a
+    group), newest first, as ``(brief, shared)`` pairs."""
+    own = (
+        await session.execute(select(Brief).where(Brief.user_id == user.id))
+    ).scalars()
+    briefs = [(b, False) for b in own]
+    group_ids = await user_group_ids(session, user.id)
+    condition = BriefShare.shared_user_id == user.id
+    if group_ids:
+        condition = condition | BriefShare.group_id.in_(group_ids)
+    shared = (
+        await session.execute(
+            select(Brief)
+            .join(BriefShare, BriefShare.brief_id == Brief.id)
+            .where(condition, Brief.user_id != user.id)
+            .distinct()
+        )
+    ).scalars()
+    briefs.extend((b, True) for b in shared)
+    briefs.sort(key=lambda pair: pair[0].updated_at or pair[0].created_at, reverse=True)
+    return briefs
+
+
+async def _accessible_brief(
+    session: AsyncSession, brief_id: uuid.UUID, user: User
+) -> Brief:
+    for brief, _shared in await _accessible_briefs(session, user):
+        if brief.id == brief_id:
+            return brief
+    raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
+
+
+async def _latest_checks(
+    session: AsyncSession, brief_ids: List[uuid.UUID]
+) -> Dict[uuid.UUID, BriefCitationCheck]:
+    if not brief_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(BriefCitationCheck)
+            .where(BriefCitationCheck.brief_id.in_(brief_ids))
+            .order_by(BriefCitationCheck.created_at.desc())
+        )
+    ).scalars()
+    latest: Dict[uuid.UUID, BriefCitationCheck] = {}
+    for check in rows:
+        latest.setdefault(check.brief_id, check)
+    return latest
+
+
+async def _owner_names(
+    session: AsyncSession, user_ids: List[uuid.UUID]
+) -> Dict[uuid.UUID, str]:
+    if not user_ids:
+        return {}
+    # User eager-loads collections, so the result must be de-duplicated.
+    result = await session.execute(
+        select(User).where(User.__table__.c.id.in_(user_ids))
+    )
+    users = result.unique().scalars()
+    return {u.id: (u.full_name or u.email) for u in users}
+
+
+@router.get("/briefs", response_model=List[BriefCheckCandidate], tags=["testing"])
+@limiter.limit(_RL_DEFAULT)
+async def list_checkable_briefs(
+    request: Request,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> List[BriefCheckCandidate]:
+    """Briefs the current user can check: their own and those shared with them."""
+    pairs = await _accessible_briefs(session, admin)
+    latest = await _latest_checks(session, [b.id for b, _ in pairs])
+    owners = await _owner_names(session, list({b.user_id for b, _ in pairs}))
+    out = []
+    for brief, shared in pairs:
+        content = brief.content or {}
+        out.append(
+            BriefCheckCandidate(
+                id=brief.id,
+                title=brief.title,
+                data_source=brief.data_source,
+                updated_at=brief.updated_at or brief.created_at,
+                owner_name=owners.get(brief.user_id, ""),
+                shared=shared,
+                researched_sections=len(researched_sections(content)),
+                cited_passages=count_cited_passages(content),
+                last_check=(
+                    BriefCitationCheckRead.model_validate(latest[brief.id])
+                    if brief.id in latest
+                    else None
+                ),
+            )
+        )
+    return out
+
+
+async def _get_check(
+    session: AsyncSession, check_id: uuid.UUID, user: User
+) -> BriefCitationCheck:
+    check = await session.get(BriefCitationCheck, check_id)
+    if check is None:
+        raise HTTPException(status_code=404, detail=_CHECK_NOT_FOUND)
+    # A check is visible to whoever can see its brief; a brief deleted since
+    # cascades the check away, so a surviving check always has one.
+    await _accessible_brief(session, check.brief_id, user)
+    return check
+
+
+@router.post(
+    "/brief-checks",
+    response_model=BriefCitationCheckRead,
+    status_code=201,
+    tags=["testing"],
+)
+@limiter.limit(_RL_AI)
+async def create_brief_check(
+    request: Request,
+    body: BriefCitationCheckCreate,
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefCitationCheck:
+    """Start a citation check of a brief in the background; the UI polls."""
+    brief = await _accessible_brief(session, body.brief_id, admin)
+    combo = (body.model_combo or "").strip() or None
+    if combo is not None and combo not in _model_combo_names():
+        raise HTTPException(status_code=400, detail="Invalid model_combo")
+    judge_model = resolve_judge_model(combo)
+    if not judge_model:
+        raise HTTPException(status_code=503, detail="No judge model is configured")
+    check = BriefCitationCheck(
+        brief_id=brief.id,
+        brief_title=brief.title,
+        data_source=brief.data_source,
+        created_by_user_id=admin.id,
+        judge_model=judge_model,
+        model_combo=combo,
+        status=EXPERIMENT_PENDING,
+        summary_stats=None,
+    )
+    session.add(check)
+    await session.commit()
+    await session.refresh(check)
+    background_tasks.add_task(run_check, check.id)
+    return check
+
+
+def _model_combo_names() -> List[str]:
+    from pipeline.db.config import UI_MODEL_COMBOS
+
+    return list(UI_MODEL_COMBOS)
+
+
+@router.get(
+    "/brief-checks", response_model=List[BriefCitationCheckRead], tags=["testing"]
+)
+@limiter.limit(_RL_DEFAULT)
+async def list_brief_checks(
+    request: Request,
+    brief_id: uuid.UUID = Query(...),
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> List[BriefCitationCheck]:
+    """All checks of one brief, newest first."""
+    await _accessible_brief(session, brief_id, admin)
+    result = await session.execute(
+        select(BriefCitationCheck)
+        .where(BriefCitationCheck.brief_id == brief_id)
+        .order_by(BriefCitationCheck.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+@router.get(
+    "/brief-checks/{check_id}",
+    response_model=BriefCitationCheckDetail,
+    tags=["testing"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_brief_check(
+    request: Request,
+    check_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefCitationCheck:
+    check = await _get_check(session, check_id, admin)
+    await session.refresh(check, attribute_names=["passages"])
+    return check
+
+
+@router.post(
+    "/brief-checks/{check_id}/cancel",
+    response_model=BriefCitationCheckRead,
+    tags=["testing"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def cancel_brief_check(
+    request: Request,
+    check_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefCitationCheck:
+    """Mark an in-flight check failed; the runner stops at its next passage."""
+    check = await _get_check(session, check_id, admin)
+    if check.status in (EXPERIMENT_RUNNING, EXPERIMENT_PENDING):
+        check.status = EXPERIMENT_FAILED
+        check.finished_at = func.now()
+        check.summary_stats = {"error": "Cancelled by user"}
+        await session.commit()
+        await session.refresh(check)
+    return check
+
+
+@router.delete("/brief-checks/{check_id}", status_code=204, tags=["testing"])
+@limiter.limit(_RL_DEFAULT)
+async def delete_brief_check(
+    request: Request,
+    check_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> Response:
+    check = await _get_check(session, check_id, admin)
+    await session.delete(check)
+    await session.commit()
+    return Response(status_code=204)
+
+
+@router.get("/brief-checks/{check_id}/export.xlsx", tags=["testing"])
+@limiter.limit(_RL_DEFAULT)
+async def export_brief_check(
+    request: Request,
+    check_id: uuid.UUID,
+    admin: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+) -> Response:
+    """The review workbook (Flagged / All judgements / Summary), as the
+    notebook writes it."""
+    check = await _get_check(session, check_id, admin)
+    await session.refresh(check, attribute_names=["passages"])
+    passages = [
+        BriefCitationCheckPassageRead.model_validate(p).model_dump()
+        for p in check.passages
+    ]
+    stats = check.summary_stats or {}
+    payload = await run_in_threadpool(
+        build_review_workbook, passages, stats.get("by_section") or []
+    )
+    filename = f"citation_check_{check.brief_id}.xlsx"
+    return Response(
+        content=payload,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

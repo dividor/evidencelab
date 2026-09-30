@@ -131,3 +131,109 @@ export interface TestRun {
 export interface ExperimentDetail extends TestExperiment {
   runs: TestRun[];
 }
+
+// ---------------------------------------------------------------------------
+// Brief citation check (Evaluation Harness "Brief" type)
+// ---------------------------------------------------------------------------
+
+export type CitationVerdict = 'supported' | 'partially_supported' | 'unsupported' | 'cannot_assess';
+export type CheckStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export interface CheckSectionStats {
+  brief_section: string;
+  supported: number;
+  partially_supported: number;
+  unsupported: number;
+  cannot_assess: number;
+  total: number;
+  flagged_share: number;
+}
+
+export interface CheckSummaryStats {
+  total?: number;
+  verdicts?: Record<CitationVerdict, number>;
+  flagged?: number;
+  flagged_share?: number;
+  quote_not_in_source?: number;
+  not_judged?: number;
+  by_section?: CheckSectionStats[];
+  duration_ms?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  cost_usd?: number | null;
+  error?: string;
+  progress?: RunProgress | null;
+}
+
+export interface BriefCitationCheck {
+  id: string;
+  brief_id: string;
+  brief_title: string;
+  data_source?: string | null;
+  created_by_user_id?: string | null;
+  judge_model?: string | null;
+  model_combo?: string | null;
+  status: CheckStatus;
+  summary_stats?: CheckSummaryStats | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at: string;
+}
+
+// A brief the current user may check (own, or shared with them).
+export interface BriefCheckCandidate {
+  id: string;
+  title: string;
+  data_source?: string | null;
+  updated_at: string;
+  owner_name: string;
+  shared: boolean;
+  researched_sections: number;
+  cited_passages: number;
+  last_check?: BriefCitationCheck | null;
+}
+
+export interface CheckSource {
+  index: number;
+  title?: string | null;
+  page?: number | null;
+  doc_id?: string | null;
+  chunk_id?: string | null;
+  pdf_url?: string | null;
+  section?: string;
+  excerpt?: string;
+}
+
+export interface CheckQuote {
+  citation?: number | null;
+  quote: string;
+  status: 'verbatim' | 'near' | 'missing';
+}
+
+// One judged passage: a row of the review table.
+export interface BriefCitationCheckPassage {
+  id: string;
+  passage_id: number;
+  brief_section: string;
+  passage: string;
+  citations: string;
+  documents: string;
+  sources: CheckSource[];
+  dangling_citations: string;
+  verdict: CitationVerdict;
+  flagged: boolean;
+  confidence?: number | null;
+  problems: string[];
+  explanation: string;
+  supporting_quotes: CheckQuote[];
+  quotes_verified: string;
+  quote_not_in_source: boolean;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  error_message?: string | null;
+}
+
+export interface BriefCitationCheckDetail extends BriefCitationCheck {
+  passages: BriefCitationCheckPassage[];
+}
