@@ -82,6 +82,15 @@ For the whole brief, **AI Regenerate All** re-researches every section with new 
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
 
+#### Introductions to sub-headings
+
+A top-level heading that has sub-headings is written as a short **introduction**: it frames the theme and says what each sub-heading goes on to examine, and leaves the findings to the sub-sections. It never adds headings of its own, and it does not cover in detail what its sub-headings will.
+
+- **Length** — an introduction is kept short: about 120 words unless you set a length on that section itself in its research panel. It is never longer than the brief's own section length. Administrators set the default in `config.json` under `application.brief.introductions`.
+- **Order** — **Start deep research** and **AI Regenerate All** write each heading's sub-sections first and its introduction last, so the introduction can point to what the sub-sections actually say.
+- **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Log**, so you can edit them out or use **AI Regenerate**.
+- **Edits** — **AI Edit** and **AI Get Updates** keep an introduction an introduction.
+
 #### Section length
 
 A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **AI Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
@@ -105,6 +114,15 @@ Briefs save automatically as you research. Signed in, they are stored against yo
 Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
 
 > Signed out, briefs are kept in your browser's local storage instead, and sharing, templates, voice profiles and comments are unavailable.
+
+#### All Briefs (administrators)
+
+Administrators see one more tab in Brief Central, **All Briefs (Admin)**, listing every brief in the system with its owner's name and email. The search box at the top filters the cards by brief name or by user.
+
+- **Open Brief** opens any brief. Someone else's brief opens read-only, labelled with its owner; you cannot change, re-research, share or delete it.
+- **Copy** puts a copy in your own **Saved Briefs**, titled "… (copy)". The copy is private and yours to edit; the original's shares and comments stay with the original.
+
+Opening or copying a brief you neither own nor were sent is recorded in the audit log (see [User Administration](../admin/user-administration.md)).
 
 ---
 

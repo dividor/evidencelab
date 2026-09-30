@@ -10,6 +10,7 @@ Requires the Docker stack (Postgres with migrations applied).
 """
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -40,6 +41,8 @@ from ui.backend.routes import brief_central, brief_library
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 HASH = "not-a-real-password-hash"  # pragma: allowlist secret
+# FastAPI passes the request; these tests call the handlers directly.
+NO_REQUEST = SimpleNamespace(client=None)
 
 
 @pytest_asyncio.fixture
@@ -549,13 +552,15 @@ async def test_brief_shared_with_a_group_is_viewable_by_members(session):
 
     assert [t.is_group for t in shared.shared_with] == [True]
     viewed = await brief_central.get_brief(
-        brief_id=brief.id, user=member, session=session
+        brief_id=brief.id, request=NO_REQUEST, user=member, session=session
     )
     assert (viewed.can_edit, viewed.owner_name) == (False, "Owner")
     listed = await brief_central.list_shared_briefs(user=member, session=session)
     assert [b.id for b in listed] == [brief.id]
     await _expect_404(
-        brief_central.get_brief(brief_id=brief.id, user=outsider, session=session)
+        brief_central.get_brief(
+            brief_id=brief.id, request=NO_REQUEST, user=outsider, session=session
+        )
     )
     await brief_central.remove_brief_share(
         brief_id=brief.id,
@@ -564,5 +569,7 @@ async def test_brief_shared_with_a_group_is_viewable_by_members(session):
         session=session,
     )
     await _expect_404(
-        brief_central.get_brief(brief_id=brief.id, user=member, session=session)
+        brief_central.get_brief(
+            brief_id=brief.id, request=NO_REQUEST, user=member, session=session
+        )
     )

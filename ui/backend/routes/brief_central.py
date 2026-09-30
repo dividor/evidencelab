@@ -4,16 +4,23 @@ Briefs are user-owned. Sharing is viewer-only: a share row grants read access
 to a single user (matched by email) or to every member of a group (matched by
 group name); see services/brief_sharing.py. Templates and voice & tone
 profiles live in routes/brief_library.py.
+
+Administrators (superusers) can list every brief, open any brief read-only and
+copy any brief into their own. Opening or copying a brief they neither own nor
+were sent is recorded in the audit log.
 """
 
+import copy
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import Brief, BriefComment, BriefShare, User, UserGroup
 from ui.backend.auth.schemas import (
@@ -26,7 +33,7 @@ from ui.backend.auth.schemas import (
     BriefShareCreate,
     BriefUpdate,
 )
-from ui.backend.auth.users import current_active_user
+from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.services.brief_sharing import (
     add_share,
     owner_name,
@@ -45,6 +52,14 @@ SHARE_SUGGESTION_LIMIT = 8
 router = APIRouter()
 
 _BRIEF_NOT_FOUND = "Brief not found"
+EVENT_BRIEF_ADMIN_VIEWED = "brief_admin_viewed"
+EVENT_BRIEF_ADMIN_COPIED = "brief_admin_copied"
+_COPY_SUFFIX = " (copy)"
+_TITLE_MAX = 500
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    return request.client.host if request.client else None
 
 
 # ---------------------------------------------------------------------------
@@ -65,10 +80,25 @@ async def _get_owned_brief(
     return brief
 
 
+async def _is_shared_with(
+    session: AsyncSession, brief_id: uuid.UUID, user: User
+) -> bool:
+    """True when the brief is shared with the user or one of their groups."""
+    group_ids = await user_group_ids(session, user.id)
+    share_rows = await session.execute(
+        select(BriefShare.id).where(
+            BriefShare.brief_id == brief_id,
+            shared_with(BriefShare, user.id, group_ids),
+        )
+    )
+    return share_rows.scalars().first() is not None
+
+
 async def _get_viewable_brief(
     session: AsyncSession, brief_id: uuid.UUID, user: User
 ) -> tuple[Brief, bool]:
-    """Load a brief the user owns or was granted view access to.
+    """Load a brief the user owns, was granted view access to, or — for an
+    administrator — any brief, read-only.
 
     Returns (brief, can_edit). Raises 404 when the brief does not exist or the
     user has no access — the two cases are indistinguishable on purpose.
@@ -79,16 +109,30 @@ async def _get_viewable_brief(
         raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
     if brief.user_id == user.id:
         return brief, True
-    group_ids = await user_group_ids(session, user.id)
-    share_rows = await session.execute(
-        select(BriefShare.id).where(
-            BriefShare.brief_id == brief_id,
-            shared_with(BriefShare, user.id, group_ids),
-        )
+    if user.is_superuser or await _is_shared_with(session, brief_id, user):
+        return brief, False
+    raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
+
+
+async def _audit_admin_access(
+    session: AsyncSession, request: Request, brief: Brief, user: User, event: str
+) -> None:
+    """Record an administrator reaching a brief they neither own nor were sent."""
+    if not user.is_superuser or brief.user_id == user.id:
+        return
+    if await _is_shared_with(session, brief.id, user):
+        return
+    await write_audit_event(
+        event,
+        user_id=user.id,
+        user_email=user.email,
+        ip_address=_client_ip(request),
+        details={
+            "brief_id": str(brief.id),
+            "owner_id": str(brief.user_id),
+            "title": brief.title,
+        },
     )
-    if not share_rows.scalars().first():
-        raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
-    return brief, False
 
 
 async def _to_brief_read(
@@ -117,7 +161,10 @@ async def _to_brief_read(
 
 
 def _to_list_item(
-    brief: Brief, owner_name: str | None, share_count: int
+    brief: Brief,
+    owner_name: str | None,
+    share_count: int,
+    owner_email: str | None = None,
 ) -> BriefListItem:
     """Compact card model for list views."""
     content = brief.content or {}
@@ -131,6 +178,7 @@ def _to_list_item(
         section_count=len(sections),
         source_count=content.get("sourceCount") or 0,
         owner_name=owner_name,
+        owner_email=owner_email,
         share_count=share_count,
         created_at=brief.created_at,
         updated_at=brief.updated_at,
@@ -203,6 +251,40 @@ async def list_shared_briefs(
     return items
 
 
+@router.get("/briefs/all", tags=["briefs"])
+async def list_all_briefs(
+    user: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Every brief in the system, newest first, with its owner (admin only)."""
+    result = await session.execute(select(Brief).order_by(Brief.updated_at.desc()))
+    briefs = result.scalars().all()
+    owner_rows = await session.execute(
+        select(User).where(User.id.in_({b.user_id for b in briefs}))
+    )
+    # unique(): User eager-loads collections (oauth accounts), which
+    # SQLAlchemy requires be de-duplicated before iterating.
+    owners = {u.id: u for u in owner_rows.scalars().unique().all()}
+    counts = await session.execute(
+        select(BriefShare.brief_id, func.count(BriefShare.id))
+        .where(BriefShare.brief_id.in_([b.id for b in briefs]))
+        .group_by(BriefShare.brief_id)
+    )
+    count_map: dict[uuid.UUID, int] = {row[0]: row[1] for row in counts.all()}
+    items = []
+    for brief in briefs:
+        owner = owners.get(brief.user_id)
+        items.append(
+            _to_list_item(
+                brief,
+                owner_name(owner) if owner else None,
+                count_map.get(brief.id, 0),
+                owner.email if owner else None,
+            )
+        )
+    return items
+
+
 @router.get("/briefs/share-targets", tags=["briefs"])
 async def search_share_targets(
     q: str,
@@ -253,12 +335,48 @@ async def search_share_targets(
 @router.get("/briefs/{brief_id}", response_model=BriefRead, tags=["briefs"])
 async def get_brief(
     brief_id: uuid.UUID,
+    request: Request,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Load a single brief the user owns or can view."""
+    """Load a single brief the user owns or can view (admins: any, read-only)."""
     brief, can_edit = await _get_viewable_brief(session, brief_id, user)
+    await _audit_admin_access(session, request, brief, user, EVENT_BRIEF_ADMIN_VIEWED)
     return await _to_brief_read(session, brief, can_edit)
+
+
+@router.post("/briefs/{brief_id}/copy", response_model=BriefRead, tags=["briefs"])
+async def copy_brief(
+    brief_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Copy a brief into a new one the user owns: their own, or (admins) any.
+
+    The copy starts private: shares and comments stay with the original, and it
+    gets its own activity record.
+    """
+    source, can_edit = await _get_viewable_brief(session, brief_id, user)
+    if not can_edit and not user.is_superuser:
+        raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
+    title = f"{source.title}{_COPY_SUFFIX}"[:_TITLE_MAX]
+    content = copy.deepcopy(source.content or {})
+    content.pop("activityId", None)
+    content["title"] = title
+    brief = Brief(
+        user_id=user.id,
+        title=title,
+        query=source.query,
+        data_source=source.data_source,
+        voice_profile_id=source.voice_profile_id,
+        content=content,
+    )
+    session.add(brief)
+    await session.commit()
+    await session.refresh(brief)
+    await _audit_admin_access(session, request, source, user, EVENT_BRIEF_ADMIN_COPIED)
+    return await _to_brief_read(session, brief, can_edit=True)
 
 
 @router.put("/briefs/{brief_id}", response_model=BriefRead, tags=["briefs"])

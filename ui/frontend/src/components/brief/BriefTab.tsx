@@ -300,7 +300,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const loggedIn = userKey != null;
   // Logged-in users get Brief Central: server-side briefs, sharing, templates
   // and voice & tone profiles. Anonymous users keep the localStorage flow.
-  const central = useBriefCentral(loggedIn);
+  // Administrators (superusers) also get the All Briefs tab.
+  const isAdmin = loggedIn && !!auth.user?.is_superuser;
+  const central = useBriefCentral(loggedIn, isAdmin);
   const brief = useBrief({
     apiBaseUrl: API_BASE_URL,
     dataSource,

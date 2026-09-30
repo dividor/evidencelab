@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class SearchResult(BaseModel):
@@ -237,6 +237,12 @@ class BriefReviseRequest(BaseModel):
     model: Optional[str] = None
     # Optional voice & tone profile instructions applied to the rewritten text.
     voice_instructions: Optional[str] = None
+    # Set when the section is a top-level heading's introduction to these
+    # sub-sections: the revision keeps it an introduction (no headings, none
+    # of the sub-sections' detail).
+    introduces_sub_sections: Optional[
+        List[Annotated[str, StringConstraints(min_length=1, max_length=500)]]
+    ] = Field(None, min_length=1, max_length=50)
     # The brief's stable activity id (+ anonymous session id) so revise LLM
     # usage is recorded server-side onto the brief's activity row.
     activity_id: Optional[str] = None

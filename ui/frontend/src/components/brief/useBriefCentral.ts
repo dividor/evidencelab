@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   TemplatePayload,
+  copyBrief as copyBriefRemote,
   copyTemplate as copyTemplateRemote,
   copyVoiceProfile,
   createTemplate,
@@ -8,6 +9,7 @@ import {
   deleteBriefRemote,
   deleteTemplate,
   deleteVoiceProfile,
+  listAllBriefs,
   listMyBriefs,
   listSharedBriefs,
   listTemplates,
@@ -17,7 +19,8 @@ import {
 } from './briefCentralApi';
 import { BriefListItem, BriefTemplate, VoiceProfile } from './briefTypes';
 
-export type CentralTab = 'mine' | 'shared' | 'templates' | 'voices';
+// 'all' is the administrators' view of every brief in the system.
+export type CentralTab = 'mine' | 'shared' | 'templates' | 'voices' | 'all';
 
 const errMessage = (e: unknown, fallback: string): string =>
   e instanceof Error ? e.message : fallback;
@@ -36,12 +39,13 @@ const insertOwned = <T extends { can_edit: boolean }>(list: T[], item: T): T[] =
  * given — all server-backed. Only used when the user module is enabled and a
  * user is logged in.
  */
-export const useBriefCentral = (enabled: boolean) => {
+export const useBriefCentral = (enabled: boolean, isAdmin = false) => {
   const [tab, setTab] = useState<CentralTab>('mine');
   const [myBriefs, setMyBriefs] = useState<BriefListItem[]>([]);
   const [sharedBriefs, setSharedBriefs] = useState<BriefListItem[]>([]);
   const [templates, setTemplates] = useState<BriefTemplate[]>([]);
   const [voices, setVoices] = useState<VoiceProfile[]>([]);
+  const [allBriefs, setAllBriefs] = useState<BriefListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,22 +54,24 @@ export const useBriefCentral = (enabled: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      const [mine, shared, tpls, vps] = await Promise.all([
+      const [mine, shared, tpls, vps, all] = await Promise.all([
         listMyBriefs(),
         listSharedBriefs(),
         listTemplates(),
         listVoiceProfiles(),
+        isAdmin ? listAllBriefs() : Promise.resolve([] as BriefListItem[]),
       ]);
       setMyBriefs(mine);
       setSharedBriefs(shared);
       setTemplates(tpls);
       setVoices(vps);
+      setAllBriefs(all);
     } catch (e) {
       setError(errMessage(e, 'Could not load your briefs.'));
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, isAdmin]);
 
   useEffect(() => {
     void refresh();
@@ -74,6 +80,14 @@ export const useBriefCentral = (enabled: boolean) => {
   const removeBrief = useCallback(async (id: string) => {
     await deleteBriefRemote(id);
     setMyBriefs((prev) => prev.filter((b) => b.id !== id));
+  }, []);
+
+  // Copy a brief into the user's own (admins: any brief); it appears under
+  // Saved Briefs.
+  const copyBrief = useCallback(async (id: string) => {
+    const created = await copyBriefRemote(id);
+    setMyBriefs(await listMyBriefs());
+    return created;
   }, []);
 
   // Create a template, or update one the user owns when `id` is given.
@@ -169,11 +183,14 @@ export const useBriefCentral = (enabled: boolean) => {
     sharedBriefs,
     templates,
     voices,
+    allBriefs,
+    isAdmin,
     loading,
     error,
     setError,
     refresh,
     removeBrief,
+    copyBrief,
     saveTemplate,
     copyTemplate,
     removeTemplate,

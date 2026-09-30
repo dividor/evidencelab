@@ -586,11 +586,15 @@ def _load_deep_research_prompt(
     data_source: Optional[str] = None,
     prior_sources: Optional[List[Dict[str, Any]]] = None,
     target_words: Optional[int] = None,
+    introduces_sub_sections: Optional[List[str]] = None,
 ) -> str:
     """Load and render the deep research coordinator prompt.
 
     ``target_words`` swaps the prompt's default length rule ("at least 3-4
     paragraphs") for a firm target of about that many words.
+    ``introduces_sub_sections`` (Brief) replaces the structure and heading
+    rules with introduction rules: no headings, and none of the detail that
+    belongs to those sub-sections.
     """
     template = _jinja_env.get_template("assistant_deep_research_coordinator.j2")
     return template.render(
@@ -598,6 +602,7 @@ def _load_deep_research_prompt(
         prior_sources=prior_sources or [],
         next_index=_next_citation_index(prior_sources),
         target_words=target_words,
+        intro_sub_sections=introduces_sub_sections or [],
     )
 
 
@@ -624,6 +629,7 @@ def build_deep_research_agent(
     system_prompt_override: Optional[str] = None,
     prior_sources: Optional[List[Dict[str, Any]]] = None,
     target_words: Optional[int] = None,
+    introduces_sub_sections: Optional[List[str]] = None,
 ) -> tuple:
     """Build a deep research agent with sub-agent delegation.
 
@@ -649,7 +655,10 @@ def build_deep_research_agent(
     search_tool = _build_search_tool(tracker)
 
     coordinator_prompt = _load_deep_research_prompt(
-        data_source, prior_sources=prior_sources, target_words=target_words
+        data_source,
+        prior_sources=prior_sources,
+        target_words=target_words,
+        introduces_sub_sections=introduces_sub_sections,
     )
     researcher_prompt = _load_researcher_prompt(
         data_source, max_queries=max_queries, prior_sources=prior_sources

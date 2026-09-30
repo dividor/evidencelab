@@ -126,6 +126,17 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
   return target ? `Target: about ${target} words` : 'No length target';
 };
 
+// An introduction (a top-level heading with sub-headings) that kept headings of
+// its own after its re-runs; see briefIntro.ts.
+export const IntroHeadingWarning: React.FC<{ headings?: number }> = ({ headings }) =>
+  headings ? (
+    <div className="brief-section-warning" role="status">
+      This introduction still has {headings} heading{headings === 1 ? '' : 's'} of its own after
+      re-running. An introduction should frame its sub-sections without headings: edit them out, or
+      use AI Regenerate.
+    </div>
+  ) : null;
+
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
 
@@ -510,6 +521,8 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
+      <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
+
       {aiPanel && (
         <AiInstructionPanel
           mode={aiPanel}
@@ -849,7 +862,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           {readOnly && brief.ownerName && (
             <>
               <span>·</span>
-              <span className="brief-viewer-chip">Shared by {brief.ownerName} — view only</span>
+              <span className="brief-viewer-chip">Owned by {brief.ownerName} — view only</span>
             </>
           )}
           {hasOutlineLog && (

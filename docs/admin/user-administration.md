@@ -185,6 +185,10 @@ From the Users panel you can:
 
 Hiding a document that breaches the content policy, the reporting routes and the audit trail are described on their own page: [Content Moderation](content-moderation.md).
 
+### Viewing Every Brief
+
+Superusers get an **All Briefs (Admin)** tab in Brief Central listing every user's briefs, searchable by brief name or owner. They can open any brief read-only and copy any brief into their own Saved Briefs; they cannot edit, share or delete someone else's. When a superuser opens or copies a brief they neither own nor were sent, the audit log records a `brief_admin_viewed` or `brief_admin_copied` event with the brief, its owner, the superuser and their IP address. See [Brief](../using-evidence-lab/brief.md).
+
 ### Managing Groups
 
 The **Groups** tab lets you create and manage user groups. Groups control which datasets users can access and provide default search settings.
