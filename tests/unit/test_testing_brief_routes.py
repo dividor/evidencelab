@@ -69,13 +69,16 @@ class FakeScalars(list):
 class FakeSession:
     """Answers the route helpers' queries from in-memory lists."""
 
-    def __init__(self, own, shared, checks=(), users=()):
+    def __init__(self, own, shared, checks=(), users=(), others=()):
         self.own, self.shared, self.checks, self.users = (
             list(own),
             list(shared),
             list(checks),
             list(users),
         )
+        # Every brief not owned by the user: what the admin-only "others"
+        # query returns (shared briefs included, like the real table).
+        self.others = list(shared) + list(others)
         self.added, self.deleted, self.commits = [], [], 0
 
     async def execute(self, statement):
@@ -83,7 +86,7 @@ class FakeSession:
         if "FROM briefs JOIN brief_shares" in text:
             rows = self.shared
         elif "FROM briefs" in text:
-            rows = self.own
+            rows = self.others if "!=" in text else self.own
         elif "FROM brief_citation_checks" in text:
             rows = sorted(self.checks, key=lambda c: c.created_at, reverse=True)
         elif "FROM users" in text or "FROM user_group_members" in text:
@@ -156,7 +159,8 @@ class TestListBriefs:
         session = FakeSession([mine], [theirs], [old, new], [me, other])
         out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
         by_title = {c.title: c for c in out}
-        assert by_title["Mine"].shared is False and by_title["Theirs"].shared is True
+        assert by_title["Mine"].access == "own"
+        assert by_title["Theirs"].access == "shared"
         assert (
             by_title["Mine"].cited_passages == 2
             and by_title["Mine"].researched_sections == 1
@@ -164,6 +168,28 @@ class TestListBriefs:
         assert by_title["Mine"].last_check.id == new.id
         assert by_title["Theirs"].last_check is None
         assert by_title["Mine"].owner_name == "Jan"
+
+    @pytest.mark.asyncio
+    async def test_list_when_admin_then_other_users_briefs_included_once(self):
+        me, other = _user(), _user()
+        mine, theirs = _brief(me.id, "Mine"), _brief(other.id, "Theirs")
+        unshared = _brief(other.id, "Unshared")
+        session = FakeSession([mine], [theirs], [], [me, other], others=[unshared])
+        out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
+        assert [c.title for c in out].count("Theirs") == 1
+        by_title = {c.title: c for c in out}
+        assert by_title["Theirs"].access == "shared"
+        assert by_title["Unshared"].access == "other"
+        assert by_title["Unshared"].owner_name == "Jan"
+
+    @pytest.mark.asyncio
+    async def test_list_when_not_admin_then_only_own_and_shared(self):
+        me, other = _user(superuser=False), _user()
+        mine, theirs = _brief(me.id, "Mine"), _brief(other.id, "Theirs")
+        unshared = _brief(other.id, "Unshared")
+        session = FakeSession([mine], [theirs], [], [me, other], others=[unshared])
+        out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
+        assert sorted(c.title for c in out) == ["Mine", "Theirs"]
 
 
 class TestCreateCheck:

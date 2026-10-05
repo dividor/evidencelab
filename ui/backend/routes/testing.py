@@ -41,6 +41,10 @@ from ui.backend.auth.testing_models import (
 )
 from ui.backend.auth.users import current_superuser
 from ui.backend.schemas.testing import (
+    BRIEF_ACCESS_OTHER,
+    BRIEF_ACCESS_OWN,
+    BRIEF_ACCESS_SHARED,
+    BriefAccess,
     BriefCheckCandidate,
     BriefCitationCheckCreate,
     BriefCitationCheckDetail,
@@ -506,13 +510,14 @@ _CHECK_NOT_FOUND = "Check not found"
 
 async def _accessible_briefs(
     session: AsyncSession, user: User
-) -> List[Tuple[Brief, bool]]:
-    """The user's own briefs plus those shared with them (directly or via a
-    group), newest first, as ``(brief, shared)`` pairs."""
+) -> List[Tuple[Brief, BriefAccess]]:
+    """The user's own briefs, those shared with them (directly or via a
+    group) and, for an admin, every other user's brief too; newest first, as
+    ``(brief, access)`` pairs where access is one of ``BRIEF_ACCESS_*``."""
     own = (
         await session.execute(select(Brief).where(Brief.user_id == user.id))
     ).scalars()
-    briefs = [(b, False) for b in own]
+    briefs = [(b, BRIEF_ACCESS_OWN) for b in own]
     group_ids = await user_group_ids(session, user.id)
     condition = BriefShare.shared_user_id == user.id
     if group_ids:
@@ -525,7 +530,13 @@ async def _accessible_briefs(
             .distinct()
         )
     ).scalars()
-    briefs.extend((b, True) for b in shared)
+    briefs.extend((b, BRIEF_ACCESS_SHARED) for b in shared)
+    if user.is_superuser:
+        seen = {b.id for b, _ in briefs}
+        others = (
+            await session.execute(select(Brief).where(Brief.user_id != user.id))
+        ).scalars()
+        briefs.extend((b, BRIEF_ACCESS_OTHER) for b in others if b.id not in seen)
     briefs.sort(key=lambda pair: pair[0].updated_at or pair[0].created_at, reverse=True)
     return briefs
 
@@ -533,7 +544,7 @@ async def _accessible_briefs(
 async def _accessible_brief(
     session: AsyncSession, brief_id: uuid.UUID, user: User
 ) -> Brief:
-    for brief, _shared in await _accessible_briefs(session, user):
+    for brief, _access in await _accessible_briefs(session, user):
         if brief.id == brief_id:
             return brief
     raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
@@ -577,12 +588,13 @@ async def list_checkable_briefs(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> List[BriefCheckCandidate]:
-    """Briefs the current user can check: their own and those shared with them."""
+    """Briefs the current user can check: their own, those shared with them
+    and, as an admin, every other user's."""
     pairs = await _accessible_briefs(session, admin)
     latest = await _latest_checks(session, [b.id for b, _ in pairs])
     owners = await _owner_names(session, list({b.user_id for b, _ in pairs}))
     out = []
-    for brief, shared in pairs:
+    for brief, access in pairs:
         content = brief.content or {}
         out.append(
             BriefCheckCandidate(
@@ -591,7 +603,7 @@ async def list_checkable_briefs(
                 data_source=brief.data_source,
                 updated_at=brief.updated_at or brief.created_at,
                 owner_name=owners.get(brief.user_id, ""),
-                shared=shared,
+                access=access,
                 researched_sections=len(researched_sections(content)),
                 cited_passages=count_cited_passages(content),
                 last_check=(
