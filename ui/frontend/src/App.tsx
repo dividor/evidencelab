@@ -2715,6 +2715,8 @@ function App() {
       dataSource={dataSource}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSourceConfig={currentDataSourceConfig}
+      summaryModelConfig={summaryModelConfig}
+      summaryGroupDefaults={groupDefaults}
     />
   );
 

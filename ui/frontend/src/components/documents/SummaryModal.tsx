@@ -5,6 +5,25 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRatings } from '../../hooks/useRatings';
 import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
+import { SummaryEditor } from './summary/SummaryEditor';
+import type { SummaryAdmin } from './summary/useSummaryAdmin';
+import { SummaryProvenance, formatProvenance } from './summary/summaryProvenance';
+
+const MARKDOWN_COMPONENTS = {
+  h1: ({ node, ...props }: any) => (
+    <h3 style={{ marginTop: '1.5rem', marginBottom: '0.8rem', color: '#1a1f36' }} {...props} />
+  ),
+  h2: ({ node, ...props }: any) => (
+    <h3 style={{ marginTop: '1.5rem', marginBottom: '0.8rem', color: '#1a1f36' }} {...props} />
+  ),
+  h3: ({ node, ...props }: any) => (
+    <h4 style={{ marginTop: '1.2rem', marginBottom: '0.6rem', color: '#2c3b5a' }} {...props} />
+  ),
+  p: ({ node, ...props }: any) => <p style={{ marginBottom: '1rem', lineHeight: '1.6' }} {...props} />,
+  ul: ({ node, ...props }: any) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+  ol: ({ node, ...props }: any) => <ol style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
+  li: ({ node, ...props }: any) => <li style={{ marginBottom: '0.4rem' }} {...props} />,
+};
 
 interface SummaryModalProps {
   isOpen: boolean;
@@ -13,9 +32,21 @@ interface SummaryModalProps {
   title: string;
   /** Document ID used as the rating reference */
   docId?: string;
+  /** Set for administrators on the Documents screen: edit and regenerate. */
+  admin?: SummaryAdmin | null;
+  /** How, when and by whom the summary was made. */
+  provenance?: SummaryProvenance | null;
 }
 
-export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, summary, title, docId }) => {
+export const SummaryModal: React.FC<SummaryModalProps> = ({
+  isOpen,
+  onClose,
+  summary,
+  title,
+  docId,
+  admin,
+  provenance,
+}) => {
   const { isAuthenticated } = useAuth();
   const { ratings, submitRating, deleteRating } = useRatings({
     ratingType: 'doc_summary',
@@ -51,13 +82,24 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, sum
     return null;
   }
 
+  const renderSummary = () => (
+    <div className="summary-content markdown-content">
+      <ReactMarkdown key="modal-summary" components={MARKDOWN_COMPONENTS}>
+        {buildSummaryDisplayText(summary)}
+      </ReactMarkdown>
+    </div>
+  );
+
   return (
     <div className="preview-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <h2>
-            {title}<em className="header-label-subtitle">(AI-generated : Experimental)</em>
-          </h2>
+          <div className="doc-summary-modal-title">
+            <h2>
+              {title}<em className="header-label-subtitle">(AI-generated : Experimental)</em>
+            </h2>
+            {provenance && <p className="doc-summary-provenance">{formatProvenance(provenance)}</p>}
+          </div>
           <div className="modal-header-actions">
             <button onClick={onClose} className="modal-close">
               ×
@@ -65,28 +107,11 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, sum
           </div>
         </div>
         <div className="modal-body">
-          <div className="summary-content markdown-content">
-            <ReactMarkdown
-              key="modal-summary"
-              components={{
-                h1: ({ node, ...props }) => (
-                  <h3 style={{ marginTop: '1.5rem', marginBottom: '0.8rem', color: '#1a1f36' }} {...props} />
-                ),
-                h2: ({ node, ...props }) => (
-                  <h3 style={{ marginTop: '1.5rem', marginBottom: '0.8rem', color: '#1a1f36' }} {...props} />
-                ),
-                h3: ({ node, ...props }) => (
-                  <h4 style={{ marginTop: '1.2rem', marginBottom: '0.6rem', color: '#2c3b5a' }} {...props} />
-                ),
-                p: ({ node, ...props }) => <p style={{ marginBottom: '1rem', lineHeight: '1.6' }} {...props} />,
-                ul: ({ node, ...props }) => <ul style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
-                ol: ({ node, ...props }) => <ol style={{ paddingLeft: '1.5rem', marginBottom: '1rem' }} {...props} />,
-                li: ({ node, ...props }) => <li style={{ marginBottom: '0.4rem' }} {...props} />,
-              }}
-            >
-              {buildSummaryDisplayText(summary)}
-            </ReactMarkdown>
-          </div>
+          {admin && docId ? (
+            <SummaryEditor key={docId} admin={admin} docId={docId} summary={summary} renderSummary={renderSummary} />
+          ) : (
+            renderSummary()
+          )}
           {isAuthenticated && docId && (
             <div style={{
               display: 'flex',

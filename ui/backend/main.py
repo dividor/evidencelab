@@ -779,6 +779,7 @@ if USER_MODULE:
     from ui.backend.routes import api_keys as api_keys_routes
     from ui.backend.routes import brief_central as brief_central_routes
     from ui.backend.routes import brief_library as brief_library_routes
+    from ui.backend.routes import document_summary as document_summary_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
     from ui.backend.routes import moderation as moderation_routes
@@ -801,6 +802,11 @@ if USER_MODULE:
     )
     app.include_router(
         moderation_routes.router, prefix="/moderation", tags=["moderation"]
+    )
+    app.include_router(
+        document_summary_routes.router,
+        prefix="/document-summaries",
+        tags=["document-summaries"],
     )
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 

@@ -13,6 +13,7 @@ from qdrant_client.http import models as qmodels
 
 import pipeline.utilities.tasks as pipeline_tasks
 from pipeline.db.moderation import is_hidden
+from pipeline.processors.summarization.summary_text import SUMMARY_USER_SET_FIELD
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.optional_user import resolve_optional_user
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
@@ -705,6 +706,13 @@ async def reprocess_document(
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
+    replace_summary: bool = Query(
+        False,
+        description=(
+            "Replace a summary written or edited in the app with a new pipeline "
+            "summary; by default reprocessing keeps it"
+        ),
+    ),
 ):
     """
     Reprocess a document through the full pipeline (parse, summarize, tag, index).
@@ -724,7 +732,10 @@ async def reprocess_document(
 
     # Prepare document for reprocessing
     db.delete_document_chunks(doc_id)
-    db.update_document(doc_id, {"sys_status": "queued", "sys_error_message": None})
+    reset: Dict[str, Any] = {"sys_status": "queued", "sys_error_message": None}
+    if replace_summary:
+        reset[SUMMARY_USER_SET_FIELD] = False
+    db.update_document(doc_id, reset)
 
     # Enqueue task for Celery worker (runs in pipeline container)
     task_module = sys.modules.get("pipeline.utilities.tasks", pipeline_tasks)

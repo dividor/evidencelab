@@ -13,8 +13,8 @@ import pytest
 from pipeline.processors.summarization.summarizer import (
     NUM_CENTROID_SENTENCES,
     SummarizeProcessor,
-    _clean_markdown,
 )
+from pipeline.processors.summarization.summary_text import clean_markdown
 
 
 def _load_summarize_config() -> dict:
@@ -81,7 +81,7 @@ class TestUtilityFunctions:
         """Test markdown formatting cleaning function"""
         markdown_text = "## **Bold Heading**"
 
-        cleaned = _clean_markdown(markdown_text)
+        cleaned = clean_markdown(markdown_text)
 
         # Bold should be removed from headings
         assert "**" not in cleaned
@@ -89,13 +89,13 @@ class TestUtilityFunctions:
 
     def test_clean_markdown_empty(self):
         """Test cleaning empty markdown"""
-        result = _clean_markdown("")
+        result = clean_markdown("")
 
         assert result == ""
 
     def test_clean_markdown_none(self):
         """Test cleaning None returns None"""
-        result = _clean_markdown(None)
+        result = clean_markdown(None)
 
         assert result is None
 
