@@ -12809,6 +12809,31 @@ button.doc-link:hover {
   flex-wrap: wrap;
   row-gap: 0.5rem;
 }
+/* The section select and search box sit in a row with .btn-sm verdict
+   toggles, so they take the same padding, font size and border to line up. */
+.testing-filter-select,
+.testing-check-filters .testing-search-input {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-size: 0.8rem;
+  font-family: inherit;
+  line-height: normal;
+}
+.testing-filter-select {
+  max-width: 18rem;
+  cursor: pointer;
+}
+.testing-filter-select:focus,
+.testing-check-filters .testing-search-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+/* Expanded passage: keep the hover tint so the row and its detail read as one. */
+.testing-row-expanded {
+  background: var(--color-surface-alt, #f6f8fa);
+}
 .testing-check-table td {
   vertical-align: top;
 }
