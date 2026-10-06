@@ -50,6 +50,14 @@ const SECTION_LABEL_MAP = new Map(Object.entries(SECTION_LABELS));
 export const sectionLabel = (sectionType: string): string =>
   SECTION_LABEL_MAP.get(sectionType) ?? sectionType;
 
+/** One data source's configured mode and sections. */
+export interface DataSourceSummaryDefaults {
+  key: string;
+  name: string;
+  mode: SummaryMode;
+  section_types: string[];
+}
+
 /** Config defaults from GET /document-summaries/settings. */
 export interface SummaryConfigDefaults {
   prompt: string;
@@ -59,6 +67,8 @@ export interface SummaryConfigDefaults {
   mode?: SummaryMode;
   section_types?: string[];
   single_prompt_context_window?: number | null;
+  /** Present when the request named no data source: every source's defaults. */
+  data_sources?: DataSourceSummaryDefaults[];
 }
 
 export interface SummarySettings {
@@ -77,7 +87,9 @@ export interface SectionSize {
 export interface DocumentSections {
   has_section_types: boolean;
   sections: SectionSize[];
-  single_prompt_limit_chars: number | null;
+  /** The single-prompt token limit, and whether the selected model can be
+   *  used for a single prompt (it must count its tokens exactly). */
+  single_prompt: { context_window: number; available: boolean; reason: string | null };
 }
 
 export type SaveMethod = 'ui_map_reduce' | 'ui_single_prompt' | 'ui_edited';
@@ -108,14 +120,6 @@ export const selectedChars = (sections: DocumentSections, chosen: string[]): num
   return sections.sections
     .filter((s) => !sections.has_section_types || wanted.has(s.section_type))
     .reduce((total, s) => total + s.chars, 0);
-};
-
-export type SinglePromptFit = 'fits' | 'too_large' | 'unavailable';
-
-/** Whether the chosen text fits a single prompt (an estimate before cleaning). */
-export const singlePromptFit = (sections: DocumentSections, chosen: string[]): SinglePromptFit => {
-  if (sections.single_prompt_limit_chars == null) return 'unavailable';
-  return selectedChars(sections, chosen) <= sections.single_prompt_limit_chars ? 'fits' : 'too_large';
 };
 
 export const formatChars = (chars: number): string =>

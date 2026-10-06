@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { buildSummaryDisplayText } from './documentsModalUtils';
+import { SummaryProvenance, formatProvenance } from './summary/summaryProvenance';
 
 interface DocumentsSummaryCellProps {
   summary: string;
@@ -8,6 +9,8 @@ interface DocumentsSummaryCellProps {
   onOpenSummary: (summary: string, docTitle: string) => void;
   /** Administrators can open an empty summary to write or generate one. */
   canEdit?: boolean;
+  /** How, when and by whom the summary was made. */
+  provenance?: SummaryProvenance | null;
 }
 
 export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
@@ -15,6 +18,7 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
   docTitle,
   onOpenSummary,
   canEdit = false,
+  provenance = null,
 }) => {
   const open = () => onOpenSummary(summary || '', docTitle);
 
@@ -80,6 +84,7 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
           </a>
         </>
       )}
+      {provenance && <div className="doc-summary-provenance">{formatProvenance(provenance)}</div>}
     </div>
   );
 };

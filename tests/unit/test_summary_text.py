@@ -6,16 +6,18 @@ import pytest
 
 from pipeline.processors.summarization.summarizer import SummarizeProcessor
 from pipeline.processors.summarization.summary_text import (
+    DEFAULT_SINGLE_PROMPT_CONTEXT_WINDOW,
     MODE_MAP_REDUCE,
     MODE_SINGLE_PROMPT,
     SUMMARY_USER_SET_FIELD,
     SummaryTextMixin,
     SummaryTooLargeError,
+    TokenCountUnavailableError,
+    count_prompt_tokens,
     default_summary_instructions,
     render_map_prompt,
     render_reduce_prompt,
     resolve_summary_mode,
-    single_prompt_limit_chars,
 )
 
 pytestmark = pytest.mark.unit
@@ -46,16 +48,20 @@ class FakeSummarizer(SummaryTextMixin):
         self.events: List[Dict[str, Any]] = []
         self._progress = self.events.append
         self.calls: List[Tuple[str, str, bool]] = []
+        self.counted: List[str] = []
 
     def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
         self.calls.append((prompt, model, include_inference))
         return SUMMARY
 
+    def _count_prompt_tokens(self, prompt: str) -> int:
+        # Four characters a token, like English text with most tokenizers.
+        self.counted.append(prompt)
+        return len(prompt) // 4
 
-def _limit(window: int, instructions: str = "") -> int:
-    return single_prompt_limit_chars(
-        window, 100, instructions or default_summary_instructions()
-    )
+
+def _prompt_tokens(text: str) -> int:
+    return len(render_map_prompt(text, default_summary_instructions())) // 4
 
 
 class TestModeAndPrompts:
@@ -92,29 +98,61 @@ class TestSinglePrompt:
         assert len(summarizer.calls) == 1
         prompt, model, include_inference = summarizer.calls[0]
         assert text.strip()[:200] in prompt
+        assert summarizer.counted == [prompt]  # the exact prompt is counted
         assert (model, include_inference) == ("model-key", True)
         assert summarizer.events == [{"stage": "single"}]
 
-    def test_text_over_the_limit_is_an_error_with_both_sizes(self):
-        limit = _limit(5000)
-        summarizer = FakeSummarizer(MODE_SINGLE_PROMPT, single_window=5000)
+    def test_a_prompt_over_the_limit_is_an_error_with_both_sizes(self):
+        text = "x" * 40000
+        tokens = _prompt_tokens(text)
+        window = tokens + 100 - 1  # one token short, counting the 100 kept for output
+        summarizer = FakeSummarizer(MODE_SINGLE_PROMPT, single_window=window)
 
         with pytest.raises(SummaryTooLargeError) as err:
-            summarizer._llm_summary("x" * (limit + 1))
+            summarizer._llm_summary(text)
 
-        assert f"{limit + 1:,} characters" in str(err.value)
-        assert f"{limit:,}" in str(err.value)
+        assert f"The prompt is {tokens:,} tokens" in str(err.value)
+        assert f"more than the {window:,} tokens" in str(err.value)
         assert summarizer.calls == []
 
-    def test_text_at_the_limit_is_sent(self):
-        summarizer = FakeSummarizer(MODE_SINGLE_PROMPT, single_window=5000)
-        summarizer._llm_summary("x" * _limit(5000))
+    def test_a_prompt_exactly_at_the_limit_is_sent(self):
+        text = "x" * 40000
+        summarizer = FakeSummarizer(
+            MODE_SINGLE_PROMPT, single_window=_prompt_tokens(text) + 100
+        )
+        summarizer._llm_summary(text)
         assert len(summarizer.calls) == 1
 
-    def test_without_a_window_it_names_the_missing_key(self):
+    def test_the_limit_defaults_to_gemini_2_5_flash_input_tokens(self):
+        assert DEFAULT_SINGLE_PROMPT_CONTEXT_WINDOW == 1_048_576
+        # About 1.6M characters: refused by a one-character-per-token rule,
+        # but about 400k tokens, so within the default window.
+        text = "Findings and evidence. " * 70000
         summarizer = FakeSummarizer(MODE_SINGLE_PROMPT, single_window=None)
-        with pytest.raises(ValueError, match="single_prompt_context_window"):
-            summarizer._llm_summary("Some text to summarise.")
+        summarizer._llm_summary(text)
+        assert len(summarizer.calls) == 1
+
+        too_big = "y" * (4 * DEFAULT_SINGLE_PROMPT_CONTEXT_WINDOW)
+        with pytest.raises(SummaryTooLargeError, match="1,048,576 tokens"):
+            FakeSummarizer(MODE_SINGLE_PROMPT)._llm_summary(too_big)
+
+
+class CountingModel:
+    """A chat model with its own token counting."""
+
+    def get_num_tokens(self, text: str) -> int:
+        return len(text.split())
+
+
+class TestTokenCounting:
+    def test_counts_with_the_models_own_tokenizer(self):
+        assert count_prompt_tokens(CountingModel(), "three short words") == 3
+
+    def test_a_model_without_exact_counting_is_refused(self):
+        from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+        with pytest.raises(TokenCountUnavailableError, match="FakeListChatModel"):
+            count_prompt_tokens(FakeListChatModel(responses=["x"]), "text")
 
 
 class TestMapReduce:
@@ -160,6 +198,18 @@ class TestPipelineProcessor:
         )
         processor._initialized = True
         return processor
+
+    def test_counts_the_prompt_with_its_own_model(self, monkeypatch):
+        processor = self._processor()
+        built = []
+
+        def build(model, include_inference):
+            built.append((model, include_inference))
+            return CountingModel()
+
+        monkeypatch.setattr(processor, "_build_llm", build)
+        assert processor._count_prompt_tokens("one two three four") == 4
+        assert built == [("gpt-3.5-turbo", True)]
 
     def test_reads_the_mode_and_window_from_config(self):
         processor = self._processor(

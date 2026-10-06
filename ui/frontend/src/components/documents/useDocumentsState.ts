@@ -6,6 +6,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { Facets } from '../../types/api';
 import type { SavedSummary } from './summary/documentSummaryApi';
 import { docKey } from './summary/useDocumentSelection';
+import { summaryProvenance } from './summary/summaryProvenance';
 import { StatsData } from '../../types/documents';
 import {
   ChartView,
@@ -550,7 +551,13 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   useDebouncedFilterText(filterText, loading, handleDebouncedFilterChange);
   useSyncDocumentsUrlParams(currentPage, filterText, chartView);
 
+  // The open summary's provenance, kept current when it is saved.
+  const selectedSummaryProvenance = summaryProvenance(
+    allDocuments.find((d) => selectedSummaryDocId && docKey(d) === selectedSummaryDocId),
+  );
+
   return {
+    selectedSummaryProvenance,
     reprocessChoiceDoc,
     handleReprocessChoice,
     applySavedSummary,

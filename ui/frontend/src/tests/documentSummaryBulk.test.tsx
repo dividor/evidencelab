@@ -73,7 +73,7 @@ describe('Bulk regenerate', () => {
     expect(onFinished).toHaveBeenCalled();
   });
 
-  test('runs two at a time, and Stop leaves the rest unchanged', async () => {
+  test('queues the documents one at a time, and Stop leaves the rest unchanged', async () => {
     const pending: Array<{ signal: AbortSignal; reject: (e: Error) => void }> = [];
     (generateDocumentSummary as jest.Mock).mockImplementation(
       ({ signal }) =>
@@ -85,15 +85,33 @@ describe('Bulk regenerate', () => {
     render(<BulkSummaryModal isOpen onClose={jest.fn()} admin={makeAdmin()} documents={DOCS} />);
 
     fireEvent.click(screen.getByRole('button', { name: START }));
-    await waitFor(() => expect(pending).toHaveLength(2));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(within(itemFor('Kenya school meals')).getByText(/Starting/)).toBeInTheDocument();
+    expect(within(itemFor('Cash transfers review')).getByText('Waiting')).toBeInTheDocument();
     expect(within(itemFor('Nutrition in schools')).getByText('Waiting')).toBeInTheDocument();
 
     await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Stop' })));
 
     await waitFor(() => expect(screen.getByText(/0 saved · 0 failed · 0 to go · 3 not changed/)).toBeInTheDocument());
     expect(pending.every((p) => p.signal.aborted)).toBe(true);
-    expect(generateDocumentSummary).toHaveBeenCalledTimes(2);
+    expect(generateDocumentSummary).toHaveBeenCalledTimes(1);
     expect(saveDocumentSummary).not.toHaveBeenCalled();
+  });
+
+  test('the next document starts only when the previous one is saved', async () => {
+    const order: string[] = [];
+    (generateDocumentSummary as jest.Mock).mockImplementation(async ({ docId }) => {
+      order.push(`generate ${docId}`);
+      return { summary: `Summary of ${docId}`, mode: 'map_reduce', method: 'ui_map_reduce', calls: 1 };
+    });
+    (saveDocumentSummary as jest.Mock).mockImplementation(async (_ds, docId) => {
+      order.push(`save ${docId}`);
+      return { doc_id: docId };
+    });
+    render(<BulkSummaryModal isOpen onClose={jest.fn()} admin={makeAdmin()} documents={DOCS} />);
+    fireEvent.click(screen.getByRole('button', { name: START }));
+    await waitFor(() => expect(screen.getByText(/3 saved/)).toBeInTheDocument());
+    expect(order).toEqual(['generate d1', 'save d1', 'generate d2', 'save d2', 'generate d3', 'save d3']);
   });
 });
 

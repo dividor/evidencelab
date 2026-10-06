@@ -38,6 +38,14 @@ const errorMessage = (err: unknown, fallback: string): string => {
   return err instanceof Error && err.message ? err.message : fallback;
 };
 
+/** A prompt, at least one section (when the document has section types), and
+ *  for a single prompt a model that can count its tokens. */
+const canGenerate = (settings: SummarySettings, sections: DocumentSections | null): boolean => {
+  if (!settings.prompt.trim()) return false;
+  if (sections?.has_section_types !== false && !settings.sectionTypes.length) return false;
+  return !(settings.mode === 'single_prompt' && sections?.single_prompt.available === false);
+};
+
 const RegeneratePanel: React.FC<{
   admin: SummaryAdmin;
   docId: string;
@@ -52,11 +60,11 @@ const RegeneratePanel: React.FC<{
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetchDocumentSections(admin.dataSource, docId, admin.model.max_tokens)
+    fetchDocumentSections(admin.dataSource, docId, admin.model)
       .then(setSections)
       .catch((err) => setError(errorMessage(err, 'The document sections could not be loaded.')));
     return () => abortRef.current?.abort();
-  }, [admin.dataSource, admin.model.max_tokens, docId]);
+  }, [admin.dataSource, admin.model, docId]);
 
   const generate = async () => {
     const controller = new AbortController();
@@ -106,7 +114,7 @@ const RegeneratePanel: React.FC<{
             <button
               type="button"
               className="btn-sm btn-primary"
-              disabled={!settings.prompt.trim() || (sections?.has_section_types !== false && !settings.sectionTypes.length)}
+              disabled={!canGenerate(settings, sections)}
               onClick={generate}
             >
               Generate

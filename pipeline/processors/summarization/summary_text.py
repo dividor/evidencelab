@@ -6,8 +6,12 @@ Two modes, set by ``datasources.<name>.pipeline.summarize.mode``:
 - ``map_reduce`` (default): text that fits the context window is summarised
   in one call; larger text is split into windows, each summarised, and the
   window summaries combined (recursing when they are still too large).
-- ``single_prompt``: all the text goes to the LLM in one call. Text larger
-  than ``single_prompt_context_window`` is an error naming both sizes.
+- ``single_prompt``: all the text goes to the LLM in one call. The prompt is
+  counted in tokens by the summarising model first; a prompt that, with the
+  tokens reserved for the summary, is larger than
+  ``single_prompt_context_window`` (default: Gemini 2.5 Flash's input limit)
+  is an error naming both sizes. A model that cannot count its tokens exactly
+  cannot be used for a single prompt.
 
 The summary prompt (what the summary must contain) is
 ``prompts/summary_instructions.j2`` by default and can be replaced per call.
@@ -51,8 +55,54 @@ _final_template = _jinja_env.get_template("summary_final.j2")
 ProgressCallback = Callable[[Dict[str, Any]], None]
 
 
-class SummaryTooLargeError(ValueError):
+# Gemini 2.5 Flash's input token limit, the single-prompt limit when
+# summarize.single_prompt_context_window is not set.
+# https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash
+DEFAULT_SINGLE_PROMPT_CONTEXT_WINDOW = 1_048_576
+
+
+class SummaryUserError(ValueError):
+    """A problem the user can act on; its message is shown to them."""
+
+
+class SummaryTooLargeError(SummaryUserError):
     """The text cannot be summarised within the configured limits."""
+
+
+class TokenCountUnavailableError(SummaryUserError):
+    """The model cannot count tokens exactly, so a single prompt is refused."""
+
+
+def counts_tokens_exactly(llm: Any) -> bool:
+    """Whether the chat model counts tokens with its own tokenizer.
+
+    Models that do (Gemini on Vertex, OpenAI / Azure Foundry) override
+    LangChain's token counting; the base implementation only approximates
+    with the GPT-2 tokenizer.
+    """
+    from langchain_core.language_models import BaseLanguageModel
+
+    cls = type(llm)
+    return (
+        cls.get_num_tokens is not BaseLanguageModel.get_num_tokens
+        or cls.get_token_ids is not BaseLanguageModel.get_token_ids
+    )
+
+
+def count_prompt_tokens(llm: Any, prompt: str) -> int:
+    """The prompt's size in tokens, counted by the model that will read it."""
+    if not counts_tokens_exactly(llm):
+        raise TokenCountUnavailableError(
+            f"Single prompt needs an exact token count, which "
+            f"{type(llm).__name__} does not provide. Use map reduce, or a model "
+            "that counts its tokens (Gemini, OpenAI)."
+        )
+    return int(llm.get_num_tokens(prompt))
+
+
+def single_prompt_window(configured: Optional[int]) -> int:
+    """Tokens a single prompt may use (the configured window or the default)."""
+    return int(configured or DEFAULT_SINGLE_PROMPT_CONTEXT_WINDOW)
 
 
 def default_summary_instructions() -> str:
@@ -123,20 +173,6 @@ def effective_max_chars(max_chars: int, instructions: str) -> int:
     return max_chars - overhead
 
 
-def single_prompt_limit_chars(
-    single_prompt_context_window: Optional[int], max_tokens: int, instructions: str
-) -> int:
-    """Most characters of text a single prompt may carry."""
-    if not single_prompt_context_window:
-        raise ValueError(
-            "summarize.single_prompt_context_window is not set; it is "
-            "required for the single_prompt summary mode"
-        )
-    return effective_max_chars(
-        token_budget_chars(single_prompt_context_window, max_tokens), instructions
-    )
-
-
 class SummaryTextMixin:
     """Summarise cleaned text in the configured mode.
 
@@ -162,6 +198,10 @@ class SummaryTextMixin:
     def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
         raise NotImplementedError
 
+    def _count_prompt_tokens(self, prompt: str) -> int:
+        """The prompt's size in tokens, counted by the summarising model."""
+        raise NotImplementedError
+
     def _instructions(self) -> str:
         return self.summary_instructions or default_summary_instructions()
 
@@ -180,7 +220,9 @@ class SummaryTextMixin:
         logger.info("  Input: %s characters (mode %s)", len(cleaned), self.summary_mode)
 
         if self.summary_mode == MODE_SINGLE_PROMPT:
-            self._check_single_prompt_fits(cleaned)
+            self._check_single_prompt_fits(
+                render_map_prompt(cleaned, self._instructions())
+            )
         try:
             if self.summary_mode == MODE_SINGLE_PROMPT:
                 return self._single_pass_summary(cleaned)
@@ -194,17 +236,15 @@ class SummaryTextMixin:
             logger.error("  ✗ LLM summarization failed: %s", e)
             raise RuntimeError(f"LLM API call failed: {e}") from e
 
-    def _check_single_prompt_fits(self, cleaned: str) -> None:
-        limit = single_prompt_limit_chars(
-            self.single_prompt_context_window, self.max_tokens, self._instructions()
-        )
-        if len(cleaned) > limit:
+    def _check_single_prompt_fits(self, prompt: str) -> None:
+        window = single_prompt_window(self.single_prompt_context_window)
+        tokens = self._count_prompt_tokens(prompt)
+        if tokens + self.max_tokens > window:
             raise SummaryTooLargeError(
-                f"The text is {len(cleaned):,} characters, more than the "
-                f"{limit:,} a single prompt can take "
-                f"(summarize.single_prompt_context_window = "
-                f"{self.single_prompt_context_window:,} tokens). Choose fewer "
-                f"sections or use map reduce."
+                f"The prompt is {tokens:,} tokens. With {self.max_tokens:,} kept "
+                f"for the summary, that is more than the {window:,} tokens a "
+                f"single prompt can take (summarize.single_prompt_context_window). "
+                f"Choose fewer sections or use map reduce."
             )
 
     def _clean_llm_input(self, content: str) -> str:

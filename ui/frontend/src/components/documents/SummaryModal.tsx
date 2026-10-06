@@ -7,6 +7,7 @@ import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
 import { SummaryEditor } from './summary/SummaryEditor';
 import type { SummaryAdmin } from './summary/useSummaryAdmin';
+import { SummaryProvenance, formatProvenance } from './summary/summaryProvenance';
 
 const MARKDOWN_COMPONENTS = {
   h1: ({ node, ...props }: any) => (
@@ -33,9 +34,19 @@ interface SummaryModalProps {
   docId?: string;
   /** Set for administrators on the Documents screen: edit and regenerate. */
   admin?: SummaryAdmin | null;
+  /** How, when and by whom the summary was made. */
+  provenance?: SummaryProvenance | null;
 }
 
-export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, summary, title, docId, admin }) => {
+export const SummaryModal: React.FC<SummaryModalProps> = ({
+  isOpen,
+  onClose,
+  summary,
+  title,
+  docId,
+  admin,
+  provenance,
+}) => {
   const { isAuthenticated } = useAuth();
   const { ratings, submitRating, deleteRating } = useRatings({
     ratingType: 'doc_summary',
@@ -83,9 +94,12 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({ isOpen, onClose, sum
     <div className="preview-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
-          <h2>
-            {title}<em className="header-label-subtitle">(AI-generated : Experimental)</em>
-          </h2>
+          <div className="doc-summary-modal-title">
+            <h2>
+              {title}<em className="header-label-subtitle">(AI-generated : Experimental)</em>
+            </h2>
+            {provenance && <p className="doc-summary-provenance">{formatProvenance(provenance)}</p>}
+          </div>
           <div className="modal-header-actions">
             <button onClick={onClose} className="modal-close">
               ×

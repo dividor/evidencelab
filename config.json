@@ -374,7 +374,7 @@
           "llm_workers": 6,
           "context_window": 29000,
           "mode": "map_reduce",
-          "single_prompt_context_window": 400000
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,
@@ -621,7 +621,7 @@
           "llm_workers": 6,
           "context_window": 29000,
           "mode": "map_reduce",
-          "single_prompt_context_window": 400000
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,
@@ -824,7 +824,7 @@
           "llm_workers": 6,
           "context_window": 29000,
           "mode": "map_reduce",
-          "single_prompt_context_window": 400000
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,

@@ -14,6 +14,7 @@ from pipeline.db import config as pipeline_config
 from pipeline.processors.summarization.summary_text import (
     SUMMARY_USER_SET_FIELD,
     SummaryTooLargeError,
+    TokenCountUnavailableError,
     default_summary_instructions,
 )
 from pipeline.processors.tagging.tagger_constants import SECTION_TYPES
@@ -72,6 +73,10 @@ class FakeLLM:
     def invoke(self, messages):
         self.prompts.append(messages[0].content)
         return SimpleNamespace(content=self.reply)
+
+    def get_num_tokens(self, text: str) -> int:
+        # Its own token count: four characters a token.
+        return len(text) // 4
 
 
 @pytest.fixture
@@ -207,18 +212,22 @@ class TestGenerate:
         assert (result["method"], result["calls"]) == ("ui_map_reduce", 1)
         assert fake_llm.callbacks == [result["usage"]]
 
-    def test_single_prompt_is_unavailable_without_a_window(
+    def test_single_prompt_uses_the_default_window_when_none_is_set(
         self, summarize_config, fake_llm
     ):
         del summarize_config["single_prompt_context_window"]
-        with pytest.raises(service.DocumentSummaryError, match="Single prompt"):
-            self._generate(mode="single_prompt")
-        assert fake_llm.prompts == []
+        result = self._generate(mode="single_prompt")
+        assert (result["method"], result["calls"]) == ("ui_single_prompt", 1)
+        assert service.summary_defaults("wfp")["single_prompt_context_window"] == (
+            1_048_576
+        )
 
-    def test_single_prompt_too_large_is_reported(self, summarize_config, fake_llm):
+    def test_single_prompt_too_large_is_reported_in_tokens(
+        self, summarize_config, fake_llm
+    ):
         summarize_config["single_prompt_context_window"] = 4000
-        big = [_chunk(i, "findings", "w" * 1000) for i in range(6)]
-        with pytest.raises(SummaryTooLargeError, match="single prompt"):
+        big = [_chunk(i, "findings", "w" * 4000) for i in range(6)]
+        with pytest.raises(SummaryTooLargeError, match="tokens a single prompt"):
             service.generate_summary(
                 "wfp",
                 DOC_ID,
@@ -231,6 +240,20 @@ class TestGenerate:
                 temperature=None,
             )
         assert fake_llm.prompts == []
+
+    def test_single_prompt_needs_a_model_that_counts_tokens(
+        self, summarize_config, monkeypatch
+    ):
+        from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+        monkeypatch.setattr(
+            service, "get_llm", lambda **_: FakeListChatModel(responses=[SUMMARY])
+        )
+        with pytest.raises(TokenCountUnavailableError):
+            self._generate(mode="single_prompt")
+        info = service.single_prompt_info("wfp", "m", 2000)
+        assert info["available"] is False
+        assert "cannot count its tokens" in info["reason"]
 
     def test_saved_fields_mark_the_summary_as_set_in_the_app(self):
         updates = service.summary_updates(SUMMARY, "ui_edited", "admin@example.org")
@@ -349,14 +372,18 @@ class TestRoutes:
         param = inspect.signature(handler).parameters["admin"]
         assert param.default.dependency is current_superuser
 
-    def test_the_routes_are_mounted_under_document_summaries(self):
-        paths = {getattr(r, "path", "") for r in main_module.app.routes}
-        assert {
-            "/document-summaries/settings",
-            "/document-summaries/{doc_id}/sections",
-            "/document-summaries/{doc_id}/generate",
-            "/document-summaries/{doc_id}",
-        } <= paths
+    def test_the_router_has_the_four_routes(self):
+        # Mounted under /document-summaries with the user module (main.py);
+        # tests/integration/test_document_summary_api.py checks it over HTTP.
+        routes_by_path = {
+            (r.path, tuple(sorted(r.methods))) for r in routes.router.routes
+        }
+        assert routes_by_path == {
+            ("/settings", ("GET",)),
+            ("/{doc_id}/sections", ("GET",)),
+            ("/{doc_id}/generate", ("POST",)),
+            ("/{doc_id}", ("PUT",)),
+        }
 
     def test_unknown_section_types_are_rejected(self):
         with pytest.raises(ValueError, match="chapter_one"):
@@ -474,9 +501,28 @@ class TestRoutes:
         assert details["details"]["previous_method"] == "llm_summary"
 
     @pytest.mark.asyncio
-    async def test_settings_without_a_data_source_give_the_shared_defaults(
-        self, route_env
+    async def test_settings_without_a_data_source_give_every_sources_defaults(
+        self, route_env, monkeypatch
     ):
+        monkeypatch.setattr(
+            service,
+            "load_datasources_config",
+            lambda: {
+                "datasources": {
+                    "WFP Reports": {
+                        "data_subdir": "wfp",
+                        "pipeline": {"summarize": {"mode": "single_prompt"}},
+                    },
+                    "World Bank": {
+                        "data_subdir": "worldbank",
+                        "pipeline": {
+                            "summarize": {"section_types": ["findings", "conclusions"]}
+                        },
+                    },
+                    "No summaries": {"data_subdir": "other", "pipeline": {}},
+                }
+            },
+        )
         settings = await routes.get_summary_settings(
             request=_request("/document-summaries/settings"),
             data_source=None,
@@ -486,6 +532,20 @@ class TestRoutes:
             "prompt": default_summary_instructions(),
             "modes": ["map_reduce", "single_prompt"],
             "all_section_types": SECTION_TYPES,
+            "data_sources": [
+                {
+                    "key": "wfp",
+                    "name": "WFP Reports",
+                    "mode": "single_prompt",
+                    "section_types": SECTION_TYPES,
+                },
+                {
+                    "key": "worldbank",
+                    "name": "World Bank",
+                    "mode": "map_reduce",
+                    "section_types": ["findings", "conclusions"],
+                },
+            ],
         }
 
     @pytest.mark.asyncio
@@ -501,13 +561,14 @@ class TestRoutes:
 
     @pytest.mark.asyncio
     async def test_sections_report_sizes_and_the_single_prompt_limit(
-        self, route_env, monkeypatch
+        self, route_env, fake_llm, monkeypatch
     ):
         monkeypatch.setattr(service, "get_summarize_config", lambda _: SUMMARIZE)
         result = await routes.get_summary_sections(
             request=_request("/x"),
             doc_id=DOC_ID,
             data_source="wfp",
+            model="gemini-2.5-flash",
             max_tokens=2000,
             admin=ADMIN,
         )
@@ -517,7 +578,24 @@ class TestRoutes:
             "findings",
             "annexes",
         ]
-        assert 90000 < result["single_prompt_limit_chars"] < 98000
+        assert result["single_prompt"] == {
+            "context_window": 100000,
+            "available": True,
+            "reason": None,
+        }
+
+    @pytest.mark.asyncio
+    async def test_sections_refuse_a_model_outside_the_combos(self, route_env):
+        with pytest.raises(HTTPException) as err:
+            await routes.get_summary_sections(
+                request=_request("/x"),
+                doc_id=DOC_ID,
+                data_source="wfp",
+                model="some-other-model",
+                max_tokens=2000,
+                admin=ADMIN,
+            )
+        assert err.value.status_code == 400
 
 
 class TestReprocess:

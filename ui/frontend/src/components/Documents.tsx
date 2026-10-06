@@ -159,6 +159,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         onOpenSummaryFromMetadata={state.handleOpenSummary}
         onOpenTocFromMetadata={state.handleOpenToc}
         summaryAdmin={summaryAdmin}
+        summaryProvenance={state.selectedSummaryProvenance}
       />
       {summaryAdmin && bulkOpen && (
         <BulkSummaryModal

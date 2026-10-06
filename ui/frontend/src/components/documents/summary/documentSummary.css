@@ -197,3 +197,73 @@
 .doc-summary-choice {
   max-width: 40rem;
 }
+
+.doc-summary-provenance {
+  font-size: 0.75rem;
+  color: var(--brand-text-tertiary);
+  margin: 0.3rem 0 0;
+}
+
+/* Group settings: Document Summaries tab */
+.doc-summary-group .search-settings-group {
+  margin-top: var(--spacing-md);
+}
+
+.doc-summary-choice-row {
+  margin-top: var(--spacing-xs);
+}
+
+.doc-summary-choice-hint {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--brand-text-tertiary);
+  text-align: right;
+}
+
+.doc-summary-source-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.5rem 0.2rem;
+}
+
+.doc-summary-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.doc-summary-source-name {
+  color: var(--brand-text-secondary);
+  font-weight: 500;
+  margin-right: 0.25rem;
+}
+
+.doc-summary-chip {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--gray-100);
+  color: var(--brand-text-primary);
+  font-size: 0.75rem;
+}
+
+.doc-summary-section-picks {
+  padding: 0.4rem 0.5rem 0;
+}
+
+.doc-summary-prompt-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.doc-summary-modal-title {
+  min-width: 0;
+}
+
+.doc-summary-modal-title .doc-summary-provenance {
+  margin-top: 0.35rem;
+}

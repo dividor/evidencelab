@@ -87,13 +87,11 @@ IMPORTANT: You NEVER provide an answer unless it is supported by the content you
 
 /** Extracted sub-component for appearance settings to reduce component complexity. */
 const AppearanceSection: React.FC<{
-  collapsed: boolean;
-  onToggle: () => void;
   overrides: Set<keyof SearchSettings>;
   values: Required<SearchSettings>;
   setOverrides: React.Dispatch<React.SetStateAction<Set<keyof SearchSettings>>>;
   setValues: React.Dispatch<React.SetStateAction<Required<SearchSettings>>>;
-}> = ({ collapsed, onToggle, overrides, values, setOverrides, setValues }) => {
+}> = ({ overrides, values, setOverrides, setValues }) => {
   const isOverridden = overrides.has('greetingMessage');
 
   const toggleGreetingOverride = (enabled: boolean) => {
@@ -109,11 +107,6 @@ const AppearanceSection: React.FC<{
 
   return (
     <div className="filter-section">
-      <div className="filter-section-header" onClick={onToggle}>
-        <span className="filter-section-toggle">{collapsed ? '▼' : '▶'}</span>
-        <span className="filter-section-title">Appearance</span>
-      </div>
-      {collapsed && (
         <div className="filter-section-content">
           <div style={{ marginTop: '4px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
@@ -150,25 +143,17 @@ const AppearanceSection: React.FC<{
             )}
           </div>
         </div>
-      )}
     </div>
   );
 };
 
 const FeaturesSection: React.FC<{
-  collapsed: boolean;
-  onToggle: () => void;
   tabsOverride: boolean;
   tabValues: TabValues;
   setTabsOverride: React.Dispatch<React.SetStateAction<boolean>>;
   setTabValues: React.Dispatch<React.SetStateAction<TabValues>>;
-}> = ({ collapsed, onToggle, tabsOverride, tabValues, setTabsOverride, setTabValues }) => (
+}> = ({ tabsOverride, tabValues, setTabsOverride, setTabValues }) => (
   <div className="filter-section">
-    <div className="filter-section-header" onClick={onToggle}>
-      <span className="filter-section-toggle">{collapsed ? '▼' : '▶'}</span>
-      <span className="filter-section-title">Features &amp; Tabs</span>
-    </div>
-    {collapsed && (
       <div className="filter-section-content">
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
           <input
@@ -216,23 +201,47 @@ const FeaturesSection: React.FC<{
           </div>
         )}
       </div>
-    )}
   </div>
 );
 
-/** A collapsible settings section ("open" sections show their content). */
-const CollapsibleSection: React.FC<{
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}> = ({ title, open, onToggle, children }) => (
-  <div className="filter-section">
-    <div className="filter-section-header" onClick={onToggle}>
-      <span className="filter-section-toggle">{open ? '▼' : '▶'}</span>
-      <span className="filter-section-title">{title}</span>
-    </div>
-    {open && <div className="filter-section-content">{children}</div>}
+type SettingsTab = 'search' | 'content' | 'ai_summary' | 'brief' | 'doc_summary' | 'features' | 'appearance';
+
+/** The group settings, one tab per area. */
+const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
+  { key: 'search', label: 'Search Settings' },
+  { key: 'content', label: 'Content Settings' },
+  { key: 'ai_summary', label: 'Search AI Summary' },
+  { key: 'brief', label: 'Brief' },
+  { key: 'doc_summary', label: 'Document Summaries' },
+  { key: 'features', label: 'Features & Tabs' },
+  { key: 'appearance', label: 'Appearance' },
+];
+
+const SettingsTabs: React.FC<{ active: SettingsTab; onSelect: (tab: SettingsTab) => void }> = ({
+  active,
+  onSelect,
+}) => (
+  <div className="admin-tabs group-settings-tabs" role="tablist" aria-label="Group settings">
+    {SETTINGS_TABS.map((tab) => (
+      <button
+        key={tab.key}
+        type="button"
+        role="tab"
+        id={`group-settings-tab-${tab.key}`}
+        aria-selected={active === tab.key}
+        className={`admin-tab${active === tab.key ? ' admin-tab-active' : ''}`}
+        onClick={() => onSelect(tab.key)}
+      >
+        {tab.label}
+      </button>
+    ))}
+  </div>
+);
+
+/** The settings of one tab. */
+const SettingsPanel: React.FC<{ tab: SettingsTab; children: React.ReactNode }> = ({ tab, children }) => (
+  <div className="filter-section group-settings-panel" role="tabpanel" aria-labelledby={`group-settings-tab-${tab}`}>
+    <div className="filter-section-content">{children}</div>
   </div>
 );
 
@@ -249,28 +258,13 @@ const GroupSettingsManager: React.FC = () => {
   // Current values for all settings (overridden or system default)
   const [values, setValues] = useState<Required<SearchSettings>>({ ...SYSTEM_DEFAULTS });
 
-  // Collapsible sections — both open by default
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
-    new Set(['search_settings', 'content_settings', 'ai_summary', 'appearance', 'features'])
-  );
+  const [activeTab, setActiveTab] = useState<SettingsTab>('search');
 
   // Per-group feature-tab visibility/labels (stored under search_settings.tabs).
   // `tabsOverride` off => this group doesn't constrain tabs (contributes nothing
   // to the cross-group union).
   const [tabsOverride, setTabsOverride] = useState(false);
   const [tabValues, setTabValues] = useState<TabValues>(defaultTabValues);
-
-  const toggleSection = (key: string) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
@@ -470,20 +464,21 @@ const GroupSettingsManager: React.FC = () => {
         {selectedGroup && (
           <>
             <p className="admin-group-settings-description">
-              Configure default search and content settings for <strong>{selectedGroup.name}</strong> members.
-              Changed settings are saved per-group; users can still override.
+              Configure defaults for <strong>{selectedGroup.name}</strong> members, one area per tab. Changed
+              settings are saved per group, and Save Settings saves every tab; users can still override.
             </p>
 
-            <div className="admin-group-settings-columns">
+            <SettingsTabs active={activeTab} onSelect={setActiveTab} />
+
+            <div className="group-settings-panels">
               {/* Search Settings */}
-              <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('search_settings')}>
-                  <span className="filter-section-toggle">
-                    {collapsedSections.has('search_settings') ? '▼' : '▶'}
-                  </span>
-                  <span className="filter-section-title">Search Settings</span>
-                </div>
-                {collapsedSections.has('search_settings') && (
+              <div
+                className="filter-section group-settings-panel"
+                role="tabpanel"
+                aria-labelledby="group-settings-tab-search"
+                hidden={activeTab !== 'search'}
+              >
+                {activeTab === 'search' && (
                   <div className="filter-section-content">
                 {/* Search Mode (denseWeight) */}
                 <div className="search-settings-group">
@@ -736,14 +731,13 @@ const GroupSettingsManager: React.FC = () => {
               </div>
 
               {/* Content Settings */}
-              <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('content_settings')}>
-                  <span className="filter-section-toggle">
-                    {collapsedSections.has('content_settings') ? '▼' : '▶'}
-                  </span>
-                  <span className="filter-section-title">Content Settings</span>
-                </div>
-                {collapsedSections.has('content_settings') && (
+              <div
+                className="filter-section group-settings-panel"
+                role="tabpanel"
+                aria-labelledby="group-settings-tab-content"
+                hidden={activeTab !== 'content'}
+              >
+                {activeTab === 'content' && (
                   <div className="filter-section-content">
                 {/* Min Chunk Size */}
                 <div
@@ -838,35 +832,37 @@ const GroupSettingsManager: React.FC = () => {
                 )}
               </div>
 
-              {/* Appearance Settings */}
               {/* Features & Tabs — show/hide the main tabs and relabel them */}
-              <FeaturesSection
-                collapsed={collapsedSections.has('features')}
-                onToggle={() => toggleSection('features')}
-                tabsOverride={tabsOverride}
-                tabValues={tabValues}
-                setTabsOverride={setTabsOverride}
-                setTabValues={setTabValues}
-              />
+              {activeTab === 'features' && (
+                <SettingsPanel tab="features">
+                  <FeaturesSection
+                    tabsOverride={tabsOverride}
+                    tabValues={tabValues}
+                    setTabsOverride={setTabsOverride}
+                    setTabValues={setTabValues}
+                  />
+                </SettingsPanel>
+              )}
 
-              <AppearanceSection
-                collapsed={collapsedSections.has('appearance')}
-                onToggle={() => toggleSection('appearance')}
-                overrides={overrides}
-                values={values}
-                setOverrides={setOverrides}
-                setValues={setValues}
-              />
+              {activeTab === 'appearance' && (
+                <SettingsPanel tab="appearance">
+                  <AppearanceSection
+                    overrides={overrides}
+                    values={values}
+                    setOverrides={setOverrides}
+                    setValues={setValues}
+                  />
+                </SettingsPanel>
+              )}
 
               {/* AI Summary Settings */}
-              <div className="filter-section">
-                <div className="filter-section-header" onClick={() => toggleSection('ai_summary')}>
-                  <span className="filter-section-toggle">
-                    {collapsedSections.has('ai_summary') ? '▼' : '▶'}
-                  </span>
-                  <span className="filter-section-title">Search AI Summary</span>
-                </div>
-                {collapsedSections.has('ai_summary') && (
+              <div
+                className="filter-section group-settings-panel"
+                role="tabpanel"
+                aria-labelledby="group-settings-tab-ai_summary"
+                hidden={activeTab !== 'ai_summary'}
+              >
+                {activeTab === 'ai_summary' && (
                   <div className="filter-section-content">
                     <AiSummaryControls
                       summaryLimitResults={values.summaryLimitResults}
@@ -901,7 +897,8 @@ const GroupSettingsManager: React.FC = () => {
             </div>
 
             {/* Brief Settings */}
-            <CollapsibleSection title="Brief" open={collapsedSections.has('brief')} onToggle={() => toggleSection('brief')}>
+            {activeTab === 'brief' && (
+            <SettingsPanel tab="brief">
               <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
                 <span>Default section length</span>
                 <span
@@ -916,16 +913,15 @@ const GroupSettingsManager: React.FC = () => {
                 value={values.briefTargetWords}
                 onChange={(v) => update('briefTargetWords', v)}
               />
-            </CollapsibleSection>
+            </SettingsPanel>
+            )}
 
             {/* Document summaries (Documents screen) */}
-            <CollapsibleSection
-              title="Document Summaries"
-              open={collapsedSections.has('doc_summary')}
-              onToggle={() => toggleSection('doc_summary')}
-            >
-              <DocumentSummaryGroupSection value={docSummary} onChange={setDocSummary} />
-            </CollapsibleSection>
+            {activeTab === 'doc_summary' && (
+              <SettingsPanel tab="doc_summary">
+                <DocumentSummaryGroupSection value={docSummary} onChange={setDocSummary} />
+              </SettingsPanel>
+            )}
 
             {/* Actions */}
             <div className="admin-inline-form" style={{ marginTop: '16px', gap: '8px' }}>

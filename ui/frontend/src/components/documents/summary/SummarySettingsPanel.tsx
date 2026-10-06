@@ -7,7 +7,6 @@ import {
   formatChars,
   sectionLabel,
   selectedChars,
-  singlePromptFit,
 } from './summarySettings';
 
 interface SummarySettingsPanelProps {
@@ -23,18 +22,15 @@ interface SummarySettingsPanelProps {
 }
 
 const FitNote: React.FC<{ sections: DocumentSections; chosen: string[] }> = ({ sections, chosen }) => {
-  const fit = singlePromptFit(sections, chosen);
-  const chars = formatChars(selectedChars(sections, chosen));
-  if (fit === 'unavailable') {
-    return <p className="doc-summary-note doc-summary-note-warn">Single prompt is not set up for this data source.</p>;
+  const { context_window: window, available, reason } = sections.single_prompt;
+  if (!available) {
+    return <p className="doc-summary-note doc-summary-note-warn">{reason}</p>;
   }
-  const limit = formatChars(sections.single_prompt_limit_chars ?? 0);
-  return fit === 'fits' ? (
-    <p className="doc-summary-note">About {chars} characters of text; a single prompt takes up to {limit}.</p>
-  ) : (
-    <p className="doc-summary-note doc-summary-note-warn">
-      About {chars} characters of text, more than the {limit} a single prompt takes. Choose fewer sections or use
-      map reduce.
+  return (
+    <p className="doc-summary-note">
+      About {formatChars(selectedChars(sections, chosen))} characters of text. A single prompt can take up to{' '}
+      {window.toLocaleString()} tokens; the prompt is counted in tokens when you generate, and stops with a
+      message if it is too large.
     </p>
   );
 };

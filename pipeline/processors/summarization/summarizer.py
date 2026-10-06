@@ -29,6 +29,7 @@ from pipeline.processors.summarization.summary_text import (
     SUMMARY_USER_SET_FIELD,
     USE_CENTROID,
     SummaryTextMixin,
+    count_prompt_tokens,
     default_summary_instructions,
     resolve_summary_mode,
 )
@@ -449,15 +450,22 @@ class SummarizeProcessor(SummaryTextMixin, BaseProcessor):
 
         return filtered
 
-    @traceable(name="Summarization")
-    def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
-        llm = llm_factory.get_llm(
+    def _build_llm(self, model: str, include_inference: bool) -> Any:
+        return llm_factory.get_llm(
             model=model,
             provider=self.provider,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             inference_provider=self.inference_provider if include_inference else None,
         )
+
+    def _count_prompt_tokens(self, prompt: str) -> int:
+        # A single prompt is sent like a single pass: model key + inference provider.
+        return count_prompt_tokens(self._build_llm(self.model_key, True), prompt)
+
+    @traceable(name="Summarization")
+    def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
+        llm = self._build_llm(model, include_inference)
         response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
         # Attribute usage to the configured model key (the pricing-table key),
         # regardless of whether the call resolved it to a provider model id.

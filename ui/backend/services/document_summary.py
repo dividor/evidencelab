@@ -19,7 +19,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import HumanMessage
 
-from pipeline.db.config import get_summarize_config
+from pipeline.db.config import get_summarize_config, load_datasources_config
 from pipeline.processors.summarization.summary_text import (
     MAX_MAP_WINDOWS,
     MODE_MAP_REDUCE,
@@ -29,9 +29,12 @@ from pipeline.processors.summarization.summary_text import (
     ProgressCallback,
     SummaryTextMixin,
     SummaryTooLargeError,
+    SummaryUserError,
+    count_prompt_tokens,
+    counts_tokens_exactly,
     default_summary_instructions,
     resolve_summary_mode,
-    single_prompt_limit_chars,
+    single_prompt_window,
 )
 from pipeline.processors.tagging.tagger_constants import SECTION_TYPES
 from pipeline.utilities.llm_retry import invoke_with_retry
@@ -51,7 +54,7 @@ UNTAGGED = "untagged"
 MAX_PROMPT_CHARS = 20000
 
 
-class DocumentSummaryError(ValueError):
+class DocumentSummaryError(SummaryUserError):
     """A problem with the request the user can act on; the message is shown."""
 
 
@@ -63,8 +66,32 @@ def summary_defaults(data_source: str) -> Dict[str, Any]:
         "section_types": configured_section_types(config),
         "prompt": default_summary_instructions(),
         "all_section_types": list(SECTION_TYPES),
-        "single_prompt_context_window": config.get("single_prompt_context_window"),
+        "single_prompt_context_window": single_prompt_window(
+            config.get("single_prompt_context_window")
+        ),
     }
+
+
+def data_source_defaults() -> List[Dict[str, Any]]:
+    """Each data source's mode and sections, for the group settings screen."""
+    defaults = []
+    for name, ds in load_datasources_config().get("datasources", {}).items():
+        summarize = (
+            (ds.get("pipeline") or {}).get("summarize")
+            if isinstance(ds, dict)
+            else None
+        )
+        if not isinstance(summarize, dict):
+            continue
+        defaults.append(
+            {
+                "key": ds.get("data_subdir") or name,
+                "name": name,
+                "mode": resolve_summary_mode(summarize),
+                "section_types": configured_section_types(summarize),
+            }
+        )
+    return defaults
 
 
 def configured_section_types(config: Dict[str, Any]) -> List[str]:
@@ -115,13 +142,26 @@ def section_breakdown(chunks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
-def single_prompt_limit(data_source: str, max_tokens: int) -> Optional[int]:
-    """Characters a single prompt can take with the default prompt; None when
-    the data source has no single-prompt window configured."""
-    window = get_summarize_config(data_source).get("single_prompt_context_window")
-    if not window:
-        return None
-    return single_prompt_limit_chars(window, max_tokens, default_summary_instructions())
+def single_prompt_info(data_source: str, model: str, max_tokens: int) -> Dict[str, Any]:
+    """The single-prompt token limit, and whether ``model`` can be used for it
+    (it must count its tokens exactly)."""
+    window = single_prompt_window(
+        get_summarize_config(data_source).get("single_prompt_context_window")
+    )
+    llm = get_llm(model=model, temperature=None, max_tokens=max_tokens)
+    available = counts_tokens_exactly(llm)
+    return {
+        "context_window": window,
+        "available": available,
+        "reason": (
+            None
+            if available
+            else (
+                "This model cannot count its tokens exactly, so it cannot be used "
+                "for a single prompt. Use map reduce or another model."
+            )
+        ),
+    }
 
 
 def has_section_types(chunks: Sequence[Dict[str, Any]]) -> bool:
@@ -175,11 +215,15 @@ class AppDocumentSummarizer(SummaryTextMixin):
         self.summary_instructions = prompt
         self._progress = progress
         self.usage = UsageMetadataCallbackHandler()
-        self._llm = get_llm(
+        self._model = get_llm(
             model=model, temperature=temperature, max_tokens=max_tokens
-        ).with_config(callbacks=[self.usage])
+        )
+        self._llm = self._model.with_config(callbacks=[self.usage])
         self._calls = 0
         self._lock = threading.Lock()
+
+    def _count_prompt_tokens(self, prompt: str) -> int:
+        return count_prompt_tokens(self._model, prompt)
 
     @property
     def calls(self) -> int:
@@ -221,11 +265,6 @@ def generate_summary(
     config = get_summarize_config(data_source)
     if mode not in METHOD_BY_MODE:
         raise DocumentSummaryError(f"Unknown summary mode: {mode}")
-    if mode == MODE_SINGLE_PROMPT and not config.get("single_prompt_context_window"):
-        raise DocumentSummaryError(
-            "Single prompt is not available for this data source: "
-            "summarize.single_prompt_context_window is not set"
-        )
     text = select_text(doc_id, chunks, section_types)
     summarizer = AppDocumentSummarizer(
         config,

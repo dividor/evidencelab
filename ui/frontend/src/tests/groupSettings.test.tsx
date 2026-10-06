@@ -48,6 +48,40 @@ describe('GroupSettingsManager', () => {
     mockedAxios.get.mockResolvedValue({ data: mockGroups });
   });
 
+  test('settings are on tabs, one area at a time, and Save covers every tab', async () => {
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+    render(<GroupSettingsManager />);
+    const searchTab = await screen.findByRole('tab', { name: SEARCH_SETTINGS });
+    expect(searchTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      SEARCH_SETTINGS,
+      'Content Settings',
+      SEARCH_AI_SUMMARY,
+      'Brief',
+      DOC_SUMMARIES,
+      'Features & Tabs',
+      'Appearance',
+    ]);
+    expect(screen.getByText('Enable Reranker')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Max results for summary')).toBeNull();
+
+    // A change on one tab survives moving to another, and Save sends both.
+    const rerank = screen.getByText('Enable Reranker').parentElement!.querySelector(SEL_INPUT_TYPE_CHECKBOX) as HTMLInputElement;
+    fireEvent.click(rerank);
+    fireEvent.click(screen.getByRole('tab', { name: SEARCH_AI_SUMMARY }));
+    expect(screen.queryByText('Enable Reranker')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Max results for summary'), { target: { value: '35' } });
+    expect(screen.getByRole('tab', { name: SEARCH_AI_SUMMARY })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+        search_settings: { rerank: false, summaryMaxResults: 35 },
+        summary_prompt: '',
+      });
+    });
+  });
+
   test('renders group chips after loading', async () => {
     render(<GroupSettingsManager />);
     await waitFor(() => {
@@ -189,9 +223,7 @@ describe('GroupSettingsManager', () => {
     mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
 
     render(<GroupSettingsManager />);
-    await waitFor(() => {
-      expect(screen.getByText(SEARCH_AI_SUMMARY)).toBeInTheDocument();
-    });
+    fireEvent.click(await screen.findByRole('tab', { name: SEARCH_AI_SUMMARY }));
 
     fireEvent.change(screen.getByLabelText('Max results for summary'), { target: { value: '35' } });
     const limitLabel = screen.getByText('Limit Results Used');
@@ -210,9 +242,7 @@ describe('GroupSettingsManager', () => {
   test('the AI summary temperature is saved as a group override', async () => {
     mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
     render(<GroupSettingsManager />);
-    await waitFor(() => {
-      expect(screen.getByText(SEARCH_AI_SUMMARY)).toBeInTheDocument();
-    });
+    fireEvent.click(await screen.findByRole('tab', { name: SEARCH_AI_SUMMARY }));
     fireEvent.change(screen.getByLabelText('Response variability'), { target: { value: '0.5' } });
     fireEvent.click(screen.getByText(SAVE_SETTINGS));
     await waitFor(() => {
@@ -225,6 +255,7 @@ describe('GroupSettingsManager', () => {
 
   describe('Document Summaries', () => {
     const DEFAULT_PROMPT = 'OUTPUT FORMAT (you must only use these headings): ...';
+    const USE_SOURCE_SECTIONS = "Use the data source's sections";
     const mockGets = (groups = mockGroups) =>
       mockedAxios.get.mockImplementation(async (url: string) =>
         url.startsWith('/api/document-summaries/settings')
@@ -233,17 +264,36 @@ describe('GroupSettingsManager', () => {
                 prompt: DEFAULT_PROMPT,
                 modes: ['map_reduce', 'single_prompt'],
                 all_section_types: ['executive_summary', 'findings', 'annexes'],
+                data_sources: [
+                  { key: 'wfp', name: 'WFP Evaluation Reports', mode: 'map_reduce', section_types: ['executive_summary', 'findings', 'annexes'] },
+                  { key: 'wb', name: 'World Bank', mode: 'single_prompt', section_types: ['findings'] },
+                ],
               },
             }
           : { data: groups },
       );
 
     const openSection = async () => {
-      fireEvent.click(await screen.findByText(DOC_SUMMARIES));
-      const section = within(screen.getByText(DOC_SUMMARIES).closest('.filter-section') as HTMLElement);
-      await waitFor(() => expect(section.getByLabelText("Use the data source's sections")).toBeEnabled());
+      fireEvent.click(await screen.findByRole('tab', { name: DOC_SUMMARIES }));
+      const section = within(screen.getByRole('tabpanel'));
+      await waitFor(() => expect(section.getByLabelText(USE_SOURCE_SECTIONS)).toBeEnabled());
       return section;
     };
+
+    test("shows each data source's mode and sections, and the prompt ready to edit", async () => {
+      mockGets();
+      render(<GroupSettingsManager />);
+      const section = await openSection();
+
+      expect(section.getByLabelText(/Data source's mode/)).toBeChecked();
+      expect(section.getByText('WFP Evaluation Reports: Map reduce · World Bank: Single prompt')).toBeInTheDocument();
+      const chips = (name: string) =>
+        Array.from(section.getByText(name).parentElement!.querySelectorAll('.doc-summary-chip')).map((c) => c.textContent);
+      expect(chips('WFP Evaluation Reports')).toEqual(['Executive summary', 'Findings', 'Annexes']);
+      expect(chips('World Bank')).toEqual(['Findings']);
+      expect(section.getByLabelText('Team summary prompt')).toHaveValue(DEFAULT_PROMPT);
+      expect(section.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
+    });
 
     test('mode, sections and prompt are saved as group defaults', async () => {
       mockGets();
@@ -251,12 +301,11 @@ describe('GroupSettingsManager', () => {
       render(<GroupSettingsManager />);
       const section = await openSection();
 
-      fireEvent.change(section.getByLabelText('Mode'), { target: { value: 'single_prompt' } });
-      fireEvent.click(section.getByLabelText("Use the data source's sections"));
+      fireEvent.click(section.getByLabelText(/^Single prompt/));
+      fireEvent.click(section.getByLabelText(USE_SOURCE_SECTIONS));
       fireEvent.click(section.getByLabelText('Annexes'));
-      fireEvent.click(section.getByRole('button', { name: 'Customise prompt' }));
-      expect(section.getByLabelText('Team summary prompt')).toHaveValue(DEFAULT_PROMPT);
       fireEvent.change(section.getByLabelText('Team summary prompt'), { target: { value: 'Three bullet points.' } });
+      expect(section.getByRole('button', { name: 'Reset to default' })).toBeEnabled();
       fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
       await waitFor(() => {
@@ -284,14 +333,15 @@ describe('GroupSettingsManager', () => {
       render(<GroupSettingsManager />);
       const section = await openSection();
 
-      expect(section.getByLabelText('Mode')).toHaveValue('map_reduce');
+      expect(section.getByLabelText(/^Map reduce/)).toBeChecked();
       expect(section.getByLabelText('Findings')).toBeChecked();
       expect(section.getByLabelText('Annexes')).not.toBeChecked();
       expect(section.getByLabelText('Team summary prompt')).toHaveValue('Mine.');
 
-      fireEvent.change(section.getByLabelText('Mode'), { target: { value: '' } });
-      fireEvent.click(section.getByLabelText("Use the data source's sections"));
-      fireEvent.click(section.getByRole('button', { name: 'Use the default prompt' }));
+      fireEvent.click(section.getByLabelText(/Data source's mode/));
+      fireEvent.click(section.getByLabelText(USE_SOURCE_SECTIONS));
+      fireEvent.click(section.getByRole('button', { name: 'Reset to default' }));
+      expect(section.getByLabelText('Team summary prompt')).toHaveValue(DEFAULT_PROMPT);
       fireEvent.click(screen.getByText(SAVE_SETTINGS));
 
       await waitFor(() => {
@@ -300,6 +350,17 @@ describe('GroupSettingsManager', () => {
           summary_prompt: '',
         });
       });
+    });
+
+    test('typing the default prompt back counts as no custom prompt', async () => {
+      mockGets();
+      mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+      render(<GroupSettingsManager />);
+      const section = await openSection();
+      const box = section.getByLabelText('Team summary prompt');
+      fireEvent.change(box, { target: { value: 'Changed' } });
+      fireEvent.change(box, { target: { value: DEFAULT_PROMPT } });
+      expect(section.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
     });
   });
 });

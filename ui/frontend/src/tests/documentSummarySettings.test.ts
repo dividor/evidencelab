@@ -4,7 +4,6 @@ import {
   methodForMode,
   resolveSummarySettings,
   selectedChars,
-  singlePromptFit,
 } from '../components/documents/summary/summarySettings';
 import {
   SummaryGenerationError,
@@ -69,22 +68,17 @@ const SECTIONS: DocumentSections = {
     { section_type: 'executive_summary', chars: 20000, chunks: 10 },
     { section_type: 'findings', chars: 200000, chunks: 100 },
   ],
-  single_prompt_limit_chars: 100000,
+  single_prompt: { context_window: 1048576, available: true, reason: null },
 };
 
-describe('single prompt fit', () => {
+describe('selected text size', () => {
   test('counts the chosen sections only', () => {
     expect(selectedChars(SECTIONS, ['executive_summary'])).toBe(20000);
-    expect(singlePromptFit(SECTIONS, ['executive_summary'])).toBe('fits');
-    expect(singlePromptFit(SECTIONS, ['executive_summary', 'findings'])).toBe('too_large');
+    expect(selectedChars(SECTIONS, ['executive_summary', 'findings'])).toBe(220000);
   });
 
   test('an untagged document counts all its text', () => {
     expect(selectedChars({ ...SECTIONS, has_section_types: false }, [])).toBe(220000);
-  });
-
-  test('unavailable without a single-prompt window', () => {
-    expect(singlePromptFit({ ...SECTIONS, single_prompt_limit_chars: null }, ['findings'])).toBe('unavailable');
   });
 });
 

@@ -9,6 +9,7 @@ import { DocumentStatusCell } from './DocumentStatusCell';
 import { DocumentsSummaryCell } from './DocumentsSummaryCell';
 import { TaxonomyCell } from './TaxonomyCell';
 import { formatTimestamp, getLastUpdatedTimestamp } from './documentsModalUtils';
+import { summaryProvenance } from './summary/summaryProvenance';
 import API_BASE_URL, { USER_FEEDBACK } from '../../config';
 
 const hasSuccessfulParse = (status: string | undefined): boolean =>
@@ -166,6 +167,7 @@ export const DocumentsTableRow: React.FC<{
             docTitle={doc.title || 'Untitled'}
             onOpenSummary={(summary, title) => onOpenSummary(summary, title, doc.doc_id)}
             canEdit={canEditSummary}
+            provenance={summaryProvenance(doc)}
           />
         </td>
         <DocumentMetadataCell doc={doc} onOpenToc={onOpenToc} onOpenMetadata={onOpenMetadata} />

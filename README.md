@@ -42,7 +42,7 @@ Evidence Lab document processing pipeline includes the following features:
 - PDF/Word parsing with Docling, to include document structure detection
 - Footnote and references, images and table detection
 - Basic table extraction, with support for more expensive processing as required
-- AI-assisted document summarization
+- AI-assisted document summarization, by map reduce or in a single prompt (`summarize.mode`)
 - AI-assisted tagging of documents
 - Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
 
@@ -57,6 +57,7 @@ Evidence Lab document processing pipeline includes the following features:
 - **Deep Research mode** — coordinator/researcher sub-agent architecture using [deepagents](https://github.com/krrome/deepagents) for thorough multi-step investigations with real-time streaming progress
 - **Brief** — turn a topic into a structured, evidence-backed research brief: generate an outline grounded in the document library, add/move/remove/rename headings in a drag-and-drop table of contents, research each heading into cited prose with AI, then export a branded Word document with a clickable contents page and citations linked to source documents. Briefs can be **shared** (viewer-only) with people or groups, **commented on** in anchored threads for review, and started from reusable **templates** and **voice & tone profiles**. See [Brief](docs/using-evidence-lab/brief.md)
 - **Star ratings** — rate search results, AI summaries, and assistant responses with 1–5 stars and optional comments
+- **Document summaries** — administrators can edit a document's summary, regenerate it with AI choosing the mode, sections and prompt, or regenerate many in a queue; each summary shows how, when and by whom it was made, and groups can set defaults. See [Document Summaries](docs/admin/document-summaries.md)
 - **Drilldown research** — highlight text or click "Find out more" to drill into sub-topics, building an explorable research tree with query inheritance and PDF export
 - Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
 - Experimental features such as heatmapper for tracking trends in content
@@ -355,7 +356,7 @@ Pipeline processing configuration with the following sub-sections:
 | `download` | Download command and arguments (supports `{data_dir}`, `{num_records}`, `{year}`, etc. placeholders) |
 | `parse` | PDF/Word parsing settings (`use_subprocess`, `table_mode`, `no_ocr`, `images_scale`, `enable_superscripts`) |
 | `chunk` | Text chunking settings (`max_tokens`, `min_substantive_size`, `dense_model` for token counting) |
-| `summarize` | AI summarization settings (`enabled`, `llm_model`, `llm_workers`, `context_window`) |
+| `summarize` | AI summarization settings (`enabled`, `llm_model`, `llm_workers`, `context_window`, `mode`, `single_prompt_context_window`, `section_types`) |
 | `tag` | AI tagging settings (`enabled`, `dense_model`, `llm_model`, `taxonomies`) |
 | `index` | Indexing settings (`batch_size`, `embedding_workers`, `dense_models`, `sparse_models`) |
 

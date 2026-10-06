@@ -22,11 +22,11 @@ export const fetchSummaryDefaults = async (dataSource?: string): Promise<Summary
 export const fetchDocumentSections = async (
   dataSource: string,
   docId: string,
-  maxTokens: number,
+  model: SummaryModelConfig,
 ): Promise<DocumentSections> => {
   const response = await axios.get<DocumentSections>(
     `${BASE}/${encodeURIComponent(docId)}/sections`,
-    { params: { data_source: dataSource, max_tokens: maxTokens } },
+    { params: { data_source: dataSource, model: model.model, max_tokens: model.max_tokens } },
   );
   return response.data;
 };

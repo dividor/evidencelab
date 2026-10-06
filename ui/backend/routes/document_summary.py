@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from pipeline.processors.summarization.summary_text import (
     SUMMARY_MODES,
-    SummaryTooLargeError,
+    SummaryUserError,
 )
 from pipeline.processors.tagging.tagger_constants import SECTION_TYPES
 from ui.backend.auth.audit import write_audit_event
@@ -115,8 +115,9 @@ async def get_summary_settings(
 ) -> Dict[str, Any]:
     """Defaults for summaries generated in the app (superuser only).
 
-    Always returns the default prompt, the modes and the section types; with a
-    data source, also its configured mode, sections and single-prompt window.
+    Always returns the default prompt, the modes and the section types. With a
+    data source, also its configured mode, sections and single-prompt window;
+    without one, every data source's mode and sections.
     """
     settings: Dict[str, Any] = {
         "prompt": service.default_summary_instructions(),
@@ -126,6 +127,8 @@ async def get_summary_settings(
     if data_source:
         _pg(data_source)
         settings.update(service.summary_defaults(data_source))
+    else:
+        settings["data_sources"] = await run_in_threadpool(service.data_source_defaults)
     return settings
 
 
@@ -135,19 +138,23 @@ async def get_summary_sections(
     request: Request,
     doc_id: str,
     data_source: str = Query(..., description="Data source key"),
+    model: str = Query(..., min_length=1, max_length=200),
     max_tokens: int = Query(2000, ge=100, le=65536),
     admin: User = Depends(current_superuser),
 ) -> Dict[str, Any]:
-    """The document's text per section type, and how much a single prompt can take."""
+    """The document's text per section type, and the single-prompt token limit
+    for ``model`` (and whether that model can be used for a single prompt)."""
     pg = _pg(data_source)
     await run_in_threadpool(_load_document, pg, doc_id)
+    _check_model(data_source, model)
     chunks = await run_in_threadpool(pg.fetch_chunks_for_doc, doc_id)
+    single_prompt = await run_in_threadpool(
+        service.single_prompt_info, data_source, model, max_tokens
+    )
     return {
         "has_section_types": service.has_section_types(chunks),
         "sections": service.section_breakdown(chunks),
-        "single_prompt_limit_chars": service.single_prompt_limit(
-            data_source, max_tokens
-        ),
+        "single_prompt": single_prompt,
     }
 
 
@@ -215,7 +222,7 @@ async def _generation_stream(
                 user_id=getattr(admin, "id", None),
             )
             await queue.put({"type": "done", **result})
-        except (SummaryTooLargeError, service.DocumentSummaryError) as exc:
+        except SummaryUserError as exc:
             await queue.put({"type": "error", "error": str(exc)})
         except Exception:
             logger.exception("Document summary generation failed for %s", doc_id)

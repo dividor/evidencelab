@@ -3,8 +3,8 @@ import { generateDocumentSummary, saveDocumentSummary, SummaryProgress } from '.
 import type { SummarySettings } from './summarySettings';
 import type { SummaryAdmin } from './useSummaryAdmin';
 
-/** Documents summarised at the same time. */
-export const BULK_CONCURRENCY = 2;
+/** Documents summarised at the same time: one, so a run queues its documents. */
+export const BULK_CONCURRENCY = 1;
 
 export type BulkState = 'waiting' | 'generating' | 'saved' | 'failed' | 'stopped';
 
@@ -23,8 +23,8 @@ const failureMessage = (err: unknown): string => {
 };
 
 /**
- * Regenerates and saves the summaries of several documents, a few at a time,
- * from the browser. Each summary is saved as soon as it is ready; a failure
+ * Regenerates and saves the summaries of several documents from the browser,
+ * one after another. Each summary is saved as soon as it is ready; a failure
  * is recorded and the rest carry on. Stop aborts the documents in progress
  * and leaves the rest unchanged.
  */

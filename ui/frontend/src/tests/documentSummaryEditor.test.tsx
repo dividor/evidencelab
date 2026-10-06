@@ -59,11 +59,25 @@ beforeEach(() => {
       { section_type: 'findings', chars: 215000, chunks: 121 },
       { section_type: 'annexes', chars: 1295000, chunks: 824 },
     ],
-    single_prompt_limit_chars: 396000,
+    single_prompt: { context_window: 1048576, available: true, reason: null },
   });
 });
 
 describe('Summary modal for administrators', () => {
+  test('the modal says how, by whom and when the summary was made', () => {
+    render(
+      <SummaryModal
+        isOpen
+        onClose={jest.fn()}
+        summary={CURRENT}
+        title="Ethiopia evaluation"
+        docId="doc-7"
+        provenance={{ label: 'Regenerated with AI (map reduce) by admin@example.org', at: '2026-10-06T17:55:00Z' }}
+      />,
+    );
+    expect(screen.getByText(/^Regenerated with AI \(map reduce\) by admin@example\.org · /)).toBeInTheDocument();
+  });
+
   test('everyone else sees the summary read-only', () => {
     renderModal(null);
     expect(screen.getByText('The current summary of the evaluation.')).toBeInTheDocument();
@@ -139,7 +153,8 @@ describe('Summary modal for administrators', () => {
 
     fireEvent.click(screen.getByRole('button', { name: REGENERATE }));
     fireEvent.click(await screen.findByLabelText(/Single prompt/));
-    expect(screen.getByText(/a single prompt takes up to 396k/)).toBeInTheDocument();
+    expect(screen.getByText(/A single prompt can take up to 1,048,576 tokens/)).toBeInTheDocument();
+    expect(fetchDocumentSections).toHaveBeenCalledWith('wfp', 'doc-7', expect.objectContaining({ model: 'gemini-2.5-flash' }));
     fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
     fireEvent.change(await screen.findByLabelText('Summary text'), { target: { value: 'Changed.' } });
     fireEvent.click(screen.getByRole('button', { name: SAVE }));
@@ -157,6 +172,25 @@ describe('Summary modal for administrators', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Choose fewer sections or use map reduce.');
     expect(screen.queryByLabelText('Summary text')).toBeNull();
+  });
+
+  test('single prompt is refused for a model that cannot count tokens', async () => {
+    (fetchDocumentSections as jest.Mock).mockResolvedValue({
+      has_section_types: true,
+      sections: [{ section_type: 'findings', chars: 1000, chunks: 1 }],
+      single_prompt: {
+        context_window: 1048576,
+        available: false,
+        reason: 'This model cannot count its tokens exactly, so it cannot be used for a single prompt.',
+      },
+    });
+    renderModal(makeAdmin());
+    fireEvent.click(screen.getByRole('button', { name: REGENERATE }));
+    fireEvent.click(await screen.findByLabelText(/Single prompt/));
+    expect(screen.getByText(/cannot be used for a single prompt/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Generate' })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText(/Map reduce/));
+    expect(screen.getByRole('button', { name: 'Generate' })).toBeEnabled();
   });
 
   test('a document without a summary can be given one', () => {

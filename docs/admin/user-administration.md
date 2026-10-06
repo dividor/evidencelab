@@ -219,7 +219,7 @@ The **Group Settings** tab lets you configure default search behavior for each g
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the radio buttons at the top, then configure:
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -277,13 +277,15 @@ Click **Save Settings** to apply, or **Reset to Defaults** to clear all group ov
 
 #### Document Summaries
 
+![Group Settings, Document Summaries tab](../images/admin/group-settings-document-summaries.png)
+
 Defaults for document summaries that administrators regenerate on the Documents screen. Each setting can be left to the data source's configuration in `config.json`; they never change summaries written by the pipeline. See [Document Summaries](document-summaries.md).
 
 | Setting | Description |
 |---------|-------------|
-| **Mode** | Map reduce or Single prompt. Default: the data source's `summarize.mode`. |
-| **Sections** | Which section types' text is summarised. Default: the data source's `summarize.section_types`, or every section type. |
-| **Prompt** | What the summary must contain. Default: the built-in summary prompt (`prompts/summary_instructions.j2`). |
+| **Summary mode** | The data source's mode (shown beside the option), Map reduce or Single prompt. Default: the data source's `summarize.mode`. |
+| **Sections** | **Use the data source's sections** lists each data source's sections; untick it to choose them for the group. Default: the data source's `summarize.section_types`, or every section type. |
+| **Summary prompt** | What the summary must contain, shown ready to edit; **Reset to default** returns to the built-in prompt (`prompts/summary_instructions.j2`). |
 
 ### User Self-Service
 
