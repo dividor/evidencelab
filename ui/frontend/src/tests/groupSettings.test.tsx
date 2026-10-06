@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import GroupSettingsManager from '../components/admin/GroupSettingsManager';
 
@@ -37,6 +37,8 @@ const mockGroups = [
 const SEL_INPUT_TYPE_CHECKBOX = 'input[type="checkbox"]';
 const SEARCH_SETTINGS = 'Search Settings';
 const SAVE_SETTINGS = 'Save Settings';
+const SEARCH_AI_SUMMARY = 'Search AI Summary';
+const DOC_SUMMARIES = 'Document Summaries';
 
 const URL_API_GROUPS_G2 = '/api/groups/g2';
 
@@ -188,7 +190,7 @@ describe('GroupSettingsManager', () => {
 
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('AI Summary')).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_AI_SUMMARY)).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText('Max results for summary'), { target: { value: '35' } });
@@ -209,7 +211,7 @@ describe('GroupSettingsManager', () => {
     mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
     render(<GroupSettingsManager />);
     await waitFor(() => {
-      expect(screen.getByText('AI Summary')).toBeInTheDocument();
+      expect(screen.getByText(SEARCH_AI_SUMMARY)).toBeInTheDocument();
     });
     fireEvent.change(screen.getByLabelText('Response variability'), { target: { value: '0.5' } });
     fireEvent.click(screen.getByText(SAVE_SETTINGS));
@@ -217,6 +219,86 @@ describe('GroupSettingsManager', () => {
       expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
         search_settings: { summaryTemperature: 0.5 },
         summary_prompt: '',
+      });
+    });
+  });
+
+  describe('Document Summaries', () => {
+    const DEFAULT_PROMPT = 'OUTPUT FORMAT (you must only use these headings): ...';
+    const mockGets = (groups = mockGroups) =>
+      mockedAxios.get.mockImplementation(async (url: string) =>
+        url.startsWith('/api/document-summaries/settings')
+          ? {
+              data: {
+                prompt: DEFAULT_PROMPT,
+                modes: ['map_reduce', 'single_prompt'],
+                all_section_types: ['executive_summary', 'findings', 'annexes'],
+              },
+            }
+          : { data: groups },
+      );
+
+    const openSection = async () => {
+      fireEvent.click(await screen.findByText(DOC_SUMMARIES));
+      const section = within(screen.getByText(DOC_SUMMARIES).closest('.filter-section') as HTMLElement);
+      await waitFor(() => expect(section.getByLabelText("Use the data source's sections")).toBeEnabled());
+      return section;
+    };
+
+    test('mode, sections and prompt are saved as group defaults', async () => {
+      mockGets();
+      mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+      render(<GroupSettingsManager />);
+      const section = await openSection();
+
+      fireEvent.change(section.getByLabelText('Mode'), { target: { value: 'single_prompt' } });
+      fireEvent.click(section.getByLabelText("Use the data source's sections"));
+      fireEvent.click(section.getByLabelText('Annexes'));
+      fireEvent.click(section.getByRole('button', { name: 'Customise prompt' }));
+      expect(section.getByLabelText('Team summary prompt')).toHaveValue(DEFAULT_PROMPT);
+      fireEvent.change(section.getByLabelText('Team summary prompt'), { target: { value: 'Three bullet points.' } });
+      fireEvent.click(screen.getByText(SAVE_SETTINGS));
+
+      await waitFor(() => {
+        expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+          search_settings: {
+            docSummaryMode: 'single_prompt',
+            docSummarySectionTypes: ['executive_summary', 'findings'],
+            docSummaryPrompt: 'Three bullet points.',
+          },
+          summary_prompt: '',
+        });
+      });
+    });
+
+    test("a group's saved defaults load, and can be put back to the data source's", async () => {
+      const groups = [
+        mockGroups[0],
+        {
+          ...mockGroups[1],
+          search_settings: { docSummaryMode: 'map_reduce', docSummarySectionTypes: ['findings'], docSummaryPrompt: 'Mine.' },
+        },
+      ];
+      mockGets(groups);
+      mockedAxios.patch.mockResolvedValue({ data: groups[1] });
+      render(<GroupSettingsManager />);
+      const section = await openSection();
+
+      expect(section.getByLabelText('Mode')).toHaveValue('map_reduce');
+      expect(section.getByLabelText('Findings')).toBeChecked();
+      expect(section.getByLabelText('Annexes')).not.toBeChecked();
+      expect(section.getByLabelText('Team summary prompt')).toHaveValue('Mine.');
+
+      fireEvent.change(section.getByLabelText('Mode'), { target: { value: '' } });
+      fireEvent.click(section.getByLabelText("Use the data source's sections"));
+      fireEvent.click(section.getByRole('button', { name: 'Use the default prompt' }));
+      fireEvent.click(screen.getByText(SAVE_SETTINGS));
+
+      await waitFor(() => {
+        expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+          search_settings: {},
+          summary_prompt: '',
+        });
       });
     });
   });

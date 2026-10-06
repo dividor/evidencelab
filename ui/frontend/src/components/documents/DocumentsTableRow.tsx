@@ -54,6 +54,45 @@ const DocumentThumbnail: React.FC<{ doc: any; thumbnailUrl: string }> = ({ doc, 
   return img;
 };
 
+/** Title cell: an optional selection checkbox, the thumbnail and the title. */
+const DocumentTitleCell: React.FC<{
+  doc: any;
+  thumbnailUrl: string | null;
+  selected: boolean;
+  onToggleSelect?: (doc: any) => void;
+}> = ({ doc, thumbnailUrl, selected, onToggleSelect }) => (
+  <td className="doc-title">
+    <div className="doc-title-with-thumbnail">
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          className="doc-select-checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(doc)}
+          aria-label={`Select ${doc.title || 'Untitled'}`}
+        />
+      )}
+      <div className="doc-title-thumbnail-container">
+        {thumbnailUrl ? (
+          <>
+            <DocumentThumbnail doc={doc} thumbnailUrl={thumbnailUrl} />
+            <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
+              No preview
+            </div>
+          </>
+        ) : (
+          <div className="doc-title-thumbnail-placeholder">
+            No preview
+          </div>
+        )}
+      </div>
+      <div className="doc-title-text">
+        {doc.title || 'Untitled'}
+      </div>
+    </div>
+  </td>
+);
+
 export const DocumentsTableRow: React.FC<{
   doc: any;
   index: number;
@@ -74,6 +113,11 @@ export const DocumentsTableRow: React.FC<{
   canModerate?: boolean;
   moderatingDocId?: string | null;
   onToggleHidden?: (doc: any) => void;
+  /** Set for administrators: tick the document for a bulk summary run. */
+  selected?: boolean;
+  onToggleSelect?: (doc: any) => void;
+  /** Administrators can open an empty summary to write or generate one. */
+  canEditSummary?: boolean;
 }> = ({
   doc,
   index,
@@ -93,6 +137,9 @@ export const DocumentsTableRow: React.FC<{
   canModerate = false,
   moderatingDocId = null,
   onToggleHidden,
+  selected = false,
+  onToggleSelect,
+  canEditSummary = false,
 }) => {
     const lastUpdated = formatTimestamp(getLastUpdatedTimestamp(doc.stages || {}));
 
@@ -106,33 +153,19 @@ export const DocumentsTableRow: React.FC<{
 
     return (
       <tr key={doc.id || index}>
-        <td className="doc-title">
-          <div className="doc-title-with-thumbnail">
-            <div className="doc-title-thumbnail-container">
-              {thumbnailUrl ? (
-                <>
-                  <DocumentThumbnail doc={doc} thumbnailUrl={thumbnailUrl} />
-                  <div className="doc-title-thumbnail-placeholder" style={{ display: 'none' }}>
-                    No preview
-                  </div>
-                </>
-              ) : (
-                <div className="doc-title-thumbnail-placeholder">
-                  No preview
-                </div>
-              )}
-            </div>
-            <div className="doc-title-text">
-              {doc.title || 'Untitled'}
-            </div>
-          </div>
-        </td>
+        <DocumentTitleCell
+          doc={doc}
+          thumbnailUrl={thumbnailUrl}
+          selected={selected}
+          onToggleSelect={onToggleSelect}
+        />
         <DocumentLinksCell doc={doc} dataSource={dataSource} onOpenPdfPreview={onOpenPdfPreview} />
         <td className="doc-summary">
           <DocumentsSummaryCell
             summary={doc.full_summary}
             docTitle={doc.title || 'Untitled'}
             onOpenSummary={(summary, title) => onOpenSummary(summary, title, doc.doc_id)}
+            canEdit={canEditSummary}
           />
         </td>
         <DocumentMetadataCell doc={doc} onOpenToc={onOpenToc} onOpenMetadata={onOpenMetadata} />

@@ -185,6 +185,10 @@ From the Users panel you can:
 
 Hiding a document that breaches the content policy, the reporting routes and the audit trail are described on their own page: [Content Moderation](content-moderation.md).
 
+### Editing Document Summaries
+
+Superusers can edit, regenerate and bulk-regenerate document summaries on the Documents screen; each save is recorded in the audit log as a `document_summary_updated` event. See [Document Summaries](document-summaries.md).
+
 ### Viewing Every Brief
 
 Superusers get an **All Briefs (Admin)** tab in Brief Central listing every user's briefs, searchable by brief name or owner. They can open any brief read-only and copy any brief into their own Saved Briefs; they cannot edit, share or delete someone else's. When a superuser opens or copies a brief they neither own nor were sent, the audit log records a `brief_admin_viewed` or `brief_admin_copied` event with the brief, its owner, the superuser and their IP address. See [Brief](../using-evidence-lab/brief.md).
@@ -250,7 +254,9 @@ Select a group using the radio buttons at the top, then configure:
 |---------|-------------|
 | **Greeting Message** | Custom text for the search placeholder on the landing page |
 
-#### AI Summary
+#### Search AI Summary
+
+These settings apply to the AI summary shown above search results, not to document summaries.
 
 | Setting | Description |
 |---------|-------------|
@@ -268,6 +274,16 @@ Click **Save Settings** to apply, or **Reset to Defaults** to clear all group ov
 | Setting | Description |
 |---------|-------------|
 | **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
+
+#### Document Summaries
+
+Defaults for document summaries that administrators regenerate on the Documents screen. Each setting can be left to the data source's configuration in `config.json`; they never change summaries written by the pipeline. See [Document Summaries](document-summaries.md).
+
+| Setting | Description |
+|---------|-------------|
+| **Mode** | Map reduce or Single prompt. Default: the data source's `summarize.mode`. |
+| **Sections** | Which section types' text is summarised. Default: the data source's `summarize.section_types`, or every section type. |
+| **Prompt** | What the summary must contain. Default: the built-in summary prompt (`prompts/summary_instructions.j2`). |
 
 ### User Self-Service
 

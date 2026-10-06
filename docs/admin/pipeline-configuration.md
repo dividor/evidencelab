@@ -264,6 +264,15 @@ When a placeholder resolves to `null`, both it and its preceding flag are cleanl
 | `llm_model` | object | Required | LLM configuration (model, temperature, max_tokens) |
 | `llm_workers` | int | `1` | Concurrent LLM inference workers |
 | `context_window` | int | `29000` | Max characters for LLM context (larger documents use map-reduce) |
+| `mode` | string | `map_reduce` | How summaries are written: `map_reduce` or `single_prompt` (see below) |
+| `single_prompt_context_window` | int | none | Tokens a single prompt may use; required for `single_prompt` |
+| `section_types` | list | every section type | Sections whose text is summarised when a summary is regenerated in the app |
+
+**Summary modes.** In `map_reduce` mode a document that fits in `context_window` is summarised in one call; a larger one is split into parts, each part is summarised, and the part summaries are combined. In `single_prompt` mode all the text goes to the model in one call. Text larger than `single_prompt_context_window` is an error that names both sizes; it does not switch to map reduce. Set the window to suit the models that will write summaries: the pipeline's `llm_model` and, for summaries regenerated in the app, the summarization models of the [UI model combos](#ui-model-combos). Both windows count one character as one token, which is cautious for English text.
+
+**Summary prompt.** What a summary must contain is set by `prompts/summary_instructions.j2`. Administrators can use a different prompt when they regenerate summaries in the app, and groups can set a default one (see [Document Summaries](document-summaries.md)). The pipeline always uses the file.
+
+**Summaries set in the app.** A summary written, edited or regenerated in the app is kept when the document is reprocessed, unless the person reprocessing chooses to replace it.
 
 #### Tag
 

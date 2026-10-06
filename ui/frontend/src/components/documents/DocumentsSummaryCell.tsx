@@ -6,15 +6,26 @@ interface DocumentsSummaryCellProps {
   summary: string;
   docTitle: string;
   onOpenSummary: (summary: string, docTitle: string) => void;
+  /** Administrators can open an empty summary to write or generate one. */
+  canEdit?: boolean;
 }
 
 export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
   summary,
   docTitle,
   onOpenSummary,
+  canEdit = false,
 }) => {
+  const open = () => onOpenSummary(summary || '', docTitle);
+
   if (!summary) {
-    return <>-</>;
+    return canEdit ? (
+      <button type="button" className="doc-summary-add-link" onClick={open}>
+        Add summary
+      </button>
+    ) : (
+      <>-</>
+    );
   }
 
   const displaySummary = buildSummaryDisplayText(summary);
@@ -23,7 +34,19 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
   const displayText = shouldTruncate ? `${displaySummary.substring(0, 200)}...` : displaySummary;
 
   return (
-    <div className="markdown-summary-cell">
+    <div
+      className="markdown-summary-cell markdown-summary-cell-clickable"
+      role="button"
+      tabIndex={0}
+      title="Open the summary"
+      onClick={open}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          open();
+        }
+      }}
+    >
       <ReactMarkdown
         components={{
           p: ({ node, ...props }) => <span {...props} />,
@@ -49,7 +72,7 @@ export const DocumentsSummaryCell: React.FC<DocumentsSummaryCellProps> = ({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onOpenSummary(summary, docTitle);
+              open();
             }}
             aria-label="See more"
           >

@@ -11,6 +11,12 @@ import {
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
 import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
 import { BriefLengthControl } from '../brief/BriefLengthControl';
+import {
+  DocSummaryGroupValue,
+  DocumentSummaryGroupSection,
+  docSummaryPayload,
+  readDocSummaryDefaults,
+} from './DocumentSummaryGroupSection';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -214,6 +220,22 @@ const FeaturesSection: React.FC<{
   </div>
 );
 
+/** A collapsible settings section ("open" sections show their content). */
+const CollapsibleSection: React.FC<{
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = ({ title, open, onToggle, children }) => (
+  <div className="filter-section">
+    <div className="filter-section-header" onClick={onToggle}>
+      <span className="filter-section-toggle">{open ? '▼' : '▶'}</span>
+      <span className="filter-section-title">{title}</span>
+    </div>
+    {open && <div className="filter-section-content">{children}</div>}
+  </div>
+);
+
 const GroupSettingsManager: React.FC = () => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
@@ -249,6 +271,9 @@ const GroupSettingsManager: React.FC = () => {
       return next;
     });
   };
+
+  // Defaults for document summaries regenerated on the Documents screen.
+  const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
 
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
@@ -287,6 +312,7 @@ const GroupSettingsManager: React.FC = () => {
       setSummaryPromptValue('');
       setTabsOverride(false);
       setTabValues(defaultTabValues());
+      setDocSummary({});
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -305,6 +331,7 @@ const GroupSettingsManager: React.FC = () => {
 
     setOverrides(newOverrides);
     setValues(newValues);
+    setDocSummary(readDocSummaryDefaults(settings));
 
     // Load feature-tab override (search_settings.tabs)
     const tabsCfg = (settings as any).tabs;
@@ -348,6 +375,7 @@ const GroupSettingsManager: React.FC = () => {
           payload[key] = values[key];
         }
       }
+      Object.assign(payload, docSummaryPayload(docSummary));
       // Feature-tab overrides: only written when this group opts in.
       if (tabsOverride) {
         payload.tabs = Object.fromEntries(
@@ -389,6 +417,7 @@ const GroupSettingsManager: React.FC = () => {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setDocSummary({});
       setSuccess('Settings reset to system defaults.');
       await fetchGroups();
     } catch (err: any) {
@@ -835,7 +864,7 @@ const GroupSettingsManager: React.FC = () => {
                   <span className="filter-section-toggle">
                     {collapsedSections.has('ai_summary') ? '▼' : '▶'}
                   </span>
-                  <span className="filter-section-title">AI Summary</span>
+                  <span className="filter-section-title">Search AI Summary</span>
                 </div>
                 {collapsedSections.has('ai_summary') && (
                   <div className="filter-section-content">
@@ -872,32 +901,31 @@ const GroupSettingsManager: React.FC = () => {
             </div>
 
             {/* Brief Settings */}
-            <div className="filter-section">
-              <div className="filter-section-header" onClick={() => toggleSection('brief')}>
-                <span className="filter-section-toggle">
-                  {collapsedSections.has('brief') ? '▼' : '▶'}
+            <CollapsibleSection title="Brief" open={collapsedSections.has('brief')} onToggle={() => toggleSection('brief')}>
+              <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
+                <span>Default section length</span>
+                <span
+                  className="rerank-tooltip"
+                  title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
+                >
+                  ⓘ
                 </span>
-                <span className="filter-section-title">Brief</span>
-              </div>
-              {collapsedSections.has('brief') && (
-                <div className="filter-section-content">
-                  <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
-                    <span>Default section length</span>
-                    <span
-                      className="rerank-tooltip"
-                      title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
-                    >
-                      ⓘ
-                    </span>
-                  </label>
-                  <BriefLengthControl
-                    id="group-brief-target-words"
-                    value={values.briefTargetWords}
-                    onChange={(v) => update('briefTargetWords', v)}
-                  />
-                </div>
-              )}
-            </div>
+              </label>
+              <BriefLengthControl
+                id="group-brief-target-words"
+                value={values.briefTargetWords}
+                onChange={(v) => update('briefTargetWords', v)}
+              />
+            </CollapsibleSection>
+
+            {/* Document summaries (Documents screen) */}
+            <CollapsibleSection
+              title="Document Summaries"
+              open={collapsedSections.has('doc_summary')}
+              onToggle={() => toggleSection('doc_summary')}
+            >
+              <DocumentSummaryGroupSection value={docSummary} onChange={setDocSummary} />
+            </CollapsibleSection>
 
             {/* Actions */}
             <div className="admin-inline-form" style={{ marginTop: '16px', gap: '8px' }}>

@@ -9,8 +9,11 @@ import { MetadataModal } from './MetadataModal';
 import { TimelineModal } from './TimelineModal';
 import { TaxonomyModal } from './TaxonomyModal';
 import { SummaryModelConfig } from '../../types/api';
+import type { SummaryAdmin } from './summary/useSummaryAdmin';
 
 interface DocumentsModalsProps {
+  /** Set for administrators: the summary modal can edit and regenerate. */
+  summaryAdmin?: SummaryAdmin | null;
   chunksModalOpen: boolean;
   onCloseChunksModal: () => void;
   chunks: any[];
@@ -125,6 +128,7 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
   metadataPanelFields,
   onOpenSummaryFromMetadata,
   onOpenTocFromMetadata,
+  summaryAdmin = null,
 }) => (
   <>
     <ChunksModal
@@ -174,6 +178,7 @@ export const DocumentsModals: React.FC<DocumentsModalsProps> = ({
       summary={selectedSummary}
       title={selectedSummaryTitle}
       docId={selectedSummaryDocId}
+      admin={summaryAdmin}
     />
     <TocModal
       isOpen={tocModalOpen}

@@ -1,0 +1,199 @@
+/* Document summaries: edit, regenerate and bulk regenerate (administrators). */
+
+.markdown-summary-cell-clickable {
+  cursor: pointer;
+  border-radius: var(--radius-md);
+}
+
+.markdown-summary-cell-clickable:hover,
+.markdown-summary-cell-clickable:focus-visible {
+  background: var(--brand-bg-secondary, rgba(0, 0, 0, 0.03));
+  outline: none;
+}
+
+.doc-summary-add-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--brand-primary);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.doc-select-checkbox {
+  flex: none;
+  align-self: center;
+  margin: 0 0.5rem 0 0;
+}
+
+.doc-summary-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.doc-summary-bulk-count {
+  color: var(--brand-text-secondary);
+  font-size: 0.85rem;
+}
+
+.doc-summary-toolbar,
+.doc-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.doc-summary-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.doc-summary-actions {
+  margin-top: 0.75rem;
+}
+
+.doc-summary-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.doc-summary-fieldset {
+  border: 1px solid var(--brand-border-light);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0;
+}
+
+.doc-summary-fieldset legend {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--brand-text-primary);
+  padding: 0 0.3rem;
+}
+
+.doc-summary-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  margin: 0.25rem 0;
+  cursor: pointer;
+}
+
+.doc-summary-option input {
+  margin-top: 0.2rem;
+}
+
+.doc-summary-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  column-gap: 1rem;
+}
+
+.doc-summary-size {
+  color: var(--brand-text-tertiary);
+}
+
+.doc-summary-prompt,
+.doc-summary-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  padding: 0.5rem;
+  border: 1px solid var(--brand-border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  margin-bottom: 0.5rem;
+}
+
+.doc-summary-note {
+  font-size: 0.82rem;
+  color: var(--brand-text-secondary);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.doc-summary-note-warn {
+  color: var(--brand-warning, #92400e);
+}
+
+.doc-summary-error {
+  font-size: 0.85rem;
+  color: var(--brand-error, #b91c1c);
+  margin: 0.5rem 0;
+}
+
+.doc-summary-progress {
+  font-size: 0.85rem;
+  color: var(--brand-text-secondary);
+  margin-right: auto;
+}
+
+.doc-summary-current {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--brand-border-light);
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.8rem;
+}
+
+.doc-summary-current > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.doc-summary-bulk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+  border: 1px solid var(--brand-border-light);
+  border-radius: var(--radius-md);
+}
+
+.doc-summary-bulk-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--brand-border-light);
+}
+
+.doc-summary-bulk-item:last-child {
+  border-bottom: none;
+}
+
+.doc-summary-bulk-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-summary-bulk-status {
+  flex: none;
+  color: var(--brand-text-secondary);
+}
+
+.doc-summary-bulk-saved .doc-summary-bulk-status {
+  color: var(--brand-success, #047857);
+}
+
+.doc-summary-bulk-failed .doc-summary-bulk-status {
+  color: var(--brand-error, #b91c1c);
+  white-space: normal;
+  text-align: right;
+}
+
+.doc-summary-choice {
+  max-width: 40rem;
+}
