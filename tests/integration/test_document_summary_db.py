@@ -86,7 +86,15 @@ def document():
         src_doc_raw_metadata={},
         map_fields={"map_title": title},
         sys_summary=None,
-        sys_fields={"sys_status": "indexed"},
+        # The fields a scanned and parsed document has. Storing them also adds
+        # their columns to a fresh table, as the pipeline does on first use
+        # (fetch_docs reads them).
+        sys_fields={
+            "sys_status": "indexed",
+            "sys_filepath": f"/data/{DATA_SOURCE}/{doc_id}.pdf",
+            "sys_parsed_folder": f"/data/{DATA_SOURCE}/parsed/{doc_id}",
+            "sys_language": "en",
+        },
     )
     db.pg.merge_doc_sys_fields(
         doc_id=doc_id,
