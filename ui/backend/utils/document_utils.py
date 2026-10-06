@@ -41,6 +41,16 @@ SYSTEM_FIELD_MAP = {
 }
 
 
+# Summary fields kept only in the sys_data JSONB (the document listing returns
+# them there, not as columns).
+SUMMARY_SYS_DATA_FIELDS = {
+    "summarization_method": "sys_summarization_method",
+    "summary_user_set": "sys_summary_user_set",
+    "summary_updated_by": "sys_summary_updated_by",
+    "summary_updated_at": "sys_summary_updated_at",
+}
+
+
 def normalize_document_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Expose core/system fields without prefixes while keeping prefixed fields."""
     normalized = dict(payload)
@@ -50,6 +60,11 @@ def normalize_document_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     for system_field, sys_key in SYSTEM_FIELD_MAP.items():
         if sys_key in payload:
             normalized[system_field] = payload[sys_key]
+    sys_data = payload.get("sys_data")
+    if isinstance(sys_data, dict):
+        for field, sys_key in SUMMARY_SYS_DATA_FIELDS.items():
+            if sys_key in sys_data:
+                normalized.setdefault(field, sys_data[sys_key])
     # Unpack src_doc_raw_metadata into individual src_* top-level keys.
     # Raw keys are human-readable (e.g. "Evaluation category") so we
     # sanitize them to snake_case with src_ prefix.

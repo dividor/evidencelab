@@ -77,7 +77,7 @@ Click any document row to access detailed inspection modals:
 
 | Modal | What It Shows |
 |-------|---------------|
-| **Summary** | AI-generated document summary with approval workflow |
+| **Summary** | The AI-generated summary, with how, when and by whom it was made; administrators can edit or regenerate it (see [Document Summaries](document-summaries.md)) |
 | **TOC** | Table of contents with section classification |
 | **Metadata** | Full document metadata including source fields |
 | **Processing Timeline** | Stage-by-stage processing history with timestamps |
@@ -86,6 +86,8 @@ Click any document row to access detailed inspection modals:
 | **PDF Preview** | Inline PDF viewer |
 | **Taxonomy** | AI-assigned taxonomy tags with confidence |
 | **Reprocess** | Re-trigger the processing pipeline for this document |
+
+Administrators can also tick documents and **Regenerate summaries** for all of them in a queue; see [Document Summaries](document-summaries.md).
 
 ---
 

@@ -372,7 +372,9 @@
             "max_tokens": 2000
           },
           "llm_workers": 6,
-          "context_window": 29000
+          "context_window": 29000,
+          "mode": "map_reduce",
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,
@@ -617,7 +619,9 @@
             "max_tokens": 2000
           },
           "llm_workers": 6,
-          "context_window": 29000
+          "context_window": 29000,
+          "mode": "map_reduce",
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,
@@ -818,7 +822,9 @@
             "max_tokens": 2000
           },
           "llm_workers": 6,
-          "context_window": 29000
+          "context_window": 29000,
+          "mode": "map_reduce",
+          "single_prompt_context_window": 1048576
         },
         "tag": {
           "enabled": true,

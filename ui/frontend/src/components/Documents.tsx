@@ -1,31 +1,60 @@
-import React from 'react';
-import { DocumentsChart } from './documents/DocumentsChart';
+import React, { useState } from 'react';
 import { DocumentsTable } from './documents/DocumentsTable';
 import { DocumentsModals } from './documents/DocumentsModals';
 import { useDocumentsState } from './documents/useDocumentsState';
+import { BulkSummaryModal } from './documents/summary/BulkSummaryModal';
+import { ReprocessSummaryChoice } from './documents/summary/ReprocessSummaryChoice';
+import { SummaryBulkBar } from './documents/summary/SummaryBulkBar';
+import { useDocumentSelection } from './documents/summary/useDocumentSelection';
+import { useSummaryAdmin } from './documents/summary/useSummaryAdmin';
+import './documents/summary/documentSummary.css';
+import type { SummaryModelConfig } from '../types/api';
+import type { DocumentSummaryDefaults } from '../types/auth';
 
 interface DocumentsProps {
   dataSource?: string;
-  semanticHighlightModelConfig?: import('../types/api').SummaryModelConfig | null;
+  semanticHighlightModelConfig?: SummaryModelConfig | null;
   dataSourceConfig?: import('../App').DataSourceConfigItem;
+  /** The summarization model of the selected model combo (used to regenerate summaries). */
+  summaryModelConfig?: SummaryModelConfig | null;
+  /** The team's defaults for summaries generated here. */
+  summaryGroupDefaults?: DocumentSummaryDefaults | null;
 }
 
 export const Documents: React.FC<DocumentsProps> = ({
   dataSource = '',
   semanticHighlightModelConfig,
   dataSourceConfig,
+  summaryModelConfig,
+  summaryGroupDefaults,
 }) => {
   const state = useDocumentsState(dataSource, dataSourceConfig);
   const metadataPanelFields = dataSourceConfig?.metadata_panel_fields
     || dataSourceConfig?.filter_fields
     || {};
+  // Administrators can edit and regenerate summaries, one or many at a time.
+  const { admin: summaryAdmin, error: summaryAdminError } = useSummaryAdmin({
+    enabled: state.canModerate,
+    dataSource,
+    groupDefaults: summaryGroupDefaults,
+    model: summaryModelConfig,
+    onSaved: state.applySavedSummary,
+  });
+  const selection = useDocumentSelection();
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const pageDocuments = state.getSortedAndFilteredDocuments();
 
   return (
     <div className="statistics-container">
       <div className="statistics-content">
         <h2 className="statistics-title">Documents Library</h2>
+        {summaryAdminError && <p className="doc-summary-error" role="alert">{summaryAdminError}</p>}
+        {summaryAdmin && (
+          <SummaryBulkBar selection={selection} pageDocuments={pageDocuments} onRegenerate={() => setBulkOpen(true)} />
+        )}
         <DocumentsTable
-          documents={state.getSortedAndFilteredDocuments()}
+          documents={pageDocuments}
+          selection={summaryAdmin ? selection : null}
           sortField={state.sortField}
           sortDirection={state.sortDirection}
           onSort={state.handleSort}
@@ -129,7 +158,19 @@ export const Documents: React.FC<DocumentsProps> = ({
         metadataPanelFields={metadataPanelFields}
         onOpenSummaryFromMetadata={state.handleOpenSummary}
         onOpenTocFromMetadata={state.handleOpenToc}
+        summaryAdmin={summaryAdmin}
+        summaryProvenance={state.selectedSummaryProvenance}
       />
+      {summaryAdmin && bulkOpen && (
+        <BulkSummaryModal
+          isOpen={bulkOpen}
+          onClose={() => setBulkOpen(false)}
+          admin={summaryAdmin}
+          documents={selection.documents}
+          onFinished={selection.clear}
+        />
+      )}
+      <ReprocessSummaryChoice doc={state.reprocessChoiceDoc} onChoose={state.handleReprocessChoice} />
     </div >
   );
 };
