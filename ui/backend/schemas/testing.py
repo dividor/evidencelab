@@ -7,7 +7,7 @@ evaluators/runner) so new assertion types do not require a schema change.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -165,15 +165,24 @@ class TestExperimentDetail(TestExperimentRead):
 # ---------------------------------------------------------------------------
 
 
+# How the current user can see a brief: their own, shared with them, or
+# (admins only) another user's brief that was not shared with them.
+BriefAccess = Literal["own", "shared", "other"]
+BRIEF_ACCESS_OWN: BriefAccess = "own"
+BRIEF_ACCESS_SHARED: BriefAccess = "shared"
+BRIEF_ACCESS_OTHER: BriefAccess = "other"
+
+
 class BriefCheckCandidate(BaseModel):
-    """A brief the current user may check (own or shared with them)."""
+    """A brief the current user may check: their own, one shared with them
+    or, for an admin, any other user's."""
 
     id: uuid.UUID
     title: str
     data_source: Optional[str] = None
     updated_at: datetime
     owner_name: str
-    shared: bool
+    access: BriefAccess
     researched_sections: int
     cited_passages: int
     last_check: Optional["BriefCitationCheckRead"] = None
