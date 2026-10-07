@@ -1,7 +1,8 @@
 """Administrator access to every brief, against the real database.
 
 Superusers can list every brief with its owner, open any brief read-only and
-copy any brief into their own; everyone else keeps their existing access.
+copy any brief into their own; anyone a brief is shared with can copy it too,
+and everyone else still cannot reach it.
 Opening or copying a brief an administrator neither owns nor was sent is
 recorded in the audit log. Each test runs in a rolled-back transaction; audit
 writes (which use their own session) are captured instead of stored.
@@ -20,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from ui.backend.auth.db import DATABASE_URL
-from ui.backend.auth.models import Brief, BriefShare, User
+from ui.backend.auth.models import Brief, BriefShare, User, UserGroup, UserGroupMember
 from ui.backend.auth.users import current_superuser
 from ui.backend.routes import brief_central
 
@@ -194,16 +195,43 @@ async def test_admin_copies_any_brief_into_their_own(session, audit):
     assert copied.id in [b.id for b in listed]
 
 
-async def test_a_viewer_of_a_shared_brief_cannot_copy_it(session):
+async def test_a_person_it_is_shared_with_can_copy_it(session, audit):
     alice, bob = await _user(session, "alice"), await _user(session, "bob")
     brief = await _brief(session, alice, "Alice brief")
     session.add(BriefShare(brief_id=brief.id, shared_user_id=bob.id))
     await session.flush()
-    await _expect_404(
-        brief_central.copy_brief(
-            brief_id=brief.id, request=REQUEST, user=bob, session=session
-        )
+
+    copied = await brief_central.copy_brief(
+        brief_id=brief.id, request=REQUEST, user=bob, session=session
     )
+
+    assert (copied.user_id, copied.can_edit) == (bob.id, True)
+    assert copied.title == "Alice brief (copy)"
+    assert copied.content["sections"] == brief.content["sections"]
+    assert copied.shared_with == []
+    assert audit == []  # only administrators reaching others' briefs are audited
+    listed = await brief_central.list_briefs(user=bob, session=session)
+    assert copied.id in [b.id for b in listed]
+    rows = await session.execute(select(Brief).where(Brief.user_id == alice.id))
+    assert [b.id for b in rows.scalars().all()] == [
+        brief.id
+    ]  # the original is untouched
+
+
+async def test_a_group_it_is_shared_with_can_copy_it(session):
+    alice, bob = await _user(session, "alice"), await _user(session, "bob")
+    group = UserGroup(name=f"Team {uuid.uuid4().hex[:8]}")
+    session.add(group)
+    await session.flush()
+    session.add(UserGroupMember(user_id=bob.id, group_id=group.id))
+    brief = await _brief(session, alice, "Team brief")
+    session.add(BriefShare(brief_id=brief.id, group_id=group.id))
+    await session.flush()
+
+    copied = await brief_central.copy_brief(
+        brief_id=brief.id, request=REQUEST, user=bob, session=session
+    )
+    assert copied.user_id == bob.id
 
 
 async def test_an_owner_can_copy_their_own_brief(session, audit):

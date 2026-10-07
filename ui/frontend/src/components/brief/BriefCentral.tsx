@@ -100,15 +100,26 @@ const briefMeta = (brief: BriefListItem, voiceName: string | null, shared: boole
   return [access, shared ? null : voiceName, formatWhen(brief.updated_at)].filter(Boolean).join(' · ');
 };
 
+// One card for every brief list: Saved Briefs (Share, Delete), Shared with me
+// and All Briefs (Copy into your own Saved Briefs).
 const BriefCard: React.FC<{
   brief: BriefListItem;
-  voiceName: string | null;
-  shared: boolean;
+  meta: string;
+  openTitle?: string;
   onOpen: () => void;
+  onCopy?: () => void;
   onShare?: () => void;
   onDelete?: () => void;
-}> = ({ brief, voiceName, shared, onOpen, onShare, onDelete }) => {
+}> = ({ brief, meta, openTitle = 'Open this brief', onOpen, onCopy, onShare, onDelete }) => {
   const actions: CardAction[] = [];
+  if (onCopy) {
+    actions.push({
+      label: 'Copy',
+      title: 'Copy this brief into your own Saved Briefs',
+      icon: <IconCopy size={12} />,
+      onClick: onCopy,
+    });
+  }
   if (onShare) actions.push({ label: 'Share', title: 'Share this brief', icon: <IconShare size={12} />, onClick: onShare });
   if (onDelete) actions.push({ label: 'Delete', title: 'Delete this brief', danger: true, onClick: onDelete });
   return (
@@ -120,11 +131,7 @@ const BriefCard: React.FC<{
           {brief.section_count} sections · {brief.source_count} sources
         </div>
       </button>
-      <CardFoot
-        meta={briefMeta(brief, voiceName, shared)}
-        primary={{ label: 'Open Brief', title: 'Open this brief', onClick: onOpen }}
-        actions={actions}
-      />
+      <CardFoot meta={meta} primary={{ label: 'Open Brief', title: openTitle, onClick: onOpen }} actions={actions} />
     </div>
   );
 };
@@ -134,34 +141,52 @@ const ownerText = (brief: BriefListItem): string => {
   return brief.owner_email && brief.owner_email !== name ? `${name} (${brief.owner_email})` : name;
 };
 
-// A card in the admin All Briefs tab: whose brief it is, then Open and Copy.
-const AdminBriefCard: React.FC<{
-  brief: BriefListItem;
-  onOpen: () => void;
-  onCopy: () => void;
-}> = ({ brief, onOpen, onCopy }) => (
-  <div className="bc-card">
-    <button className="bc-card-main" onClick={onOpen}>
-      <div className="bc-card-title">{brief.title}</div>
-      {brief.query && <div className="bc-card-query">{brief.query}</div>}
-      <div className="bc-card-meta">
-        {brief.section_count} sections · {brief.source_count} sources
+const adminMeta = (brief: BriefListItem): string => `Owner: ${ownerText(brief)} · ${formatWhen(brief.updated_at)}`;
+
+/** Copy a brief into the user's Saved Briefs, then say so. */
+const useBriefCopy = (central: UseBriefCentralReturn) => {
+  const [notice, setNotice] = useState<string | null>(null);
+  const copy = (brief: BriefListItem) => {
+    setNotice(null);
+    central
+      .copyBrief(brief.id)
+      .then((created) => setNotice(`Copied to your Saved Briefs as “${created.title}”.`))
+      .catch((e) => central.setError(e instanceof Error ? `${COPY_FAILED}: ${e.message}` : COPY_FAILED));
+  };
+  return { notice, copy };
+};
+
+const CopyNotice: React.FC<{ notice: string | null }> = ({ notice }) =>
+  notice ? (
+    <div className="bc-notice" role="status">
+      {notice}
+    </div>
+  ) : null;
+
+// Briefs shared with the user: Open (read-only) and Copy into their own.
+const SharedBriefsPanel: React.FC<{
+  central: UseBriefCentralReturn;
+  onOpenBrief: (id: string) => void;
+}> = ({ central, onOpenBrief }) => {
+  const { notice, copy } = useBriefCopy(central);
+  return (
+    <>
+      <CopyNotice notice={notice} />
+      <div className="bc-grid">
+        {central.sharedBriefs.map((b) => (
+          <BriefCard
+            key={b.id}
+            brief={b}
+            meta={briefMeta(b, null, true)}
+            openTitle="Open this brief (read-only)"
+            onOpen={() => onOpenBrief(b.id)}
+            onCopy={() => copy(b)}
+          />
+        ))}
       </div>
-    </button>
-    <CardFoot
-      meta={`Owner: ${ownerText(brief)} · ${formatWhen(brief.updated_at)}`}
-      primary={{ label: 'Open Brief', title: 'Open this brief (read-only unless it is yours)', onClick: onOpen }}
-      actions={[
-        {
-          label: 'Copy',
-          title: 'Copy this brief into your own Saved Briefs',
-          icon: <IconCopy size={12} />,
-          onClick: onCopy,
-        },
-      ]}
-    />
-  </div>
-);
+    </>
+  );
+};
 
 // The administrators' All Briefs tab: every brief in the system, searchable
 // by brief name or owner. Opening someone else's brief is read-only; Copy puts
@@ -171,15 +196,8 @@ const AllBriefsPanel: React.FC<{
   onOpenBrief: (id: string) => void;
 }> = ({ central, onOpenBrief }) => {
   const [search, setSearch] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
+  const { notice, copy } = useBriefCopy(central);
   const shown = useMemo(() => filterBriefs(central.allBriefs, search), [central.allBriefs, search]);
-  const copy = (brief: BriefListItem) => {
-    setNotice(null);
-    central
-      .copyBrief(brief.id)
-      .then((created) => setNotice(`Copied to your Saved Briefs as “${created.title}”.`))
-      .catch((e) => central.setError(e instanceof Error ? `${COPY_FAILED}: ${e.message}` : COPY_FAILED));
-  };
   const empty = central.allBriefs.length ? 'No briefs match your search.' : 'There are no briefs yet.';
   return (
     <>
@@ -196,14 +214,17 @@ const AllBriefsPanel: React.FC<{
           {shown.length} of {central.allBriefs.length} briefs
         </span>
       </div>
-      {notice && (
-        <div className="bc-notice" role="status">
-          {notice}
-        </div>
-      )}
+      <CopyNotice notice={notice} />
       <div className="bc-grid">
         {shown.map((b) => (
-          <AdminBriefCard key={b.id} brief={b} onOpen={() => onOpenBrief(b.id)} onCopy={() => copy(b)} />
+          <BriefCard
+            key={b.id}
+            brief={b}
+            meta={adminMeta(b)}
+            openTitle="Open this brief (read-only unless it is yours)"
+            onOpen={() => onOpenBrief(b.id)}
+            onCopy={() => copy(b)}
+          />
         ))}
       </div>
       {!shown.length && <div className="bc-empty">{empty}</div>}
@@ -219,6 +240,7 @@ const CentralTabBody: React.FC<{
 }> = ({ central, onOpenBrief, grid }) => {
   if (central.loading) return <div className="bc-empty">Loading…</div>;
   if (central.tab === 'all') return <AllBriefsPanel central={central} onOpenBrief={onOpenBrief} />;
+  if (central.tab === 'shared') return <SharedBriefsPanel central={central} onOpenBrief={onOpenBrief} />;
   return <div className="bc-grid">{grid(central.tab)}</div>;
 };
 
@@ -376,8 +398,7 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
         <BriefCard
           key={b.id}
           brief={b}
-          voiceName={central.voiceById(b.voice_profile_id)?.name || null}
-          shared={false}
+          meta={briefMeta(b, central.voiceById(b.voice_profile_id)?.name || null, false)}
           onOpen={() => onOpenBrief(b.id)}
           onShare={() => {
             setShareBrief(b);
@@ -385,11 +406,6 @@ export const BriefCentral: React.FC<BriefCentralProps> = ({
           }}
           onDelete={() => void central.removeBrief(b.id).catch(() => undefined)}
         />
-      ));
-    }
-    if (tab === 'shared') {
-      return central.sharedBriefs.map((b) => (
-        <BriefCard key={b.id} brief={b} voiceName={null} shared onOpen={() => onOpenBrief(b.id)} />
       ));
     }
     if (tab === 'templates') {
