@@ -2,7 +2,7 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
-## [1.6.4] - 2026-10-06
+## [1.6.4] - 2026-10-07
 
 Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the research prompt, voice & tone profile and length for each heading and for the brief as a whole, and templates and voice & tone profiles can be shared with people and groups, so a team lead can give a team one complete, consistent starting point. Administrators also get a **citation check** that fact-checks a finished brief, sentence by sentence, against the sources it cites, and an **All Briefs** view of every brief in the system, and they can now **edit and regenerate document summaries** in the Documents Library, one at a time or many in a queue, with a new **single prompt** summary mode alongside map reduce. Top-level headings are now written as short introductions to their sub-headings, and two saving bugs are fixed: a section could finish on screen but not be saved, and opening then closing a brief could duplicate it.
 
@@ -18,6 +18,8 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 - **Top-level headings are written as introductions.** A heading with sub-headings is now written as one short introduction to them (about 120 words by default, never longer than the brief's own length): no headings of its own, and none of the findings that belong under its sub-headings. A whole-brief run writes the sub-sections first so the introduction can point to them. An introduction that still comes back with headings is researched again once; if it still has them it is kept, with a warning on the section and a note in its Log. This applies to Research, AI Regenerate, AI Get Updates and AI Edit (#506)
 - Fixed a researched section sometimes showing on screen but not being saved: a save requested while the saved-brief list was refreshing, or behind a failed save, was dropped (#507)
 - Fixed opening a brief and closing it again sometimes leaving a duplicate in Saved Briefs, or writing one brief's content into another opened straight after. Every save now goes to its own brief, and opening a brief no longer saves it when nothing has changed (#508)
+- **Copy a brief shared with you.** Shared with me cards gain **Copy**, which puts a private, editable copy in your own Saved Briefs; anyone who can open a brief (its owner, a person or group it is shared with, or an administrator) can copy it. Shared with me and All Briefs (Admin) cards now share one layout: **Open Brief** then **Copy**, with only the details line differing (#525)
+- **Choose where Word export links point.** Under the References grouping checkboxes, **Word links to** offers **Source document** (the default: each document's own PDF or report page) or **Evidence Lab** (its copy in Evidence Lab); both open at the cited page. A document with no address of its own now links to its copy in Evidence Lab, instead of a link that opened the Search page; this also applies to the search results export (#526)
 
 ### Document summaries
 - **Edit or regenerate a summary in the app.** Clicking a summary in the Documents Library opens it; administrators get **Edit** and **Regenerate with AI**, choosing the mode, which sections' text to summarise (each with its size) and the prompt. The new summary opens for review and nothing is saved until **Save** (#523)
@@ -29,6 +31,7 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 - The summary prompt is now its own file, `prompts/summary_instructions.j2`, shared by the pipeline and the app; the pipeline's prompts are unchanged byte for byte (#523)
 
 ### Admin
+- **Choose how many documents a page shows** in the Documents Library: **Per page** beside the page buttons offers 5, 10 (the default), 50 or 100, and is kept in the link (`page_size`). Changing it reloads the table even on the first page (#524)
 - **Group Settings is split into tabs** (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, Features & Tabs, Appearance) instead of one long page; **Save Settings** saves every tab. The search-results "AI Summary" section is renamed **Search AI Summary** (#523)
 
 ### Evaluation
@@ -37,6 +40,7 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 ### Documentation
 - The Brief guide covers prompts in templates, sharing templates and voices, the signed-in New brief dialog and the section and whole-brief AI tools (AI Edit, AI Get Updates, the Log with Keep/Reject Edits, AI Regenerate All, Stop). The docs viewer now gives level-4 headings ids, so in-page links to them resolve (#504)
 - The Brief guide explains introductions and their settings (#506, #510) and the All Briefs tab, and the user administration guide covers administrators' access to every brief and its audit events (#509)
+- The Brief guide covers copying shared briefs (#525) and where Word links point (#526); the system monitoring page covers the page size (#524)
 - A new admin page, **Document Summaries**, with screenshots; the pipeline configuration, group settings, system monitoring and README pages cover summary modes, the tabs and the new settings (#523)
 
 ### Dependencies
