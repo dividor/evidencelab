@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { LinkTarget } from '../../utils/exportResultsToDocx';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
 import { useActivityLogging } from '../../hooks/useActivityLogging';
@@ -320,6 +321,9 @@ export const useBrief = ({
   // number per passage or per document) — see ReferenceGrouping. Drives the
   // inline [n] markers, the References list and the Word export together.
   const [referenceGrouping, setReferenceGrouping] = useState<ReferenceGrouping>('passage');
+  // Where the Word export's links point: the source documents (default) or
+  // their copies in Evidence Lab.
+  const [wordLinkTarget, setWordLinkTarget] = useState<LinkTarget>('source');
   // Section length target in words for this brief (sections may override);
   // null = no target, the model decides. Persisted with the brief. See
   // briefLength.ts for how it is enforced.
@@ -1713,6 +1717,8 @@ export const useBrief = ({
     setBriefVoiceId,
     referenceGrouping,
     setReferenceGrouping,
+    wordLinkTarget,
+    setWordLinkTarget,
     setTargetWords,
     setSectionTargetWords: (id: string, target: number | null) =>
       updateSection(id, { targetWords: target }),

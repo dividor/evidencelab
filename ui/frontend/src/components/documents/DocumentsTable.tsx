@@ -55,6 +55,7 @@ interface DocumentsTableProps {
   getCategoricalOptions: (column: string) => string[];
   onCloseFilterPopover: () => void;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
   dataSource?: string;
 }
@@ -210,6 +211,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   getCategoricalOptions,
   onCloseFilterPopover,
   onPageChange,
+  onPageSizeChange,
   dataSourceConfig,
   dataSource,
 }) => {
@@ -375,8 +377,14 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
           dataSourceConfig={dataSourceConfig}
         />
       )}
-      {totalPages > 1 && (
-        <DocumentsPagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+      {totalCount > 0 && (
+        <DocumentsPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
+        />
       )}
       </>
       )}

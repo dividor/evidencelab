@@ -96,6 +96,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           getCategoricalOptions={state.getCategoricalOptionsForColumn}
           onCloseFilterPopover={state.handleCloseFilterPopover}
           onPageChange={state.setCurrentPage}
+          onPageSizeChange={state.handlePageSizeChange}
           dataSourceConfig={dataSourceConfig}
           dataSource={dataSource}
         />
