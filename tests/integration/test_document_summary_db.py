@@ -271,7 +271,7 @@ async def test_reprocessing_keeps_the_summary_unless_asked_to_replace_it(
     )
     monkeypatch.setattr(document.db, "delete_document_chunks", lambda _id: 0)
     monkeypatch.setattr(documents_routes, "get_db_for_source", lambda _: document.db)
-    await documents_routes.reprocess_document(
+    documents_routes.reprocess_document(
         document.id, data_source=DATA_SOURCE, replace_summary=True
     )
 
