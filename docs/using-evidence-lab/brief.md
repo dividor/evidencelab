@@ -136,6 +136,13 @@ The exported document mirrors what you see on screen: inline `[n]` citation numb
 - **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, 2021, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
 - **Group by document (single per document)** — one number per document and no page numbers: `[1] Title, 2021`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
 
+**Where the links point.** Under the checkboxes, **Word links to** chooses where the exported document's links open:
+
+- **Source document** (the default) — each document's own address outside Evidence Lab, its PDF or report page, opened at the cited page (`#page=N`). A document with no address of its own links to its copy in Evidence Lab instead.
+- **Evidence Lab** — the copy of each document in Evidence Lab, opened at the cited page. Use it when readers should stay in Evidence Lab, or when source sites move or need a sign-in.
+
+Links in the References list that stand for a whole document open it at its first page.
+
 ![Export to Word button](../images/brief/brief-export-button.png)
 
 The exported `.docx` is a polished, branded document titled **AI-generated Research Brief**, with:

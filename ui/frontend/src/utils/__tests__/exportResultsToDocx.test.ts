@@ -19,6 +19,7 @@ import {
   fetchResultImages,
   markdownToParagraphs,
   resolveResultLink,
+  type DocLinks,
   type ExportOptions,
 } from '../exportResultsToDocx';
 import { buildGroupedReferences, extractCitedNumbers } from '../citations';
@@ -56,25 +57,27 @@ describe('buildExportFilename', () => {
   });
 });
 
+const LINKS: DocLinks = { siteOrigin: 'https://evidencelab.ai', target: 'source', apiBase: '/api' };
+
 describe('resolveResultLink', () => {
   test('prefers a top-level pdf_url when present and appends page anchor', () => {
     const link = resolveResultLink(
       makeResult({ pdf_url: 'https://example.org/reports/r1.pdf', page_num: 12 }),
-      'https://evidencelab.ai',
+      LINKS,
     );
     expect(link).toBe('https://example.org/reports/r1.pdf#page=12');
   });
   test('omits page anchor on pdf_url when page_num is missing', () => {
     const link = resolveResultLink(
       makeResult({ pdf_url: 'https://example.org/reports/r1.pdf', page_num: undefined }),
-      'https://evidencelab.ai',
+      LINKS,
     );
     expect(link).toBe('https://example.org/reports/r1.pdf');
   });
   test('replaces an existing #page= fragment instead of duplicating', () => {
     const link = resolveResultLink(
       makeResult({ pdf_url: 'https://example.org/reports/r1.pdf#page=1', page_num: 5 }),
-      'https://evidencelab.ai',
+      LINKS,
     );
     expect(link).toBe('https://example.org/reports/r1.pdf#page=5');
   });
@@ -85,7 +88,7 @@ describe('resolveResultLink', () => {
         metadata: { pdf_url: 'https://example.org/meta.pdf' },
         page_num: 3,
       }),
-      'https://evidencelab.ai',
+      LINKS,
     );
     expect(link).toBe('https://example.org/meta.pdf#page=3');
   });
@@ -96,26 +99,39 @@ describe('resolveResultLink', () => {
         report_url: 'https://example.org/report.html',
         page_num: 9,
       }),
-      'https://evidencelab.ai',
+      LINKS,
     );
     expect(link).toBe('https://example.org/report.html#page=9');
   });
-  test('falls back to a canonical deep-link with page anchor', () => {
+  test('without a source address, falls back to the copy in Evidence Lab at the page', () => {
     const link = resolveResultLink(
       makeResult({ pdf_url: undefined, report_url: undefined, doc_id: 'abc123', page_num: 7 }),
-      'https://evidencelab.ai',
+      LINKS,
       'uneg',
     );
-    expect(link).toBe('https://evidencelab.ai/document/abc123?data_source=uneg#page=7');
+    expect(link).toBe('https://evidencelab.ai/api/pdf/abc123?data_source=uneg#page=7');
   });
   test('handles a trailing slash in the site origin', () => {
     const link = resolveResultLink(
       makeResult({ pdf_url: undefined, report_url: undefined, doc_id: 'abc', page_num: 1 }),
-      'https://evidencelab.ai/',
+      { ...LINKS, siteOrigin: 'https://evidencelab.ai/' },
       'uneg',
     );
-    expect(link.startsWith('https://evidencelab.ai/document/')).toBe(true);
-    expect(link).not.toMatch(/evidencelab\.ai\/\/document/);
+    expect(link.startsWith('https://evidencelab.ai/api/pdf/')).toBe(true);
+    expect(link).not.toMatch(/evidencelab\.ai\/\/api/);
+  });
+  test('the Evidence Lab target links to its copy at the page even when the source has a PDF', () => {
+    const r = makeResult({ pdf_url: 'https://example.org/reports/r1.pdf', doc_id: 'abc 1', page_num: 4 });
+    expect(resolveResultLink(r, { ...LINKS, target: 'evidence_lab' }, 'wfp')).toBe(
+      'https://evidencelab.ai/api/pdf/abc%201?data_source=wfp#page=4',
+    );
+    expect(resolveResultLink(r, LINKS, 'wfp')).toBe('https://example.org/reports/r1.pdf#page=4');
+  });
+  test('an absolute API base is used as it is, and no page means no page anchor', () => {
+    const r = makeResult({ doc_id: 'abc', page_num: undefined });
+    expect(
+      resolveResultLink(r, { ...LINKS, target: 'evidence_lab', apiBase: 'https://api.example.org/v1/' }, 'wfp'),
+    ).toBe('https://api.example.org/v1/pdf/abc?data_source=wfp');
   });
 });
 
@@ -280,8 +296,8 @@ describe('exportResultsToDocxBlob', () => {
     expect(rels).not.toBeNull();
     const relsText = await rels!.async('string');
     expect(relsText).toContain('https://example.org/reports/bangladesh.pdf');
-    // Fallback link is a canonical deep link to the SPA for results lacking pdf_url
-    expect(relsText).toContain('/document/doc-2');
+    // A result without a source address links to its copy in Evidence Lab
+    expect(relsText).toContain('/api/pdf/doc-2');
   });
 
   test('handles zero results gracefully (cover + summary only)', async () => {
@@ -351,7 +367,7 @@ describe('exportResultsToDocxBlob', () => {
     // Both result-1 PDF and result-2 fallback SPA link should be referenced
     // via hyperlink relationships, sourced from the inline [N] markers.
     expect(rels).toContain('https://example.org/reports/bangladesh.pdf#page=42');
-    expect(rels).toContain('/document/doc-2');
+    expect(rels).toContain('/api/pdf/doc-2');
   });
 
   test('References section uses each document\'s own citation numbers', async () => {
