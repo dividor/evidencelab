@@ -4,7 +4,12 @@ import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
-import { buildExportFilename, exportResultsToDocxBlob, ReferenceListLayout } from '../../utils/exportResultsToDocx';
+import {
+  buildExportFilename,
+  exportResultsToDocxBlob,
+  ExportOptions,
+  ReferenceListLayout,
+} from '../../utils/exportResultsToDocx';
 import { withDocumentYears } from '../../utils/briefExportYears';
 import { buildGlobalCitations } from './briefCitations';
 import { ReferenceGrouping } from './briefTypes';
@@ -33,7 +38,7 @@ import { BriefToc } from './BriefToc';
 import { IconArrowLeft } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
-import { useBrief } from './useBrief';
+import { useBrief, UseBriefReturn } from './useBrief';
 import { useBriefCentral } from './useBriefCentral';
 import './brief.css';
 
@@ -286,6 +291,36 @@ const BriefAnnotationLayer: React.FC<{
   );
 };
 
+/** The Word export of a brief: its prose, references laid out per the
+ *  reader's grouping, and links pointing where the reader chose (each
+ *  document's source, or its copy in Evidence Lab). */
+export const briefWordExportOptions = (
+  brief: Pick<UseBriefReturn, 'briefTitle' | 'referenceGrouping' | 'wordLinkTarget'>,
+  summary: string,
+  results: SearchResult[],
+  dataSource: string,
+): ExportOptions => ({
+  query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
+  aiSummary: summary,
+  results,
+  dataSource,
+  documentTitle: 'AI-generated Research Brief',
+  summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
+  infoBox: BRIEF_DISCLAIMER,
+  tableOfContents: true,
+  resultsSectionTitle: 'References',
+  // The document mirrors the on-screen References section: inline [n]
+  // citations and a compact list laid out per the reader's grouping.
+  citationStyle: 'links',
+  referenceList: REFERENCE_LIST_LAYOUT[brief.referenceGrouping],
+  linkTarget: brief.wordLinkTarget,
+  apiBaseUrl: API_BASE_URL,
+  siteOrigin: typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
+  // Same API base the on-screen cards use to load table/figure screenshots,
+  // so the brief embeds those exact images.
+  fileBaseUrl: API_BASE_URL,
+});
+
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -408,26 +443,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         // title. Brief sources don't carry it, so look it up per cited document
         // in the data source the brief was researched in (a saved brief records
         // it; a new brief's sources are in the app's selected data source).
-        const blob = await exportResultsToDocxBlob({
-          query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
-          aiSummary: summary,
-          results: await withDocumentYears(results, brief.briefDataSource ?? dataSource),
-          dataSource,
-          documentTitle: 'AI-generated Research Brief',
-          summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
-          infoBox: BRIEF_DISCLAIMER,
-          tableOfContents: true,
-          resultsSectionTitle: 'References',
-          // The document mirrors the on-screen References section: inline [n]
-          // citations and a compact list laid out per the reader's grouping.
-          citationStyle: 'links',
-          referenceList: REFERENCE_LIST_LAYOUT[brief.referenceGrouping],
-          siteOrigin:
-            typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
-          // Same API base the on-screen cards use to load table/figure
-          // screenshots, so the brief embeds those exact images.
-          fileBaseUrl: API_BASE_URL,
-        });
+        const blob = await exportResultsToDocxBlob(
+          briefWordExportOptions(brief, summary, await withDocumentYears(results, brief.briefDataSource ?? dataSource), dataSource),
+        );
         saveAs(blob, buildExportFilename(brief.briefTitle || 'evidence-brief', new Date()));
       } catch (err) {
         brief.setError(err instanceof Error ? err.message : 'Export to Word failed');
