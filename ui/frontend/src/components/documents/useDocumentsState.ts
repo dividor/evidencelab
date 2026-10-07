@@ -16,6 +16,7 @@ import {
   getInitialChartView,
   getInitialFilterText,
   getInitialPage,
+  getInitialPageSize,
   sortDocuments,
   useDebouncedFilterText,
   useDocumentsInitialLoad,
@@ -119,7 +120,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const [currentPage, setCurrentPage] = useState<number>(getInitialPage);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
-  const [pageSize] = useState<number>(20);
+  const [pageSize, setPageSize] = useState<number>(getInitialPageSize);
   const [loadingTable, setLoadingTable] = useState<boolean>(true);
   const [titleFacets, setTitleFacets] = useState<Array<{ value: string; count: number }>>([]);
 
@@ -541,7 +542,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const getSortedAndFilteredDocuments = () => allDocuments;
 
   useDocumentsInitialLoad(dataSource, loadData, loadTitleFacets);
-  useDocumentsReload(currentPage, selectedCategory, columnFilters, loadDocuments);
+  useDocumentsReload(currentPage, selectedCategory, columnFilters, loadDocuments, pageSize);
   useFilterPopoverClose(activeFilterColumn, handleCloseFilterPopover);
   const handleDebouncedFilterChange = useCallback(() => {
     setCurrentPage(1);
@@ -549,7 +550,13 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   }, [loadDocuments]);
 
   useDebouncedFilterText(filterText, loading, handleDebouncedFilterChange);
-  useSyncDocumentsUrlParams(currentPage, filterText, chartView);
+  useSyncDocumentsUrlParams(currentPage, filterText, chartView, pageSize);
+
+  /** A new page size starts again from the first page. */
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
 
   // The open summary's provenance, kept current when it is saved.
   const selectedSummaryProvenance = summaryProvenance(
@@ -658,6 +665,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     totalPages,
     totalCount,
     pageSize,
+    handlePageSizeChange,
     loadingTable,
     tableContainerRef,
     setCurrentPage,
