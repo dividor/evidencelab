@@ -278,6 +278,8 @@ Named model combinations selectable in the UI search settings. Each combo bundle
 
 ```jsonc
 "Combo Name": {
+  "default": true,                      // Optional: the combo users start on
+                                        // (unset = the first combo in the file)
   "embedding_model": "model_key",       // Key from supported_embedding_models
   "sparse_model": "model_key",          // Key from supported_embedding_models (type: sparse)
   "summarization_model": {              // Inline LLM config for AI summaries
