@@ -506,10 +506,11 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 
 ## Deployment settings
 
-Three groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
+Four groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
 
 | Topic | Settings | Docs |
 |-------|----------|------|
 | Deployment facts: who operates the instance, where it is hosted, public address, contact (legal pages, About, Connecting to AI Platforms, Contact dialog, Word export links) | `REACT_APP_OPERATOR_NAME`, `REACT_APP_OPERATOR_ADDRESS`, `REACT_APP_HOSTING_REGION`, `REACT_APP_SITE_URL`, `REACT_APP_CONTACT_EMAIL` (default to the evidencelab.ai values; baked into the UI at build time) | [Customization & Branding](docs/admin/customization.md) |
 | Optional third-party services: translation, LLM tracing, web analytics | `TRANSLATION_PROVIDER`, `TRACING_PROVIDER`, `REACT_APP_GA_MEASUREMENT_ID` and their companions | [Optional Third-Party Services](docs/admin/third-party-services.md) |
+| Performance & scaling: how much work the API does at once, connection pools, reranker preload | `MAX_CONCURRENT_SEARCHES`, `MAX_CONCURRENT_RERANKS`, `MAX_CONCURRENT_REMOTE_RERANKS`, `POSTGRES_POOL_MIN`/`MAX`, `AUTH_DB_POOL_SIZE`/`MAX_OVERFLOW`, `PRELOAD_RERANK_MODEL` (all optional; unset uses the application's default) | [Performance & Scaling](docs/admin/performance-and-scaling.md) |
 | Content moderation: reports, hiding a document, audit trail | Superuser action in the Documents Library, `POST /moderation/documents/{id}/hidden`, `scripts/pipeline/hide_document.py` | [Content Moderation](docs/admin/content-moderation.md) |
