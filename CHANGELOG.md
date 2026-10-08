@@ -2,9 +2,9 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
-## [1.6.4] - 2026-10-07
+## [1.6.4] - 2026-10-08
 
-Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the research prompt, voice & tone profile and length for each heading and for the brief as a whole, and templates and voice & tone profiles can be shared with people and groups, so a team lead can give a team one complete, consistent starting point. Administrators also get a **citation check** that fact-checks a finished brief, sentence by sentence, against the sources it cites, and an **All Briefs** view of every brief in the system, and they can now **edit and regenerate document summaries** in the Documents Library, one at a time or many in a queue, with a new **single prompt** summary mode alongside map reduce. Top-level headings are now written as short introductions to their sub-headings, and two saving bugs are fixed: a section could finish on screen but not be saved, and opening then closing a brief could duplicate it.
+Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the research prompt, voice & tone profile and length for each heading and for the brief as a whole, and templates and voice & tone profiles can be shared with people and groups, so a team lead can give a team one complete, consistent starting point. Administrators also get a **citation check** that fact-checks a finished brief, sentence by sentence, against the sources it cites, and an **All Briefs** view of every brief in the system, and they can now **edit and regenerate document summaries** in the Documents Library, one at a time or many in a queue, with a new **single prompt** summary mode alongside map reduce. Top-level headings are now written as short introductions to their sub-headings, and two saving bugs are fixed: a section could finish on screen but not be saved, and opening then closing a brief could duplicate it. Under the hood the API stops serialising itself: a slow request no longer holds the event loop, so the rest of the application keeps responding while it runs.
 
 ### Brief
 - **Templates keep prompts, not just headings.** Each heading can carry a research prompt (the guidance typed in a section's Research panel), a voice & tone profile and a length target, and a template keeps a whole-brief prompt, default voice and default length. **Save as Template** carries all of these from the brief, behind an **Include prompts and settings** switch; the template editor gains a **Prompt** control per heading and templates can now be edited; starting a brief from a template fills in the brief prompt, voice and length in the New brief dialog and starts each section with its heading's prompt, voice and length (#504)
@@ -37,6 +37,15 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 ### Evaluation
 - Added a **Brief citation check** to the admin Evaluation Harness, on a new **Testing (Brief)** tab. For every cited sentence of a brief, an LLM judge (the summarisation model of the selected combo) sees the sentence and the exact excerpts it cites and rules supported, partially supported, unsupported or cannot assess, quoting the words it relied on; each quote is then verified against the excerpt, and anything not fully supported is flagged. The result page has summary tiles, a filterable passages table with drill-down to the judge's reasoning and the cited excerpts, citation links into the document preview, and **Download Excel** with the review workbook. This replaces the citation fidelity notebook for reviewers (#503)
 
+- Administrators can check **every** brief in Admin → Testing (Brief), not only their own and ones shared with them; the scope toggle becomes All / Mine / Shared with me / Other users, and the Owner column identifies whose brief it is (#522)
+
+### API & Performance
+- The API no longer stalls every request behind a slow one. It runs a single uvicorn worker, and twelve routes performed their Postgres and Qdrant work directly on the event loop, so one expensive request held the whole process: with eight heavy requests in flight a trivial request took about **4 seconds** and only one completed at all; it now takes about **125 ms** and the API keeps serving throughout. Routes with nothing to await are declared `def` so FastAPI runs them in its threadpool, the rest hand their blocking section to `run_in_threadpool()`, and a test fails the build if an `async` route goes back to calling a synchronous client inline (#527)
+- **Serving a PDF streams it** instead of reading the whole file into memory on the event loop, and a missing file no longer reports the server path it looked in (#527)
+- **The Postgres connection pool is now thread-safe and sized for concurrency.** It used psycopg2's `SimpleConnectionPool`, documented as unusable across threads, fixed at one kept connection and five in total — which both capped concurrent queries at five and closed every returned connection past the first, reconnecting per request under load. It is now a `ThreadedConnectionPool` sized by `POSTGRES_POOL_MIN`/`POSTGRES_POOL_MAX` (#527)
+- **A hosted reranker no longer runs one search at a time.** The limit that protects local reranking — which loads a model into the API process — also covered the Azure Foundry and Google Vertex calls, which are ordinary HTTP requests, so deployments reranking remotely served reranked searches strictly one after another. Hosted rerankers now have their own limit, `MAX_CONCURRENT_REMOTE_RERANKS` (#527)
+- `MAX_CONCURRENT_SEARCHES` now defaults to 8 rather than 2, the async database pool is sized from the environment, and `PRELOAD_RERANK_MODEL` lets a deployment that reranks through a hosted service stop holding a local reranker in memory for the life of the process (#527)
+
 ### Documentation
 - The Brief guide covers prompts in templates, sharing templates and voices, the signed-in New brief dialog and the section and whole-brief AI tools (AI Edit, AI Get Updates, the Log with Keep/Reject Edits, AI Regenerate All, Stop). The docs viewer now gives level-4 headings ids, so in-page links to them resolve (#504)
 - The Brief guide explains introductions and their settings (#506, #510) and the All Briefs tab, and the user administration guide covers administrators' access to every brief and its audit events (#509)
@@ -44,6 +53,7 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 - A new admin page, **Document Summaries**, with screenshots; the pipeline configuration, group settings, system monitoring and README pages cover summary modes, the tabs and the new settings (#523)
 
 ### Dependencies
+- CI uses `actions/upload-artifact` v7 for the coverage and SBOM uploads (#521)
 - fastembed 0.8.1 (#515), watchdog 4.0.2 (#512), types-requests 2.33.0 (#516), yaml 2.9.1 (#520), @playwright/test 1.63.0 (#519), @typescript-eslint/parser 8.70.1 (#518), @testing-library/dom 10.4.2 (#517), @types/node 25.9.8 (#514)
 
 ### Upgrade Notes
@@ -51,7 +61,14 @@ Evidence Lab v1.6.4 is a **team** release for Brief. Templates now carry the res
 - **New optional `config.json` setting** `application.brief.introductions`, with `target_words` (the default introduction length) and `heading_retries` (how many times an introduction that comes back with headings is re-run); see the repository `config.json`. Deployments that keep their own `config.json` (for example the WFP config repository) need no change: if the setting or either value is left out, 120 words and 1 re-run are used. A value that is present but not a whole number in range stops the UI at startup with an error naming it (#506, #510)
 - **New optional `summarize` settings** per data source: `mode` (`map_reduce` by default), `single_prompt_context_window` (1,048,576 tokens by default) and `section_types` (every section type by default). Existing configs need no change (#523)
 - Document summary changes need no migration: team defaults live in the groups' existing `search_settings` and the summary's provenance in each document's existing `sys_data` (#523)
-- No new environment variables or Python/npm dependencies (the versions above are updates). Rebuild the `api` and `ui` images.
+- **New optional environment variables**, all with defaults that preserve current behaviour — see `.env.example`:
+  - `POSTGRES_POOL_MIN` (4) and `POSTGRES_POOL_MAX` (16) — the synchronous Postgres pool, per data source. It raises rather than queueing when empty, so `POSTGRES_POOL_MAX` must cover the request concurrency the API serves, and `POSTGRES_POOL_MAX` x (data sources in use) must stay under the server's `max_connections`.
+  - `AUTH_DB_POOL_SIZE` (10) and `AUTH_DB_MAX_OVERFLOW` (20) — the async database pool, which queues rather than failing.
+  - `MAX_CONCURRENT_REMOTE_RERANKS` (8) — concurrent hosted-reranker calls, separate from the local limit.
+  - `PRELOAD_RERANK_MODEL` (`true`) — set it to `false` where reranking is done by a hosted service, so a local reranker is not held in memory for the life of the process.
+- **Changed default:** `MAX_CONCURRENT_SEARCHES` is now 8, previously 2. Lower it for deployments that run embedding or reranking models inside the API process.
+- **Do not raise the uvicorn worker count to go faster.** Both rate limiters keep their counters in process memory, so N workers multiply every configured limit by N, including the authentication brute-force limit. Shared storage for that state is a prerequisite (#527).
+- No new Python or npm dependencies (the versions above are updates). Rebuild the `api` and `ui` images.
 - Existing templates keep working and simply have no prompts; open one with **Edit** to add them.
 
 ## [1.6.3] - 2026-09-24
