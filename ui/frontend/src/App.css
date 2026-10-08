@@ -997,6 +997,16 @@ h6,
   animation: fadeInUp 0.5s ease-out;
 }
 
+/* Documents Library card.
+   The card's horizontal padding pushed the table 32px further right than the
+   "Documents Library" heading above it. Drop it for this card only — the other
+   .chart-section cards (Stats, Pipeline) hold charts and keep their padding —
+   so the table's first column lines up with the heading. */
+.chart-section.documents-section {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
