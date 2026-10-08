@@ -2715,6 +2715,8 @@ function App() {
       dataSource={dataSource}
       semanticHighlightModelConfig={semanticHighlightModelConfig}
       dataSourceConfig={currentDataSourceConfig}
+      summaryModelConfig={summaryModelConfig}
+      summaryGroupDefaults={groupDefaults}
     />
   );
 
@@ -3116,6 +3118,8 @@ function App() {
         isActive={activeTab === 'admin'}
         dataSource={dataSource}
         dataSourceConfig={currentDataSourceConfig}
+        modelCombo={selectedModelCombo}
+        onResultClick={handleResultClick}
       />
 
       <AppFooter>

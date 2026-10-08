@@ -266,6 +266,7 @@ async def stream_assistant_chat(
                 system_prompt_override=group_prompt,
                 deep_research=body.deep_research,
                 target_words=body.target_words,
+                introduces_sub_sections=body.introduces_sub_sections,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

@@ -11,6 +11,7 @@ from fastapi_users.db import (
 from fastapi_users_db_sqlalchemy.generics import GUID
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -274,7 +276,13 @@ class VoiceProfile(Base):
 
 
 class BriefTemplate(Base):
-    """User-owned brief template: a saved heading structure (optionally with text)."""
+    """User-owned brief template: a saved heading structure and its settings.
+
+    Each heading may carry saved text, a research prompt, a voice & tone
+    profile and a length target. The template-level ``prompt``,
+    ``voice_profile_id`` and ``target_words`` are the brief-wide defaults of
+    the brief it was saved from.
+    """
 
     __tablename__ = "brief_templates"
 
@@ -288,11 +296,20 @@ class BriefTemplate(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # List of {"title": str, "sub": bool, "text": str | None}
+    # List of {"title", "sub", "text", "prompt", "voice_profile_id",
+    # "target_words"}; everything but title and sub is optional.
     headings: Mapped[list] = mapped_column(JSONB, nullable=False)
     with_text: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
+    # Whole-brief research instructions, applied to every section.
+    prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    voice_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("voice_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    target_words: Mapped[int | None] = mapped_column(Integer, nullable=True)
     use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -432,6 +449,94 @@ class BriefShare(Base):
     )
 
     brief: Mapped["Brief"] = relationship("Brief", back_populates="shares")
+
+
+class BriefTemplateShare(Base):
+    """Use-only grant on a brief template for a user or a group."""
+
+    __tablename__ = "brief_template_shares"
+    __table_args__ = (
+        CheckConstraint(
+            "(shared_user_id IS NULL) <> (group_id IS NULL)",
+            name="ck_brief_template_shares_target",
+        ),
+        UniqueConstraint(
+            "template_id", "shared_user_id", name="uq_brief_template_shares_user"
+        ),
+        UniqueConstraint(
+            "template_id", "group_id", name="uq_brief_template_shares_group"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    template_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brief_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    shared_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_groups.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
+class VoiceProfileShare(Base):
+    """Use-only grant on a voice & tone profile for a user or a group."""
+
+    __tablename__ = "voice_profile_shares"
+    __table_args__ = (
+        CheckConstraint(
+            "(shared_user_id IS NULL) <> (group_id IS NULL)",
+            name="ck_voice_profile_shares_target",
+        ),
+        UniqueConstraint(
+            "voice_profile_id", "shared_user_id", name="uq_voice_profile_shares_user"
+        ),
+        UniqueConstraint(
+            "voice_profile_id", "group_id", name="uq_voice_profile_shares_group"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    voice_profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("voice_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    shared_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("user_groups.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
 
 
 class ConversationThread(Base):

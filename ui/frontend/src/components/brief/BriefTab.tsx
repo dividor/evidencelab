@@ -4,18 +4,24 @@ import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
-import { buildExportFilename, exportResultsToDocxBlob, ReferenceListLayout } from '../../utils/exportResultsToDocx';
+import {
+  buildExportFilename,
+  exportResultsToDocxBlob,
+  ExportOptions,
+  ReferenceListLayout,
+} from '../../utils/exportResultsToDocx';
 import { withDocumentYears } from '../../utils/briefExportYears';
 import { buildGlobalCitations } from './briefCitations';
 import { ReferenceGrouping } from './briefTypes';
 import { BriefCentral } from './BriefCentral';
+import { BriefRegenAllModal, NewBriefSubmit } from './BriefCentralModals';
+import { BriefShareModal } from './BriefShareDialog';
 import {
-  BriefRegenAllModal,
-  BriefShareModal,
   BriefTemplateModal,
-  NewBriefSubmit,
   TemplateDraft,
-} from './BriefCentralModals';
+  draftHeading,
+  draftToPayload,
+} from './BriefTemplateModal';
 import { BriefDocument } from './BriefDocument';
 import { BriefComments, BriefCommentComposer, BriefThreadModal } from './BriefComments';
 import { CommentMark } from './briefCommentMarks';
@@ -32,7 +38,7 @@ import { BriefToc } from './BriefToc';
 import { IconArrowLeft } from './BriefIcons';
 import { BriefGeneratingPanel, BriefSeed } from './BriefSeed';
 import { DEFAULT_BRIEF_TITLE } from './briefTypes';
-import { useBrief } from './useBrief';
+import { useBrief, UseBriefReturn } from './useBrief';
 import { useBriefCentral } from './useBriefCentral';
 import './brief.css';
 
@@ -285,6 +291,36 @@ const BriefAnnotationLayer: React.FC<{
   );
 };
 
+/** The Word export of a brief: its prose, references laid out per the
+ *  reader's grouping, and links pointing where the reader chose (each
+ *  document's source, or its copy in Evidence Lab). */
+export const briefWordExportOptions = (
+  brief: Pick<UseBriefReturn, 'briefTitle' | 'referenceGrouping' | 'wordLinkTarget'>,
+  summary: string,
+  results: SearchResult[],
+  dataSource: string,
+): ExportOptions => ({
+  query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
+  aiSummary: summary,
+  results,
+  dataSource,
+  documentTitle: 'AI-generated Research Brief',
+  summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
+  infoBox: BRIEF_DISCLAIMER,
+  tableOfContents: true,
+  resultsSectionTitle: 'References',
+  // The document mirrors the on-screen References section: inline [n]
+  // citations and a compact list laid out per the reader's grouping.
+  citationStyle: 'links',
+  referenceList: REFERENCE_LIST_LAYOUT[brief.referenceGrouping],
+  linkTarget: brief.wordLinkTarget,
+  apiBaseUrl: API_BASE_URL,
+  siteOrigin: typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
+  // Same API base the on-screen cards use to load table/figure screenshots,
+  // so the brief embeds those exact images.
+  fileBaseUrl: API_BASE_URL,
+});
+
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -299,7 +335,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const loggedIn = userKey != null;
   // Logged-in users get Brief Central: server-side briefs, sharing, templates
   // and voice & tone profiles. Anonymous users keep the localStorage flow.
-  const central = useBriefCentral(loggedIn);
+  // Administrators (superusers) also get the All Briefs tab.
+  const isAdmin = loggedIn && !!auth.user?.is_superuser;
+  const central = useBriefCentral(loggedIn, isAdmin);
   const brief = useBrief({
     apiBaseUrl: API_BASE_URL,
     dataSource,
@@ -405,26 +443,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         // title. Brief sources don't carry it, so look it up per cited document
         // in the data source the brief was researched in (a saved brief records
         // it; a new brief's sources are in the app's selected data source).
-        const blob = await exportResultsToDocxBlob({
-          query: brief.briefTitle || DEFAULT_BRIEF_TITLE,
-          aiSummary: summary,
-          results: await withDocumentYears(results, brief.briefDataSource ?? dataSource),
-          dataSource,
-          documentTitle: 'AI-generated Research Brief',
-          summaryHeading: brief.briefTitle || DEFAULT_BRIEF_TITLE,
-          infoBox: BRIEF_DISCLAIMER,
-          tableOfContents: true,
-          resultsSectionTitle: 'References',
-          // The document mirrors the on-screen References section: inline [n]
-          // citations and a compact list laid out per the reader's grouping.
-          citationStyle: 'links',
-          referenceList: REFERENCE_LIST_LAYOUT[brief.referenceGrouping],
-          siteOrigin:
-            typeof window !== 'undefined' && window.location ? window.location.origin : undefined,
-          // Same API base the on-screen cards use to load table/figure
-          // screenshots, so the brief embeds those exact images.
-          fileBaseUrl: API_BASE_URL,
-        });
+        const blob = await exportResultsToDocxBlob(
+          briefWordExportOptions(brief, summary, await withDocumentYears(results, brief.briefDataSource ?? dataSource), dataSource),
+        );
         saveAs(blob, buildExportFilename(brief.briefTitle || 'evidence-brief', new Date()));
       } catch (err) {
         brief.setError(err instanceof Error ? err.message : 'Export to Word failed');
@@ -435,17 +456,29 @@ export const BriefTab: React.FC<BriefTabProps> = ({
     [exportBusy, brief, dataSource],
   );
 
-  // The template draft when saving the open brief's headings as a template.
+  // The template draft when saving the open brief as a template: its headings
+  // with each section's text, prompt, voice and length, and the brief's own
+  // prompt, voice and length. The editor's switches decide what is kept.
   const templateFromBrief: TemplateDraft = {
+    id: null,
     fromBrief: true,
     name: `${brief.briefTitle.slice(0, 40)} template`,
     description: 'Saved from a brief',
-    headings: brief.sections.map((s) => ({
-      title: s.title,
-      sub: s.level === 2,
-      text: s.content || null,
-    })),
+    headings: brief.sections.map((s) =>
+      draftHeading({
+        title: s.title,
+        sub: s.level === 2,
+        text: s.content || null,
+        prompt: s.guidance || null,
+        voice_profile_id: s.voiceId ?? null,
+        target_words: s.targetWords ?? null,
+      }),
+    ),
     withText: false,
+    withSettings: true,
+    prompt: brief.instructions,
+    voiceId: brief.briefVoiceId,
+    targetWords: brief.targetWords,
   };
 
   // Logged-in outline generation runs from the New-brief modal — surface the
@@ -512,16 +545,9 @@ export const BriefTab: React.FC<BriefTabProps> = ({
       {workspaceModal === 'template' && (
         <BriefTemplateModal
           draft={templateFromBrief}
+          voices={brief.voices}
           onSave={async (d) => {
-            await central.saveTemplate({
-              name: d.name,
-              description: d.description || null,
-              headings: d.headings.map((h) => ({
-                ...h,
-                text: d.withText ? h.text : null,
-              })),
-              withText: d.withText,
-            });
+            await central.saveTemplate(null, draftToPayload(d));
             setWorkspaceModal(null);
           }}
           onClose={() => setWorkspaceModal(null)}

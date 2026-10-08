@@ -42,7 +42,7 @@ Evidence Lab document processing pipeline includes the following features:
 - PDF/Word parsing with Docling, to include document structure detection
 - Footnote and references, images and table detection
 - Basic table extraction, with support for more expensive processing as required
-- AI-assisted document summarization
+- AI-assisted document summarization, by map reduce or in a single prompt (`summarize.mode`)
 - AI-assisted tagging of documents
 - Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
 
@@ -57,6 +57,7 @@ Evidence Lab document processing pipeline includes the following features:
 - **Deep Research mode** — coordinator/researcher sub-agent architecture using [deepagents](https://github.com/krrome/deepagents) for thorough multi-step investigations with real-time streaming progress
 - **Brief** — turn a topic into a structured, evidence-backed research brief: generate an outline grounded in the document library, add/move/remove/rename headings in a drag-and-drop table of contents, research each heading into cited prose with AI, then export a branded Word document with a clickable contents page and citations linked to source documents. Briefs can be **shared** (viewer-only) with people or groups, **commented on** in anchored threads for review, and started from reusable **templates** and **voice & tone profiles**. See [Brief](docs/using-evidence-lab/brief.md)
 - **Star ratings** — rate search results, AI summaries, and assistant responses with 1–5 stars and optional comments
+- **Document summaries** — administrators can edit a document's summary, regenerate it with AI choosing the mode, sections and prompt, or regenerate many in a queue; each summary shows how, when and by whom it was made, and groups can set defaults. See [Document Summaries](docs/admin/document-summaries.md)
 - **Drilldown research** — highlight text or click "Find out more" to drill into sub-topics, building an explorable research tree with query inheritance and PDF export
 - Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
 - Experimental features such as heatmapper for tracking trends in content
@@ -68,9 +69,9 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic language translation
 - PDF preview with in-document search
 - Built-in searchable documentation area with sidebar navigation
-- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review. See [Evaluation Harness](docs/admin/evaluation.md)
+- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review, and fact-check a finished Brief with a citation check that judges every cited passage against the exact source excerpts it cites. See [Evaluation Harness](docs/admin/evaluation.md)
 - Administration views to track pipeline, documents, performance and errors
-- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row). See [Evaluation Harness](docs/admin/evaluation.md)
+- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row), plus a Brief citation check with a filterable review table and Excel export. See [Evaluation Harness](docs/admin/evaluation.md)
 
 3. AI platform integrations
 
@@ -355,7 +356,7 @@ Pipeline processing configuration with the following sub-sections:
 | `download` | Download command and arguments (supports `{data_dir}`, `{num_records}`, `{year}`, etc. placeholders) |
 | `parse` | PDF/Word parsing settings (`use_subprocess`, `table_mode`, `no_ocr`, `images_scale`, `enable_superscripts`) |
 | `chunk` | Text chunking settings (`max_tokens`, `min_substantive_size`, `dense_model` for token counting) |
-| `summarize` | AI summarization settings (`enabled`, `llm_model`, `llm_workers`, `context_window`) |
+| `summarize` | AI summarization settings (`enabled`, `llm_model`, `llm_workers`, `context_window`, `mode`, `single_prompt_context_window`, `section_types`) |
 | `tag` | AI tagging settings (`enabled`, `dense_model`, `llm_model`, `taxonomies`) |
 | `index` | Indexing settings (`batch_size`, `embedding_workers`, `dense_models`, `sparse_models`) |
 
@@ -505,10 +506,11 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 
 ## Deployment settings
 
-Three groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
+Four groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
 
 | Topic | Settings | Docs |
 |-------|----------|------|
 | Deployment facts: who operates the instance, where it is hosted, public address, contact (legal pages, About, Connecting to AI Platforms, Contact dialog, Word export links) | `REACT_APP_OPERATOR_NAME`, `REACT_APP_OPERATOR_ADDRESS`, `REACT_APP_HOSTING_REGION`, `REACT_APP_SITE_URL`, `REACT_APP_CONTACT_EMAIL` (default to the evidencelab.ai values; baked into the UI at build time) | [Customization & Branding](docs/admin/customization.md) |
 | Optional third-party services: translation, LLM tracing, web analytics | `TRANSLATION_PROVIDER`, `TRACING_PROVIDER`, `REACT_APP_GA_MEASUREMENT_ID` and their companions | [Optional Third-Party Services](docs/admin/third-party-services.md) |
+| Performance & scaling: how much work the API does at once, connection pools, reranker preload | `MAX_CONCURRENT_SEARCHES`, `MAX_CONCURRENT_RERANKS`, `MAX_CONCURRENT_REMOTE_RERANKS`, `POSTGRES_POOL_MIN`/`MAX`, `AUTH_DB_POOL_SIZE`/`MAX_OVERFLOW`, `PRELOAD_RERANK_MODEL` (all optional; unset uses the application's default) | [Performance & Scaling](docs/admin/performance-and-scaling.md) |
 | Content moderation: reports, hiding a document, audit trail | Superuser action in the Documents Library, `POST /moderation/documents/{id}/hidden`, `scripts/pipeline/hide_document.py` | [Content Moderation](docs/admin/content-moderation.md) |

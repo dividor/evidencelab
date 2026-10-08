@@ -85,7 +85,16 @@ signal.signal(signal.SIGINT, _log_signal)
 
 # Rate limiting configuration (from environment or defaults)
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
-MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "2"))
+MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "8"))
+# Loading the reranker at startup is only worth the memory when this process
+# actually runs the model. Deployments that rerank through Azure Foundry or
+# Google Vertex, or that do not rerank, should turn it off; the model still
+# loads on first use if something asks for it.
+PRELOAD_RERANK_MODEL = os.environ.get("PRELOAD_RERANK_MODEL", "true").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 PRELOAD_EMBEDDING_MODELS = os.environ.get(
     "PRELOAD_EMBEDDING_MODELS", "true"
 ).lower() in (
@@ -284,9 +293,11 @@ async def startup_event():
     # Recover test runs orphaned by a previous restart: their background task
     # did not survive, so a "running" row on startup is always stale.
     if USER_MODULE:
+        from ui.backend.services.citation_check_runner import recover_orphaned_checks
         from ui.backend.services.test_runner import recover_orphaned_runs
 
         await recover_orphaned_runs()
+        await recover_orphaned_checks()
     if not PRELOAD_EMBEDDING_MODELS:
         logger.info("⏩ Skipping model preload (PRELOAD_EMBEDDING_MODELS=false)")
     elif USE_EMBEDDING_SERVER:
@@ -295,8 +306,12 @@ async def startup_event():
         logger.info("🚀 API starting up - preloading embedding models...")
         get_models()  # This will load and cache the models
         logger.info("✅ Embedding models preloaded and ready")
-    # Preload reranker model if configured
-    if RERANK_MODEL:
+    # Preload reranker model if configured. This loads a *local* model into
+    # this process, which costs memory for the life of the API — pointless for
+    # a deployment that reranks through a hosted service, or not at all.
+    if not PRELOAD_RERANK_MODEL:
+        logger.info("⏩ Skipping reranker preload (PRELOAD_RERANK_MODEL=false)")
+    elif RERANK_MODEL:
         logger.info("🔄 Preloading reranker model...")
         get_rerank_model()
         logger.info("✅ Reranker model preloaded and ready")
@@ -438,7 +453,7 @@ async def get_documents(
     )
 
 
-async def perform_title_search(
+def perform_title_search(
     request: Request,
     q: str,
     limit: int = 50,
@@ -451,7 +466,7 @@ async def perform_title_search(
 ):
     search_routes.get_db_for_source = get_db_for_source
     search_routes.search_titles = search_titles
-    return await _perform_title_search(
+    return _perform_title_search(
         request=request,
         q=q,
         limit=limit,
@@ -575,32 +590,30 @@ async def get_facets(
     )
 
 
-async def get_document(doc_id: str, data_source: Optional[str] = None):
+def get_document(doc_id: str, data_source: Optional[str] = None):
     documents_routes.get_db_for_source = get_db_for_source
     documents_routes.get_pg_for_source = get_pg_for_source
-    return await _get_document(doc_id=doc_id, data_source=data_source)
+    return _get_document(doc_id=doc_id, data_source=data_source)
 
 
-async def get_document_logs(doc_id: str, data_source: Optional[str] = None):
+def get_document_logs(doc_id: str, data_source: Optional[str] = None):
     documents_routes.get_db_for_source = get_db_for_source
-    return await _get_document_logs(doc_id=doc_id, data_source=data_source)
+    return _get_document_logs(doc_id=doc_id, data_source=data_source)
 
 
-async def update_document_toc(
+def update_document_toc(
     doc_id: str, body: TocUpdate, data_source: Optional[str] = None
 ):
     documents_routes.get_db_for_source = get_db_for_source
-    return await _update_document_toc(
-        doc_id=doc_id, toc_update=body, data_source=data_source
-    )
+    return _update_document_toc(doc_id=doc_id, toc_update=body, data_source=data_source)
 
 
-async def update_document_metadata(
+def update_document_metadata(
     doc_id: str, body: DocumentMetadataUpdate, data_source: Optional[str] = None
 ):
     documents_routes.get_db_for_source = get_db_for_source
     documents_routes.get_pg_for_source = get_pg_for_source
-    return await _update_document_metadata(
+    return _update_document_metadata(
         doc_id=doc_id, update=body, data_source=data_source
     )
 
@@ -623,9 +636,9 @@ async def get_queue_status():
     return await _get_queue_status()
 
 
-async def reprocess_document(doc_id: str, data_source: Optional[str] = None):
+def reprocess_document(doc_id: str, data_source: Optional[str] = None):
     documents_routes.get_db_for_source = get_db_for_source
-    return await _reprocess_document(doc_id=doc_id, data_source=data_source)
+    return _reprocess_document(doc_id=doc_id, data_source=data_source)
 
 
 async def reprocess_document_toc(doc_id: str, data_source: Optional[str] = None):
@@ -776,6 +789,8 @@ if USER_MODULE:
     from ui.backend.routes import activity as activity_routes
     from ui.backend.routes import api_keys as api_keys_routes
     from ui.backend.routes import brief_central as brief_central_routes
+    from ui.backend.routes import brief_library as brief_library_routes
+    from ui.backend.routes import document_summary as document_summary_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
     from ui.backend.routes import moderation as moderation_routes
@@ -788,6 +803,7 @@ if USER_MODULE:
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
     app.include_router(research_routes.router, prefix="/research", tags=["research"])
     app.include_router(brief_central_routes.router, tags=["brief-central"])
+    app.include_router(brief_library_routes.router, tags=["brief-library"])
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])
@@ -797,6 +813,11 @@ if USER_MODULE:
     )
     app.include_router(
         moderation_routes.router, prefix="/moderation", tags=["moderation"]
+    )
+    app.include_router(
+        document_summary_routes.router,
+        prefix="/document-summaries",
+        tags=["document-summaries"],
     )
     logger.info("User module enabled (USER_MODULE=%s)", USER_MODULE_MODE)
 

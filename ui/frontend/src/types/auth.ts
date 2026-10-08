@@ -48,12 +48,26 @@ export interface SearchSettings {
 }
 
 /**
+ * Team defaults for document summaries generated in the app (Documents
+ * screen). Unset keys fall back to the data source's config; they never apply
+ * to summaries written by the pipeline.
+ */
+export interface DocumentSummaryDefaults {
+  /** 'map_reduce' or 'single_prompt'. */
+  docSummaryMode?: string;
+  /** Section types whose text is summarised. */
+  docSummarySectionTypes?: string[];
+  /** The summary prompt (what the summary must contain). */
+  docSummaryPrompt?: string;
+}
+
+/**
  * The full /users/me/effective-settings payload: search settings plus the
  * per-group feature-tab visibility/labels (merged across the user's groups by
  * the backend; see components/layout/tabConfig.ts). Kept separate from
  * SearchSettings so `tabs` doesn't leak into the search-defaults setters.
  */
-export interface EffectiveSettings extends SearchSettings {
+export interface EffectiveSettings extends SearchSettings, DocumentSummaryDefaults {
   tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
 }
 
@@ -65,7 +79,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: SearchSettings | null;
+  search_settings?: (SearchSettings & DocumentSummaryDefaults) | null;
   summary_prompt?: string | null;
 }
 

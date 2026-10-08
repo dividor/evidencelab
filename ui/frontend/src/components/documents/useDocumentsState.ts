@@ -4,6 +4,9 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { Facets } from '../../types/api';
+import type { SavedSummary } from './summary/documentSummaryApi';
+import { docKey } from './summary/useDocumentSelection';
+import { summaryProvenance } from './summary/summaryProvenance';
 import { StatsData } from '../../types/documents';
 import {
   ChartView,
@@ -13,6 +16,7 @@ import {
   getInitialChartView,
   getInitialFilterText,
   getInitialPage,
+  getInitialPageSize,
   sortDocuments,
   useDebouncedFilterText,
   useDocumentsInitialLoad,
@@ -100,6 +104,8 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const [selectedLogsDocId, setSelectedLogsDocId] = useState<string>('');
   const [selectedLogsDocTitle, setSelectedLogsDocTitle] = useState<string>('');
   const [reprocessingDocId, setReprocessingDocId] = useState<string | null>(null);
+  // A document whose summary was set in the app: Reprocess asks whether to keep it.
+  const [reprocessChoiceDoc, setReprocessChoiceDoc] = useState<any>(null);
   const [moderatingDocId, setModeratingDocId] = useState<string | null>(null);
   const { user } = useAuth();
   // Superusers see hidden (moderated) documents and can hide or restore them.
@@ -114,7 +120,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const [currentPage, setCurrentPage] = useState<number>(getInitialPage);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [totalCount, setTotalCount] = useState<number>(0);
-  const [pageSize] = useState<number>(20);
+  const [pageSize, setPageSize] = useState<number>(getInitialPageSize);
   const [loadingTable, setLoadingTable] = useState<boolean>(true);
   const [titleFacets, setTitleFacets] = useState<Array<{ value: string; count: number }>>([]);
 
@@ -310,15 +316,57 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     setExpandedChunks(new Set());
   };
 
-  const handleReprocess = async (doc: any) => {
+  const runReprocess = async (doc: any, replaceSummary: boolean) => {
     await reprocessDocument({
       doc,
       dataSource,
       reprocessingDocId,
       setReprocessingDocId,
       onRefresh: loadDocuments,
+      replaceSummary,
     });
   };
+
+  const handleReprocess = async (doc: any) => {
+    if (doc.summary_user_set) {
+      setReprocessChoiceDoc(doc);
+      return;
+    }
+    await runReprocess(doc, false);
+  };
+
+  /** Answer to "keep the summary set in the app?"; null cancels the reprocess. */
+  const handleReprocessChoice = async (replaceSummary: boolean | null) => {
+    const doc = reprocessChoiceDoc;
+    setReprocessChoiceDoc(null);
+    if (doc && replaceSummary !== null) {
+      await runReprocess(doc, replaceSummary);
+    }
+  };
+
+  /** Show a summary saved in the app without reloading the page. */
+  const applySavedSummary = useCallback(
+    (saved: SavedSummary) => {
+      setAllDocuments((prev) =>
+        prev.map((d) =>
+          docKey(d) === saved.doc_id
+            ? {
+                ...d,
+                full_summary: saved.full_summary,
+                summarization_method: saved.summarization_method,
+                summary_user_set: saved.summary_user_set,
+                summary_updated_by: saved.summary_updated_by,
+                summary_updated_at: saved.summary_updated_at,
+              }
+            : d,
+        ),
+      );
+      if (summaryModalOpen && selectedSummaryDocId === saved.doc_id) {
+        setSelectedSummary(saved.full_summary);
+      }
+    },
+    [summaryModalOpen, selectedSummaryDocId],
+  );
 
   const handleToggleHidden = async (doc: any) => {
     const hiding = !doc.hidden;
@@ -494,7 +542,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const getSortedAndFilteredDocuments = () => allDocuments;
 
   useDocumentsInitialLoad(dataSource, loadData, loadTitleFacets);
-  useDocumentsReload(currentPage, selectedCategory, columnFilters, loadDocuments);
+  useDocumentsReload(currentPage, selectedCategory, columnFilters, loadDocuments, pageSize);
   useFilterPopoverClose(activeFilterColumn, handleCloseFilterPopover);
   const handleDebouncedFilterChange = useCallback(() => {
     setCurrentPage(1);
@@ -502,9 +550,24 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   }, [loadDocuments]);
 
   useDebouncedFilterText(filterText, loading, handleDebouncedFilterChange);
-  useSyncDocumentsUrlParams(currentPage, filterText, chartView);
+  useSyncDocumentsUrlParams(currentPage, filterText, chartView, pageSize);
+
+  /** A new page size starts again from the first page. */
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+  };
+
+  // The open summary's provenance, kept current when it is saved.
+  const selectedSummaryProvenance = summaryProvenance(
+    allDocuments.find((d) => selectedSummaryDocId && docKey(d) === selectedSummaryDocId),
+  );
 
   return {
+    selectedSummaryProvenance,
+    reprocessChoiceDoc,
+    handleReprocessChoice,
+    applySavedSummary,
     stats,
     loading,
     error,
@@ -602,6 +665,7 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     totalPages,
     totalCount,
     pageSize,
+    handlePageSizeChange,
     loadingTable,
     tableContainerRef,
     setCurrentPage,

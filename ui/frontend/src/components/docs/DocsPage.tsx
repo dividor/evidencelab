@@ -250,6 +250,13 @@ const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
         const id = slugify(text);
         return <h3 id={id} {...props}>{children}</h3>;
       },
+      // Level-4 headings get ids too, so in-page links to them resolve; they
+      // stay out of the on-this-page list, which covers levels 2 and 3.
+      h4: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
+        const text = String(children);
+        const id = slugify(text);
+        return <h4 id={id} {...props}>{children}</h4>;
+      },
       img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
         const link = parseDocLink(src, activePath);
         const resolved = link.kind === 'image' ? withBase('/docs/' + link.path) : src;

@@ -1,29 +1,28 @@
-"""Brief Central routes — briefs, sharing, templates and voice profiles.
+"""Brief Central routes — briefs, their sharing and comments.
 
 Briefs are user-owned. Sharing is viewer-only: a share row grants read access
 to a single user (matched by email) or to every member of a group (matched by
-group name). Templates and voice profiles are private to their owner.
+group name); see services/brief_sharing.py. Templates and voice & tone
+profiles live in routes/brief_library.py.
+
+Administrators (superusers) can list every brief, open any brief read-only and
+copy any brief into their own. Opening or copying a brief they neither own nor
+were sent is recorded in the audit log.
 """
 
+import copy
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
-from ui.backend.auth.models import (
-    Brief,
-    BriefComment,
-    BriefShare,
-    BriefTemplate,
-    User,
-    UserGroup,
-    UserGroupMember,
-    VoiceProfile,
-)
+from ui.backend.auth.models import Brief, BriefComment, BriefShare, User, UserGroup
 from ui.backend.auth.schemas import (
     BriefCommentCreate,
     BriefCommentRead,
@@ -32,16 +31,17 @@ from ui.backend.auth.schemas import (
     BriefListItem,
     BriefRead,
     BriefShareCreate,
-    BriefShareTarget,
-    BriefTemplateCreate,
-    BriefTemplateRead,
-    BriefTemplateUpdate,
     BriefUpdate,
-    VoiceProfileCreate,
-    VoiceProfileRead,
-    VoiceProfileUpdate,
 )
-from ui.backend.auth.users import current_active_user
+from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.services.brief_sharing import (
+    add_share,
+    owner_name,
+    remove_share,
+    share_targets,
+    shared_with,
+    user_group_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,26 +52,19 @@ SHARE_SUGGESTION_LIMIT = 8
 router = APIRouter()
 
 _BRIEF_NOT_FOUND = "Brief not found"
-_TEMPLATE_NOT_FOUND = "Template not found"
-_PROFILE_NOT_FOUND = "Voice profile not found"
+EVENT_BRIEF_ADMIN_VIEWED = "brief_admin_viewed"
+EVENT_BRIEF_ADMIN_COPIED = "brief_admin_copied"
+_COPY_SUFFIX = " (copy)"
+_TITLE_MAX = 500
+
+
+def _client_ip(request: Request) -> Optional[str]:
+    return request.client.host if request.client else None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _owner_name(user: User) -> str:
-    """Display name for a brief owner."""
-    return user.full_name or user.email
-
-
-async def _user_group_ids(session: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
-    """IDs of every group the user belongs to."""
-    result = await session.execute(
-        select(UserGroupMember.group_id).where(UserGroupMember.user_id == user_id)
-    )
-    return [row[0] for row in result.all()]
 
 
 async def _get_owned_brief(
@@ -87,10 +80,25 @@ async def _get_owned_brief(
     return brief
 
 
+async def _is_shared_with(
+    session: AsyncSession, brief_id: uuid.UUID, user: User
+) -> bool:
+    """True when the brief is shared with the user or one of their groups."""
+    group_ids = await user_group_ids(session, user.id)
+    share_rows = await session.execute(
+        select(BriefShare.id).where(
+            BriefShare.brief_id == brief_id,
+            shared_with(BriefShare, user.id, group_ids),
+        )
+    )
+    return share_rows.scalars().first() is not None
+
+
 async def _get_viewable_brief(
     session: AsyncSession, brief_id: uuid.UUID, user: User
 ) -> tuple[Brief, bool]:
-    """Load a brief the user owns or was granted view access to.
+    """Load a brief the user owns, was granted view access to, or — for an
+    administrator — any brief, read-only.
 
     Returns (brief, can_edit). Raises 404 when the brief does not exist or the
     user has no access — the two cases are indistinguishable on purpose.
@@ -101,51 +109,30 @@ async def _get_viewable_brief(
         raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
     if brief.user_id == user.id:
         return brief, True
-    group_ids = await _user_group_ids(session, user.id)
-    condition = BriefShare.shared_user_id == user.id
-    if group_ids:
-        condition = condition | BriefShare.group_id.in_(group_ids)
-    share_rows = await session.execute(
-        select(BriefShare.id).where(BriefShare.brief_id == brief_id, condition)
-    )
-    if not share_rows.scalars().first():
-        raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
-    return brief, False
+    if user.is_superuser or await _is_shared_with(session, brief_id, user):
+        return brief, False
+    raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
 
 
-async def _share_targets(
-    session: AsyncSession, brief_id: uuid.UUID
-) -> list[BriefShareTarget]:
-    """Resolve share rows to display targets."""
-    result = await session.execute(
-        select(BriefShare).where(BriefShare.brief_id == brief_id)
+async def _audit_admin_access(
+    session: AsyncSession, request: Request, brief: Brief, user: User, event: str
+) -> None:
+    """Record an administrator reaching a brief they neither own nor were sent."""
+    if not user.is_superuser or brief.user_id == user.id:
+        return
+    if await _is_shared_with(session, brief.id, user):
+        return
+    await write_audit_event(
+        event,
+        user_id=user.id,
+        user_email=user.email,
+        ip_address=_client_ip(request),
+        details={
+            "brief_id": str(brief.id),
+            "owner_id": str(brief.user_id),
+            "title": brief.title,
+        },
     )
-    targets: list[BriefShareTarget] = []
-    for share in result.scalars().all():
-        if share.shared_user_id:
-            user_row = await session.get(User, share.shared_user_id)
-            if user_row:
-                targets.append(
-                    BriefShareTarget(
-                        id=share.id,
-                        name=user_row.full_name or user_row.email,
-                        kind=user_row.email,
-                        is_group=False,
-                    )
-                )
-        elif share.group_id:
-            group = await session.get(UserGroup, share.group_id)
-            if group:
-                member_count = len(group.members)
-                targets.append(
-                    BriefShareTarget(
-                        id=share.id,
-                        name=group.name,
-                        kind=f"Group · {member_count} members",
-                        is_group=True,
-                    )
-                )
-    return targets
 
 
 async def _to_brief_read(
@@ -161,16 +148,23 @@ async def _to_brief_read(
         data_source=brief.data_source,
         voice_profile_id=brief.voice_profile_id,
         content=brief.content,
-        owner_name=_owner_name(owner) if owner else None,
+        owner_name=owner_name(owner) if owner else None,
         can_edit=can_edit,
-        shared_with=await _share_targets(session, brief.id) if can_edit else [],
+        shared_with=(
+            await share_targets(session, BriefShare, BriefShare.brief_id, brief.id)
+            if can_edit
+            else []
+        ),
         created_at=brief.created_at,
         updated_at=brief.updated_at,
     )
 
 
 def _to_list_item(
-    brief: Brief, owner_name: str | None, share_count: int
+    brief: Brief,
+    owner_name: str | None,
+    share_count: int,
+    owner_email: str | None = None,
 ) -> BriefListItem:
     """Compact card model for list views."""
     content = brief.content or {}
@@ -184,6 +178,7 @@ def _to_list_item(
         section_count=len(sections),
         source_count=content.get("sourceCount") or 0,
         owner_name=owner_name,
+        owner_email=owner_email,
         share_count=share_count,
         created_at=brief.created_at,
         updated_at=brief.updated_at,
@@ -241,21 +236,52 @@ async def list_shared_briefs(
     session: AsyncSession = Depends(get_async_session),
 ):
     """List briefs shared with the current user (directly or via a group)."""
-    group_ids = await _user_group_ids(session, user.id)
-    condition = BriefShare.shared_user_id == user.id
-    if group_ids:
-        condition = condition | BriefShare.group_id.in_(group_ids)
+    group_ids = await user_group_ids(session, user.id)
     result = await session.execute(
         select(Brief)
         .join(BriefShare, BriefShare.brief_id == Brief.id)
-        .where(condition, Brief.user_id != user.id)
+        .where(shared_with(BriefShare, user.id, group_ids), Brief.user_id != user.id)
         .order_by(Brief.updated_at.desc())
         .distinct()
     )
     items = []
     for brief in result.scalars().all():
         owner = await session.get(User, brief.user_id)
-        items.append(_to_list_item(brief, _owner_name(owner) if owner else None, 0))
+        items.append(_to_list_item(brief, owner_name(owner) if owner else None, 0))
+    return items
+
+
+@router.get("/briefs/all", tags=["briefs"])
+async def list_all_briefs(
+    user: User = Depends(current_superuser),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Every brief in the system, newest first, with its owner (admin only)."""
+    result = await session.execute(select(Brief).order_by(Brief.updated_at.desc()))
+    briefs = result.scalars().all()
+    owner_rows = await session.execute(
+        select(User).where(User.id.in_({b.user_id for b in briefs}))
+    )
+    # unique(): User eager-loads collections (oauth accounts), which
+    # SQLAlchemy requires be de-duplicated before iterating.
+    owners = {u.id: u for u in owner_rows.scalars().unique().all()}
+    counts = await session.execute(
+        select(BriefShare.brief_id, func.count(BriefShare.id))
+        .where(BriefShare.brief_id.in_([b.id for b in briefs]))
+        .group_by(BriefShare.brief_id)
+    )
+    count_map: dict[uuid.UUID, int] = {row[0]: row[1] for row in counts.all()}
+    items = []
+    for brief in briefs:
+        owner = owners.get(brief.user_id)
+        items.append(
+            _to_list_item(
+                brief,
+                owner_name(owner) if owner else None,
+                count_map.get(brief.id, 0),
+                owner.email if owner else None,
+            )
+        )
     return items
 
 
@@ -309,12 +335,47 @@ async def search_share_targets(
 @router.get("/briefs/{brief_id}", response_model=BriefRead, tags=["briefs"])
 async def get_brief(
     brief_id: uuid.UUID,
+    request: Request,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Load a single brief the user owns or can view."""
+    """Load a single brief the user owns or can view (admins: any, read-only)."""
     brief, can_edit = await _get_viewable_brief(session, brief_id, user)
+    await _audit_admin_access(session, request, brief, user, EVENT_BRIEF_ADMIN_VIEWED)
     return await _to_brief_read(session, brief, can_edit)
+
+
+@router.post("/briefs/{brief_id}/copy", response_model=BriefRead, tags=["briefs"])
+async def copy_brief(
+    brief_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Copy a brief the user can open into a new one they own.
+
+    That is their own brief, one shared with them (directly or through a
+    group), or, for administrators, any brief. The copy starts private: shares
+    and comments stay with the original, and it gets its own activity record.
+    """
+    source, _ = await _get_viewable_brief(session, brief_id, user)
+    title = f"{source.title}{_COPY_SUFFIX}"[:_TITLE_MAX]
+    content = copy.deepcopy(source.content or {})
+    content.pop("activityId", None)
+    content["title"] = title
+    brief = Brief(
+        user_id=user.id,
+        title=title,
+        query=source.query,
+        data_source=source.data_source,
+        voice_profile_id=source.voice_profile_id,
+        content=content,
+    )
+    session.add(brief)
+    await session.commit()
+    await session.refresh(brief)
+    await _audit_admin_access(session, request, source, user, EVENT_BRIEF_ADMIN_COPIED)
+    return await _to_brief_read(session, brief, can_edit=True)
 
 
 @router.put("/briefs/{brief_id}", response_model=BriefRead, tags=["briefs"])
@@ -356,33 +417,6 @@ async def delete_brief(
 # ---------------------------------------------------------------------------
 
 
-async def _resolve_share_target(
-    session: AsyncSession, target: str
-) -> tuple[uuid.UUID | None, uuid.UUID | None]:
-    """Resolve a share target string to (user_id, group_id).
-
-    An address containing "@" is matched against user emails; anything else is
-    matched against group names. Unknown targets raise 404.
-    """
-    if "@" in target:
-        result = await session.execute(
-            select(User).where(func.lower(User.email) == target.lower())
-        )
-        matched_user = result.scalars().first()
-        if not matched_user:
-            raise HTTPException(
-                status_code=404, detail="No user with that email address"
-            )
-        return matched_user.id, None
-    result = await session.execute(
-        select(UserGroup).where(func.lower(UserGroup.name) == target.lower())
-    )
-    group = result.scalars().first()
-    if not group:
-        raise HTTPException(status_code=404, detail="No group with that name")
-    return None, group.id
-
-
 @router.post("/briefs/{brief_id}/shares", response_model=BriefRead, tags=["briefs"])
 async def add_brief_share(
     brief_id: uuid.UUID,
@@ -392,22 +426,9 @@ async def add_brief_share(
 ):
     """Grant viewer access to a user (by email) or group (by name)."""
     brief = await _get_owned_brief(session, brief_id, user)
-    shared_user_id, group_id = await _resolve_share_target(session, body.target.strip())
-    if shared_user_id == user.id:
-        raise HTTPException(status_code=400, detail="You already own this brief")
-    existing = await session.execute(
-        select(BriefShare).where(
-            BriefShare.brief_id == brief.id,
-            BriefShare.shared_user_id == shared_user_id,
-            BriefShare.group_id == group_id,
-        )
+    await add_share(
+        session, BriefShare, BriefShare.brief_id, brief.id, user, body.target, "brief"
     )
-    if existing.scalars().first():
-        raise HTTPException(status_code=409, detail="Already shared")
-    session.add(
-        BriefShare(brief_id=brief.id, shared_user_id=shared_user_id, group_id=group_id)
-    )
-    await session.commit()
     await session.refresh(brief)
     return await _to_brief_read(session, brief, can_edit=True)
 
@@ -421,221 +442,7 @@ async def remove_brief_share(
 ):
     """Revoke a share (owner only)."""
     brief = await _get_owned_brief(session, brief_id, user)
-    result = await session.execute(
-        select(BriefShare).where(
-            BriefShare.id == share_id, BriefShare.brief_id == brief.id
-        )
-    )
-    share = result.scalars().first()
-    if not share:
-        raise HTTPException(status_code=404, detail="Share not found")
-    await session.delete(share)
-    await session.commit()
-
-
-# ---------------------------------------------------------------------------
-# Templates
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/brief-templates/", response_model=BriefTemplateRead, tags=["brief-templates"]
-)
-async def create_template(
-    body: BriefTemplateCreate,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Create a brief template."""
-    template = BriefTemplate(
-        user_id=user.id,
-        name=body.name,
-        description=body.description,
-        headings=[h.model_dump() for h in body.headings],
-        with_text=body.with_text,
-    )
-    session.add(template)
-    await session.commit()
-    await session.refresh(template)
-    return BriefTemplateRead.model_validate(template)
-
-
-@router.get("/brief-templates/", tags=["brief-templates"])
-async def list_templates(
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """List the current user's templates."""
-    result = await session.execute(
-        select(BriefTemplate)
-        .where(BriefTemplate.user_id == user.id)
-        .order_by(BriefTemplate.updated_at.desc())
-    )
-    return [BriefTemplateRead.model_validate(t) for t in result.scalars().all()]
-
-
-async def _get_owned_template(
-    session: AsyncSession, template_id: uuid.UUID, user: User
-) -> BriefTemplate:
-    """Load a template owned by *user* or raise 404."""
-    result = await session.execute(
-        select(BriefTemplate).where(
-            BriefTemplate.id == template_id, BriefTemplate.user_id == user.id
-        )
-    )
-    template = result.scalars().first()
-    if not template:
-        raise HTTPException(status_code=404, detail=_TEMPLATE_NOT_FOUND)
-    return template
-
-
-@router.put(
-    "/brief-templates/{template_id}",
-    response_model=BriefTemplateRead,
-    tags=["brief-templates"],
-)
-async def update_template(
-    template_id: uuid.UUID,
-    body: BriefTemplateUpdate,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Update a template (owner only)."""
-    template = await _get_owned_template(session, template_id, user)
-    if body.name is not None:
-        template.name = body.name
-    if body.description is not None:
-        template.description = body.description
-    if body.headings is not None:
-        template.headings = [h.model_dump() for h in body.headings]
-    if body.with_text is not None:
-        template.with_text = body.with_text
-    await session.commit()
-    await session.refresh(template)
-    return BriefTemplateRead.model_validate(template)
-
-
-@router.post(
-    "/brief-templates/{template_id}/use",
-    response_model=BriefTemplateRead,
-    tags=["brief-templates"],
-)
-async def use_template(
-    template_id: uuid.UUID,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Record one use of a template and return it."""
-    template = await _get_owned_template(session, template_id, user)
-    template.use_count = (template.use_count or 0) + 1
-    await session.commit()
-    await session.refresh(template)
-    return BriefTemplateRead.model_validate(template)
-
-
-@router.delete(
-    "/brief-templates/{template_id}", status_code=204, tags=["brief-templates"]
-)
-async def delete_template(
-    template_id: uuid.UUID,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Delete a template (owner only)."""
-    template = await _get_owned_template(session, template_id, user)
-    await session.delete(template)
-    await session.commit()
-
-
-# ---------------------------------------------------------------------------
-# Voice profiles
-# ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/voice-profiles/", response_model=VoiceProfileRead, tags=["voice-profiles"]
-)
-async def create_voice_profile(
-    body: VoiceProfileCreate,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Create a voice & tone profile."""
-    profile = VoiceProfile(
-        user_id=user.id,
-        name=body.name,
-        description=body.description,
-        instructions=body.instructions,
-    )
-    session.add(profile)
-    await session.commit()
-    await session.refresh(profile)
-    return VoiceProfileRead.model_validate(profile)
-
-
-@router.get("/voice-profiles/", tags=["voice-profiles"])
-async def list_voice_profiles(
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """List the current user's voice profiles."""
-    result = await session.execute(
-        select(VoiceProfile)
-        .where(VoiceProfile.user_id == user.id)
-        .order_by(VoiceProfile.created_at.asc())
-    )
-    return [VoiceProfileRead.model_validate(p) for p in result.scalars().all()]
-
-
-async def _get_owned_profile(
-    session: AsyncSession, profile_id: uuid.UUID, user: User
-) -> VoiceProfile:
-    """Load a voice profile owned by *user* or raise 404."""
-    result = await session.execute(
-        select(VoiceProfile).where(
-            VoiceProfile.id == profile_id, VoiceProfile.user_id == user.id
-        )
-    )
-    profile = result.scalars().first()
-    if not profile:
-        raise HTTPException(status_code=404, detail=_PROFILE_NOT_FOUND)
-    return profile
-
-
-@router.put(
-    "/voice-profiles/{profile_id}",
-    response_model=VoiceProfileRead,
-    tags=["voice-profiles"],
-)
-async def update_voice_profile(
-    profile_id: uuid.UUID,
-    body: VoiceProfileUpdate,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Update a voice profile (owner only)."""
-    profile = await _get_owned_profile(session, profile_id, user)
-    if body.name is not None:
-        profile.name = body.name
-    if body.description is not None:
-        profile.description = body.description
-    if body.instructions is not None:
-        profile.instructions = body.instructions
-    await session.commit()
-    await session.refresh(profile)
-    return VoiceProfileRead.model_validate(profile)
-
-
-@router.delete("/voice-profiles/{profile_id}", status_code=204, tags=["voice-profiles"])
-async def delete_voice_profile(
-    profile_id: uuid.UUID,
-    user: User = Depends(current_active_user),
-    session: AsyncSession = Depends(get_async_session),
-):
-    """Delete a voice profile (owner only)."""
-    profile = await _get_owned_profile(session, profile_id, user)
-    await session.delete(profile)
-    await session.commit()
+    await remove_share(session, BriefShare, BriefShare.brief_id, brief.id, share_id)
 
 
 # ---------------------------------------------------------------------------

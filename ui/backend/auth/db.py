@@ -19,7 +19,19 @@ DATABASE_URL = (
     f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DBNAME}"
 )
 
-engine = create_async_engine(DATABASE_URL)
+# SQLAlchemy's default pool is 5 connections with 10 overflow. Requests queue
+# (up to pool_timeout) rather than failing when it is full, so the default
+# shows up as latency under load rather than errors. Size it from the
+# environment so a deployment can match its request concurrency.
+AUTH_DB_POOL_SIZE = int(os.environ.get("AUTH_DB_POOL_SIZE", "10"))
+AUTH_DB_MAX_OVERFLOW = int(os.environ.get("AUTH_DB_MAX_OVERFLOW", "20"))
+
+engine = create_async_engine(
+    DATABASE_URL,
+    pool_size=AUTH_DB_POOL_SIZE,
+    max_overflow=AUTH_DB_MAX_OVERFLOW,
+    pool_pre_ping=True,
+)
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 

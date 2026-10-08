@@ -46,7 +46,7 @@ from ui.backend.utils.filter_helpers import (
 )
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
-MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "2"))
+MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "8"))
 search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
 
@@ -534,7 +534,7 @@ def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]
 
 @router.get("/search/titles")
 @limiter.limit(RATE_LIMIT_SEARCH)
-async def perform_title_search(
+def perform_title_search(
     request: Request,
     q: str = Query(..., min_length=1, description="Search query string"),
     limit: int = 50,
@@ -550,6 +550,9 @@ async def perform_title_search(
     Search specifically for document titles using hybrid search.
     Returns matching document metadata.
     """
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     filters = {
         "organization": organization,
         "published_year": published_year,
