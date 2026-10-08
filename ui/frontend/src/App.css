@@ -12854,6 +12854,10 @@ button.doc-link:hover {
   color: var(--brand-primary, #5b8fa8);
   cursor: pointer;
   text-decoration: underline;
+  /* Inside a column-flex label the button would stretch to full width and
+     centre its text (a button default); keep it left-aligned like the rest. */
+  text-align: left;
+  align-self: flex-start;
 }
 .testing-link-btn:disabled {
   color: var(--brand-text-tertiary, #777);
