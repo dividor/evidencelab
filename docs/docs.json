@@ -34,6 +34,7 @@
         { "title": "TOC Validator", "path": "admin/toc-validator.md" },
         { "title": "API", "path": "admin/api-keys.md" },
         { "title": "System Monitoring", "path": "admin/system-monitoring.md" },
+        { "title": "Performance & Scaling", "path": "admin/performance-and-scaling.md" },
         { "title": "MCP Server", "path": "admin/mcp-server.md" },
         { "title": "A2A Server", "path": "admin/a2a-server.md" },
         { "title": "Customization & Branding", "path": "admin/customization.md" },
