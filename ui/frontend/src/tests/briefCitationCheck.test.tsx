@@ -145,7 +145,14 @@ describe('BriefCheckDetail', () => {
     fireEvent.click(screen.getByLabelText('Quote not in source'));
     expect(screen.getByText('Showing 1 of 3 passages.', { exact: false })).toBeInTheDocument();
 
+    // Each row carries a caret that flips when the passage is expanded.
+    expect(screen.getByRole('columnheader', { name: 'expand' })).toBeInTheDocument();
+    const girlsRow = screen.getByText(GIRLS).closest('tr') as HTMLTableRowElement;
+    expect(girlsRow).toHaveAttribute('aria-expanded', 'false');
+    expect(girlsRow).toHaveTextContent('▸');
     fireEvent.click(screen.getByText(GIRLS));
+    expect(girlsRow).toHaveAttribute('aria-expanded', 'true');
+    expect(girlsRow).toHaveTextContent('▾');
     expect(screen.getByText('Excerpt does not mention girls.')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /copy, word for word/ })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'Quotes verified' })).toHaveAttribute('title', expect.stringContaining('Found / given'));
