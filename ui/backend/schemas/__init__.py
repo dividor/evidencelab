@@ -164,6 +164,11 @@ class LLMConfig(BaseModel):
 
 
 class ModelComboConfig(BaseModel):
+    # Marks the combo a visitor starts on. config.json already carries this
+    # flag and pipeline.db.get_default_model_combo() honours it, but the
+    # response model dropped it, so the UI could not see it and fell back to
+    # whichever combo came first in the file.
+    default: Optional[bool] = None
     embedding_model: str
     embedding_model_id: Optional[str] = None
     embedding_model_location: Optional[str] = None

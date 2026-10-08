@@ -112,6 +112,8 @@ export interface ModelConfig {
 }
 
 export interface ModelComboConfig {
+  /** Marks the combo a visitor starts on (config.json ui_model_combos.<name>.default). */
+  default?: boolean;
   embedding_model: string;
   embedding_model_id?: string;
   embedding_model_location?: string;
