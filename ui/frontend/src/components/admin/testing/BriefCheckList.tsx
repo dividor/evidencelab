@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../../config';
-import type { BriefCheckCandidate, BriefCitationCheck } from '../../../types/testing';
+import type { BriefAccess, BriefCheckCandidate, BriefCitationCheck } from '../../../types/testing';
 import { formatPercent, formatTimestamp } from './testingFormat';
 import { VERDICT_LABEL } from './citationCheckFormat';
 
-// The "Briefs" sub-view: pick one of your own or shared briefs and run the
-// citation check on it. Lists the latest check per brief; opening a brief
-// shows its check history.
+// The "Briefs" sub-view: pick a brief and run the citation check on it. Admins
+// see every user's brief, not only their own and the ones shared with them.
+// Lists the latest check per brief; opening a brief shows its check history.
 
 interface BriefCheckListProps {
   // The model combo selected at the top of the page; null = the app default.
@@ -16,7 +16,13 @@ interface BriefCheckListProps {
 }
 
 const POLL_INTERVAL_MS = 2000;
-type Scope = 'all' | 'mine' | 'shared';
+type Scope = 'all' | BriefAccess;
+const SCOPES: { value: Scope; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'own', label: 'Mine' },
+  { value: 'shared', label: 'Shared with me' },
+  { value: 'other', label: 'Other users' },
+];
 
 const isActive = (c?: BriefCitationCheck | null): boolean =>
   !!c && (c.status === 'pending' || c.status === 'running');
@@ -91,7 +97,7 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
   const needle = search.trim().toLowerCase();
   const visible = briefs.filter(
     (b) =>
-      (scope === 'all' || (scope === 'shared') === b.shared) &&
+      (scope === 'all' || scope === b.access) &&
       (!needle || b.title.toLowerCase().includes(needle)),
   );
 
@@ -114,14 +120,14 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
       </p>
       <div className="testing-controls">
         <div className="testing-scope-toggle" role="group" aria-label="Brief scope">
-          {(['all', 'mine', 'shared'] as Scope[]).map((s) => (
+          {SCOPES.map((s) => (
             <button
-              key={s}
-              className={`btn-sm ${scope === s ? 'btn-primary' : ''}`}
-              aria-pressed={scope === s}
-              onClick={() => setScope(s)}
+              key={s.value}
+              className={`btn-sm ${scope === s.value ? 'btn-primary' : ''}`}
+              aria-pressed={scope === s.value}
+              onClick={() => setScope(s.value)}
             >
-              {s === 'all' ? 'All' : s === 'mine' ? 'Mine' : 'Shared with me'}
+              {s.label}
             </button>
           ))}
         </div>
@@ -165,7 +171,7 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                 >
                   <td>
                     {b.title}
-                    {b.shared && <span className="testing-config-badge">shared</span>}
+                    {b.access === 'shared' && <span className="testing-config-badge">shared</span>}
                   </td>
                   <td>{b.owner_name}</td>
                   <td>{b.data_source || '—'}</td>
