@@ -45,6 +45,7 @@ import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
 import { CookieConsent } from './components/CookieConsent';
 import { getAnalyticsConsent } from './utils/analytics';
+import { resolveDefaultModelCombo } from './utils/defaultModelCombo';
 import { applyDeploymentFacts, contactEmail } from './utils/deploymentText';
 import FeedbackButton from './components/feedback/FeedbackButton';
 import SavedResearchModal from './components/SavedResearchModal';
@@ -525,7 +526,7 @@ function App() {
   const availableDomains = Object.keys(datasourcesConfig);
 
   const availableModelCombos = Object.keys(modelCombos);
-  const defaultModelCombo = availableModelCombos[0] || '';
+  const defaultModelCombo = resolveDefaultModelCombo(availableModelCombos, modelCombos);
   const resolvedModelCombo = (
     selectedModelCombo && availableModelCombos.includes(selectedModelCombo)
   )
@@ -573,11 +574,12 @@ function App() {
       return;
     }
     if (!selectedModelCombo || !availableModelCombos.includes(selectedModelCombo)) {
-      setSelectedModelCombo(availableModelCombos[0]);
+      setSelectedModelCombo(resolveDefaultModelCombo(availableModelCombos, modelCombos));
     }
   }, [
     modelCombosLoading,
     availableModelCombos,
+    modelCombos,
     selectedModelCombo,
     initialSearchState.modelCombo,
   ]);

@@ -103,6 +103,7 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
 {
   "ui_model_combos": {
     "Azure Foundry": {
+      "default": true,
       "embedding_model": "azure_small",
       "sparse_model": "bm25",
       "summarization_model": {
@@ -120,6 +121,28 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
   }
 }
 ```
+
+### Choosing which combo users start on
+
+`"default": true` marks the combo a visitor starts on. It is optional: with no
+combo flagged, the first one in the file is used, so the order of
+`ui_model_combos` decides it. Flagging one explicitly means reordering the file
+no longer changes which models people get by default.
+
+Flag at most one. If several are flagged the first of them wins, and if the
+flagged combo's embedding model is not indexed for the datasource being viewed
+— so it does not appear in the **Models** dropdown for that datasource — the
+first combo that *is* available is used instead.
+
+The same flag decides the combo used by the evaluation harness and the A2A
+server when a request does not name one, so the whole system starts from the
+same place.
+
+> **Hiding the picker.** Removing the **Models** dropdown is a branding change,
+> not a setting: a deployment that offers one combo can hide it with CSS in its
+> `CUSTOMIZE_ASSETS` overlay (see [Customization & Branding](customization.md)).
+> Hiding it does not restrict the combos — the API still accepts any of them —
+> so a single-combo deployment should also list only that combo here.
 
 | Field | Type | Description |
 |-------|------|-------------|
