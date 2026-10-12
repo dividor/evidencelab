@@ -162,6 +162,7 @@ const Filters: React.FC<{
         Quote not in source
       </label>
       <select
+        className="testing-filter-select"
         aria-label="Section"
         value={filters.section}
         onChange={(e) => onChange({ ...filters, section: e.target.value })}
@@ -295,7 +296,15 @@ const PassageRow: React.FC<{ passage: BriefCitationCheckPassage; onOpen?: OpenSo
   const [open, setOpen] = useState(false);
   return (
     <>
-      <tr className="testing-clickable-row" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <tr
+        className={`testing-clickable-row${open ? ' testing-row-expanded' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title={open ? 'Hide details' : 'Show the judge\'s reasoning and the cited excerpts'}
+      >
+        <td className="testing-result-caret" aria-hidden>
+          {open ? '▾' : '▸'}
+        </td>
         <td>{passage.passage_id}</td>
         <td>{passage.brief_section}</td>
         <td className="testing-check-passage">{passage.passage}</td>
@@ -320,7 +329,7 @@ const PassageRow: React.FC<{ passage: BriefCitationCheckPassage; onOpen?: OpenSo
       </tr>
       {open && (
         <tr className="testing-check-detail-row">
-          <td colSpan={7}>
+          <td colSpan={COLUMNS.length + 1}>
             <PassageDetail passage={passage} onOpen={onOpen} />
           </td>
         </tr>
@@ -474,6 +483,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
           <table className="admin-table testing-check-table">
             <thead>
               <tr>
+                <th aria-label="expand" />
                 {COLUMNS.map((c) => (
                   <th key={c.key} className="testing-has-help" title={COLUMN_HELP[c.key]}>
                     {c.label}
