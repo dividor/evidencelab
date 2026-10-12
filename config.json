@@ -158,10 +158,10 @@
     }
   },
   "supported_llms": {
-    "qwen2.5-72b-instruct": {
-      "model": "Qwen/Qwen2.5-72B-Instruct",
+    "qwen3-235b-instruct": {
+      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
       "provider": "huggingface",
-      "inference_provider": "featherless-ai"
+      "inference_provider": "scaleway"
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",
@@ -237,21 +237,21 @@
       "embedding_model": "e5_large",
       "sparse_model": "bm25",
       "summarization_model": {
-        "model": "qwen2.5-72b-instruct",
+        "model": "qwen3-235b-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "semantic_highlighting_model": {
-        "model": "qwen2.5-72b-instruct",
+        "model": "qwen3-235b-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "assistant_model": {
-        "model": "qwen2.5-72b-instruct",
+        "model": "qwen3-235b-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
@@ -613,7 +613,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
+            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
             "provider": "huggingface",
             "temperature": 0.2,
             "max_tokens": 2000
@@ -627,7 +627,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
+            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
             "provider": "huggingface",
             "temperature": 0.0,
             "max_tokens": 4000
@@ -816,7 +816,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
+            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
             "provider": "huggingface",
             "temperature": 0.2,
             "max_tokens": 2000
@@ -830,7 +830,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
+            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
             "provider": "huggingface",
             "temperature": 0.0,
             "max_tokens": 4000
