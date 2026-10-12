@@ -148,7 +148,7 @@ class TestEnsureDemoDatasource:
         assert ds["pipeline"]["index"]["dense_models"] == ["e5_large"]
         assert (
             ds["pipeline"]["summarize"]["llm_model"]["model"]
-            == "Qwen/Qwen2.5-72B-Instruct"
+            == "Qwen/Qwen3-235B-A22B-Instruct-2507"
         )
         assert ds["pipeline"]["summarize"]["llm_model"]["provider"] == "huggingface"
 
@@ -212,7 +212,7 @@ class TestPromptProvider:
     def test_select_huggingface(self):
         with mock.patch("builtins.input", return_value="2"):
             result = demo.prompt_provider()
-        assert result["name"] == "Huggingface / Novita"
+        assert result["name"] == "Huggingface"
 
     def test_select_google(self):
         with mock.patch("builtins.input", return_value="3"):
@@ -223,6 +223,78 @@ class TestPromptProvider:
         with mock.patch("builtins.input", side_effect=["99", "abc", "1"]):
             result = demo.prompt_provider()
         assert result["name"] == "Azure Foundry"
+
+
+# ---------------------------------------------------------------------------
+# make_combo_default
+# ---------------------------------------------------------------------------
+class TestMakeComboDefault:
+    @pytest.fixture()
+    def config(self):
+        return {
+            "ui_model_combos": {
+                "Azure Foundry": {"default": True, "embedding_model": "azure_small"},
+                "Huggingface": {"embedding_model": "e5_large"},
+                "Google Vertex": {"embedding_model": "google_gemini_1536"},
+            }
+        }
+
+    def test_make_combo_default_when_other_combo_flagged_then_flag_moves(self, config):
+        changed = demo.make_combo_default(config, demo.PROVIDER_COMBOS[1])  # HF
+
+        combos = config["ui_model_combos"]
+        assert changed is True
+        assert combos["Huggingface"]["default"] is True
+        assert "default" not in combos["Azure Foundry"]
+        assert "default" not in combos["Google Vertex"]
+
+    def test_make_combo_default_when_already_default_then_unchanged(self, config):
+        changed = demo.make_combo_default(config, demo.PROVIDER_COMBOS[0])  # Azure
+
+        assert changed is False
+        assert config["ui_model_combos"]["Azure Foundry"]["default"] is True
+
+    def test_make_combo_default_when_combo_missing_then_exits(self, config):
+        del config["ui_model_combos"]["Huggingface"]
+
+        with pytest.raises(SystemExit):
+            demo.make_combo_default(config, demo.PROVIDER_COMBOS[1])
+
+    def test_provider_combo_names_match_repository_config(self):
+        import json
+
+        with demo.CONFIG_PATH.open(encoding="utf-8") as config_file:
+            combos = json.load(config_file)["ui_model_combos"]
+        for combo in demo.PROVIDER_COMBOS:
+            assert combo["name"] in combos
+
+
+# ---------------------------------------------------------------------------
+# _ci_select_provider
+# ---------------------------------------------------------------------------
+class TestCiSelectProvider:
+    def test_ci_select_provider_when_named_then_that_combo_even_if_others_have_keys(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("AZURE_FOUNDRY_KEY", "k")
+        monkeypatch.setenv("AZURE_FOUNDRY_ENDPOINT", "https://example.invalid")
+        monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf")
+
+        result = demo._ci_select_provider("huggingface")
+
+        assert result["name"] == "Huggingface"
+
+    def test_ci_select_provider_when_not_named_then_first_with_keys(self, monkeypatch):
+        monkeypatch.setenv("AZURE_FOUNDRY_KEY", "k")
+        monkeypatch.setenv("AZURE_FOUNDRY_ENDPOINT", "https://example.invalid")
+
+        result = demo._ci_select_provider()
+
+        assert result["name"] == "Azure Foundry"
+
+    def test_ci_select_provider_when_unknown_then_exits(self):
+        with pytest.raises(SystemExit):
+            demo._ci_select_provider("not-a-provider")
 
 
 # ---------------------------------------------------------------------------
