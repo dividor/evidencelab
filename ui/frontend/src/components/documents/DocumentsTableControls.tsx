@@ -11,6 +11,8 @@ interface DocumentsTableControlsProps {
   loadingTable: boolean;
   onRefresh: () => void;
   onClearCategory: () => void;
+  /** Export the page currently on screen. Omitted when there is nothing to export. */
+  onExport?: () => void;
 }
 
 export const DocumentsTableControls: React.FC<DocumentsTableControlsProps> = ({
@@ -24,6 +26,7 @@ export const DocumentsTableControls: React.FC<DocumentsTableControlsProps> = ({
   loadingTable,
   onRefresh,
   onClearCategory,
+  onExport,
 }) => {
   const startIndex = (currentPage - 1) * pageSize + 1;
   const endIndex = Math.min(currentPage * pageSize, totalCount);
@@ -47,6 +50,16 @@ export const DocumentsTableControls: React.FC<DocumentsTableControlsProps> = ({
           Showing {startIndex.toLocaleString()}-{endIndex.toLocaleString()} of {totalCount.toLocaleString()} documents
           {selectedCategory && ` (filtered by ${chartView})`}
         </span>
+        {onExport && (
+          <button
+            className="refresh-table-button"
+            onClick={onExport}
+            title="Export the documents on this page to Excel"
+            disabled={loadingTable || totalCount === 0}
+          >
+            Export to Excel
+          </button>
+        )}
         <button
           className="refresh-table-button"
           onClick={onRefresh}

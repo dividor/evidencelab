@@ -4,6 +4,10 @@ import { DocumentsPagination } from './DocumentsPagination';
 import { DocumentsTableControls } from './DocumentsTableControls';
 import { DocumentsTableRow } from './DocumentsTableRow';
 import { SortableHeader } from './SortableHeader';
+import {
+  exportDocumentsToExcel,
+  taxonomyColumnsFromConfig,
+} from '../../utils/exportDocumentsToExcel';
 import { USER_FEEDBACK } from '../../config';
 import type { DocumentSelection } from './summary/useDocumentSelection';
 
@@ -245,8 +249,13 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   );
 
   return (
-    <div className="chart-section">
+    <div className="chart-section documents-section">
       <DocumentsTableControls
+        onExport={() => exportDocumentsToExcel(
+          documents,
+          taxonomyColumnsFromConfig(dataSourceConfig),
+          dataSource,
+        )}
         filterText={filterText}
         onFilterTextChange={onFilterTextChange}
         selectedCategory={selectedCategory}

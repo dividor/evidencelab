@@ -70,6 +70,7 @@ Features include:
 
 - **Sortable, filterable table** — columns for title, organization, year, type, status, and more
 - **Free-text search** — find documents by title or metadata
+- **Export to Excel** — downloads the page currently on screen as a spreadsheet, the same rows in the same order after sorting and filtering, so the **Per page** setting decides how many rows you get. Three columns carry more than the table shows: the whole AI summary rather than the preview, the document's table of contents from the **Contents** link, and the full document record from the **Metadata** link as JSON. Each AI tag taxonomy (SDG and any others configured) gets its own column holding the complete tags as JSON — code, name and the model's reason — not just the codes. The status logs, the processing timeline and the chunks are not exported; they are per-document detail rather than properties of the row.
 - **Column filter popovers** — click any column header to filter by specific values
 - **Server-side pagination** — efficiently browse large corpora; **Per page** beside the page buttons shows 5, 10 (the default), 50 or 100 documents a page, and is kept in the link (`page_size`)
 
