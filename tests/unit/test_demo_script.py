@@ -212,7 +212,7 @@ class TestPromptProvider:
     def test_select_huggingface(self):
         with mock.patch("builtins.input", return_value="2"):
             result = demo.prompt_provider()
-        assert result["name"] == "Huggingface / Novita"
+        assert result["name"] == "Huggingface"
 
     def test_select_google(self):
         with mock.patch("builtins.input", return_value="3"):
@@ -223,6 +223,34 @@ class TestPromptProvider:
         with mock.patch("builtins.input", side_effect=["99", "abc", "1"]):
             result = demo.prompt_provider()
         assert result["name"] == "Azure Foundry"
+
+
+# ---------------------------------------------------------------------------
+# _ci_select_provider
+# ---------------------------------------------------------------------------
+class TestCiSelectProvider:
+    def test_ci_select_provider_when_named_then_that_combo_even_if_others_have_keys(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("AZURE_FOUNDRY_KEY", "k")
+        monkeypatch.setenv("AZURE_FOUNDRY_ENDPOINT", "https://example.invalid")
+        monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf")
+
+        result = demo._ci_select_provider("huggingface")
+
+        assert result["name"] == "Huggingface"
+
+    def test_ci_select_provider_when_not_named_then_first_with_keys(self, monkeypatch):
+        monkeypatch.setenv("AZURE_FOUNDRY_KEY", "k")
+        monkeypatch.setenv("AZURE_FOUNDRY_ENDPOINT", "https://example.invalid")
+
+        result = demo._ci_select_provider()
+
+        assert result["name"] == "Azure Foundry"
+
+    def test_ci_select_provider_when_unknown_then_exits(self):
+        with pytest.raises(SystemExit):
+            demo._ci_select_provider("not-a-provider")
 
 
 # ---------------------------------------------------------------------------

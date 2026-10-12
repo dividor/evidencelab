@@ -8,6 +8,7 @@ Usage:
     python scripts/demo/run_demo.py --mode docker
     python scripts/demo/run_demo.py --mode host --setup   # Re-run setup
     python scripts/demo/run_demo.py --ci --setup-only     # CI: write .env + config only
+    python scripts/demo/run_demo.py --ci --setup-only --provider huggingface
 
 What it does:
     0. Interactive setup: choose provider, enter API keys, write .env
@@ -58,7 +59,7 @@ PROVIDER_COMBOS = [
         },
     },
     {
-        "name": "Huggingface / Novita",
+        "name": "Huggingface",
         "description": "Embedding: e5_large (local), LLM: Qwen 2.5-72B, Reranker: Jina",
         "embedding_model": "e5_large",
         "dense_models": ["e5_large"],
@@ -100,8 +101,19 @@ def _generate_fernet_key():
     return base64.urlsafe_b64encode(os.urandom(32)).decode()
 
 
-def _ci_select_provider():
-    """For CI: pick the first combo whose required env vars are all set."""
+def _ci_select_provider(provider=None):
+    """For CI: pick the combo for ``provider``, or else the first whose env is set.
+
+    ``provider`` is a combo's ``llm_provider`` (e.g. "huggingface"). Naming
+    one lets CI test each combo even when several providers' keys are set.
+    """
+    if provider:
+        for combo in PROVIDER_COMBOS:
+            if combo["llm_provider"] == provider:
+                return combo
+        known = ", ".join(c["llm_provider"] for c in PROVIDER_COMBOS)
+        print(f"ERROR: unknown --provider '{provider}'. Choose one of: {known}")
+        sys.exit(1)
     for combo in PROVIDER_COMBOS:
         if all(os.environ.get(k) for k in combo["required_env"]):
             return combo
@@ -179,13 +191,13 @@ def prompt_qdrant_key():
     return value
 
 
-def interactive_setup(ci_mode=False):
+def interactive_setup(ci_mode=False, provider=None):
     """Run the full interactive setup flow. Returns (combo, env_vars).
 
-    In CI mode (--ci), all prompts are skipped: the provider is auto-selected
-    from available environment variables, provider-specific keys are read from
-    the environment, and all generated secrets are written to .env without
-    asking for confirmation.
+    In CI mode (--ci), all prompts are skipped: the provider is ``provider``
+    when given, otherwise auto-selected from available environment variables;
+    provider-specific keys are read from the environment, and all generated
+    secrets are written to .env without asking for confirmation.
     """
     print()
     print("=" * 60)
@@ -195,8 +207,9 @@ def interactive_setup(ci_mode=False):
 
     if ci_mode:
         # 1. Auto-select provider
-        combo = _ci_select_provider()
-        print(f"  Provider: {combo['name']} (auto-selected)\n")
+        combo = _ci_select_provider(provider)
+        how = "chosen with --provider" if provider else "auto-selected"
+        print(f"  Provider: {combo['name']} ({how})\n")
 
         # 2. Provider-specific keys from environment
         env_vars = _ci_collect_keys(combo)
@@ -549,10 +562,17 @@ def main():
         action="store_true",
         help="Write .env and configure config.json then exit (no download, pipeline, or services)",
     )
+    parser.add_argument(
+        "--provider",
+        choices=[c["llm_provider"] for c in PROVIDER_COMBOS],
+        help="With --ci: use this provider's combo instead of auto-selecting",
+    )
     args = parser.parse_args()
+    if args.provider and not args.ci:
+        parser.error("--provider is only used with --ci")
 
     # Step 0: Interactive setup (always runs)
-    combo, _ = interactive_setup(ci_mode=args.ci)
+    combo, _ = interactive_setup(ci_mode=args.ci, provider=args.provider)
 
     print()
     print("=" * 60)
