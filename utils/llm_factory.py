@@ -134,7 +134,7 @@ def get_llm(
         max_tokens: Max tokens to generate. If None, reads from
                     LLM_MAX_TOKENS env var (default: 500)
         inference_provider: Inference provider for HuggingFace models
-                           (e.g., "together", "novita"). If provided,
+                           (e.g., "scaleway", "together"). If provided,
                            appends ":inference_provider" to model name.
 
     Returns:
@@ -335,55 +335,38 @@ def _create_huggingface_llm(
             "https://huggingface.co/settings/tokens"
         )
 
-    if inference_provider:
-        llm = _create_huggingface_inference_llm(model, api_key, inference_provider)
-        if llm:
-            return llm
-    return _create_huggingface_endpoint_llm(model, api_key, temperature, max_tokens)
-
-
-def _create_huggingface_inference_llm(
-    model: str, api_key: str, inference_provider: str
-) -> Optional[BaseChatModel]:
-    from huggingface_hub import InferenceClient
-    from langchain_huggingface import ChatHuggingFace
-
-    try:
-        inference_client = InferenceClient(
-            model=model, token=api_key, provider=inference_provider  # type: ignore[arg-type]
-        )
-        try:
-            llm = ChatHuggingFace(client=inference_client)
-            logger.info(
-                "Using InferenceClient with provider=%s for model=%s",
-                inference_provider,
-                model,
-            )
-            return llm
-        except (TypeError, ValueError) as exc:
-            logger.debug("ChatHuggingFace doesn't accept client parameter: %s", exc)
-            raise
-    except Exception as exc:
-        logger.debug(
-            "InferenceClient not compatible with ChatHuggingFace, "
-            "using HuggingFaceEndpoint instead: %s",
-            exc,
-        )
-        return None
+    return _create_huggingface_endpoint_llm(
+        model, api_key, temperature, max_tokens, inference_provider
+    )
 
 
 def _create_huggingface_endpoint_llm(
-    model: str, api_key: str, temperature: float, max_tokens: int
+    model: str,
+    api_key: str,
+    temperature: float,
+    max_tokens: int,
+    inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
+    """Create a Hugging Face chat model routed through the inference router.
+
+    ``inference_provider`` pins the router to one provider (e.g. "deepinfra").
+    Without it the router chooses a provider itself, and that choice changes
+    whenever Hugging Face's provider list for the model changes.
+    """
     from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 
     llm_endpoint = HuggingFaceEndpoint(  # type: ignore[call-arg]
         repo_id=model,
         huggingfacehub_api_token=api_key,
+        provider=inference_provider,
         temperature=temperature,
         max_new_tokens=max_tokens,
         timeout=240,
     )
+    if inference_provider:
+        logger.info(
+            "Using Hugging Face provider=%s for model=%s", inference_provider, model
+        )
     return ChatHuggingFace(llm=llm_endpoint)
 
 
