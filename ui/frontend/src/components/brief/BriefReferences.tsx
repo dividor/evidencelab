@@ -2,6 +2,42 @@ import React from 'react';
 import { SourceReference } from '../../types/api';
 import { GlobalRef } from './briefCitations';
 import { ReferenceGrouping } from './briefTypes';
+import type { LinkTarget } from '../../utils/exportResultsToDocx';
+
+/** Where the Word export's links point. */
+export const WORD_LINK_OPTIONS: Array<{ value: LinkTarget; label: string; title: string }> = [
+  {
+    value: 'source',
+    label: 'Source document',
+    title: "Links open each document at its source (its own PDF or report page), at the cited page",
+  },
+  {
+    value: 'evidence_lab',
+    label: 'Evidence Lab',
+    title: 'Links open the copy of each document in Evidence Lab, at the cited page',
+  },
+];
+
+/** Radio buttons: where the Word export's links point. */
+const WordLinkChoice: React.FC<{ value: LinkTarget; onChange: (value: LinkTarget) => void }> = ({
+  value,
+  onChange,
+}) => (
+  <div className="brief-footnotes-word-links" role="radiogroup" aria-label="Word export links point to">
+    <span className="brief-footnotes-word-links-label">Word links to</span>
+    {WORD_LINK_OPTIONS.map((option) => (
+      <label className="brief-footnotes-group-toggle" key={option.value} title={option.title}>
+        <input
+          type="radio"
+          name="brief-word-link-target"
+          checked={value === option.value}
+          onChange={() => onChange(option.value)}
+        />
+        {option.label}
+      </label>
+    ))}
+  </div>
+);
 
 // The two "Group by document" options offered above the References list. They
 // are exclusive: ticking one clears the other, and clearing both returns to
@@ -121,7 +157,10 @@ export const BriefReferences: React.FC<{
   grouping: ReferenceGrouping;
   onGroupingChange: (grouping: ReferenceGrouping) => void;
   onSourceClick: SourceClick;
-}> = ({ references, grouping, onGroupingChange, onSourceClick }) => {
+  /** Where the Word export's links point; the choice is shown when set. */
+  wordLinkTarget?: LinkTarget;
+  onWordLinkTargetChange?: (value: LinkTarget) => void;
+}> = ({ references, grouping, onGroupingChange, onSourceClick, wordLinkTarget, onWordLinkTargetChange }) => {
   if (references.length === 0) return null;
   return (
     <section className="brief-footnotes">
@@ -139,6 +178,9 @@ export const BriefReferences: React.FC<{
             </label>
           ))}
         </div>
+        {wordLinkTarget && onWordLinkTargetChange && (
+          <WordLinkChoice value={wordLinkTarget} onChange={onWordLinkTargetChange} />
+        )}
       </div>
       <div className="brief-footnotes-list">
         {grouping === 'document-multiple'

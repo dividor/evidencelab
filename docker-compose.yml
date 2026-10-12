@@ -185,8 +185,11 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - USE_EMBEDDING_SERVER=true
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
-      - MAX_CONCURRENT_SEARCHES=${MAX_CONCURRENT_SEARCHES:-2}
-      - MAX_CONCURRENT_RERANKS=${MAX_CONCURRENT_RERANKS:-1}
+      # Concurrency tunables are deliberately NOT listed here. The service
+      # reads .env through env_file, so setting one there reaches the
+      # container; an entry in this list would override it and would pin a
+      # second copy of the default that silently drifts from the code.
+      # Defaults live in the application. See docs/admin/performance-and-scaling.md.
       # User module (auth & permissions): off | on_passive | on_active
       - USER_MODULE=${USER_MODULE:-off}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}

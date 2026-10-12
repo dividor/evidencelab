@@ -119,6 +119,7 @@ export const requestBriefRevise = async ({
   instruction,
   model,
   voiceInstructions,
+  introducesSubSections = null,
   activityId,
   signal,
 }: {
@@ -128,6 +129,8 @@ export const requestBriefRevise = async ({
   instruction: string;
   model?: string | null;
   voiceInstructions?: string | null;
+  // Sub-headings the section introduces; keeps a revision an introduction.
+  introducesSubSections?: string[] | null;
   // Usage-recording context (see RequestOutlineOptions).
   activityId?: string | null;
   signal?: AbortSignal;
@@ -142,6 +145,7 @@ export const requestBriefRevise = async ({
       data_source: dataSource,
       model: model ?? null,
       voice_instructions: voiceInstructions ?? null,
+      introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : null,
       activity_id: activityId ?? null,
       session_id: getSessionId(),
     }),
@@ -205,6 +209,8 @@ export interface RunDeepResearchOptions {
   activityId?: string | null;
   // Target length of the written text in words (see briefLength.ts).
   targetWords?: number | null;
+  // Sub-headings this text introduces (see briefIntro.ts); null otherwise.
+  introducesSubSections?: string[] | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -224,6 +230,7 @@ export const runDeepResearch = async ({
   publishedAfter = null,
   activityId = null,
   targetWords = null,
+  introducesSubSections = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -242,6 +249,7 @@ export const runDeepResearch = async ({
     activityId: activityId ?? null,
     usageContext: 'brief',
     targetWords: targetWords ?? null,
+    introducesSubSections,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -313,6 +321,9 @@ export interface ResearchSectionOptions {
   activityId?: string | null;
   // Target length of the section in words (see briefLength.ts).
   targetWords?: number | null;
+  // Sub-headings this section introduces, for a top-level heading that has
+  // them (see briefIntro.ts); null otherwise.
+  introducesSubSections?: string[] | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -535,6 +546,7 @@ export const researchBriefSection = ({
   outlineContext,
   activityId,
   targetWords,
+  introducesSubSections = null,
   handlers,
   signal,
 }: ResearchSectionOptions): Promise<void> => {
@@ -564,6 +576,7 @@ export const researchBriefSection = ({
     publishedAfter: mode === 'update' ? publishedAfterIso : null,
     activityId,
     targetWords,
+    introducesSubSections,
     handlers,
     signal,
   });

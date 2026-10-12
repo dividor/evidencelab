@@ -997,6 +997,16 @@ h6,
   animation: fadeInUp 0.5s ease-out;
 }
 
+/* Documents Library card.
+   The card's horizontal padding pushed the table 32px further right than the
+   "Documents Library" heading above it. Drop it for this card only — the other
+   .chart-section cards (Stats, Pipeline) hold charts and keep their padding —
+   so the table's first column lines up with the heading. */
+.chart-section.documents-section {
+  padding-left: 0;
+  padding-right: 0;
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;
@@ -7280,6 +7290,30 @@ li.ai-fact-active::before {
   color: var(--brand-text-tertiary);
 }
 
+.pagination-page-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  font-size: 0.875rem;
+  color: var(--brand-text-secondary);
+}
+
+.pagination-page-size select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--brand-border);
+  border-radius: 0.375rem;
+  background: var(--brand-surface);
+  color: var(--brand-text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.pagination-page-size select:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 1px;
+}
+
 .table-loading {
   padding: 3rem;
   text-align: center;
@@ -12770,4 +12804,124 @@ button.doc-link:hover {
 }
 .citation-hover-more:hover {
   text-decoration: underline;
+}
+
+/* ---- Evaluation harness: brief citation check ---- */
+.testing-brief-intro {
+  margin: 0 0 0.75rem;
+  max-width: 60rem;
+}
+.testing-brief-legend {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+}
+.testing-scope-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+.testing-search-input {
+  min-width: 14rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--brand-border, #d0d7de);
+  border-radius: 4px;
+  font: inherit;
+}
+.testing-inline-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.testing-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.testing-check-filters {
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+/* The section select and search box sit in a row with .btn-sm verdict
+   toggles, so they take the same padding, font size and border to line up. */
+.testing-filter-select,
+.testing-check-filters .testing-search-input {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  font-size: 0.8rem;
+  font-family: inherit;
+  line-height: normal;
+}
+.testing-filter-select {
+  max-width: 18rem;
+  cursor: pointer;
+}
+.testing-filter-select:focus,
+.testing-check-filters .testing-search-input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
+}
+/* Expanded passage: keep the hover tint so the row and its detail read as one. */
+.testing-row-expanded {
+  background: var(--color-surface-alt, #f6f8fa);
+}
+.testing-check-table td {
+  vertical-align: top;
+}
+.testing-check-passage {
+  min-width: 22rem;
+  line-height: 1.4;
+}
+.testing-citation-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.testing-link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--brand-primary, #5b8fa8);
+  cursor: pointer;
+  text-decoration: underline;
+  /* Inside a column-flex label the button would stretch to full width and
+     centre its text (a button default); keep it left-aligned like the rest. */
+  text-align: left;
+  align-self: flex-start;
+}
+.testing-link-btn:disabled {
+  color: var(--brand-text-tertiary, #777);
+  text-decoration: none;
+  cursor: default;
+}
+.testing-check-detail-row td {
+  background: var(--brand-bg, #f6f8fa);
+}
+.testing-check-passage-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.5rem 0.25rem;
+}
+.testing-check-list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  line-height: 1.45;
+}
+.testing-badge-warn {
+  margin-left: 0.4rem;
+  color: var(--brand-warning, #9a6700);
+  border-color: var(--brand-warning, #9a6700);
+}
+.testing-has-help {
+  cursor: help;
+}
+.testing-help-icon {
+  cursor: help;
+  color: var(--brand-text-tertiary, #777);
+  font-size: 0.9em;
 }

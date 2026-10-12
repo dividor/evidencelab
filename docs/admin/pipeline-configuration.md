@@ -83,7 +83,7 @@ The `source` field determines how the model is loaded:
 |-------|------|-------------|
 | `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-2.5-flash"`) |
 | `provider` | string | `"huggingface"`, `"azure_foundry"`, or `"google_vertex"` |
-| `inference_provider` | string | Optional routing provider (e.g., `"together"`, `"novita"`) |
+| `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"scaleway"`, `"together"`). If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
 
 #### Rerank Models (`supported_rerank_models`)
@@ -103,6 +103,7 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
 {
   "ui_model_combos": {
     "Azure Foundry": {
+      "default": true,
       "embedding_model": "azure_small",
       "sparse_model": "bm25",
       "summarization_model": {
@@ -120,6 +121,28 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
   }
 }
 ```
+
+### Choosing which combo users start on
+
+`"default": true` marks the combo a visitor starts on. It is optional: with no
+combo flagged, the first one in the file is used, so the order of
+`ui_model_combos` decides it. Flagging one explicitly means reordering the file
+no longer changes which models people get by default.
+
+Flag at most one. If several are flagged the first of them wins, and if the
+flagged combo's embedding model is not indexed for the datasource being viewed
+— so it does not appear in the **Models** dropdown for that datasource — the
+first combo that *is* available is used instead.
+
+The same flag decides the combo used by the evaluation harness and the A2A
+server when a request does not name one, so the whole system starts from the
+same place.
+
+> **Hiding the picker.** Removing the **Models** dropdown is a branding change,
+> not a setting: a deployment that offers one combo can hide it with CSS in its
+> `CUSTOMIZE_ASSETS` overlay (see [Customization & Branding](customization.md)).
+> Hiding it does not restrict the combos — the API still accepts any of them —
+> so a single-combo deployment should also list only that combo here.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -264,6 +287,15 @@ When a placeholder resolves to `null`, both it and its preceding flag are cleanl
 | `llm_model` | object | Required | LLM configuration (model, temperature, max_tokens) |
 | `llm_workers` | int | `1` | Concurrent LLM inference workers |
 | `context_window` | int | `29000` | Max characters for LLM context (larger documents use map-reduce) |
+| `mode` | string | `map_reduce` | How summaries are written: `map_reduce` or `single_prompt` (see below) |
+| `single_prompt_context_window` | int | `1048576` | Tokens a single prompt may use, counted by the model; the default is Gemini 2.5 Flash's input limit |
+| `section_types` | list | every section type | Sections whose text is summarised when a summary is regenerated in the app |
+
+**Summary modes.** In `map_reduce` mode a document that fits in `context_window` is summarised in one call; a larger one is split into parts, each part is summarised, and the part summaries are combined. In `single_prompt` mode all the text goes to the model in one call. Before sending, the prompt is counted in tokens by the model that will read it; if those tokens plus the summary's `max_tokens` are more than `single_prompt_context_window`, it stops with an error naming both numbers rather than switching to map reduce. A model that cannot count its tokens exactly (Hugging Face models) cannot be used for a single prompt. The window defaults to 1,048,576 tokens, Gemini 2.5 Flash's input limit; set it lower for data sources whose summaries are written by a smaller model, whether the pipeline's `llm_model` or, for summaries regenerated in the app, the summarization models of the [UI model combos](#ui-model-combos). The map-reduce `context_window` counts one character as one token, which is cautious for English text.
+
+**Summary prompt.** What a summary must contain is set by `prompts/summary_instructions.j2`. Administrators can use a different prompt when they regenerate summaries in the app, and groups can set a default one (see [Document Summaries](document-summaries.md)). The pipeline always uses the file.
+
+**Summaries set in the app.** A summary written, edited or regenerated in the app is kept when the document is reprocessed, unless the person reprocessing chooses to replace it.
 
 #### Tag
 

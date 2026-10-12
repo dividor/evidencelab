@@ -1,42 +1,35 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { BriefLengthControl } from './BriefLengthControl';
-import {
-  addBriefShare,
-  getBrief,
-  removeBriefShare,
-  searchShareTargets,
-} from './briefCentralApi';
-import { IconCopy, IconPlus, IconSparkle } from './BriefIcons';
-import {
-  BriefShareTarget,
-  BriefTemplate,
-  BriefTemplateHeading,
-  VoiceProfile,
-} from './briefTypes';
+import { IconPlus, IconSparkle } from './BriefIcons';
+import { BriefTemplate, BriefTemplateHeading, VoiceProfile } from './briefTypes';
+import { BriefVoiceSelect } from './BriefVoiceSelect';
 
 /**
- * The Brief Central modals: New brief, template editor (new + save-from-brief),
- * voice & tone profile editor, and viewer-only sharing. All reuse the existing
- * `.brief-modal-*` shell classes plus `.bc-*` styles from brief.css.
+ * The Brief Central modals: New brief, voice & tone profile editor and
+ * Regenerate all. The template editor is in BriefTemplateModal.tsx and the
+ * Share dialog in BriefShareDialog.tsx. All reuse the `.brief-modal-*` shell
+ * classes plus `.bc-*` styles from brief.css.
  */
 
 const errMessage = (e: unknown, fallback: string): string =>
   e instanceof Error ? e.message : fallback;
 
-// Numbering matching the brief document: 1, 1.1, 1.2, 2, …
+// Numbering matching the brief document: 1, 1.1, 1.2, 2, … `hasPrompt` marks
+// headings that carry a research prompt, for template previews.
 export const numberHeadings = (
   headings: BriefTemplateHeading[],
-): { num: string; title: string; sub: boolean }[] => {
+): { num: string; title: string; sub: boolean; hasPrompt: boolean }[] => {
   let top = 0;
   let sub = 0;
   return headings.map((h) => {
+    const hasPrompt = !!h.prompt;
     if (h.sub && top > 0) {
       sub += 1;
-      return { num: `${top}.${sub}`, title: h.title, sub: true };
+      return { num: `${top}.${sub}`, title: h.title, sub: true, hasPrompt };
     }
     top += 1;
     sub = 0;
-    return { num: `${top}`, title: h.title, sub: false };
+    return { num: `${top}`, title: h.title, sub: false, hasPrompt };
   });
 };
 
@@ -64,12 +57,17 @@ export const BriefNewModal: React.FC<{
   onSubmit: (args: NewBriefSubmit) => void;
   onClose: () => void;
 }> = ({ templates, voices, initialTemplateId, defaultTargetWords, onSubmit, onClose }) => {
+  // A template brings its brief-wide prompt, voice and length with it; the
+  // user can still change them here before creating the brief.
+  const initialTemplate = templates.find((t) => t.id === initialTemplateId) || null;
   const [mode, setMode] = useState<'ai' | 'manual'>(initialTemplateId ? 'manual' : 'ai');
   const [title, setTitle] = useState('');
-  const [instructions, setInstructions] = useState('');
-  const [voiceId, setVoiceId] = useState<string | null>(null);
+  const [instructions, setInstructions] = useState(initialTemplate?.prompt || '');
+  const [voiceId, setVoiceId] = useState<string | null>(initialTemplate?.voice_profile_id ?? null);
   const [numHeadings, setNumHeadings] = useState(6);
-  const [targetWords, setTargetWords] = useState<number | null>(defaultTargetWords ?? null);
+  const [targetWords, setTargetWords] = useState<number | null>(
+    initialTemplate?.target_words ?? defaultTargetWords ?? null,
+  );
   const [templateId, setTemplateId] = useState<string>(initialTemplateId || '');
 
   const template = templates.find((t) => t.id === templateId) || null;
@@ -78,6 +76,15 @@ export const BriefNewModal: React.FC<{
     () => (template ? numberHeadings(template.headings) : []),
     [template],
   );
+
+  const pickTemplate = (id: string) => {
+    setTemplateId(id);
+    const picked = templates.find((t) => t.id === id);
+    if (!picked) return;
+    setInstructions(picked.prompt || '');
+    setVoiceId(picked.voice_profile_id);
+    if (picked.target_words != null) setTargetWords(picked.target_words);
+  };
 
   const submit = () => {
     onSubmit({
@@ -155,19 +162,13 @@ export const BriefNewModal: React.FC<{
                   <label className="brief-label brief-label-spaced" htmlFor="bc-new-voice">
                     Voice &amp; tone profile
                   </label>
-                  <select
+                  <BriefVoiceSelect
                     id="bc-new-voice"
-                    className="bc-select"
-                    value={voiceId || ''}
-                    onChange={(e) => setVoiceId(e.target.value || null)}
-                  >
-                    <option value="">No voice profile</option>
-                    {voices.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </select>
+                    value={voiceId}
+                    voices={voices}
+                    onChange={setVoiceId}
+                    emptyLabel="No voice profile"
+                  />
                 </div>
                 <div className="bc-field bc-field-num">
                   <label className="brief-label brief-label-spaced" htmlFor="bc-new-headings">
@@ -195,12 +196,12 @@ export const BriefNewModal: React.FC<{
                 id="bc-new-template"
                 className="bc-select"
                 value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
+                onChange={(e) => pickTemplate(e.target.value)}
               >
                 <option value="">No template — blank outline</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {t.can_edit || !t.owner_name ? t.name : `${t.name} — shared by ${t.owner_name}`}
                   </option>
                 ))}
               </select>
@@ -213,6 +214,7 @@ export const BriefNewModal: React.FC<{
                     <div key={i} className={`bc-heading-row${h.sub ? ' bc-heading-sub' : ''}`}>
                       <span className="bc-heading-num">{h.num}</span>
                       <span>{h.title}</span>
+                      {h.hasPrompt && <span className="bc-prompt-mark">prompt</span>}
                     </div>
                   ))
                 ) : (
@@ -221,6 +223,27 @@ export const BriefNewModal: React.FC<{
                   </div>
                 )}
               </div>
+              <label className="brief-label brief-label-spaced" htmlFor="bc-new-prompt">
+                Brief prompt <span className="brief-label-hint">(optional — applied to every section)</span>
+              </label>
+              <textarea
+                id="bc-new-prompt"
+                className="brief-textarea brief-textarea-sm"
+                rows={2}
+                value={instructions}
+                onChange={(e) => setInstructions(e.target.value)}
+                placeholder="e.g. focus on East Africa, prioritise evaluations since 2018"
+              />
+              <label className="brief-label brief-label-spaced" htmlFor="bc-new-manual-voice">
+                Voice &amp; tone profile
+              </label>
+              <BriefVoiceSelect
+                id="bc-new-manual-voice"
+                value={voiceId}
+                voices={voices}
+                onChange={setVoiceId}
+                emptyLabel="No voice profile"
+              />
             </>
           )}
 
@@ -237,177 +260,6 @@ export const BriefNewModal: React.FC<{
             <button className="brief-btn brief-btn-primary" onClick={submit} disabled={!title.trim() && mode === 'ai'}>
               {mode === 'ai' ? <IconSparkle size={15} /> : <IconPlus />}
               {mode === 'ai' ? 'Generate outline' : 'Create brief'}
-            </button>
-            <button className="brief-btn brief-btn-secondary" onClick={onClose}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
-// Template editor (new template, or save-from-brief)
-// ---------------------------------------------------------------------------
-
-export interface TemplateDraft {
-  fromBrief: boolean;
-  name: string;
-  description: string;
-  headings: BriefTemplateHeading[];
-  withText: boolean;
-}
-
-export const BriefTemplateModal: React.FC<{
-  draft: TemplateDraft;
-  onSave: (draft: TemplateDraft) => Promise<void>;
-  onClose: () => void;
-}> = ({ draft: initial, onSave, onClose }) => {
-  const [draft, setDraft] = useState<TemplateDraft>(initial);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const numbered = useMemo(() => numberHeadings(draft.headings), [draft.headings]);
-
-  const patchHeading = (i: number, title: string) =>
-    setDraft((d) => ({
-      ...d,
-      headings: d.headings.map((h, j) => (j === i ? { ...h, title } : h)),
-    }));
-
-  const addSub = (i: number) =>
-    setDraft((d) => {
-      const list = [...d.headings];
-      let at = i + 1;
-      while (at < list.length && list[at].sub) at += 1;
-      list.splice(at, 0, { title: '', sub: true });
-      return { ...d, headings: list };
-    });
-
-  const removeHeading = (i: number) =>
-    setDraft((d) => ({ ...d, headings: d.headings.filter((_, j) => j !== i) }));
-
-  const save = async () => {
-    const headings = draft.headings
-      .map((h) => ({ ...h, title: h.title.trim() }))
-      .filter((h) => h.title);
-    if (!draft.name.trim() || !headings.length) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await onSave({ ...draft, headings });
-    } catch (e) {
-      setError(errMessage(e, 'Could not save the template.'));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="brief-modal-overlay" onClick={onClose}>
-      <div className="brief-modal bc-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="brief-modal-head">
-          <div>
-            <div className="brief-modal-title">
-              {draft.fromBrief ? 'Save brief as template' : 'New template'}
-            </div>
-            <div className="brief-modal-sub">
-              Templates save the headings so the next brief starts structured.
-            </div>
-          </div>
-          <button className="brief-modal-close" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="bc-modal-body">
-          {error && <div className="brief-error">{error}</div>}
-          <label className="brief-label" htmlFor="bc-tpl-name">
-            Template name
-          </label>
-          <input
-            id="bc-tpl-name"
-            className="bc-input"
-            value={draft.name}
-            onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-            placeholder="e.g. Standard evaluation synthesis"
-          />
-          <label className="brief-label brief-label-spaced" htmlFor="bc-tpl-desc">
-            Description
-          </label>
-          <input
-            id="bc-tpl-desc"
-            className="bc-input"
-            value={draft.description}
-            onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-            placeholder="When to reach for this template"
-          />
-
-          {draft.fromBrief && (
-            <div className="bc-inline-panel">
-              <div className="bc-inline-panel-row">
-                <span className="bc-inline-panel-title">Include section text</span>
-                <button
-                  role="switch"
-                  aria-checked={draft.withText}
-                  className={`brief-switch${draft.withText ? ' brief-switch-on' : ''}`}
-                  onClick={() => setDraft((d) => ({ ...d, withText: !d.withText }))}
-                >
-                  <span className="brief-switch-thumb" />
-                </button>
-              </div>
-              <div className="bc-hint">
-                {draft.withText
-                  ? 'The researched text is saved with each heading, so new briefs start from this draft.'
-                  : 'Only the headings are saved — new briefs start empty under each one.'}
-              </div>
-            </div>
-          )}
-
-          <div className="bc-kicker bc-kicker-spaced">Headings</div>
-          <div className="bc-heading-list">
-            {draft.headings.map((h, i) => (
-              <div key={i} className={`bc-heading-edit${h.sub ? ' bc-heading-sub' : ''}`}>
-                <span className="bc-heading-num">{numbered[i].num}.</span>
-                <input
-                  className="bc-input"
-                  value={h.title}
-                  onChange={(e) => patchHeading(i, e.target.value)}
-                  placeholder={h.sub ? 'Sub-heading name' : 'Heading name'}
-                  aria-label={h.sub ? 'Sub-heading name' : 'Heading name'}
-                />
-                <button
-                  className="bc-icon-btn"
-                  title="Add a sub-heading"
-                  aria-label="Add a sub-heading"
-                  onClick={() => addSub(i)}
-                >
-                  <IconPlus size={13} />
-                </button>
-                <button
-                  className="bc-icon-btn bc-icon-danger"
-                  title="Remove heading"
-                  aria-label="Remove heading"
-                  onClick={() => removeHeading(i)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            className="bc-add-dashed"
-            onClick={() => setDraft((d) => ({ ...d, headings: [...d.headings, { title: '', sub: false }] }))}
-          >
-            <IconPlus size={14} /> Add heading
-          </button>
-
-          <div className="bc-modal-actions">
-            <button
-              className="brief-btn brief-btn-primary"
-              onClick={() => void save()}
-              disabled={busy || !draft.name.trim()}
-            >
-              Save template
             </button>
             <button className="brief-btn brief-btn-secondary" onClick={onClose}>
               Cancel
@@ -530,243 +382,6 @@ export const BriefVoiceModal: React.FC<{
 };
 
 // ---------------------------------------------------------------------------
-// Share (viewer-only)
-// ---------------------------------------------------------------------------
-
-const initialsOf = (name: string): string =>
-  name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
-
-export const BriefShareModal: React.FC<{
-  briefId: string;
-  briefTitle: string;
-  onChanged?: () => void;
-  onClose: () => void;
-}> = ({ briefId, briefTitle, onChanged, onClose }) => {
-  const [targets, setTargets] = useState<BriefShareTarget[]>([]);
-  const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const shareUrl = `${window.location.origin}/brief/${briefId}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    getBrief(briefId)
-      .then((b) => {
-        if (!cancelled) setTargets(b.shared_with);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errMessage(e, 'Could not load sharing.'));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [briefId]);
-
-  const add = useCallback(async () => {
-    const target = input.trim();
-    if (!target || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const updated = await addBriefShare(briefId, target);
-      setTargets(updated.shared_with);
-      setInput('');
-      onChanged?.();
-    } catch (e) {
-      setError(errMessage(e, 'Could not share the brief.'));
-    } finally {
-      setBusy(false);
-    }
-  }, [briefId, input, busy, onChanged]);
-
-  // Suggestions for what has been typed: the API matches people by email or
-  // name and groups by name, so the user picks a real target instead of
-  // guessing an exact address.
-  const [suggestions, setSuggestions] = useState<
-    Array<{ value: string; label: string; sub: string; kind: 'user' | 'group' }>
-  >([]);
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  useEffect(() => {
-    const term = input.trim();
-    if (term.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    let cancelled = false;
-    // Debounced so a lookup runs when typing pauses, not on every keystroke.
-    const t = setTimeout(() => {
-      void searchShareTargets(term)
-        .then((res) => {
-          if (cancelled) return;
-          setSuggestions([
-            ...res.users.map((u) => ({
-              value: u.email,
-              label: u.name,
-              sub: u.email,
-              kind: 'user' as const,
-            })),
-            ...res.groups.map((g) => ({
-              value: g.name,
-              label: g.name,
-              sub: 'Group',
-              kind: 'group' as const,
-            })),
-          ]);
-          setSuggestOpen(true);
-        })
-        .catch(() => {
-          if (!cancelled) setSuggestions([]);
-        });
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [input]);
-
-  const remove = useCallback(
-    async (shareId: string) => {
-      setError(null);
-      try {
-        await removeBriefShare(briefId, shareId);
-        setTargets((prev) => prev.filter((t) => t.id !== shareId));
-        onChanged?.();
-      } catch (e) {
-        setError(errMessage(e, 'Could not remove access.'));
-      }
-    },
-    [briefId, onChanged],
-  );
-
-  const copy = () => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl).catch(() => {});
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="brief-modal-overlay" onClick={onClose}>
-      <div className="brief-modal bc-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="brief-modal-head">
-          <div>
-            <div className="brief-modal-title">Share “{briefTitle}”</div>
-            <div className="brief-modal-sub">
-              People you add can read this brief. Only you can edit it.
-            </div>
-          </div>
-          <button className="brief-modal-close" onClick={onClose} aria-label="Close">
-            ×
-          </button>
-        </div>
-        <div className="bc-modal-body">
-          {error && <div className="brief-error">{error}</div>}
-          <label className="brief-label" htmlFor="bc-share-url">
-            Brief link
-          </label>
-          <div className="bc-share-row">
-            <input id="bc-share-url" className="bc-input bc-share-url" readOnly value={shareUrl} />
-            <button className="brief-btn brief-btn-secondary" onClick={copy}>
-              <IconCopy size={14} />
-              {copied ? 'Copied' : 'Copy link'}
-            </button>
-          </div>
-          <div className="bc-hint">Only people and groups added below can open this link.</div>
-
-          <label className="brief-label brief-label-spaced" htmlFor="bc-share-add">
-            Add people or groups
-          </label>
-          <div className="bc-share-row">
-            <div className="bc-share-input-wrap">
-              <input
-                id="bc-share-add"
-                className="bc-input"
-                value={input}
-                autoComplete="off"
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setSuggestOpen(true);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void add();
-                  else if (e.key === 'Escape') setSuggestOpen(false);
-                }}
-                // Delayed so a click on a suggestion lands before it closes.
-                onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
-                onFocus={() => suggestions.length > 0 && setSuggestOpen(true)}
-                placeholder="Search people or groups"
-              />
-              {suggestOpen && suggestions.length > 0 && (
-                <div className="bc-share-suggestions" role="listbox">
-                  {suggestions.map((sug) => (
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={false}
-                      className="bc-share-suggestion"
-                      key={`${sug.kind}-${sug.value}`}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        setInput(sug.value);
-                        setSuggestOpen(false);
-                      }}
-                    >
-                      <span className="bc-avatar">{initialsOf(sug.label)}</span>
-                      <span className="bc-share-suggestion-main">
-                        <span className="bc-share-suggestion-name">{sug.label}</span>
-                        <span className="bc-share-suggestion-sub">{sug.sub}</span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button className="brief-btn brief-btn-primary" disabled={busy} onClick={() => void add()}>
-              Add
-            </button>
-          </div>
-
-          <div className="bc-share-list">
-            {targets.map((t) => (
-              <div key={t.id} className="bc-share-item">
-                <span className="bc-avatar">{initialsOf(t.name)}</span>
-                <div className="bc-share-item-main">
-                  <div className="bc-share-item-name">{t.name}</div>
-                  <div className="bc-share-item-kind">{t.kind}</div>
-                </div>
-                <span className="bc-viewer-chip">Viewer</span>
-                <button
-                  className="bc-icon-btn bc-icon-danger"
-                  title="Remove access"
-                  aria-label="Remove access"
-                  onClick={() => void remove(t.id)}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <div className="bc-modal-actions">
-            <button className="brief-btn brief-btn-primary" onClick={onClose}>
-              Done
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ---------------------------------------------------------------------------
 // Regenerate all sections
 // ---------------------------------------------------------------------------
 
@@ -836,19 +451,13 @@ export const BriefRegenAllModal: React.FC<{
           <label className="brief-label brief-label-spaced" htmlFor="bc-regen-voice">
             Voice &amp; tone profile
           </label>
-          <select
+          <BriefVoiceSelect
             id="bc-regen-voice"
-            className="bc-select"
-            value={voiceId || ''}
-            onChange={(e) => setVoiceId(e.target.value || null)}
-          >
-            <option value="">No voice profile</option>
-            {voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
+            value={voiceId}
+            voices={voices}
+            onChange={setVoiceId}
+            emptyLabel="No voice profile"
+          />
           {selected && <div className="bc-voice-hint">{selected.description}</div>}
           <label className="brief-label brief-label-spaced" htmlFor="bc-regen-length">
             Section length

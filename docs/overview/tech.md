@@ -180,6 +180,7 @@ All AI-driven processes in Evidence Lab are controlled by **Jinja2 prompt templa
 | `assistant_deep_research_researcher.j2` | Deep Research researcher sub-agent prompt — executes focused search tasks |
 | `ai_summary_system.j2` / `ai_summary_user.j2` | AI search summary generation — the summary shown above search results |
 | `summary_reduction.j2` / `summary_final.j2` | Document summarization — Map-Reduce pipeline for generating document abstracts |
+| `summary_instructions.j2` | Document summarization — the summary prompt (headings and rules) appended to both templates; administrators can replace it when regenerating summaries in the app |
 | `toc_classification_system.j2` / `toc_classification_user.j2` | Section classification — categorizes document sections (findings, methodology, etc.) |
 | `toc_category_judge.j2` | Section classification judge — resolves ambiguous classifications |
 | `toc_extract_from_page.j2` / `toc_validation.j2` | Table of Contents extraction and validation |

@@ -2,7 +2,9 @@
 Unit tests for TOC section type classification.
 
 These tests call the actual LLM classification pipeline and verify results.
-Requires HUGGINGFACE_API_KEY to be set.
+They use the uneg data source's tag model from config.json and need that
+provider's key (AZURE_FOUNDRY_KEY for azure_foundry, HUGGINGFACE_API_KEY for
+huggingface).
 """
 
 import json
@@ -15,9 +17,25 @@ import pytest
 
 from pipeline.processors.tagging.tagger import SectionTypeTagger
 
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config.json"
+PROVIDER_KEY_ENV = {
+    "azure_foundry": "AZURE_FOUNDRY_KEY",
+    "huggingface": "HUGGINGFACE_API_KEY",
+}
+
+
+def _uneg_tag_config():
+    with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+        config = json.load(config_file)
+    datasource = config["datasources"]["UN Humanitarian Evaluation Reports"]
+    return datasource["pipeline"]["tag"]
+
+
+_TAG_KEY_ENV = PROVIDER_KEY_ENV[_uneg_tag_config()["llm_model"]["provider"]]
+
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("HUGGINGFACE_API_KEY"),
-    reason="HUGGINGFACE_API_KEY not set",
+    not os.environ.get(_TAG_KEY_ENV),
+    reason=f"{_TAG_KEY_ENV} not set",
 )
 
 # Test data: document -> {toc: [(heading_line, expected_category), ...], num_pages}
@@ -182,12 +200,7 @@ def parse_toc_classified(toc_classified: str) -> dict:
 @pytest.fixture(scope="module")
 def section_tagger():
     """Create SectionTypeTagger without embedding model."""
-    config_path = Path(__file__).resolve().parents[2] / "config.json"
-    with config_path.open("r", encoding="utf-8") as config_file:
-        config = json.load(config_file)
-    datasource = config["datasources"]["UN Humanitarian Evaluation Reports"]
-    tag_config = datasource["pipeline"]["tag"]
-    tagger = SectionTypeTagger(llm_config=tag_config)
+    tagger = SectionTypeTagger(llm_config=_uneg_tag_config())
     tagger.setup()
     return tagger
 

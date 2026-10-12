@@ -82,4 +82,18 @@ describe('DocsPage', () => {
     expect(scrollIntoView).toHaveBeenCalled();
     expect(window.location.search).toContain('path=admin%2Fpipeline-configuration.md');
   });
+
+  test('level-4 headings get ids so in-page links to them resolve', async () => {
+    (global.fetch as jest.Mock).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      const text = '# Brief\n\n#### Section length\n\nAbout this many words.';
+      return Promise.resolve({
+        json: () => Promise.resolve(MANIFEST),
+        text: () => Promise.resolve(url.includes('docs.json') ? JSON.stringify(MANIFEST) : text),
+      });
+    });
+    const { container } = render(<DocsPage />);
+    await screen.findByText('About this many words.');
+    expect(container.querySelector('h4#section-length')).not.toBeNull();
+  });
 });

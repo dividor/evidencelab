@@ -18,7 +18,16 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -247,3 +256,100 @@ class TestResult(Base):
 
     experiment: Mapped["TestExperiment"] = relationship(back_populates="results")
     run: Mapped["TestRun"] = relationship(back_populates="results")
+
+
+# ---------------------------------------------------------------------------
+# Brief citation check (Evaluation Harness "Brief" type)
+# ---------------------------------------------------------------------------
+
+# Check lifecycle states (a subset of the experiment ones, same wording).
+CHECK_PENDING = EXPERIMENT_PENDING
+CHECK_RUNNING = EXPERIMENT_RUNNING
+CHECK_COMPLETED = EXPERIMENT_COMPLETED
+CHECK_FAILED = EXPERIMENT_FAILED
+
+
+class BriefCitationCheck(Base):
+    """One citation-fidelity check of a saved brief: every cited passage is
+    judged against the source excerpts it cites. Checks accumulate as history
+    per brief, like experiment runs."""
+
+    __tablename__ = "brief_citation_checks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    brief_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Snapshot: the brief may be renamed or re-researched after the check.
+    brief_title: Mapped[str] = mapped_column(String(500), nullable=False)
+    data_source: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    judge_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    model_combo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    # {progress: {completed, total}} while running; verdict counts, per-section
+    # rows, token totals, cost and duration once complete; {error} when failed.
+    summary_stats: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    passages: Mapped[list["BriefCitationCheckPassage"]] = relationship(
+        back_populates="check",
+        cascade="all, delete-orphan",
+        order_by="BriefCitationCheckPassage.passage_id",
+    )
+
+
+class BriefCitationCheckPassage(Base):
+    """One judged passage of a check: the row of the review table."""
+
+    __tablename__ = "brief_citation_check_passages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    check_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brief_citation_checks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    passage_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    brief_section: Mapped[str] = mapped_column(Text, nullable=False)
+    passage: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[str] = mapped_column(String(255), nullable=False)
+    documents: Mapped[str] = mapped_column(Text, nullable=False)
+    # [{index, title, page, doc_id, chunk_id, pdf_url, section, excerpt}]
+    sources: Mapped[list] = mapped_column(JSONB, nullable=False)
+    dangling_citations: Mapped[str] = mapped_column(String(255), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(32), nullable=False)
+    flagged: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    problems: Mapped[list] = mapped_column(JSONB, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    # [{citation, quote, status: verbatim|near|missing}]
+    supporting_quotes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    quotes_verified: Mapped[str] = mapped_column(String(32), nullable=False)
+    quote_not_in_source: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )
+
+    check: Mapped["BriefCitationCheck"] = relationship(back_populates="passages")

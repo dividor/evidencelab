@@ -95,7 +95,7 @@ digraph Pipeline {
                 <TR><TD COLSPAN="3" ALIGN="CENTER"><FONT FACE="Helvetica" COLOR="#4A7490" POINT-SIZE="11"><B>Remote API</B></FONT></TD></TR>
                 <TR>
                     <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Embedding</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure text-embedding-3<BR/>Google gemini-embedding</FONT></TD>
-                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>LLMs</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure GPT-4.1<BR/>HF Qwen 2.5 / Llama 3.1<BR/>Google Gemini 2.5</FONT></TD>
+                    <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>LLMs</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure GPT-4.1<BR/>HF Qwen3 235B / Llama 3.1<BR/>Google Gemini 2.5</FONT></TD>
                     <TD BGCOLOR="#fafbfc" BORDER="1" COLOR="#5B8FA8" STYLE="ROUNDED" ALIGN="CENTER" VALIGN="TOP" WIDTH="130"><FONT FACE="Helvetica" COLOR="#2C3E50" POINT-SIZE="11"><B>Rerank</B></FONT><BR/><BR/><FONT FACE="Helvetica" COLOR="#6B7876" POINT-SIZE="9">Azure Cohere<BR/>Google Vertex Ranker</FONT></TD>
                 </TR>
                 </TABLE>

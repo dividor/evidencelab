@@ -10,6 +10,14 @@ on:
 
 jobs:
   demo-e2e:
+    # One run per provider combo the demo offers, so the open Hugging Face
+    # option is tested as well as Azure. (Google Vertex needs gcloud
+    # application-default credentials, which CI does not have.)
+    name: demo-e2e (${{ matrix.provider }})
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [azure_foundry, huggingface]
     runs-on: ubuntu-latest
     environment: ENV1
     timeout-minutes: 90
@@ -66,11 +74,11 @@ jobs:
 
       # ----------------------------------------------------------------
       # Step 1: Write .env and configure config.json via demo setup
-      # The demo --ci flag auto-selects the provider from available env
-      # vars and writes .env without prompts.
+      # The demo --ci flag writes .env without prompts; --provider picks
+      # this matrix entry's combo.
       # ----------------------------------------------------------------
       - name: Run demo setup (write .env + configure datasource)
-        run: python scripts/demo/run_demo.py --ci --setup-only
+        run: python scripts/demo/run_demo.py --ci --setup-only --provider ${{ matrix.provider }}
 
       # ----------------------------------------------------------------
       # Step 2: Build and start all Docker services
@@ -213,6 +221,6 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: demo-e2e-service-logs
+          name: demo-e2e-service-logs-${{ matrix.provider }}
           path: /tmp/demo-e2e-logs/
         continue-on-error: true

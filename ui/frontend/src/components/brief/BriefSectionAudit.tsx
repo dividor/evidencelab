@@ -83,6 +83,11 @@ export const BriefSectionAudit: React.FC<Props> = ({
                       <span className="brief-audit-label">Instruction</span> {e.instruction}
                     </div>
                   )}
+                  {e.note && (
+                    <div className="brief-modal-row-query brief-audit-note">
+                      <span className="brief-audit-label">Note</span> {e.note}
+                    </div>
+                  )}
                   <div className="brief-modal-row-meta">
                     {formatWhen(e.at)}
                     {e.sourceCount != null

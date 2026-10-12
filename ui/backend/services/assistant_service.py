@@ -352,12 +352,15 @@ async def stream_research_response(
     system_prompt_override: Optional[str] = None,
     deep_research: bool = False,
     target_words: Optional[int] = None,
+    introduces_sub_sections: Optional[List[str]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """
     Stream a research response via SSE events.
 
     ``target_words`` (deep research only) asks the coordinator for an answer
     of about that length and raises the token ceiling to fit it.
+    ``introduces_sub_sections`` (deep research only, Brief) makes the answer a
+    short introduction to those sub-sections: no headings, none of their detail.
 
     Runs the deepagents research agent and yields structured events
     as the agent searches, plans, and synthesizes its response.
@@ -376,12 +379,14 @@ async def stream_research_response(
     tracker = None
     usage_handler = UsageMetadataCallbackHandler()
     logger.info(
-        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s target_words=%s",
+        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s "
+        "target_words=%s intro_for=%d",
         run_id,
         deep_research,
         model_key,
         data_source,
         target_words,
+        len(introduces_sub_sections or []),
     )
 
     try:
@@ -400,6 +405,7 @@ async def stream_research_response(
                 system_prompt_override=system_prompt_override,
                 prior_sources=prior_sources,
                 target_words=target_words,
+                introduces_sub_sections=introduces_sub_sections,
             )
         else:
             agent, tracker = build_research_agent(

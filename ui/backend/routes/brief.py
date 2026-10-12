@@ -185,6 +185,7 @@ async def revise_section(
             instruction=instruction,
             model_key=model_key,
             voice_instructions=(body.voice_instructions or "").strip() or None,
+            introduces_sub_sections=body.introduces_sub_sections,
         )
         _record_brief_usage(usage, instruction, body, user)
         return BriefReviseResponse(content=revised)

@@ -3,10 +3,16 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi_users import schemas
-from pydantic import BaseModel, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_validator,
+)
 
 # ---------------------------------------------------------------------------
 # JSONB safety helpers
@@ -476,6 +482,13 @@ class SavedResearchListItem(BaseModel):
 # Brief Central schemas (briefs, templates, voice profiles, shares)
 # ---------------------------------------------------------------------------
 
+# A research prompt has the same limit as a section's typed guidance (the
+# research question cap in routes/brief.py), and a length target the same
+# bounds as the assistant request that carries it.
+BRIEF_PROMPT_MAX_CHARS = 2000
+TARGET_WORDS_MIN = 50
+TARGET_WORDS_MAX = 5000
+
 
 class VoiceProfileCreate(BaseModel):
     """Payload for creating a voice & tone profile."""
@@ -494,12 +507,19 @@ class VoiceProfileUpdate(BaseModel):
 
 
 class VoiceProfileRead(BaseModel):
-    """Voice & tone profile returned by read endpoints."""
+    """Voice & tone profile returned by read endpoints.
+
+    ``can_edit`` is true for the owner; a profile shared with the reader is
+    use-only. ``share_count`` is only filled in for the owner.
+    """
 
     id: uuid.UUID
     name: str
     description: Optional[str] = None
     instructions: str
+    owner_name: Optional[str] = None
+    can_edit: bool = True
+    share_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -507,11 +527,19 @@ class VoiceProfileRead(BaseModel):
 
 
 class BriefTemplateHeading(BaseModel):
-    """One heading in a brief template."""
+    """One heading in a brief template.
+
+    ``prompt`` is the section's research instructions; ``voice_profile_id``
+    and ``target_words`` override the brief defaults for that section. All
+    three are optional, and absent means "use the brief default".
+    """
 
     title: str = Field(..., min_length=1, max_length=500)
     sub: bool = False
     text: Optional[str] = Field(None, max_length=100_000)
+    prompt: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    voice_profile_id: Optional[uuid.UUID] = None
+    target_words: Optional[int] = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
 
 
 class BriefTemplateCreate(BaseModel):
@@ -521,10 +549,19 @@ class BriefTemplateCreate(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
     headings: List[BriefTemplateHeading] = Field(..., min_length=1, max_length=100)
     with_text: bool = False
+    # Brief-wide defaults: research instructions for every section, the
+    # default voice & tone profile and the default section length.
+    prompt: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    voice_profile_id: Optional[uuid.UUID] = None
+    target_words: Optional[int] = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
 
 
 class BriefTemplateUpdate(BaseModel):
-    """Payload for updating a brief template."""
+    """Payload for updating a brief template.
+
+    Omitted fields are left unchanged. ``prompt``, ``voice_profile_id`` and
+    ``target_words`` may be sent as null to clear them.
+    """
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
@@ -532,17 +569,30 @@ class BriefTemplateUpdate(BaseModel):
         None, min_length=1, max_length=100
     )
     with_text: Optional[bool] = None
+    prompt: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    voice_profile_id: Optional[uuid.UUID] = None
+    target_words: Optional[int] = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
 
 
 class BriefTemplateRead(BaseModel):
-    """Brief template returned by read endpoints."""
+    """Brief template returned by read endpoints.
+
+    ``can_edit`` is true for the owner; a template shared with the reader is
+    use-only. ``share_count`` is only filled in for the owner.
+    """
 
     id: uuid.UUID
     name: str
     description: Optional[str] = None
     headings: List[BriefTemplateHeading]
     with_text: bool
+    prompt: Optional[str] = None
+    voice_profile_id: Optional[uuid.UUID] = None
+    target_words: Optional[int] = None
     use_count: int
+    owner_name: Optional[str] = None
+    can_edit: bool = True
+    share_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -656,6 +706,8 @@ class BriefListItem(BaseModel):
     section_count: int = 0
     source_count: int = 0
     owner_name: Optional[str] = None
+    # Filled in for the admin "All Briefs" list, so it can be searched by user.
+    owner_email: Optional[str] = None
     share_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -664,7 +716,7 @@ class BriefListItem(BaseModel):
 
 
 class BriefShareCreate(BaseModel):
-    """Add a viewer (user by email, or group by name) to a brief."""
+    """Add a user (by email) or group (by name) to a brief, template or voice."""
 
     target: str = Field(..., min_length=1, max_length=320)
 
@@ -747,6 +799,12 @@ class AssistantChatRequest(BaseModel):
     # the token ceiling is raised to fit it. None keeps the prompt's default
     # ("at least 3-4 paragraphs").
     target_words: Optional[int] = Field(None, ge=50, le=5000)
+    # Brief only: set when the section being written is a top-level heading
+    # with sub-headings. The answer is then a short introduction to these
+    # sub-sections: no headings of its own and none of their detail.
+    introduces_sub_sections: Optional[
+        List[Annotated[str, StringConstraints(min_length=1, max_length=500)]]
+    ] = Field(None, min_length=1, max_length=50)
     conversation_history: Optional[List[Dict[str, Any]]] = Field(
         None,
         description=(

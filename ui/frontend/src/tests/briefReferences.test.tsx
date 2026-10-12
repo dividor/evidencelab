@@ -111,4 +111,37 @@ describe('BriefReferences', () => {
     fireEvent.click(screen.getByText('Doc One'));
     expect(onSourceClick).toHaveBeenCalledWith(expect.objectContaining({ docId: 'd1', page: 32 }));
   });
+
+  test('offers where the Word links point: the source document by default, or Evidence Lab', () => {
+    const onChange = jest.fn();
+    const view = render(
+      <BriefReferences
+        references={PER_PASSAGE}
+        grouping="passage"
+        onGroupingChange={jest.fn()}
+        onSourceClick={jest.fn()}
+        wordLinkTarget="source"
+        onWordLinkTargetChange={onChange}
+      />,
+    );
+    const group = screen.getByRole('radiogroup', { name: 'Word export links point to' });
+    expect(group).toHaveTextContent('Word links to');
+    expect(screen.getByRole('radio', { name: 'Source document' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'Evidence Lab' })).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Evidence Lab' }));
+    expect(onChange).toHaveBeenCalledWith('evidence_lab');
+
+    view.rerender(
+      <BriefReferences
+        references={PER_PASSAGE}
+        grouping="passage"
+        onGroupingChange={jest.fn()}
+        onSourceClick={jest.fn()}
+        wordLinkTarget="evidence_lab"
+        onWordLinkTargetChange={onChange}
+      />,
+    );
+    expect(screen.getByRole('radio', { name: 'Evidence Lab' })).toBeChecked();
+  });
 });

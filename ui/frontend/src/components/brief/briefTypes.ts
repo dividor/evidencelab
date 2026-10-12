@@ -31,6 +31,9 @@ export interface SectionAuditEntry {
   // Sources cited after this operation, and how many were newly added by it.
   sourceCount?: number;
   addedSourceCount?: number;
+  // Something the user should know about this run, shown in the Log (e.g. an
+  // introduction that still had headings after its re-runs).
+  note?: string;
   // For edit/update: the section content immediately before and after this
   // operation, so its diff stays viewable from the Log even after it's kept and
   // even on a reloaded (saved) brief. Absent for generate.
@@ -74,6 +77,9 @@ export interface BriefSection {
   // Length target override for this section, in words (null/absent = the
   // brief's target). See briefLength.ts.
   targetWords?: number | null;
+  // An introduction (a top-level heading with sub-headings) that still has
+  // this many headings of its own after its re-runs; shown as a warning.
+  introHeadingWarning?: number;
 }
 
 export interface SavedBriefSection {
@@ -90,6 +96,7 @@ export interface SavedBriefSection {
   voiceId?: string | null;
   guidance?: string;
   targetWords?: number | null;
+  introHeadingWarning?: number;
 }
 
 export interface SavedBrief {
@@ -112,6 +119,9 @@ export interface SavedBrief {
   // Brief-level section length target in words (sections may override).
   // Absent/null = no target: the model decides.
   targetWords?: number | null;
+  // Brief-wide research instructions ("Brief prompt"), applied to every
+  // section alongside the section's own guidance. Absent = none.
+  instructions?: string;
 }
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
@@ -127,7 +137,17 @@ export const BRIEF_MIGRATED_KEY = 'evidencelab_brief_migrated_v1';
 // Brief Central: templates, voice & tone profiles, sharing
 // ---------------------------------------------------------------------------
 
-export interface VoiceProfile {
+// Library items (templates and voice & tone profiles) are owned by their
+// creator and may be shared with other users or groups. `can_edit` is true for
+// the owner; a shared item is use-only and names its owner. `share_count` is
+// only filled in for the owner.
+interface LibraryItemAccess {
+  owner_name: string | null;
+  can_edit: boolean;
+  share_count: number;
+}
+
+export interface VoiceProfile extends LibraryItemAccess {
   id: string;
   name: string;
   description: string | null;
@@ -136,19 +156,29 @@ export interface VoiceProfile {
   updated_at: string;
 }
 
+// One heading of a template. `prompt` is the section's research instructions;
+// `voice_profile_id` and `target_words` override the brief defaults for that
+// section. Absent or null means "use the brief default".
 export interface BriefTemplateHeading {
   title: string;
   sub: boolean;
-  // Optional saved section text ("include section text" templates).
   text?: string | null;
+  prompt?: string | null;
+  voice_profile_id?: string | null;
+  target_words?: number | null;
 }
 
-export interface BriefTemplate {
+export interface BriefTemplate extends LibraryItemAccess {
   id: string;
   name: string;
   description: string | null;
   headings: BriefTemplateHeading[];
   with_text: boolean;
+  // Brief-wide defaults: research instructions for every section, the default
+  // voice & tone profile and the default section length.
+  prompt: string | null;
+  voice_profile_id: string | null;
+  target_words: number | null;
   use_count: number;
   created_at: string;
   updated_at: string;
@@ -171,6 +201,8 @@ export interface BriefListItem {
   section_count: number;
   source_count: number;
   owner_name: string | null;
+  // Filled in for the admin "All Briefs" list, so it can be searched by user.
+  owner_email?: string | null;
   share_count: number;
   created_at: string;
   updated_at: string;

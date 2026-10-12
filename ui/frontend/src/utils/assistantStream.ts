@@ -60,6 +60,9 @@ interface AssistantStreamOptions {
   // Target length of the written answer in words (deep research). The backend
   // asks the coordinator for that length and raises its token ceiling to fit.
   targetWords?: number | null;
+  // Brief: the sub-headings of the section being written when it is a
+  // top-level heading's introduction (no headings, none of their detail).
+  introducesSubSections?: string[] | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -241,6 +244,7 @@ export const streamAssistantChat = async ({
   activityId,
   usageContext,
   targetWords,
+  introducesSubSections,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -267,6 +271,7 @@ export const streamAssistantChat = async ({
       session_id: getSessionId(),
       usage_context: usageContext || undefined,
       target_words: targetWords || undefined,
+      introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : undefined,
     }),
     signal,
   });
