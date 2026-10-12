@@ -622,7 +622,7 @@ class TestReprocess:
         )
         monkeypatch.setitem(sys.modules, "pipeline.utilities.tasks", task_module)
 
-        await documents_routes.reprocess_document(
+        documents_routes.reprocess_document(
             DOC_ID, data_source="wfp", replace_summary=replace
         )
 

@@ -145,3 +145,46 @@ describe('the All Briefs (Admin) tab', () => {
     await waitFor(() => expect(central.setError).toHaveBeenCalledWith('Could not copy: Forbidden'));
   });
 });
+
+describe('Shared with me', () => {
+  const SHARED = [item('s1', KENYA, PRIYA, PRIYA_EMAIL)];
+  const SHARED_TAB = 'Shared with me (1)';
+
+  test('a shared brief can be opened or copied into your own Saved Briefs', async () => {
+    const onOpen = jest.fn();
+    const central = fakeCentral('shared', {
+      sharedBriefs: SHARED,
+      copyBrief: jest.fn().mockResolvedValue({ id: 'copy-2', title: `${KENYA} (copy)` } as RemoteBrief),
+    });
+    render(<BriefCentral central={central} onOpenBrief={onOpen} onCreateBrief={jest.fn()} />);
+    expect(screen.getByRole('tab', { name: SHARED_TAB })).toBeInTheDocument();
+    expect(within(card(KENYA)).getByText(/^Shared by Priya Raman · /)).toBeInTheDocument();
+
+    fireEvent.click(within(card(KENYA)).getByRole('button', { name: 'Open Brief' }));
+    expect(onOpen).toHaveBeenCalledWith('s1');
+
+    fireEvent.click(within(card(KENYA)).getByRole('button', { name: /Copy/ }));
+    expect(central.copyBrief).toHaveBeenCalledWith('s1');
+    expect(await screen.findByRole('status')).toHaveTextContent(`Copied to your Saved Briefs as “${KENYA} (copy)”.`);
+  });
+
+  test('shared and admin cards offer the same actions', () => {
+    const buttons = (tab: CentralTab) => {
+      const { unmount } = render(
+        <BriefCentral
+          central={fakeCentral(tab, { sharedBriefs: SHARED })}
+          onOpenBrief={jest.fn()}
+          onCreateBrief={jest.fn()}
+        />,
+      );
+      const names = within(card(KENYA))
+        .getAllByRole('button')
+        .map((b) => b.textContent?.trim())
+        .filter((name) => name === 'Open Brief' || name === 'Copy' || name === 'Share' || name === 'Delete');
+      unmount();
+      return names;
+    };
+    expect(buttons('shared')).toEqual(['Open Brief', 'Copy']);
+    expect(buttons('all')).toEqual(['Open Brief', 'Copy']);
+  });
+});

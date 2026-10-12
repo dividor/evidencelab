@@ -386,7 +386,7 @@ async def test_title_search(monkeypatch):
     )
     monkeypatch.setattr(main_module, "search_titles", lambda **kwargs: [hit])
 
-    results = await main_module.perform_title_search(
+    results = main_module.perform_title_search(
         _make_request(path="/search/titles"),
         q="query",
     )
@@ -523,7 +523,7 @@ async def test_get_document(monkeypatch):
     db.get_document = lambda doc_id: {"id": doc_id, "title": "Na\ufffdonal"}
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
-    doc = await main_module.get_document("doc-1")
+    doc = main_module.get_document("doc-1")
     assert doc["title"] == "National"
 
 
@@ -540,7 +540,7 @@ async def test_get_document_prefers_pg(monkeypatch):
     )
     monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: PgMock())
 
-    doc = await main_module.get_document("doc-1")
+    doc = main_module.get_document("doc-1")
     assert doc["title"] == "Title"
 
 
@@ -550,7 +550,7 @@ async def test_get_document_logs_missing_folder(monkeypatch):
     db.get_document = lambda doc_id: {"id": doc_id, "sys_parsed_folder": None}
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
-    result = await main_module.get_document_logs("doc-1")
+    result = main_module.get_document_logs("doc-1")
     assert "No parsed folder" in result["error"]
 
 
@@ -562,7 +562,7 @@ async def test_update_document_toc(monkeypatch):
     db.update_document = lambda doc_id, payload: doc.update(payload)
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
-    result = await main_module.update_document_toc(
+    result = main_module.update_document_toc(
         "doc-1", main_module.TocUpdate(toc_classified="new")
     )
     assert result["success"] is True
@@ -578,7 +578,7 @@ async def test_update_document_metadata(monkeypatch):
     db.update_document = lambda doc_id, payload: doc.update(payload)
     monkeypatch.setattr(main_module, "get_db_for_source", lambda _: db)
 
-    result = await main_module.update_document_metadata(
+    result = main_module.update_document_metadata(
         "doc-1", main_module.DocumentMetadataUpdate(toc_approved=True)
     )
     assert result["doc"]["toc_approved"] is True
@@ -600,7 +600,7 @@ async def test_update_document_metadata_uses_pg_when_no_update(monkeypatch):
 
     monkeypatch.setattr(main_module, "get_pg_for_source", lambda _: PgMock())
 
-    result = await main_module.update_document_metadata(
+    result = main_module.update_document_metadata(
         "doc-1", main_module.DocumentMetadataUpdate(toc_approved=True)
     )
     assert result["doc"]["toc_approved"] is True
@@ -703,7 +703,7 @@ async def test_reprocess_document_enqueues(monkeypatch):
     task_module.reprocess_document = SimpleNamespace(delay=lambda *args: task)
     monkeypatch.setitem(sys.modules, "pipeline.utilities.tasks", task_module)
 
-    result = await main_module.reprocess_document("doc-1")
+    result = main_module.reprocess_document("doc-1")
     assert result["task_id"] == "task-1"
 
 

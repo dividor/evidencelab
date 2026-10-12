@@ -2654,6 +2654,19 @@
   align-items: center;
   gap: 6px 16px;
 }
+/* Where the Word export's links point: its own row under the grouping toggles. */
+.brief-footnotes-word-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px 16px;
+  flex-basis: 100%;
+}
+.brief-footnotes-word-links-label {
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
 .brief-footnotes-group-toggle {
   display: inline-flex;
   align-items: center;

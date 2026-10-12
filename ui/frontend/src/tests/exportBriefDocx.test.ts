@@ -115,8 +115,8 @@ describe('brief Word export — citation links point to the actual document', ()
     const rels = await relTargets(buildExportDocument(opts));
     // Openable outside Evidence Lab, jumping straight to the cited page.
     expect(rels).toContain(`${PDF_URL}#page=26`);
-    // Falls through to the in-app deep link only when no source URL is present.
-    expect(rels).not.toContain('/document/d1');
+    // Falls through to Evidence Lab's copy only when no source URL is present.
+    expect(rels).not.toContain('/api/pdf/d1');
   });
 
   test('citation hyperlink also resolves a pdf_url when present', async () => {
@@ -125,9 +125,16 @@ describe('brief Word export — citation links point to the actual document', ()
     expect(rels).toContain(`${PDF_URL}#page=26`);
   });
 
-  test('without any source URL, links fall back to the in-app deep link', async () => {
+  test('without any source URL, links fall back to the copy in Evidence Lab', async () => {
     const rels = await relTargets(buildExportDocument(BRIEF_OPTS));
-    expect(rels).toContain('/document/d1');
+    expect(rels).toContain('/api/pdf/d1');
+  });
+
+  test('the Evidence Lab option links every citation to Evidence Lab at the cited page', async () => {
+    const opts = { ...BRIEF_OPTS, linkTarget: 'evidence_lab' as const, results: [result({ report_url: PDF_URL })] };
+    const rels = await relTargets(buildExportDocument(opts));
+    expect(rels).toMatch(/Target="[^"]*\/api\/pdf\/d1(\?data_source=[^"#]*)?#page=26"/);
+    expect(rels).not.toContain(`${PDF_URL}#page=26`);
   });
 });
 

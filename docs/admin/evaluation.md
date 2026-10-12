@@ -176,7 +176,7 @@ The **Testing (Brief)** tab checks a finished brief against its own sources. Whe
 
 ![Testing (Brief): briefs you can check](../images/admin/eval/brief-check-overview.png)
 
-The list shows your own briefs and the briefs shared with you, with the number of researched sections and cited passages, and the outcome of the last check. The judge is the summarisation model of the model combo selected in the **Models** menu at the top of the page, so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
+The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the summarisation model of the model combo selected in the **Models** menu at the top of the page, so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
 Each passage gets one of four verdicts:
 

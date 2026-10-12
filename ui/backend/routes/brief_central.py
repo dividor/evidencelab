@@ -352,14 +352,13 @@ async def copy_brief(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Copy a brief into a new one the user owns: their own, or (admins) any.
+    """Copy a brief the user can open into a new one they own.
 
-    The copy starts private: shares and comments stay with the original, and it
-    gets its own activity record.
+    That is their own brief, one shared with them (directly or through a
+    group), or, for administrators, any brief. The copy starts private: shares
+    and comments stay with the original, and it gets its own activity record.
     """
-    source, can_edit = await _get_viewable_brief(session, brief_id, user)
-    if not can_edit and not user.is_superuser:
-        raise HTTPException(status_code=404, detail=_BRIEF_NOT_FOUND)
+    source, _ = await _get_viewable_brief(session, brief_id, user)
     title = f"{source.title}{_COPY_SUFFIX}"[:_TITLE_MAX]
     content = copy.deepcopy(source.content or {})
     content.pop("activityId", None)

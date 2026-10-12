@@ -181,14 +181,18 @@ export interface BriefCitationCheck {
   created_at: string;
 }
 
-// A brief the current user may check (own, or shared with them).
+// How the current user can see a brief: their own, shared with them, or (admins
+// only) another user's brief that was not shared.
+export type BriefAccess = 'own' | 'shared' | 'other';
+
+// A brief the current user may check.
 export interface BriefCheckCandidate {
   id: string;
   title: string;
   data_source?: string | null;
   updated_at: string;
   owner_name: string;
-  shared: boolean;
+  access: BriefAccess;
   researched_sections: number;
   cited_passages: number;
   last_check?: BriefCitationCheck | null;

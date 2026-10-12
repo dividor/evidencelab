@@ -44,6 +44,16 @@ export const getInitialFilterText = (): string => {
   return params.get('search') || '';
 };
 
+/** Documents per page in the Documents Library. */
+export const PAGE_SIZE_OPTIONS = [5, 10, 50, 100];
+export const DEFAULT_PAGE_SIZE = 10;
+
+/** The page size from the URL (?page_size=), when it is one of the options. */
+export const getInitialPageSize = (): number => {
+  const value = Number(new URLSearchParams(window.location.search).get('page_size'));
+  return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
+};
+
 export const getInitialPage = (): number => {
   const params = new URLSearchParams(window.location.search);
   const page = params.get('page');
@@ -226,13 +236,14 @@ export const useDocumentsReload = (
   currentPage: number,
   selectedCategory: string | null,
   columnFilters: Record<string, string>,
-  loadDocuments: () => void
+  loadDocuments: () => void,
+  pageSize: number = DEFAULT_PAGE_SIZE,
 ): void => {
   const loadRef = useRef(loadDocuments);
   loadRef.current = loadDocuments;
   useEffect(() => {
     loadRef.current();
-  }, [currentPage, selectedCategory, columnFilters]);
+  }, [currentPage, selectedCategory, columnFilters, pageSize]);
 };
 
 export const useFilterPopoverClose = (
@@ -278,10 +289,17 @@ export const useDebouncedFilterText = (
 export const useSyncDocumentsUrlParams = (
   currentPage: number,
   filterText: string,
-  chartView: ChartView
+  chartView: ChartView,
+  pageSize: number = DEFAULT_PAGE_SIZE,
 ): void => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    if (pageSize !== DEFAULT_PAGE_SIZE) {
+      params.set('page_size', pageSize.toString());
+    } else {
+      params.delete('page_size');
+    }
 
     if (currentPage > 1) {
       params.set('page', currentPage.toString());
@@ -306,7 +324,7 @@ export const useSyncDocumentsUrlParams = (
 
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [currentPage, filterText, chartView]);
+  }, [currentPage, filterText, chartView, pageSize]);
 };
 
 export const extractTitleFacets = (data: Facets): Array<{ value: string; count: number }> => {

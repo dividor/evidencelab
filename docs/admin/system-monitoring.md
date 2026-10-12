@@ -71,7 +71,7 @@ Features include:
 - **Sortable, filterable table** — columns for title, organization, year, type, status, and more
 - **Free-text search** — find documents by title or metadata
 - **Column filter popovers** — click any column header to filter by specific values
-- **Server-side pagination** — efficiently browse large corpora
+- **Server-side pagination** — efficiently browse large corpora; **Per page** beside the page buttons shows 5, 10 (the default), 50 or 100 documents a page, and is kept in the link (`page_size`)
 
 Click any document row to access detailed inspection modals:
 

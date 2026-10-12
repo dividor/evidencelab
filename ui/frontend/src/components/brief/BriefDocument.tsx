@@ -970,6 +970,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
         grouping={brief.referenceGrouping}
         onGroupingChange={brief.setReferenceGrouping}
         onSourceClick={handleSourceClick}
+        wordLinkTarget={brief.wordLinkTarget}
+        onWordLinkTargetChange={brief.setWordLinkTarget}
       />
 
       <ResearchStatusBar brief={brief} />

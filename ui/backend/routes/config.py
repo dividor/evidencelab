@@ -3,6 +3,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 import pipeline.db as pipeline_db
 from pipeline.db import (
@@ -241,18 +242,10 @@ async def get_datasources_config(
     When the user module is enabled, the response is filtered to only include
     datasources the authenticated user has permission to access.
     """
-    config = pipeline_db.load_datasources_config()
-    datasources = config.get("datasources", {})
-    for name, ds_config in datasources.items():
-        data_subdir = ds_config.get("data_subdir")
-        if not data_subdir:
-            continue
-        try:
-            pg = get_pg_for_source(data_subdir)
-            status_counts = pg.fetch_status_counts()
-            ds_config["total_documents"] = sum(status_counts.values())
-        except Exception:
-            pass
+    # One synchronous Postgres round trip per datasource, on an endpoint the
+    # UI calls on every page load; inline it holds the event loop for all of
+    # them at once.
+    datasources = await run_in_threadpool(_datasources_with_totals)
 
     # Filter datasources by user permissions when user module is active.
     # on_active: deny-by-default — unauthenticated users see nothing.
@@ -271,6 +264,23 @@ async def get_datasources_config(
             logger.exception("Permission check failed — denying datasource access")
             datasources = {}  # Deny by default on error
 
+    return datasources
+
+
+def _datasources_with_totals() -> dict:
+    """Load datasource config and attach document totals; runs in a thread."""
+    config = pipeline_db.load_datasources_config()
+    datasources = config.get("datasources", {})
+    for _name, ds_config in datasources.items():
+        data_subdir = ds_config.get("data_subdir")
+        if not data_subdir:
+            continue
+        try:
+            pg = get_pg_for_source(data_subdir)
+            status_counts = pg.fetch_status_counts()
+            ds_config["total_documents"] = sum(status_counts.values())
+        except Exception:
+            pass
     return datasources
 
 

@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse
 from qdrant_client.http import models as qmodels
 
 import pipeline.utilities.tasks as pipeline_tasks
@@ -344,13 +344,16 @@ async def get_documents(
 
 
 @router.get("/document/{doc_id}")
-async def get_document(
+def get_document(
     doc_id: str,
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
 ):
     """Get full document metadata"""
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     try:
         doc = None
         try:
@@ -389,38 +392,9 @@ async def get_document_thumbnail(
 ):
     """Get thumbnail image for a document"""
     try:
-        source = data_source or "uneg"
-        pg = get_pg_for_source(source)
-        doc = pg.fetch_docs([doc_id]).get(str(doc_id))
-
-        if not doc or is_hidden(doc):
-            raise _hidden_or_missing(doc)
-
-        # Try to get sys_parsed_folder from document (check multiple locations)
-        parsed_folder = doc.get("sys_parsed_folder") or doc.get("sys_data", {}).get(
-            "sys_parsed_folder"
-        )
-
-        # Fallback: construct path from document metadata
-        if not parsed_folder:
-            org = doc.get("map_organization")
-            year = doc.get("map_published_year")
-            if org and year and doc_id:
-                parsed_folder = f"data/{source}/parsed/{org}/{year}/{doc_id}"
-
-        if not parsed_folder:
-            raise HTTPException(status_code=404, detail="Thumbnail path not found")
-
-        # Construct thumbnail path
-        thumbnail_path = f"{parsed_folder}/thumbnail.png"
-
-        # Serve the thumbnail file
-        app_root = Path(os.environ.get("APP_ROOT", "/app")).resolve()
-        full_path = (app_root / thumbnail_path).resolve()
-
-        if not full_path.exists():
-            raise HTTPException(status_code=404, detail="Thumbnail not found")
-
+        # The document lookup is a synchronous Postgres call; the response
+        # itself is streamed by FileResponse, so only the lookup is offloaded.
+        full_path = await run_in_threadpool(_thumbnail_path_sync, doc_id, data_source)
         return FileResponse(full_path, media_type="image/png")
 
     except HTTPException:
@@ -430,14 +404,54 @@ async def get_document_thumbnail(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _thumbnail_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
+    """Resolve a document's thumbnail path; runs in a worker thread."""
+    source = data_source or "uneg"
+    pg = get_pg_for_source(source)
+    doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+
+    if not doc or is_hidden(doc):
+        raise _hidden_or_missing(doc)
+
+    # Try to get sys_parsed_folder from document (check multiple locations)
+    parsed_folder = doc.get("sys_parsed_folder") or doc.get("sys_data", {}).get(
+        "sys_parsed_folder"
+    )
+
+    # Fallback: construct path from document metadata
+    if not parsed_folder:
+        org = doc.get("map_organization")
+        year = doc.get("map_published_year")
+        if org and year and doc_id:
+            parsed_folder = f"data/{source}/parsed/{org}/{year}/{doc_id}"
+
+    if not parsed_folder:
+        raise HTTPException(status_code=404, detail="Thumbnail path not found")
+
+    # Construct thumbnail path
+    thumbnail_path = f"{parsed_folder}/thumbnail.png"
+
+    # Serve the thumbnail file
+    app_root = Path(os.environ.get("APP_ROOT", "/app")).resolve()
+    full_path = (app_root / thumbnail_path).resolve()
+
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    return full_path
+
+
 @router.get("/document/{doc_id}/logs")
-async def get_document_logs(
+def get_document_logs(
     doc_id: str,
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
     ),
 ):
     """Get processing logs for a document"""
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     try:
         db = get_db_for_source(data_source)
         doc = db.get_document(doc_id)
@@ -476,7 +490,7 @@ async def get_document_logs(
 
 
 @router.put("/document/{doc_id}/toc")
-async def update_document_toc(
+def update_document_toc(
     doc_id: str,
     toc_update: TocUpdate,
     data_source: Optional[str] = Query(
@@ -484,6 +498,9 @@ async def update_document_toc(
     ),
 ):
     """Update the toc_classified field for a document"""
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     try:
         db = get_db_for_source(data_source)
         doc = db.get_document(doc_id)
@@ -503,7 +520,7 @@ async def update_document_toc(
 
 
 @router.patch("/documents/{doc_id}")
-async def update_document_metadata(
+def update_document_metadata(
     doc_id: str,
     update: DocumentMetadataUpdate,
     data_source: Optional[str] = Query(
@@ -514,6 +531,9 @@ async def update_document_metadata(
     Update arbitrary document metadata fields.
     Currently supported: toc_approved
     """
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     try:
         db = get_db_for_source(data_source)
         doc = db.get_document(doc_id)
@@ -564,67 +584,28 @@ async def get_document_chunks(
 ):
     """Get all chunks for a specific document"""
     try:
-        db = get_db_for_source(data_source)
-        pg = get_pg_for_source(data_source)
-        if is_hidden(pg.fetch_docs([doc_id]).get(str(doc_id))):
-            raise _hidden_or_missing(None)
-
-        # Query chunks from Qdrant for this document
-        results, _ = db.client.scroll(
-            collection_name=db.chunks_collection,
-            scroll_filter=qmodels.Filter(
-                must=[
-                    qmodels.FieldCondition(
-                        key="doc_id", match=qmodels.MatchValue(value=doc_id)
-                    )
-                ]
-            ),
-            limit=10000,  # Get all chunks for the document
-            with_payload=True,
+        # The Qdrant scroll (up to 10,000 chunks), the Postgres lookups and the
+        # formatting loop are all synchronous; inline they hold the event loop
+        # for the whole request. Translation below is genuinely async, so it
+        # stays on the loop.
+        formatted_chunks, needs_translation = await run_in_threadpool(
+            _document_chunks_sync, doc_id, data_source, target_language
         )
 
-        chunk_cache = pg.fetch_chunks([str(point.id) for point in results])
+        if needs_translation:
 
-        formatted_chunks = []
-        for point in results:
-            payload = point.payload
-            chunk_payload = chunk_cache.get(str(point.id), {})
-            formatted_chunks.append(
-                {
-                    "chunk_id": str(point.id),
-                    "doc_id": payload.get("doc_id"),
-                    "text": clean_text(
-                        chunk_payload.get("sys_text") or payload.get("sys_text", "")
-                    ),
-                    "page_num": chunk_payload.get("sys_page_num"),
-                    "headings": chunk_payload.get("sys_headings", []),
-                    "bbox": chunk_payload.get("sys_bbox", []),
-                    "section_type": payload.get("tag_section_type"),
-                    "score": 1.0,
-                }
-            )
+            async def translate_chunk(chunk):
+                """Translate a chunk's text into the target language."""
+                if chunk.get("text"):
+                    chunk["_original_text"] = chunk["text"]
+                    chunk["_translated"] = True
+                    chunk["text"] = await translation_service.translate_text(
+                        chunk["text"], target_language
+                    )
 
-        # Translate chunks if target_language is set
-        if target_language and target_language.lower() != "en":
-            # Check document language first to avoid unnecessary translation
-            doc = pg.fetch_docs([doc_id]).get(str(doc_id))
-            doc = normalize_document_payload(doc) if doc else None
-            doc_lang = (doc.get("language") if doc else "en") or "en"
-
-            if not doc_lang.lower().startswith(target_language.lower()):
-
-                async def translate_chunk(chunk):
-                    """Translate a chunk's text into the target language."""
-                    if chunk.get("text"):
-                        chunk["_original_text"] = chunk["text"]
-                        chunk["_translated"] = True
-                        chunk["text"] = await translation_service.translate_text(
-                            chunk["text"], target_language
-                        )
-
-                # Translate in parallel
-                tasks = [translate_chunk(chunk) for chunk in formatted_chunks]
-                await asyncio.gather(*tasks)
+            # Translate in parallel
+            tasks = [translate_chunk(chunk) for chunk in formatted_chunks]
+            await asyncio.gather(*tasks)
 
         return {"chunks": formatted_chunks, "total": len(formatted_chunks)}
 
@@ -635,6 +616,64 @@ async def get_document_chunks(
     except Exception as e:
         logger.error(f"Chunks fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _document_chunks_sync(
+    doc_id: str, data_source: Optional[str], target_language: Optional[str]
+) -> tuple[list[dict], bool]:
+    """Fetch and format a document's chunks; runs in a worker thread.
+
+    Returns the formatted chunks and whether they still need translating.
+    """
+    db = get_db_for_source(data_source)
+    pg = get_pg_for_source(data_source)
+    if is_hidden(pg.fetch_docs([doc_id]).get(str(doc_id))):
+        raise _hidden_or_missing(None)
+
+    # Query chunks from Qdrant for this document
+    results, _ = db.client.scroll(
+        collection_name=db.chunks_collection,
+        scroll_filter=qmodels.Filter(
+            must=[
+                qmodels.FieldCondition(
+                    key="doc_id", match=qmodels.MatchValue(value=doc_id)
+                )
+            ]
+        ),
+        limit=10000,  # Get all chunks for the document
+        with_payload=True,
+    )
+
+    chunk_cache = pg.fetch_chunks([str(point.id) for point in results])
+
+    formatted_chunks = []
+    for point in results:
+        payload = point.payload
+        chunk_payload = chunk_cache.get(str(point.id), {})
+        formatted_chunks.append(
+            {
+                "chunk_id": str(point.id),
+                "doc_id": payload.get("doc_id"),
+                "text": clean_text(
+                    chunk_payload.get("sys_text") or payload.get("sys_text", "")
+                ),
+                "page_num": chunk_payload.get("sys_page_num"),
+                "headings": chunk_payload.get("sys_headings", []),
+                "bbox": chunk_payload.get("sys_bbox", []),
+                "section_type": payload.get("tag_section_type"),
+                "score": 1.0,
+            }
+        )
+
+    needs_translation = False
+    if target_language and target_language.lower() != "en":
+        # Check document language first to avoid unnecessary translation
+        doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+        doc = normalize_document_payload(doc) if doc else None
+        doc_lang = (doc.get("language") if doc else "en") or "en"
+        needs_translation = not doc_lang.lower().startswith(target_language.lower())
+
+    return formatted_chunks, needs_translation
 
 
 @router.post("/documents/{doc_id}/reprocess-toc")
@@ -701,7 +740,7 @@ async def get_queue_status():
 
 
 @router.post("/documents/{doc_id}/reprocess")
-async def reprocess_document(
+def reprocess_document(
     doc_id: str,
     data_source: Optional[str] = Query(
         None, description="Data source (e.g., 'uneg', 'gcf')"
@@ -719,6 +758,9 @@ async def reprocess_document(
 
     Resets status, deletes chunks, and enqueues task for pipeline worker.
     """
+    # Declared sync on purpose: the body uses the synchronous Postgres and
+    # Qdrant clients, so FastAPI runs it in the threadpool instead of
+    # holding the event loop and stalling every other request.
     source = data_source or "uneg"
     db = get_db_for_source(source)
     doc = db.get_document(doc_id)
@@ -758,46 +800,12 @@ async def serve_pdf(
 ):
     """Serve PDF file for viewing"""
     try:
-        doc = None
-        try:
-            pg = get_pg_for_source(data_source)
-            doc = pg.fetch_docs([doc_id]).get(str(doc_id))
-            if doc:
-                sys_data = doc.get("sys_data")
-                if isinstance(sys_data, dict) and "sys_filepath" in sys_data:
-                    doc.setdefault("sys_filepath", sys_data.get("sys_filepath"))
-        except Exception:
-            doc = None
-        if not doc:
-            db = get_db_for_source(data_source)
-            doc = db.get_document(doc_id) if db else None
-        doc = normalize_document_payload(doc) if doc else doc
-        if not doc or is_hidden(doc):
-            raise _hidden_or_missing(doc)
-
-        filepath = doc.get("filepath") or doc.get("sys_filepath")
-        if not filepath:
-            raise HTTPException(
-                status_code=404, detail="PDF filepath not found in metadata"
-            )
-
-        # Convert relative path to absolute path
-        pdf_path = Path(filepath)
-        if not pdf_path.is_absolute():
-            # Assume paths are relative to /app (Docker container working directory)
-            pdf_path = Path("/app") / filepath
-
-        if not pdf_path.exists():
-            raise HTTPException(
-                status_code=404, detail=f"PDF file not found at {pdf_path}"
-            )
-
-        # Read PDF and return with explicit inline disposition
-        with open(pdf_path, "rb") as f:
-            pdf_content = f.read()
-
-        return Response(
-            content=pdf_content,
+        # Resolve the path off the loop (synchronous Postgres), then let
+        # FileResponse stream the file: reading a whole PDF into memory on the
+        # event loop stalled every other request and spiked memory.
+        pdf_path = await run_in_threadpool(_pdf_path_sync, doc_id, data_source)
+        return FileResponse(
+            pdf_path,
             media_type="application/pdf",
             headers={"Content-Disposition": "inline"},
         )
@@ -806,6 +814,44 @@ async def serve_pdf(
     except Exception as e:
         logger.error(f"PDF serve error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _pdf_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
+    """Resolve a document's PDF path; runs in a worker thread."""
+    doc = None
+    try:
+        pg = get_pg_for_source(data_source)
+        doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+        if doc:
+            sys_data = doc.get("sys_data")
+            if isinstance(sys_data, dict) and "sys_filepath" in sys_data:
+                doc.setdefault("sys_filepath", sys_data.get("sys_filepath"))
+    except Exception:
+        doc = None
+    if not doc:
+        db = get_db_for_source(data_source)
+        doc = db.get_document(doc_id) if db else None
+    doc = normalize_document_payload(doc) if doc else doc
+    if not doc or is_hidden(doc):
+        raise _hidden_or_missing(doc)
+
+    filepath = doc.get("filepath") or doc.get("sys_filepath")
+    if not filepath:
+        raise HTTPException(
+            status_code=404, detail="PDF filepath not found in metadata"
+        )
+
+    # Convert relative path to absolute path
+    pdf_path = Path(filepath)
+    if not pdf_path.is_absolute():
+        # Assume paths are relative to /app (Docker container working directory)
+        pdf_path = Path("/app") / filepath
+
+    if not pdf_path.exists():
+        # The resolved path is server-internal; do not echo it back.
+        raise HTTPException(status_code=404, detail="PDF file not found")
+
+    return pdf_path
 
 
 # Allowed file extensions for static file serving

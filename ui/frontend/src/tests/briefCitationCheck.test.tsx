@@ -53,9 +53,12 @@ const passages = [
   passage({ id: 'p3', passage_id: 3, brief_section: 'Costs', passage: 'Costs halved.', verdict: 'unsupported', flagged: true, confidence: 0.4 }),
 ];
 
+const CASH = 'Cash transfers';
+const NUTRITION = 'Nutrition outcomes';
 const briefs = [
-  { id: 'b1', title: BRIEF_TITLE, data_source: 'wfp', updated_at: TS, owner_name: 'Jan', shared: false, researched_sections: 2, cited_passages: 3, last_check: check },
-  { id: 'b2', title: 'Cash transfers', data_source: 'wfp', updated_at: TS, owner_name: 'Ana', shared: true, researched_sections: 1, cited_passages: 0, last_check: null },
+  { id: 'b1', title: BRIEF_TITLE, data_source: 'wfp', updated_at: TS, owner_name: 'Jan', access: 'own', researched_sections: 2, cited_passages: 3, last_check: check },
+  { id: 'b2', title: CASH, data_source: 'wfp', updated_at: TS, owner_name: 'Ana', access: 'shared', researched_sections: 1, cited_passages: 0, last_check: null },
+  { id: 'b3', title: NUTRITION, data_source: 'wfp', updated_at: TS, owner_name: 'Bo', access: 'other', researched_sections: 1, cited_passages: 2, last_check: null },
 ];
 
 beforeEach(() => {
@@ -91,15 +94,24 @@ describe('BriefTestingManager', () => {
 });
 
 describe('BriefCheckList', () => {
-  test('lists own and shared briefs, scopes them, and starts a check with the inherited combo', async () => {
+  test("lists own, shared and other users' briefs, scopes them, and starts a check with the inherited combo", async () => {
     mockedAxios.post.mockResolvedValue({ data: { ...check, id: 'chk2', status: 'pending' } });
     const onOpenCheck = jest.fn();
     render(<BriefCheckList modelCombo="Google Vertex" onOpenCheck={onOpenCheck} />);
-    await waitFor(() => expect(screen.getByText('Cash transfers')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(CASH)).toBeInTheDocument());
+    expect(screen.getByText(NUTRITION)).toBeInTheDocument();
     expect(screen.getByText('2 of 3 flagged (67%)')).toBeInTheDocument();
+    expect(screen.getAllByText('shared')).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Shared with me' }));
     expect(screen.queryByText(BRIEF_TITLE)).toBeNull();
+    expect(screen.queryByText(NUTRITION)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Other users' }));
+    expect(screen.getByText(NUTRITION)).toBeInTheDocument();
+    expect(screen.queryByText(CASH)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mine' }));
+    expect(screen.getByText(BRIEF_TITLE)).toBeInTheDocument();
+    expect(screen.queryByText(NUTRITION)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
 
     const runButtons = screen.getAllByRole('button', { name: 'Run check' });

@@ -111,7 +111,7 @@ Citations work like the rest of Evidence Lab: inline number badges link to the s
 
 Briefs save automatically as you research. Signed in, they are stored against your account (so they follow you between browsers) and listed under **Saved Briefs** in Brief Central. Each card shows the topic, section and source counts, the voice profile in use, and who it is shared with.
 
-Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
+Each card has **Open Brief** and, for your own briefs, **Share** and **Delete**. Cards for briefs shared with you have **Copy** instead, which puts a private copy, titled "… (copy)", in your own **Saved Briefs** for you to edit. **New brief** opens the New brief dialog (see [Start a brief](#1-start-a-brief)). The other tabs list briefs **Shared with me**, your **Templates** and your **Voice & tone** profiles, including those others have shared with you.
 
 > Signed out, briefs are kept in your browser's local storage instead, and sharing, templates, voice profiles and comments are unavailable.
 
@@ -135,6 +135,13 @@ The exported document mirrors what you see on screen: inline `[n]` citation numb
 - **Neither ticked** — one line per citation, with its page: `[1] Title, 2021, p.32`.
 - **Group by document (multiple per document)** — one line per document listing each of its citation numbers with the page it points at: `Title, 2021, [1] p. 32, [2] p. 56`. The numbering is unchanged, so this is more compact when a brief leans on a handful of reports.
 - **Group by document (single per document)** — one number per document and no page numbers: `[1] Title, 2021`. Every passage cited from the same document shares that number, so the prose is renumbered too — `A fact happened. [1][3]` becomes `A fact happened. [1]` when both citations came from the same report. Clicking an inline number still opens the document at the passage it was cited from.
+
+**Where the links point.** Under the checkboxes, **Word links to** chooses where the exported document's links open:
+
+- **Source document** (the default) — each document's own address outside Evidence Lab, its PDF or report page, opened at the cited page (`#page=N`). A document with no address of its own links to its copy in Evidence Lab instead.
+- **Evidence Lab** — the copy of each document in Evidence Lab, opened at the cited page. Use it when readers should stay in Evidence Lab, or when source sites move or need a sign-in.
+
+Links in the References list that stand for a whole document open it at its first page.
 
 ![Export to Word button](../images/brief/brief-export-button.png)
 
@@ -161,7 +168,7 @@ Sharing is **viewer-only**: recipients can read the brief, follow its citations,
 - **Brief link** — copy the brief's URL (`/brief/<id>`) and send it. The link only opens for people you have added, so it is safe to paste into a channel where others might see it.
 - **Remove access** — click the **×** beside a person or group.
 
-Briefs shared with you appear under **Shared with me** in Brief Central, labelled with the owner's name.
+Briefs shared with you appear under **Shared with me** in Brief Central, labelled with the owner's name. They open read-only; **Copy** makes your own editable copy, leaving the original and its comments with its owner.
 
 ---
 

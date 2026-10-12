@@ -337,7 +337,7 @@ class TestByIdRoutes:
         monkeypatch.setattr(routes, "get_pg_for_source", lambda _: _Pg(_hidden_doc()))
         monkeypatch.setattr(routes, "get_db_for_source", lambda _: None)
         with pytest.raises(HTTPException) as exc:
-            await routes.get_document("d1", data_source="uneg")
+            routes.get_document("d1", data_source="uneg")
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -346,7 +346,7 @@ class TestByIdRoutes:
 
         visible = {"doc_id": "d1", "map_title": "Fine", "sys_data": {}}
         monkeypatch.setattr(routes, "get_pg_for_source", lambda _: _Pg(visible))
-        result = await routes.get_document("d1", data_source="uneg")
+        result = routes.get_document("d1", data_source="uneg")
         assert result["title"] == "Fine"
         assert not result.get("hidden")
 
