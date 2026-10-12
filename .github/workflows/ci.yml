@@ -251,6 +251,9 @@ jobs:
     needs: code-quality
     env:
       HUGGINGFACE_API_KEY: ${{ secrets.HUGGINGFACE_API_KEY }}
+      # The TOC classification tests call the uneg tag model (Azure Foundry)
+      AZURE_FOUNDRY_KEY: ${{ secrets.AZURE_FOUNDRY_KEY }}
+      AZURE_FOUNDRY_ENDPOINT: ${{ vars.AZURE_FOUNDRY_ENDPOINT }}
       API_SECRET_KEY: ${{ secrets.API_SECRET_KEY }}
       AUTH_SECRET_KEY: ${{ secrets.AUTH_SECRET_KEY }}
       KEY_ENCRYPTION_KEY: ${{ secrets.KEY_ENCRYPTION_KEY }}

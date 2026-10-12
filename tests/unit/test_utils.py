@@ -116,3 +116,54 @@ def test_get_llm_uses_cache(monkeypatch):
     assert llm1 is fake_llm
     assert llm2 is fake_llm
     assert len(calls) == 1
+
+
+def test_create_huggingface_llm_when_inference_provider_set_then_router_pinned(
+    monkeypatch,
+):
+    monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf_test")
+
+    llm = llm_factory._create_huggingface_llm(
+        "Qwen/Qwen2.5-72B-Instruct", 0.2, 100, inference_provider="together"
+    )
+
+    assert llm.llm.provider == "together"
+    assert llm.llm.repo_id == "Qwen/Qwen2.5-72B-Instruct"
+    assert llm.llm.temperature == 0.2
+    assert llm.llm.max_new_tokens == 100
+
+
+def test_create_huggingface_llm_when_no_inference_provider_then_router_chooses(
+    monkeypatch,
+):
+    monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf_test")
+
+    llm = llm_factory._create_huggingface_llm(
+        "Qwen/Qwen2.5-72B-Instruct", 0.2, 100, inference_provider=None
+    )
+
+    assert llm.llm.provider is None
+
+
+def test_get_llm_when_model_id_matches_supported_llm_then_its_provider_is_used(
+    monkeypatch,
+):
+    monkeypatch.setenv("HUGGINGFACE_API_KEY", "hf_test")
+    monkeypatch.setattr(
+        pipeline_db,
+        "SUPPORTED_LLMS",
+        {
+            "key": {
+                "model": "Org/Model",
+                "provider": "huggingface",
+                "inference_provider": "featherless-ai",
+            }
+        },
+    )
+    monkeypatch.setattr(llm_factory, "_llm_cache", {}, raising=False)
+
+    llm = llm_factory.get_llm(
+        model="Org/Model", provider="huggingface", temperature=0.0, max_tokens=50
+    )
+
+    assert llm.llm.provider == "featherless-ai"
