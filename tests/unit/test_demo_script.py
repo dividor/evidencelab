@@ -152,6 +152,30 @@ class TestEnsureDemoDatasource:
         )
         assert ds["pipeline"]["summarize"]["llm_model"]["provider"] == "huggingface"
 
+    def test_ensure_demo_datasource_when_combo_caps_workers_then_summarize_uses_cap(
+        self, base_config
+    ):
+        wb = base_config["datasources"]["World Bank Fraud and Integrity Reports"]
+        wb["pipeline"]["summarize"]["llm_workers"] = 6
+        combo = demo.PROVIDER_COMBOS[1]  # HF
+
+        demo.ensure_demo_datasource(base_config, combo)
+
+        ds = base_config["datasources"][demo.DEMO_DATASOURCE_KEY]
+        assert ds["pipeline"]["summarize"]["llm_workers"] == 2
+
+    def test_ensure_demo_datasource_when_combo_has_no_cap_then_workers_kept(
+        self, base_config
+    ):
+        wb = base_config["datasources"]["World Bank Fraud and Integrity Reports"]
+        wb["pipeline"]["summarize"]["llm_workers"] = 6
+        combo = demo.PROVIDER_COMBOS[0]  # Azure
+
+        demo.ensure_demo_datasource(base_config, combo)
+
+        ds = base_config["datasources"][demo.DEMO_DATASOURCE_KEY]
+        assert ds["pipeline"]["summarize"]["llm_workers"] == 6
+
     def test_adds_demo_datasource_with_google(self, base_config):
         combo = demo.PROVIDER_COMBOS[2]  # Google
         result = demo.ensure_demo_datasource(base_config, combo)

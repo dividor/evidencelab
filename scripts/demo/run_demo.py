@@ -66,6 +66,9 @@ PROVIDER_COMBOS = [
         "summarize_dense": "e5_large",
         "llm_model_id": "Qwen/Qwen2.5-72B-Instruct",
         "llm_provider": "huggingface",
+        # featherless-ai, the provider serving this model, allows two Qwen-72B
+        # requests at once per account (4 of 10 units each); more get 429.
+        "llm_workers": 2,
         "reranker": "jinaai/jina-reranker-v2-base-multilingual",
         "required_env": ["HUGGINGFACE_API_KEY"],
         "env_prompts": {
@@ -394,6 +397,8 @@ def ensure_demo_datasource(config, combo):
         "temperature": 0.2,
         "max_tokens": 2000,
     }
+    if "llm_workers" in combo:
+        pipeline["summarize"]["llm_workers"] = combo["llm_workers"]
 
     # Tag: LLM and dense model
     pipeline["tag"]["dense_model"] = combo["summarize_dense"]
