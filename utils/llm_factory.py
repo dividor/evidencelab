@@ -134,7 +134,7 @@ def get_llm(
         max_tokens: Max tokens to generate. If None, reads from
                     LLM_MAX_TOKENS env var (default: 500)
         inference_provider: Inference provider for HuggingFace models
-                           (e.g., "together", "novita"). If provided,
+                           (e.g., "scaleway", "together"). If provided,
                            appends ":inference_provider" to model name.
 
     Returns:
