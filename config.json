@@ -161,7 +161,7 @@
     "qwen2.5-72b-instruct": {
       "model": "Qwen/Qwen2.5-72B-Instruct",
       "provider": "huggingface",
-      "inference_provider": "novita"
+      "inference_provider": "featherless-ai"
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",
@@ -366,8 +366,8 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
-            "provider": "huggingface",
+            "model": "gpt-4.1-mini",
+            "provider": "azure_foundry",
             "temperature": 0.2,
             "max_tokens": 2000
           },
@@ -380,8 +380,8 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen2.5-72B-Instruct",
-            "provider": "huggingface",
+            "model": "gpt-4.1-mini",
+            "provider": "azure_foundry",
             "temperature": 0.0,
             "max_tokens": 4000
           },

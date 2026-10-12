@@ -83,7 +83,7 @@ The `source` field determines how the model is loaded:
 |-------|------|-------------|
 | `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-2.5-flash"`) |
 | `provider` | string | `"huggingface"`, `"azure_foundry"`, or `"google_vertex"` |
-| `inference_provider` | string | Optional routing provider (e.g., `"together"`, `"novita"`) |
+| `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"together"`, `"featherless-ai"`). If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
 
 #### Rerank Models (`supported_rerank_models`)
