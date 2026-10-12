@@ -342,6 +342,33 @@ def save_config(config):
         f.write("\n")
 
 
+def make_combo_default(config, combo):
+    """Mark the chosen provider's combo as the one the app starts on.
+
+    The API's MCP and A2A tools, and the UI, start on the combo flagged
+    ``"default": true``. Leaving another provider's combo flagged would send
+    those requests to a provider the user has no keys for. Returns True if
+    config.json changed.
+    """
+    combos = config.get("ui_model_combos", {})
+    if combo["name"] not in combos:
+        print(f"ERROR: config.json has no '{combo['name']}' entry in ui_model_combos.")
+        sys.exit(1)
+    changed = False
+    for name, combo_config in combos.items():
+        wanted = name == combo["name"]
+        if bool(combo_config.get("default")) == wanted:
+            continue
+        if wanted:
+            combo_config["default"] = True
+        else:
+            del combo_config["default"]
+        changed = True
+    if changed:
+        print(f"  Default model combo set to '{combo['name']}'")
+    return changed
+
+
 def ensure_demo_datasource(config, combo):
     """Add the demo datasource to config.json using the selected provider.
 
@@ -583,8 +610,9 @@ def main():
     # Step 1: Ensure demo datasource in config.json
     print("[1/4] Configuring demo datasource...")
     config = load_config()
-    changed = ensure_demo_datasource(config, combo)
-    if changed:
+    added = ensure_demo_datasource(config, combo)
+    made_default = make_combo_default(config, combo)
+    if added or made_default:
         save_config(config)
     print()
 

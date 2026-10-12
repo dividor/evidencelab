@@ -226,6 +226,50 @@ class TestPromptProvider:
 
 
 # ---------------------------------------------------------------------------
+# make_combo_default
+# ---------------------------------------------------------------------------
+class TestMakeComboDefault:
+    @pytest.fixture()
+    def config(self):
+        return {
+            "ui_model_combos": {
+                "Azure Foundry": {"default": True, "embedding_model": "azure_small"},
+                "Huggingface": {"embedding_model": "e5_large"},
+                "Google Vertex": {"embedding_model": "google_gemini_1536"},
+            }
+        }
+
+    def test_make_combo_default_when_other_combo_flagged_then_flag_moves(self, config):
+        changed = demo.make_combo_default(config, demo.PROVIDER_COMBOS[1])  # HF
+
+        combos = config["ui_model_combos"]
+        assert changed is True
+        assert combos["Huggingface"]["default"] is True
+        assert "default" not in combos["Azure Foundry"]
+        assert "default" not in combos["Google Vertex"]
+
+    def test_make_combo_default_when_already_default_then_unchanged(self, config):
+        changed = demo.make_combo_default(config, demo.PROVIDER_COMBOS[0])  # Azure
+
+        assert changed is False
+        assert config["ui_model_combos"]["Azure Foundry"]["default"] is True
+
+    def test_make_combo_default_when_combo_missing_then_exits(self, config):
+        del config["ui_model_combos"]["Huggingface"]
+
+        with pytest.raises(SystemExit):
+            demo.make_combo_default(config, demo.PROVIDER_COMBOS[1])
+
+    def test_provider_combo_names_match_repository_config(self):
+        import json
+
+        with demo.CONFIG_PATH.open(encoding="utf-8") as config_file:
+            combos = json.load(config_file)["ui_model_combos"]
+        for combo in demo.PROVIDER_COMBOS:
+            assert combo["name"] in combos
+
+
+# ---------------------------------------------------------------------------
 # _ci_select_provider
 # ---------------------------------------------------------------------------
 class TestCiSelectProvider:
