@@ -19,6 +19,8 @@ import {
   prettyJson,
 } from './testingFormat';
 import RunPassRateChart from './RunPassRateChart';
+import { resultWarnings } from './resultWarnings';
+import { runConfigHeadline, runConfigRows } from './runConfig';
 
 interface ExperimentDetailProps {
   experimentId: string;
@@ -272,6 +274,7 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
+  const warnings = resultWarnings(result.actual_output);
   return (
     <>
       <tr
@@ -293,7 +296,9 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
         </td>
         <td>{formatScore(result.score)}</td>
         <td>{formatMs(result.latency_ms)}</td>
-        <td className="testing-result-error">{result.error_message || ''}</td>
+        <td className={result.error_message ? 'testing-result-error' : 'testing-result-warning'}>
+          {result.error_message || warnings.join('; ')}
+        </td>
       </tr>
       {expanded && (
         <tr className="testing-result-detail-row">
@@ -312,6 +317,16 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
                   </pre>
                 )}
               </div>
+              {warnings.length > 0 && (
+                <div className="testing-case-block">
+                  <span className="testing-case-label">Warnings</span>
+                  <ul className="testing-result-warning-list">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="testing-result-warning">{w}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="testing-case-block">
                 <span className="testing-case-label">Expectations</span>
                 {(result.assertion_results || []).map((ar, i) => (
@@ -391,12 +406,71 @@ const RunProgressBar: React.FC<{ progress?: RunProgress | null }> = ({ progress 
   );
 };
 
+/* ------------------------------------------------------------------ */
+/*  Per-run configuration — what the run executed with, vs. the previous run */
+/* ------------------------------------------------------------------ */
+
+const RunConfigPanel: React.FC<{ run: TestRun; previous?: TestRun }> = ({ run, previous }) => {
+  const [open, setOpen] = useState(false);
+  const rows = runConfigRows(run.config, previous?.config);
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted testing-run-config-missing">
+        Configuration not recorded (run predates configuration tracking).
+      </p>
+    );
+  }
+  const changed = rows.filter((r) => r.changed).length;
+  const sections = Array.from(new Set(rows.map((r) => r.section)));
+  return (
+    <div className="testing-run-config">
+      <button
+        type="button"
+        className="testing-collapse-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="testing-collapse-caret" aria-hidden>{open ? '▾' : '▸'}</span>
+        <span className="testing-case-label">Configuration</span>
+        <span className="testing-run-config-headline">{runConfigHeadline(run.config)}</span>
+        {previous && (
+          <span className={`testing-run-config-diff${changed ? ' testing-run-config-diff--changed' : ''}`}>
+            {changed
+              ? `${changed} setting${changed === 1 ? '' : 's'} changed vs run #${previous.run_number}`
+              : `same as run #${previous.run_number}`}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="testing-run-config-sections">
+          {sections.map((section) => (
+            <dl key={section} className="testing-run-config-section">
+              <div className="testing-run-config-section-title">{section}</div>
+              {rows.filter((r) => r.section === section).map((r) => (
+                <div
+                  key={r.key}
+                  className={`testing-run-config-row${r.changed ? ' testing-run-config-row--changed' : ''}`}
+                  title={r.changed && previous ? `Changed vs run #${previous.run_number}` : undefined}
+                >
+                  <dt>{r.label}</dt>
+                  <dd>{r.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const RunSection: React.FC<{
   run: TestRun;
+  previous?: TestRun;
   caseInputs: Record<string, Record<string, unknown>>;
   defaultOpen: boolean;
   isLatest: boolean;
-}> = ({ run, caseInputs, defaultOpen, isLatest }) => {
+}> = ({ run, previous, caseInputs, defaultOpen, isLatest }) => {
   const [open, setOpen] = useState(defaultOpen);
   const stats = run.summary_stats;
   const active = isActive(run.status);
@@ -455,6 +529,7 @@ const RunSection: React.FC<{
           {stats?.error && <div className="auth-error">Run error: {stats.error}</div>}
           {active && <RunProgressBar progress={stats?.progress} />}
           <RunStats run={run} />
+          <RunConfigPanel run={run} previous={previous} />
           <table className="admin-table">
             <thead>
               <tr>
@@ -661,6 +736,7 @@ const ExperimentDetail: React.FC<ExperimentDetailProps> = ({
               <RunSection
                 key={run.id}
                 run={run}
+                previous={runs[idx + 1]}
                 caseInputs={caseInputs}
                 defaultOpen={idx === 0}
                 isLatest={idx === 0}
