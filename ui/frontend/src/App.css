@@ -12505,6 +12505,91 @@ a.admin-citation-clickable:hover {
   word-break: break-word;
 }
 
+/* Harness warnings (case still judged, e.g. reranker fell back). */
+.testing-result-warning {
+  color: #b54708;
+  word-break: break-word;
+}
+
+.testing-result-warning-list {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+/* Per-run configuration panel (models, group, settings the run used). */
+.testing-run-config {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.testing-run-config .testing-collapse-toggle {
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.testing-run-config-headline {
+  color: var(--color-text-muted, #57606a);
+  font-size: 0.9em;
+}
+
+.testing-run-config-diff {
+  color: var(--color-text-muted, #57606a);
+  font-size: 0.85em;
+}
+
+.testing-run-config-diff--changed {
+  color: #b54708;
+  font-weight: 600;
+}
+
+.testing-run-config-missing {
+  margin: 0.25rem 0 0.75rem;
+  font-size: 0.9em;
+}
+
+.testing-run-config-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
+  margin: 0.5rem 0 0;
+}
+
+.testing-run-config-section {
+  margin: 0;
+  min-width: 16rem;
+}
+
+.testing-run-config-section-title {
+  font-weight: 600;
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted, #57606a);
+  margin-bottom: 0.25rem;
+}
+
+.testing-run-config-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.9em;
+}
+
+.testing-run-config-row dt {
+  flex: 0 0 11rem;
+  color: var(--color-text-muted, #57606a);
+}
+
+.testing-run-config-row dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.testing-run-config-row--changed {
+  background: rgba(181, 71, 8, 0.08);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
 /* Status + pass/fail badges. */
 .testing-status,
 .testing-badge {
