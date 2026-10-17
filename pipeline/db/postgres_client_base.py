@@ -28,12 +28,18 @@ def build_postgres_dsn() -> str:
 def _pool_bounds() -> tuple[int, int]:
     """Connection-pool size, from the environment.
 
-    ``maxconn`` caps how many queries this process can run against one data
-    source at once; psycopg2 raises ``PoolError`` rather than queueing when the
-    pool is empty, so it must cover the request concurrency the API is sized
-    for. ``minconn`` is how many connections are kept open when returned:
-    psycopg2 closes anything beyond it, so a low value means a fresh connect
-    per request under load.
+    These bound one pool, and there is exactly one pool per process per data
+    source (see ``_POOL_REGISTRY``), so ``maxconn`` caps how many queries this
+    process can run against one data source at once. psycopg2 raises
+    ``PoolError`` rather than queueing when the pool is empty, so it must cover
+    the request concurrency the API is sized for. ``minconn`` is how many
+    connections are kept open when returned: psycopg2 closes anything beyond
+    it, so a low value means a fresh connect per request under load.
+
+    Sizing note: the process-wide floor is ``minconn`` x (data sources in use),
+    and the ceiling ``maxconn`` x (data sources in use). Keep that under the
+    server's ``max_connections`` once every process that talks to it is counted
+    -- a ``--workers N`` pipeline run is N+1 processes.
     """
     maxconn = int(os.getenv("POSTGRES_POOL_MAX", "16"))
     minconn = int(os.getenv("POSTGRES_POOL_MIN", "4"))
@@ -47,6 +53,64 @@ def _pool_bounds() -> tuple[int, int]:
     return minconn, maxconn
 
 
+# One pool per (process, data source). A pool is a set of connections to a
+# database, so it belongs to the process rather than to a client instance.
+#
+# ``PostgresClient`` is constructed in six places that are all live inside a
+# single pipeline worker (``db/database.py``, ``processors/indexing/indexer.py``,
+# ``processors/tagging/tagger_processor.py``, ``tagger_taxonomy.py``,
+# ``tagger_section_type.py``, ``processors/scanning/scanner.py``). When each
+# instance built its own pool, ``ThreadedConnectionPool`` opened ``minconn``
+# connections per pool, so the idle floor was ``6 x POSTGRES_POOL_MIN`` per
+# process. Measured with the shipped defaults and ``--workers 7``: 64-68 idle
+# connections from the pipeline alone, which exhausted a stock
+# ``max_connections=100`` server and failed documents.
+#
+# The pid is part of the key so that a forked child -- Celery's default worker
+# pool is prefork -- builds its own pool instead of operating on connection
+# sockets inherited from its parent, which would corrupt both sides. The
+# pipeline's own workers use the "spawn" start method, so they begin with an
+# empty registry either way.
+_POOL_REGISTRY: Dict[tuple[int, str, str], ThreadedConnectionPool] = {}
+_POOL_REGISTRY_LOCK = threading.Lock()
+
+
+def get_shared_pool(data_source: str) -> ThreadedConnectionPool:
+    """Return this process's pool for ``data_source``, building it once."""
+    dsn = build_postgres_dsn()
+    key = (os.getpid(), data_source, dsn)
+    pool = _POOL_REGISTRY.get(key)
+    if pool is not None:
+        return pool
+    # Double-checked locking: the client is shared across every request thread,
+    # so an unguarded lazy init can build two pools and leak one.
+    with _POOL_REGISTRY_LOCK:
+        pool = _POOL_REGISTRY.get(key)
+        if pool is None:
+            minconn, maxconn = _pool_bounds()
+            pool = ThreadedConnectionPool(minconn=minconn, maxconn=maxconn, dsn=dsn)
+            _POOL_REGISTRY[key] = pool
+            logger.debug(
+                "Opened Postgres pool for %r in pid %s (min=%s, max=%s)",
+                data_source,
+                key[0],
+                minconn,
+                maxconn,
+            )
+    return pool
+
+
+def close_all_pools() -> None:
+    """Close every pool this process opened, for shutdown and test teardown."""
+    with _POOL_REGISTRY_LOCK:
+        for key, pool in list(_POOL_REGISTRY.items()):
+            try:
+                pool.closeall()
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to close Postgres pool %s", key, exc_info=True)
+            del _POOL_REGISTRY[key]
+
+
 class PostgresClientBase:
     """Base connection and helpers for Postgres sidecar."""
 
@@ -58,23 +122,12 @@ class PostgresClientBase:
         self.data_source = source
         self.docs_table = f"docs_{source}"
         self.chunks_table = f"chunks_{source}"
-        self._pool: Optional[ThreadedConnectionPool] = None
-        self._pool_lock = threading.Lock()
         self._ensured_doc_sys_columns: set[str] = set()
         self._ensured_doc_map_columns: set[str] = set()
         self._ensured_chunk_sys_columns: set[str] = set()
 
     def _get_pool(self) -> ThreadedConnectionPool:
-        # Double-checked locking: the client is shared across every request
-        # thread, so an unguarded lazy init can build two pools and leak one.
-        if self._pool is None:
-            with self._pool_lock:
-                if self._pool is None:
-                    minconn, maxconn = _pool_bounds()
-                    self._pool = ThreadedConnectionPool(
-                        minconn=minconn, maxconn=maxconn, dsn=build_postgres_dsn()
-                    )
-        return self._pool
+        return get_shared_pool(self.data_source)
 
     @contextlib.contextmanager
     def _get_conn(self):
