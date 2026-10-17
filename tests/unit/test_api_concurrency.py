@@ -145,9 +145,7 @@ def test_pool_when_built_from_many_threads_then_only_one_pool_is_created():
         def __init__(self, **kwargs):
             built.append(kwargs)
 
-    client = base.PostgresClientBase.__new__(base.PostgresClientBase)
-    client._pool = None
-    client._pool_lock = threading.Lock()
+    client = base.PostgresClientBase("pool_race")
 
     def race(monkeypatched_pool):
         barrier.wait()
@@ -155,6 +153,7 @@ def test_pool_when_built_from_many_threads_then_only_one_pool_is_created():
 
     original = base.ThreadedConnectionPool
     base.ThreadedConnectionPool = _FakePool
+    base.close_all_pools()
     try:
         threads = [threading.Thread(target=race, args=(None,)) for _ in range(8)]
         for thread in threads:
@@ -162,6 +161,7 @@ def test_pool_when_built_from_many_threads_then_only_one_pool_is_created():
         for thread in threads:
             thread.join()
     finally:
+        base._POOL_REGISTRY.clear()
         base.ThreadedConnectionPool = original
 
     assert len(built) == 1, (
