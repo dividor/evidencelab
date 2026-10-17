@@ -38,6 +38,35 @@ SELECT count(*) FROM pg_stat_activity;
 
 The model stays in memory for the life of the process. If your deployment reranks through a hosted service, or does not rerank, set this to `false`: the memory is saved and the API starts faster. The model still loads on first use if something asks for it. See [Pipeline Configuration](pipeline-configuration.md) for choosing the reranker.
 
+## LLM rate limits and retries
+
+Hosted model providers limit how many **tokens per minute** a deployment may consume. Exceed it and the provider returns `HTTP 429` with a `Retry-After` header. That condition is temporary, and the right response is to wait — but if the pipeline gives up too quickly, a temporary throttle becomes a *permanently failed document*.
+
+Evidence Lab always honours `Retry-After` when the provider sends one, and otherwise backs off exponentially with jitter so that many workers throttled at the same moment do not all retry in the same instant.
+
+| Variable | Default | What it controls |
+|----------|---------|------------------|
+| `LLM_MAX_RETRIES` | `5` | Total attempts, **not** retries after the first. |
+| `LLM_RETRY_BASE_DELAY_SECONDS` | `1` | The first backoff step; doubles on each subsequent attempt. |
+| `LLM_RETRY_MAX_DELAY_SECONDS` | `30` | Ceiling on any single wait, including one the provider asks for. |
+
+The defaults suit the API, where a request must not hang for minutes. **Bulk ingestion wants a larger budget**, because there a throttled call should slow the run down rather than drop a document:
+
+```bash
+LLM_MAX_RETRIES=8
+LLM_RETRY_MAX_DELAY_SECONDS=60
+```
+
+### Match pipeline concurrency to the deployment's quota
+
+Retries cope with brief throttling. They cannot rescue a run that asks for several times the provisioned rate indefinitely — that run will simply be slow, and some documents will still exhaust their budget. The demand comes from two multiplied settings:
+
+> pipeline workers (`--workers`) **x** per-document summary workers (`llm_workers` in `config.json`)
+
+Seven workers against six summary workers is **42 concurrent LLM calls**. A deployment provisioned well below that will throttle most of them. If you see sustained 429s, either raise the deployment's quota or lower one of the two numbers — raising retries alone only converts the failures into a very slow run.
+
+On Azure OpenAI, a `GlobalStandard` deployment's capacity is quoted in thousands of tokens per minute, so capacity `200` is 200,000 TPM. Capacity sets the rate ceiling; billing stays per-token, so raising it does not create a standing cost.
+
 ## Do not add uvicorn workers to go faster
 
 Running the API with more than one worker looks like the obvious fix for a busy deployment. It is not safe here, and it weakens a security control:
