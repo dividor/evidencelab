@@ -17,6 +17,10 @@ from pipeline.orchestrator.worker import (
     init_worker,
     process_document_wrapper,
 )
+from pipeline.orchestrator.worker_memory_cap import (
+    WorkerMemoryWatchdog,
+    max_worker_memory_mb,
+)
 from pipeline.utilities.disk_space import (
     DiskSpaceExhausted,
     ensure_disk_space,
@@ -215,19 +219,100 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
 
         worker_timeout = orchestrator.pipeline_config.get("processing_timeout", 7200)
 
-        for doc_id, (res, doc) in pending_results.items():
-            result = _collect_result(orchestrator, doc_id, res, worker_timeout, stats)
-            # Raising inside the ``with ctx.Pool`` block terminates the pool,
-            # abandoning the queued tasks instead of failing them one by one.
-            _stop_if_disk_full(orchestrator, doc_id, result)
+        # Documents whose worker was killed for exceeding the memory cap. The
+        # pool never completes a killed task, so the collector must not wait
+        # ``worker_timeout`` for one of these.
+        killed: set = set()
+        watchdog = WorkerMemoryWatchdog(
+            max_worker_memory_mb(),
+            on_breach=lambda pid, doc_id, mb: _fail_memory_capped_doc(
+                orchestrator, killed, pid, doc_id, mb
+            ),
+        )
+        watchdog.start()
+        try:
+            for doc_id, (res, doc) in pending_results.items():
+                result = _collect_result(
+                    orchestrator, doc_id, res, worker_timeout, stats, killed
+                )
+                # Raising inside the ``with ctx.Pool`` block terminates the pool,
+                # abandoning the queued tasks instead of failing them one by one.
+                _stop_if_disk_full(orchestrator, doc_id, result)
+        finally:
+            watchdog.stop()
+
+
+def _fail_memory_capped_doc(
+    orchestrator, killed: set, pid: int, doc_id: Optional[str], footprint_mb: int
+) -> None:
+    """Record a worker killed by the memory cap and fail its document."""
+    if doc_id:
+        killed.add(doc_id)
+        _mark_failed(
+            orchestrator,
+            doc_id,
+            f"Worker {pid} exceeded PIPELINE_MAX_WORKER_MEMORY_MB "
+            f"({footprint_mb} MB > {max_worker_memory_mb()} MB) and was killed",
+        )
+    else:
+        logger.error(
+            "Worker %s was killed at %s MB but carried no document id in its title",
+            pid,
+            footprint_mb,
+        )
+
+
+def _mark_failed(orchestrator, doc_id: str, reason: str) -> None:
+    """Mark a document parse_failed with an explicit reason."""
+    if not hasattr(orchestrator.db, "update_document"):
+        logger.warning(
+            "Skipping failure update for doc %s (db has no update_document)", doc_id
+        )
+        return
+    orchestrator.db.update_document(
+        doc_id,
+        {
+            "sys_status": "parse_failed",
+            "sys_error_message": reason,
+            "sys_last_updated": time.time(),
+        },
+        wait=True,
+    )
+    logger.warning("⚠️ Marked doc %s as parse_failed: %s", doc_id, reason)
+
+
+def _wait_for_result(res, doc_id: str, worker_timeout: int, killed: set) -> bool:
+    """Wait for ``res`` in short slices. True when ready; False when its worker
+    was killed by the memory cap. Raises TimeoutError after ``worker_timeout``."""
+    deadline = time.time() + worker_timeout
+    while True:
+        if res.ready():
+            return True
+        if doc_id in killed:
+            return False
+        if time.time() >= deadline:
+            raise TimeoutError(f"no result for {doc_id} within {worker_timeout}s")
+        res.wait(min(5.0, max(0.0, deadline - time.time())))
 
 
 def _collect_result(
-    orchestrator, doc_id: str, res, worker_timeout: int, stats: Dict[str, int]
+    orchestrator,
+    doc_id: str,
+    res,
+    worker_timeout: int,
+    stats: Dict[str, int],
+    killed: Optional[set] = None,
 ):
     """Wait for one worker result, record it in ``stats``, and return it (or None)."""
     try:
-        result = res.get(timeout=worker_timeout)
+        if not _wait_for_result(
+            res, doc_id, worker_timeout, killed if killed is not None else set()
+        ):
+            # Already marked parse_failed by the memory watchdog; nothing to wait for.
+            stats["processed"] += 1
+            stats["failed"] += 1
+            return None
+        result = res.get(timeout=0)
     except (multiprocessing.context.TimeoutError, TimeoutError):
         logger.error(
             "❌ Worker timed out or hung processing doc %s (possible OOM)", doc_id
@@ -292,6 +377,10 @@ def _process_docs_sequential(
     orchestrator, docs_to_process: list, stats: Dict[str, int]
 ):
     logger.info("Running sequentially (1 worker)")
+    logger.info(
+        "Worker memory cap (PIPELINE_MAX_WORKER_MEMORY_MB) applies to parallel runs "
+        "only; a sequential run processes documents in this process."
+    )
     init_worker(
         orchestrator.data_source,
         orchestrator.skip_parse,

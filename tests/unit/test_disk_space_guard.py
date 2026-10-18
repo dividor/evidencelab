@@ -225,7 +225,7 @@ class TestParallelPathPieces:
     def test_collect_result_records_success(self):
         orch = _orchestrator()
         stats = {"processed": 0, "success": 0, "failed": 0}
-        res = SimpleNamespace(get=lambda timeout: _ok_result())
+        res = SimpleNamespace(ready=lambda: True, get=lambda timeout: _ok_result())
         out = core._collect_result(orch, "a", res, 5, stats)
         assert out == _ok_result()
         assert stats == {"processed": 1, "success": 1, "failed": 0}
@@ -233,7 +233,7 @@ class TestParallelPathPieces:
     def test_collect_result_records_stage_failure(self):
         orch = _orchestrator()
         stats = {"processed": 0, "success": 0, "failed": 0}
-        res = SimpleNamespace(get=lambda timeout: _enospc_result())
+        res = SimpleNamespace(ready=lambda: True, get=lambda timeout: _enospc_result())
         out = core._collect_result(orch, "a", res, 5, stats)
         assert result_reports_disk_full(out)
         assert stats["failed"] == 1

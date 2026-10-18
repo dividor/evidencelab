@@ -422,7 +422,18 @@ def process_document_wrapper(doc: Dict[str, Any]) -> Dict[str, Any]:
     """
     Top-level wrapper function to process a document using the worker's global context.
     """
-    global _worker_context
+    # Publish the document in the process title ("EvLab-Pipeline-<pid> <doc_id>")
+    # so the orchestrator's memory watchdog -- and anyone running ``ps`` -- can
+    # see which document a worker is on. A ballooning worker is otherwise silent.
+    title = f"EvLab-Pipeline-{os.getpid()}"
+    setproctitle.setproctitle(f"{title} {doc.get('id') or doc.get('doc_id') or '?'}")
+    try:
+        return _process_document_in_worker(doc)
+    finally:
+        setproctitle.setproctitle(title)
+
+
+def _process_document_in_worker(doc: Dict[str, Any]) -> Dict[str, Any]:
     db: Optional[Database] = _get_context_component("db", Database)
     parser: Optional[ParseProcessor] = _get_context_component("parser", ParseProcessor)
     summarizer: Optional[SummarizeProcessor] = _get_context_component(
