@@ -17,6 +17,11 @@ from pipeline.orchestrator.worker import (
     init_worker,
     process_document_wrapper,
 )
+from pipeline.utilities.disk_space import (
+    DiskSpaceExhausted,
+    ensure_disk_space,
+    result_reports_disk_full,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +190,7 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
         "Using %s parallel workers (multiprocessing.Pool)", orchestrator.workers
     )
     ctx = multiprocessing.get_context("spawn")
+    ensure_disk_space(orchestrator.data_dir, "before starting workers")
 
     with ctx.Pool(
         processes=orchestrator.workers,
@@ -210,50 +216,76 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
         worker_timeout = orchestrator.pipeline_config.get("processing_timeout", 7200)
 
         for doc_id, (res, doc) in pending_results.items():
-            try:
-                result = res.get(timeout=worker_timeout)
+            result = _collect_result(orchestrator, doc_id, res, worker_timeout, stats)
+            # Raising inside the ``with ctx.Pool`` block terminates the pool,
+            # abandoning the queued tasks instead of failing them one by one.
+            _stop_if_disk_full(orchestrator, doc_id, result)
 
-                stats["processed"] += 1
 
-                if "error" in result:
-                    stats["failed"] += 1
-                    mark_as_stopped(
-                        orchestrator,
-                        doc_id,
-                        f"Worker Error: {result.get('error', 'Unknown error')}",
-                    )
-                elif not result.get("stages"):
-                    pass
-                else:
-                    if all(s.get("success", False) for s in result["stages"].values()):
-                        stats["success"] += 1
-                    else:
-                        stats["failed"] += 1
+def _collect_result(
+    orchestrator, doc_id: str, res, worker_timeout: int, stats: Dict[str, int]
+):
+    """Wait for one worker result, record it in ``stats``, and return it (or None)."""
+    try:
+        result = res.get(timeout=worker_timeout)
+    except (multiprocessing.context.TimeoutError, TimeoutError):
+        logger.error(
+            "❌ Worker timed out or hung processing doc %s (possible OOM)", doc_id
+        )
+        mark_as_stopped(orchestrator, doc_id, "Worker Timeout/OOM")
+        stats["failed"] += 1
+        return None
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.error("❌ Worker crashed processing doc %s: %s", doc_id, exc)
+        mark_as_stopped(orchestrator, doc_id, f"Worker Crash: {exc}")
+        stats["failed"] += 1
+        return None
+    except Exception as exc:
+        logger.error(
+            "❌ Worker failed processing doc %s: %s: %s",
+            doc_id,
+            type(exc).__name__,
+            exc,
+        )
+        mark_as_stopped(
+            orchestrator, doc_id, f"Worker Error: {type(exc).__name__}: {exc}"
+        )
+        stats["failed"] += 1
+        return None
 
-            except (multiprocessing.context.TimeoutError, TimeoutError):
-                logger.error(
-                    "❌ Worker timed out or hung processing doc %s (possible OOM)",
-                    doc_id,
-                )
-                mark_as_stopped(orchestrator, doc_id, "Worker Timeout/OOM")
-                stats["failed"] += 1
+    _record_result(orchestrator, doc_id, result, stats)
+    return result
 
-            except (OSError, RuntimeError, ValueError) as exc:
-                logger.error("❌ Worker crashed processing doc %s: %s", doc_id, exc)
-                mark_as_stopped(orchestrator, doc_id, f"Worker Crash: {exc}")
-                stats["failed"] += 1
 
-            except Exception as exc:
-                logger.error(
-                    "❌ Worker failed processing doc %s: %s: %s",
-                    doc_id,
-                    type(exc).__name__,
-                    exc,
-                )
-                mark_as_stopped(
-                    orchestrator, doc_id, f"Worker Error: {type(exc).__name__}: {exc}"
-                )
-                stats["failed"] += 1
+def _record_result(
+    orchestrator, doc_id: str, result: Dict[str, Any], stats: Dict[str, int]
+) -> None:
+    stats["processed"] += 1
+    if "error" in result:
+        stats["failed"] += 1
+        mark_as_stopped(
+            orchestrator,
+            doc_id,
+            f"Worker Error: {result.get('error', 'Unknown error')}",
+        )
+    elif result.get("stages"):
+        if all(s.get("success", False) for s in result["stages"].values()):
+            stats["success"] += 1
+        else:
+            stats["failed"] += 1
+
+
+def _stop_if_disk_full(orchestrator, doc_id: str, result) -> None:
+    """Stop the feed when the data disk is full: a worker ENOSPC is definitive,
+    and otherwise the free-space floor is checked after every document."""
+    if result_reports_disk_full(result):
+        raise DiskSpaceExhausted(
+            f"Document {doc_id} failed with 'No space left on device' on the data "
+            f"disk at {orchestrator.data_dir!r}. Stopping the run so the remaining "
+            "queue is not failed the same way. Free space, then reset interrupted "
+            "documents with scripts/pipeline/reset_failed_statuses.py --include-stuck."
+        )
+    ensure_disk_space(orchestrator.data_dir, f"after document {doc_id}")
 
 
 def _process_docs_sequential(
@@ -271,6 +303,8 @@ def _process_docs_sequential(
     )
 
     for doc in docs_to_process:
+        ensure_disk_space(orchestrator.data_dir, f"before document {doc.get('id')}")
+        result = None
         try:
             result = process_document_wrapper(doc)
             stats["processed"] += 1
@@ -291,3 +325,4 @@ def _process_docs_sequential(
             stats["processed"] += 1
             stats["failed"] += 1
             mark_as_stopped(orchestrator, doc.get("id"), f"Worker Crash: {exc}")
+        _stop_if_disk_full(orchestrator, doc.get("id"), result)

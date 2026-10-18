@@ -1,12 +1,19 @@
 """CLI entrypoint for pipeline orchestrator."""
 
 import argparse
+import logging
 import sys
 
 import setproctitle
 
 from pipeline.orchestrator import env
 from pipeline.orchestrator.core import PipelineOrchestrator
+from pipeline.utilities.disk_space import DiskSpaceExhausted
+
+logger = logging.getLogger(__name__)
+
+# Exit status when the run stopped itself because the data disk is full.
+EXIT_DISK_FULL = 2
 
 
 def main() -> None:
@@ -93,7 +100,11 @@ def main() -> None:
         ocr_fallback=args.ocr_fallback,
     )
 
-    success = orchestrator.run()
+    try:
+        success = orchestrator.run()
+    except DiskSpaceExhausted as exc:
+        logger.error("🛑 PIPELINE STOPPED — DATA DISK FULL: %s", exc)
+        sys.exit(EXIT_DISK_FULL)
     sys.exit(0 if success else 1)
 
 
