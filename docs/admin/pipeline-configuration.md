@@ -391,6 +391,25 @@ docker compose exec pipeline \
 
 ---
 
+#### Stopping when the data disk fills
+
+Parsed output is large — one data source held 17k source documents but 352 GB of parsed output — so the data disk can fill mid-run. When it does, every remaining document fails *individually* with `OSError: [Errno 28] No space left on device` and is marked `parse_failed` as if the document itself were bad, and a long run churns through its whole queue producing nothing but failures.
+
+The pipeline therefore stops itself when the disk is full:
+
+- **Before starting workers** and **after every completed document**, it checks free space at the data directory and stops if it is below `PIPELINE_MIN_FREE_DISK_MB` (default **5120**, i.e. 5 GB).
+- If any worker reports a `No space left on device` error, the run stops immediately regardless of that figure.
+
+The run exits with a clear message and a non-zero status. Documents that were in flight are left in their stage status (`parsing`, `summarizing`, …); after freeing space, put them back in the queue with:
+
+```bash
+python scripts/pipeline/reset_failed_statuses.py --data-source <name> --include-stuck
+```
+
+Documents that already failed with the ENOSPC error are in `parse_failed` and are reset by the same command — they are not corrupt, they simply ran out of disk.
+
+Set `PIPELINE_MIN_FREE_DISK_MB=0` to turn off the free-space floor; the reaction to an actual ENOSPC error stays on. The variable is optional and a stock deployment needs no setting.
+
 ### Running on the Host (Hardware Acceleration)
 
 Docker doesn't always provide GPU or MPS acceleration for computationally intensive pipeline stages like document parsing and embedding. For large corpora, running the pipeline directly on the host machine can be significantly faster.
