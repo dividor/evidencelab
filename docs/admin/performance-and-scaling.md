@@ -23,7 +23,13 @@ If your model combo reranks through a hosted service, `MAX_CONCURRENT_RERANKS` d
 | `AUTH_DB_POOL_SIZE` | `10` | Connections for accounts, activity and briefs. Unlike the pool above, this one waits rather than failing. |
 | `AUTH_DB_MAX_OVERFLOW` | `20` | Extra connections this pool may open temporarily beyond `AUTH_DB_POOL_SIZE`. |
 
-**Budget the total.** `POSTGRES_POOL_MAX` × (data sources actually queried), plus `AUTH_DB_POOL_SIZE` + `AUTH_DB_MAX_OVERFLOW`, must stay below the Postgres server's `max_connections` (100 by default). Check with:
+There is **one pool per process, per data source**, shared by every client object inside that process. That makes the budget below predictable, but it also means the count scales with processes, not just with settings.
+
+**Budget the total.** `POSTGRES_POOL_MAX` × (data sources actually queried) × (processes talking to the database), plus `AUTH_DB_POOL_SIZE` + `AUTH_DB_MAX_OVERFLOW`, must stay below the Postgres server's `max_connections` (100 by default).
+
+**The pipeline is the easy one to forget.** A `--workers N` run is **N + 1** processes, each holding its own pools, and it runs *alongside* the API. A `--workers 7` run therefore keeps 8 × `POSTGRES_POOL_MIN` connections open at idle — 32 with the default — before the API's share is counted. If a run reports `FATAL: sorry, too many clients already`, lower `--workers` or `POSTGRES_POOL_MIN`, or raise the server's `max_connections`.
+
+Check with:
 
 ```sql
 SHOW max_connections;
