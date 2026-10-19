@@ -60,6 +60,18 @@ def v2_brief():
     return content
 
 
+_STAMP_KEYS = {"at", "computedAt", "registeredAt", "renumberedAt"}
+
+
+def _without_stamps(value):
+    """The same structure with every timestamp removed, for comparisons."""
+    if isinstance(value, dict):
+        return {k: _without_stamps(v) for k, v in value.items() if k not in _STAMP_KEYS}
+    if isinstance(value, list):
+        return [_without_stamps(v) for v in value]
+    return value
+
+
 def _user():
     return SimpleNamespace(
         id=uuid.uuid4(), is_superuser=False, full_name="Jan", email="j@x"
@@ -352,7 +364,9 @@ class TestBriefCentralSave:
             brief_central.new_brief_content(legacy, convert=False)
         assert exc.value.status_code == 409
         converted = brief_central.new_brief_content(legacy, convert=True)
-        assert converted == convert_legacy(legacy)[0]
+        # The two conversions are stamped at different instants; compare
+        # everything but the timestamps.
+        assert _without_stamps(converted) == _without_stamps(convert_legacy(legacy)[0])
 
     def test_new_brief_content_keeps_a_stored_brief(self):
         stored = v2_brief()
