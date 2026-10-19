@@ -275,22 +275,36 @@ export const useFilterPopoverClose = (
   }, [activeFilterColumn, onClose]);
 };
 
+/**
+ * Apply a changed title filter once the reader pauses typing.
+ *
+ * Only a filter text that differs from the one already applied triggers the
+ * callback. The effect also re-runs when ``loading`` flips, and used to fire
+ * 500 ms after mount regardless -- measured: a second, identical /documents
+ * request on every page load. A change made while loading waits for loading
+ * to finish, then applies.
+ */
 export const useDebouncedFilterText = (
   filterText: string,
   loading: boolean,
   onDebouncedChange: () => void
 ): void => {
   const onDebouncedChangeRef = useRef(onDebouncedChange);
+  // The filter text the loaded list already reflects: the initial value on
+  // mount, then whatever was last applied.
+  const appliedFilterRef = useRef(filterText);
 
   useEffect(() => {
     onDebouncedChangeRef.current = onDebouncedChange;
   }, [onDebouncedChange]);
 
   useEffect(() => {
+    if (filterText === appliedFilterRef.current || loading) {
+      return undefined;
+    }
     const timer = setTimeout(() => {
-      if (!loading) {
-        onDebouncedChangeRef.current();
-      }
+      appliedFilterRef.current = filterText;
+      onDebouncedChangeRef.current();
     }, 500);
     return () => clearTimeout(timer);
   }, [filterText, loading]);
