@@ -410,6 +410,22 @@ Documents that already failed with the ENOSPC error are in `parse_failed` and ar
 
 Set `PIPELINE_MIN_FREE_DISK_MB=0` to turn off the free-space floor; the reaction to an actual ENOSPC error stays on. The variable is optional and a stock deployment needs no setting.
 
+#### Capping a worker's memory
+
+A single pathological document can make the parser's memory grow without bound — measured on one 237-page PDF: a worker went from ~5 GB to **42 GB** inside Docling's convert, with no log output, while an ordinary 190-page document peaked at 5.8 GB. Several such workers at once exhaust the machine's memory, and on a laptop that ends in a kernel panic rather than a failed document.
+
+The orchestrator therefore watches every worker's memory and, when one exceeds `PIPELINE_MAX_WORKER_MEMORY_MB` (default **12288**, i.e. 12 GB — about twice the normal footprint), it marks that document `parse_failed` with the measured figure in the reason, kills the worker, and continues with the rest of the queue. The pool replaces the worker automatically.
+
+The figure measured is the one the operating system attributes to the process: `phys_footprint` on macOS (what Activity Monitor and `top` show — resident size alone understates a ballooning worker by more than ten times there) and RSS on Linux.
+
+Each worker's process title shows the document it is on, so `ps` tells you what a large worker is doing:
+
+```
+EvLab-Pipeline-37080 e6e47267-68e5-5779-8112-9c2f56fe5768
+```
+
+Set `PIPELINE_MAX_WORKER_MEMORY_MB=0` to turn the cap off. It applies to parallel runs (`--workers` > 1); a sequential run processes documents in the orchestrator's own process, which cannot be killed without ending the run, and says so at startup.
+
 ### Running on the Host (Hardware Acceleration)
 
 Docker doesn't always provide GPU or MPS acceleration for computationally intensive pipeline stages like document parsing and embedding. For large corpora, running the pipeline directly on the host machine can be significantly faster.
