@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
-import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import {
   IconClock,
   IconCopy,
@@ -17,11 +16,12 @@ import { BriefReferences } from './BriefReferences';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
 import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
-import { BriefSection, SectionAuditEntry } from './briefTypes';
+import { BriefSection, SectionAuditEntry, SectionRunDetail, UnresolvedMarker } from './briefTypes';
 import { BriefVoiceSelect, briefDefaultSuffix, voiceHint } from './BriefVoiceSelect';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
+import { BriefRunOriginal } from './BriefRunOriginal';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
@@ -108,8 +108,6 @@ interface SectionViewProps {
   num: string;
   brief: UseBriefReturn;
   onSourceClick: (source: SourceReference) => void;
-  // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
-  display?: SectionDisplay;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
@@ -124,6 +122,25 @@ interface SectionViewProps {
 const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): string => {
   const target = section.targetWords ?? briefTarget;
   return target ? `Target: about ${target} words` : 'No length target';
+};
+
+// Citations of the section the API could not match to a source: the agent
+// cited a number it never returned, or returned a record without a chunk id.
+// They stay visible in the text as `[?n]` and are listed in the section Log.
+export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarker[] }> = ({
+  unresolved,
+}) => {
+  if (!unresolved || !unresolved.length) return null;
+  const markers = unresolved.map((u) => `[?${u.n}]`).join(', ');
+  const noChunk = unresolved.some((u) => u.reason === 'no-chunk-id');
+  return (
+    <div className="brief-section-warning" role="status">
+      {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
+      could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
+      {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
+      number it never returned. Open the Log to see the original output.
+    </div>
+  );
 };
 
 // An introduction (a top-level heading with sub-headings) that kept headings of
@@ -201,13 +218,6 @@ const GuidancePanel: React.FC<{
   );
 };
 
-// Content + sources for the done/stale views: the globally-renumbered display
-// variant when available, else the section's own.
-const sectionView = (section: BriefSection, display?: SectionDisplay) => ({
-  content: display?.content ?? section.content,
-  sources: display?.sources ?? section.sources,
-});
-
 // The AI action toolbar shown on a completed section.
 const SectionTools: React.FC<{
   editing: boolean;
@@ -266,10 +276,9 @@ const SectionPending: React.FC<{ sample?: boolean; onResearch: () => void }> = (
 // in place while a revise (Edit/Update) runs.
 const SectionResearching: React.FC<{
   section: BriefSection;
-  display?: SectionDisplay;
   onSourceClick: (source: SourceReference) => void;
-}> = ({ section, display, onSourceClick }) => {
-  const { content, sources } = sectionView(section, display);
+}> = ({ section, onSourceClick }) => {
+  const { content, sources } = section;
   return (
     <>
       <div className="brief-researching">
@@ -305,7 +314,6 @@ const SectionResearching: React.FC<{
 const SectionDoneBody: React.FC<{
   section: BriefSection;
   brief: UseBriefReturn;
-  display?: SectionDisplay;
   editing: boolean;
   diffEntry: SectionAuditEntry | null;
   viewingPending: boolean;
@@ -318,7 +326,6 @@ const SectionDoneBody: React.FC<{
 }> = ({
   section,
   brief,
-  display,
   editing,
   diffEntry,
   viewingPending,
@@ -329,7 +336,9 @@ const SectionDoneBody: React.FC<{
   onOpenThread,
   activeThreadId,
 }) => {
-  const { content, sources } = sectionView(section, display);
+  // Rendered exactly as the API returned them: the renumbered text and the
+  // display sources behind its numbers.
+  const { content, sources } = section;
   const proseRef = useRef<HTMLDivElement>(null);
 
   // Paint commented passages after the markdown renders. The marks live in the
@@ -371,7 +380,8 @@ const SectionDoneBody: React.FC<{
           className="brief-edit-textarea"
           value={section.content}
           onChange={(e) => brief.editContent(section.id, e.target.value)}
-          onBlur={brief.commitEdits}
+          // Leaving the editor records the edit as a run of the section.
+          onBlur={() => void brief.commitManualEdit(section.id)}
           rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
         />
       ) : diffEntry && diffEntry.before != null ? (
@@ -439,7 +449,6 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   num,
   brief,
   onSourceClick,
-  display,
   readOnly = false,
   onRequestHighlight,
   marks,
@@ -447,6 +456,28 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   activeThreadId,
 }) => {
   const [editing, setEditing] = useState(false);
+  // The stored original being viewed from the Log, and its load state.
+  const [originalRunId, setOriginalRunId] = useState<string | null>(null);
+  const [original, setOriginal] = useState<SectionRunDetail | null>(null);
+  const [originalError, setOriginalError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!originalRunId) return;
+    let cancelled = false;
+    setOriginal(null);
+    setOriginalError(null);
+    brief
+      .getSectionRunDetail(section.id, originalRunId)
+      .then((detail) => {
+        if (!cancelled) setOriginal(detail);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setOriginalError(e instanceof Error ? e.message : 'Could not load the original.');
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originalRunId, section.id]);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
@@ -461,7 +492,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
-  const hasChanges = !!section.prevContent;
+  const hasChanges = !!section.pendingRunId;
   // The still-pending change (un-kept) is the latest audit entry; only it offers
   // Keep/Reject. Everything else is view-only.
   const pendingEntryId = hasChanges && audit.length ? audit[audit.length - 1].id : null;
@@ -522,6 +553,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
+      {isDone && <UnresolvedCitationsWarning unresolved={section.unresolved} />}
 
       {aiPanel && (
         <AiInstructionPanel
@@ -548,7 +580,21 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             setLogOpen(false);
             setDiffEntryId(entryId);
           }}
+          runs={section.runs || []}
+          onViewOriginal={(runId) => {
+            setLogOpen(false);
+            setOriginalRunId(runId);
+          }}
           onClose={() => setLogOpen(false)}
+        />
+      )}
+
+      {originalRunId && (
+        <BriefRunOriginal
+          title={section.title}
+          detail={original}
+          error={originalError}
+          onClose={() => setOriginalRunId(null)}
         />
       )}
 
@@ -561,14 +607,13 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       {section.status === 'researching' && (
-        <SectionResearching section={section} display={display} onSourceClick={onSourceClick} />
+        <SectionResearching section={section} onSourceClick={onSourceClick} />
       )}
 
       {isDone && (
         <SectionDoneBody
           section={section}
           brief={brief}
-          display={display}
           editing={editing}
           diffEntry={diffEntry}
           viewingPending={viewingPending}
@@ -760,10 +805,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const [logOpen, setLogOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
-  const { refs: references, display } = useMemo(
-    () => buildGlobalCitations(sections, brief.referenceGrouping),
-    [sections, brief.referenceGrouping],
-  );
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
@@ -942,7 +983,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           num={brief.numberHeadings ? numbers[i] : ''}
           brief={brief}
           onSourceClick={handleSourceClick}
-          display={display.get(s.id)}
           readOnly={readOnly}
           onRequestHighlight={(src) =>
             src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
@@ -966,7 +1006,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       )}
 
       <BriefReferences
-        references={references}
+        references={brief.references}
+        groups={brief.referenceGroups}
         grouping={brief.referenceGrouping}
         onGroupingChange={brief.setReferenceGrouping}
         onSourceClick={handleSourceClick}

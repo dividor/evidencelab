@@ -150,6 +150,11 @@ def source_rows(passage: CitedPassage) -> List[Dict[str, Any]]:
             "pdf_url": src.get("pdfUrl") or src.get("reportUrl"),
             "section": source_section(src),
             "excerpt": source_body(src),
+            # Trace: the brief-wide source, the agent's own number(s) for it
+            # in this section and the run that returned it.
+            "source_id": src.get("sourceId"),
+            "agent_indices": list(src.get("agentIndices") or []),
+            "run_id": src.get("runId"),
         }
         for src in passage.sources
     ]

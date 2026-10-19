@@ -12,6 +12,9 @@ export interface AssistantUsage {
 export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
+  // The agent run behind this turn (the Brief stores it with a section's
+  // original output, for tracing).
+  runId?: string;
   // Link to the LLM trace behind this turn, when the deployment traces calls.
   trace_url?: string;
   // Informational only: the backend records usage server-side against the
@@ -153,6 +156,7 @@ const handleStreamedData = (
       handlers.onDone({
         threadId: streamedData.threadId,
         messageId: streamedData.messageId,
+        runId: streamedData.runId,
         trace_url: streamedData.trace_url,
         usage: streamedData.usage,
       });

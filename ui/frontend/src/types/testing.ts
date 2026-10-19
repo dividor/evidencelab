@@ -207,6 +207,11 @@ export interface CheckSource {
   pdf_url?: string | null;
   section?: string;
   excerpt?: string;
+  // Trace back to the agent's original output: the brief-wide source id,
+  // the agent's own number(s) for it in the section, and the run.
+  source_id?: string | null;
+  agent_indices?: number[];
+  run_id?: string | null;
 }
 
 export interface CheckQuote {

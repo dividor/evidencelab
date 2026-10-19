@@ -9,22 +9,33 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from starlette.requests import Request
 
 from ui.backend.routes import testing as routes
+from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.utils.app_limits import limiter
 
 pytestmark = pytest.mark.unit
 limiter.enabled = False
 
 NOW = datetime.now(timezone.utc)
-BRIEF_CONTENT = {
-    "sections": [
-        {
-            "title": "S",
-            "status": "done",
-            "content": "A fact [1]. Another [1].",
-            "sources": [{"index": 1, "title": "Doc", "text": "text"}],
-        }
-    ]
-}
+BRIEF_CONTENT = convert_legacy(
+    {
+        "sections": [
+            {
+                "title": "S",
+                "status": "done",
+                "content": "A fact [1]. Another [1].",
+                "sources": [
+                    {
+                        "index": 1,
+                        "title": "Doc",
+                        "text": "text",
+                        "chunkId": "c1",
+                        "docId": "d1",
+                    }
+                ],
+            }
+        ]
+    }
+)[0]
 
 
 def _request() -> Request:

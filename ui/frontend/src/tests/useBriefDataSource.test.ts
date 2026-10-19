@@ -8,6 +8,9 @@ jest.mock('../config', () => ({
   API_KEY: undefined,
   USER_MODULE: true,
 }));
+jest.mock('../components/brief/briefCitationsApi', () =>
+  require('./helpers/fakeBriefCitations').fakeCitationsApi(),
+);
 
 jest.mock('../utils/briefStream', () => ({
   __esModule: true,

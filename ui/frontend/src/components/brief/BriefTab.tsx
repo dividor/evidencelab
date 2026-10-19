@@ -11,8 +11,7 @@ import {
   ReferenceListLayout,
 } from '../../utils/exportResultsToDocx';
 import { withDocumentYears } from '../../utils/briefExportYears';
-import { buildGlobalCitations } from './briefCitations';
-import { ReferenceGrouping } from './briefTypes';
+import { BriefReference, ReferenceGrouping } from './briefTypes';
 import { BriefCentral } from './BriefCentral';
 import { BriefRegenAllModal, NewBriefSubmit } from './BriefCentralModals';
 import { BriefShareModal } from './BriefShareDialog';
@@ -73,11 +72,10 @@ export const sourceToResult = (src: SourceReference, dataSource: string): Search
 });
 
 /**
- * Flatten the brief into one Markdown body + a global SearchResult[] so it can
- * reuse the search summary's .docx exporter. Uses the same global citation
- * model (and the same reference grouping) as the on-screen render, so `[n]` in
- * the body lines up with the references list and citations link to the source
- * document at the cited page.
+ * Flatten the brief into one Markdown body + a SearchResult[] so it can reuse
+ * the search summary's .docx exporter. The body is each section's display
+ * text and the results are the References list, both exactly as the API
+ * returned them, so the Word file carries the numbers readers see on screen.
  */
 // Shown as a call-out box on the exported Word cover so readers treat the
 // AI-generated content as a draft to verify, not a finished product.
@@ -93,11 +91,16 @@ const REFERENCE_LIST_LAYOUT: Record<ReferenceGrouping, ReferenceListLayout> = {
   'document-single': 'document',
 };
 
-const assembleBriefForExport = (
-  brief: ReturnType<typeof useBrief>,
+// The source record behind a reference, for the export's result list. A
+// reference always names its document; the passage record is what the API
+// attached to it.
+const referenceSource = (r: BriefReference): SourceReference =>
+  r.source ?? { chunkId: '', docId: r.docId, title: r.title, text: '', score: 0, page: r.page ?? undefined };
+
+export const assembleBriefForExport = (
+  brief: Pick<ReturnType<typeof useBrief>, 'sections' | 'numbers' | 'numberHeadings' | 'references'>,
   dataSource: string,
 ): { summary: string; results: SearchResult[] } => {
-  const { refs, display } = buildGlobalCitations(brief.sections, brief.referenceGrouping);
   const lines: string[] = [];
   brief.sections.forEach((s, i) => {
     // The summary section's own H1 is the brief topic; sections sit one level
@@ -106,11 +109,11 @@ const assembleBriefForExport = (
     const hashes = s.level === 2 ? '##' : '#';
     const prefix = brief.numberHeadings ? `${brief.numbers[i]}. ` : '';
     lines.push(`${hashes} ${prefix}${s.title}`, '');
-    const d = display.get(s.id);
-    if (d?.content) lines.push(d.content, '');
+    const shown = (s.status === 'done' || s.revising) && s.content;
+    if (shown) lines.push(s.content, '');
   });
-  // refs are ordered by global number, so results[n-1] is the source for `[n]`.
-  const results = refs.map((r) => sourceToResult(r.source, dataSource));
+  // References are ordered by number, so results[n-1] is the source for `[n]`.
+  const results = brief.references.map((r) => sourceToResult(referenceSource(r), dataSource));
   return { summary: lines.join('\n'), results };
 };
 

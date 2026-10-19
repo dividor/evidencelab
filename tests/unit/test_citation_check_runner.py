@@ -9,6 +9,7 @@ import pytest
 from openpyxl import load_workbook
 
 from ui.backend.services import citation_check_runner as runner
+from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.services.citation_fidelity import CitedPassage
 
 pytestmark = pytest.mark.unit
@@ -22,17 +23,21 @@ SOURCE = {
     "chunkId": "c1",
     "text": EXCERPT,
 }
-BRIEF = {
-    "sections": [
-        {
-            "title": "Dropout",
-            "status": "done",
-            "content": "Dropout fell in fed schools [1]. Boys were unaffected [2].",
-            "sources": [SOURCE],
-        },
-        {"title": "Draft", "status": "pending", "content": "", "sources": []},
-    ]
-}
+# A brief in citation format 2, as the API stores it: the check reads the
+# renumbered text, where the agent's dangling [2] is kept visible as [?2].
+BRIEF = convert_legacy(
+    {
+        "sections": [
+            {
+                "title": "Dropout",
+                "status": "done",
+                "content": "Dropout fell in fed schools [1]. Boys were unaffected [2].",
+                "sources": [SOURCE],
+            },
+            {"title": "Draft", "status": "pending", "content": "", "sources": []},
+        ]
+    }
+)[0]
 
 
 def _passage(**kwargs) -> CitedPassage:
@@ -57,7 +62,7 @@ class TestPassagesAndPrompts:
         passages = runner.brief_passages(BRIEF)
         assert [p.passage for p in passages] == [
             "Dropout fell in fed schools [1].",
-            "Boys were unaffected [2].",
+            "Boys were unaffected [?2].",
         ]
         assert passages[1].missing_indices == [2]
         assert runner.count_cited_passages(BRIEF) == 2

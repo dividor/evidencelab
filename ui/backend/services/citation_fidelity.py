@@ -8,8 +8,12 @@ Evaluation Harness runner (``citation_check_runner.py``) drives them, and the
 walkthrough notebook ``notebooks/llm_judge_citation_fidelity.ipynb`` imports
 them through a shim.
 
-The citation parsing mirrors the frontend so a stored brief is read exactly
-the way the UI renders it:
+The brief is read in its stored *renumbered* form (``brief_citations``), so
+the passages, judge prompts and report carry the citation numbers readers
+see on screen and in the Word export; each source row also names the brief
+source id, the agent's own number(s) and the run, so a judgement can be
+traced back to the agent's original output. The marker and sentence
+parsing mirror the frontend renderer:
 
 - ``ui/frontend/src/components/citations/CitedContent.tsx`` (``CITATION_REGEX``)
 - ``ui/frontend/src/components/brief/briefHighlights.ts`` (``SENTENCE_SPLIT_RE``)
@@ -29,6 +33,9 @@ from openpyxl.styles import Alignment, Font
 
 # `[1]`, `[1, 3]` — same as CITATION_REGEX in CitedContent.tsx.
 CITATION_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
+# `[?7]` — a marker the renumbering could not resolve to a source; it stays
+# visible in the text and is reported as dangling.
+UNRESOLVED_RE = re.compile(r"\[\?(\d+)\]")
 
 # Sentences end at ./!/? followed by whitespace; newlines (headings, list
 # items) break sentences too — same as SENTENCE_SPLIT_RE in briefHighlights.ts.
@@ -67,9 +74,14 @@ def split_sentences(markdown: str) -> List[str]:
     return [s.strip() for s in SENTENCE_SPLIT_RE.split(markdown) if s.strip()]
 
 
+def unresolved_numbers(text: str) -> List[int]:
+    """The agent numbers of the ``[?n]`` markers in the markdown, in order."""
+    return [int(m.group(1)) for m in UNRESOLVED_RE.finditer(text)]
+
+
 def strip_citation_markers(text: str) -> str:
-    """Remove ``[n]`` / ``[n, m]`` markers, collapsing the space they leave."""
-    stripped = CITATION_RE.sub("", text)
+    """Remove ``[n]`` / ``[n, m]`` / ``[?n]`` markers, collapsing the space they leave."""
+    stripped = UNRESOLVED_RE.sub("", CITATION_RE.sub("", text))
     stripped = re.sub(r"[ \t]+([.,;:!?])", r"\1", stripped)
     return re.sub(r"[ \t]{2,}", " ", stripped).strip()
 
@@ -88,12 +100,13 @@ def parse_section_breadcrumb(text: str) -> Tuple[Optional[str], str]:
 
 
 def researched_sections(content: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """The brief sections that were actually researched (have text)."""
-    return [
-        s
-        for s in content.get("sections") or []
-        if s.get("status") == "done" and (s.get("content") or "").strip()
-    ]
+    """The researched sections as readers see them: the stored renumbered
+    text and display sources (``index`` = display number, with ``sourceId``,
+    ``agentIndices`` and ``runId`` for tracing). A brief stored before
+    citation format 2 raises ``LegacyBriefError``; it must be converted."""
+    from ui.backend.services.brief_citations import display_sections
+
+    return display_sections(content)
 
 
 def source_section(source: Dict[str, Any]) -> str:
@@ -153,12 +166,14 @@ def extract_cited_passages(section: Dict[str, Any]) -> List[CitedPassage]:
     passages: List[CitedPassage] = []
     for sentence in split_sentences(section.get("content") or ""):
         indices = extract_cited_numbers(sentence)
-        if not indices:
+        unresolved = unresolved_numbers(sentence)
+        if not indices and not unresolved:
             continue
         passage = CitedPassage(
             section_title=section.get("title", ""),
             passage=sentence,
             citation_indices=indices,
+            missing_indices=unresolved,
         )
         for index in indices:
             source = sources_by_index.get(index)
@@ -188,6 +203,11 @@ def passage_source_rows(passages: Iterable[CitedPassage]) -> List[Dict[str, Any]
                     "doc_id": source.get("docId"),
                     "chunk_id": source.get("chunkId"),
                     "pdf_url": source.get("pdfUrl"),
+                    "source_id": source.get("sourceId"),
+                    "agent_citation": ", ".join(
+                        str(i) for i in source.get("agentIndices") or []
+                    ),
+                    "run_id": source.get("runId"),
                 }
             )
         for index in passage.missing_indices:

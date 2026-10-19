@@ -3317,3 +3317,71 @@
   background: var(--brand-bg);
   border: 1px solid var(--brand-border-light);
 }
+
+/* The stored original of a run (Log → Original) and its trace table. */
+.brief-modal-wide {
+  max-width: 920px;
+}
+.brief-original {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brief-original-meta {
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
+.brief-modal-section-title {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-text-secondary);
+}
+.brief-original-text {
+  max-height: 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border);
+}
+.brief-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.brief-trace-table th,
+.brief-trace-table td {
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--brand-border);
+}
+.brief-trace-chunk {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+.brief-audit-original {
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+.brief-audit-original:hover {
+  text-decoration: underline;
+}
+.brief-audit-original-gone {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+}
