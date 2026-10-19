@@ -17,7 +17,6 @@ import {
   getInitialFilterText,
   getInitialPage,
   getInitialPageSize,
-  sortDocuments,
   useDebouncedFilterText,
   useDocumentsInitialLoad,
   useDocumentsReload,
@@ -192,7 +191,9 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
     });
   };
 
+  /** A new ordering starts from the first page, as a new filter does. */
   const handleSort = (field: string) => {
+    setCurrentPage(1);
     updateSortState({
       sortField,
       sortDirection,
@@ -542,7 +543,9 @@ export const useDocumentsState = (dataSource: string, dataSourceConfig?: any) =>
   const getSortedAndFilteredDocuments = () => allDocuments;
 
   useDocumentsInitialLoad(dataSource, loadData, loadTitleFacets);
-  useDocumentsReload(currentPage, selectedCategory, columnFilters, loadDocuments, pageSize);
+  useDocumentsReload(
+    currentPage, selectedCategory, columnFilters, loadDocuments, pageSize, sortField, sortDirection,
+  );
   useFilterPopoverClose(activeFilterColumn, handleCloseFilterPopover);
   const handleDebouncedFilterChange = useCallback(() => {
     setCurrentPage(1);

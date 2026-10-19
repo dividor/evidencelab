@@ -232,18 +232,28 @@ export const useDocumentsInitialLoad = (
   }, [dataSource, loadData, loadTitleFacets]);
 };
 
+/**
+ * Reload the page of documents whenever something that changes *which*
+ * documents are shown changes. The loader itself is kept in a ref so that its
+ * identity churn does not refetch; every input that should refetch must
+ * therefore be listed here explicitly. Sorting is server-side, so the sort
+ * field and direction belong in that list -- without them a click on a column
+ * header updated the state and nothing was ever fetched.
+ */
 export const useDocumentsReload = (
   currentPage: number,
   selectedCategory: string | null,
   columnFilters: Record<string, string>,
   loadDocuments: () => void,
   pageSize: number = DEFAULT_PAGE_SIZE,
+  sortField?: string,
+  sortDirection?: 'asc' | 'desc',
 ): void => {
   const loadRef = useRef(loadDocuments);
   loadRef.current = loadDocuments;
   useEffect(() => {
     loadRef.current();
-  }, [currentPage, selectedCategory, columnFilters, pageSize]);
+  }, [currentPage, selectedCategory, columnFilters, pageSize, sortField, sortDirection]);
 };
 
 export const useFilterPopoverClose = (

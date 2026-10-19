@@ -12925,3 +12925,53 @@ button.doc-link:hover {
   color: var(--brand-text-tertiary, #777);
   font-size: 0.9em;
 }
+
+/* Horizontal-scroll chevrons on the Documents Library table. The right one
+   appears when the table is wider than its viewport; the left one once the
+   reader has scrolled. Both sit at the vertical middle of the visible table. */
+.documents-table-scroll-shell {
+  position: relative;
+}
+
+.documents-table-container {
+  scroll-behavior: smooth;
+}
+
+.table-scroll-chevron {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 32px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--brand-primary);
+  color: #ffffff;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  opacity: 0.92;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.table-scroll-chevron:hover {
+  background: var(--brand-primary-dark);
+  opacity: 1;
+}
+
+.table-scroll-chevron:focus-visible {
+  outline: 2px solid var(--brand-primary-dark);
+  outline-offset: 2px;
+}
+
+.table-scroll-chevron-left {
+  left: 8px;
+}
+
+.table-scroll-chevron-right {
+  right: 8px;
+}
