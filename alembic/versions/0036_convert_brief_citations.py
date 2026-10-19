@@ -13,12 +13,14 @@ same converter the reviewed CLI uses
 dry-run report and file backups), one brief per statement. Downgrade rebuilds
 the old shape from each section's current run.
 
-Revision ID: 0037_convert_brief_citations
-Revises: 0036_add_test_run_config
+Revision ID: 0036_convert_brief_citations
+Revises: 0035_share_templates_voices
 Create Date: 2026-10-19
 
 Note: the revision ID is intentionally kept under 32 characters to fit the
-stock ``alembic_version.version_num`` column type (``varchar(32)``).
+stock ``alembic_version.version_num`` column type (``varchar(32)``). It
+revises 0035, the head of rc/v1.6.4 when it was written; a branch merged
+after it that also revises 0035 needs a merge revision (as 0027 did).
 """
 
 import json
@@ -28,8 +30,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0037_convert_brief_citations"
-down_revision = "0036_add_test_run_config"
+revision = "0036_convert_brief_citations"
+down_revision = "0035_share_templates_voices"
 branch_labels = None
 depends_on = None
 
