@@ -192,3 +192,113 @@ class TestOcrFallback:
 
         mock_retry.assert_not_called()
         assert result["updates"]["sys_ocr_applied"] is False
+
+
+# --- per-page threshold (measured on a UNEG batch, 2026-10-19) ---------------
+#
+# These scanned reports parsed to more than 10 words thanks to a text cover
+# page, escaped the absolute floor, and summarised to "Empty markdown".
+MEASURED_MISSED_SCANS = [(80, 208), (88, 210), (93, 194), (10, 16), (20, 119), (5, 21)]
+# Ordinary documents from the same run.
+MEASURED_NORMAL_DOCS = [(190, 60_000), (12, 4_800), (1, 300), (237, 120_000)]
+
+
+def _result(pages: int, words: int) -> tuple:
+    """A parse_result tuple as _needs_ocr_retry unpacks it."""
+    return ("markdown", None, pages, words, None, None)
+
+
+def _parser(**kwargs) -> ParseProcessor:
+    p = ParseProcessor(ocr_fallback=True, **kwargs)
+    p.no_ocr = True
+    return p
+
+
+class TestOcrRetryPerPageThreshold:
+    def test_default_threshold_is_twenty_five(self):
+        assert ParseProcessor().ocr_fallback_min_words_per_page == 25
+
+    def test_absolute_floor_still_fires(self):
+        assert _parser()._needs_ocr_retry(_result(1, 5)) is True
+
+    @pytest.mark.parametrize("pages,words", MEASURED_MISSED_SCANS)
+    def test_measured_missed_scans_now_retry(self, pages, words):
+        assert _parser()._needs_ocr_retry(_result(pages, words)) is True
+
+    @pytest.mark.parametrize("pages,words", MEASURED_NORMAL_DOCS)
+    def test_normal_documents_do_not_retry(self, pages, words):
+        assert _parser()._needs_ocr_retry(_result(pages, words)) is False
+
+    def test_boundary_is_strictly_below_the_threshold(self):
+        assert _parser()._needs_ocr_retry(_result(4, 99)) is True  # 24.75 words/page
+        assert _parser()._needs_ocr_retry(_result(4, 100)) is False  # exactly 25
+
+    def test_zero_turns_the_per_page_rule_off_but_keeps_the_floor(self):
+        p = _parser(ocr_fallback_min_words_per_page=0)
+        assert p._needs_ocr_retry(_result(80, 208)) is False
+        assert p._needs_ocr_retry(_result(1, 5)) is True
+
+    def test_custom_threshold(self):
+        p = _parser(ocr_fallback_min_words_per_page=5)
+        assert p._needs_ocr_retry(_result(80, 208)) is True  # 2.6 words/page
+        assert p._needs_ocr_retry(_result(20, 119)) is False  # 5.95 words/page
+
+    def test_never_without_ocr_fallback_or_when_ocr_already_on_or_no_pages(self):
+        off = ParseProcessor()
+        off.no_ocr = True
+        assert off._needs_ocr_retry(_result(80, 208)) is False
+        already_ocr = _parser()
+        already_ocr.no_ocr = False
+        assert already_ocr._needs_ocr_retry(_result(80, 208)) is False
+        assert _parser()._needs_ocr_retry(_result(0, 0)) is False
+
+    def test_malformed_result_is_not_retried(self):
+        assert _parser()._needs_ocr_retry(None) is False
+        assert _parser()._needs_ocr_retry(("x", None)) is False
+
+
+class TestSubprocessConfigRoundTrip:
+    def test_child_can_be_constructed_from_the_parent_config(self):
+        """The child does ParseProcessor(**config); an extra key is a TypeError there.
+
+        ocr_fallback used to be in the dict but not in __init__, so with the
+        fallback on every subprocess parse would have died on construction.
+        """
+        parent = ParseProcessor(ocr_fallback=True, ocr_fallback_min_words_per_page=7)
+        child = ParseProcessor(**parent._subprocess_config())
+        assert child.ocr_fallback is True
+        assert child.ocr_fallback_min_words_per_page == 7
+        assert child.use_subprocess is False, "a child must not nest subprocesses"
+
+    def test_every_config_key_is_a_constructor_parameter(self):
+        import inspect
+
+        params = set(inspect.signature(ParseProcessor.__init__).parameters) - {"self"}
+        extra = set(ParseProcessor()._subprocess_config()) - params
+        assert extra == set(), f"keys the child constructor would reject: {extra}"
+
+
+class TestWorkerConfiguresParser:
+    def test_settings_from_the_datasource_parse_block_are_applied(self):
+        from pipeline.orchestrator.worker import _configure_parser
+
+        p = ParseProcessor()
+        _configure_parser(
+            p,
+            {
+                "ocr_fallback": True,
+                "ocr_fallback_min_words_per_page": "40",
+                "subprocess_timeout": 99,
+            },
+        )
+        assert p.ocr_fallback is True
+        assert p.ocr_fallback_min_words_per_page == 40
+        assert p.subprocess_timeout == 99
+
+    def test_absent_settings_leave_the_defaults(self):
+        from pipeline.orchestrator.worker import _configure_parser
+
+        p = ParseProcessor()
+        _configure_parser(p, {})
+        assert p.ocr_fallback is False
+        assert p.ocr_fallback_min_words_per_page == 25

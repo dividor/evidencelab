@@ -88,6 +88,16 @@ from pipeline.utilities.text_cleaning import clean_text
 
 logger = logging.getLogger(__name__)
 
+# OCR fallback thresholds. A parse that yields fewer than OCR_FALLBACK_MIN_WORDS
+# in total, or fewer than ``ocr_fallback_min_words_per_page`` on average, is
+# retried with OCR. The per-page rule exists because a scanned report with a
+# text cover page parses to a few hundred words over many pages and slips past
+# the absolute floor -- measured on a UNEG batch: 80 pages -> 208 words,
+# 93 -> 194, 88 -> 210, 20 -> 119 all escaped OCR and summarised to nothing,
+# while real documents run to hundreds of words per page.
+OCR_FALLBACK_MIN_WORDS = 10
+DEFAULT_OCR_FALLBACK_MIN_WORDS_PER_PAGE = 25
+
 
 def _parse_pdf_worker(filepath, output_folder, parser_config, result_queue):
     """Worker function to parse document in a separate process (OOM protection)."""
@@ -143,6 +153,8 @@ class ParseProcessor(BaseProcessor):
         _chunk_overlap: int = 0,
         enable_superscripts: bool = True,
         superscript_mode: str = "caret",  # "html" or "caret"
+        ocr_fallback: bool = False,
+        ocr_fallback_min_words_per_page: int = DEFAULT_OCR_FALLBACK_MIN_WORDS_PER_PAGE,
     ):
         """
         Initialize parser configuration.
@@ -181,7 +193,8 @@ class ParseProcessor(BaseProcessor):
         self.subprocess_timeout = subprocess_timeout
         self.enable_superscripts = enable_superscripts
         self.superscript_mode = superscript_mode
-        self.ocr_fallback = False
+        self.ocr_fallback = ocr_fallback
+        self.ocr_fallback_min_words_per_page = ocr_fallback_min_words_per_page
         self._converter: Optional[DocumentConverter] = None
 
     def _init_converter(self) -> None:
@@ -577,20 +590,7 @@ class ParseProcessor(BaseProcessor):
         result_queue: multiprocessing.Queue = multiprocessing.Queue()  # type: ignore
 
         # Config to recreate parser in subprocess
-        parser_config = {
-            "output_dir": self.output_dir,
-            "table_mode": self.table_mode,
-            "no_ocr": self.no_ocr,
-            "images_scale": self.images_scale,
-            "enable_chunking": self.enable_chunking,
-            "chunk_size": self.chunk_size,
-            "chunk_threshold": self.chunk_threshold,
-            "chunk_timeout": self.chunk_timeout,
-            "use_subprocess": False,  # Don't nest subprocesses
-            "enable_superscripts": self.enable_superscripts,
-            "superscript_mode": self.superscript_mode,
-            "ocr_fallback": self.ocr_fallback,
-        }
+        parser_config = self._subprocess_config()
 
         process = multiprocessing.Process(
             target=_parse_pdf_worker,
@@ -745,14 +745,45 @@ class ParseProcessor(BaseProcessor):
             "error": None,
         }
 
+    def _subprocess_config(self) -> Dict[str, Any]:
+        """Constructor kwargs that recreate this parser in a child process.
+
+        Every key must be a ``__init__`` parameter: the child calls
+        ``ParseProcessor(**config)``, so an extra key is a TypeError there.
+        """
+        return {
+            "output_dir": self.output_dir,
+            "table_mode": self.table_mode,
+            "no_ocr": self.no_ocr,
+            "images_scale": self.images_scale,
+            "enable_chunking": self.enable_chunking,
+            "chunk_size": self.chunk_size,
+            "chunk_threshold": self.chunk_threshold,
+            "chunk_timeout": self.chunk_timeout,
+            "use_subprocess": False,  # Don't nest subprocesses
+            "enable_superscripts": self.enable_superscripts,
+            "superscript_mode": self.superscript_mode,
+            "ocr_fallback": self.ocr_fallback,
+            "ocr_fallback_min_words_per_page": self.ocr_fallback_min_words_per_page,
+        }
+
     def _needs_ocr_retry(self, parse_result: tuple) -> bool:
-        """Check whether a parse result warrants an OCR retry."""
+        """Whether a parse result is thin enough to retry with OCR.
+
+        Fires below an absolute word count, or below a per-page average when
+        that rule is on (``ocr_fallback_min_words_per_page`` > 0).
+        """
         if not parse_result or len(parse_result) < 6:
             return False
         _, _, pages, words, _, _ = parse_result
-        return (
-            self.ocr_fallback and self.no_ocr and (words or 0) < 10 and (pages or 0) > 0
-        )
+        pages = pages or 0
+        words = words or 0
+        if not (self.ocr_fallback and self.no_ocr and pages > 0):
+            return False
+        if words < OCR_FALLBACK_MIN_WORDS:
+            return True
+        per_page = self.ocr_fallback_min_words_per_page
+        return per_page > 0 and words / pages < per_page
 
     def _parse_direct(
         self, filepath: str, output_folder: str, title: str, file_size_mb: float

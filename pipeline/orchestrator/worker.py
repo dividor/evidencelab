@@ -299,6 +299,18 @@ def _generate_processing_log(doc_id: str, parsed_folder: Optional[str]) -> None:
         logger.warning("Error generating processing.log for %s: %s", doc_id, exc)
 
 
+def _configure_parser(parser: ParseProcessor, parse_config: Dict[str, Any]) -> None:
+    """Apply the datasource's ``pipeline.parse`` settings that the parser takes."""
+    if "subprocess_timeout" in parse_config:
+        parser.subprocess_timeout = parse_config["subprocess_timeout"]
+    if parse_config.get("ocr_fallback"):
+        parser.ocr_fallback = True
+    if "ocr_fallback_min_words_per_page" in parse_config:
+        parser.ocr_fallback_min_words_per_page = int(
+            parse_config["ocr_fallback_min_words_per_page"]
+        )
+
+
 def init_worker(
     data_source: str,
     skip_parse: bool,
@@ -368,10 +380,7 @@ def _init_parser(
     parsed_dir = f"{data_dir}/parsed"
     parse_config = (pipeline_config or {}).get("parse", {})
     parser = ParseProcessor(output_dir=parsed_dir)
-    if "subprocess_timeout" in parse_config:
-        parser.subprocess_timeout = parse_config["subprocess_timeout"]
-    if parse_config.get("ocr_fallback"):
-        parser.ocr_fallback = True
+    _configure_parser(parser, parse_config)
     parser.setup()
     _worker_context["parser"] = parser
 
@@ -422,7 +431,18 @@ def process_document_wrapper(doc: Dict[str, Any]) -> Dict[str, Any]:
     """
     Top-level wrapper function to process a document using the worker's global context.
     """
-    global _worker_context
+    # Publish the document in the process title ("EvLab-Pipeline-<pid> <doc_id>")
+    # so the orchestrator's memory watchdog -- and anyone running ``ps`` -- can
+    # see which document a worker is on. A ballooning worker is otherwise silent.
+    title = f"EvLab-Pipeline-{os.getpid()}"
+    setproctitle.setproctitle(f"{title} {doc.get('id') or doc.get('doc_id') or '?'}")
+    try:
+        return _process_document_in_worker(doc)
+    finally:
+        setproctitle.setproctitle(title)
+
+
+def _process_document_in_worker(doc: Dict[str, Any]) -> Dict[str, Any]:
     db: Optional[Database] = _get_context_component("db", Database)
     parser: Optional[ParseProcessor] = _get_context_component("parser", ParseProcessor)
     summarizer: Optional[SummarizeProcessor] = _get_context_component(
