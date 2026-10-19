@@ -299,6 +299,18 @@ def _generate_processing_log(doc_id: str, parsed_folder: Optional[str]) -> None:
         logger.warning("Error generating processing.log for %s: %s", doc_id, exc)
 
 
+def _configure_parser(parser: ParseProcessor, parse_config: Dict[str, Any]) -> None:
+    """Apply the datasource's ``pipeline.parse`` settings that the parser takes."""
+    if "subprocess_timeout" in parse_config:
+        parser.subprocess_timeout = parse_config["subprocess_timeout"]
+    if parse_config.get("ocr_fallback"):
+        parser.ocr_fallback = True
+    if "ocr_fallback_min_words_per_page" in parse_config:
+        parser.ocr_fallback_min_words_per_page = int(
+            parse_config["ocr_fallback_min_words_per_page"]
+        )
+
+
 def init_worker(
     data_source: str,
     skip_parse: bool,
@@ -368,10 +380,7 @@ def _init_parser(
     parsed_dir = f"{data_dir}/parsed"
     parse_config = (pipeline_config or {}).get("parse", {})
     parser = ParseProcessor(output_dir=parsed_dir)
-    if "subprocess_timeout" in parse_config:
-        parser.subprocess_timeout = parse_config["subprocess_timeout"]
-    if parse_config.get("ocr_fallback"):
-        parser.ocr_fallback = True
+    _configure_parser(parser, parse_config)
     parser.setup()
     _worker_context["parser"] = parser
 
