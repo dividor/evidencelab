@@ -268,7 +268,8 @@ When a placeholder resolves to `null`, both it and its preceding flag are cleanl
 | `enable_superscripts` | boolean | `true` | Enable superscript/footnote detection |
 | `use_subprocess` | boolean | `false` | Run parsing in a subprocess for OOM protection |
 | `subprocess_timeout` | int | `1200` | Timeout in seconds for subprocess parsing (20 minutes) |
-| `ocr_fallback` | boolean | `false` | Automatically retry with OCR if initial parse yields fewer than 10 words (e.g. scanned image PDFs). Also available as `--ocr-fallback` CLI flag. When OCR is applied, `sys_ocr_applied` is set to `true` in the document record. |
+| `ocr_fallback` | boolean | `false` | Retry with OCR when the first parse is thin: fewer than 10 words in total, or fewer than `ocr_fallback_min_words_per_page` words per page on average (scanned image PDFs). Also available as the `--ocr-fallback` CLI flag — note the flag additionally re-queues *every* `summarize_failed` and `parse_failed` document for re-parsing, whereas the config setting only changes how documents that are parsed anyway are handled. When OCR is applied, `sys_ocr_applied` is set to `true` in the document record. |
+| `ocr_fallback_min_words_per_page` | int | `25` | With `ocr_fallback`, the per-page average below which a parse is retried with OCR. A scanned report with a text cover page parses to a few hundred words across many pages and would otherwise slip past the absolute 10-word floor (measured: 80 pages → 208 words, 93 → 194, 20 → 119), then summarise to nothing. Real documents run to hundreds of words per page. `0` turns the per-page rule off and keeps the absolute floor. |
 
 #### Chunk
 
