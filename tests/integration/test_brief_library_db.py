@@ -37,6 +37,7 @@ from ui.backend.auth.schemas import (
     VoiceProfileUpdate,
 )
 from ui.backend.routes import brief_central, brief_library
+from ui.backend.services.brief_citations_convert import convert_legacy
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -539,7 +540,10 @@ async def test_brief_shared_with_a_group_is_viewable_by_members(session):
     owner, member = await _user(session, "owner"), await _user(session, "member")
     outsider = await _user(session, "outsider")
     group = await _group(session, member)
-    brief = Brief(user_id=owner.id, title="Cash", content={"sections": []})
+    # Stored in citation format 2, as the API stores every brief.
+    brief = Brief(
+        user_id=owner.id, title="Cash", content=convert_legacy({"sections": []})[0]
+    )
     session.add(brief)
     await session.flush()
 

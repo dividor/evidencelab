@@ -24,6 +24,7 @@ from ui.backend.auth.db import DATABASE_URL
 from ui.backend.auth.models import Brief, BriefShare, User, UserGroup, UserGroupMember
 from ui.backend.auth.users import current_superuser
 from ui.backend.routes import brief_central
+from ui.backend.services.brief_citations_convert import convert_legacy
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -71,20 +72,46 @@ async def _user(db, label, superuser=False):
 
 
 async def _brief(db, owner, title):
-    brief = Brief(
-        user_id=owner.id,
-        title=title,
-        query=title,
-        data_source="wfp",
-        content={
+    # Stored as the API stores a brief: citation format 2, built here from
+    # the old shape through the same converter the data migration uses.
+    content, _report = convert_legacy(
+        {
             "title": title,
             "activityId": "act-original",
-            "sections": [{"id": "s1", "title": "Findings", "content": "Text [1]."}],
-        },
+            "sections": [
+                {
+                    "id": "s1",
+                    "title": "Findings",
+                    "status": "done",
+                    "content": "Text [1].",
+                    "sources": [
+                        {
+                            "index": 1,
+                            "chunkId": "c1",
+                            "docId": "d1",
+                            "title": "Doc",
+                            "text": "x",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    brief = Brief(
+        user_id=owner.id, title=title, query=title, data_source="wfp", content=content
     )
     db.add(brief)
     await db.flush()
     return brief
+
+
+def _sections_shown(content):
+    """What a reader sees of each section: its id, title and renumbered text.
+    The same for a stored row and for the read model the API returns (which
+    summarises the originals), so copies can be compared to their source."""
+    return [
+        (s["id"], s["title"], s["renumbered"]["content"]) for s in content["sections"]
+    ]
 
 
 async def _expect_404(coro):
@@ -185,7 +212,8 @@ async def test_admin_copies_any_brief_into_their_own(session, audit):
     assert (copied.user_id, copied.can_edit) == (admin.id, True)
     assert copied.title == "Alice brief (copy)"
     assert copied.content["title"] == "Alice brief (copy)"
-    assert copied.content["sections"] == original.content["sections"]
+    assert _sections_shown(copied.content) == _sections_shown(original.content)
+    assert _sections_shown(copied.content) == [("s1", "Findings", "Text [1].")]
     # Its own activity record, and no shares carried over.
     assert "activityId" not in copied.content
     assert copied.shared_with == []
@@ -207,7 +235,7 @@ async def test_a_person_it_is_shared_with_can_copy_it(session, audit):
 
     assert (copied.user_id, copied.can_edit) == (bob.id, True)
     assert copied.title == "Alice brief (copy)"
-    assert copied.content["sections"] == brief.content["sections"]
+    assert _sections_shown(copied.content) == _sections_shown(brief.content)
     assert copied.shared_with == []
     assert audit == []  # only administrators reaching others' briefs are audited
     listed = await brief_central.list_briefs(user=bob, session=session)
