@@ -4,6 +4,7 @@ import { DocumentsPagination } from './DocumentsPagination';
 import { DocumentsTableControls } from './DocumentsTableControls';
 import { DocumentsTableRow } from './DocumentsTableRow';
 import { SortableHeader } from './SortableHeader';
+import { ScrollChevrons } from './ScrollChevrons';
 import {
   exportDocumentsToExcel,
   taxonomyColumnsFromConfig,
@@ -280,6 +281,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
         </div>
       ) : (
       <>
+      <div className="documents-table-scroll-shell">
       <div className="documents-table-container" ref={setRef} style={{ position: 'relative' }}>
         <table className="documents-table">
 
@@ -370,6 +372,8 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
             ))}
           </tbody>
         </table>
+      </div>
+      <ScrollChevrons container={tableContainer} />
       </div>
       {activeFilterColumn && (
         <DocumentsFilterPopover
