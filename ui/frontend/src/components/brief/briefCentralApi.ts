@@ -56,6 +56,8 @@ export const createBrief = async (args: {
   dataSource: string | null;
   voiceProfileId: string | null;
   content: SavedBrief;
+  // The content predates citation format 2: ask the server to convert it.
+  convert?: boolean;
 }): Promise<RemoteBrief> => {
   const res = await axios.post(`${API_BASE_URL}/briefs/`, {
     title: args.title,
@@ -63,6 +65,7 @@ export const createBrief = async (args: {
     data_source: args.dataSource,
     voice_profile_id: args.voiceProfileId,
     content: args.content,
+    convert: !!args.convert,
   });
   return res.data as RemoteBrief;
 };

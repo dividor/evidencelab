@@ -9,6 +9,9 @@ jest.mock('../config', () => ({
   API_KEY: undefined,
   USER_MODULE: false,
 }));
+jest.mock('../components/brief/briefCitationsApi', () =>
+  require('./helpers/fakeBriefCitations').fakeCitationsApi(),
+);
 
 // Brief reads auth to scope saved-brief history; anonymous in tests.
 jest.mock('../hooks/useAuth', () => ({
@@ -61,7 +64,7 @@ describe('BriefTab (Document Builder)', () => {
     expect(titles.length).toBeGreaterThanOrEqual(3);
   });
 
-  test('the History rail is searchable and briefs can be cloned', () => {
+  test('the History rail is searchable and briefs can be cloned', async () => {
     localStorage.setItem(
       'evidencelab_brief_history_v1',
       JSON.stringify([
@@ -80,9 +83,12 @@ describe('BriefTab (Document Builder)', () => {
     expect(screen.queryByText('Cash transfers')).toBeNull();
     expect(screen.getByText('School feeding')).toBeInTheDocument();
 
-    // Clone the visible brief — a "(copy)" is created and opened.
+    // Clone the visible brief — a "(copy)" is created and opened (the API
+    // renders the copy, so the open is asynchronous).
     fireEvent.click(screen.getAllByLabelText('Duplicate this brief')[0]);
-    expect(screen.getByDisplayValue('School feeding (copy)')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByDisplayValue('School feeding (copy)')).toBeInTheDocument(),
+    );
   });
 
   test('heading numbers are off by default and can be toggled on by the title-row switch', () => {
@@ -139,7 +145,7 @@ describe('BriefTab (Document Builder)', () => {
     expect(screen.getByDisplayValue('Annexes')).toBeInTheDocument();
   });
 
-  test('the brief currently open cannot be deleted from History', () => {
+  test('the brief currently open cannot be deleted from History', async () => {
     localStorage.setItem(
       'evidencelab_brief_history_v1',
       JSON.stringify([
@@ -152,7 +158,7 @@ describe('BriefTab (Document Builder)', () => {
     expect(screen.getByLabelText('Delete this brief')).toBeInTheDocument();
     // Open x1 — now it is the current brief and loses its delete control.
     fireEvent.click(screen.getByText('Open me'));
-    expect(screen.queryByLabelText('Delete this brief')).toBeNull();
+    await waitFor(() => expect(screen.queryByLabelText('Delete this brief')).toBeNull());
   });
 
   test('"Generate outline" title-cases the brief name and headings', async () => {
@@ -178,10 +184,13 @@ describe('BriefTab (Document Builder)', () => {
     expect(screen.getByDisplayValue('Cash Assistance')).toBeInTheDocument();
   });
 
-  test('single-per-document grouping renumbers the inline citations and the References list', () => {
+  test('citations and References are rendered exactly as the API returns them', async () => {
     const src = (index: number, docId: string, title: string, page: number) => ({
       chunkId: `${docId}-${page}`, docId, title, text: 'passage', score: 0, page, index,
     });
+    // A brief saved before citation format 2: opening it asks the API to
+    // convert it (the test double keeps the agent's own numbers as the
+    // display numbers — it never renumbers, and neither does the UI).
     localStorage.setItem(
       'evidencelab_brief_history_v1',
       JSON.stringify([
@@ -190,16 +199,14 @@ describe('BriefTab (Document Builder)', () => {
           sections: [
             {
               id: 's1', title: 'Findings', level: 1, status: 'done',
-              content: 'A fact happened. [1][3] Then something else [2][4][5]',
-              sources: [
-                src(1, 'doc1', 'Doc One', 10), src(2, 'doc2', 'Doc Two', 4), src(3, 'doc1', 'Doc One', 20),
-                src(4, 'doc3', 'Doc Three', 7), src(5, 'doc1', 'Doc One', 30),
-              ],
+              content: 'A fact happened. [7][3] Then something else [2]',
+              sources: [src(7, 'doc1', 'Doc One', 10), src(2, 'doc2', 'Doc Two', 4), src(3, 'doc1', 'Doc One', 20)],
             },
           ],
         },
       ]),
     );
+    const api = jest.requireMock('../components/brief/briefCitationsApi');
     render(<BriefTab dataSource="wfp" />);
     fireEvent.click(screen.getByText('Write my own headings'));
     fireEvent.click(screen.getByText('Cited brief'));
@@ -209,21 +216,22 @@ describe('BriefTab (Document Builder)', () => {
     const referenceRows = () =>
       Array.from(document.querySelectorAll('.brief-footnotes-list .brief-footnote-row')).map((el) => el.textContent);
 
-    // Default: one number per cited passage, references carry pages.
-    expect(inlineNumbers()).toEqual(['1', '3', '2', '4', '5']);
-    expect(referenceRows()).toEqual([
-      '1Doc One, p.10', '2Doc Two, p.4', '3Doc One, p.20', '4Doc Three, p.7', '5Doc One, p.30',
-    ]);
+    // The numbers on screen are the API's, non-consecutive and all: no
+    // renumbering happens in the browser.
+    await waitFor(() => expect(inlineNumbers()).toEqual(['7', '3', '2']));
+    expect(referenceRows()).toEqual(['2Doc Two, p.4', '3Doc One, p.20', '7Doc One, p.10']);
+    expect(api.calls.applyCitationOp.map(([, op]: [unknown, unknown]) => op)).toContainEqual({ type: 'convert' });
 
+    // Choosing a grouping is an API call; the list follows the API's reply.
     fireEvent.click(screen.getByRole('checkbox', { name: 'Group by document (single per document)' }));
-
-    // One number per document: [1][3] collapses to [1], [5] becomes [1], and
-    // the list has one row per document with no page numbers.
-    expect(inlineNumbers()).toEqual(['1', '2', '3', '1']);
-    expect(referenceRows()).toEqual(['1Doc One', '2Doc Two', '3Doc Three']);
-
-    // Back off: the original per-passage numbering returns.
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Group by document (single per document)' }));
-    expect(inlineNumbers()).toEqual(['1', '3', '2', '4', '5']);
+    await waitFor(() =>
+      expect(api.calls.applyCitationOp.map(([, op]: [unknown, unknown]) => op)).toContainEqual({
+        type: 'grouping',
+        grouping: 'document-single',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: 'Group by document (single per document)' })).toBeChecked(),
+    );
   });
 });

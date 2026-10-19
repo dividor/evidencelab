@@ -1,11 +1,51 @@
-import { SourceReference } from '../../types/api';
-import { extractCitedNumbers } from '../citations/CitedContent';
-import { BriefSection, ReferenceGrouping } from './briefTypes';
+// FROZEN copy of ui/frontend/src/components/brief/briefCitations.ts as of
+// rc/v1.6.4 (before Brief citation handling moved into the API), kept only so
+// scripts/fixes/convert_brief_citations.py can compare the API's renumbering
+// with what the browser produced for the same stored rows. Not used by the app.
+// extractCitedNumbers is inlined from components/citations/CitedContent.tsx.
+
+export interface SourceReference {
+  chunkId: string;
+  docId: string;
+  title: string;
+  text: string;
+  score: number;
+  page?: number;
+  index?: number;
+  variants?: SourceReference[];
+  [key: string]: unknown;
+}
+
+export type ReferenceGrouping = 'passage' | 'document-multiple' | 'document-single';
+
+export interface BriefSection {
+  id: string;
+  title: string;
+  status: string;
+  revising?: boolean;
+  content: string;
+  sources: SourceReference[];
+}
+
+const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
+
+const parseCitationNumbers = (raw: string): number[] =>
+  raw
+    .split(',')
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => !isNaN(n));
+
+export const extractCitedNumbers = (text: string): number[] => {
+  const cited = new Set<number>();
+  let m: RegExpExecArray | null;
+  const re = new RegExp(CITATION_REGEX.source, 'g');
+  while ((m = re.exec(text)) !== null) {
+    parseCitationNumbers(m[1]).forEach((n) => cited.add(n));
+  }
+  return Array.from(cited).sort((a, b) => a - b);
+};
 
 const CITATION_RE = /\[(\d+(?:,\s*\d+)*)\]/g;
-// Two markers side by side that carry the same number(s) — `[1][1]`, `[1] [1]`.
-// Combining citations by document produces these wherever the model cited two
-// passages of one report back to back, and the reader should see `[1]` once.
 const ADJACENT_DUPLICATE_RE = /\[(\d+(?:, \d+)*)\]\s*\[\1\]/g;
 
 const collapseAdjacentDuplicates = (content: string): string => {
@@ -18,8 +58,6 @@ const collapseAdjacentDuplicates = (content: string): string => {
   return out;
 };
 
-// Normalise a line to compare it against a heading title: drop markdown heading
-// hashes, leading "1." / "2.1" numbering, and emphasis markers.
 const normaliseHeadingLine = (s: string): string =>
   s
     .replace(/^#{1,6}\s+/, '')
@@ -28,12 +66,6 @@ const normaliseHeadingLine = (s: string): string =>
     .trim()
     .toLowerCase();
 
-/**
- * Remove a section's leading title line so it isn't shown twice — the brief
- * already renders the section's own (editable) heading above the prose. Strips
- * the first non-blank line when it is a markdown heading, or when it simply
- * repeats the section title, then drops the blank line(s) that followed.
- */
 export const stripLeadingTitle = (md: string, title: string): string => {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
   let i = 0;
@@ -60,28 +92,11 @@ export interface SectionDisplay {
   sources: SourceReference[];
 }
 
-/** The identity a citation number is assigned to: the cited passage (chunk),
- *  or — for single-per-document grouping — the document itself. */
 const citationKey = (src: SourceReference, grouping: ReferenceGrouping): string =>
   grouping === 'document-single'
     ? `doc:${src.docId || src.title}`
     : src.chunkId || `${src.docId}#${src.page ?? 'na'}`;
 
-/**
- * Renumber citations across the whole brief into one consecutive sequence:
- * every section's per-section `[n]` markers are remapped to a global number,
- * and the compiled References list is built from the same global registry.
- * Used for both the on-screen render (inline citations, per-section Evidence
- * panels, References) and the Word export, so all three stay in sync as
- * sections are researched.
- *
- * With the default grouping there is one number per cited passage, exactly as
- * the AI summary numbers its sources (assistant_graph assigns global_index per
- * chunk): a report cited from p.32 and p.56 gets two numbers, and the reader
- * can see which page each claim came from. With 'document-single' grouping
- * every passage of a document shares one number and the reference carries no
- * page, so the list reads at the document level only.
- */
 export const buildGlobalCitations = (
   sections: BriefSection[],
   grouping: ReferenceGrouping = 'passage',
@@ -89,11 +104,8 @@ export const buildGlobalCitations = (
   const perDocument = grouping === 'document-single';
   const keyToGlobal = new Map<string, number>();
   const refs: GlobalRef[] = [];
-  // A section mid-Edit/Update (revising) keeps its old content on screen, so
-  // it stays in the numbering — otherwise citations would jump twice per run.
   const isVisible = (s: BriefSection): boolean =>
     (s.status === 'done' || !!s.revising) && !!s.content;
-  // Assign global numbers in order of first citation across visible sections.
   sections.forEach((s) => {
     if (!isVisible(s)) return;
     extractCitedNumbers(s.content).forEach((localN) => {
@@ -101,12 +113,9 @@ export const buildGlobalCitations = (
       if (!src || keyToGlobal.has(citationKey(src, grouping))) return;
       const n = refs.length + 1;
       keyToGlobal.set(citationKey(src, grouping), n);
-      // A document-level reference has no page; its source is the first cited
-      // passage, so clicking the reference still opens the document.
       refs.push({ n, title: src.title, page: perDocument ? undefined : src.page, source: src });
     });
   });
-  // Build per-section display content + sources keyed by the global number.
   const display = new Map<string, SectionDisplay>();
   sections.forEach((s) => {
     if (!isVisible(s)) return;
@@ -125,9 +134,6 @@ export const buildGlobalCitations = (
         sources.push(entry);
         return;
       }
-      // Per passage, each number belongs to one passage, so there is nothing to
-      // merge. Per document, the other passages ride along as variants so the
-      // hover card can still show the passage that supports the hovered claim.
       if (perDocument && src.chunkId !== existing.chunkId) {
         existing.variants = [...(existing.variants || []), src];
       }

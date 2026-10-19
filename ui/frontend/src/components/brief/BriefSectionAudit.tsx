@@ -1,17 +1,21 @@
 import React from 'react';
-import { SectionAuditEntry, SectionAuditKind } from './briefTypes';
+import { SectionAuditEntry, SectionAuditKind, SectionRunSummary } from './briefTypes';
 
 // Per-section research/audit log modal — the full provenance of a section:
-// every generate/edit/update, its question/instruction, and what it drew in.
+// every generate/edit/update, its question/instruction, what it drew in, and
+// the stored original of each run (the agent's own text and sources, with the
+// trace from the numbers readers see back to the agent's numbers).
 // Mirrors BriefHistoryModal's structure/classes so it reads as the same modal.
 
-const KIND_LABEL: Record<SectionAuditKind, string> = {
+export const KIND_LABEL: Record<SectionAuditKind, string> = {
   generate: 'Generated',
   edit: 'Edited',
   update: 'Updated',
+  condense: 'Condensed',
+  manual: 'Edited by hand',
 };
 
-const formatWhen = (ts: number): string => {
+export const formatWhen = (ts: number): string => {
   try {
     const d = new Date(ts);
     return `${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${d.toLocaleTimeString(
@@ -32,14 +36,46 @@ interface Props {
   // Open a given entry's diff. Any edit/update entry with a stored before/after
   // is viewable (including on a reloaded brief).
   onShowChanges?: (entryId: string) => void;
+  // The section's runs as the API summarises them, so an entry can open the
+  // stored original it describes (when the API still retains it).
+  runs?: SectionRunSummary[];
+  onViewOriginal?: (runId: string) => void;
   onClose: () => void;
 }
+
+// What the Log says about an entry's run: whether its original can be opened.
+const RunLink: React.FC<{
+  entry: SectionAuditEntry;
+  runs: SectionRunSummary[];
+  onViewOriginal?: (runId: string) => void;
+}> = ({ entry, runs, onViewOriginal }) => {
+  if (!entry.runId) return null;
+  const run = runs.find((r) => r.id === entry.runId);
+  if (!run || !onViewOriginal) {
+    return <span className="brief-audit-original-gone">· original no longer retained</span>;
+  }
+  return (
+    <button
+      type="button"
+      className="brief-audit-original"
+      onClick={(e) => {
+        e.stopPropagation();
+        onViewOriginal(run.id);
+      }}
+      title="The agent's text and sources exactly as returned, and where each number went"
+    >
+      · Original
+    </button>
+  );
+};
 
 export const BriefSectionAudit: React.FC<Props> = ({
   title,
   audit,
   pendingEntryId,
   onShowChanges,
+  runs = [],
+  onViewOriginal,
   onClose,
 }) => (
   <div className="brief-modal-overlay" onClick={onClose}>
@@ -72,6 +108,7 @@ export const BriefSectionAudit: React.FC<Props> = ({
                     </span>
                     {pending && <span className="brief-audit-pending">· pending</span>}
                     {viewable && <span className="brief-audit-view">· view changes</span>}
+                    <RunLink entry={e} runs={runs} onViewOriginal={onViewOriginal} />
                   </div>
                   {e.question && (
                     <div className="brief-modal-row-query">
@@ -94,6 +131,9 @@ export const BriefSectionAudit: React.FC<Props> = ({
                       ? ` · ${e.sourceCount} source${e.sourceCount === 1 ? '' : 's'}`
                       : ''}
                     {e.addedSourceCount ? ` · ${e.addedSourceCount} new` : ''}
+                    {e.unresolvedCount
+                      ? ` · ${e.unresolvedCount} citation${e.unresolvedCount === 1 ? '' : 's'} with no source`
+                      : ''}
                   </div>
                 </div>
               );

@@ -29,6 +29,7 @@ from pipeline.utilities.tasks import app as celery_app
 from ui.backend import schemas as _api_schemas
 from ui.backend.routes import assistant as assistant_routes
 from ui.backend.routes import brief as brief_routes
+from ui.backend.routes import brief_citations as brief_citations_routes
 from ui.backend.routes import config as config_routes
 from ui.backend.routes import documents as documents_routes
 from ui.backend.routes import highlight as highlight_routes
@@ -768,6 +769,7 @@ app.include_router(stats_routes.router)
 app.include_router(search_routes.router)
 app.include_router(assistant_routes.router, tags=["assistant"])
 app.include_router(brief_routes.router, tags=["brief"])
+app.include_router(brief_citations_routes.anonymous_router, tags=["brief"])
 app.include_router(documents_routes.router)
 
 # User authentication & permissions module (opt-in via USER_MODULE env var)
@@ -803,6 +805,7 @@ if USER_MODULE:
     app.include_router(activity_routes.router, prefix="/activity", tags=["activity"])
     app.include_router(research_routes.router, prefix="/research", tags=["research"])
     app.include_router(brief_central_routes.router, tags=["brief-central"])
+    app.include_router(brief_citations_routes.router, tags=["brief-citations"])
     app.include_router(brief_library_routes.router, tags=["brief-library"])
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])

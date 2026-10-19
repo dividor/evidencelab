@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from fastapi_users import schemas
 from pydantic import (
@@ -600,13 +600,21 @@ class BriefTemplateRead(BaseModel):
 
 
 class BriefCreate(BaseModel):
-    """Payload for saving a brief."""
+    """Payload for saving a brief.
+
+    ``content`` is the brief's structure and settings in citation format 2
+    (``citationsVersion: 2``); the API computes everything about citations.
+    ``convert`` is the explicit path for a brief kept in the browser before
+    format 2 (the localStorage upload): the legacy content is converted on
+    the way in, never read as it is.
+    """
 
     title: str = Field(..., min_length=1, max_length=500)
     query: Optional[str] = Field(None, max_length=5000)
     data_source: Optional[str] = Field(None, max_length=255)
     voice_profile_id: Optional[uuid.UUID] = None
     content: dict
+    convert: bool = False
 
     @field_validator("content")
     @classmethod
@@ -625,6 +633,87 @@ class BriefUpdate(BaseModel):
     @field_validator("content")
     @classmethod
     def validate_content(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_research_jsonb(v)
+
+
+BRIEF_RUN_MODES = ("generate", "edit", "update", "condense", "manual")
+BRIEF_GROUPINGS = ("passage", "document-multiple", "document-single")
+# A section's markdown; the longest stored section is a few thousand words.
+BRIEF_RUN_CONTENT_MAX_CHARS = 200_000
+
+
+class BriefRunCreate(BaseModel):
+    """One research/revise run of a brief section, as the browser streamed it.
+
+    ``sources`` is the agent's source list exactly as the ``sources`` stream
+    event carried it; omitted for a run whose text was written against the
+    numbers on screen (edit, condense, manual), which then takes the
+    section's display sources. ``run_id`` is the assistant run id from the
+    stream's ``done`` event, for tracing.
+    """
+
+    mode: Literal["generate", "edit", "update", "condense", "manual"]
+    content: str = Field(..., max_length=BRIEF_RUN_CONTENT_MAX_CHARS)
+    sources: Optional[list] = None
+    # For a run without sources: the display numbering (number -> source id)
+    # its text was written against.
+    based_on: Optional[Dict[str, str]] = None
+    run_id: Optional[str] = Field(None, max_length=100)
+    question: Optional[str] = Field(None, max_length=5000)
+    instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    note: Optional[str] = Field(None, max_length=2000)
+
+    @field_validator("sources")
+    @classmethod
+    def validate_sources(cls, v: Optional[list]) -> Optional[list]:
+        return _validate_research_jsonb(v)
+
+    def to_run(self) -> dict:
+        """The run as ``brief_citations.record_run`` takes it."""
+        run: dict = {
+            "mode": self.mode,
+            "content": self.content,
+            "sources": self.sources,
+        }
+        for key, value in (
+            ("basedOn", self.based_on),
+            ("runId", self.run_id),
+            ("question", self.question),
+            ("instruction", self.instruction),
+            ("note", self.note),
+        ):
+            if value:
+                run[key] = value
+        return run
+
+
+class BriefGroupingUpdate(BaseModel):
+    """How the References list is numbered and laid out."""
+
+    grouping: Literal["passage", "document-multiple", "document-single"]
+
+
+class BriefHighlightsUpdate(BaseModel):
+    """Claim highlight matches, by brief-wide source id."""
+
+    highlights: Dict[str, list]
+
+    @field_validator("highlights")
+    @classmethod
+    def validate_highlights(cls, v: Dict[str, list]) -> Dict[str, list]:
+        return _validate_research_jsonb(v)
+
+
+class BriefCitationsOp(BaseModel):
+    """One citation operation on a brief the browser holds (anonymous mode)."""
+
+    content: dict
+    op: dict
+    session_id: Optional[str] = Field(None, max_length=64)
+
+    @field_validator("content", "op")
+    @classmethod
+    def validate_payload(cls, v: dict) -> dict:
         return _validate_research_jsonb(v)
 
 

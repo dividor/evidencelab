@@ -179,6 +179,13 @@ export interface SourceReference {
   // combines a document's chunks under one number, so the hover card looks
   // across these to show the chunk that actually supports the hovered claim.
   variants?: SourceReference[];
+  // Brief display sources only (set by the API): the brief-wide source id
+  // behind this number, the agent's own number(s) for it in the section, and
+  // the run that returned it — the trace from a displayed `[n]` back to the
+  // agent's original output.
+  sourceId?: string;
+  agentIndices?: number[];
+  runId?: string | null;
 }
 
 export interface AgentState {

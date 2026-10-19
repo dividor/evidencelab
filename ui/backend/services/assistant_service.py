@@ -141,6 +141,10 @@ def _build_done_event(
     done_event: Dict[str, Any] = {
         "type": "done",
         "messageId": str(uuid_mod.uuid4()),
+        # The agent run behind this turn; a Brief stores it with the
+        # section's original so a reviewer can match stored output to the
+        # trace and the usage record.
+        "runId": str(run_id),
     }
     trace_url = _get_trace_url(run_id)
     if trace_url:

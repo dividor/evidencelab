@@ -207,6 +207,7 @@ Before submitting, verify: no hardcoded secrets, input validation in place, no d
 - Pydantic models for all request/response schemas with `.model_dump()`.
 - Timing instrumentation: `t0 = time.time()` ... `logger.info("[TIMING] operation: %.3fs", t1 - t0)`.
 - **NEVER run CPU-bound or blocking work synchronously on the event loop.** The API runs one uvicorn worker, so anything that blocks the loop (compression, big serialisation, file I/O, sync DB or HTTP calls, hashing, model inference) pauses every user's request, not just the caller's. Hand it to `run_in_threadpool()` (or a process pool for pure-Python CPU work that holds the GIL) and measure concurrent request latency before and after. Middleware counts too: response gzip measured 405 ms stalls for other users when done inline, 104 ms in the threadpool.
+- **Endpoints return final, display-ready data, not raw data the UI must fix up.** Numbering, validation, deduplication, reconciliation and any derived value that is stored, logged, exported or checked elsewhere are computed here and stored, so the database, exports, logs and backend checks hold exactly what the user saw. Example: Brief citations are renumbered and stored by the API (`ui/backend/services/brief_citations.py`), never by the browser.
 
 ### Frontend (React/TypeScript)
 - State management: React Context + custom hooks (no Redux). See `useAuth`, `useDrilldownTree`, `useActivityLogging`.
@@ -215,6 +216,7 @@ Before submitting, verify: no hardcoded secrets, input validation in place, no d
 - Feature flags via `REACT_APP_*` env vars — **baked in at build time**, not runtime. Docker rebuild required to change.
 - Config-driven: `ui/frontend/src/config.ts` reads all env vars.
 - Types in `ui/frontend/src/types/` — `api.ts`, `documents.ts`, `auth.ts`.
+- **No business logic in the UI unless the user asks for it.** The API returns data ready to display: computed, validated, numbered and reconciled. The frontend renders it and handles interaction state only (input, selection, open/closed, loading). Calculating, transforming, validating, deduplicating, renumbering or deriving any value that is stored, logged, exported or checked elsewhere belongs in the API, where every consumer gets the same answer. Logic that lives only in the UI makes the database, exports, logs and backend checks disagree with what users see. Example: Brief citation renumbering lived only in `briefCitations.ts`, so the stored brief, the Activity log and the citation check all used different numbers from the screen.
 
 ### Pipeline
 - Orchestrator pattern: `PipelineOrchestrator` runs stages sequentially (parse, chunk, summarize, tag, index).
