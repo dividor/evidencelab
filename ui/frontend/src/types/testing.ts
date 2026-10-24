@@ -122,6 +122,8 @@ export interface TestRun {
   run_number: number;
   status: ExperimentStatus;
   summary_stats?: SummaryStats | null;
+  /** Models, group and settings the run executed with (absent for older runs). */
+  config?: Record<string, unknown> | null;
   started_at?: string | null;
   finished_at?: string | null;
   created_at: string;

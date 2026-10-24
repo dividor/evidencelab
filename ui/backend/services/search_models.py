@@ -5,6 +5,7 @@ import os
 import re
 import threading
 import time
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -76,6 +77,23 @@ _rerank_models_lock = threading.Lock()
 # API before. Keep it at one by default.
 MAX_CONCURRENT_RERANKS = int(os.environ.get("MAX_CONCURRENT_RERANKS", "1"))
 _rerank_semaphore = threading.Semaphore(MAX_CONCURRENT_RERANKS)
+
+# Degradation notes for the current search (e.g. the reranker fell back to the
+# unranked order). A caller that wants them sets this to a list for the
+# duration of its search; the list is shared with worker threads because
+# ``run_in_threadpool`` copies the context, so appends made there are visible
+# to the caller. Left unset (the UI path), notes are only logged.
+search_warnings: ContextVar[Optional[List[str]]] = ContextVar(
+    "search_warnings", default=None
+)
+
+
+def note_search_warning(message: str) -> None:
+    """Record a degradation note for the current search, if anyone is collecting."""
+    notes = search_warnings.get()
+    if notes is not None:
+        notes.append(message)
+
 
 # A hosted reranker (Azure Foundry, Google Vertex) is an HTTP call: it costs
 # this process a socket and some waiting, not a model's worth of memory. It
@@ -569,6 +587,10 @@ def rerank_results(
     if rerank_scores is None:
         # Reranker signalled transient unavailability — return the original
         # result order rather than 500-ing the search route.
+        note_search_warning(
+            f"Reranker {model_name} unavailable; {len(documents)} results "
+            "returned in original (unreranked) order"
+        )
         return results
     t_rerank_infer_end = time.time()
     logger.info(

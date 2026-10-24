@@ -124,7 +124,7 @@ An **experiment** pairs a dataset with a **run configuration** and a set of **ex
 #### Run configuration
 
 - **Model combo** — the embedding, summarization, and reranker models to use. These are the same combos as the app's model menu (filtered to the dataset's data source). New experiments default to the system default combo.
-- **Run as group** — optionally run with a user **group's** search settings (rerank, field boosts, section filters, …) and **summary prompt**, reproducing exactly what that group's members experience in the app.
+- **Run as group** — optionally run with a user **group's** search settings (rerank, field boosts, section filters, …) and **summary prompt**, reproducing exactly what that group's members experience in the app. Settings the group does not set fall back to the same system defaults the search page starts from (dense weight, minimum chunk size, field boosts, summary temperature, …), so a run matches what a member of that group sees — not the API's bare defaults.
 
 > Tip: pick the same **Model combo** and **Group** your users use so the experiment mirrors real behaviour.
 
@@ -160,10 +160,13 @@ From the **Experiments** table, click **Run** on a row. The experiment executes 
 
 Open an experiment to see its **runs**, newest first (the **latest** run is highlighted). Each run shows its pass rate, mean score, and duration, aligned across runs.
 
-Expand a run to see the per‑case results table, and expand a case to see:
+Expand a run to see its **Configuration** — the model combo, the resolved embedding / summary / judge / reranker models, the group it ran as, and every search and summary setting the run executed with. The line next to it says how many settings changed compared with the previous run, and the changed values are highlighted when you expand the panel, so runs stay comparable after an experiment, a group or a model combo has been edited. (Runs made before this was recorded show *Configuration not recorded*.)
+
+Below it is the per‑case results table; expand a case to see:
 
 - the **Query** and any filters,
 - each **expectation** result (pass/fail, score, and — for LLM judge — the exact prompt being judged and the reason), and
+- any **Warnings** — the case was still judged, but something degraded the run (for example the reranker was temporarily unavailable and the results were used in their original order), so its answer may differ from what the app shows for the same query; rerun before treating it as a regression, and
 - the **Output** (the AI summary with references, or the search result cards) — collapsed by default.
 
 ![Run results and per‑case detail](../images/admin/eval/run-results.png)
