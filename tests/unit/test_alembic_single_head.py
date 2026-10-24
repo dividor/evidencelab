@@ -30,9 +30,9 @@ class TestAlembicSingleHead:
 
     def test_merge_revision_when_loaded_then_joins_both_1_6_4_heads(self):
         script = _script_directory()
-        merge = script.get_revision("0037_merge_test_run_config_and_citations")
+        merge = script.get_revision("0037_merge_heads_1_6_4")
         assert set(merge.down_revision) == {
             "0036_add_test_run_config",
             "0036_convert_brief_citations",
         }
-        assert script.get_heads() == ["0037_merge_test_run_config_and_citations"]
+        assert script.get_heads() == ["0037_merge_heads_1_6_4"]

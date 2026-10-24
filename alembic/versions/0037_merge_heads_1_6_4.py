@@ -7,12 +7,12 @@ API container from starting. This empty merge revision joins them into one
 head; neither revision ID is renamed, so databases that already applied either
 one upgrade cleanly.
 
-Revision ID: 0037_merge_test_run_config_and_citations
+Revision ID: 0037_merge_heads_1_6_4
 Revises: 0036_add_test_run_config, 0036_convert_brief_citations
 Create Date: 2026-10-24
 """
 
-revision = "0037_merge_test_run_config_and_citations"
+revision = "0037_merge_heads_1_6_4"
 down_revision = ("0036_add_test_run_config", "0036_convert_brief_citations")
 branch_labels = None
 depends_on = None
