@@ -81,7 +81,7 @@ langchain-community==0.4.2
 langchain-huggingface==1.2.2
 langchain-openai==1.6.0
 langchain-anthropic==1.7.0
-langchain-google-vertexai>=3.0.0,<4.0.0
+langchain-google-vertexai>=3.2.4,<4.0.0
 
 # Google Cloud AI Platform (Vertex AI)
 google-cloud-aiplatform>=1.154.0
