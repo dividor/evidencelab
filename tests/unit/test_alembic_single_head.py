@@ -36,3 +36,12 @@ class TestAlembicSingleHead:
             "0036_convert_brief_citations",
         }
         assert script.get_heads() == ["0037_merge_heads_1_6_4"]
+
+    def test_revision_ids_when_loaded_then_fit_the_version_column(self):
+        """alembic_version.version_num is varchar(32); a longer ID fails on upgrade."""
+        too_long = [
+            rev.revision
+            for rev in _script_directory().walk_revisions()
+            if len(rev.revision) > 32
+        ]
+        assert too_long == [], f"revision IDs longer than 32 characters: {too_long}"
