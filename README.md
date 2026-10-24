@@ -291,7 +291,7 @@ Named model combinations selectable in the UI search settings. Each combo bundle
   },
   "semantic_highlighting_model": { ... },  // Inline LLM config for highlights
   "reranker_model": "model_key",        // Key from supported_rerank_models
-  "rerank_model_page_size": 10          // Optional: candidates per rerank batch
+  "rerank_model_page_size": 10          // Optional: top candidates the reranker scores per search (all when unset)
 }
 ```
 

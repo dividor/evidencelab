@@ -124,7 +124,7 @@ An **experiment** pairs a dataset with a **run configuration** and a set of **ex
 #### Run configuration
 
 - **Model combo** — the embedding, summarization, and reranker models to use. These are the same combos as the app's model menu (filtered to the dataset's data source). New experiments default to the system default combo.
-- **Run as group** — optionally run with a user **group's** search settings (rerank, field boosts, section filters, …) and **summary prompt**, reproducing exactly what that group's members experience in the app.
+- **Run as group** — optionally run with a user **group's** search settings (rerank, field boosts, section filters, …) and **summary prompt**, reproducing exactly what that group's members experience in the app. Settings the group does not set fall back to the same system defaults the search page starts from (dense weight, minimum chunk size, field boosts, summary temperature, …), so a run matches what a member of that group sees — not the API's bare defaults.
 
 > Tip: pick the same **Model combo** and **Group** your users use so the experiment mirrors real behaviour.
 
@@ -160,10 +160,13 @@ From the **Experiments** table, click **Run** on a row. The experiment executes 
 
 Open an experiment to see its **runs**, newest first (the **latest** run is highlighted). Each run shows its pass rate, mean score, and duration, aligned across runs.
 
-Expand a run to see the per‑case results table, and expand a case to see:
+Expand a run to see its **Configuration** — the model combo, the resolved embedding / summary / judge / reranker models, the group it ran as, and every search and summary setting the run executed with. The line next to it says how many settings changed compared with the previous run, and the changed values are highlighted when you expand the panel, so runs stay comparable after an experiment, a group or a model combo has been edited. (Runs made before this was recorded show *Configuration not recorded*.)
+
+Below it is the per‑case results table; expand a case to see:
 
 - the **Query** and any filters,
 - each **expectation** result (pass/fail, score, and — for LLM judge — the exact prompt being judged and the reason), and
+- any **Warnings** — the case was still judged, but something degraded the run (for example the reranker was temporarily unavailable and the results were used in their original order), so its answer may differ from what the app shows for the same query; rerun before treating it as a regression, and
 - the **Output** (the AI summary with references, or the search result cards) — collapsed by default.
 
 ![Run results and per‑case detail](../images/admin/eval/run-results.png)
@@ -189,7 +192,7 @@ Anything other than *Supported* is **flagged** for review. The judge must also c
 
 ![Result of a brief citation check](../images/admin/eval/brief-check-result.png)
 
-The result page shows the verdict counts, the flagged share, tokens and cost, and the passages table. Hover a summary tile, a column heading or a verdict for a plain‑language explanation of what it means. Filter it by verdict, **Flagged only**, **Quote not in source**, section, or free text. The citation numbers in the **Cites** column open the cited passage in Evidence Lab's document preview. Expand a passage to read the problems the judge found, its explanation, its quotes with their verification status (the ⓘ icon explains where those quotes come from), and each cited excerpt; its heading opens the document at that passage. **Download Excel** saves the same data as three sheets: *Flagged*, *All judgements* and *Summary* (the per‑section verdict counts).
+The result page shows the verdict counts, the flagged share, tokens and cost, and the passages table. Hover a summary tile, a column heading or a verdict for a plain‑language explanation of what it means. Filter it by verdict, **Flagged only**, **Quote not in source**, section, or free text. The citation numbers in the **Cites** column are the numbers readers see in the brief, on screen and in its Word export, and open the cited passage in Evidence Lab's document preview. Expand a passage to read the problems the judge found, its explanation, its quotes with their verification status (the ⓘ icon explains where those quotes come from), and each cited excerpt; its heading opens the document at that passage, and a **Trace** line names the brief's source record, the number the research agent itself gave that source in the section, and the run that returned it, so a judgement can be traced back to the agent's original output (the same trace the brief's section **Log** shows). A citation shown as `[?n]` in the brief, one the agent never returned a source for, is reported as dangling. **Download Excel** saves the same data as three sheets: *Flagged*, *All judgements* and *Summary* (the per‑section verdict counts).
 
 A supported passage, with the quotes the judge relied on verified against the excerpt:
 

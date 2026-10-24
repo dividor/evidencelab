@@ -1,6 +1,8 @@
 import {
+  BRIEF_CITATIONS_VERSION,
   BRIEF_HISTORY_KEY,
   BRIEF_MIGRATED_KEY,
+  BriefContentRead,
   BriefListItem,
   RemoteBrief,
   SavedBrief,
@@ -25,9 +27,10 @@ export const listItemToStub = (item: BriefListItem): SavedBrief => ({
   voiceId: item.voice_profile_id,
 });
 
-// The server stores the full SavedBrief payload as `content`; re-stamp the
-// server id so local state and server rows stay keyed identically.
-export const remoteToSaved = (remote: RemoteBrief): SavedBrief => ({
+// The server returns the brief as the API renders it (renumbered sections and
+// References); re-stamp the server id so local state and server rows stay
+// keyed identically.
+export const remoteToRead = (remote: RemoteBrief): BriefContentRead => ({
   ...remote.content,
   id: remote.id,
   title: remote.title,
@@ -61,12 +64,15 @@ export const migrateLocalBriefs = async (
   let uploaded = 0;
   for (const entry of entries) {
     if (!entry.sections?.length) continue;
+    // A brief saved before citation format 2 is converted by the server on
+    // the way in — explicitly, never read as it is.
     await createBrief({
       title: entry.title,
       query: entry.query || null,
       dataSource,
       voiceProfileId: entry.voiceId ?? null,
       content: entry,
+      convert: entry.citationsVersion !== BRIEF_CITATIONS_VERSION,
     });
     uploaded += 1;
   }

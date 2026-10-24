@@ -122,6 +122,8 @@ export interface TestRun {
   run_number: number;
   status: ExperimentStatus;
   summary_stats?: SummaryStats | null;
+  /** Models, group and settings the run executed with (absent for older runs). */
+  config?: Record<string, unknown> | null;
   started_at?: string | null;
   finished_at?: string | null;
   created_at: string;
@@ -207,6 +209,11 @@ export interface CheckSource {
   pdf_url?: string | null;
   section?: string;
   excerpt?: string;
+  // Trace back to the agent's original output: the brief-wide source id,
+  // the agent's own number(s) for it in the section, and the run.
+  source_id?: string | null;
+  agent_indices?: number[];
+  run_id?: string | null;
 }
 
 export interface CheckQuote {

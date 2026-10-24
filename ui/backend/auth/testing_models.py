@@ -188,6 +188,10 @@ class TestRun(Base):
         String(32), nullable=False, default=EXPERIMENT_PENDING
     )
     summary_stats: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The resolved configuration this run executed with (models, group, search
+    # and summary settings), so runs stay comparable after the experiment, its
+    # group or the model combos change.
+    config: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

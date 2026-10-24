@@ -8,6 +8,9 @@ jest.mock('../config', () => ({
   API_KEY: undefined,
   USER_MODULE: true,
 }));
+jest.mock('../components/brief/briefCitationsApi', () =>
+  require('./helpers/fakeBriefCitations').fakeCitationsApi(),
+);
 jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
 // Brief Central (logged-in landing) loads briefs/templates/voices over axios.

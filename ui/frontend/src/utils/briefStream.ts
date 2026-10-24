@@ -177,7 +177,11 @@ export interface BriefSectionHandlers {
   onProgress: (percent: number) => void;
   onToken: (fullText: string) => void;
   onSources: (sources: SourceReference[]) => void;
-  onDone: (result: { content: string; sources: SourceReference[] }) => void;
+  // The finished section as the agent returned it: its text with the agent's
+  // own `[n]` markers, its sources as streamed, and the agent run id. The
+  // browser records it with the API as the section's original; the API
+  // numbers it across the brief.
+  onDone: (result: { content: string; sources: SourceReference[]; runId?: string }) => void;
   onError: (message: string) => void;
 }
 
@@ -280,10 +284,10 @@ export const runDeepResearch = async ({
         latestSources = sources;
         handlers.onSources(sources);
       },
-      onDone: () => {
+      onDone: (data) => {
         handlers.onProgress(100);
         handlers.onActivity({ tag: 'DONE', text: doneLabel });
-        handlers.onDone({ content: latestContent, sources: latestSources });
+        handlers.onDone({ content: latestContent, sources: latestSources, runId: data.runId });
       },
       onError: (message) => handlers.onError(message),
     },

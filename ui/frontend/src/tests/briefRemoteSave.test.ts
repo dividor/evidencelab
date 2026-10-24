@@ -5,9 +5,11 @@ import { useBrief } from '../components/brief/useBrief';
 
 /**
  * A signed-in brief is saved to the server through a queue that sends one
- * save at a time. These tests hold the server calls open to put a section's
- * research completion inside each window of that queue, and check that the
- * finished section always reaches the server.
+ * save at a time, and a finished section is recorded with the citation API
+ * as a run of the brief's server row. These tests hold the server calls open
+ * to put a section's research completion inside each window of that queue,
+ * and check that the finished section always reaches the server — as a run
+ * of the row the save created, never before it exists.
  */
 
 jest.mock('../config', () => ({
@@ -16,6 +18,9 @@ jest.mock('../config', () => ({
   API_KEY: undefined,
   USER_MODULE: true,
 }));
+jest.mock('../components/brief/briefCitationsApi', () =>
+  require('./helpers/fakeBriefCitations').fakeCitationsApi(),
+);
 jest.mock('axios', () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
@@ -70,13 +75,14 @@ const serverBrief = (content: SavedBrief): RemoteBrief => ({
   updated_at: '2026-09-30T10:00:00Z',
 });
 
-// The content the server last received for the first section, from any save.
-const lastSavedSectionText = (): string | undefined => {
-  const saves = [
-    ...mockCreateBrief.mock.calls.map(([args]) => args.content as SavedBrief),
-    ...mockUpdateBrief.mock.calls.map(([, args]) => args.content as SavedBrief),
-  ];
-  return saves.length ? saves[saves.length - 1].sections[0]?.content : undefined;
+// The run the citation API last received: the server brief it was recorded
+// on and the section text as streamed.
+const citationsApi = () => jest.requireMock('../components/brief/briefCitationsApi');
+const lastRecordedRun = (): { briefId: string; text: string } | undefined => {
+  const calls = citationsApi().calls.recordRun as Array<[string, string, { content: string }]>;
+  if (!calls.length) return undefined;
+  const [briefId, , run] = calls[calls.length - 1];
+  return { briefId, text: run.content };
 };
 
 const renderRemoteBrief = () =>
@@ -116,13 +122,12 @@ describe('saving a researched section to the server', () => {
     startBrief(hook);
     await waitFor(() => expect(mockCreateBrief).toHaveBeenCalledTimes(1));
 
+    // The run waits for the row to exist: creation completes while the
+    // research is still being recorded, never the other way round.
+    setTimeout(() => create.resolve(serverBrief(mockCreateBrief.mock.calls[0][0].content)), 700);
     await researchFirstSection(hook);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 700)); // the autosave's debounce
-      create.resolve(serverBrief(mockCreateBrief.mock.calls[0][0].content));
-    });
 
-    await waitFor(() => expect(lastSavedSectionText()).toBe(SECTION_TEXT));
+    await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
   });
 
   test('a section finished while the saved-brief list refreshes is still saved', async () => {
@@ -137,13 +142,10 @@ describe('saving a researched section to the server', () => {
     await waitFor(() => expect(mockCreateBrief).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(mockListMyBriefs.mock.results.some((r) => r.value === refresh.promise)).toBe(true));
 
+    setTimeout(() => refresh.resolve([]), 700);
     await researchFirstSection(hook);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 700)); // the autosave's debounce
-      refresh.resolve([]);
-    });
 
-    await waitFor(() => expect(lastSavedSectionText()).toBe(SECTION_TEXT));
+    await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
   });
 
   test('saves never overlap, and the list refreshes only once the queue is empty', async () => {
@@ -168,7 +170,10 @@ describe('saving a researched section to the server', () => {
     startBrief(hook);
     await waitFor(() => expect(mockCreateBrief).toHaveBeenCalledTimes(1));
     await researchFirstSection(hook);
-    await waitFor(() => expect(lastSavedSectionText()).toBe(SECTION_TEXT));
+    await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
+    // The finished section changes the brief's structure (its status and
+    // research time), so an autosave follows the run; wait for it.
+    await waitFor(() => expect(mockUpdateBrief).toHaveBeenCalled());
     await waitFor(() => expect(events[events.length - 1]).toBe('list'));
 
     expect(maxInFlight).toBe(1);
@@ -195,13 +200,10 @@ describe('saving a researched section to the server', () => {
     // A title edit starts a save that will fail; the section finishes while it runs.
     act(() => hook.result.current.setBriefTitle('Renamed'));
     await waitFor(() => expect(mockUpdateBrief).toHaveBeenCalledTimes(1));
+    setTimeout(() => failSave(new Error('Network down')), 700);
     await researchFirstSection(hook);
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 700)); // the autosave's debounce
-      failSave(new Error('Network down'));
-    });
 
     await waitFor(() => expect(hook.result.current.error).toBe('Network down'));
-    await waitFor(() => expect(lastSavedSectionText()).toBe(SECTION_TEXT));
+    await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
   });
 });

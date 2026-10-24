@@ -131,6 +131,8 @@ class TestRunRead(BaseModel):
     run_number: int
     status: str
     summary_stats: Optional[Dict[str, Any]] = None
+    # Snapshot of the models, group and settings the run executed with.
+    config: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     # The user the run (and its token usage) is attributed to — whoever

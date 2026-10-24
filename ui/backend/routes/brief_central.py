@@ -34,6 +34,9 @@ from ui.backend.auth.schemas import (
     BriefUpdate,
 )
 from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.services import brief_citations as bc
+from ui.backend.services.brief_activity import upsert_brief_activity
+from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
 from ui.backend.services.brief_sharing import (
     add_share,
     owner_name,
@@ -135,6 +138,71 @@ async def _audit_admin_access(
     )
 
 
+def citation_http_error(exc: bc.BriefCitationError) -> HTTPException:
+    """A citation error as the HTTP response it deserves: a brief stored
+    before citation format 2 is a conflict to resolve by conversion, an
+    over-sized brief is refused, anything else is a bad request."""
+    if isinstance(exc, bc.LegacyBriefError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, bc.BriefTooLargeError):
+        return HTTPException(status_code=413, detail=str(exc))
+    return HTTPException(status_code=400, detail=str(exc))
+
+
+def read_content(brief: Brief) -> dict:
+    """The brief as the API returns it: originals summarised, display
+    sources expanded (see ``brief_citations.expand_for_read``)."""
+    try:
+        return bc.expand_for_read(brief.content or {})
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
+
+
+async def store_brief_content(
+    session: AsyncSession, brief: Brief, content: dict
+) -> None:
+    """Save recomputed content and refresh the brief's Activity row in the
+    same transaction. A new dict is assigned so the ORM sees the change."""
+    brief.content = copy.deepcopy(content)
+    await upsert_brief_activity(
+        session,
+        content=brief.content,
+        title=brief.title,
+        brief_id=brief.id,
+        user_id=brief.user_id,
+    )
+    await session.commit()
+    await session.refresh(brief)
+
+
+def new_brief_content(content: dict, convert: bool) -> dict:
+    """Content for a brief being created: a format-2 structure is applied to
+    an empty brief (template text becomes a run); a brief in its full stored
+    form (a browser-held brief being uploaded, recognised by its ``sources``
+    list) is recomputed and kept; a legacy brief is converted only when the
+    client asks for it explicitly."""
+    try:
+        if is_legacy(content):
+            if not convert:
+                raise bc.LegacyBriefError(
+                    "Brief content predates citation format 2; send convert=true "
+                    "to convert it on upload"
+                )
+            return convert_legacy(content)[0]
+        if "sources" in content:
+            return bc.renumber(copy.deepcopy(content))
+        skeleton: dict = {
+            "citationsVersion": bc.CITATIONS_VERSION,
+            "referenceGrouping": content.get("referenceGrouping")
+            or bc.GROUPING_PASSAGE,
+            "sources": [],
+            "sections": [],
+        }
+        return bc.apply_structure(skeleton, content)
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
+
+
 async def _to_brief_read(
     session: AsyncSession, brief: Brief, can_edit: bool
 ) -> BriefRead:
@@ -147,7 +215,7 @@ async def _to_brief_read(
         query=brief.query,
         data_source=brief.data_source,
         voice_profile_id=brief.voice_profile_id,
-        content=brief.content,
+        content=read_content(brief),
         owner_name=owner_name(owner) if owner else None,
         can_edit=can_edit,
         shared_with=(
@@ -196,18 +264,18 @@ async def create_brief(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Save a new brief."""
+    """Save a new brief; its citations are computed and stored here."""
     brief = Brief(
         user_id=user.id,
         title=body.title,
         query=body.query,
         data_source=body.data_source,
         voice_profile_id=body.voice_profile_id,
-        content=body.content,
+        content=new_brief_content(body.content, body.convert),
     )
     session.add(brief)
-    await session.commit()
-    await session.refresh(brief)
+    await session.flush()
+    await store_brief_content(session, brief, brief.content)
     return await _to_brief_read(session, brief, can_edit=True)
 
 
@@ -359,6 +427,10 @@ async def copy_brief(
     and comments stay with the original, and it gets its own activity record.
     """
     source, _ = await _get_viewable_brief(session, brief_id, user)
+    try:
+        bc.require_current_format(source.content or {})
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
     title = f"{source.title}{_COPY_SUFFIX}"[:_TITLE_MAX]
     content = copy.deepcopy(source.content or {})
     content.pop("activityId", None)
@@ -385,7 +457,12 @@ async def update_brief(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Update a brief (owner only)."""
+    """Update a brief (owner only).
+
+    ``content`` carries the structure and settings only; the API keeps every
+    citation fact from the stored row and renumbers (see
+    ``brief_citations.apply_structure``).
+    """
     brief = await _get_owned_brief(session, brief_id, user)
     if body.title is not None:
         brief.title = body.title
@@ -393,10 +470,13 @@ async def update_brief(
         brief.query = body.query
     if body.voice_profile_id is not None:
         brief.voice_profile_id = body.voice_profile_id
+    content = copy.deepcopy(brief.content or {})
     if body.content is not None:
-        brief.content = body.content
-    await session.commit()
-    await session.refresh(brief)
+        try:
+            content = bc.apply_structure(content, body.content)
+        except bc.BriefCitationError as exc:
+            raise citation_http_error(exc)
+    await store_brief_content(session, brief, content)
     return await _to_brief_read(session, brief, can_edit=True)
 
 

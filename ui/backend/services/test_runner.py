@@ -41,6 +41,11 @@ from ui.backend.auth.testing_models import (
 )
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
+from ui.backend.services.search_defaults import (
+    SYSTEM_SEARCH_DEFAULTS,
+    default_section_types,
+)
+from ui.backend.services.search_models import search_warnings
 from ui.backend.services.test_evaluators import evaluate_assertions
 from ui.backend.utils.filter_helpers import resolve_doc_level_filters
 
@@ -138,9 +143,14 @@ async def _run_search(
     :func:`resolve_doc_level_filters`) because the harness calls the chunk
     search directly and so bypasses the route handler's own resolvers.
 
-    Parameters default to the ``/search`` endpoint's own defaults; the
-    experiment ``config`` overrides them (e.g. ``embedding_model``, ``rerank``,
-    ``field_boost_fields``, ``section_types``).
+    Parameters default to the search UI's system defaults
+    (:data:`SYSTEM_SEARCH_DEFAULTS`, what a user starts from before their group
+    settings apply); the experiment ``config`` (model combo + "run as group"
+    overlay) overrides them, and a case's own ``params`` override both.
+
+    Degradation notes raised during retrieval (e.g. the reranker fell back to
+    the unranked order) are returned under ``warnings`` so the case is still
+    judged but the result shows why it may differ from the app.
     """
     from ui.backend.routes.search import (
         _apply_post_retrieval_boosts,
@@ -149,7 +159,7 @@ async def _run_search(
         _run_search_chunks,
     )
 
-    params = {**(config or {}), **(case_input.get("params") or {})}
+    params = _effective_params(config, case_input)
     query = case_input.get("query", "")
     limit = int(params.get("limit", 50))
     min_chunk_size = int(params.get("min_chunk_size", 0))
@@ -159,32 +169,37 @@ async def _run_search(
     filters = case_input.get("filters") or None
     if filters:
         filters = resolve_doc_level_filters(filters, pg, source)
-    raw = await _run_search_chunks(
-        query,
-        limit=limit,
-        dense_weight=params.get("dense_weight"),
-        db=db,
-        filters=filters,
-        rerank=bool(params.get("rerank", False)),
-        recency_boost=bool(params.get("recency_boost", False)),
-        recency_weight=float(params.get("recency_weight", 0.15)),
-        recency_scale_days=int(params.get("recency_scale_days", 365)),
-        section_types=_parse_section_types(params.get("section_types")),
-        keyword_boost_short_queries=bool(
-            params.get("keyword_boost_short_queries", True)
-        ),
-        min_chunk_size=min_chunk_size,
-        dense_model=params.get("embedding_model") or params.get("dense_model"),
-        rerank_model=params.get("rerank_model"),
-        max_rerank_candidates=int(params.get("max_rerank_candidates") or 0),
-        wide_search=wide_search,
-        wide_group_size=wide_group_size,
-        wide_limit=wide_limit,
-    )
+    warnings: List[str] = []
+    token = search_warnings.set(warnings)
+    try:
+        raw = await _run_search_chunks(
+            query,
+            limit=limit,
+            dense_weight=params.get("dense_weight"),
+            db=db,
+            filters=filters,
+            rerank=bool(params.get("rerank", False)),
+            recency_boost=bool(params.get("recency_boost", False)),
+            recency_weight=float(params.get("recency_weight", 0.15)),
+            recency_scale_days=int(params.get("recency_scale_days", 365)),
+            section_types=_parse_section_types(params.get("section_types")),
+            keyword_boost_short_queries=bool(
+                params.get("keyword_boost_short_queries", True)
+            ),
+            min_chunk_size=min_chunk_size,
+            dense_model=params.get("embedding_model") or params.get("dense_model"),
+            rerank_model=params.get("rerank_model"),
+            max_rerank_candidates=int(params.get("max_rerank_candidates") or 0),
+            wide_search=wide_search,
+            wide_group_size=wide_group_size,
+            wide_limit=wide_limit,
+        )
+    finally:
+        search_warnings.reset(token)
     effective_limit = wide_limit * wide_group_size if wide_search else limit
     built = _fetch_and_build_results(pg, raw, source, effective_limit, min_chunk_size)
     if not built:
-        return {"query": query, "results": [], "count": 0}
+        return _search_output(query, [], warnings)
     boosted = _apply_post_retrieval_boosts(
         built,
         query,
@@ -196,7 +211,29 @@ async def _run_search(
         source,
     )
     results = [_result_to_dict(r) for r in boosted]
-    return {"query": query, "results": results, "count": len(results)}
+    return _search_output(query, results, warnings)
+
+
+def _effective_params(
+    config: Optional[Dict[str, Any]], case_input: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Layer the run settings the way the search UI does: system defaults, then
+    the experiment config (model combo + group overlay), then the case's own
+    ``params``. A ``None`` in a higher layer never overrides a default."""
+    params: Dict[str, Any] = dict(SYSTEM_SEARCH_DEFAULTS)
+    params["section_types"] = default_section_types()
+    for layer in (config or {}, case_input.get("params") or {}):
+        params.update({k: v for k, v in layer.items() if v is not None})
+    return params
+
+
+def _search_output(
+    query: str, results: List[Dict[str, Any]], warnings: List[str]
+) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"query": query, "results": results, "count": len(results)}
+    if warnings:
+        out["warnings"] = list(warnings)
+    return out
 
 
 def _combo_summary_model(combo: Any) -> Optional[str]:
@@ -245,7 +282,7 @@ async def _run_summary(
     from ui.backend.services.llm_service import generate_ai_summary_with_usage
 
     search_out = await _run_search(case_input, config, db, pg, source)
-    cfg = config or {}
+    cfg = _effective_params(config, case_input)
     model_key = cfg.get("summary_model") or _default_summary_model()
     raw_summary, usage = await generate_ai_summary_with_usage(
         query=case_input.get("query", ""),
@@ -261,7 +298,7 @@ async def _run_summary(
     # test references. The full summary (raw text + References) is what is judged.
     references = _build_references(raw_summary, search_out["results"])
     full_summary = raw_summary + _references_text(references)
-    return {
+    out = {
         "query": case_input.get("query", ""),
         "summary": full_summary,
         "raw_summary": raw_summary,
@@ -269,6 +306,9 @@ async def _run_summary(
         "usage": usage,
         "search_results": search_out["results"],
     }
+    if search_out.get("warnings"):
+        out["warnings"] = search_out["warnings"]
+    return out
 
 
 # Inline citation markers in the summary, e.g. "[3]" or "[3, 4]".
@@ -340,10 +380,14 @@ def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
         "embedding_model": combo.get("embedding_model"),
         "summary_model": _combo_summary_model(combo),
         "rerank_model": combo.get("reranker_model"),
-        # Use the combo's summary token budget + temperature so the summary is
-        # generated in full (not cut off by a small default max_tokens).
+        # The UI caps the candidates it sends to the reranker per combo.
+        "max_rerank_candidates": combo.get("rerank_model_page_size"),
+        # Use the combo's summary token budget so the summary is generated in
+        # full (not cut off by a small default max_tokens). The combo's
+        # temperature is deliberately not used: the UI always sends its own
+        # summary temperature (system default 0, or the group's), so the
+        # harness takes that from SYSTEM_SEARCH_DEFAULTS / the group overlay.
         "max_tokens": sm.get("max_tokens"),
-        "temperature": sm.get("temperature"),
     }
 
 
@@ -407,9 +451,25 @@ async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
     if group is None:
         return config
     config.update(_group_settings_to_config(group.search_settings))
+    config["group_name"] = group.name
     if group.summary_prompt:
         config["summary_prompt"] = group.summary_prompt
     return config
+
+
+def run_config_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
+    """The configuration a run actually executes with, flattened for storage on
+    ``test_runs.config``: the chosen combo + group, the resolved models, and
+    every search/summary setting after the UI system defaults, the combo and
+    the group overlay have been applied (the same layering as ``_run_search``).
+    Stored per run so runs remain comparable once the experiment, the group or
+    the combos change."""
+    snapshot = _effective_params(config, {})
+    snapshot["summary_model"] = (
+        snapshot.get("summary_model") or _default_summary_model()
+    )
+    snapshot["judge_model"] = snapshot.get("judge_model") or snapshot["summary_model"]
+    return _json_safe(snapshot)
 
 
 def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -422,8 +482,8 @@ def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "embedding_model",
         "summary_model",
         "rerank_model",
+        "max_rerank_candidates",
         "max_tokens",
-        "temperature",
     ):
         if cfg.get(key) is None and combo.get(key) is not None:
             cfg[key] = combo[key]
@@ -911,6 +971,7 @@ async def _execute(
     # models, then overlay any "run as group" settings, so the run matches the
     # search UI / that group's configuration.
     config = await _apply_group(session, effective_config(experiment.config))
+    run.config = run_config_snapshot(config)
     try:
         runner = build_case_runner(dataset.capability, config, dataset.data_source)
     except Exception as exc:

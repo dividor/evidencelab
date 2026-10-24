@@ -115,14 +115,30 @@ class TestSourceHelpers:
         assert source_label(SOURCE_2) == "[2] Kenya Review"
 
     def test_researched_sections_when_pending_or_empty_then_excluded(self):
-        content = {
-            "sections": [
-                SECTION,
-                {"title": "Empty", "status": "done", "content": " "},
-                {"title": "Pending", "status": "pending", "content": "x"},
-            ]
-        }
-        assert [s["title"] for s in researched_sections(content)] == ["Attendance"]
+        from ui.backend.services.brief_citations_convert import convert_legacy
+
+        content = convert_legacy(
+            {
+                "sections": [
+                    SECTION,
+                    {"title": "Empty", "status": "done", "content": " "},
+                    {"title": "Pending", "status": "pending", "content": "x"},
+                ]
+            }
+        )[0]
+        sections = researched_sections(content)
+        assert [s["title"] for s in sections] == ["Attendance"]
+        # The check reads the renumbered text and display sources, which
+        # name the brief source id, the agent's number and the run.
+        assert sections[0]["sources"][0]["sourceId"] == "s1"
+        assert sections[0]["sources"][0]["agentIndices"] == [1]
+        assert sections[0]["sources"][0]["runId"] == "r1"
+
+    def test_researched_sections_when_legacy_format_then_refused(self):
+        from ui.backend.services.brief_citations import LegacyBriefError
+
+        with pytest.raises(LegacyBriefError):
+            researched_sections({"sections": [SECTION]})
 
 
 @pytest.mark.unit

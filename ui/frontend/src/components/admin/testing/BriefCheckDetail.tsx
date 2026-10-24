@@ -219,6 +219,15 @@ const SourceBlock: React.FC<{ source: CheckSource; onOpen?: OpenSource }> = ({ s
       )}
       {source.section && <span className="text-muted"> — {source.section}</span>}
     </div>
+    {source.source_id && (
+      <div className="text-muted testing-check-trace">
+        Trace: brief source {source.source_id}
+        {source.agent_indices?.length
+          ? ` · agent cited it as [${source.agent_indices.join(', ')}]`
+          : ''}
+        {source.run_id ? ` · run ${source.run_id}` : ''}
+      </div>
+    )}
     <pre className="testing-pre testing-pre-scroll">{source.excerpt}</pre>
   </div>
 );
