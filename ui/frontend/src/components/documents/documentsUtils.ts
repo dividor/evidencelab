@@ -44,6 +44,16 @@ export const getInitialFilterText = (): string => {
   return params.get('search') || '';
 };
 
+/** Documents per page in the Documents Library. */
+export const PAGE_SIZE_OPTIONS = [5, 10, 50, 100];
+export const DEFAULT_PAGE_SIZE = 10;
+
+/** The page size from the URL (?page_size=), when it is one of the options. */
+export const getInitialPageSize = (): number => {
+  const value = Number(new URLSearchParams(window.location.search).get('page_size'));
+  return PAGE_SIZE_OPTIONS.includes(value) ? value : DEFAULT_PAGE_SIZE;
+};
+
 export const getInitialPage = (): number => {
   const params = new URLSearchParams(window.location.search);
   const page = params.get('page');
@@ -222,17 +232,28 @@ export const useDocumentsInitialLoad = (
   }, [dataSource, loadData, loadTitleFacets]);
 };
 
+/**
+ * Reload the page of documents whenever something that changes *which*
+ * documents are shown changes. The loader itself is kept in a ref so that its
+ * identity churn does not refetch; every input that should refetch must
+ * therefore be listed here explicitly. Sorting is server-side, so the sort
+ * field and direction belong in that list -- without them a click on a column
+ * header updated the state and nothing was ever fetched.
+ */
 export const useDocumentsReload = (
   currentPage: number,
   selectedCategory: string | null,
   columnFilters: Record<string, string>,
-  loadDocuments: () => void
+  loadDocuments: () => void,
+  pageSize: number = DEFAULT_PAGE_SIZE,
+  sortField?: string,
+  sortDirection?: 'asc' | 'desc',
 ): void => {
   const loadRef = useRef(loadDocuments);
   loadRef.current = loadDocuments;
   useEffect(() => {
     loadRef.current();
-  }, [currentPage, selectedCategory, columnFilters]);
+  }, [currentPage, selectedCategory, columnFilters, pageSize, sortField, sortDirection]);
 };
 
 export const useFilterPopoverClose = (
@@ -254,22 +275,36 @@ export const useFilterPopoverClose = (
   }, [activeFilterColumn, onClose]);
 };
 
+/**
+ * Apply a changed title filter once the reader pauses typing.
+ *
+ * Only a filter text that differs from the one already applied triggers the
+ * callback. The effect also re-runs when ``loading`` flips, and used to fire
+ * 500 ms after mount regardless -- measured: a second, identical /documents
+ * request on every page load. A change made while loading waits for loading
+ * to finish, then applies.
+ */
 export const useDebouncedFilterText = (
   filterText: string,
   loading: boolean,
   onDebouncedChange: () => void
 ): void => {
   const onDebouncedChangeRef = useRef(onDebouncedChange);
+  // The filter text the loaded list already reflects: the initial value on
+  // mount, then whatever was last applied.
+  const appliedFilterRef = useRef(filterText);
 
   useEffect(() => {
     onDebouncedChangeRef.current = onDebouncedChange;
   }, [onDebouncedChange]);
 
   useEffect(() => {
+    if (filterText === appliedFilterRef.current || loading) {
+      return undefined;
+    }
     const timer = setTimeout(() => {
-      if (!loading) {
-        onDebouncedChangeRef.current();
-      }
+      appliedFilterRef.current = filterText;
+      onDebouncedChangeRef.current();
     }, 500);
     return () => clearTimeout(timer);
   }, [filterText, loading]);
@@ -278,10 +313,17 @@ export const useDebouncedFilterText = (
 export const useSyncDocumentsUrlParams = (
   currentPage: number,
   filterText: string,
-  chartView: ChartView
+  chartView: ChartView,
+  pageSize: number = DEFAULT_PAGE_SIZE,
 ): void => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    if (pageSize !== DEFAULT_PAGE_SIZE) {
+      params.set('page_size', pageSize.toString());
+    } else {
+      params.delete('page_size');
+    }
 
     if (currentPage > 1) {
       params.set('page', currentPage.toString());
@@ -306,7 +348,7 @@ export const useSyncDocumentsUrlParams = (
 
     const newUrl = `${window.location.pathname}?${params.toString()}`;
     window.history.replaceState({}, '', newUrl);
-  }, [currentPage, filterText, chartView]);
+  }, [currentPage, filterText, chartView, pageSize]);
 };
 
 export const extractTitleFacets = (data: Facets): Array<{ value: string; count: number }> => {

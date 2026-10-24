@@ -116,7 +116,23 @@ async def test_effective_config_fills_models_from_combo(monkeypatch):
     assert out["rerank_model"] == "rank-1"
     # The combo's summary token budget is applied so the summary isn't truncated.
     assert out["max_tokens"] == 4000
-    assert out["temperature"] == 0.2
+    # The UI never uses the combo's temperature (it always sends its own,
+    # system default 0 or the group's), so the harness must not either.
+    assert "temperature" not in out
+
+
+async def test_effective_config_carries_combo_rerank_page_size(monkeypatch):
+    import pipeline.db.config as cfg
+
+    monkeypatch.setattr(
+        cfg,
+        "UI_MODEL_COMBOS",
+        {"Combo X": {"reranker_model": "rank-1", "rerank_model_page_size": 10}},
+    )
+    out = effective_config({"model_combo": "Combo X"})
+    assert out["max_rerank_candidates"] == 10
+    explicit = effective_config({"model_combo": "Combo X", "max_rerank_candidates": 25})
+    assert explicit["max_rerank_candidates"] == 25
 
 
 async def test_effective_config_explicit_value_overrides_combo(monkeypatch):
@@ -752,3 +768,165 @@ async def test_execute_attributes_run_to_triggering_user(monkeypatch):
     (run,) = [o for o in session.added if isinstance(o, TestRun)]
     assert run.created_by_user_id == clicker
     assert record_calls == [run]
+
+
+# ---------------------------------------------------------------------------
+# Run settings mirror the search UI: system defaults < run config < case params
+# ---------------------------------------------------------------------------
+
+
+async def test_effective_params_layers_ui_defaults_under_config_and_case(monkeypatch):
+    monkeypatch.setattr(
+        test_runner, "default_section_types", lambda: "findings,recommendations"
+    )
+    params = test_runner._effective_params(
+        {"rerank": True, "dense_weight": None, "embedding_model": "emb"},
+        {"query": "q", "params": {"min_chunk_size": 0}},
+    )
+    # UI system defaults, not the raw /search route defaults.
+    assert params["dense_weight"] == 0.8  # None in config never overrides
+    assert params["field_boost_fields"] == "country:1,organization:0.5"
+    assert params["temperature"] == 0
+    assert params["section_types"] == "findings,recommendations"
+    # Run config and per-case params override in that order.
+    assert params["rerank"] is True
+    assert params["embedding_model"] == "emb"
+    assert params["min_chunk_size"] == 0
+
+
+async def test_effective_params_defaults_match_ui_when_nothing_is_set(monkeypatch):
+    monkeypatch.setattr(test_runner, "default_section_types", lambda: "findings")
+    params = test_runner._effective_params(None, {"query": "q"})
+    assert params["rerank"] is True
+    assert params["min_chunk_size"] == 100
+    assert params["max_results"] == 20
+
+
+def _fake_search_route(monkeypatch, captured, warning=None):
+    """Stand in for ui.backend.routes.search so _run_search can run without the
+    live retrieval stack. Records the kwargs it was called with."""
+    import sys
+    import types
+
+    from ui.backend.services.search_models import note_search_warning
+
+    async def _run_search_chunks(query, **kwargs):
+        captured.update(kwargs)
+        if warning:
+            note_search_warning(warning)
+        return ["raw"]
+
+    def _fetch_and_build_results(pg, raw, source, limit, min_chunk_size):
+        return [{"chunk_id": "c1", "text": "hello"}]
+
+    def _apply_post_retrieval_boosts(built, *args):
+        return built
+
+    def _parse_section_types(raw):
+        return raw.split(",") if raw else None
+
+    fake = types.ModuleType("ui.backend.routes.search")
+    fake._run_search_chunks = _run_search_chunks
+    fake._fetch_and_build_results = _fetch_and_build_results
+    fake._apply_post_retrieval_boosts = _apply_post_retrieval_boosts
+    fake._parse_section_types = _parse_section_types
+    monkeypatch.setitem(sys.modules, "ui.backend.routes.search", fake)
+    monkeypatch.setattr(test_runner, "default_section_types", lambda: "findings")
+
+
+async def test_run_search_uses_ui_defaults_and_group_overlay(monkeypatch):
+    captured = {}
+    _fake_search_route(monkeypatch, captured)
+    out = await test_runner._run_search(
+        {"query": "q"}, {"rerank": True, "section_types": "context"}, None, None, "src"
+    )
+    assert captured["dense_weight"] == 0.8
+    assert captured["min_chunk_size"] == 100
+    assert captured["rerank"] is True
+    assert captured["section_types"] == ["context"]
+    assert out["count"] == 1
+    assert "warnings" not in out
+
+
+async def test_run_search_reports_reranker_fallback_as_warning(monkeypatch):
+    captured = {}
+    _fake_search_route(monkeypatch, captured, warning="Reranker x unavailable")
+    out = await test_runner._run_search({"query": "q"}, {}, None, None, "src")
+    assert out["warnings"] == ["Reranker x unavailable"]
+    assert out["count"] == 1  # still judged, not errored
+
+
+async def test_run_summary_passes_search_warnings_through(monkeypatch):
+    captured = {}
+    _fake_search_route(monkeypatch, captured, warning="Reranker x unavailable")
+    import ui.backend.services.llm_service as llm_service
+
+    async def fake_summary(**kwargs):
+        captured["summary_kwargs"] = kwargs
+        return "Answer [1]", {"llm_model": "m"}
+
+    monkeypatch.setattr(llm_service, "generate_ai_summary_with_usage", fake_summary)
+    out = await test_runner._run_summary(
+        {"query": "q"}, {"summary_model": "m"}, None, None, "src"
+    )
+    assert out["warnings"] == ["Reranker x unavailable"]
+    # Summary settings follow the UI defaults too (temperature 0, cap 20).
+    assert captured["summary_kwargs"]["temperature"] == 0
+    assert captured["summary_kwargs"]["max_results"] == 20
+
+
+# ---------------------------------------------------------------------------
+# Per-run configuration snapshot (test_runs.config)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_config_snapshot_records_resolved_models_and_settings(monkeypatch):
+    monkeypatch.setattr(test_runner, "default_section_types", lambda: "findings")
+    monkeypatch.setattr(test_runner, "_default_summary_model", lambda: "default-llm")
+    snap = test_runner.run_config_snapshot(
+        {
+            "model_combo": "Combo X",
+            "group_id": "g1",
+            "group_name": "OEV",
+            "rerank": True,
+            "rerank_model": "rank-1",
+            "max_rerank_candidates": 10,
+        }
+    )
+    assert snap["model_combo"] == "Combo X"
+    assert snap["group_name"] == "OEV"
+    assert snap["rerank"] is True and snap["max_rerank_candidates"] == 10
+    # UI system defaults are part of the snapshot, so a run is reproducible.
+    assert snap["dense_weight"] == 0.8 and snap["min_chunk_size"] == 100
+    assert snap["section_types"] == "findings"
+    # Models fall back exactly as the run does; the judge defaults to the summary model.
+    assert snap["summary_model"] == "default-llm"
+    assert snap["judge_model"] == "default-llm"
+
+
+async def test_run_config_snapshot_is_json_safe_and_keeps_explicit_judge(monkeypatch):
+    import json
+
+    monkeypatch.setattr(test_runner, "default_section_types", lambda: "")
+    snap = test_runner.run_config_snapshot(
+        {"summary_model": "sum", "judge_model": "judge", "max_tokens": 2000}
+    )
+    json.dumps(snap)
+    assert snap["judge_model"] == "judge"
+    assert snap["summary_model"] == "sum"
+
+
+async def test_apply_group_records_group_name(monkeypatch):
+    class FakeGroup:
+        name = "OEV"
+        search_settings = {"rerank": True}
+        summary_prompt = "Be brief."
+
+    class FakeSession:
+        async def get(self, model, key):
+            return FakeGroup()
+
+    out = await test_runner._apply_group(FakeSession(), {"group_id": str(uuid.uuid4())})
+    assert out["group_name"] == "OEV"
+    assert out["rerank"] is True
+    assert out["summary_prompt"] == "Be brief."

@@ -30,6 +30,9 @@ class DummyOrchestrator:
         self.data_source = "uneg"
         self.save_chunks = False
         self.pipeline_config = {}
+        # The real orchestrator exposes the data directory; the disk-full
+        # guard checks free space there before feeding each document.
+        self.data_dir = "/data/uneg"
 
 
 def test_build_processing_steps_respects_skip_flags():
@@ -83,6 +86,9 @@ def test_process_docs_sequential_counts_results(monkeypatch):
     monkeypatch.setattr(
         core_processing, "process_document_wrapper", fake_process_document_wrapper
     )
+    # This test is about counting results; the disk-full guard has its own
+    # tests in test_disk_space_guard.py, so report plenty of space here.
+    monkeypatch.setattr(core_processing, "ensure_disk_space", lambda *_a, **_k: 10**6)
 
     core_processing._process_docs_sequential(orchestrator, docs, stats)
 

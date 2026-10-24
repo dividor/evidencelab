@@ -458,8 +458,12 @@ async def revise_brief_section(
     temperature: float | None = None,
     max_tokens: int | None = None,
     voice_instructions: str | None = None,
+    introduces_sub_sections: List[str] | None = None,
 ) -> tuple[str, Dict[str, Any]]:
     """Surgically revise one brief section's markdown per an instruction.
+
+    ``introduces_sub_sections`` marks the section as a top-level heading's
+    introduction to those sub-sections, so the revision keeps it one.
 
     A single LLM call — NOT deep research — so the existing wording and inline
     ``[n]`` citation markers are preserved and only the smallest necessary
@@ -480,6 +484,7 @@ async def revise_brief_section(
         voice_instructions=(
             html.unescape(voice_instructions.strip()) if voice_instructions else None
         ),
+        intro_sub_sections=[html.unescape(s) for s in introduces_sub_sections or []],
     )
     llm = get_llm(
         model=model_key,

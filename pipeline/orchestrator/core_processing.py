@@ -17,6 +17,15 @@ from pipeline.orchestrator.worker import (
     init_worker,
     process_document_wrapper,
 )
+from pipeline.orchestrator.worker_memory_cap import (
+    WorkerMemoryWatchdog,
+    max_worker_memory_mb,
+)
+from pipeline.utilities.disk_space import (
+    DiskSpaceExhausted,
+    ensure_disk_space,
+    result_reports_disk_full,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +194,7 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
         "Using %s parallel workers (multiprocessing.Pool)", orchestrator.workers
     )
     ctx = multiprocessing.get_context("spawn")
+    ensure_disk_space(orchestrator.data_dir, "before starting workers")
 
     with ctx.Pool(
         processes=orchestrator.workers,
@@ -209,57 +219,168 @@ def _process_docs_parallel(orchestrator, docs_to_process: list, stats: Dict[str,
 
         worker_timeout = orchestrator.pipeline_config.get("processing_timeout", 7200)
 
-        for doc_id, (res, doc) in pending_results.items():
-            try:
-                result = res.get(timeout=worker_timeout)
-
-                stats["processed"] += 1
-
-                if "error" in result:
-                    stats["failed"] += 1
-                    mark_as_stopped(
-                        orchestrator,
-                        doc_id,
-                        f"Worker Error: {result.get('error', 'Unknown error')}",
-                    )
-                elif not result.get("stages"):
-                    pass
-                else:
-                    if all(s.get("success", False) for s in result["stages"].values()):
-                        stats["success"] += 1
-                    else:
-                        stats["failed"] += 1
-
-            except (multiprocessing.context.TimeoutError, TimeoutError):
-                logger.error(
-                    "❌ Worker timed out or hung processing doc %s (possible OOM)",
-                    doc_id,
+        # Documents whose worker was killed for exceeding the memory cap. The
+        # pool never completes a killed task, so the collector must not wait
+        # ``worker_timeout`` for one of these.
+        killed: set = set()
+        watchdog = WorkerMemoryWatchdog(
+            max_worker_memory_mb(),
+            on_breach=lambda pid, doc_id, mb: _fail_memory_capped_doc(
+                orchestrator, killed, pid, doc_id, mb
+            ),
+        )
+        watchdog.start()
+        try:
+            for doc_id, (res, doc) in pending_results.items():
+                result = _collect_result(
+                    orchestrator, doc_id, res, worker_timeout, stats, killed
                 )
-                mark_as_stopped(orchestrator, doc_id, "Worker Timeout/OOM")
-                stats["failed"] += 1
+                # Raising inside the ``with ctx.Pool`` block terminates the pool,
+                # abandoning the queued tasks instead of failing them one by one.
+                _stop_if_disk_full(orchestrator, doc_id, result)
+        finally:
+            watchdog.stop()
 
-            except (OSError, RuntimeError, ValueError) as exc:
-                logger.error("❌ Worker crashed processing doc %s: %s", doc_id, exc)
-                mark_as_stopped(orchestrator, doc_id, f"Worker Crash: {exc}")
-                stats["failed"] += 1
 
-            except Exception as exc:
-                logger.error(
-                    "❌ Worker failed processing doc %s: %s: %s",
-                    doc_id,
-                    type(exc).__name__,
-                    exc,
-                )
-                mark_as_stopped(
-                    orchestrator, doc_id, f"Worker Error: {type(exc).__name__}: {exc}"
-                )
-                stats["failed"] += 1
+def _fail_memory_capped_doc(
+    orchestrator, killed: set, pid: int, doc_id: Optional[str], footprint_mb: int
+) -> None:
+    """Record a worker killed by the memory cap and fail its document."""
+    if doc_id:
+        killed.add(doc_id)
+        _mark_failed(
+            orchestrator,
+            doc_id,
+            f"Worker {pid} exceeded PIPELINE_MAX_WORKER_MEMORY_MB "
+            f"({footprint_mb} MB > {max_worker_memory_mb()} MB) and was killed",
+        )
+    else:
+        logger.error(
+            "Worker %s was killed at %s MB but carried no document id in its title",
+            pid,
+            footprint_mb,
+        )
+
+
+def _mark_failed(orchestrator, doc_id: str, reason: str) -> None:
+    """Mark a document parse_failed with an explicit reason."""
+    if not hasattr(orchestrator.db, "update_document"):
+        logger.warning(
+            "Skipping failure update for doc %s (db has no update_document)", doc_id
+        )
+        return
+    orchestrator.db.update_document(
+        doc_id,
+        {
+            "sys_status": "parse_failed",
+            "sys_error_message": reason,
+            "sys_last_updated": time.time(),
+        },
+        wait=True,
+    )
+    logger.warning("⚠️ Marked doc %s as parse_failed: %s", doc_id, reason)
+
+
+def _wait_for_result(res, doc_id: str, worker_timeout: int, killed: set) -> bool:
+    """Wait for ``res`` in short slices. True when ready; False when its worker
+    was killed by the memory cap. Raises TimeoutError after ``worker_timeout``."""
+    deadline = time.time() + worker_timeout
+    while True:
+        if res.ready():
+            return True
+        if doc_id in killed:
+            return False
+        if time.time() >= deadline:
+            raise TimeoutError(f"no result for {doc_id} within {worker_timeout}s")
+        res.wait(min(5.0, max(0.0, deadline - time.time())))
+
+
+def _collect_result(
+    orchestrator,
+    doc_id: str,
+    res,
+    worker_timeout: int,
+    stats: Dict[str, int],
+    killed: Optional[set] = None,
+):
+    """Wait for one worker result, record it in ``stats``, and return it (or None)."""
+    try:
+        if not _wait_for_result(
+            res, doc_id, worker_timeout, killed if killed is not None else set()
+        ):
+            # Already marked parse_failed by the memory watchdog; nothing to wait for.
+            stats["processed"] += 1
+            stats["failed"] += 1
+            return None
+        result = res.get(timeout=0)
+    except (multiprocessing.context.TimeoutError, TimeoutError):
+        logger.error(
+            "❌ Worker timed out or hung processing doc %s (possible OOM)", doc_id
+        )
+        mark_as_stopped(orchestrator, doc_id, "Worker Timeout/OOM")
+        stats["failed"] += 1
+        return None
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.error("❌ Worker crashed processing doc %s: %s", doc_id, exc)
+        mark_as_stopped(orchestrator, doc_id, f"Worker Crash: {exc}")
+        stats["failed"] += 1
+        return None
+    except Exception as exc:
+        logger.error(
+            "❌ Worker failed processing doc %s: %s: %s",
+            doc_id,
+            type(exc).__name__,
+            exc,
+        )
+        mark_as_stopped(
+            orchestrator, doc_id, f"Worker Error: {type(exc).__name__}: {exc}"
+        )
+        stats["failed"] += 1
+        return None
+
+    _record_result(orchestrator, doc_id, result, stats)
+    return result
+
+
+def _record_result(
+    orchestrator, doc_id: str, result: Dict[str, Any], stats: Dict[str, int]
+) -> None:
+    stats["processed"] += 1
+    if "error" in result:
+        stats["failed"] += 1
+        mark_as_stopped(
+            orchestrator,
+            doc_id,
+            f"Worker Error: {result.get('error', 'Unknown error')}",
+        )
+    elif result.get("stages"):
+        if all(s.get("success", False) for s in result["stages"].values()):
+            stats["success"] += 1
+        else:
+            stats["failed"] += 1
+
+
+def _stop_if_disk_full(orchestrator, doc_id: str, result) -> None:
+    """Stop the feed when the data disk is full: a worker ENOSPC is definitive,
+    and otherwise the free-space floor is checked after every document."""
+    if result_reports_disk_full(result):
+        raise DiskSpaceExhausted(
+            f"Document {doc_id} failed with 'No space left on device' on the data "
+            f"disk at {orchestrator.data_dir!r}. Stopping the run so the remaining "
+            "queue is not failed the same way. Free space, then reset interrupted "
+            "documents with scripts/pipeline/reset_failed_statuses.py --include-stuck."
+        )
+    ensure_disk_space(orchestrator.data_dir, f"after document {doc_id}")
 
 
 def _process_docs_sequential(
     orchestrator, docs_to_process: list, stats: Dict[str, int]
 ):
     logger.info("Running sequentially (1 worker)")
+    logger.info(
+        "Worker memory cap (PIPELINE_MAX_WORKER_MEMORY_MB) applies to parallel runs "
+        "only; a sequential run processes documents in this process."
+    )
     init_worker(
         orchestrator.data_source,
         orchestrator.skip_parse,
@@ -271,6 +392,8 @@ def _process_docs_sequential(
     )
 
     for doc in docs_to_process:
+        ensure_disk_space(orchestrator.data_dir, f"before document {doc.get('id')}")
+        result = None
         try:
             result = process_document_wrapper(doc)
             stats["processed"] += 1
@@ -291,3 +414,4 @@ def _process_docs_sequential(
             stats["processed"] += 1
             stats["failed"] += 1
             mark_as_stopped(orchestrator, doc.get("id"), f"Worker Crash: {exc}")
+        _stop_if_disk_full(orchestrator, doc.get("id"), result)

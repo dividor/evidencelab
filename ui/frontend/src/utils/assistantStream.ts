@@ -12,6 +12,9 @@ export interface AssistantUsage {
 export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
+  // The agent run behind this turn (the Brief stores it with a section's
+  // original output, for tracing).
+  runId?: string;
   // Link to the LLM trace behind this turn, when the deployment traces calls.
   trace_url?: string;
   // Informational only: the backend records usage server-side against the
@@ -60,6 +63,9 @@ interface AssistantStreamOptions {
   // Target length of the written answer in words (deep research). The backend
   // asks the coordinator for that length and raises its token ceiling to fit.
   targetWords?: number | null;
+  // Brief: the sub-headings of the section being written when it is a
+  // top-level heading's introduction (no headings, none of their detail).
+  introducesSubSections?: string[] | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -150,6 +156,7 @@ const handleStreamedData = (
       handlers.onDone({
         threadId: streamedData.threadId,
         messageId: streamedData.messageId,
+        runId: streamedData.runId,
         trace_url: streamedData.trace_url,
         usage: streamedData.usage,
       });
@@ -241,6 +248,7 @@ export const streamAssistantChat = async ({
   activityId,
   usageContext,
   targetWords,
+  introducesSubSections,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -267,6 +275,7 @@ export const streamAssistantChat = async ({
       session_id: getSessionId(),
       usage_context: usageContext || undefined,
       target_words: targetWords || undefined,
+      introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : undefined,
     }),
     signal,
   });

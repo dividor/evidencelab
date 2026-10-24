@@ -1,0 +1,17 @@
+# Environment for the analysis notebooks in this directory.
+#
+# Install into a DEDICATED virtualenv (Python 3.11), not the repo's app
+# environment, so notebook-only dependencies never leak into the app build:
+#
+#   python3.11 -m venv ~/.venvs/evidencelab-notebooks
+#   ~/.venvs/evidencelab-notebooks/bin/pip install -r notebooks/requirements.txt
+#   ~/.venvs/evidencelab-notebooks/bin/jupyter lab notebooks/
+#
+# Run Jupyter from the repo root (or notebooks/); the notebooks import the
+# app helpers through the notebooks/citation_fidelity_lib.py shim.
+jupyter==1.1.1
+pandas==3.0.5
+openpyxl==3.1.5
+psycopg2-binary==2.9.13
+# LLM judge (Azure Foundry / OpenAI-compatible chat completions).
+openai==3.13.0

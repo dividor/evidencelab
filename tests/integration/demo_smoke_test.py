@@ -104,8 +104,22 @@ def main():
     # 4. Search returns results
     # ------------------------------------------------------------------
     print("[4/5] Search API...")
+    # Search the way the UI does: with the embedding model of the combo the
+    # UI starts on for this data source (the flagged default, else the first).
     status, body = _get(
-        f"{API_URL}/search?q=corruption+investigation&data_source={DEMO_DATA_SOURCE}",
+        f"{API_URL}/config/model-combos?data_source={DEMO_DATA_SOURCE}", headers=auth
+    )
+    check("Model combos returns 200", status == 200, f"status={status}")
+    combos = json.loads(body) if status == 200 else {}
+    check("Demo data source has a model combo", bool(combos), f"got {combos}")
+    starting = next(
+        (c for c in combos.values() if c.get("default")),
+        next(iter(combos.values()), {}),
+    )
+    model = starting.get("embedding_model", "")
+    status, body = _get(
+        f"{API_URL}/search?q=corruption+investigation"
+        f"&data_source={DEMO_DATA_SOURCE}&model={model}",
         headers=auth,
     )
     check("Search returns 200", status == 200, f"status={status}")

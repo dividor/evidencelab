@@ -46,7 +46,8 @@ describe('Word export Document List', () => {
     expect(cells.slice(4, 12)).toEqual([ALPHA, 'WFP', '2019', '2', BRAVO, 'WFP', '2024', '1']);
     expect(cells[12]).toBe('Document');
     expect(rels).toContain(`Target="${ALPHA_PDF}"`);
-    expect(rels).toContain('Target="https://lab.example.org/document/B"');
+    // Bravo has no source address, so it links to its copy in Evidence Lab (no page: it is the document's link)
+    expect(rels).toMatch(/Target="https:\/\/lab\.example\.org\/api\/pdf\/B(\?data_source=[^"#]*)?"/);
   });
 
   test('Raw Search Results lists every document with its excerpt count', async () => {

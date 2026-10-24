@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class SearchResult(BaseModel):
@@ -164,6 +164,11 @@ class LLMConfig(BaseModel):
 
 
 class ModelComboConfig(BaseModel):
+    # Marks the combo a visitor starts on. config.json already carries this
+    # flag and pipeline.db.get_default_model_combo() honours it, but the
+    # response model dropped it, so the UI could not see it and fell back to
+    # whichever combo came first in the file.
+    default: Optional[bool] = None
     embedding_model: str
     embedding_model_id: Optional[str] = None
     embedding_model_location: Optional[str] = None
@@ -237,6 +242,12 @@ class BriefReviseRequest(BaseModel):
     model: Optional[str] = None
     # Optional voice & tone profile instructions applied to the rewritten text.
     voice_instructions: Optional[str] = None
+    # Set when the section is a top-level heading's introduction to these
+    # sub-sections: the revision keeps it an introduction (no headings, none
+    # of the sub-sections' detail).
+    introduces_sub_sections: Optional[
+        List[Annotated[str, StringConstraints(min_length=1, max_length=500)]]
+    ] = Field(None, min_length=1, max_length=50)
     # The brief's stable activity id (+ anonymous session id) so revise LLM
     # usage is recorded server-side onto the brief's activity row.
     activity_id: Optional[str] = None

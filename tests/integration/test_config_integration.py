@@ -75,12 +75,9 @@ class TestConfigIntegration(unittest.TestCase):
         self.assertIsNotNone(summarizer.model_key)
         print(f"DEBUG: Model found: {summarizer.model_key}")
 
-        # Check if it matches what's in config.json (allow Qwen or global-model)
-        self.assertTrue(
-            summarizer.model_key.startswith("Qwen/")
-            or summarizer.model_key.startswith("meta-llama/")
-            or summarizer.model_key.startswith("global-model")
-        )
+        # The summarizer must use the model the data source's config names
+        expected_model = pipeline_config["summarize"]["llm_model"]["model"]
+        self.assertEqual(summarizer.model_key, expected_model)
 
 
 if __name__ == "__main__":

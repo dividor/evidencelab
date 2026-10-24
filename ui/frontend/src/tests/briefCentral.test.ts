@@ -1,5 +1,5 @@
 import { numberHeadings } from '../components/brief/BriefCentralModals';
-import { listItemToStub, remoteToSaved } from '../components/brief/briefRemote';
+import { listItemToStub, remoteToRead } from '../components/brief/briefRemote';
 import { BriefListItem, RemoteBrief, SavedBrief } from '../components/brief/briefTypes';
 
 describe('numberHeadings', () => {
@@ -58,7 +58,7 @@ describe('briefRemote mappings', () => {
     expect(stub.date).toBe(Date.parse('2026-08-06T10:24:00Z'));
   });
 
-  it('remoteToSaved re-stamps the server id and title over the content payload', () => {
+  it('remoteToRead re-stamps the server id and title over the content payload', () => {
     const content: SavedBrief = {
       id: 'local-1',
       title: 'Stale local title',
@@ -84,7 +84,7 @@ describe('briefRemote mappings', () => {
       created_at: listItem.created_at,
       updated_at: listItem.updated_at,
     };
-    const saved = remoteToSaved(remote);
+    const saved = remoteToRead(remote);
     expect(saved.id).toBe(listItem.id);
     expect(saved.title).toBe('Server title');
     expect(saved.query).toBe('server query');

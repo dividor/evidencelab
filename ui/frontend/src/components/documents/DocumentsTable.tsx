@@ -4,7 +4,13 @@ import { DocumentsPagination } from './DocumentsPagination';
 import { DocumentsTableControls } from './DocumentsTableControls';
 import { DocumentsTableRow } from './DocumentsTableRow';
 import { SortableHeader } from './SortableHeader';
+import { ScrollChevrons } from './ScrollChevrons';
+import {
+  exportDocumentsToExcel,
+  taxonomyColumnsFromConfig,
+} from '../../utils/exportDocumentsToExcel';
 import { USER_FEEDBACK } from '../../config';
+import type { DocumentSelection } from './summary/useDocumentSelection';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -28,6 +34,8 @@ interface DocumentsTableProps {
   reprocessingDocId: string | null;
   /** Superusers get a Hide/Restore column */
   canModerate?: boolean;
+  /** Administrators: tick documents for a bulk summary run, edit summaries. */
+  selection?: DocumentSelection | null;
   moderatingDocId?: string | null;
   onToggleHidden?: (doc: any) => void;
   filterText: string;
@@ -52,6 +60,7 @@ interface DocumentsTableProps {
   getCategoricalOptions: (column: string) => string[];
   onCloseFilterPopover: () => void;
   onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
   dataSourceConfig?: import('../../App').DataSourceConfigItem;
   dataSource?: string;
 }
@@ -184,6 +193,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   canModerate = false,
   moderatingDocId = null,
   onToggleHidden,
+  selection = null,
   filterText,
   onFilterTextChange,
   selectedCategory,
@@ -206,6 +216,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   getCategoricalOptions,
   onCloseFilterPopover,
   onPageChange,
+  onPageSizeChange,
   dataSourceConfig,
   dataSource,
 }) => {
@@ -239,8 +250,13 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
   );
 
   return (
-    <div className="chart-section">
+    <div className="chart-section documents-section">
       <DocumentsTableControls
+        onExport={() => exportDocumentsToExcel(
+          documents,
+          taxonomyColumnsFromConfig(dataSourceConfig),
+          dataSource,
+        )}
         filterText={filterText}
         onFilterTextChange={onFilterTextChange}
         selectedCategory={selectedCategory}
@@ -265,6 +281,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
         </div>
       ) : (
       <>
+      <div className="documents-table-scroll-shell">
       <div className="documents-table-container" ref={setRef} style={{ position: 'relative' }}>
         <table className="documents-table">
 
@@ -348,10 +365,15 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 canModerate={canModerate}
                 moderatingDocId={moderatingDocId}
                 onToggleHidden={onToggleHidden}
+                selected={selection?.isSelected(doc) ?? false}
+                onToggleSelect={selection?.toggle}
+                canEditSummary={Boolean(selection)}
               />
             ))}
           </tbody>
         </table>
+      </div>
+      <ScrollChevrons container={tableContainer} />
       </div>
       {activeFilterColumn && (
         <DocumentsFilterPopover
@@ -368,8 +390,14 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
           dataSourceConfig={dataSourceConfig}
         />
       )}
-      {totalPages > 1 && (
-        <DocumentsPagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+      {totalCount > 0 && (
+        <DocumentsPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          pageSize={pageSize}
+          onPageSizeChange={onPageSizeChange}
+        />
       )}
       </>
       )}
