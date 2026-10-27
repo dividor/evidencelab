@@ -11,11 +11,19 @@ from ui.backend.auth.schemas import (
     BriefShareCreate,
     BriefTemplateCreate,
     BriefTemplateHeading,
+    BriefTemplateUpdate,
     BriefUpdate,
     VoiceProfileCreate,
     VoiceProfileUpdate,
 )
-from ui.backend.routes.brief_central import _owner_name, _to_list_item
+from ui.backend.routes.brief_central import _to_list_item
+from ui.backend.routes.brief_library import (
+    _copy_name,
+    _headings_json,
+    _template_read,
+    _voice_ids,
+)
+from ui.backend.services.brief_sharing import owner_name
 
 pytestmark = pytest.mark.unit
 
@@ -91,6 +99,40 @@ class TestBriefTemplateSchemas:
         heading = BriefTemplateHeading(title="With text", text="Saved draft text.")
         assert heading.text == "Saved draft text."
 
+    def test_heading_prompt_voice_and_length_default_to_unset(self):
+        heading = BriefTemplateHeading(title="Findings")
+        assert (heading.prompt, heading.voice_profile_id, heading.target_words) == (
+            None,
+            None,
+            None,
+        )
+
+    def test_heading_prompt_capped_like_section_guidance(self):
+        BriefTemplateHeading(title="Ok", prompt="x" * 2000)
+        with pytest.raises(ValidationError):
+            BriefTemplateHeading(title="Too long", prompt="x" * 2001)
+
+    @pytest.mark.parametrize("words", [49, 5001])
+    def test_length_target_bounded(self, words):
+        with pytest.raises(ValidationError):
+            BriefTemplateHeading(title="H", target_words=words)
+        with pytest.raises(ValidationError):
+            BriefTemplateCreate(
+                name="N", headings=[BriefTemplateHeading(title="H")], target_words=words
+            )
+
+    def test_whole_brief_prompt_capped(self):
+        with pytest.raises(ValidationError):
+            BriefTemplateCreate(
+                name="N", headings=[BriefTemplateHeading(title="H")], prompt="x" * 2001
+            )
+
+    def test_update_tells_cleared_fields_from_omitted_ones(self):
+        cleared = BriefTemplateUpdate(prompt=None, target_words=None)
+        omitted = BriefTemplateUpdate(name="Renamed")
+        assert {"prompt", "target_words"} <= cleared.model_fields_set
+        assert "prompt" not in omitted.model_fields_set
+
 
 # ---------------------------------------------------------------------------
 # Brief schemas
@@ -156,10 +198,10 @@ class TestRouteHelpers:
     """Pure helpers in routes/brief_central.py."""
 
     def test_owner_name_prefers_full_name(self):
-        assert _owner_name(_FakeUser("Priya Raman", "p@x.org")) == "Priya Raman"
+        assert owner_name(_FakeUser("Priya Raman", "p@x.org")) == "Priya Raman"
 
     def test_owner_name_falls_back_to_email(self):
-        assert _owner_name(_FakeUser(None, "p@x.org")) == "p@x.org"
+        assert owner_name(_FakeUser(None, "p@x.org")) == "p@x.org"
 
     def test_to_list_item_counts_sections_and_sources(self):
         brief = _FakeBrief({"sections": [{}, {}, {}], "sourceCount": 41})
@@ -173,6 +215,62 @@ class TestRouteHelpers:
         item = _to_list_item(_FakeBrief({}), None, 0)
         assert item.section_count == 0
         assert item.source_count == 0
+
+
+class _FakeTemplate:
+    """A brief_templates row as stored before prompts and defaults existed."""
+
+    def __init__(self, headings):
+        self.id = uuid.uuid4()
+        self.user_id = uuid.uuid4()
+        self.name = "Old template"
+        self.description = None
+        self.headings = headings
+        self.with_text = False
+        self.prompt = None
+        self.voice_profile_id = None
+        self.target_words = None
+        self.use_count = None
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
+
+
+class TestLibraryHelpers:
+    """Pure helpers in routes/brief_library.py."""
+
+    def test_voice_ids_collects_template_and_heading_voices(self):
+        brief_voice, section_voice = uuid.uuid4(), uuid.uuid4()
+        headings = _headings_json(
+            [
+                BriefTemplateHeading(title="A", voice_profile_id=section_voice),
+                BriefTemplateHeading(title="B"),
+            ]
+        )
+        assert _voice_ids(headings, brief_voice) == {brief_voice, section_voice}
+
+    def test_voice_ids_empty_when_none_named(self):
+        assert _voice_ids([{"title": "A", "sub": False}], None) == set()
+
+    def test_headings_are_stored_as_plain_json(self):
+        voice = uuid.uuid4()
+        stored = _headings_json(
+            [BriefTemplateHeading(title="A", voice_profile_id=voice)]
+        )
+        assert stored[0]["voice_profile_id"] == str(voice)
+
+    def test_copy_name_prefixes_and_fits_the_column(self):
+        assert _copy_name("Donor memo") == "Copy of Donor memo"
+        assert len(_copy_name("x" * 255)) == 255
+
+    def test_template_saved_before_prompts_still_reads(self):
+        old = _FakeTemplate([{"title": "Context", "sub": False, "text": None}])
+        read = _template_read(old, True, None, 3)
+        assert read.headings[0].prompt is None
+        assert (read.use_count, read.share_count, read.owner_name) == (0, 3, None)
+
+    def test_shared_template_names_owner_and_hides_share_count(self):
+        read = _template_read(_FakeTemplate([{"title": "A"}]), False, "Priya", 5)
+        assert (read.can_edit, read.owner_name, read.share_count) == (False, "Priya", 0)
 
 
 # ---------------------------------------------------------------------------

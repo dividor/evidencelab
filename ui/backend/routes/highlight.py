@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from qdrant_client.http import models as qmodels
+from starlette.concurrency import run_in_threadpool
 
 from pipeline.db.moderation import is_hidden
 from pipeline.utilities.text_cleaning import clean_text
@@ -173,48 +174,57 @@ async def get_chunk_highlights(
     Chunks can span multiple pages.
     """
     try:
-        chunk_payload = None
-        try:
-            pg = get_pg_for_source(data_source)
-            chunk_payload = pg.fetch_chunks([chunk_id]).get(str(chunk_id))
-        except Exception:
-            chunk_payload = None
-        if not chunk_payload:
-            db = get_db_for_source(data_source)
-            if db and getattr(db, "client", None):
-                results = db.client.retrieve(
-                    collection_name=db.chunks_collection, ids=[chunk_id]
-                )
-                if results:
-                    chunk_payload = results[0].payload
-        if not chunk_payload:
-            return HighlightResponse(highlights=[], total=0)
-        chunk_bboxes = chunk_payload.get("sys_bbox", [])
-        chunk_text = clean_text(chunk_payload.get("sys_text", ""))
-
-        highlights = []
-
-        # Convert bboxes to highlight format
-        # Bboxes are now stored as (page, bbox_tuple) pairs
-        for bbox_data in chunk_bboxes:
-            normalized = _normalize_bbox_entry(bbox_data, chunk_payload)
-            if not normalized:
-                continue
-            page_num, bbox = normalized
-            if all(k in bbox for k in ["l", "t", "r", "b"]):
-                highlights.append(
-                    HighlightBox(
-                        page=page_num,
-                        bbox=bbox,
-                        text=chunk_text[:2000],
-                    )
-                )
-
-        return HighlightResponse(highlights=highlights, total=len(highlights))
-
+        # Postgres and Qdrant clients here are synchronous, and the bbox walk
+        # is CPU work; running either inline would hold the event loop and
+        # stall every other request in this process.
+        return await run_in_threadpool(_chunk_highlights_sync, chunk_id, data_source)
     except Exception as e:
         logger.error(f"Chunk highlight error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _chunk_highlights_sync(
+    chunk_id: str, data_source: Optional[str]
+) -> HighlightResponse:
+    """Blocking body of :func:`get_chunk_highlights`; runs in a worker thread."""
+    chunk_payload = None
+    try:
+        pg = get_pg_for_source(data_source)
+        chunk_payload = pg.fetch_chunks([chunk_id]).get(str(chunk_id))
+    except Exception:
+        chunk_payload = None
+    if not chunk_payload:
+        db = get_db_for_source(data_source)
+        if db and getattr(db, "client", None):
+            results = db.client.retrieve(
+                collection_name=db.chunks_collection, ids=[chunk_id]
+            )
+            if results:
+                chunk_payload = results[0].payload
+    if not chunk_payload:
+        return HighlightResponse(highlights=[], total=0)
+    chunk_bboxes = chunk_payload.get("sys_bbox", [])
+    chunk_text = clean_text(chunk_payload.get("sys_text", ""))
+
+    highlights = []
+
+    # Convert bboxes to highlight format
+    # Bboxes are now stored as (page, bbox_tuple) pairs
+    for bbox_data in chunk_bboxes:
+        normalized = _normalize_bbox_entry(bbox_data, chunk_payload)
+        if not normalized:
+            continue
+        page_num, bbox = normalized
+        if all(k in bbox for k in ["l", "t", "r", "b"]):
+            highlights.append(
+                HighlightBox(
+                    page=page_num,
+                    bbox=bbox,
+                    text=chunk_text[:2000],
+                )
+            )
+
+    return HighlightResponse(highlights=highlights, total=len(highlights))
 
 
 @router.get("/highlight/{doc_id}", response_model=HighlightResponse)
@@ -236,50 +246,64 @@ async def get_highlights(
     For best results, filter by page only and let all chunks on that page be highlighted.
     """
     try:
-        results = []
-        # A document hidden by an administrator has no highlights for anyone.
-        try:
-            pg = get_pg_for_source(data_source)
-            doc = pg.fetch_docs([doc_id]).get(str(doc_id))
-        except Exception:
-            doc = None
-        if is_hidden(doc):
-            return HighlightResponse(highlights=[], total=0)
-        try:
-            results = pg.fetch_chunks_for_doc(doc_id)
-        except Exception:
-            results = []
-
-        if not results:
-            db = get_db_for_source(data_source)
-            if db and getattr(db, "client", None):
-                q_results, _ = db.client.scroll(
-                    collection_name=db.chunks_collection,
-                    scroll_filter=qmodels.Filter(
-                        must=[
-                            qmodels.FieldCondition(
-                                key="doc_id", match=qmodels.MatchValue(value=doc_id)
-                            )
-                        ]
-                    ),
-                    limit=10000,
-                    with_payload=True,
-                )
-                results = [result.payload for result in q_results if result.payload]
-
-        highlights = []
-        for chunk_payload in results:
-            highlights.extend(
-                highlight_boxes_from_chunk(
-                    chunk_payload, page=page, text_filter=text, truncate=100
-                )
-            )
-
-        return HighlightResponse(highlights=highlights, total=len(highlights))
-
+        # The Qdrant fallback scrolls up to 10,000 chunks and the highlight
+        # walk is CPU-bound over all of them; inline, one request of this
+        # shape stalls every other request in the process.
+        return await run_in_threadpool(
+            _doc_highlights_sync, doc_id, page, text, data_source
+        )
     except Exception as e:
         logger.error(f"Highlight error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _doc_highlights_sync(
+    doc_id: str,
+    page: Optional[int],
+    text: Optional[str],
+    data_source: Optional[str],
+) -> HighlightResponse:
+    """Blocking body of :func:`get_highlights`; runs in a worker thread."""
+    results = []
+    # A document hidden by an administrator has no highlights for anyone.
+    try:
+        pg = get_pg_for_source(data_source)
+        doc = pg.fetch_docs([doc_id]).get(str(doc_id))
+    except Exception:
+        doc = None
+    if is_hidden(doc):
+        return HighlightResponse(highlights=[], total=0)
+    try:
+        results = pg.fetch_chunks_for_doc(doc_id)
+    except Exception:
+        results = []
+
+    if not results:
+        db = get_db_for_source(data_source)
+        if db and getattr(db, "client", None):
+            q_results, _ = db.client.scroll(
+                collection_name=db.chunks_collection,
+                scroll_filter=qmodels.Filter(
+                    must=[
+                        qmodels.FieldCondition(
+                            key="doc_id", match=qmodels.MatchValue(value=doc_id)
+                        )
+                    ]
+                ),
+                limit=10000,
+                with_payload=True,
+            )
+            results = [result.payload for result in q_results if result.payload]
+
+    highlights = []
+    for chunk_payload in results:
+        highlights.extend(
+            highlight_boxes_from_chunk(
+                chunk_payload, page=page, text_filter=text, truncate=100
+            )
+        )
+
+    return HighlightResponse(highlights=highlights, total=len(highlights))
 
 
 def _best_phrase_match(

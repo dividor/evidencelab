@@ -159,18 +159,19 @@ describe('GroupSettingsManager greetingMessage', () => {
     });
   });
 
+  // Appearance is a tab of the group settings.
+  const openAppearance = async () => fireEvent.click(await screen.findByRole('tab', { name: 'Appearance' }));
+
   test('shows override greeting message checkbox', async () => {
     render(<GroupSettingsManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Override greeting message')).toBeInTheDocument();
-    });
+    await openAppearance();
+    expect(screen.getByText('Override greeting message')).toBeInTheDocument();
   });
 
   test('loads greetingMessage value from group settings', async () => {
     render(<GroupSettingsManager />);
-    await waitFor(() => {
-      expect(screen.getByText('Override greeting message')).toBeInTheDocument();
-    });
+    await openAppearance();
+    expect(screen.getByText('Override greeting message')).toBeInTheDocument();
 
     // The greeting message input appears only after the default group is
     // auto-selected and its settings load (several async state updates after

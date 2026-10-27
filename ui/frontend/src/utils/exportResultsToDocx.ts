@@ -44,6 +44,7 @@ import {
 import type { ChunkElement, SearchResult } from '../types/api';
 import { groupResultsByDocument, sortDocumentGroups } from './resultGrouping';
 import { siteUrl } from './deploymentText';
+import API_BASE_URL from '../config';
 import type { DocumentResultGroup, GroupSortBy } from './resultGrouping';
 import {
   buildOrderedElements,
@@ -55,6 +56,18 @@ import {
   parseCitationNumbers,
   type DocumentGroup,
 } from './citations';
+
+/** Where hyperlinks in the export point (see {@link ExportOptions.linkTarget}). */
+export type LinkTarget = 'source' | 'evidence_lab';
+
+/** What every hyperlink in the export is built from. */
+export interface DocLinks {
+  /** Public origin of this Evidence Lab deployment. */
+  siteOrigin: string;
+  target: LinkTarget;
+  /** Evidence Lab API base, absolute or relative to siteOrigin. */
+  apiBase: string;
+}
 
 /** Layout of the compact references list (see {@link ExportOptions.referenceList}). */
 export type ReferenceListLayout = 'flat' | 'grouped' | 'document';
@@ -68,6 +81,13 @@ export interface ExportOptions {
    *  hyperlinks when a result has no pdf_url. Defaults to window.location.origin
    *  at runtime. Overridable for tests. */
   siteOrigin?: string;
+  /** Where the document's hyperlinks point: `'source'` (default) to the
+   *  source document's own address (its PDF or report page), `'evidence_lab'`
+   *  to the copy Evidence Lab serves. Both open at the cited page. */
+  linkTarget?: LinkTarget;
+  /** Base URL of the Evidence Lab API for `'evidence_lab'` links (default the
+   *  app's API_BASE_URL, e.g. "/api"; a relative base is joined to siteOrigin). */
+  apiBaseUrl?: string;
   /** Injectable clock for deterministic tests. */
   now?: () => Date;
   /** Heading for the per-result excerpts section (default "Search Results").
@@ -153,12 +173,9 @@ const withPageAnchor = (url: string, pageNum: number | undefined): string => {
   return `${trimmed}#page=${pageNum}`;
 };
 
-/** Best-effort resolution of a clickable hyperlink for a result. */
-export const resolveResultLink = (
-  r: SearchResult,
-  siteOrigin: string,
-  dataSource?: string,
-): string => {
+/** The source document's own address (its PDF, else its report page), with
+ *  the cited page; null when the source gives none. */
+const sourceLink = (r: SearchResult): string | null => {
   const directPdf =
     r.pdf_url ||
     r.metadata?.pdf_url ||
@@ -171,13 +188,26 @@ export const resolveResultLink = (
   if (typeof report === 'string' && report.trim()) {
     return withPageAnchor(report.trim(), r.page_num);
   }
-
-  const ds = dataSource || r.data_source || '';
-  const page = typeof r.page_num === 'number' ? `#page=${r.page_num}` : '';
-  const origin = siteOrigin.replace(/\/+$/, '');
-  const query = ds ? `?data_source=${encodeURIComponent(ds)}` : '';
-  return `${origin}/document/${r.doc_id}${query}${page}`;
+  return null;
 };
+
+/** The document as Evidence Lab serves it (`<api>/pdf/<doc_id>`), opened at
+ *  the cited page. */
+export const evidenceLabLink = (r: SearchResult, links: DocLinks, dataSource?: string): string => {
+  const ds = dataSource || r.data_source || '';
+  const api = /^https?:\/\//.test(links.apiBase)
+    ? links.apiBase
+    : `${links.siteOrigin.replace(/\/+$/, '')}/${links.apiBase.replace(/^\/+/, '')}`;
+  const query = ds ? `?data_source=${encodeURIComponent(ds)}` : '';
+  const url = `${api.replace(/\/+$/, '')}/pdf/${encodeURIComponent(r.doc_id)}${query}`;
+  return withPageAnchor(url, r.page_num);
+};
+
+/** Where a result's hyperlink points: its source document (the default), or
+ *  the copy in Evidence Lab. A source with no address of its own links to
+ *  Evidence Lab. */
+export const resolveResultLink = (r: SearchResult, links: DocLinks, dataSource?: string): string =>
+  (links.target === 'source' ? sourceLink(r) : null) ?? evidenceLabLink(r, links, dataSource);
 
 /** Trim a block of text by (a) collapsing 3+ consecutive newlines into 2 and
  *  (b) trimming trailing whitespace on each line. Never truncates. */
@@ -201,7 +231,7 @@ type InlineChild = TextRun | ExternalHyperlink | FootnoteReferenceRun;
  *  The accumulated `map` is handed to the `Document` `footnotes` option. */
 export interface FootnoteRegistry {
   map: Record<string, { children: Paragraph[] }>;
-  add: (result: SearchResult, siteOrigin: string, dataSource?: string) => number;
+  add: (result: SearchResult, links: DocLinks, dataSource?: string) => number;
 }
 
 /** Build a footnote content paragraph for a cited result: the document title
@@ -209,7 +239,7 @@ export interface FootnoteRegistry {
  *  can open the source straight from the footnote. */
 const buildFootnoteParagraph = (
   result: SearchResult,
-  siteOrigin: string,
+  links: DocLinks,
   dataSource?: string,
 ): Paragraph => {
   const title = result.title || result.document_title || 'Untitled';
@@ -222,7 +252,7 @@ const buildFootnoteParagraph = (
     children: [
       new TextRun({ text: label, size: 18 }),
       new ExternalHyperlink({
-        link: resolveResultLink(result, siteOrigin, dataSource),
+        link: resolveResultLink(result, links, dataSource),
         children: [new TextRun({ text: 'Open PDF ›', style: 'Hyperlink', size: 18 })],
       }),
     ],
@@ -238,10 +268,10 @@ const createFootnoteRegistry = (): FootnoteRegistry => {
   let nextId = 1;
   return {
     map,
-    add(result, siteOrigin, dataSource) {
+    add(result, links, dataSource) {
       const id = nextId++;
       map[String(id)] = {
-        children: [buildFootnoteParagraph(result, siteOrigin, dataSource)],
+        children: [buildFootnoteParagraph(result, links, dataSource)],
       };
       return id;
     },
@@ -254,7 +284,7 @@ const createFootnoteRegistry = (): FootnoteRegistry => {
  *  the supporting page. */
 export interface CitationContext {
   results: SearchResult[];
-  siteOrigin: string;
+  links: DocLinks;
   dataSource?: string;
   /** Maps each original `[N]` to its sequential display number, so inline
    *  citations render the same renumbered value as the on-screen summary and
@@ -286,7 +316,7 @@ const buildCitationRuns = (
       // Separate consecutive footnote marks with a (superscript) space so
       // multiple citations after one sentence read as "¹ ²", not "¹²".
       if (out.length) out.push(new TextRun({ text: ' ', superScript: true }));
-      const id = ctx.footnotes.add(result, ctx.siteOrigin, ctx.dataSource);
+      const id = ctx.footnotes.add(result, ctx.links, ctx.dataSource);
       out.push(new FootnoteReferenceRun(id));
     }
     return out;
@@ -311,7 +341,7 @@ const buildCitationRuns = (
     // The hyperlink still targets the original cited result.
     out.push(
       new ExternalHyperlink({
-        link: resolveResultLink(result, ctx.siteOrigin, ctx.dataSource),
+        link: resolveResultLink(result, ctx.links, ctx.dataSource),
         children: [
           new TextRun({ text: display, style: 'Hyperlink', size: base.size }),
         ],
@@ -827,7 +857,7 @@ const buildReferenceParagraphs = (
       if (idx > 0) children.push(new TextRun({ text: ', ' }));
       children.push(
         new ExternalHyperlink({
-          link: resolveResultLink(result, ctx.siteOrigin, ctx.dataSource),
+          link: resolveResultLink(result, ctx.links, ctx.dataSource),
           children: [new TextRun({ text: String(sequential), style: 'Hyperlink' })],
         }),
       );
@@ -848,7 +878,7 @@ const buildReferenceParagraphs = (
 const buildSummarySection = (
   summary: string,
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource?: string,
   heading = 'AI Summary',
   bookmarkPrefix?: string,
@@ -870,7 +900,7 @@ const buildSummarySection = (
   );
   const citations: CitationContext = {
     results,
-    siteOrigin,
+    links,
     dataSource,
     sequenceMap: buildCitationSequenceMap(summary, results),
     footnotes,
@@ -887,8 +917,8 @@ const buildSummarySection = (
 };
 
 /** Link to the document itself (no page anchor). */
-const resolveDocumentLink = (r: SearchResult, siteOrigin: string, dataSource?: string): string =>
-  resolveResultLink({ ...r, page_num: undefined as unknown as number }, siteOrigin, dataSource);
+const resolveDocumentLink = (r: SearchResult, links: DocLinks, dataSource?: string): string =>
+  resolveResultLink({ ...r, page_num: undefined as unknown as number }, links, dataSource);
 
 const tableCell = (children: InlineChild[], widthPct: number): TableCell =>
   new TableCell({
@@ -909,7 +939,7 @@ const buildDocumentTable = (
   groups: DocumentResultGroup[],
   countLabel: string,
   countFor: (group: DocumentResultGroup) => number,
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
 ): Table => {
   const header = new TableRow({
@@ -931,7 +961,7 @@ const buildDocumentTable = (
         tableCell(
           [
             new ExternalHyperlink({
-              link: resolveDocumentLink(first, siteOrigin, dataSource),
+              link: resolveDocumentLink(first, links, dataSource),
               children: [new TextRun({ text: title, style: 'Hyperlink' })],
             }),
           ],
@@ -954,7 +984,7 @@ const buildDocumentTable = (
 const buildDocumentListParagraphs = (
   summary: string,
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
   sortBy: GroupSortBy,
 ): (Paragraph | Table)[] => {
@@ -976,12 +1006,12 @@ const buildDocumentListParagraphs = (
         children: [new TextRun({ text: 'Document List' })],
         spacing: { before: 200, after: 100 },
       }),
-      buildDocumentTable(cited, 'Citations', citations, siteOrigin, dataSource),
+      buildDocumentTable(cited, 'Citations', citations, links, dataSource),
     );
   }
   out.push(
     heading2('Raw Search Results'),
-    buildDocumentTable(groups, 'Excerpts', (group) => group.results.length, siteOrigin, dataSource),
+    buildDocumentTable(groups, 'Excerpts', (group) => group.results.length, links, dataSource),
   );
   return out;
 };
@@ -1019,7 +1049,7 @@ const buildExcerptParagraphs = (
 const buildResultCard = (
   r: SearchResult,
   idx: number,
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
   images: Map<string, FetchedImage>,
 ): Paragraph[] => {
@@ -1029,7 +1059,7 @@ const buildResultCard = (
     (r.title && r.title.trim()) ||
     (altTitle && altTitle.trim()) ||
     '(untitled document)';
-  const href = resolveResultLink(r, siteOrigin, dataSource);
+  const href = resolveResultLink(r, links, dataSource);
 
   out.push(
     new Paragraph({
@@ -1115,7 +1145,7 @@ const referenceYearOf = (r: SearchResult): string => {
  */
 const buildGroupedReferenceRows = (
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
 ): Paragraph[] => {
   type Cite = { n: number; page: number; result: SearchResult };
@@ -1133,14 +1163,14 @@ const buildGroupedReferenceRows = (
     cites.sort((a, b) => a.page - b.page || a.n - b.n);
     const children: InlineChild[] = [
       new ExternalHyperlink({
-        link: resolveDocumentLink(result, siteOrigin, dataSource),
+        link: resolveDocumentLink(result, links, dataSource),
         children: [new TextRun({ text: referenceTitleOf(result), style: 'Hyperlink' })],
       }),
     ];
     const year = referenceYearOf(result);
     if (year) children.push(new TextRun({ text: year }));
     cites.forEach((cite, i) => {
-      const link = resolveResultLink(cite.result, siteOrigin, dataSource);
+      const link = resolveResultLink(cite.result, links, dataSource);
       children.push(new TextRun({ text: ', ' }));
       if (i === 0 || cites[i - 1].n !== cite.n) {
         children.push(
@@ -1168,7 +1198,7 @@ const buildGroupedReferenceRows = (
  *  citations, "1. Title, 2021" with no page. */
 const buildNumberedReferenceRows = (
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
   withPages: boolean,
 ): Paragraph[] =>
@@ -1180,7 +1210,7 @@ const buildNumberedReferenceRows = (
       children: [
         new TextRun({ text: `${idx + 1}. `, bold: true }),
         new ExternalHyperlink({
-          link: resolveResultLink(result, siteOrigin, dataSource),
+          link: resolveResultLink(result, links, dataSource),
           children: [new TextRun({ text: label, style: 'Hyperlink' })],
         }),
       ],
@@ -1197,7 +1227,7 @@ const buildNumberedReferenceRows = (
  */
 const buildReferenceList = (
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
   layout: ReferenceListLayout,
   sectionTitle = 'References',
@@ -1208,13 +1238,13 @@ const buildReferenceList = (
     spacing: { before: 360, after: 120 },
   }),
   ...(layout === 'grouped'
-    ? buildGroupedReferenceRows(results, siteOrigin, dataSource)
-    : buildNumberedReferenceRows(results, siteOrigin, dataSource, layout === 'flat')),
+    ? buildGroupedReferenceRows(results, links, dataSource)
+    : buildNumberedReferenceRows(results, links, dataSource, layout === 'flat')),
 ];
 
 const buildResultsSection = (
   results: SearchResult[],
-  siteOrigin: string,
+  links: DocLinks,
   dataSource: string | undefined,
   sectionTitle = 'Search Results',
   images: Map<string, FetchedImage> = new Map(),
@@ -1228,7 +1258,7 @@ const buildResultsSection = (
     }),
   );
   results.forEach((r, idx) => {
-    out.push(...buildResultCard(r, idx, siteOrigin, dataSource, images));
+    out.push(...buildResultCard(r, idx, links, dataSource, images));
   });
   return out;
 };
@@ -1246,7 +1276,11 @@ export const buildExportDocument = (
 ): Document => {
   const now = (opts.now ?? (() => new Date()))();
   // Deep links point at this deployment's public address (REACT_APP_SITE_URL).
-  const siteOrigin = opts.siteOrigin || siteUrl();
+  const links: DocLinks = {
+    siteOrigin: opts.siteOrigin || siteUrl(),
+    target: opts.linkTarget ?? 'source',
+    apiBase: opts.apiBaseUrl ?? API_BASE_URL,
+  };
 
   // In footnote mode, citations register footnotes as the prose renders; the
   // accumulated map is handed to the Document below.
@@ -1260,7 +1294,7 @@ export const buildExportDocument = (
     ...buildSummarySection(
       opts.aiSummary ?? '',
       opts.results,
-      siteOrigin,
+      links,
       opts.dataSource,
       opts.summaryHeading,
       opts.tableOfContents ? tocBookmarkPrefix : undefined,
@@ -1271,7 +1305,7 @@ export const buildExportDocument = (
       ? buildDocumentListParagraphs(
           opts.aiSummary ?? '',
           opts.results,
-          siteOrigin,
+          links,
           opts.dataSource,
           opts.documentList.sortBy,
         )
@@ -1279,14 +1313,14 @@ export const buildExportDocument = (
     ...(opts.referenceList
       ? buildReferenceList(
           opts.results,
-          siteOrigin,
+          links,
           opts.dataSource,
           opts.referenceList,
           opts.resultsSectionTitle,
         )
       : buildResultsSection(
           opts.results,
-          siteOrigin,
+          links,
           opts.dataSource,
           opts.resultsSectionTitle,
           images,

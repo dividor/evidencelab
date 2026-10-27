@@ -13,23 +13,28 @@ To enable LangSmith tracing for this processor, it needs to be migrated to use L
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import nltk
 import numpy as np
 from dotenv import load_dotenv
-from jinja2 import Environment, FileSystemLoader
 from langchain_core.messages import HumanMessage
 from nltk.tokenize import sent_tokenize
 from sentence_transformers import util
 
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.base import BaseProcessor
+from pipeline.processors.summarization.summary_text import (
+    SUMMARY_USER_SET_FIELD,
+    USE_CENTROID,
+    SummaryTextMixin,
+    count_prompt_tokens,
+    default_summary_instructions,
+    resolve_summary_mode,
+)
 from pipeline.utilities.embedding_service import EmbeddingService
 from pipeline.utilities.llm_retry import invoke_with_retry
-from pipeline.utilities.logging_utils import _log_context
 from pipeline.utilities.usage_recorder import UsageCollector, record_pipeline_usage
 from utils import llm_factory
 from utils.tracing import traceable
@@ -54,23 +59,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
 NUM_CENTROID_SENTENCES = 30
 
-# Load Jinja2 templates for prompts
-PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
-_jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=True)
-_reduction_template = _jinja_env.get_template("summary_reduction.j2")
-_final_template = _jinja_env.get_template("summary_final.j2")
 
-
-def _clean_markdown(text: str) -> str:
-    """Clean markdown formatting issues in LLM-generated text."""
-    if not text:
-        return text
-    return re.sub(
-        r"^(#{1,6})\s*\*\*\s*(.+?)\s*\*\*\s*$", r"\1 \2", text, flags=re.MULTILINE
-    )
-
-
-class SummarizeProcessor(BaseProcessor):
+class SummarizeProcessor(SummaryTextMixin, BaseProcessor):
     """
     Document summarization processor.
 
@@ -163,6 +153,9 @@ class SummarizeProcessor(BaseProcessor):
         self.model_name = resolved_model or self.model_key
         self.workers = config.get("llm_workers", 1)
         self.context_window = config.get("context_window", 29000)
+        self.summary_mode = resolve_summary_mode(config)
+        self.single_prompt_context_window = config.get("single_prompt_context_window")
+        self.summary_instructions = default_summary_instructions()
 
         self._model_type = self._get_model_type()
 
@@ -235,6 +228,10 @@ class SummarizeProcessor(BaseProcessor):
         parsed_folder = doc.get("sys_parsed_folder")
         title = doc.get("map_title", "Unknown")
 
+        kept = self._keep_app_summary(doc, title)
+        if kept is not None:
+            return kept
+
         if not parsed_folder or not os.path.exists(parsed_folder):
             return self._build_failure(
                 doc,
@@ -276,6 +273,22 @@ class SummarizeProcessor(BaseProcessor):
                 query=f"{self.stage_name}: {title}",
             )
 
+    def _keep_app_summary(
+        self, doc: Dict[str, Any], title: str
+    ) -> Optional[Dict[str, Any]]:
+        """Keep a summary written or edited in the app.
+
+        Such a summary is marked ``sys_summary_user_set``; reprocessing keeps
+        it unless the reprocess request cleared the mark to replace it.
+        """
+        sys_data = doc.get("sys_data") or {}
+        summary = doc.get("sys_full_summary")
+        if not (sys_data.get(SUMMARY_USER_SET_FIELD) and summary):
+            return None
+        logger.info("Keeping the summary set in the app for: %s", title)
+        method = sys_data.get("sys_summarization_method") or "ui_edited"
+        return self._build_success(doc, summary, method)
+
     def _find_markdown_file(self, parsed_folder: str) -> Optional[str]:
         markdown_files = list(Path(parsed_folder).glob("*.md"))
         return str(markdown_files[0]) if markdown_files else None
@@ -314,10 +327,10 @@ class SummarizeProcessor(BaseProcessor):
     ) -> Dict[str, Any]:
         logger.info("  Generating LLM summary...")
         llm_summary, _ = self._llm_summary(content)
-        if llm_summary and llm_summary != "USE_CENTROID":
+        if llm_summary and llm_summary != USE_CENTROID:
             self._save_summary(markdown_path, llm_summary, "llm_summary")
             return self._build_success(doc, llm_summary, "llm_summary")
-        if llm_summary == "USE_CENTROID":
+        if llm_summary == USE_CENTROID:
             return self._summarize_with_centroid(doc, content, markdown_path, title)
         return self._build_failure(
             doc, "LLM summary failed", "LLM summary returned None"
@@ -334,7 +347,7 @@ class SummarizeProcessor(BaseProcessor):
             )
 
         llm_summary, _ = self._llm_summary(centroid)
-        if llm_summary and llm_summary != "USE_CENTROID":
+        if llm_summary and llm_summary != USE_CENTROID:
             self._save_summary(markdown_path, llm_summary, "llm_summary")
             return self._build_success(doc, llm_summary, "llm_on_centroid")
 
@@ -437,71 +450,22 @@ class SummarizeProcessor(BaseProcessor):
 
         return filtered
 
-    def _llm_summary(self, content: str) -> Tuple[Optional[str], Optional[str]]:
-        """Generate summary using LLM via HuggingFace Router API."""
-        if not content:
-            return None, None
-        cleaned = self._clean_llm_input(content)
-        if not cleaned:
-            return None, None
-
-        logger.info("  Input: %s characters", len(cleaned))
-
-        try:
-            max_chars = self._token_budget_chars(self.context_window, self.max_tokens)
-            effective_max = self._effective_max_chars(max_chars)
-            if len(cleaned) <= effective_max:
-                return self._single_pass_summary(cleaned)
-            return self._map_reduce_summary(cleaned, max_chars, effective_max)
-
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.error("  ✗ LLM summarization failed: %s", e)
-            raise RuntimeError(f"LLM API call failed: {e}") from e
-
-    def _clean_llm_input(self, content: str) -> str:
-        cleaned = re.sub(r"!\[.*?\]\(.*?\)", "", content)
-        cleaned = re.sub(r"<!--.*?-->", "", cleaned, flags=re.DOTALL)
-        cleaned = re.sub(r"------- Page \d+ -------", "", cleaned)
-        cleaned = re.sub(r"```.*?```", "", cleaned, flags=re.DOTALL)
-        cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)
-        cleaned = re.sub(r" +", " ", cleaned).strip()
-        return cleaned
-
-    def _effective_max_chars(self, max_chars: int) -> int:
-        prompt_overhead = len(_reduction_template.render(document_text="")) + 100
-        return max_chars - prompt_overhead
-
-    @staticmethod
-    def _token_budget_chars(context_window: int, max_tokens: int) -> int:
-        """Convert a token-based context window to a character budget.
-
-        Uses a conservative 1:1 chars-per-token ratio so that the rendered
-        prompt stays within the model's token limit even for CJK, Khmer,
-        and other scripts where each character may consume a full token.
-        For Latin text this is overly cautious (typically ~4 chars/token)
-        but the map-reduce strategy handles oversized documents correctly,
-        so the only cost is a few extra LLM calls for large English docs.
-
-        Args:
-            context_window: Model context window in **tokens**.
-            max_tokens: Tokens reserved for the LLM response.
-
-        Returns:
-            Maximum characters allowed for the document text portion.
-        """
-        _CHARS_PER_TOKEN = 1  # worst-case for CJK/Khmer/Thai scripts
-        available_tokens = context_window - max_tokens
-        return int(available_tokens * _CHARS_PER_TOKEN)
-
-    @traceable(name="Summarization")
-    def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
-        llm = llm_factory.get_llm(
+    def _build_llm(self, model: str, include_inference: bool) -> Any:
+        return llm_factory.get_llm(
             model=model,
             provider=self.provider,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             inference_provider=self.inference_provider if include_inference else None,
         )
+
+    def _count_prompt_tokens(self, prompt: str) -> int:
+        # A single prompt is sent like a single pass: model key + inference provider.
+        return count_prompt_tokens(self._build_llm(self.model_key, True), prompt)
+
+    @traceable(name="Summarization")
+    def _invoke_llm(self, prompt: str, model: str, include_inference: bool) -> str:
+        llm = self._build_llm(model, include_inference)
         response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
         # Attribute usage to the configured model key (the pricing-table key),
         # regardless of whether the call resolved it to a provider model id.
@@ -509,151 +473,6 @@ class SummarizeProcessor(BaseProcessor):
         if hasattr(response, "content"):
             return response.content.strip()
         return str(response).strip()
-
-    def _single_pass_summary(self, cleaned: str) -> Tuple[str, Optional[str]]:
-        logger.info("  Single-pass summarization")
-        prompt = _reduction_template.render(document_text=cleaned)
-        logger.info("=" * 80)
-        logger.info("LLM Summary Request (Single-pass)")
-        logger.info("=" * 80)
-        logger.info("PROMPT:")
-        logger.info(prompt[:500] + "..." if len(prompt) > 500 else prompt)
-        logger.info("=" * 80)
-        summary = self._invoke_llm(prompt, self.model_key, include_inference=True)
-        summary = _clean_markdown(summary)
-        logger.info("LLM RESPONSE:")
-        logger.info(summary[:500] + "..." if len(summary) > 500 else summary)
-        logger.info("=" * 80)
-        if not summary or len(summary) < 50:
-            raise ValueError(f"Response too short: {len(summary)} chars")
-        logger.info("  ✓ Summary: %s characters", len(summary))
-        return summary, None
-
-    def _map_reduce_summary(
-        self,
-        cleaned: str,
-        max_chars: int,
-        effective_max: int,
-        recursion_depth: int = 0,
-    ) -> Tuple[str, Optional[str]]:
-        """
-        Execute map-reduce summarization with recursion support.
-
-        Args:
-            cleaned: Text to summarize
-            max_chars: Maximum characters allowed in context window
-            effective_max: Effective max chars after prompt overhead
-            recursion_depth: Current recursion depth (default 0)
-
-        Returns:
-            Tuple[str, Optional[str]]: (final_summary, intermediate_summaries)
-        """
-        logger.info("  Using map-reduce strategy (depth %s)", recursion_depth)
-
-        MAX_RECURSION_DEPTH = 3
-        if recursion_depth > MAX_RECURSION_DEPTH:
-            logger.warning(
-                "  Max recursion depth (%s) reached. Returning combined summaries.",
-                MAX_RECURSION_DEPTH,
-            )
-            return cleaned, cleaned  # Fallback to returning what we have
-
-        chunks = self._split_chunks(cleaned, effective_max)
-        logger.info("  Split into %s chunks", len(chunks))
-
-        # If splitting didn't reduce the number of chunks (e.g. 1 massive chunk),
-        # prevent infinite recursion if we can't split it further meaningfuly.
-        # But here _split_chunks uses strict sizing, so it should always split.
-
-        if len(chunks) > 200:  # Safety limit for extremely large documents
-            logger.warning("  Too many chunks (%s) - will use centroid", len(chunks))
-            return "USE_CENTROID", None
-
-        current_doc_id = getattr(_log_context, "doc_id", "N/A")
-        chunk_summaries = self._summarize_chunks(chunks, current_doc_id)
-
-        combined = "\n\n".join(chunk_summaries)
-        logger.info("  Combined: %s characters", len(combined))
-
-        # If combined is still too large, RECURSE
-        if len(combined) > max_chars:
-            logger.info(
-                "  Combined summaries (%s chars) > max window (%s). Recursing...",
-                len(combined),
-                max_chars,
-            )
-            return self._map_reduce_summary(
-                combined, max_chars, effective_max, recursion_depth + 1
-            )
-
-        prompt = _final_template.render(map_summaries=combined)
-        logger.info("=" * 80)
-        logger.info("LLM Summary Request (Final Reduction, Depth %s)", recursion_depth)
-        logger.info("=" * 80)
-        logger.info("FINAL REDUCTION PROMPT:")
-        logger.info(prompt[:500] + "..." if len(prompt) > 500 else prompt)
-        logger.info("=" * 80)
-        final = self._invoke_llm(prompt, self.model_name, include_inference=False)
-        final = _clean_markdown(final)
-        logger.info("LLM RESPONSE:")
-        logger.info(final[:500] + "..." if len(final) > 500 else final)
-        logger.info("=" * 80)
-        logger.info("  ✓ Final summary: %s characters", len(final))
-        return final, combined
-
-    def _split_chunks(self, text: str, effective_max: int) -> List[str]:
-        chunks = []
-        start = 0
-        overlap = self.config.get("chunk_overlap", 800)
-        while start < len(text):
-            end = min(start + effective_max, len(text))
-            chunks.append(text[start:end])
-            if end >= len(text):
-                break
-            start = end - overlap
-        return chunks
-
-    def _summarize_chunks(self, chunks: List[str], current_doc_id: str) -> List[str]:
-        if self.workers == 1:
-            logger.info("  Processing chunks sequentially (workers=1)")
-            return [
-                self._summarize_chunk(idx, chunk, len(chunks), current_doc_id)[1]
-                for idx, chunk in enumerate(chunks, 1)
-            ]
-
-        logger.info(
-            "  Processing %s chunks with %s parallel workers",
-            len(chunks),
-            self.workers,
-        )
-        chunk_results = {}
-        with ThreadPoolExecutor(max_workers=self.workers) as executor:
-            futures = {
-                executor.submit(
-                    self._summarize_chunk, i, chunk, len(chunks), current_doc_id
-                ): i
-                for i, chunk in enumerate(chunks, 1)
-            }
-            for future in as_completed(futures):
-                idx, summary = future.result()
-                chunk_results[idx] = summary
-        return [chunk_results[idx] for idx in sorted(chunk_results.keys())]
-
-    def _summarize_chunk(
-        self, idx: int, chunk: str, total: int, doc_id: str
-    ) -> Tuple[int, str]:
-        _log_context.doc_id = doc_id
-        logger.info("    Summarizing Chunk %s/%s...", idx, total)
-        prompt = _reduction_template.render(document_text=chunk)
-        if idx == 1:
-            logger.info("=" * 80)
-            logger.info("LLM Summary Request (Map-Reduce, Chunk %s/%s)", idx, total)
-            logger.info("=" * 80)
-            logger.info("CHUNK REDUCTION PROMPT:")
-            logger.info(prompt[:500] + "..." if len(prompt) > 500 else prompt)
-            logger.info("=" * 80)
-        summary = self._invoke_llm(prompt, self.model_name, include_inference=False)
-        return idx, summary
 
     def teardown(self) -> None:
         """Release summarizer resources."""

@@ -1,7 +1,42 @@
 import React from 'react';
 import { SourceReference } from '../../types/api';
-import { GlobalRef } from './briefCitations';
-import { ReferenceGrouping } from './briefTypes';
+import { BriefReference, BriefReferenceGroup, ReferenceGrouping } from './briefTypes';
+import type { LinkTarget } from '../../utils/exportResultsToDocx';
+
+/** Where the Word export's links point. */
+export const WORD_LINK_OPTIONS: Array<{ value: LinkTarget; label: string; title: string }> = [
+  {
+    value: 'source',
+    label: 'Source document',
+    title: "Links open each document at its source (its own PDF or report page), at the cited page",
+  },
+  {
+    value: 'evidence_lab',
+    label: 'Evidence Lab',
+    title: 'Links open the copy of each document in Evidence Lab, at the cited page',
+  },
+];
+
+/** Radio buttons: where the Word export's links point. */
+const WordLinkChoice: React.FC<{ value: LinkTarget; onChange: (value: LinkTarget) => void }> = ({
+  value,
+  onChange,
+}) => (
+  <div className="brief-footnotes-word-links" role="radiogroup" aria-label="Word export links point to">
+    <span className="brief-footnotes-word-links-label">Word links to</span>
+    {WORD_LINK_OPTIONS.map((option) => (
+      <label className="brief-footnotes-group-toggle" key={option.value} title={option.title}>
+        <input
+          type="radio"
+          name="brief-word-link-target"
+          checked={value === option.value}
+          onChange={() => onChange(option.value)}
+        />
+        {option.label}
+      </label>
+    ))}
+  </div>
+);
 
 // The two "Group by document" options offered above the References list. They
 // are exclusive: ticking one clears the other, and clearing both returns to
@@ -18,45 +53,16 @@ const GROUPING_OPTIONS = Object.keys(REFERENCE_GROUPING_LABELS) as Array<
   keyof typeof REFERENCE_GROUPING_LABELS
 >;
 
-interface DocCite {
-  n: number;
-  page: number;
-  source: SourceReference;
-}
-
-interface DocGroup {
-  key: string;
-  title: string;
-  cites: DocCite[];
-}
-
-// One row per document: its title, then each citation number pointing into it
-// with that number's page — "Title, [1] p. 32, [2] p. 56". No excerpts.
-export const groupReferencesByDoc = (refs: GlobalRef[]): DocGroup[] => {
-  const byDoc = new Map<string, DocGroup>();
-  // Numbers are per cited passage, so a document collects each of its own
-  // numbers with the page that number points at.
-  for (const r of refs) {
-    const key = r.source.docId || r.title;
-    const cite = { n: r.n, page: r.page ?? 0, source: r.source };
-    const found = byDoc.get(key);
-    if (found) found.cites.push(cite);
-    else byDoc.set(key, { key, title: r.title, cites: [cite] });
-  }
-  byDoc.forEach((g) => g.cites.sort((a, b) => a.page - b.page || a.n - b.n));
-  return Array.from(byDoc.values());
-};
-
 type SourceClick = (source: SourceReference) => void;
 
-const clickSource = (onSourceClick: SourceClick, source: SourceReference) =>
+const clickSource = (onSourceClick: SourceClick, source?: SourceReference | null) =>
   (e: React.MouseEvent) => {
     e.preventDefault();
-    onSourceClick(source);
+    if (source) onSourceClick(source);
   };
 
 // "[1] Title, p.32" — or just "[1] Title" for a document-level reference.
-const FlatRow: React.FC<{ reference: GlobalRef; onSourceClick: SourceClick }> = ({
+const FlatRow: React.FC<{ reference: BriefReference; onSourceClick: SourceClick }> = ({
   reference: r,
   onSourceClick,
 }) => (
@@ -73,11 +79,13 @@ const FlatRow: React.FC<{ reference: GlobalRef; onSourceClick: SourceClick }> = 
   </div>
 );
 
-// "Title, [1] p. 32, [2] p. 56": the document once, then each of its numbers.
-const GroupedRow: React.FC<{ group: DocGroup; onSourceClick: SourceClick }> = ({
-  group: g,
-  onSourceClick,
-}) => (
+// "Title, [1] p. 32, [2] p. 56": the document once, then each of its numbers,
+// exactly as the API grouped them.
+const GroupedRow: React.FC<{
+  group: BriefReferenceGroup;
+  sourceOf: (sourceId: string) => SourceReference | null | undefined;
+  onSourceClick: SourceClick;
+}> = ({ group: g, sourceOf, onSourceClick }) => (
   <div className="brief-footnote-group">
     <span className="brief-footnote-text">{g.title}</span>
     {g.cites.map((c, i) => (
@@ -90,7 +98,7 @@ const GroupedRow: React.FC<{ group: DocGroup; onSourceClick: SourceClick }> = ({
             <a
               href="#"
               className="ai-summary-citation"
-              onClick={clickSource(onSourceClick, c.source)}
+              onClick={clickSource(onSourceClick, sourceOf(c.sourceId))}
             >
               {c.n}
             </a>
@@ -100,7 +108,7 @@ const GroupedRow: React.FC<{ group: DocGroup; onSourceClick: SourceClick }> = ({
           <a
             href="#"
             className="brief-footnote-page-link"
-            onClick={clickSource(onSourceClick, c.source)}
+            onClick={clickSource(onSourceClick, sourceOf(c.sourceId))}
           >
             {` p. ${c.page}`}
           </a>
@@ -112,17 +120,30 @@ const GroupedRow: React.FC<{ group: DocGroup; onSourceClick: SourceClick }> = ({
 
 /**
  * The compiled References list at the end of a brief, with the grouping
- * toggles. The grouping also decides the citation numbering (see
- * buildGlobalCitations), so switching it renumbers the inline `[n]` markers
- * as well as this list.
+ * toggles. The list, its numbers and its grouping are exactly what the API
+ * returned for the brief; choosing a grouping asks the API to renumber the
+ * brief and the list is re-rendered from its reply.
  */
 export const BriefReferences: React.FC<{
-  references: GlobalRef[];
+  references: BriefReference[];
+  groups: BriefReferenceGroup[];
   grouping: ReferenceGrouping;
   onGroupingChange: (grouping: ReferenceGrouping) => void;
   onSourceClick: SourceClick;
-}> = ({ references, grouping, onGroupingChange, onSourceClick }) => {
+  /** Where the Word export's links point; the choice is shown when set. */
+  wordLinkTarget?: LinkTarget;
+  onWordLinkTargetChange?: (value: LinkTarget) => void;
+}> = ({
+  references,
+  groups,
+  grouping,
+  onGroupingChange,
+  onSourceClick,
+  wordLinkTarget,
+  onWordLinkTargetChange,
+}) => {
   if (references.length === 0) return null;
+  const sourceOf = (sourceId: string) => references.find((r) => r.sourceId === sourceId)?.source;
   return (
     <section className="brief-footnotes">
       <div className="brief-footnotes-head">
@@ -139,11 +160,19 @@ export const BriefReferences: React.FC<{
             </label>
           ))}
         </div>
+        {wordLinkTarget && onWordLinkTargetChange && (
+          <WordLinkChoice value={wordLinkTarget} onChange={onWordLinkTargetChange} />
+        )}
       </div>
       <div className="brief-footnotes-list">
         {grouping === 'document-multiple'
-          ? groupReferencesByDoc(references).map((g) => (
-              <GroupedRow key={g.key} group={g} onSourceClick={onSourceClick} />
+          ? groups.map((g) => (
+              <GroupedRow
+                key={g.docId || g.title}
+                group={g}
+                sourceOf={sourceOf}
+                onSourceClick={onSourceClick}
+              />
             ))
           : references.map((r) => (
               <FlatRow key={r.n} reference={r} onSourceClick={onSourceClick} />

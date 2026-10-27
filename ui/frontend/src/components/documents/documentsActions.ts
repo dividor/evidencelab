@@ -235,19 +235,23 @@ export const reprocessDocument = async ({
   reprocessingDocId,
   setReprocessingDocId,
   onRefresh,
+  replaceSummary = false,
 }: {
   doc: any;
   dataSource: string;
   reprocessingDocId: string | null;
   setReprocessingDocId: (value: string | null) => void;
   onRefresh: () => void;
+  /** Replace a summary written or edited in the app (by default it is kept). */
+  replaceSummary?: boolean;
 }): Promise<void> => {
   if (!doc.id || reprocessingDocId) {
     return;
   }
   setReprocessingDocId(doc.id);
   try {
-    await axios.post(`${API_BASE_URL}/documents/${doc.id}/reprocess?data_source=${dataSource}`);
+    const replace = replaceSummary ? '&replace_summary=true' : '';
+    await axios.post(`${API_BASE_URL}/documents/${doc.id}/reprocess?data_source=${dataSource}${replace}`);
     onRefresh();
   } catch (err) {
     console.error('Error reprocessing document:', err);

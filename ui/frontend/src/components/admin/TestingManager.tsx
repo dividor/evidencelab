@@ -8,6 +8,11 @@ import ExperimentDetail from './testing/ExperimentDetail';
 
 type SubView = 'datasets' | 'experiments';
 
+const SUB_VIEWS: Array<{ key: SubView; label: string }> = [
+  { key: 'datasets', label: 'Datasets' },
+  { key: 'experiments', label: 'Experiments' },
+];
+
 /* ------------------------------------------------------------------ */
 /*  Datasets sub-view (list -> editor)                                */
 /* ------------------------------------------------------------------ */
@@ -108,23 +113,19 @@ const TestingManager: React.FC = () => {
   return (
     <div className="admin-tab-content testing-manager">
       <div className="testing-subnav">
-        <button
-          className={`btn-sm ${subView === 'datasets' ? 'btn-primary' : ''}`}
-          onClick={() => switchSubView('datasets')}
-        >
-          Datasets
-        </button>
-        <button
-          className={`btn-sm ${subView === 'experiments' ? 'btn-primary' : ''}`}
-          onClick={() => switchSubView('experiments')}
-        >
-          Experiments
-        </button>
+        {SUB_VIEWS.map((view) => (
+          <button
+            key={view.key}
+            className={`btn-sm ${subView === view.key ? 'btn-primary' : ''}`}
+            onClick={() => switchSubView(view.key)}
+          >
+            {view.label}
+          </button>
+        ))}
       </div>
 
-      {subView === 'datasets' ? (
-        <DatasetsView onViewExperiments={goToExperiments} />
-      ) : (
+      {subView === 'datasets' && <DatasetsView onViewExperiments={goToExperiments} />}
+      {subView === 'experiments' && (
         <ExperimentsView
           dataset={experimentDataset}
           onClearDataset={() => setExperimentDataset(null)}

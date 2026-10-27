@@ -5,6 +5,7 @@ import os
 import re
 import threading
 import time
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -71,8 +72,38 @@ _sparse_model = None
 _sparse_model_lock = threading.Lock()
 _rerank_models_cache: dict[str, Any] = {}
 _rerank_models_lock = threading.Lock()
+# Local reranking loads a model into this process and scores in-process, so
+# running several at once multiplies resident memory and has OOM-killed the
+# API before. Keep it at one by default.
 MAX_CONCURRENT_RERANKS = int(os.environ.get("MAX_CONCURRENT_RERANKS", "1"))
 _rerank_semaphore = threading.Semaphore(MAX_CONCURRENT_RERANKS)
+
+# Degradation notes for the current search (e.g. the reranker fell back to the
+# unranked order). A caller that wants them sets this to a list for the
+# duration of its search; the list is shared with worker threads because
+# ``run_in_threadpool`` copies the context, so appends made there are visible
+# to the caller. Left unset (the UI path), notes are only logged.
+search_warnings: ContextVar[Optional[List[str]]] = ContextVar(
+    "search_warnings", default=None
+)
+
+
+def note_search_warning(message: str) -> None:
+    """Record a degradation note for the current search, if anyone is collecting."""
+    notes = search_warnings.get()
+    if notes is not None:
+        notes.append(message)
+
+
+# A hosted reranker (Azure Foundry, Google Vertex) is an HTTP call: it costs
+# this process a socket and some waiting, not a model's worth of memory. It
+# shared the local limit above, which serialised every reranked search in
+# deployments that use a hosted reranker. Bound it separately, high enough to
+# overlap requests but low enough to stay inside provider rate limits.
+MAX_CONCURRENT_REMOTE_RERANKS = int(
+    os.environ.get("MAX_CONCURRENT_REMOTE_RERANKS", "8")
+)
+_remote_rerank_semaphore = threading.Semaphore(MAX_CONCURRENT_REMOTE_RERANKS)
 
 
 def _normalize_embedding_url(url: str) -> str:
@@ -420,7 +451,7 @@ def _compute_rerank_scores(
     """
     if _is_azure_foundry_reranker(rerank_config):
         deployment = rerank_config.get("model_id", model_name)
-        with _rerank_semaphore:
+        with _remote_rerank_semaphore:
             return rerank_with_azure_foundry(
                 query=query,
                 documents=documents,
@@ -429,7 +460,7 @@ def _compute_rerank_scores(
             )
     if _is_google_vertex_reranker(rerank_config):
         vertex_model_id = rerank_config.get("model_id", model_name)
-        with _rerank_semaphore:
+        with _remote_rerank_semaphore:
             return _rerank_via_vertex_with_fallback(query, documents, vertex_model_id)
     if rerank_model_loader is not None:
         reranker = rerank_model_loader(rerank_model)
@@ -556,6 +587,10 @@ def rerank_results(
     if rerank_scores is None:
         # Reranker signalled transient unavailability — return the original
         # result order rather than 500-ing the search route.
+        note_search_warning(
+            f"Reranker {model_name} unavailable; {len(documents)} results "
+            "returned in original (unreranked) order"
+        )
         return results
     t_rerank_infer_end = time.time()
     logger.info(

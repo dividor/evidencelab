@@ -1,7 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
-import { buildGlobalCitations, SectionDisplay } from './briefCitations';
 import {
   IconClock,
   IconCopy,
@@ -17,10 +16,12 @@ import { BriefReferences } from './BriefReferences';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
 import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
-import { BriefSection, SectionAuditEntry } from './briefTypes';
+import { BriefSection, SectionAuditEntry, SectionRunDetail, UnresolvedMarker } from './briefTypes';
+import { BriefVoiceSelect, briefDefaultSuffix, voiceHint } from './BriefVoiceSelect';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
+import { BriefRunOriginal } from './BriefRunOriginal';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
@@ -107,8 +108,6 @@ interface SectionViewProps {
   num: string;
   brief: UseBriefReturn;
   onSourceClick: (source: SourceReference) => void;
-  // Globally-renumbered content + sources for the done view (see buildGlobalCitations).
-  display?: SectionDisplay;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
@@ -125,8 +124,39 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
   return target ? `Target: about ${target} words` : 'No length target';
 };
 
+// Citations of the section the API could not match to a source: the agent
+// cited a number it never returned, or returned a record without a chunk id.
+// They stay visible in the text as `[?n]` and are listed in the section Log.
+export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarker[] }> = ({
+  unresolved,
+}) => {
+  if (!unresolved || !unresolved.length) return null;
+  const markers = unresolved.map((u) => `[?${u.n}]`).join(', ');
+  const noChunk = unresolved.some((u) => u.reason === 'no-chunk-id');
+  return (
+    <div className="brief-section-warning" role="status">
+      {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
+      could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
+      {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
+      number it never returned. Open the Log to see the original output.
+    </div>
+  );
+};
+
+// An introduction (a top-level heading with sub-headings) that kept headings of
+// its own after its re-runs; see briefIntro.ts.
+export const IntroHeadingWarning: React.FC<{ headings?: number }> = ({ headings }) =>
+  headings ? (
+    <div className="brief-section-warning" role="status">
+      This introduction still has {headings} heading{headings === 1 ? '' : 's'} of its own after
+      re-running. An introduction should frame its sub-sections without headings: edit them out, or
+      use AI Regenerate.
+    </div>
+  ) : null;
+
 // A textarea for editing a section's heading guidance / regenerating, shown for
 // both pending sections (research with guidance) and done sections (re-research).
+
 const GuidancePanel: React.FC<{
   section: BriefSection;
   brief: UseBriefReturn;
@@ -136,6 +166,7 @@ const GuidancePanel: React.FC<{
   const isPending = section.status === 'pending';
   const briefVoice = brief.voices.find((v) => v.id === brief.briefVoiceId) || null;
   const ownVoice = brief.voices.find((v) => v.id === section.voiceId) || null;
+  const showVoice = brief.voices.length > 0 || !!section.voiceId || !!brief.briefVoiceId;
   return (
     <div className="brief-regen-panel">
       <div className="brief-regen-title">
@@ -147,30 +178,19 @@ const GuidancePanel: React.FC<{
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />
-      {brief.voices.length > 0 && (
+      {showVoice && (
         <>
           <div className="brief-regen-voice-label">Voice &amp; tone profile</div>
-          <select
+          <BriefVoiceSelect
             className="brief-regen-voice-select"
-            value={section.voiceId || ''}
-            onChange={(e) => brief.setSectionVoiceId(section.id, e.target.value || null)}
-            aria-label="Voice and tone profile for this section"
-          >
-            <option value="">
-              Use brief default{briefVoice ? ` — ${briefVoice.name}` : ''}
-            </option>
-            {brief.voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
+            value={section.voiceId}
+            voices={brief.voices}
+            onChange={(id) => brief.setSectionVoiceId(section.id, id)}
+            emptyLabel={`Use brief default${briefDefaultSuffix(brief.briefVoiceId, briefVoice)}`}
+            ariaLabel="Voice and tone profile for this section"
+          />
           <div className="brief-regen-voice-hint">
-            {ownVoice
-              ? ownVoice.instructions.slice(0, 150)
-              : briefVoice
-                ? `Inherits the brief profile — ${briefVoice.instructions.slice(0, 120)}`
-                : 'No voice profile applied'}
+            {voiceHint(section.voiceId, ownVoice, brief.briefVoiceId, briefVoice)}
           </div>
         </>
       )}
@@ -197,13 +217,6 @@ const GuidancePanel: React.FC<{
     </div>
   );
 };
-
-// Content + sources for the done/stale views: the globally-renumbered display
-// variant when available, else the section's own.
-const sectionView = (section: BriefSection, display?: SectionDisplay) => ({
-  content: display?.content ?? section.content,
-  sources: display?.sources ?? section.sources,
-});
 
 // The AI action toolbar shown on a completed section.
 const SectionTools: React.FC<{
@@ -263,10 +276,9 @@ const SectionPending: React.FC<{ sample?: boolean; onResearch: () => void }> = (
 // in place while a revise (Edit/Update) runs.
 const SectionResearching: React.FC<{
   section: BriefSection;
-  display?: SectionDisplay;
   onSourceClick: (source: SourceReference) => void;
-}> = ({ section, display, onSourceClick }) => {
-  const { content, sources } = sectionView(section, display);
+}> = ({ section, onSourceClick }) => {
+  const { content, sources } = section;
   return (
     <>
       <div className="brief-researching">
@@ -302,7 +314,6 @@ const SectionResearching: React.FC<{
 const SectionDoneBody: React.FC<{
   section: BriefSection;
   brief: UseBriefReturn;
-  display?: SectionDisplay;
   editing: boolean;
   diffEntry: SectionAuditEntry | null;
   viewingPending: boolean;
@@ -315,7 +326,6 @@ const SectionDoneBody: React.FC<{
 }> = ({
   section,
   brief,
-  display,
   editing,
   diffEntry,
   viewingPending,
@@ -326,7 +336,9 @@ const SectionDoneBody: React.FC<{
   onOpenThread,
   activeThreadId,
 }) => {
-  const { content, sources } = sectionView(section, display);
+  // Rendered exactly as the API returned them: the renumbered text and the
+  // display sources behind its numbers.
+  const { content, sources } = section;
   const proseRef = useRef<HTMLDivElement>(null);
 
   // Paint commented passages after the markdown renders. The marks live in the
@@ -368,7 +380,8 @@ const SectionDoneBody: React.FC<{
           className="brief-edit-textarea"
           value={section.content}
           onChange={(e) => brief.editContent(section.id, e.target.value)}
-          onBlur={brief.commitEdits}
+          // Leaving the editor records the edit as a run of the section.
+          onBlur={() => void brief.commitManualEdit(section.id)}
           rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
         />
       ) : diffEntry && diffEntry.before != null ? (
@@ -416,6 +429,37 @@ const SectionDoneBody: React.FC<{
   );
 };
 
+// Load a section's stored original (the agent's text, sources and trace)
+// when the Log asks for one; a stale load never lands on a newer request.
+const useRunOriginal = (
+  brief: UseBriefReturn,
+  sectionId: string,
+  runId: string | null,
+): { original: SectionRunDetail | null; originalError: string | null } => {
+  const [original, setOriginal] = useState<SectionRunDetail | null>(null);
+  const [originalError, setOriginalError] = useState<string | null>(null);
+  const { getSectionRunDetail } = brief;
+  useEffect(() => {
+    if (!runId) return undefined;
+    let cancelled = false;
+    setOriginal(null);
+    setOriginalError(null);
+    getSectionRunDetail(sectionId, runId)
+      .then((detail) => {
+        if (!cancelled) setOriginal(detail);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setOriginalError(e instanceof Error ? e.message : 'Could not load the original.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getSectionRunDetail, sectionId, runId]);
+  return { original, originalError };
+};
+
 // How an un-researched section invites research: inline panel (so instructions
 // can be written for several sections before one "Regenerate all" run), the
 // legacy button for un-edited sample headings, or nothing while busy/read-only.
@@ -431,12 +475,29 @@ const pendingResearchMode = (
   return section.sample ? 'button' : 'inline';
 };
 
+// Which audit entry's diff is on screen, and whether it is the still-pending
+// change: the latest entry while an AI edit/update awaits Keep/Reject (only it
+// offers those buttons; everything else is view-only).
+const diffState = (
+  section: BriefSection,
+  audit: SectionAuditEntry[],
+  diffEntryId: string | null,
+): {
+  pendingEntryId: string | null;
+  diffEntry: SectionAuditEntry | null;
+  viewingPending: boolean;
+} => {
+  const pendingEntryId =
+    section.pendingRunId && audit.length ? audit[audit.length - 1].id : null;
+  const diffEntry = diffEntryId ? audit.find((e) => e.id === diffEntryId) ?? null : null;
+  return { pendingEntryId, diffEntry, viewingPending: !!diffEntryId && diffEntryId === pendingEntryId };
+};
+
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
   brief,
   onSourceClick,
-  display,
   readOnly = false,
   onRequestHighlight,
   marks,
@@ -444,6 +505,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   activeThreadId,
 }) => {
   const [editing, setEditing] = useState(false);
+  // The stored original being viewed from the Log, and its load state.
+  const [originalRunId, setOriginalRunId] = useState<string | null>(null);
+  const { original, originalError } = useRunOriginal(brief, section.id, originalRunId);
   // AI Edit/Update instruction panel + audit modal + changes toggle.
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
@@ -458,12 +522,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
-  const hasChanges = !!section.prevContent;
-  // The still-pending change (un-kept) is the latest audit entry; only it offers
-  // Keep/Reject. Everything else is view-only.
-  const pendingEntryId = hasChanges && audit.length ? audit[audit.length - 1].id : null;
-  const diffEntry = diffEntryId ? audit.find((e) => e.id === diffEntryId) ?? null : null;
-  const viewingPending = !!diffEntryId && diffEntryId === pendingEntryId;
+  const { pendingEntryId, diffEntry, viewingPending } = diffState(section, audit, diffEntryId);
   // Surface the pending diff automatically once an edit/update completes (a new
   // pending entry appears).
   useEffect(() => {
@@ -518,6 +577,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         />
       )}
 
+      <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
+      {isDone && <UnresolvedCitationsWarning unresolved={section.unresolved} />}
+
       {aiPanel && (
         <AiInstructionPanel
           mode={aiPanel}
@@ -543,7 +605,21 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             setLogOpen(false);
             setDiffEntryId(entryId);
           }}
+          runs={section.runs || []}
+          onViewOriginal={(runId) => {
+            setLogOpen(false);
+            setOriginalRunId(runId);
+          }}
           onClose={() => setLogOpen(false)}
+        />
+      )}
+
+      {originalRunId && (
+        <BriefRunOriginal
+          title={section.title}
+          detail={original}
+          error={originalError}
+          onClose={() => setOriginalRunId(null)}
         />
       )}
 
@@ -556,14 +632,13 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       {section.status === 'researching' && (
-        <SectionResearching section={section} display={display} onSourceClick={onSourceClick} />
+        <SectionResearching section={section} onSourceClick={onSourceClick} />
       )}
 
       {isDone && (
         <SectionDoneBody
           section={section}
           brief={brief}
-          display={display}
           editing={editing}
           diffEntry={diffEntry}
           viewingPending={viewingPending}
@@ -735,6 +810,121 @@ const autoSizeTitle = (el: HTMLTextAreaElement | null) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
+// The selection the reader just made inside a section, or null. The section
+// is resolved from the DOM so nested markup (links, citations) still traces
+// back to it.
+const selectionInSection = (): BriefSelection | null => {
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : '';
+  if (!sel || !text || text.length < 3 || sel.rangeCount !== 1) return null;
+  const node = sel.anchorNode;
+  const el = node instanceof HTMLElement ? node : (node?.parentElement as HTMLElement | null);
+  const sectionEl = el?.closest('[data-brief-section-id]') as HTMLElement | null;
+  const sectionId = sectionEl?.getAttribute('data-brief-section-id');
+  if (!sectionId) return null;
+  const range = sel.getRangeAt(0);
+  const box = range.getBoundingClientRect();
+  // One rect per line, so a multi-line selection stays fully marked.
+  const rects = Array.from(range.getClientRects()).map((r) => ({
+    top: r.top,
+    left: r.left,
+    width: r.width,
+    height: r.height,
+  }));
+  return { sectionId, text, rect: { top: box.top, left: box.left, width: box.width }, rects };
+};
+
+// The line under the title: counts, the viewer chip, the outline log toggle
+// and the comments switch.
+const BriefMeta: React.FC<{
+  brief: UseBriefReturn;
+  readOnly: boolean;
+  hasOutlineLog: boolean;
+  logOpen: boolean;
+  onToggleLog: () => void;
+  showComments?: boolean;
+  onToggleComments?: (show: boolean) => void;
+}> = ({ brief, readOnly, hasOutlineLog, logOpen, onToggleLog, showComments, onToggleComments }) => (
+  <div className="brief-doc-meta">
+    <span>{brief.sections.length} sections</span>
+    <span>·</span>
+    <span>{brief.totalSources} sources synthesised</span>
+    {brief.totalWords > 0 && (
+      <>
+        <span>·</span>
+        <span>{brief.totalWords.toLocaleString()} words</span>
+      </>
+    )}
+    {readOnly && brief.ownerName && (
+      <>
+        <span>·</span>
+        <span className="brief-viewer-chip">Owned by {brief.ownerName} — view only</span>
+      </>
+    )}
+    {hasOutlineLog && (
+      <>
+        <span>·</span>
+        <button className="brief-meta-link" onClick={onToggleLog} aria-expanded={logOpen}>
+          Outline analysis
+        </button>
+      </>
+    )}
+    {onToggleComments && brief.sections.length > 0 && (
+      <label className="brief-comments-visibility" title="Show or hide comments on this brief">
+        <input
+          type="checkbox"
+          checked={showComments !== false}
+          onChange={(e) => onToggleComments(e.target.checked)}
+        />
+        Show comments
+      </label>
+    )}
+  </div>
+);
+
+// The document-wide progress row shown while research runs.
+const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
+  <div className="brief-doc-progress">
+    <div className="brief-doc-progress-row">
+      <span>Researching…</span>
+      <span className="brief-doc-progress-right">
+        {brief.doneCount}/{brief.sections.length}
+        <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
+          ■ Stop
+        </button>
+      </span>
+    </div>
+    <div className="brief-progress-track">
+      <div className="brief-progress-fill" style={{ width: `${brief.totalProgress}%` }} />
+    </div>
+  </div>
+);
+
+// The outline-generation activity log (queries run, sources read).
+const OutlineLog: React.FC<{ brief: UseBriefReturn; onClose: () => void }> = ({ brief, onClose }) => (
+  <div className="brief-outline-log">
+    <div className="brief-outline-log-head">
+      <span>Outline research — queries run and sources read</span>
+      <button
+        className="brief-outline-log-close"
+        onClick={onClose}
+        title="Close"
+        aria-label="Close outline analysis"
+      >
+        ×
+      </button>
+    </div>
+    <div className="brief-activity">
+      {brief.generatingActivity.map((ev, i) => (
+        <div className="brief-activity-row" key={`${ev.tag}-${i}`}>
+          <span className={tagClass(ev.tag)}>{ev.tag}</span>
+          <span>{ev.text}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 export const BriefDocument: React.FC<BriefDocumentProps> = ({
   brief,
   onResultClick,
@@ -755,10 +945,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const [logOpen, setLogOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
-  const { refs: references, display } = useMemo(
-    () => buildGlobalCitations(sections, brief.referenceGrouping),
-    [sections, brief.referenceGrouping],
-  );
 
   useEffect(() => autoSizeTitle(titleRef.current), [brief.briefTitle]);
 
@@ -784,39 +970,15 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
     });
   };
 
+  // Report a selection made inside a section (comments anchor to it).
+  const handleMouseUp = () => {
+    if (!onSelectText) return;
+    const selection = selectionInSection();
+    if (selection) onSelectText(selection);
+  };
+
   return (
-    <div
-      className="brief-doc"
-      onMouseUp={() => {
-        // Report a selection made inside a section; the section is resolved
-        // from the DOM so nested markup (links, citations) still traces back.
-        if (!onSelectText) return;
-        const sel = window.getSelection();
-        const text = sel ? sel.toString().trim() : '';
-        if (!text || text.length < 3 || sel?.rangeCount !== 1) return;
-        const node = sel.anchorNode;
-        const el =
-          node instanceof HTMLElement ? node : (node?.parentElement as HTMLElement | null);
-        const sectionEl = el?.closest('[data-brief-section-id]') as HTMLElement | null;
-        const sectionId = sectionEl?.getAttribute('data-brief-section-id');
-        if (!sectionId) return;
-        const range = sel.getRangeAt(0);
-        const box = range.getBoundingClientRect();
-        // One rect per line, so a multi-line selection stays fully marked.
-        const rects = Array.from(range.getClientRects()).map((r) => ({
-          top: r.top,
-          left: r.left,
-          width: r.width,
-          height: r.height,
-        }));
-        onSelectText({
-          sectionId,
-          text,
-          rect: { top: box.top, left: box.left, width: box.width },
-          rects,
-        });
-      }}
-    >
+    <div className="brief-doc" onMouseUp={handleMouseUp}>
       <div className="brief-doc-header">
         <div className="brief-doc-header-top">
           <div className="brief-eyebrow">EVIDENCE BRIEF</div>
@@ -844,88 +1006,17 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           aria-label="Brief title"
           readOnly={readOnly}
         />
-        <div className="brief-doc-meta">
-          <span>{sections.length} sections</span>
-          <span>·</span>
-          <span>{brief.totalSources} sources synthesised</span>
-          {brief.totalWords > 0 && (
-            <>
-              <span>·</span>
-              <span>{brief.totalWords.toLocaleString()} words</span>
-            </>
-          )}
-          {readOnly && brief.ownerName && (
-            <>
-              <span>·</span>
-              <span className="brief-viewer-chip">Shared by {brief.ownerName} — view only</span>
-            </>
-          )}
-          {hasOutlineLog && (
-            <>
-              <span>·</span>
-              <button
-                className="brief-meta-link"
-                onClick={() => setLogOpen((v) => !v)}
-                aria-expanded={logOpen}
-              >
-                Outline analysis
-              </button>
-            </>
-          )}
-          {onToggleComments && sections.length > 0 && (
-            <label className="brief-comments-visibility" title="Show or hide comments on this brief">
-              <input
-                type="checkbox"
-                checked={showComments !== false}
-                onChange={(e) => onToggleComments(e.target.checked)}
-              />
-              Show comments
-            </label>
-          )}
-        </div>
-        {brief.stage === 'research' && (
-          <div className="brief-doc-progress">
-            <div className="brief-doc-progress-row">
-              <span>Researching…</span>
-              <span className="brief-doc-progress-right">
-                {brief.doneCount}/{sections.length}
-                <button
-                  className="brief-stop-btn"
-                  onClick={brief.stopResearch}
-                  title="Stop all research"
-                >
-                  ■ Stop
-                </button>
-              </span>
-            </div>
-            <div className="brief-progress-track">
-              <div className="brief-progress-fill" style={{ width: `${brief.totalProgress}%` }} />
-            </div>
-          </div>
-        )}
-        {logOpen && hasOutlineLog && (
-          <div className="brief-outline-log">
-            <div className="brief-outline-log-head">
-              <span>Outline research — queries run and sources read</span>
-              <button
-                className="brief-outline-log-close"
-                onClick={() => setLogOpen(false)}
-                title="Close"
-                aria-label="Close outline analysis"
-              >
-                ×
-              </button>
-            </div>
-            <div className="brief-activity">
-              {brief.generatingActivity.map((ev, i) => (
-                <div className="brief-activity-row" key={`${ev.tag}-${i}`}>
-                  <span className={tagClass(ev.tag)}>{ev.tag}</span>
-                  <span>{ev.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <BriefMeta
+          brief={brief}
+          readOnly={readOnly}
+          hasOutlineLog={hasOutlineLog}
+          logOpen={logOpen}
+          onToggleLog={() => setLogOpen((v) => !v)}
+          showComments={showComments}
+          onToggleComments={onToggleComments}
+        />
+        {brief.stage === 'research' && <ResearchProgress brief={brief} />}
+        {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>
 
       {showToc && sections.length > 0 && <BriefToc brief={brief} canEdit={canEditStructure} />}
@@ -937,7 +1028,6 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           num={brief.numberHeadings ? numbers[i] : ''}
           brief={brief}
           onSourceClick={handleSourceClick}
-          display={display.get(s.id)}
           readOnly={readOnly}
           onRequestHighlight={(src) =>
             src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
@@ -961,10 +1051,13 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       )}
 
       <BriefReferences
-        references={references}
+        references={brief.references}
+        groups={brief.referenceGroups}
         grouping={brief.referenceGrouping}
         onGroupingChange={brief.setReferenceGrouping}
         onSourceClick={handleSourceClick}
+        wordLinkTarget={brief.wordLinkTarget}
+        onWordLinkTargetChange={brief.setWordLinkTarget}
       />
 
       <ResearchStatusBar brief={brief} />
