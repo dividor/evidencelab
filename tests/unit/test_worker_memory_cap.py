@@ -268,13 +268,27 @@ def _quick(doc_id: str) -> str:
     return f"ok-{doc_id}"
 
 
+# A cold spawn worker imports this module and the pipeline before it runs a task:
+# about 8 s on an idle machine, measured at 46 s with six busy processes per CPU.
+# This only bounds a worker that never starts at all.
+SPAWN_START_LIMIT_SECONDS = 180
+
+
 def test_end_to_end_real_pool_worker_over_cap_is_killed_and_pool_survives():
     """A real spawn Pool: the hog is killed by the watchdog, its document is failed,
-    the collector returns promptly, and the pool still runs the next task."""
+    the collector returns promptly, and the same pool still runs the next task."""
     ctx = multiprocessing.get_context("spawn")
     orch = _orch()
     killed: set = set()
     with ctx.Pool(processes=1) as pool:
+        # Start the worker before timing anything, so the checks below measure the
+        # cap and the collector rather than how long a cold worker takes to import.
+        t_start = time.time()
+        warm = pool.apply_async(_quick, ("warm",)).get(
+            timeout=SPAWN_START_LIMIT_SECONDS
+        )
+        cold_start = time.time() - t_start
+        assert warm == "ok-warm"
         hog = pool.apply_async(_hog, ("doc-hog",))
         dog = WorkerMemoryWatchdog(
             cap_mb=200,
@@ -292,13 +306,18 @@ def test_end_to_end_real_pool_worker_over_cap_is_killed_and_pool_survives():
             )
             elapsed = time.time() - t0
             dog.stop()
+        # The orchestrator keeps submitting to the same pool after a kill, so the
+        # pool must start a replacement worker and run the next task on it. The
+        # replacement is another cold start, so it gets the same allowance the
+        # first worker needed, with room for a busier machine.
+        replacement_limit = max(30.0, 3 * cold_start)
+        after = pool.apply_async(_quick, ("after",)).get(timeout=replacement_limit)
     assert out is None, "the hog's task must be treated as failed, not awaited"
     assert "doc-hog" in killed
-    assert (
-        elapsed < 30
-    ), f"collector waited {elapsed:.0f}s; it must return once the worker is killed"
+    assert elapsed < 30, (
+        f"collector waited {elapsed:.0f}s after the hog started; "
+        "it must return once the worker is killed"
+    )
     assert orch.db.updates and orch.db.updates[0][1]["sys_status"] == "parse_failed"
     assert "MB > 200 MB" in orch.db.updates[0][1]["sys_error_message"]
-    # the pool replaced the dead worker and keeps working
-    with ctx.Pool(processes=1) as pool2:
-        assert pool2.apply_async(_quick, ("after",)).get(timeout=30) == "ok-after"
+    assert after == "ok-after"
