@@ -15,7 +15,8 @@ Evidence Lab v1.6.5 is a **packaging** release. The API, MCP server and document
 
 ### Documentation
 - New admin page **Running from the Published Image**: the quick start, how the web interface reaches the API with sign-in on or off, the compose settings, adding documents, upgrading and inspecting an image's provenance (#553)
-- A Docker Hub overview page with the Evidence Lab logo (`docker/README.md`), and the release process in CONTRIBUTING.md now covers checking the published images after tagging (#553)
+- A Docker Hub overview page (`docker/README.md`, kept identical to the overview on Docker Hub), and the release process in CONTRIBUTING.md now covers checking the published images after tagging (#553, #557)
+- CLAUDE.md records how images are published: what each RC push and release tag publishes, the `dockerhub` environment, why the web interface is not published, and the `runtime` / `test` Dockerfile targets (#557)
 
 ### Dependencies
 - Dependabot targets `rc/v1.6.5` (#551, #552)
