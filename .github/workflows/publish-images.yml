@@ -83,9 +83,12 @@ jobs:
           docker system prune -af
           df -h /
 
+      # Default checkout settings, as in ci.yml. persist-credentials: false
+      # makes checkout walk submodules at once, and the repository's
+      # pipeline/integration/evidencelab-ai-integration gitlink has no
+      # .gitmodules entry, so git exits 128. .dockerignore keeps .git out of
+      # the build context, so the persisted token never reaches the image.
       - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
 
       - name: Resolve image names
         id: names
