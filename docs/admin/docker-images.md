@@ -19,6 +19,8 @@ The database, vector store and embedding model use their own upstream images: Po
 | `latest` | The newest release. |
 | `rc-v1.6.6` | The release candidate in progress. It changes as work is merged and is for testing only. |
 
+Images are published from v1.6.5 onward. Earlier releases have no published image; build them from source with `docker-compose.prod.yml`.
+
 ### Quick start
 
 You need Docker with Compose, and about 25 GB of free disk for the images and the embedding model.
