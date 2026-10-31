@@ -252,6 +252,7 @@ pipeline/integration/wfp-evaluation-ai/
 !ui/frontend/public/docs/images/**/*.png
 !ui/frontend/public/logo.png
 !ui/frontend/public/og-image.png
+!docker/evidencelab-logo.png
 HIGHLIGHT_SCROLL_TESTING.md
 
 # Qdrant database storage (Docker volume)
