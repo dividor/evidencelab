@@ -101,7 +101,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
+      # test = runtime plus the browsers the integration tests drive.
+      # Production (docker-compose.prod.yml) builds the slimmer runtime target.
+      target: test
     image: evidencelab-ai-python:latest
     pull_policy: build
     container_name: pipeline
@@ -157,7 +159,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runtime
+      # test = runtime plus the browsers the integration tests drive.
+      # Production (docker-compose.prod.yml) builds the slimmer runtime target.
+      target: test
     image: evidencelab-ai-python:latest
     pull_policy: build
     container_name: api

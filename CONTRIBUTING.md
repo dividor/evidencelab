@@ -624,6 +624,10 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
    git checkout -b rc/v1.2.0
    git push -u origin rc/v1.2.0
    ```
+   Every push to an RC branch, including this first one, publishes the Python
+   image as `astrobagel/evidencelab:rc-v1.2.0` (and on `ghcr.io/dividor`) via
+   `.github/workflows/publish-images.yml`. The tag moves with the RC and is for
+   testing only.
 
 2. **Target PRs to the RC branch.** All feature and fix PRs set `rc/vX.Y.Z` as
    their base branch, not `main`. CI runs only for PRs targeting `main`,
@@ -663,6 +667,26 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
    git push origin v1.2.0
    gh release create v1.2.0 --title "Evidence Lab v1.2.0 — <headline>" --notes-file <changelog entry>
    ```
+   Pushing the tag starts the **Publish images** workflow, which builds the
+   tagged commit for amd64 and arm64 and publishes `1.2.0`, `1.2` and `latest`
+   to Docker Hub (`astrobagel/evidencelab`) and GHCR (`ghcr.io/dividor/evidencelab`).
+   Pre-release tags such as `v1.3.0-rc.1` get no `1.3` or `latest`. Check that it
+   succeeded and that both platforms are listed:
+   ```bash
+   gh run list --workflow "Publish images" --branch v1.2.0
+   docker buildx imagetools inspect astrobagel/evidencelab:1.2.0
+   docker buildx imagetools inspect ghcr.io/dividor/evidencelab:1.2.0
+   ```
+   If the run fails at "Log in to Docker Hub", the `DOCKERHUB_TOKEN` secret in
+   the `dockerhub` environment has expired or been revoked: create a new Docker
+   Hub personal access token (Read & Write) for `astrobagel`, store it with
+   `gh secret set DOCKERHUB_TOKEN --env dockerhub`, and re-run the failed jobs.
+
+   The Docker Hub overview page (screenshot, tags, quick start) is
+   [`docker/README.md`](docker/README.md). It is not synced automatically, because
+   that needs a token with delete rights. If the file changed in this release,
+   paste it into the repository's overview on Docker Hub, and keep the two
+   identical. Its screenshot loads from `main`.
 
 7. **Start the next cycle**: go back to step 1 for `rc/vX.Y.(Z+1)`.
 
@@ -684,14 +708,18 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
 
 1. All PRs for the cycle merged into `rc/vX.Y.Z`; open PRs retargeted to the next RC
 2. CI green on the RC (integration tests included; re-run a job that failed only on an external service)
-3. The production frontend image builds — CI runs the development build only, and a
-   dependency bump can break the production one (see #435):
+3. The production images build. CI's `container-scan` job builds both on every PR
+   (`Dockerfile` target `runtime` and `ui/frontend/Dockerfile.prod`, the build
+   #435 broke), so a green RC covers this. Rebuild locally only for a deployment
+   with its own branding or `config.json`:
    `docker compose -f docker-compose.prod.yml build ui`
 4. Manual verification on a Docker stack with real data
 5. `CHANGELOG.md` entry written in the format above
 6. `release/vX.Y.Z` PR merged to `main` with a merge commit
 7. Tag pushed and GitHub Release published with the changelog entry
-8. Next RC created, Dependabot repointed on both `main` and the RC, open PRs retargeted
+8. **Publish images** run for the tag succeeded, and `X.Y.Z`, `X.Y` and `latest` list
+   `linux/amd64` and `linux/arm64` on Docker Hub and GHCR
+9. Next RC created, Dependabot repointed on both `main` and the RC, open PRs retargeted
 
 ## 📞 Getting Help
 
