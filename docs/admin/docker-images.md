@@ -23,41 +23,60 @@ Images are published from v1.6.5 onward. Earlier releases have no published imag
 
 ### Quick start
 
-You need Docker with Compose, and about 25 GB of free disk for the images and the embedding model.
+You need Docker with Compose, Python 3 (no extra packages), git, and about 25 GB of free disk for the images and the embedding model. You also need an API key for one model provider: Azure Foundry, Hugging Face (a free token works) or Google Vertex.
 
-1. Check out the repository at the same version as the image you will run:
+```bash
+git clone https://github.com/dividor/evidencelab.git
+cd evidencelab
+python3 scripts/demo/run_demo.py --mode hub
+```
 
-   ```bash
-   git clone https://github.com/dividor/evidencelab.git
-   cd evidencelab
-   git checkout v<version>
-   ```
+The script asks which model provider to use and for its key, then does everything else:
 
-   The checkout supplies [`docker-compose.hub.yml`](../../docker-compose.hub.yml), [`config.json`](../../config.json), [`.env.example`](../../.env.example) and the web interface source.
+1. Writes `.env`, generating the passwords and secret keys. On a later run it keeps the ones already there.
+2. Adds a **Demo Data from World Bank** data source to `config.json`.
+3. Downloads three World Bank reports and runs the pipeline on them, inside the published image.
+4. Builds the web interface and starts Evidence Lab.
 
-2. Create `.env` from the example:
+When it finishes, open http://localhost:8080 and choose the demo data source.
 
-   ```bash
-   cp .env.example .env
-   ```
+Options:
 
-   Then set at least these values:
+- `--version 1.6.5` picks the image tag. The default is `EVIDENCELAB_VERSION` from `.env`, else `latest`. Check out the matching tag, `git checkout v1.6.5`, so the compose file and web interface match the image.
+- `--num-docs 10` loads more documents.
+- `--skip-download` or `--skip-pipeline` re-runs only part of it.
 
-   - `POSTGRES_PASSWORD`: any strong password.
-   - `API_SECRET_KEY`: a random string, for example from `openssl rand -hex 32`. The API will not start without it.
-   - `AUTH_SECRET_KEY`: a different random string of 32 or more characters.
-   - `REACT_APP_API_KEY`: see [How the web interface reaches the API](#how-the-web-interface-reaches-the-api). The compose file stops if it is missing.
-   - The keys for the language model provider your `config.json` uses. The stock `config.json` uses Azure Foundry, which needs `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT`. See [Optional Third-Party Services](third-party-services.md).
+The script saves the image tag in `.env`, so afterwards plain commands work:
 
-3. Start Evidence Lab:
+```bash
+docker compose -f docker-compose.hub.yml down     # stop
+docker compose -f docker-compose.hub.yml up -d    # start again
+```
 
-   ```bash
-   EVIDENCELAB_VERSION=<version> docker compose -f docker-compose.hub.yml up -d
-   ```
+### Manual setup
 
-   The first start builds the web interface and downloads the embedding model, which takes a few minutes. The API waits for the database, vector store and embedding model, then applies any database migrations.
+To set it up without the script, copy the example settings and fill them in:
 
-4. Open http://localhost:8080.
+```bash
+cp .env.example .env
+```
+
+Set at least these values:
+
+- `EVIDENCELAB_VERSION`: the image tag, for example `1.6.5`.
+- `POSTGRES_PASSWORD`: any strong password.
+- `API_SECRET_KEY`: a random string, for example from `openssl rand -hex 32`. The API will not start without it.
+- `AUTH_SECRET_KEY`: a different random string of 32 or more characters.
+- `REACT_APP_API_KEY`: see [How the web interface reaches the API](#how-the-web-interface-reaches-the-api). The compose file stops if it is missing.
+- The keys for the language model provider your `config.json` uses. The stock `config.json` uses Azure Foundry, which needs `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT`. See [Optional Third-Party Services](third-party-services.md).
+
+Then start Evidence Lab and open http://localhost:8080:
+
+```bash
+docker compose -f docker-compose.hub.yml up -d
+```
+
+The first start builds the web interface and downloads the embedding model, which takes a few minutes. The API waits for the database, vector store and embedding model, then applies any database migrations.
 
 ### How the web interface reaches the API
 
@@ -83,14 +102,13 @@ Set these in `.env` or on the command line.
 | `EVIDENCELAB_REGISTRY` | `docker.io/astrobagel` | Where to pull the image from. Set `ghcr.io/dividor` to use the GitHub mirror, for example if Docker Hub's pull limit for anonymous users gets in the way. |
 | `EVIDENCELAB_PORT` | `8080` | The port the web interface listens on. |
 | `EVIDENCELAB_BIND` | `127.0.0.1` | The address the web interface listens on. The default only accepts connections from the same machine. Put an HTTPS proxy in front, or set `0.0.0.0` to accept connections from other machines. |
-| `EVIDENCELAB_CONFIG` | `./config.json` | The configuration file the API, MCP server and pipeline read. Start-up fails if the file is missing. |
+| `EVIDENCELAB_CONFIG` | `config.json` in `CONFIG_SRC`, else `./config.json` | The configuration file the API, MCP server and pipeline read. Start-up fails if the file is missing. |
 | `DATA_MOUNT_PATH` | `./data` | Source documents and parsed output. |
-| `DB_DATA_MOUNT` | `./db` | PostgreSQL and Qdrant storage. |
 | `CACHE_MOUNT_PATH` | `./.cache` | Downloaded model files. |
 | `APP_BASE_URL` and `CORS_ALLOWED_ORIGINS` | `http://localhost:8080` | Set both to the address users type into their browser. |
 | `CUSTOMIZE_ASSETS` and `CONFIG_SRC` | `./customize` and `.` | Branding and `config.json` for the web interface build. See [Customization & Branding](customization.md). |
 
-Keep data and database storage on a local disk with room for parsed output, because parsing expands a collection substantially. On a Mac, keep database storage out of `/tmp`.
+PostgreSQL and Qdrant keep their data in Docker named volumes (`evidencelab-hub_postgres-data`, `evidencelab-hub_qdrant-data` and `evidencelab-hub_qdrant-snapshots`), not in a folder, because Postgres on Docker Desktop for Mac can refuse a bind-mounted data folder. `docker compose -f docker-compose.hub.yml down` keeps them; adding `-v` deletes them. Keep the data folder on a disk with room for parsed output, because parsing expands a collection substantially.
 
 ### Adding documents
 
