@@ -1,13 +1,14 @@
-![Evidence Lab](https://raw.githubusercontent.com/dividor/evidencelab/main/docker/evidencelab-logo.png)
-
 # Evidence Lab
 
-Evidence Lab is a free, open source platform for searching and analysing collections of reports. It parses PDF and Word documents, indexes them for hybrid semantic search, and adds an AI research assistant, briefs and maps. MCP and A2A servers connect it to AI platforms.
+![Evidence Lab](https://github.com/dividor/evidencelab/raw/main/docs/images/evidence-lab.png)
+
+Evidence Lab is a free, open source platform for searching and analyzing collections of reports. It parses PDF and Word documents, indexes them for hybrid semantic search, and adds an AI research assistant, briefs and maps. MCP and A2A servers connect it to AI platforms.
 
 This image runs the API, the MCP server and the document pipeline. One image runs all three, each with a different start command. The web interface is built on your machine from the repository, because it carries your API key or sign-in setting, data sources and branding.
 
 - **Source and issues:** https://github.com/dividor/evidencelab
 - **Setup guide:** https://github.com/dividor/evidencelab/blob/main/docs/admin/docker-images.md
+- **Demo:** https://evidencelab.ai
 - **Mirror without Docker Hub pull limits:** `ghcr.io/dividor/evidencelab`
 
 ## Tags
