@@ -6,6 +6,7 @@ downloads a few documents, and runs the full Evidence Lab pipeline.
 Usage:
     python scripts/demo/run_demo.py --mode host
     python scripts/demo/run_demo.py --mode docker
+    python scripts/demo/run_demo.py --mode hub        # published image (docker-compose.hub.yml)
     python scripts/demo/run_demo.py --mode host --setup   # Re-run setup
     python scripts/demo/run_demo.py --ci --setup-only     # CI: write .env + config only
     python scripts/demo/run_demo.py --ci --setup-only --provider huggingface
@@ -35,6 +36,10 @@ ENV_EXAMPLE = PROJECT_ROOT / ".env.example"
 ENV_PATH = PROJECT_ROOT / ".env"
 DOWNLOAD_SCRIPT = PROJECT_ROOT / "scripts" / "demo" / "download.py"
 HOST_PIPELINE_SCRIPT = PROJECT_ROOT / "scripts" / "pipeline" / "run_pipeline_host.sh"
+HUB_COMPOSE_FILE = "docker-compose.hub.yml"
+HUB_DEFAULT_PORT = "8080"
+HUB_DEFAULT_VERSION = "latest"
+HUB_READY_ATTEMPTS = 150  # x 2 s: the API waits for the embedding model first
 
 DEMO_DATASOURCE_KEY = "Demo Data from World Bank"
 DEMO_DATA_SUBDIR = "demo"
@@ -139,6 +144,17 @@ def _mask(value):
     return "*" * (len(value) - 4) + value[-4:]
 
 
+def _env_file_value(key):
+    """Return the last non-commented ``key=`` value in .env, unquoted, or ''."""
+    if not ENV_PATH.exists():
+        return ""
+    value = ""
+    for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{key}="):
+            value = line.split("=", 1)[1].strip().strip('"').strip("'")
+    return value
+
+
 def prompt_provider():
     """Ask user to choose a provider combo."""
     print("Which provider would you like to use?\n")
@@ -237,8 +253,18 @@ def interactive_setup(ci_mode=False, provider=None):
 
     # 4. Auto-generate application secrets
     #    In CI mode, re-use env var if already set (so callers can pin values).
+    #    A secret already in .env is kept: Postgres stores its password when the
+    #    database is first created, so a new one would lock out existing data.
+    kept = set()
+
     def _gen_or_env(key, generator):
-        return (os.environ.get(key) or generator()) if ci_mode else generator()
+        if ci_mode and os.environ.get(key):
+            return os.environ[key]
+        existing = _env_file_value(key)
+        if existing:
+            kept.add(key)
+            return existing
+        return generator()
 
     env_vars["API_SECRET_KEY"] = _gen_or_env(
         "API_SECRET_KEY", lambda: secrets.token_hex(32)
@@ -246,7 +272,9 @@ def interactive_setup(ci_mode=False, provider=None):
     env_vars["AUTH_SECRET_KEY"] = _gen_or_env(
         "AUTH_SECRET_KEY", lambda: secrets.token_hex(32)
     )
-    env_vars["REACT_APP_API_KEY"] = env_vars["API_SECRET_KEY"]
+    env_vars["REACT_APP_API_KEY"] = _gen_or_env(
+        "REACT_APP_API_KEY", lambda: env_vars["API_SECRET_KEY"]
+    )
     env_vars["KEY_ENCRYPTION_KEY"] = _gen_or_env(
         "KEY_ENCRYPTION_KEY", _generate_fernet_key
     )
@@ -265,15 +293,17 @@ def interactive_setup(ci_mode=False, provider=None):
     if not ci_mode:
         # 5. Confirmation
         print(
-            "  Auto-generated API_SECRET_KEY, AUTH_SECRET_KEY, "
-            "KEY_ENCRYPTION_KEY, and POSTGRES_PASSWORD"
+            "  API_SECRET_KEY, AUTH_SECRET_KEY, KEY_ENCRYPTION_KEY and "
+            "POSTGRES_PASSWORD: kept from .env when set, otherwise generated"
         )
         print()
         print("-" * 60)
         print("  Configuration summary:")
         print(f"  Provider:        {combo['name']}")
         for key, val in env_vars.items():
-            if key in _AUTO_GENERATED:
+            if key in kept:
+                print(f"  {key + ':':23s} [kept from .env]")
+            elif key in _AUTO_GENERATED:
                 print(f"  {key + ':':23s} [auto-generated]")
             elif key == "QDRANT_API_KEY" and len(val) == 64:
                 print(f"  {key + ':':23s} [auto-generated]")
@@ -546,6 +576,173 @@ def start_services():
     print(" ready!")
 
 
+def run_local_demo(args):
+    """Download, process and serve the demo on the host or the dev Docker stack."""
+    if args.skip_download:
+        print("[2/4] Skipping download (--skip-download)")
+    else:
+        print(f"[2/4] Downloading {args.num_docs} documents from World Bank API...")
+        download_documents(args.num_docs)
+    print()
+    if args.skip_pipeline:
+        print("[3/4] Skipping pipeline (--skip-pipeline)")
+    else:
+        print(f"[3/4] Running pipeline on {args.num_docs} documents ({args.mode})...")
+        if args.mode == "host":
+            print(
+                "       (Ensure infrastructure: docker compose up -d qdrant postgres)"
+            )
+            run_pipeline_host(args.num_docs)
+        else:
+            print("       (Ensure Docker: docker compose up -d --build)")
+            run_pipeline_docker(args.num_docs)
+    print()
+    print("[4/4] Starting services...")
+    start_services()
+    return "http://localhost:3000"
+
+
+# ---------------------------------------------------------------------------
+# Published image (docker-compose.hub.yml)
+# ---------------------------------------------------------------------------
+def _env_setting(key):
+    """Return ``key`` from the environment, else from .env, else ''.
+
+    Compose reads both, with the environment winning, so this mirrors what
+    ``docker compose`` will use.
+    """
+    return os.environ.get(key) or _env_file_value(key)
+
+
+def resolve_hub_version(requested):
+    """Pick the image tag: --version, else EVIDENCELAB_VERSION, else latest."""
+    return requested or _env_setting("EVIDENCELAB_VERSION") or HUB_DEFAULT_VERSION
+
+
+def _hub_compose(*args):
+    """Build a docker compose command for the published-image stack."""
+    return ["docker", "compose", "-f", HUB_COMPOSE_FILE, *args]
+
+
+def _run_hub(cmd, failure):
+    """Run a hub compose command from the project root; stop on failure."""
+    print(f"  Running: {' '.join(cmd)}")
+    result = subprocess.run(cmd, cwd=str(PROJECT_ROOT))
+    if result.returncode != 0:
+        print(f"ERROR: {failure}")
+        sys.exit(1)
+
+
+def download_documents_hub(num_docs):
+    """Download the demo documents inside the published image.
+
+    The image already has the downloader's dependencies, so the host needs
+    nothing beyond Docker. Files land in DATA_MOUNT_PATH (default ./data).
+    """
+    _run_hub(
+        _hub_compose(
+            "--profile",
+            "pipeline",
+            "run",
+            "--rm",
+            "--no-deps",
+            "pipeline",
+            "python",
+            "scripts/demo/download.py",
+            "--limit",
+            str(num_docs),
+            "--data-dir",
+            f"/app/data/{DEMO_DATA_SUBDIR}",
+        ),
+        "Download failed.",
+    )
+
+
+def run_pipeline_hub(num_docs):
+    """Run the pipeline in the published image (starts its dependencies)."""
+    _run_hub(
+        _hub_compose(
+            "--profile",
+            "pipeline",
+            "run",
+            "--rm",
+            "pipeline",
+            "python",
+            "-m",
+            "pipeline.orchestrator",
+            "--data-source",
+            DEMO_DATA_SUBDIR,
+            "--num-records",
+            str(num_docs),
+            "--skip-download",
+        ),
+        "Pipeline failed. Check the services with: "
+        f"docker compose -f {HUB_COMPOSE_FILE} ps",
+    )
+
+
+def wait_for_hub_api(port, attempts=HUB_READY_ATTEMPTS, delay=2.0):
+    """Wait until the API answers through the web interface; stop if it never does."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    url = f"http://localhost:{port}/api/health"
+    print(f"  Waiting for {url}", end="", flush=True)
+    for _ in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                if resp.status == 200:
+                    print(" ready!")
+                    return
+        except (urllib.error.URLError, OSError):
+            pass
+        print(".", end="", flush=True)
+        time.sleep(delay)
+    print()
+    print(f"ERROR: The API did not answer at {url}.")
+    print(f"       Check its log: docker compose -f {HUB_COMPOSE_FILE} logs api")
+    sys.exit(1)
+
+
+def start_services_hub():
+    """Rebuild the web interface and restart the API so both see config.json.
+
+    The demo data source was just added to config.json. The API, MCP server
+    and pipeline read it at start-up; the web interface bakes it in at build
+    time, so it is rebuilt.
+    """
+    _run_hub(
+        _hub_compose("up", "-d", "--build", "ui"),
+        "Could not build or start the web interface.",
+    )
+    _run_hub(
+        _hub_compose("up", "-d", "--force-recreate", "api", "mcp"),
+        "Could not restart the API and MCP server.",
+    )
+    port = _env_setting("EVIDENCELAB_PORT") or HUB_DEFAULT_PORT
+    wait_for_hub_api(port)
+    return port
+
+
+def run_hub_demo(args):
+    """Download, process and serve the demo with the published image."""
+    if args.skip_download:
+        print("[2/4] Skipping download (--skip-download)")
+    else:
+        print(f"[2/4] Downloading {args.num_docs} documents from World Bank API...")
+        download_documents_hub(args.num_docs)
+    print()
+    if args.skip_pipeline:
+        print("[3/4] Skipping pipeline (--skip-pipeline)")
+    else:
+        print(f"[3/4] Running pipeline on {args.num_docs} documents (hub)...")
+        run_pipeline_hub(args.num_docs)
+    print()
+    print("[4/4] Starting services...")
+    return f"http://localhost:{start_services_hub()}"
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -556,9 +753,13 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["host", "docker"],
+        choices=["host", "docker", "hub"],
         default="host",
-        help="Run pipeline on host (.venv) or in Docker (default: host)",
+        help=(
+            "Run pipeline on host (.venv), in the development Docker stack, "
+            "or with the published image via docker-compose.hub.yml "
+            "(default: host)"
+        ),
     )
     parser.add_argument(
         "--num-docs",
@@ -590,6 +791,13 @@ def main():
         help="Write .env and configure config.json then exit (no download, pipeline, or services)",
     )
     parser.add_argument(
+        "--version",
+        help=(
+            "With --mode hub: the published image tag to run, for example "
+            "1.6.5 or rc-v1.6.5 (default: EVIDENCELAB_VERSION, else latest)"
+        ),
+    )
+    parser.add_argument(
         "--provider",
         choices=[c["llm_provider"] for c in PROVIDER_COMBOS],
         help="With --ci: use this provider's combo instead of auto-selecting",
@@ -597,9 +805,17 @@ def main():
     args = parser.parse_args()
     if args.provider and not args.ci:
         parser.error("--provider is only used with --ci")
+    if args.version and args.mode != "hub":
+        parser.error("--version is only used with --mode hub")
 
     # Step 0: Interactive setup (always runs)
     combo, _ = interactive_setup(ci_mode=args.ci, provider=args.provider)
+    if args.mode == "hub":
+        # Saved so later `docker compose -f docker-compose.hub.yml ...`
+        # commands need no EVIDENCELAB_VERSION prefix.
+        version = resolve_hub_version(args.version)
+        write_env_file({"EVIDENCELAB_VERSION": version})
+        print(f"  Published image tag: {version} (EVIDENCELAB_VERSION in .env)")
 
     print()
     print("=" * 60)
@@ -622,38 +838,14 @@ def main():
         )
         sys.exit(0)
 
-    # Step 2: Download documents
-    if args.skip_download:
-        print("[2/4] Skipping download (--skip-download)")
-    else:
-        print(f"[2/4] Downloading {args.num_docs} documents from World Bank API...")
-        download_documents(args.num_docs)
-    print()
-
-    # Step 3: Run pipeline
-    if args.skip_pipeline:
-        print("[3/4] Skipping pipeline (--skip-pipeline)")
-    else:
-        print(f"[3/4] Running pipeline on {args.num_docs} documents ({args.mode})...")
-        if args.mode == "host":
-            print(
-                "       (Ensure infrastructure: docker compose up -d qdrant postgres)"
-            )
-            run_pipeline_host(args.num_docs)
-        else:
-            print("       (Ensure Docker: docker compose up -d --build)")
-            run_pipeline_docker(args.num_docs)
-    print()
-
-    # Step 4: Start UI services (embedding server, API, UI) and wait for API
-    print("[4/4] Starting services...")
-    start_services()
+    # Steps 2-4: download, pipeline, services
+    url = run_hub_demo(args) if args.mode == "hub" else run_local_demo(args)
     print()
 
     print("=" * 60)
     print("  Demo complete!")
     print()
-    print("  Open http://localhost:3000 to explore the results.")
+    print(f"  Open {url} to explore the results.")
     print(f"  Select the '{DEMO_DATASOURCE_KEY}' data source in the UI.")
     print("=" * 60)
 

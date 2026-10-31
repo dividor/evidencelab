@@ -24,15 +24,15 @@ Every tag covers `linux/amd64` and `linux/arm64`.
 
 ## Quick start
 
+You need Docker with Compose, Python 3 and git, plus an API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
+
 ```bash
 git clone https://github.com/dividor/evidencelab.git
 cd evidencelab
-git checkout v<version>
-cp .env.example .env   # set the values listed in the setup guide
-EVIDENCELAB_VERSION=<version> docker compose -f docker-compose.hub.yml up -d
+python3 scripts/demo/run_demo.py --mode hub
 ```
 
-Then open http://localhost:8080.
+The script asks for your provider and its key, generates every password and secret, loads three World Bank reports as demo data, and starts Evidence Lab. Then open http://localhost:8080. Add `--version 1.6.5` to run a specific release instead of `latest`. The setup guide covers manual setup, your own documents and upgrades.
 
 Each image carries build provenance and a software bill of materials:
 

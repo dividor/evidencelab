@@ -22,7 +22,7 @@
 name: evidencelab-hub
 
 x-python-image: &python-image
-  image: ${EVIDENCELAB_REGISTRY:-docker.io/astrobagel}/evidencelab:${EVIDENCELAB_VERSION:?Set EVIDENCELAB_VERSION, e.g. 1.6.5}
+  image: ${EVIDENCELAB_REGISTRY:-docker.io/astrobagel}/evidencelab:${EVIDENCELAB_VERSION:?Set EVIDENCELAB_VERSION (e.g. 1.6.5), or run python3 scripts/demo/run_demo.py --mode hub}
 
 x-app-env: &app-env
   QDRANT_HOST: http://qdrant:6333
@@ -41,7 +41,7 @@ x-app-env: &app-env
 # an error instead of Docker silently creating an empty directory.
 x-config-mount: &config-mount
   type: bind
-  source: ${EVIDENCELAB_CONFIG:-./config.json}
+  source: ${EVIDENCELAB_CONFIG:-${CONFIG_SRC:-.}/config.json}
   target: /app/config.json
   read_only: true
   bind:
@@ -54,8 +54,8 @@ services:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__MAX_REQUEST_SIZE_MB=10000
     volumes:
-      - ${DB_DATA_MOUNT:-./db}/qdrant:/qdrant/storage:z
-      - ${DB_DATA_MOUNT:-./db}/backups:/qdrant/snapshots:z
+      - qdrant-data:/qdrant/storage
+      - qdrant-snapshots:/qdrant/snapshots
     restart: unless-stopped
     networks:
       - app-network
@@ -73,7 +73,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
     volumes:
-      - ${DB_DATA_MOUNT:-./db}/postgres:/var/lib/postgresql/data:z
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
     networks:
       - app-network
@@ -223,6 +223,16 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+
+# Database storage lives in Docker named volumes, not host folders. On Docker
+# Desktop for Mac, Postgres refused a bind-mounted data folder ("data directory
+# has wrong ownership") on its first start, which left the cluster without its
+# database for good. Named volumes avoid that on every platform. List them with
+# `docker volume ls`; `down -v` deletes them.
+volumes:
+  postgres-data:
+  qdrant-data:
+  qdrant-snapshots:
 
 networks:
   app-network:
