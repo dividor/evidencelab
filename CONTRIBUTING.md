@@ -682,11 +682,11 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
    Hub personal access token (Read & Write) for `astrobagel`, store it with
    `gh secret set DOCKERHUB_TOKEN --env dockerhub`, and re-run the failed jobs.
 
-   The Docker Hub overview page (logo, tags, quick start) is
+   The Docker Hub overview page (screenshot, tags, quick start) is
    [`docker/README.md`](docker/README.md). It is not synced automatically, because
    that needs a token with delete rights. If the file changed in this release,
-   paste it into the repository's overview on Docker Hub. Its logo loads from
-   `main`, so it only renders once the release is merged.
+   paste it into the repository's overview on Docker Hub, and keep the two
+   identical. Its screenshot loads from `main`.
 
 7. **Start the next cycle**: go back to step 1 for `rc/vX.Y.(Z+1)`.
 
