@@ -4,11 +4,28 @@ For more detailed instructions refer to the [Evidence Lab GitHub Repo](https://g
 
 ### Demo (quickest way to try it)
 
-The interactive demo script guides you through provider selection, API key
-setup, downloads a few World Bank documents, and runs the full pipeline.
+Run Evidence Lab from the published Docker Hub image
+([`astrobagel/evidencelab`](https://hub.docker.com/r/astrobagel/evidencelab)),
+with nothing to build. You need Docker with Compose, Python 3 and git, plus an
+API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
 
-**Running on host** (recommended — can use hardware acceleration such as Apple
-MPS or NVIDIA CUDA, but may require some adjustments to suit your environment):
+```bash
+git clone https://github.com/dividor/evidencelab.git
+cd evidencelab
+python3 scripts/demo/run_demo.py --mode hub
+```
+
+The script asks which provider to use and for its key, then writes `.env`
+(generating every password and secret), adds a demo data source to
+`config.json`, downloads three World Bank reports, processes them inside the
+published image and starts Evidence Lab. When it finishes, open
+http://localhost:8080 and select the **Demo Data from World Bank** data source.
+Add `--version 1.6.5` to run a specific release instead of `latest`. See
+[Running from the Published Image](../admin/docker-images.md) for the details.
+
+**Running on host instead** (faster parsing, because it can use hardware
+acceleration such as Apple MPS or NVIDIA CUDA, but it needs the Python
+dependencies and may require some adjustments to suit your environment):
 
 ```bash
 # Create and activate a virtual environment
@@ -23,12 +40,7 @@ docker compose up -d qdrant postgres
 python scripts/demo/run_demo.py --mode host
 ```
 
-The script will automatically configure `.env`, add a demo datasource to
-`config.json`, download documents, and run the pipeline.
-
-**Running in Docker** (guaranteed to work on any Docker-capable machine, but
-can be significantly slower as it cannot utilise GPU or Apple MPS acceleration
-on your host):
+**Running with the development Docker stack** (builds the images from source):
 
 ```bash
 # Start all services
@@ -38,14 +50,15 @@ docker compose up -d --build
 python scripts/demo/run_demo.py --mode docker
 ```
 
-Once complete, open http://localhost:3000 and select the **demo** data source.
+With the host or development stack, open http://localhost:3000 and select the
+**Demo Data from World Bank** data source.
 
-**Options:**
+**Options** (any mode):
 
 ```bash
-python scripts/demo/run_demo.py --mode host --num-docs 10   # Download more documents
-python scripts/demo/run_demo.py --mode host --skip-download  # Re-run pipeline only
-python scripts/demo/run_demo.py --mode host --skip-pipeline  # Download only
+python3 scripts/demo/run_demo.py --mode hub --num-docs 10    # Download more documents
+python3 scripts/demo/run_demo.py --mode hub --skip-download  # Re-run pipeline only
+python3 scripts/demo/run_demo.py --mode hub --skip-pipeline  # Download only
 ```
 
 ### Full Setup
