@@ -1,0 +1,229 @@
+# Evidence Lab from the published Python image
+#
+# Pulls the API / MCP / pipeline image that .github/workflows/publish-images.yml
+# publishes, so a new install skips the long Python image build. The web
+# interface is built locally from this checkout (about 3 minutes), because its
+# build fixes the API key or sign-in mode, config.json and branding.
+#
+# Usage, from a checkout at the release you run:
+#   cp .env.example .env            # then fill in keys and passwords
+#   EVIDENCELAB_VERSION=1.6.5 docker compose -f docker-compose.hub.yml up -d
+#   open http://localhost:8080
+#
+# Ingest documents with the pipeline (same image, started on demand):
+#   docker compose -f docker-compose.hub.yml --profile pipeline up -d pipeline
+#   docker compose -f docker-compose.hub.yml exec pipeline \
+#     python -m pipeline.orchestrator --data-source <key>
+#
+# See docs/admin/docker-images.md.
+
+# Its own project name, so it never adopts containers from a dev stack
+# (docker-compose.yml) started in a checkout folder called evidencelab.
+name: evidencelab-hub
+
+x-python-image: &python-image
+  image: ${EVIDENCELAB_REGISTRY:-docker.io/astrobagel}/evidencelab:${EVIDENCELAB_VERSION:?Set EVIDENCELAB_VERSION, e.g. 1.6.5}
+
+x-app-env: &app-env
+  QDRANT_HOST: http://qdrant:6333
+  QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-evidencelab}
+  POSTGRES_USER: ${POSTGRES_USER:-evidencelab}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+  EMBEDDING_API_URL: http://embedding-server:7997
+  DATA_MOUNT_PATH: /app/data
+  PYTHONPATH: /app
+
+# config.json is read at start-up, so the API, MCP server and pipeline use the
+# file next to this compose file. create_host_path: false makes a missing file
+# an error instead of Docker silently creating an empty directory.
+x-config-mount: &config-mount
+  type: bind
+  source: ${EVIDENCELAB_CONFIG:-./config.json}
+  target: /app/config.json
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.18.3
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT__SERVICE__MAX_REQUEST_SIZE_MB=10000
+    volumes:
+      - ${DB_DATA_MOUNT:-./db}/qdrant:/qdrant/storage:z
+      - ${DB_DATA_MOUNT:-./db}/backups:/qdrant/snapshots:z
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e 'GET /readyz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q 'HTTP/1.1 200' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-evidencelab}
+      - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - ${DB_DATA_MOUNT:-./db}/postgres:/var/lib/postgresql/data:z
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evidencelab}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  embedding-server:
+    image: michaelf34/infinity:0.0.70
+    environment:
+      # Serve the same model as DENSE_EMBEDDING_MODEL in .env
+      - INFINITY_MODEL_ID=${DENSE_EMBEDDING_MODEL:-intfloat/multilingual-e5-large}
+      - INFINITY_BATCH_SIZE=8
+      - PYTHONUNBUFFERED=1
+    entrypoint: []
+    command: ["infinity_emb", "v2"]
+    restart: unless-stopped
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:7997/health || curl -fsS http://localhost:7997/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      # The first start downloads the embedding model.
+      start_period: 15m
+
+  api:
+    <<: *python-image
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      API_ROOT_PATH: /api
+      API_SECRET_KEY: ${API_SECRET_KEY:?Set API_SECRET_KEY to a random string (openssl rand -hex 32)}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
+      USER_MODULE: ${USER_MODULE:-off}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080}
+    volumes:
+      - *config-mount
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ${CACHE_MOUNT_PATH:-./.cache}/huggingface:/root/.cache/huggingface
+      - ${CACHE_MOUNT_PATH:-./.cache}/fastembed:/root/.cache/fastembed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embedding-server:
+        condition: service_healthy
+    networks:
+      - app-network
+    working_dir: /app
+    command: bash -c "alembic upgrade head && uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1"
+    restart: unless-stopped
+
+  mcp:
+    <<: *python-image
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      MCP_API_KEY: ${MCP_API_KEY:-}
+    volumes:
+      - *config-mount
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+    depends_on:
+      - api
+    networks:
+      - app-network
+    working_dir: /app
+    command: python -m mcp_server.http_server
+    restart: unless-stopped
+
+  # Started only with --profile pipeline; exec into it to run ingestion jobs.
+  pipeline:
+    <<: *python-image
+    profiles: ["pipeline"]
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+    volumes:
+      - *config-mount
+      - ${DATA_MOUNT_PATH:-./data}:/app/data
+      - ${CACHE_MOUNT_PATH:-./.cache}/huggingface:/root/.cache/huggingface
+      - ${CACHE_MOUNT_PATH:-./.cache}/fastembed:/root/.cache/fastembed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embedding-server:
+        condition: service_healthy
+    networks:
+      - app-network
+    working_dir: /app
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+  # nginx serving the React build; proxies /api to api:8000 and /mcp to mcp:8001.
+  # Built locally with the same settings as docker-compose.prod.yml; rebuild
+  # after changing config.json, branding or any REACT_APP_* value:
+  #   docker compose -f docker-compose.hub.yml build ui
+  # Bound to 127.0.0.1 by default: put your own HTTPS proxy in front, or set
+  # EVIDENCELAB_BIND=0.0.0.0 to expose it directly.
+  ui:
+    build:
+      context: .
+      dockerfile: ui/frontend/Dockerfile.prod
+      additional_contexts:
+        customize: ${CUSTOMIZE_ASSETS:-./customize}
+        config: ${CONFIG_SRC:-.}
+      args:
+        # With sign-in off the browser sends this key on every API call, so
+        # anyone who can open the page can read it. Set it to API_SECRET_KEY
+        # only on a private network; on a shared server turn sign-in on and
+        # leave it empty. Required (may be empty) so the choice is deliberate.
+        - REACT_APP_API_KEY=${REACT_APP_API_KEY?Set REACT_APP_API_KEY in .env (see docs/admin/docker-images.md)}
+        - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
+        - REACT_APP_API_BASE_URL=/api
+        - REACT_APP_BASE_PATH=${REACT_APP_BASE_PATH:-}
+        - REACT_APP_AI_SUMMARY_ON=${REACT_APP_AI_SUMMARY_ON:-false}
+        - REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS=${REACT_APP_SEARCH_SEMANTIC_HIGHLIGHTS:-true}
+        - REACT_APP_PDF_SEMANTIC_HIGHLIGHTS=${REACT_APP_PDF_SEMANTIC_HIGHLIGHTS:-true}
+        - REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD=${REACT_APP_SEMANTIC_HIGHLIGHT_THRESHOLD:-0.4}
+        - REACT_APP_USER_FEEDBACK=${REACT_APP_USER_FEEDBACK:-0}
+        - REACT_APP_OPERATOR_NAME=${REACT_APP_OPERATOR_NAME:-}
+        - REACT_APP_OPERATOR_ADDRESS=${REACT_APP_OPERATOR_ADDRESS:-}
+        - REACT_APP_HOSTING_REGION=${REACT_APP_HOSTING_REGION:-}
+        - REACT_APP_SITE_URL=${REACT_APP_SITE_URL:-}
+        - REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL:-}
+    image: evidencelab-hub-ui:local
+    ports:
+      - "${EVIDENCELAB_BIND:-127.0.0.1}:${EVIDENCELAB_PORT:-8080}:80"
+    environment:
+      - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
+      - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-}
+    depends_on:
+      - api
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge

@@ -207,25 +207,24 @@ jobs:
         with:
           driver: docker
 
-      - name: Build base image (required by backend)
+      # Scan the images production runs and publish-images.yml publishes:
+      # the Python runtime target and the nginx UI build.
+      - name: Build API image for scanning
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.base
-          tags: evidencelab-ai-base:latest
-
-      - name: Build backend image for scanning
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ui/backend/Dockerfile
+          file: Dockerfile
+          target: runtime
           tags: evidencelab-api:scan
 
       - name: Build frontend image for scanning
         uses: docker/build-push-action@v7
         with:
-          context: ui/frontend
-          file: ui/frontend/Dockerfile
+          context: .
+          file: ui/frontend/Dockerfile.prod
+          build-contexts: |
+            customize=./customize
+            config=.
           tags: evidencelab-ui:scan
 
       - name: Run Trivy on API image
@@ -384,7 +383,8 @@ jobs:
 
       - name: Build shared Python image
         run: |
-          docker build -t evidencelab-ai-python:latest --target runtime .
+          # The test target adds the browsers the UI integration tests drive.
+          docker build -t evidencelab-ai-python:latest --target test .
         working-directory: ${{ github.workspace }}
 
       - name: Start Docker services

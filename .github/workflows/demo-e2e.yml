@@ -89,7 +89,7 @@ jobs:
           driver: docker
 
       - name: Build base image
-        run: docker build -t evidencelab-ai-python:latest --target runtime .
+        run: docker build -t evidencelab-ai-python:latest --target test .
 
       - name: Build all service images
         run: docker compose build
