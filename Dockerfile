@@ -9,7 +9,7 @@
 # never downloads the test browsers.
 
 # Stage 1: system packages and Python dependencies shared by every target
-FROM python:3.11-slim AS base
+FROM python:3.15-slim AS base
 
 # LibreOffice converts Word and spreadsheet files. The two font packages stay
 # here because LibreOffice uses installed fonts when it renders documents.
