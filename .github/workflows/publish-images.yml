@@ -11,8 +11,12 @@
 #   tag vX.Y.Z    -> X.Y.Z, X.Y and latest (latest skipped for pre-release tags)
 #   push rc/vX.Y.Z -> rc-vX.Y.Z (moves with the release candidate)
 #   manual run    -> the branch name
-# Pull requests that touch the image inputs build it without pushing,
-# so a broken Dockerfile is caught before it reaches an RC branch.
+# Every pull request to main or an RC branch builds both platforms without
+# pushing. The two build jobs are required checks, so a change that breaks the
+# image (a Dockerfile, a requirement, a base-image bump) cannot be merged, by a
+# person or by the Dependabot auto-merge. They run on every PR because a
+# required check that is skipped by a path filter never reports, which would
+# block the PR.
 #
 # Nothing broken reaches a published tag: the rc/** ruleset refuses a push
 # whose required CI checks have not passed, and release tags are cut from main
@@ -33,12 +37,6 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, 'rc/**' ]
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - requirements.txt
-      - ui/backend/requirements.txt
-      - .github/workflows/publish-images.yml
   workflow_dispatch:
 
 permissions: {}

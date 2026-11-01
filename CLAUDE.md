@@ -49,7 +49,7 @@ Notes:
 |---|---|
 | Push to `rc/vX.Y.Z` (every PR merged into the RC) | `rc-vX.Y.Z`, moving, for testing |
 | Push of release tag `vX.Y.Z` (release step 6 in CONTRIBUTING.md) | `X.Y.Z`, `X.Y`, `latest` (pre-release tags get no `X.Y`/`latest`) |
-| PR touching `Dockerfile`, requirements or the workflow | build only, both platforms, no push |
+| Every PR to `main` or `rc/**` | build only, both platforms, no push; `build (amd64)` and `build (arm64)` are required checks |
 
 - Push credentials: GitHub environment `dockerhub` (only `rc/**` branches and `v*` tags may use it), secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` (Read & Write PAT), repo variable `DOCKERHUB_NAMESPACE=astrobagel`. The repo-level `DOCKERHUB_*` secrets are only for CI pull rate limits. A failed "Log in to Docker Hub" step means the token expired: the user creates a new one; never ask for it in chat.
 - **The web interface is deliberately not published.** Its build bakes in `REACT_APP_API_KEY` or the sign-in mode, `config.json` and branding, so a shared image either gets 401s from the API or exposes a key. `docker-compose.hub.yml` pulls the Python image, mounts `config.json` at `/app/config.json`, and builds the UI locally with the production build args. Don't add a UI image without runtime configuration, and never bake a key into a published image.
