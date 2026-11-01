@@ -14,10 +14,10 @@ The database, vector store and embedding model use their own upstream images: Po
 
 | Tag | Meaning |
 |---|---|
-| `1.6.5` | An exact release. Use this in production. |
-| `1.6` | The newest patch of a minor release. |
+| `X.Y.Z` | An exact release. Use this in production. |
+| `X.Y` | The newest patch of a minor release. |
 | `latest` | The newest release. |
-| `rc-v1.6.6` | The release candidate in progress. It changes as work is merged and is for testing only. |
+| `rc-vX.Y.Z` | The release candidate in progress. It changes as work is merged and is for testing only. |
 
 Images are published from v1.6.5 onward. Earlier releases have no published image; build them from source with `docker-compose.prod.yml`.
 
@@ -42,7 +42,7 @@ When it finishes, open http://localhost:8080 and choose the demo data source.
 
 Options:
 
-- `--version 1.6.5` picks the image tag. The default is `EVIDENCELAB_VERSION` from `.env`, else `latest`. Check out the matching tag, `git checkout v1.6.5`, so the compose file and web interface match the image.
+- `--version <tag>` picks the image tag from the table above. The default is `EVIDENCELAB_VERSION` from `.env`, else `latest`. When you pin a release, check out its git tag, `git checkout v<tag>`, so the compose file and web interface match the image.
 - `--num-docs 10` loads more documents.
 - `--skip-download` or `--skip-pipeline` re-runs only part of it.
 
@@ -63,7 +63,7 @@ cp .env.example .env
 
 Set at least these values:
 
-- `EVIDENCELAB_VERSION`: the image tag, for example `1.6.5`.
+- `EVIDENCELAB_VERSION`: the image tag, such as `latest` or a release from the tags table.
 - `POSTGRES_PASSWORD`: any strong password.
 - `API_SECRET_KEY`: a random string, for example from `openssl rand -hex 32`. The API will not start without it.
 - `AUTH_SECRET_KEY`: a different random string of 32 or more characters.
