@@ -78,7 +78,7 @@
     "eslint": "^8.57.0",
     "eslint-plugin-security": "^2.1.0",
     "eslint-plugin-sonarjs": "^0.25.1",
-    "http-proxy-middleware": "^2.0.10"
+    "http-proxy-middleware": "^2.0.11"
   },
   "jest": {
     "transformIgnorePatterns": [
