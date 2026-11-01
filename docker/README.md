@@ -15,10 +15,10 @@ This image runs the API, the MCP server and the document pipeline. One image run
 
 | Tag | Meaning |
 |---|---|
-| `1.6.5` | An exact release. Use this in production. |
-| `1.6` | The newest patch of a minor release. |
+| `X.Y.Z` | An exact release. Use this in production. |
+| `X.Y` | The newest patch of a minor release. |
 | `latest` | The newest release. |
-| `rc-v1.6.6` | The release candidate in progress, for testing only. It changes as work is merged. |
+| `rc-vX.Y.Z` | The release candidate in progress, for testing only. It changes as work is merged. |
 
 Every tag covers `linux/amd64` and `linux/arm64`.
 
@@ -32,7 +32,7 @@ cd evidencelab
 python3 scripts/demo/run_demo.py --mode hub
 ```
 
-The script asks for your provider and its key, generates every password and secret, loads three World Bank reports as demo data, and starts Evidence Lab. Then open http://localhost:8080. Add `--version 1.6.5` to run a specific release instead of `latest`. The setup guide covers manual setup, your own documents and upgrades.
+The script asks for your provider and its key, generates every password and secret, loads three World Bank reports as demo data, and starts Evidence Lab. Then open http://localhost:8080. It runs the newest release, `latest`; add `--version` with a tag to pin a specific release. The setup guide covers manual setup, your own documents and upgrades.
 
 Each image carries build provenance and a software bill of materials:
 

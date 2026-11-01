@@ -20,7 +20,8 @@ The script asks which provider to use and for its key, then writes `.env`
 `config.json`, downloads three World Bank reports, processes them inside the
 published image and starts Evidence Lab. When it finishes, open
 http://localhost:8080 and select the **Demo Data from World Bank** data source.
-Add `--version 1.6.5` to run a specific release instead of `latest`. See
+It runs the newest release, `latest`; add `--version` with a tag to pin a
+specific release. See
 [Running from the Published Image](../admin/docker-images.md) for the details.
 
 **Running on host instead** (faster parsing, because it can use hardware
