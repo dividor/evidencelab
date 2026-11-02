@@ -2,6 +2,8 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import API_BASE_URL, { API_KEY, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { useRatings, Rating } from '../../hooks/useRatings';
+import { canRate } from '../../utils/ratingAccess';
+import { generateUUID } from '../../utils/uuid';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
 import {
   streamAssistantChat,
@@ -53,6 +55,11 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   // Thread state
   const [threads, setThreads] = useState<ThreadListItem[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Anonymous conversations are not saved, so they never get a thread ID.
+  // Their answers are rated against an ID made for the conversation instead,
+  // as Search rates against the searchId it makes.
+  const [anonymousConversationId, setAnonymousConversationId] = useState(generateUUID);
+  const ratingReferenceId = isAuthenticated ? activeThreadId : anonymousConversationId;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Abort controller for cancelling stream
@@ -75,8 +82,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     refresh: refreshRatings,
   } = useRatings({
     ratingType,
-    referenceId: activeThreadId || '',
-    enabled: isAuthenticated && !!activeThreadId,
+    referenceId: ratingReferenceId || '',
+    enabled: canRate(isAuthenticated) && !!ratingReferenceId,
   });
 
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
@@ -206,6 +213,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     abortRef.current = null;
     setIsStreaming(false);
     setActiveThreadId(null);
+    setAnonymousConversationId(generateUUID());
     setMessages([]);
     setStreamingContent('');
     setStreamingPhase('');
@@ -532,7 +540,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
           initialScore={ratingModalInitialScore}
           initialComment={chatRatings.get(ratingModalMessageId)?.comment || ''}
           onSubmit={(score, comment) => {
-            if (!activeThreadId) return;
+            if (!ratingReferenceId) return;
             // Build context with the assistant response for admin visibility
             const ratedMsg = messages.find((m) => m.id === ratingModalMessageId);
             const ratingContext: Record<string, any> = {};
@@ -557,7 +565,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
             }
             submitChatRating({
               ratingType,
-              referenceId: activeThreadId,
+              referenceId: ratingReferenceId,
               itemId: ratingModalMessageId,
               score,
               comment,

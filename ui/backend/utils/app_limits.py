@@ -20,6 +20,10 @@ def get_rate_limit_translate() -> str:
     return os.environ.get("RATE_LIMIT_TRANSLATE", "60/minute")
 
 
+def get_rate_limit_ratings() -> str:
+    return os.environ.get("RATE_LIMIT_RATINGS", "30/minute")
+
+
 limiter = Limiter(key_func=get_remote_address)
 
 
