@@ -29,6 +29,16 @@ describe('streamAssistantChat search_settings payload', () => {
     expect(body.search_settings).toMatchObject({ dense_weight: 0.9, wide_search: true, wide_group_size: 3, wide_limit: 10 });
   });
 
+  test('forwards the model combo reranker cap and embedding model', async () => {
+    const body = await captureBody({ rerankModelPageSize: 10, embeddingModel: 'e5_large' });
+    expect(body.search_settings).toEqual({ rerank_model_page_size: 10, embedding_model: 'e5_large' });
+  });
+
+  test('omits the combo keys when the combo has none', async () => {
+    const body = await captureBody({ denseWeight: 0.9, rerankModelPageSize: null, embeddingModel: null });
+    expect(body.search_settings).toEqual({ dense_weight: 0.9 });
+  });
+
   test('omits wide keys when not set', async () => {
     const body = await captureBody({ denseWeight: 0.9 });
     expect(body.search_settings).toEqual({ dense_weight: 0.9 });

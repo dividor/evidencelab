@@ -108,6 +108,14 @@ async def mcp_ask_assistant(
             else assistant_cfg
         )
         reranker_model = combo.get("reranker_model")
+        combo_search_settings = {
+            key: combo[combo_key]
+            for key, combo_key in (
+                ("rerank_model_page_size", "rerank_model_page_size"),
+                ("embedding_model", "embedding_model"),
+            )
+            if combo.get(combo_key) is not None
+        }
 
         async for event in stream_research_response(
             query=query,
@@ -115,6 +123,7 @@ async def mcp_ask_assistant(
             deep_research=deep_research,
             model_key=model_key,
             reranker_model=reranker_model,
+            search_settings=combo_search_settings or None,
         ):
             event_type = event.get("type")
             if event_type == "token":

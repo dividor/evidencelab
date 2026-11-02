@@ -49,6 +49,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # The Python version is part of the stack (3.11), not a routine bump:
+      # torch and other pinned wheels lag new Python releases, and 3.15 broke
+      # every image build (#560). Move Python on purpose, in its own PR.
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
 
   # Docker dependencies - backend
   - package-ecosystem: "docker"

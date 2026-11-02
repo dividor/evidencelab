@@ -3,9 +3,9 @@ import API_BASE_URL, { API_KEY, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { useRatings, Rating } from '../../hooks/useRatings';
 import { ChatMessage, SearchResult, SearchToolCall, SourceReference, SummaryModelConfig, ThreadListItem } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
 import {
   streamAssistantChat,
+  AssistantSearchSettings,
   AssistantStreamHandlers,
 } from '../../utils/assistantStream';
 import { useActivityLogging } from '../../hooks/useActivityLogging';
@@ -18,7 +18,7 @@ interface AssistantTabProps {
   dataSource: string;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   exampleQueries?: string[];
   onResultClick?: (result: SearchResult) => void;
 }

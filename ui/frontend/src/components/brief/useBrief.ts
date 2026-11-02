@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LinkTarget } from '../../utils/exportResultsToDocx';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
+import type { AssistantSearchSettings } from '../../utils/assistantStream';
 import { buildCondenseInstruction, countWords, exceedsTarget } from './briefLength';
 import {
   BriefActivityEvent,
@@ -286,7 +286,7 @@ export interface UseBriefOptions {
   // settings). Passed only for logged-in users so briefs search like the rest
   // of the app; null for anonymous users (no rerank).
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   // Identifier for the logged-in user; saved briefs are scoped to it. When
   // absent (anonymous), the shared default bucket is used.
   userKey?: string | null;
