@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import API_BASE_URL, { APP_BASE_PATH, USER_MODULE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { SearchResult, SourceReference, SummaryModelConfig } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
+import type { AssistantSearchSettings } from '../../utils/assistantStream';
 import {
   buildExportFilename,
   exportResultsToDocxBlob,
@@ -231,7 +231,7 @@ interface BriefTabProps {
   // The app's active reranker + search settings (group-seeded for logged-in
   // users). Applied to brief searches only when logged in.
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   // Model for the LLM semantic highlighter (combo.semantic_highlighting_model),
   // used to mark claim-supporting spans in citation excerpts.
   semanticModelConfig?: SummaryModelConfig | null;

@@ -15,24 +15,24 @@ This image runs the API, the MCP server and the document pipeline. One image run
 
 | Tag | Meaning |
 |---|---|
-| `1.6.5` | An exact release. Use this in production. |
-| `1.6` | The newest patch of a minor release. |
+| `X.Y.Z` | An exact release. Use this in production. |
+| `X.Y` | The newest patch of a minor release. |
 | `latest` | The newest release. |
-| `rc-v1.6.6` | The release candidate in progress, for testing only. It changes as work is merged. |
+| `rc-vX.Y.Z` | The release candidate in progress, for testing only. It changes as work is merged. |
 
 Every tag covers `linux/amd64` and `linux/arm64`.
 
 ## Quick start
 
+You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose, [Python 3](https://www.python.org/downloads/) and git, plus an API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
+
 ```bash
 git clone https://github.com/dividor/evidencelab.git
 cd evidencelab
-git checkout v<version>
-cp .env.example .env   # set the values listed in the setup guide
-EVIDENCELAB_VERSION=<version> docker compose -f docker-compose.hub.yml up -d
+python3 scripts/demo/run_demo.py --mode hub
 ```
 
-Then open http://localhost:8080.
+The script asks for your provider and its key, generates every password and secret, loads three World Bank reports as demo data, and starts Evidence Lab. Then open http://localhost:8080. It runs the newest release, `latest`; add `--version` with a tag to pin a specific release. The setup guide covers manual setup, your own documents and upgrades.
 
 Each image carries build provenance and a software bill of materials:
 

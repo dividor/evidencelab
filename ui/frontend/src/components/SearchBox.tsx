@@ -14,6 +14,8 @@ interface SearchBoxProps {
   exampleQueries?: string[];
   onExampleQueryClick?: (query: string) => void;
   greetingMessage?: string;
+  /** False until the selected model combo is applied; Search waits until then. */
+  modelsReady?: boolean;
 }
 
 export const SearchBox = ({
@@ -30,6 +32,7 @@ export const SearchBox = ({
   exampleQueries,
   onExampleQueryClick,
   greetingMessage,
+  modelsReady = true,
 }: SearchBoxProps) => {
   if (!isActive) {
     return null;
@@ -89,7 +92,7 @@ export const SearchBox = ({
                 </div>
               )}
             </div>
-            <button type="submit" disabled={loading} className="search-button">
+            <button type="submit" disabled={loading || !modelsReady} className="search-button">
               {loading ? (
                 <>
                   {Array.from('Searching...').map((char, index) => (
@@ -117,7 +120,7 @@ export const SearchBox = ({
             placeholder={placeholder}
             className="search-input"
           />
-          <button type="submit" disabled={loading} className="search-button">
+          <button type="submit" disabled={loading || !modelsReady} className="search-button">
             {loading ? (
               <>
                 {Array.from('Searching...').map((char, index) => (
