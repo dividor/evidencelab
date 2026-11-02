@@ -6,7 +6,8 @@ For more detailed instructions refer to the [Evidence Lab GitHub Repo](https://g
 
 Run Evidence Lab from the published Docker Hub image
 ([`astrobagel/evidencelab`](https://hub.docker.com/r/astrobagel/evidencelab)),
-with nothing to build. You need Docker with Compose, Python 3 and git, plus an
+with nothing to build. You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose,
+[Python 3](https://www.python.org/downloads/) and git, plus an
 API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
 
 ```bash

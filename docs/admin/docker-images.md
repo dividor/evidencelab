@@ -23,7 +23,7 @@ Images are published from v1.6.5 onward. Earlier releases have no published imag
 
 ### Quick start
 
-You need Docker with Compose, Python 3 (no extra packages), git, and about 25 GB of free disk for the images and the embedding model. You also need an API key for one model provider: Azure Foundry, Hugging Face (a free token works) or Google Vertex.
+You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose, [Python 3](https://www.python.org/downloads/) (no extra packages), git, and about 25 GB of free disk for the images and the embedding model. You also need an API key for one model provider: Azure Foundry, Hugging Face (a free token works) or Google Vertex.
 
 ```bash
 git clone https://github.com/dividor/evidencelab.git

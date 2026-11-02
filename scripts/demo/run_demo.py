@@ -26,8 +26,11 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,6 +43,17 @@ HUB_COMPOSE_FILE = "docker-compose.hub.yml"
 HUB_DEFAULT_PORT = "8080"
 HUB_DEFAULT_VERSION = "latest"
 HUB_READY_ATTEMPTS = 150  # x 2 s: the API waits for the embedding model first
+# The services the API and pipeline wait for. The embedding server is slow on
+# first start because it downloads and loads its model.
+HUB_DEPENDENCIES = ("postgres", "qdrant", "embedding-server")
+HUB_LOGGED_DEPENDENCY = "embedding-server"
+# Longer than the embedding server's 15-minute start_period in the compose file.
+HUB_DEPENDENCY_TIMEOUT_SECONDS = 20 * 60
+DOCKER_INSTALL_URL = "https://docs.docker.com/get-started/get-docker/"
+DOCKER_CHECK_TIMEOUT_SECONDS = 30
+# Converting one document printed nothing for 185 s on a Mac CPU, so the
+# pipeline step says it is still working after this long without output.
+QUIET_NOTICE_SECONDS = 60
 
 DEMO_DATASOURCE_KEY = "Demo Data from World Bank"
 DEMO_DATA_SUBDIR = "demo"
@@ -537,7 +551,6 @@ def run_pipeline_host(num_docs):
 
 def start_services():
     """Start embedding server, API, and UI, then wait for the API to be ready."""
-    import time
     import urllib.error
     import urllib.request
 
@@ -633,6 +646,210 @@ def _run_hub(cmd, failure):
         sys.exit(1)
 
 
+def _docker_problem(problem, action):
+    """Explain why Docker cannot be used, then stop."""
+    print()
+    print(f"ERROR: {problem}")
+    print(f"       {action}")
+    print(f"       Get Docker Desktop: {DOCKER_INSTALL_URL}")
+    sys.exit(1)
+
+
+def _docker_command_works(cmd):
+    """Return True if a Docker command exits cleanly within the time limit."""
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=DOCKER_CHECK_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return result.returncode == 0
+
+
+def check_docker():
+    """Stop with instructions unless Docker, Compose and the Docker engine work.
+
+    Runs before any questions, so nobody types an API key only to find
+    Docker missing.
+    """
+    if shutil.which("docker") is None:
+        _docker_problem(
+            "Docker is not installed.",
+            "Install Docker Desktop, start it, then run this script again.",
+        )
+    if not _docker_command_works(["docker", "compose", "version"]):
+        _docker_problem(
+            "Docker Compose is not available.",
+            "Docker Desktop includes it. Install or update Docker Desktop.",
+        )
+    if not _docker_command_works(["docker", "info"]):
+        _docker_problem(
+            "Docker is installed but not running.",
+            "Start Docker Desktop, wait until it shows Docker is running, "
+            "then run this script again.",
+        )
+
+
+def _hub_dependency_states():
+    """Return {service: "state health"} for the services the pipeline needs."""
+    result = subprocess.run(
+        _hub_compose("ps", "--all", "--format", "{{.Service}} {{.State}} {{.Health}}"),
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print("ERROR: Could not read the state of the services.")
+        print(result.stderr.strip())
+        sys.exit(1)
+    states = {}
+    for line in result.stdout.splitlines():
+        service, _, status = line.strip().partition(" ")
+        if service in HUB_DEPENDENCIES:
+            states[service] = status
+    return states
+
+
+def _hub_dependency_problem(states):
+    """Return a message if a service stopped or failed its health check."""
+    for service in HUB_DEPENDENCIES:
+        status = states.get(service, "")
+        if status.startswith(("exited", "dead")) or status.endswith("unhealthy"):
+            return f"The {service} service is {status}."
+    return None
+
+
+def _hub_dependencies_ready(states):
+    return all(states.get(service) == "running healthy" for service in HUB_DEPENDENCIES)
+
+
+def _wait_until_dependencies_ready(timeout, delay):
+    """Poll the services until all are healthy; stop on failure or timeout."""
+    deadline = time.monotonic() + timeout
+    while True:
+        states = _hub_dependency_states()
+        if _hub_dependencies_ready(states):
+            return
+        problem = _hub_dependency_problem(states)
+        if problem is None and time.monotonic() >= deadline:
+            problem = f"The services were not ready after {timeout // 60} minutes."
+        if problem:
+            print()
+            print(f"ERROR: {problem}")
+            print(
+                f"       Check the log: docker compose -f {HUB_COMPOSE_FILE} "
+                f"logs {HUB_LOGGED_DEPENDENCY}"
+            )
+            sys.exit(1)
+        time.sleep(delay)
+
+
+def wait_for_hub_dependencies(timeout=HUB_DEPENDENCY_TIMEOUT_SECONDS, delay=5.0):
+    """Start the database, vector store and embedding server and wait for them.
+
+    The pipeline and API wait for these too, but silently: on a first run the
+    embedding server takes minutes to download and load its model, and the
+    script looked hung. Its log is shown until everything is healthy.
+    """
+    _run_hub(
+        _hub_compose("up", "-d", *HUB_DEPENDENCIES),
+        "Could not start the database, vector store and embedding server.",
+    )
+    if _hub_dependencies_ready(_hub_dependency_states()):
+        print("  Database, vector store and embedding server are ready.")
+        return
+    print(
+        "  Waiting for the embedding server to load its model. The first start "
+        "downloads it, which can take several minutes. Its log follows."
+    )
+    follower = subprocess.Popen(
+        _hub_compose("logs", "--follow", "--tail", "20", HUB_LOGGED_DEPENDENCY),
+        cwd=str(PROJECT_ROOT),
+    )
+    try:
+        _wait_until_dependencies_ready(timeout, delay)
+    finally:
+        follower.terminate()
+        follower.wait()
+    print("  Database, vector store and embedding server are ready.")
+
+
+def _pump_output(stream, last_output):
+    """Copy raw bytes to the terminal, so progress bars still redraw in place."""
+    while True:
+        chunk = os.read(stream.fileno(), 4096)
+        if not chunk:
+            return
+        sys.stdout.flush()
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+        last_output[0] = time.monotonic()
+
+
+def _quiet_notice(quiet_seconds):
+    minutes = int(quiet_seconds // 60)
+    unit = "minute" if minutes == 1 else "minutes"
+    print(
+        f"  Still working: no new output for {minutes} {unit}. Converting a "
+        "long document can take several minutes.",
+        flush=True,
+    )
+
+
+def run_streaming(cmd, quiet_after=QUIET_NOTICE_SECONDS, check_every=5.0):
+    """Run ``cmd``, show its output as it arrives, and say when it goes quiet.
+
+    Returns the exit code.
+    """
+    proc = subprocess.Popen(
+        cmd, cwd=str(PROJECT_ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    )
+    last_output = [time.monotonic()]
+    pump = threading.Thread(target=_pump_output, args=(proc.stdout, last_output))
+    pump.start()
+    last_notice = 0.0
+    while True:
+        try:
+            returncode = proc.wait(timeout=check_every)
+            break
+        except subprocess.TimeoutExpired:
+            now = time.monotonic()
+            quiet = now - last_output[0]
+            if quiet >= quiet_after and now - last_notice >= quiet_after:
+                _quiet_notice(quiet)
+                last_notice = now
+    pump.join()
+    proc.stdout.close()
+    return returncode
+
+
+def migrate_hub_database():
+    """Create or update the database tables before the pipeline writes to them.
+
+    The API does this when it starts, but the demo runs the pipeline before
+    the API has ever started, and the pipeline then logged a traceback for
+    every document when it recorded LLM usage in the missing user_activity
+    table.
+    """
+    _run_hub(
+        _hub_compose(
+            "--profile",
+            "pipeline",
+            "run",
+            "--rm",
+            "--no-deps",
+            "pipeline",
+            "alembic",
+            "upgrade",
+            "head",
+        ),
+        "Database migrations failed.",
+    )
+
+
 def download_documents_hub(num_docs):
     """Download the demo documents inside the published image.
 
@@ -659,31 +876,36 @@ def download_documents_hub(num_docs):
 
 
 def run_pipeline_hub(num_docs):
-    """Run the pipeline in the published image (starts its dependencies)."""
-    _run_hub(
-        _hub_compose(
-            "--profile",
-            "pipeline",
-            "run",
-            "--rm",
-            "pipeline",
-            "python",
-            "-m",
-            "pipeline.orchestrator",
-            "--data-source",
-            DEMO_DATA_SUBDIR,
-            "--num-records",
-            str(num_docs),
-            "--skip-download",
-        ),
-        "Pipeline failed. Check the services with: "
-        f"docker compose -f {HUB_COMPOSE_FILE} ps",
+    """Run the pipeline in the published image, showing its log as it runs."""
+    print("  The pipeline log follows. Parsing a document can take several minutes.")
+    cmd = _hub_compose(
+        "--profile",
+        "pipeline",
+        "run",
+        "--rm",
+        # No pseudo-terminal: the output goes through run_streaming.
+        "--no-TTY",
+        "pipeline",
+        "python",
+        "-m",
+        "pipeline.orchestrator",
+        "--data-source",
+        DEMO_DATA_SUBDIR,
+        "--num-records",
+        str(num_docs),
+        "--skip-download",
     )
+    print(f"  Running: {' '.join(cmd)}")
+    if run_streaming(cmd) != 0:
+        print(
+            "ERROR: Pipeline failed. Check the services with: "
+            f"docker compose -f {HUB_COMPOSE_FILE} ps"
+        )
+        sys.exit(1)
 
 
 def wait_for_hub_api(port, attempts=HUB_READY_ATTEMPTS, delay=2.0):
     """Wait until the API answers through the web interface; stop if it never does."""
-    import time
     import urllib.error
     import urllib.request
 
@@ -732,6 +954,11 @@ def run_hub_demo(args):
     else:
         print(f"[2/4] Downloading {args.num_docs} documents from World Bank API...")
         download_documents_hub(args.num_docs)
+    print()
+    print("Starting the database, vector store and embedding server...")
+    wait_for_hub_dependencies()
+    print("Preparing the database...")
+    migrate_hub_database()
     print()
     if args.skip_pipeline:
         print("[3/4] Skipping pipeline (--skip-pipeline)")
@@ -807,6 +1034,9 @@ def main():
         parser.error("--provider is only used with --ci")
     if args.version and args.mode != "hub":
         parser.error("--version is only used with --mode hub")
+
+    if args.mode in ("hub", "docker") and not args.setup_only:
+        check_docker()
 
     # Step 0: Interactive setup (always runs)
     combo, _ = interactive_setup(ci_mode=args.ci, provider=args.provider)
