@@ -29,6 +29,7 @@ import { useRatings } from '../../hooks/useRatings';
 import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
 import { generateUUID } from '../../utils/uuid';
+import { canRate } from '../../utils/ratingAccess';
 
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
@@ -1204,13 +1205,13 @@ const HeatmapRatingWidget: React.FC<HeatmapRatingWidgetProps> = ({
   } = useRatings({
     ratingType: 'heatmap',
     referenceId: heatmapId || undefined,
-    enabled: isAuthenticated && hasCompletedGridSearch && !!heatmapId,
+    enabled: canRate(isAuthenticated) && hasCompletedGridSearch && !!heatmapId,
   });
   const existing = ratings.get('');
   const [modalOpen, setModalOpen] = useState(false);
   const [initialScore, setInitialScore] = useState(0);
 
-  if (!hasCompletedGridSearch || !isAuthenticated) return null;
+  if (!hasCompletedGridSearch || !canRate(isAuthenticated)) return null;
 
   return (
     <>

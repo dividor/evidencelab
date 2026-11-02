@@ -6,6 +6,7 @@ import { SearchSettings } from '../../types/auth';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import StarRating from '../ratings/StarRating';
 import { ToolCallPanel } from './ToolCallPanel';
+import { canRate } from '../../utils/ratingAccess';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -32,7 +33,7 @@ export const ChatMessageComponent: React.FC<ChatMessageProps> = ({
   const isUser = message.role === 'user';
   const hasSources = !isUser && message.sources && message.sources.length > 0;
   const hasIndexedSources = hasSources && message.sources!.some((s) => s.index != null);
-  const showRating = !isUser && isAuthenticated && onRequestRatingModal && message.content;
+  const showRating = !isUser && canRate(isAuthenticated) && onRequestRatingModal && message.content;
 
   return (
     <div className={`chat-message ${isUser ? 'chat-message-user' : 'chat-message-assistant'}`}>

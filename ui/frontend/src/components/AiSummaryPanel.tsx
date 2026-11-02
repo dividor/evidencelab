@@ -14,6 +14,7 @@ import { DrilldownGraphView } from './DrilldownGraphView';
 import { exportResearchToPdf } from '../utils/exportResearch';
 import { patchNodeInTree } from '../utils/drilldownUtils';
 import StarRating from './ratings/StarRating';
+import { canRate } from '../utils/ratingAccess';
 
 interface AiSummaryPanelProps {
   enabled: boolean;
@@ -259,7 +260,7 @@ const AiSummaryFooter = ({
               View Prompt
             </button>
           )}
-          {isAuthenticated && expanded && onRequestRatingModal && (
+          {canRate(!!isAuthenticated) && expanded && onRequestRatingModal && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--brand-text-tertiary)' }}>Rate</span>
               <StarRating
