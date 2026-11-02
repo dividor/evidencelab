@@ -230,6 +230,7 @@ Global application settings.
 | `ai_summary.enabled` | `bool` | Enable AI-generated summaries in search results |
 | `features.semantic_highlights` | `bool` | Enable semantic highlighting of relevant passages |
 | `features.pdf_highlights` | `bool` | Enable highlighting within the PDF preview |
+| `features.anonymous_ratings` | `bool` | Let visitors who are not signed in rate content (needs `USER_MODULE` `on_passive`); one rating per item per browser. Off when absent |
 | `search.dense_weight` | `float` | Default weight for the dense (semantic) component in hybrid search (0–1) |
 | `search.short_query_dense_weight` | `float` | Dense weight override for short queries |
 | `search.highlight_threshold` | `float` | Minimum score for semantic highlights |

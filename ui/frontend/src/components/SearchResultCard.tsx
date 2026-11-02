@@ -13,6 +13,7 @@ import {
 } from '../utils/textHighlighting';
 import StarRating from './ratings/StarRating';
 import RatingModal from './ratings/RatingModal';
+import { canRate } from '../utils/ratingAccess';
 
 interface SearchResultCardProps {
     result: SearchResult;
@@ -347,7 +348,7 @@ const SearchResultCard = memo(({
                     result={result}
                     onOpenMetadata={onOpenMetadata}
                 />
-                {isAuthenticated && searchId && (
+                {canRate(!!isAuthenticated) && searchId && (
                     <StarRating
                         score={existingRatingScore}
                         onRequestModal={(selectedScore) => {

@@ -185,6 +185,11 @@ class UserRating(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Random ID of the anonymous browser that made the rating (from the
+    # httpOnly rater cookie); NULL for signed-in users' ratings.
+    anonymous_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True
+    )
     rating_type: Mapped[str] = mapped_column(String(50), nullable=False)
     reference_id: Mapped[str] = mapped_column(String(255), nullable=False)
     item_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

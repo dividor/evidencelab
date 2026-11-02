@@ -32,7 +32,8 @@
     },
     "features": {
       "semantic_highlights": true,
-      "pdf_highlights": true
+      "pdf_highlights": true,
+      "anonymous_ratings": true
     },
     "search": {
       "dense_weight": 0.5,

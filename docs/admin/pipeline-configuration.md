@@ -29,7 +29,8 @@ The `application` section controls global behavior:
     "ai_summary": { "enabled": true },
     "features": {
       "semantic_highlights": true,
-      "pdf_highlights": true
+      "pdf_highlights": true,
+      "anonymous_ratings": false
     },
     "search": {
       "dense_weight": 0.5,
@@ -47,6 +48,7 @@ The `application` section controls global behavior:
 | `ai_summary.enabled` | boolean | Enable or disable AI-generated summaries in search results |
 | `features.semantic_highlights` | boolean | Highlight semantically relevant phrases in search results |
 | `features.pdf_highlights` | boolean | Show bounding-box highlights in the PDF viewer |
+| `features.anonymous_ratings` | boolean | Let visitors who are not signed in rate content. Needs sign-in to be enabled (`USER_MODULE` `on_passive`). Each browser keeps one rating per item, tracked with the `evidencelab_rater` cookie. Off when absent. See [Ratings & Feedback](../using-evidence-lab/ratings-feedback.md) |
 | `search.dense_weight` | float (0–1) | Balance between semantic (1.0) and keyword (0.0) search. Default: 0.5 |
 | `search.short_query_dense_weight` | float | Override dense weight for very short queries (1–2 words) |
 | `search.highlight_threshold` | float | Minimum similarity score for a phrase to be highlighted |

@@ -15,6 +15,7 @@ import RatingModal from '../ratings/RatingModal';
 import { serializeDrilldownTree } from '../../utils/drilldownUtils';
 import { buildResultsCoverageText } from '../../utils/resultsCoverage';
 import { useDevFixtureSearch } from '../../__fixtures__/useDevFixtureSearch';
+import { canRate } from '../../utils/ratingAccess';
 
 interface SearchTabContentProps {
   filtersExpanded: boolean;
@@ -573,6 +574,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
 
   // Auth state for ratings
   const { isAuthenticated } = useAuth();
+  const ratingsAllowed = canRate(isAuthenticated);
 
   // Ratings for search results (keyed by chunk_id)
   const {
@@ -582,7 +584,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   } = useRatings({
     ratingType: 'search_result',
     referenceId: searchId,
-    enabled: isAuthenticated && results.length > 0,
+    enabled: ratingsAllowed && results.length > 0,
   });
 
   // AI summary rating (keyed by '' since no item_id)
@@ -593,7 +595,7 @@ export const SearchTabContent: React.FC<SearchTabContentProps> = ({
   } = useRatings({
     ratingType: 'ai_summary',
     referenceId: searchId,
-    enabled: isAuthenticated && !!aiSummary,
+    enabled: ratingsAllowed && !!aiSummary,
   });
 
   const [aiRatingModalOpen, setAiRatingModalOpen] = useState(false);

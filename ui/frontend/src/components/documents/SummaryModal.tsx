@@ -8,6 +8,7 @@ import RatingModal from '../ratings/RatingModal';
 import { SummaryEditor } from './summary/SummaryEditor';
 import type { SummaryAdmin } from './summary/useSummaryAdmin';
 import { SummaryProvenance, formatProvenance } from './summary/summaryProvenance';
+import { canRate } from '../../utils/ratingAccess';
 
 const MARKDOWN_COMPONENTS = {
   h1: ({ node, ...props }: any) => (
@@ -48,10 +49,11 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
   provenance,
 }) => {
   const { isAuthenticated } = useAuth();
+  const ratingsAllowed = canRate(isAuthenticated);
   const { ratings, submitRating, deleteRating } = useRatings({
     ratingType: 'doc_summary',
     referenceId: docId || '',
-    enabled: isAuthenticated && !!docId && isOpen,
+    enabled: ratingsAllowed && !!docId && isOpen,
   });
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [modalInitialScore, setModalInitialScore] = useState(0);
@@ -112,7 +114,7 @@ export const SummaryModal: React.FC<SummaryModalProps> = ({
           ) : (
             renderSummary()
           )}
-          {isAuthenticated && docId && (
+          {ratingsAllowed && docId && (
             <div style={{
               display: 'flex',
               alignItems: 'center',

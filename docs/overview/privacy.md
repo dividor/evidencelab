@@ -40,6 +40,7 @@ Evidence Lab uses the following cookies:
 |--------|------|---------|
 | `evidencelab_auth` | httpOnly, secure | Session authentication — sent automatically by the browser. Cannot be read by JavaScript. |
 | `evidencelab_csrf` | non-httpOnly | CSRF protection — read by the frontend and echoed back as a header to prevent cross-site request forgery. |
+| `evidencelab_rater` | httpOnly | Set only when you rate something without signing in. Holds a random ID, not linked to any personal information, so your browser keeps one rating per item and you can change it later. Kept for one year. |
 | `ga-consent` | localStorage | Records your Google Analytics cookie preference. |
 | Google Analytics (`_ga`, `_ga_*`) | Third-party (optional) | Usage analytics to help us understand how people use the platform. Only set if you accept analytics cookies. No data is used for advertising. |
 
