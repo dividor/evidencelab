@@ -198,3 +198,25 @@ describe('GroupSettingsManager greetingMessage', () => {
     });
   });
 });
+
+describe('SearchBox modelsReady', () => {
+  const props = {
+    isActive: true,
+    hasSearched: false,
+    query: 'WASH programme effectiveness',
+    loading: false,
+    searchError: null,
+    onQueryChange: jest.fn(),
+    onSubmit: jest.fn(),
+  };
+
+  test('disables Search until the model combo is applied', () => {
+    render(<SearchBox {...props} modelsReady={false} />);
+    expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
+  });
+
+  test('enables Search once the model combo is applied', () => {
+    render(<SearchBox {...props} modelsReady />);
+    expect(screen.getByRole('button', { name: 'Search' })).toBeEnabled();
+  });
+});
