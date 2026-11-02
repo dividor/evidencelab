@@ -24,7 +24,7 @@ Every tag covers `linux/amd64` and `linux/arm64`.
 
 ## Quick start
 
-You need Docker with Compose, Python 3 and git, plus an API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
+You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose, [Python 3](https://www.python.org/downloads/) and git, plus an API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
 
 ```bash
 git clone https://github.com/dividor/evidencelab.git

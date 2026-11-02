@@ -3,6 +3,7 @@ test_demo_script.py - Unit tests for scripts/demo/run_demo.py
 """
 
 import secrets
+import sys
 from unittest import mock
 
 import pytest
@@ -516,15 +517,16 @@ class TestHubCommands:
         ]
         assert run.call_args.kwargs["cwd"] == str(demo.PROJECT_ROOT)
 
-    def test_pipeline_hub_when_run_then_processes_demo_source(self):
-        with mock.patch.object(demo.subprocess, "run", return_value=_ok()) as run:
+    def test_pipeline_hub_when_run_then_streams_demo_source_without_tty(self):
+        with mock.patch.object(demo, "run_streaming", return_value=0) as stream:
             demo.run_pipeline_hub(5)
-        cmd = run.call_args.args[0]
+        cmd = stream.call_args.args[0]
         assert cmd == HUB + [
             "--profile",
             "pipeline",
             "run",
             "--rm",
+            "--no-TTY",
             "pipeline",
             "python",
             "-m",
@@ -536,11 +538,35 @@ class TestHubCommands:
             "--skip-download",
         ]
 
-    @pytest.mark.parametrize("step", ["download_documents_hub", "run_pipeline_hub"])
-    def test_hub_step_when_command_fails_then_exits(self, step):
+    def test_download_hub_when_command_fails_then_exits(self):
         with mock.patch.object(demo.subprocess, "run", return_value=_ok(1)):
             with pytest.raises(SystemExit):
-                getattr(demo, step)(3)
+                demo.download_documents_hub(3)
+
+    def test_pipeline_hub_when_command_fails_then_exits(self):
+        with mock.patch.object(demo, "run_streaming", return_value=1):
+            with pytest.raises(SystemExit):
+                demo.run_pipeline_hub(3)
+
+    def test_migrate_hub_when_run_then_upgrades_in_published_image(self):
+        with mock.patch.object(demo.subprocess, "run", return_value=_ok()) as run:
+            demo.migrate_hub_database()
+        assert run.call_args.args[0] == HUB + [
+            "--profile",
+            "pipeline",
+            "run",
+            "--rm",
+            "--no-deps",
+            "pipeline",
+            "alembic",
+            "upgrade",
+            "head",
+        ]
+
+    def test_migrate_hub_when_command_fails_then_exits(self):
+        with mock.patch.object(demo.subprocess, "run", return_value=_ok(1)):
+            with pytest.raises(SystemExit):
+                demo.migrate_hub_database()
 
     def test_start_services_hub_when_run_then_rebuilds_ui_and_restarts_api(
         self, monkeypatch
@@ -598,11 +624,17 @@ class TestRunHubDemo:
         ) as download, mock.patch.object(
             demo, "run_pipeline_hub"
         ) as pipeline, mock.patch.object(
+            demo, "wait_for_hub_dependencies"
+        ) as wait, mock.patch.object(
+            demo, "migrate_hub_database"
+        ) as migrate, mock.patch.object(
             demo, "start_services_hub", return_value="8080"
         ):
             url = demo.run_hub_demo(args)
         download.assert_not_called()
         pipeline.assert_not_called()
+        wait.assert_called_once_with()
+        migrate.assert_called_once_with()
         assert url == "http://localhost:8080"
 
     def test_run_hub_demo_when_full_run_then_downloads_then_processes(self):
@@ -611,12 +643,258 @@ class TestRunHubDemo:
         with mock.patch.object(
             demo, "download_documents_hub", order.download
         ), mock.patch.object(
+            demo, "wait_for_hub_dependencies", order.wait
+        ), mock.patch.object(
+            demo, "migrate_hub_database", order.migrate
+        ), mock.patch.object(
             demo, "run_pipeline_hub", order.pipeline
         ), mock.patch.object(
             demo, "start_services_hub", order.start
         ):
             order.start.return_value = "18080"
             assert demo.run_hub_demo(args) == "http://localhost:18080"
-        assert [c[0] for c in order.mock_calls] == ["download", "pipeline", "start"]
+        assert [c[0] for c in order.mock_calls] == [
+            "download",
+            "wait",
+            "migrate",
+            "pipeline",
+            "start",
+        ]
         order.download.assert_called_once_with(4)
         order.pipeline.assert_called_once_with(4)
+
+
+# ---------------------------------------------------------------------------
+# Docker check
+# ---------------------------------------------------------------------------
+class TestCheckDocker:
+    def _run_with(self, results):
+        """Mock subprocess.run to return each result in turn, by command."""
+
+        def fake_run(cmd, **kwargs):
+            outcome = results[tuple(cmd)]
+            if isinstance(outcome, Exception):
+                raise outcome
+            return _ok(outcome)
+
+        return mock.patch.object(demo.subprocess, "run", side_effect=fake_run)
+
+    def test_check_docker_when_not_installed_then_exits_with_install_link(self, capsys):
+        with mock.patch.object(demo.shutil, "which", return_value=None):
+            with pytest.raises(SystemExit):
+                demo.check_docker()
+        out = capsys.readouterr().out
+        assert "Docker is not installed" in out
+        assert demo.DOCKER_INSTALL_URL in out
+
+    def test_check_docker_when_engine_stopped_then_says_start_docker_desktop(
+        self, capsys
+    ):
+        results = {("docker", "compose", "version"): 0, ("docker", "info"): 1}
+        with mock.patch.object(
+            demo.shutil, "which", return_value="/usr/bin/docker"
+        ), self._run_with(results):
+            with pytest.raises(SystemExit):
+                demo.check_docker()
+        out = capsys.readouterr().out
+        assert "installed but not running" in out
+        assert "Start Docker Desktop" in out
+        assert demo.DOCKER_INSTALL_URL in out
+
+    def test_check_docker_when_engine_hangs_then_treated_as_not_running(self, capsys):
+        results = {
+            ("docker", "compose", "version"): 0,
+            ("docker", "info"): demo.subprocess.TimeoutExpired("docker info", 30),
+        }
+        with mock.patch.object(
+            demo.shutil, "which", return_value="/usr/bin/docker"
+        ), self._run_with(results):
+            with pytest.raises(SystemExit):
+                demo.check_docker()
+        assert "installed but not running" in capsys.readouterr().out
+
+    def test_check_docker_when_compose_missing_then_exits(self, capsys):
+        results = {("docker", "compose", "version"): 1, ("docker", "info"): 0}
+        with mock.patch.object(
+            demo.shutil, "which", return_value="/usr/bin/docker"
+        ), self._run_with(results):
+            with pytest.raises(SystemExit):
+                demo.check_docker()
+        assert "Docker Compose is not available" in capsys.readouterr().out
+
+    def test_check_docker_when_all_working_then_returns(self):
+        results = {("docker", "compose", "version"): 0, ("docker", "info"): 0}
+        with mock.patch.object(
+            demo.shutil, "which", return_value="/usr/bin/docker"
+        ), self._run_with(results):
+            demo.check_docker()
+
+    @pytest.mark.parametrize("mode", ["hub", "docker"])
+    def test_main_when_docker_mode_then_checks_docker_before_questions(
+        self, mode, monkeypatch
+    ):
+        monkeypatch.setattr(demo.sys, "argv", ["run_demo.py", "--mode", mode])
+        order = mock.Mock()
+        order.setup.side_effect = SystemExit(0)
+        with mock.patch.object(demo, "check_docker", order.check), mock.patch.object(
+            demo, "interactive_setup", order.setup
+        ):
+            with pytest.raises(SystemExit):
+                demo.main()
+        assert [c[0] for c in order.mock_calls] == ["check", "setup"]
+
+    def test_main_when_host_mode_then_does_not_check_docker(self, monkeypatch):
+        monkeypatch.setattr(demo.sys, "argv", ["run_demo.py", "--mode", "host"])
+        with mock.patch.object(demo, "check_docker") as check, mock.patch.object(
+            demo, "interactive_setup", side_effect=SystemExit(0)
+        ):
+            with pytest.raises(SystemExit):
+                demo.main()
+        check.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Waiting for the database, vector store and embedding server
+# ---------------------------------------------------------------------------
+def _ps_output(embedding_status):
+    """`docker compose ps` lines with the embedding server in a given state."""
+    stdout = (
+        "postgres running healthy\n"
+        "qdrant running healthy\n"
+        f"embedding-server {embedding_status}\n"
+        "api running \n"
+    )
+    return mock.Mock(returncode=0, stdout=stdout, stderr="")
+
+
+class TestHubDependencyStates:
+    def test_states_when_read_then_only_dependencies_by_service(self):
+        with mock.patch.object(
+            demo.subprocess, "run", return_value=_ps_output("running starting")
+        ) as run:
+            states = demo._hub_dependency_states()
+        assert states == {
+            "postgres": "running healthy",
+            "qdrant": "running healthy",
+            "embedding-server": "running starting",
+        }
+        assert run.call_args.args[0] == HUB + [
+            "ps",
+            "--all",
+            "--format",
+            "{{.Service}} {{.State}} {{.Health}}",
+        ]
+
+    def test_states_when_compose_fails_then_exits(self):
+        failed = mock.Mock(returncode=1, stdout="", stderr="no such file")
+        with mock.patch.object(demo.subprocess, "run", return_value=failed):
+            with pytest.raises(SystemExit):
+                demo._hub_dependency_states()
+
+
+class TestWaitForHubDependencies:
+    def _patches(self, statuses):
+        """Patch compose: `up` succeeds, `ps` reports each status in turn."""
+        ps_results = [_ps_output(s) for s in statuses]
+
+        def fake_run(cmd, **kwargs):
+            if "ps" in cmd:
+                return ps_results.pop(0)
+            return _ok()
+
+        run = mock.patch.object(demo.subprocess, "run", side_effect=fake_run)
+        popen = mock.patch.object(demo.subprocess, "Popen")
+        sleep = mock.patch.object(demo.time, "sleep")
+        return run, popen, sleep
+
+    def test_wait_when_already_healthy_then_no_log_shown(self):
+        run, popen, sleep = self._patches(["running healthy"])
+        with run as run_mock, popen as popen_mock, sleep:
+            demo.wait_for_hub_dependencies(timeout=60, delay=0)
+        assert run_mock.call_args_list[0].args[0] == HUB + [
+            "up",
+            "-d",
+            "postgres",
+            "qdrant",
+            "embedding-server",
+        ]
+        popen_mock.assert_not_called()
+
+    def test_wait_when_model_loading_then_shows_log_until_healthy(self):
+        run, popen, sleep = self._patches(
+            ["running starting", "running starting", "running healthy"]
+        )
+        with run, popen as popen_mock, sleep:
+            demo.wait_for_hub_dependencies(timeout=60, delay=0)
+        assert popen_mock.call_args.args[0] == HUB + [
+            "logs",
+            "--follow",
+            "--tail",
+            "20",
+            "embedding-server",
+        ]
+        popen_mock.return_value.terminate.assert_called_once_with()
+
+    @pytest.mark.parametrize("status", ["running unhealthy", "exited ", "dead "])
+    def test_wait_when_service_fails_then_exits_and_stops_log(self, status, capsys):
+        run, popen, sleep = self._patches(["running starting", status])
+        with run, popen as popen_mock, sleep:
+            with pytest.raises(SystemExit):
+                demo.wait_for_hub_dependencies(timeout=60, delay=0)
+        popen_mock.return_value.terminate.assert_called_once_with()
+        out = capsys.readouterr().out
+        assert "embedding-server service is" in out
+        assert "logs embedding-server" in out
+
+    def test_wait_when_never_ready_then_times_out(self, capsys):
+        run, popen, sleep = self._patches(["running starting"] * 3)
+        clock = mock.patch.object(demo.time, "monotonic", side_effect=[0, 0, 240])
+        with run, popen as popen_mock, sleep, clock:
+            with pytest.raises(SystemExit):
+                demo.wait_for_hub_dependencies(timeout=120, delay=0)
+        popen_mock.return_value.terminate.assert_called_once_with()
+        assert "not ready after 2 minutes" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Streaming a command's output
+# ---------------------------------------------------------------------------
+def _python(code):
+    return [sys.executable, "-c", code]
+
+
+class TestRunStreaming:
+    def test_run_streaming_when_command_prints_then_output_passes_through_unchanged(
+        self, capfd
+    ):
+        code = (
+            "import sys; sys.stdout.write('step 1\\rstep 2\\n'); "
+            "sys.stderr.write('warn\\n')"
+        )
+        assert demo.run_streaming(_python(code), quiet_after=60, check_every=0.05) == 0
+        out = capfd.readouterr().out
+        assert "step 1\rstep 2\n" in out
+        assert "warn" in out
+
+    def test_run_streaming_when_command_fails_then_returns_its_exit_code(self, capfd):
+        assert demo.run_streaming(_python("raise SystemExit(3)"), check_every=0.05) == 3
+
+    def test_run_streaming_when_output_stops_then_says_still_working(self, capfd):
+        code = "import time; print('start', flush=True); time.sleep(0.6); print('end')"
+        demo.run_streaming(_python(code), quiet_after=0.2, check_every=0.05)
+        out = capfd.readouterr().out
+        assert out.index("start") < out.index("Still working") < out.index("end")
+
+    def test_run_streaming_when_output_keeps_coming_then_no_notice(self, capfd):
+        code = "import time\nfor i in range(6):\n    print(i, flush=True); time.sleep(0.05)"
+        demo.run_streaming(_python(code), quiet_after=0.5, check_every=0.05)
+        assert "Still working" not in capfd.readouterr().out
+
+    @pytest.mark.parametrize(
+        "seconds,expected", [(60, "1 minute."), (185, "3 minutes.")]
+    )
+    def test_quiet_notice_when_printed_then_whole_minutes(
+        self, seconds, expected, capsys
+    ):
+        demo._quiet_notice(seconds)
+        assert f"no new output for {expected}" in capsys.readouterr().out
