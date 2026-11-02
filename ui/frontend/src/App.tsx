@@ -3067,6 +3067,8 @@ function App() {
             assistantModelConfig={assistantModelConfig}
             rerankerModel={rerankModel}
             searchSettings={{
+              rerankModelPageSize,
+              embeddingModel: searchModel,
               denseWeight: searchDenseWeight,
               recencyBoost: recencyBoostEnabled,
               recencyWeight,
@@ -3091,6 +3093,8 @@ function App() {
             semanticModelConfig={semanticHighlightModelConfig}
             rerankerModel={rerankModel}
             searchSettings={{
+              rerankModelPageSize,
+              embeddingModel: searchModel,
               denseWeight: searchDenseWeight,
               recencyBoost: recencyBoostEnabled,
               recencyWeight,

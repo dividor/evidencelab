@@ -871,6 +871,10 @@ class AssistantSearchSettings(BaseModel):
     wide_search: Optional[bool] = None
     wide_group_size: Optional[int] = Field(None, ge=1, le=50)
     wide_limit: Optional[int] = Field(None, ge=1, le=1000)
+    # From the selected model combo, like reranker_model: how many candidates
+    # the reranker scores, and which embedding model searches use.
+    rerank_model_page_size: Optional[int] = Field(None, ge=1, le=1000)
+    embedding_model: Optional[str] = Field(None, max_length=255)
 
 
 class AssistantChatRequest(BaseModel):

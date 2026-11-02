@@ -160,6 +160,8 @@ class SearchTracker:
             "wide_search": "wide_search",
             "wide_group_size": "wide_group_size",
             "wide_limit": "wide_limit",
+            "rerank_model_page_size": "max_rerank_candidates",
+            "embedding_model": "dense_model",
         }
         for key, kwarg in mapping.items():
             if key not in _skip and s.get(key) is not None:
