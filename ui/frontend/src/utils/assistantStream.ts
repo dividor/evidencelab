@@ -40,6 +40,16 @@ interface ConversationMessage {
   sources?: SourceReference[];
 }
 
+/**
+ * Search settings for an assistant turn: the user's search settings plus the
+ * selected model combo's reranker cap and embedding model, so the assistant
+ * searches like the search tab.
+ */
+export type AssistantSearchSettings = Partial<SearchSettings> & {
+  rerankModelPageSize?: number | null;
+  embeddingModel?: string | null;
+};
+
 interface AssistantStreamOptions {
   apiBaseUrl: string;
   query: string;
@@ -47,7 +57,7 @@ interface AssistantStreamOptions {
   threadId?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   deepResearch?: boolean;
   conversationHistory?: ConversationMessage[];
   // ISO date; constrains the library search to documents published on/after it
@@ -213,7 +223,7 @@ const readStream = async (
 
 /** Convert frontend SearchSettings to backend search_settings format. */
 const buildSearchSettingsPayload = (
-  settings?: Partial<SearchSettings> | null,
+  settings?: AssistantSearchSettings | null,
 ): Record<string, unknown> | undefined => {
   if (!settings) return undefined;
   const payload: Record<string, unknown> = {};
@@ -228,6 +238,8 @@ const buildSearchSettingsPayload = (
   if (settings.wideSearch != null) payload.wide_search = settings.wideSearch;
   if (settings.wideGroupSize != null) payload.wide_group_size = settings.wideGroupSize;
   if (settings.wideLimit != null) payload.wide_limit = settings.wideLimit;
+  if (settings.rerankModelPageSize != null) payload.rerank_model_page_size = settings.rerankModelPageSize;
+  if (settings.embeddingModel != null) payload.embedding_model = settings.embeddingModel;
   if (settings.fieldBoostFields != null && Object.keys(settings.fieldBoostFields).length > 0) {
     payload.field_boost_fields = settings.fieldBoostFields;
   }

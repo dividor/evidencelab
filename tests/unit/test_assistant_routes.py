@@ -97,6 +97,31 @@ class TestAssistantChatRequest:
         assert req.data_source == "test_collection"
         assert req.assistant_model_config.model == "gpt-4.1-mini"
 
+    def test_search_settings_when_combo_fields_sent_then_kept(self):
+        req = AssistantChatRequest(
+            query="q",
+            reranker_model="jina",
+            search_settings={
+                "dense_weight": 0.8,
+                "rerank_model_page_size": 10,
+                "embedding_model": "e5_large",
+            },
+        )
+
+        assert req.search_settings.model_dump(exclude_none=True) == {
+            "dense_weight": 0.8,
+            "rerank_model_page_size": 10,
+            "embedding_model": "e5_large",
+        }
+
+    def test_rerank_model_page_size_when_zero_then_rejected(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(
+                query="q", search_settings={"rerank_model_page_size": 0}
+            )
+
     def test_query_too_long(self):
         from pydantic import ValidationError
 

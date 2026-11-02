@@ -10,8 +10,7 @@
 import { API_KEY } from '../config';
 import { getSessionId } from '../hooks/useActivityLogging';
 import { SourceReference, SummaryModelConfig } from '../types/api';
-import { SearchSettings } from '../types/auth';
-import { streamAssistantChat } from './assistantStream';
+import { AssistantSearchSettings, streamAssistantChat } from './assistantStream';
 
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
@@ -205,7 +204,7 @@ export interface RunDeepResearchOptions {
   // they search like the rest of the app; otherwise these are null (no rerank —
   // the default CPU cross-encoder is too slow for multi-query research).
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   publishedAfter?: string | null;
   // The brief's stable activity id, so the backend records this research
   // turn's token usage onto the brief's activity row (typed 'brief' via
@@ -309,7 +308,7 @@ export interface ResearchSectionOptions {
   parentTitle?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   // Edit/Update: the mode, the current draft, the user's instruction, and (for
   // Update) the ISO date after which the library search is constrained.
   mode?: SectionResearchMode;
