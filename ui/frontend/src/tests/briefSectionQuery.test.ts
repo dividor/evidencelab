@@ -1,121 +1,109 @@
-import { buildOutlineContext, buildSectionQuery, isLikelyNonAnswer } from '../utils/briefStream';
+import { isLikelyNonAnswer, researchBriefSection, sectionPromptParts } from '../utils/briefStream';
 
-describe('buildSectionQuery', () => {
-  test('weaves the brief topic into a top-level section query', () => {
-    const q = buildSectionQuery({ heading: 'Key findings', briefTopic: 'girls education in Kenya' });
-    expect(q).toContain('"Key findings"');
-    expect(q).toContain('on "girls education in Kenya"');
-    expect(q).toContain('Search the document library');
-  });
+// The section research prompt is written by the API from these parts
+// (ui/backend/services/brief_section_prompt.py, tested in
+// tests/unit/test_brief_section_prompt.py); the browser only collects them.
 
-  test('scopes a sub-section to its parent so generated queries stay relevant', () => {
-    const q = buildSectionQuery({
-      heading: 'Enrolment trends',
-      briefTopic: 'girls education in Kenya',
-      parentTitle: 'Access to schooling',
+const OUTLINE = [
+  { title: 'Context and scope', level: 1 },
+  { title: 'What the evidence shows', level: 1, content: 'Cash transfers improved food consumption [1].' },
+  { title: 'Effectiveness', level: 1 },
+];
+
+describe('sectionPromptParts', () => {
+  test('a generated section sends its place in the outline and its guidance', () => {
+    expect(
+      sectionPromptParts({
+        outline: OUTLINE,
+        currentIndex: 2,
+        briefTopic: 'cash transfers',
+        briefInstructions: 'prioritise RCTs since 2018',
+        context: 'emphasise rural areas',
+        voiceInstructions: 'Plain English.',
+      }),
+    ).toEqual({
+      outline: OUTLINE,
+      current: 2,
+      mode: 'generate',
+      topic: 'cash transfers',
+      instructions: 'prioritise RCTs since 2018',
+      focus: 'emphasise rural areas',
+      draft: undefined,
+      instruction: undefined,
+      published_after: undefined,
+      voice_instructions: 'Plain English.',
     });
-    expect(q).toContain('"Enrolment trends"');
-    expect(q).toContain('parent section "Access to schooling"');
-    expect(q).toContain('avoid repeating material that belongs in sibling sections');
   });
 
-  test('includes brief-level guidance and per-section focus when provided', () => {
-    const q = buildSectionQuery({
-      heading: 'Recommendations',
-      briefTopic: 'girls education in Kenya',
-      briefInstructions: 'prioritise RCTs since 2018',
-      context: 'emphasise rural areas',
-    });
-    expect(q).toContain('Overall brief guidance: prioritise RCTs since 2018');
-    expect(q).toContain('Focus for this section: emphasise rural areas');
-  });
-
-  test('falls back to a generic instruction when no topic is set (manual brief)', () => {
-    const q = buildSectionQuery({ heading: 'Background' });
-    expect(q).toBe(
-      'Write the "Background" section of an evidence brief. ' +
-        'Search the document library for evidence relevant to this specific section ' +
-        'and cite a source for every claim. ' +
-        'Your final answer must be the finished section text itself — never a description ' +
-        'of what you are about to do, a promise to research, or narration of your process.',
-    );
-  });
-
-  test('update mode preserves the draft, date-filters, and keeps citations', () => {
-    const q = buildSectionQuery({
-      heading: 'Impacts',
-      briefTopic: 'girls education',
+  test('an update sends the current draft, its instruction and the date cutoff', () => {
+    const parts = sectionPromptParts({
+      outline: OUTLINE,
+      currentIndex: 1,
       mode: 'update',
       existingContent: 'Enrolment rose sharply [1].',
       instruction: 'prioritise enforcement',
       publishedAfterIso: '2023-05-01T00:00:00.000Z',
     });
-    // Keeps/embeds the current draft.
-    expect(q).toContain('Enrolment rose sharply [1].');
-    expect(q).toContain('Preserve its wording, structure and citations');
-    // Constrains the search to newer sources (date only).
-    expect(q).toContain('PUBLISHED AFTER 2023-05-01');
-    // Threads the optional instruction + demands sequential citations back.
-    expect(q).toContain('prioritise enforcement');
-    expect(q).toContain('sequential [n] citation markers');
-  });
-
-  test('update mode without a draft falls back to a normal generate query', () => {
-    const q = buildSectionQuery({ heading: 'Impacts', mode: 'update' });
-    expect(q).toContain('Write the "Impacts" section');
-    expect(q).not.toContain('Preserve its wording');
-  });
-});
-
-describe('buildOutlineContext', () => {
-  const sections = [
-    { id: 'a', title: 'Context and scope', level: 1 },
-    { id: 'b', title: 'What the evidence shows', level: 1, content: '# What the evidence shows\n\nCash transfers improved food consumption [1].' },
-    { id: 'c', title: 'Effectiveness', level: 1 },
-    { id: 'c1', title: 'Cost efficiency', level: 2 },
-    { id: 'c2', title: 'Outcomes', level: 2 },
-  ];
-
-  test('lists every heading and marks the one being written', () => {
-    const ctx = buildOutlineContext(sections, 'a');
-    expect(ctx).toContain('Context and scope ← the section you are writing');
-    expect(ctx).toContain('- What the evidence shows');
-    expect(ctx).toContain('  - Cost efficiency');
-    expect(ctx).toContain('do NOT repeat or pre-empt material');
-  });
-
-  test('includes a gist of already-written sections without markdown or citation markers', () => {
-    const ctx = buildOutlineContext(sections, 'a');
-    expect(ctx).toContain('already written; covers: What the evidence shows Cash transfers improved food consumption');
-    expect(ctx).not.toContain('[1]');
-    expect(ctx).not.toContain('#');
-  });
-
-  test('tells a parent heading with sub-headings to stay high-level', () => {
-    const ctx = buildOutlineContext(sections, 'c');
-    expect(ctx).toContain('sub-sections (Cost efficiency; Outcomes)');
-    expect(ctx).toContain('high-level introduction');
-  });
-
-  test('a sub-section or a section without children gets no high-level instruction', () => {
-    expect(buildOutlineContext(sections, 'c1')).not.toContain('high-level introduction');
-    expect(buildOutlineContext(sections, 'a')).not.toContain('high-level introduction');
-  });
-
-  test('returns empty for a single-section brief', () => {
-    expect(buildOutlineContext([sections[0]], 'a')).toBe('');
-  });
-});
-
-describe('buildSectionQuery with outline context', () => {
-  test('appends the outline context to the generate query', () => {
-    const q = buildSectionQuery({
-      heading: 'Effectiveness',
-      briefTopic: 'cash transfers',
-      outlineContext: 'For context, the full outline of the brief is:\n- A\n- B',
+    expect(parts).toMatchObject({
+      mode: 'update',
+      draft: 'Enrolment rose sharply [1].',
+      instruction: 'prioritise enforcement',
+      published_after: '2023-05-01T00:00:00.000Z',
     });
-    expect(q).toContain('full outline of the brief');
-    expect(q.indexOf('Write')).toBeLessThan(q.indexOf('full outline'));
+  });
+
+  test('a generated section never sends a draft', () => {
+    const parts = sectionPromptParts({ outline: OUTLINE, currentIndex: 0, existingContent: 'old text' });
+    expect(parts.draft).toBeUndefined();
+  });
+
+  test('empty parts are left out', () => {
+    const parts = sectionPromptParts({
+      outline: OUTLINE,
+      currentIndex: 0,
+      briefTopic: '',
+      briefInstructions: null,
+      voiceInstructions: '',
+    });
+    expect(JSON.parse(JSON.stringify(parts))).toEqual({ outline: OUTLINE, current: 0, mode: 'generate' });
+  });
+});
+
+describe('researchBriefSection request', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  test('sends the heading as the question and a long draft as its own field', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({ ok: false, status: 500, statusText: 'x' });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const draft = 'Attendance rose [1]. '.repeat(400);
+    await researchBriefSection({
+      apiBaseUrl: '/api',
+      dataSource: 'wfp',
+      heading: 'What the evidence shows',
+      outline: OUTLINE,
+      currentIndex: 1,
+      mode: 'update',
+      existingContent: draft,
+      voiceInstructions: 'v'.repeat(6000),
+      handlers: {
+        onActivity: jest.fn(),
+        onProgress: jest.fn(),
+        onToken: jest.fn(),
+        onSources: jest.fn(),
+        onDone: jest.fn(),
+        onError: jest.fn(),
+      },
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    // The question stays short; the API's 5,000-character limit on it holds.
+    expect(body.query).toBe('What the evidence shows');
+    expect(body.brief_section.draft).toBe(draft);
+    expect(body.brief_section.voice_instructions).toHaveLength(6000);
+    expect(body.brief_section.current).toBe(1);
+    expect(body.brief_section.outline).toEqual(OUTLINE);
   });
 });
 
