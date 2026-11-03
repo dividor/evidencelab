@@ -50,6 +50,32 @@ export type AssistantSearchSettings = Partial<SearchSettings> & {
   embeddingModel?: string | null;
 };
 
+/** One section of a brief as its research prompt describes the outline: its
+ *  text only when it is written. */
+export interface BriefOutlineSection {
+  title: string;
+  level: number;
+  content?: string;
+}
+
+/**
+ * The parts of a Brief section's research prompt. The API writes the prompt
+ * from them (ui/backend/services/brief_section_prompt.py); `current` is the
+ * index in `outline` of the section being written.
+ */
+export interface BriefSectionPrompt {
+  outline: BriefOutlineSection[];
+  current: number;
+  mode: 'generate' | 'update';
+  topic?: string;
+  instructions?: string;
+  focus?: string;
+  draft?: string;
+  instruction?: string;
+  published_after?: string;
+  voice_instructions?: string;
+}
+
 interface AssistantStreamOptions {
   apiBaseUrl: string;
   query: string;
@@ -76,6 +102,9 @@ interface AssistantStreamOptions {
   // Brief: the sub-headings of the section being written when it is a
   // top-level heading's introduction (no headings, none of their detail).
   introducesSubSections?: string[] | null;
+  // Brief: the section being researched; the API writes its prompt, and
+  // `query` is then the section heading.
+  briefSection?: BriefSectionPrompt | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -261,6 +290,7 @@ export const streamAssistantChat = async ({
   usageContext,
   targetWords,
   introducesSubSections,
+  briefSection,
   handlers,
   signal,
 }: AssistantStreamOptions): Promise<void> => {
@@ -288,6 +318,7 @@ export const streamAssistantChat = async ({
       usage_context: usageContext || undefined,
       target_words: targetWords || undefined,
       introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : undefined,
+      brief_section: briefSection || undefined,
     }),
     signal,
   });

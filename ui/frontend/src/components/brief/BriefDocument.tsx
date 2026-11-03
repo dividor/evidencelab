@@ -16,7 +16,13 @@ import { BriefReferences } from './BriefReferences';
 import { BriefToc } from './BriefToc';
 import { BriefSelection } from './BriefSelectionMenu';
 import { BUBBLE_CLASS, CommentMark, MARK_CLASS, paintCommentMarks } from './briefCommentMarks';
-import { BriefSection, SectionAuditEntry, SectionRunDetail, UnresolvedMarker } from './briefTypes';
+import {
+  BriefSection,
+  PROMPT_MAX_CHARS,
+  SectionAuditEntry,
+  SectionRunDetail,
+  UnresolvedMarker,
+} from './briefTypes';
 import { BriefVoiceSelect, briefDefaultSuffix, voiceHint } from './BriefVoiceSelect';
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
@@ -81,6 +87,7 @@ const AiInstructionPanel: React.FC<{
     <textarea
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      maxLength={PROMPT_MAX_CHARS}
       rows={2}
       placeholder={
         mode === 'edit'
@@ -175,6 +182,7 @@ const GuidancePanel: React.FC<{
       <textarea
         value={section.guidance || ''}
         onChange={(e) => brief.setSectionGuidance(section.id, e.target.value)}
+        maxLength={PROMPT_MAX_CHARS}
         rows={2}
         placeholder="Optional: add focus or guidance — e.g. ‘emphasise sub-Saharan Africa & 2020 onward’"
       />

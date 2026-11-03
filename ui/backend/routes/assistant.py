@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.assistant_service import stream_research_response
+from ui.backend.services.brief_section_prompt import build_section_prompt
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -237,6 +238,10 @@ async def stream_assistant_chat(
     in a loop, streaming progress events at each phase.
     """
     model_key, temperature, max_tokens = _resolve_model_config(body)
+    # A Brief section sends its parts and the API writes its research prompt.
+    research_query = (
+        build_section_prompt(body.brief_section) if body.brief_section else body.query
+    )
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history
     if not conversation_messages and body.conversation_history:
@@ -254,7 +259,7 @@ async def stream_assistant_chat(
                 else None
             )
             ait = stream_research_response(
-                query=body.query,
+                query=research_query,
                 data_source=body.data_source,
                 model_key=model_key,
                 temperature=temperature,

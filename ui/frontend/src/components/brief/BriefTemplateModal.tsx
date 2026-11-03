@@ -3,7 +3,7 @@ import { TemplatePayload } from './briefCentralApi';
 import { numberHeadings } from './BriefCentralModals';
 import { IconPlus } from './BriefIcons';
 import { BriefLengthControl } from './BriefLengthControl';
-import { BriefTemplate, BriefTemplateHeading, VoiceProfile } from './briefTypes';
+import { BriefTemplate, BriefTemplateHeading, PROMPT_MAX_CHARS, VoiceProfile } from './briefTypes';
 import { BriefVoiceSelect } from './BriefVoiceSelect';
 
 /**
@@ -16,8 +16,6 @@ import { BriefVoiceSelect } from './BriefVoiceSelect';
 const errMessage = (e: unknown, fallback: string): string =>
   e instanceof Error ? e.message : fallback;
 
-// Same limit as a section's typed guidance and the server's template schema.
-export const PROMPT_MAX_CHARS = 2000;
 
 // A heading in the editor carries a local key so rows keep their identity
 // (and open/closed state) as headings are added and removed.
