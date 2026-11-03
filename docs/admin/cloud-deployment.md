@@ -6,7 +6,7 @@ Evidence Lab runs as a set of containers. On one machine, Docker Compose runs th
 - The databases and file storage are the cloud's managed services, not containers.
 - A few settings tell the containers where everything is.
 
-This page describes that layout and its settings, with an example deployment for AWS, Azure and Google Cloud.
+This page describes that layout and its settings, with tested example deployments for AWS and Azure, and a plan for Google Cloud.
 
 **On this page**
 
@@ -15,7 +15,7 @@ This page describes that layout and its settings, with an example deployment for
 | [The cloud layout](#the-cloud-layout) | What runs where, and why the databases are managed services |
 | [Settings](#settings) | The settings a load-balanced deployment needs |
 | [Example: AWS](#example-aws) | Amazon ECS on Fargate, with step-by-step deploy and teardown |
-| [Example: Azure](#example-azure) | Azure Container Apps (template not built yet) |
+| [Example: Azure](#example-azure) | Azure Container Apps, with step-by-step deploy and teardown |
 | [Example: Google Cloud](#example-google-cloud) | Cloud Run (template not built yet) |
 | [Not included](#not-included) | What this layout does not cover |
 
@@ -52,7 +52,7 @@ The sizes in the figure come from the memory limits in `docker-compose.prod.yml`
 
 ### Why the databases are managed services
 
-Managed container services don't keep a long-running service's disk when it is redeployed or restarted. On Amazon ECS, a block-storage volume attached to a service's container is deleted when the container stops. Azure Container Apps and Google Cloud Run offer only network file shares and memory. Qdrant needs block storage and does not work on network file systems. So Postgres runs on the cloud's managed Postgres, and Qdrant runs on Qdrant Cloud or on its own virtual machine.
+Managed container services don't keep a long-running service's disk when it is redeployed or restarted. On Amazon ECS, a block-storage volume attached to a service's container is deleted when the container stops. Azure Container Apps offers Azure Files shares and storage that lasts only as long as each replica. Google Cloud Run's documentation lists network file shares, Cloud Storage buckets and memory. Qdrant needs block storage and does not work on network file systems. So Postgres runs on the cloud's managed Postgres, and Qdrant runs on Qdrant Cloud or on its own virtual machine.
 
 ## Settings
 
@@ -272,34 +272,176 @@ The script applies any changes, rebuilds the web app image, runs the migrations 
 
 ## Example: Azure
 
-> **Not built yet.** There is no Azure template yet. This section describes what it will deploy. Step-by-step instructions will be added with the template, as for AWS.
-
-This example will run Evidence Lab on Azure Container Apps, with Azure Database for PostgreSQL, Qdrant Cloud, Azure Managed Redis and Azure Files.
+This example runs Evidence Lab on Azure Container Apps. The template and scripts are in [`deploy/azure`](../../deploy/azure/). Everything it creates is in one new resource group, named after the deployment.
 
 ![What the Azure example deploys](../images/admin/cloud-azure.png)
 
-| Part | Azure service | Planned size |
-|---|---|---|
-| Network | A resource group and a virtual network, with subnets for the Container Apps environment, Postgres and private endpoints | — |
-| Load balancer | The Container Apps environment's ingress, with a free managed certificate for your domain | Only the ui app is reachable from the internet |
-| Container platform | A Container Apps environment of the workload-profiles type, using the Consumption profile | Needed for the api's 4 vCPU and 8 GB |
-| ui | Container app, running your web app image from Azure Container Registry | 2 replicas, 0.25 vCPU and 0.5 GB each |
-| api | Container app, `astrobagel/evidencelab` | 2 replicas, 4 vCPU and 8 GB each, the Consumption profile's largest size |
-| mcp | Container app, `astrobagel/evidencelab` | 2 replicas, 1 vCPU and 2 GB each |
-| embedding | Container app, `michaelf34/infinity:0.0.70` | 1 replica, 2 vCPU and 4 GB, never scaled to zero |
-| migrate | Container Apps job, run before each release | 0.5 vCPU, 1 GB |
-| pipeline | Container Apps job, run when you ingest documents | 4 vCPU, 8 GB |
-| Postgres | Azure Database for PostgreSQL flexible server 16, zone-redundant, with `vector` allowed in the `azure.extensions` server setting | General Purpose, 2 vCores, 128 GB storage |
-| Qdrant | Qdrant Cloud cluster in the same Azure region | Sized from your collection |
-| Redis | Azure Managed Redis. New Azure Cache for Redis instances can no longer be created. | The smallest size |
-| Documents and page images | An Azure Files share, mounted at `/app/data` | Sized from your data |
-| Keys, logs and domain | Azure Key Vault, a Log Analytics workspace and Azure DNS | — |
+### What the Azure example deploys
 
-The ui will reach the api and mcp apps through the environment's internal addresses, `http://<app>.internal.<environment domain>`, with Azure's DNS server `168.63.129.16` as `NGINX_RESOLVER`.
+The sizes are the template's defaults. The demo below uses smaller ones.
+
+| Part | Azure service | Default size |
+|---|---|---|
+| Resource group | A new resource group named `<name>`, holding everything below. The first apply stops if a resource group of that name already exists. | — |
+| Network | A virtual network (`10.0.0.0/16`) with a subnet for the Container Apps environment, one for Postgres, and one for Qdrant and the Redis private endpoint. A NAT gateway gives outbound internet access. Nothing in the network has a public address of its own. | One NAT gateway, through which the apps pull images and reach the models |
+| Entry point | The ui app's ingress. Container Apps serves it over HTTPS at `https://ui.<environment domain>`, with a certificate it manages, and redirects plain HTTP. | — |
+| Container platform | A Container Apps environment with the Consumption workload profile, in the network | Up to 4 vCPU and 8 GB per container |
+| ui | Container app, running the web app image that the deploy script pushes to the registry | 2 replicas, 0.25 vCPU and 0.5 GB each |
+| api | Container app, `astrobagel/evidencelab` | 2 replicas, 4 vCPU and 8 GB each |
+| mcp | Container app, `astrobagel/evidencelab` | 2 replicas, 1 vCPU and 2 GB each |
+| embedding | Container app, `michaelf34/infinity:0.0.70` | 1 replica, 2 vCPU and 4 GB, always running |
+| migrate | Container Apps job, run by the deploy script before the apps start | 0.5 vCPU, 1 GB |
+| pipeline | Container Apps job, run when you ingest documents | 4 vCPU, 8 GB, the Consumption profile's largest |
+| Postgres | Azure Database for PostgreSQL flexible server 16, with a standby in a second zone, reachable only inside the network | General Purpose D2ds_v5, 128 GB storage, 7 days of backups |
+| Qdrant | Qdrant 1.18.3 on an Ubuntu virtual machine with no public address, or your Qdrant Cloud cluster if you set `qdrant_url` | Standard_B2s, 30 GB disk |
+| Redis | Azure Managed Redis, reachable only through a private endpoint, over TLS | Balanced_B0, with a replica |
+| Documents and page images | An Azure Files share, mounted at `/app/data`, accepting connections only from the apps' subnet | 100 GB quota |
+| Web app image | Azure Container Registry. The apps pull from it with a managed identity. | Basic |
+| Models | An Azure AI Foundry resource with the models in `config.json`'s **Azure Foundry** set: `text-embedding-3-small`, `gpt-4.1-mini` and `Cohere-rerank-v4.0-fast` | Global Standard deployments. The reranker gets capacity 20, which allows 20 requests and 20,000 tokens a minute. |
+| Keys and passwords | Container Apps secrets on each app and job, generated by Terraform | — |
+| Logs | A Log Analytics workspace, holding every app's and job's output | 30 days |
+
+`<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`.
+
+### How the Azure apps find each other
+
+Apps in a Container Apps environment reach each other by app name. The api, mcp and embedding apps take plain TCP connections: the environment's HTTP routing picks an app by the request's host name, and nginx passes on the visitor's host name, so HTTP routing would not reach the api.
+
+Containers in the environment look names up through `127.0.0.11`, and complete a bare app name such as `api` with the search domain `k8se-apps.svc.cluster.local`. nginx does not use search domains, so the ui is given the full names. Requests reach the ui, and the ui's requests reach the api, from the environment's own proxies, whose addresses are in `100.100.0.0/16`. The template sets these values:
+
+| Container | Setting | Value |
+|---|---|---|
+| ui | `API_UPSTREAM` | `http://api.k8se-apps.svc.cluster.local:8000` |
+| ui | `MCP_UPSTREAM` | `http://mcp.k8se-apps.svc.cluster.local:8001` |
+| ui | `NGINX_RESOLVER` | `127.0.0.11` |
+| ui | `NGINX_REAL_IP_FROM` | `100.100.0.0/16` |
+| api | `FORWARDED_ALLOW_IPS` | `100.100.0.0/16` |
+| api, mcp, pipeline, migrate | `RATELIMIT_STORAGE_URL` | `rediss://` with the Redis key, address and port, from a secret |
+| api, mcp, pipeline, migrate | `POSTGRES_HOST` | The flexible server's address, `<server>.postgres.database.azure.com` |
+| api, mcp, pipeline, migrate | `PGSSLMODE`, `PGSSLROOTCERT` | `verify-full`, and `/etc/ssl/certs/ca-certificates.crt`. Azure's Postgres certificates chain to roots already in the image. |
+| api, mcp, pipeline, migrate | `QDRANT_HOST`, `QDRANT_API_KEY` | The Qdrant machine's address and generated key, or your Qdrant Cloud URL and key |
+| api, mcp, pipeline, migrate | `EMBEDDING_API_URL` | `http://embedding:7997` |
+| api, mcp, pipeline, migrate | `AZURE_FOUNDRY_ENDPOINT`, `AZURE_FOUNDRY_KEY` | The deployment's own Foundry resource, `https://<resource>.openai.azure.com/`, and its key |
+
+As on AWS, `config.json` travels compressed and each container writes it to `/app/config.json` when it starts.
+
+### Deploying the Azure demo
+
+These steps deploy a demo: 2 World Bank documents, processed with the deployment's own Azure AI Foundry models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
+
+**1. Install the tools.** The tested versions are in brackets.
+
+| Tool | Version | Used for |
+|---|---|---|
+| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | 2.81 or later (2.81.0) | Signing in with `az login`, and the scripts' Azure calls |
+| [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| Python 3 and curl | Any recent version | The scripts' helpers and checks |
+
+**2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
+
+```bash
+git clone https://github.com/dividor/evidencelab.git
+cd evidencelab
+git checkout vX.Y.Z
+```
+
+**3. Sign in to Azure** and note your subscription's ID:
+
+```bash
+az login
+az account show --query "{name:name, id:id}"
+```
+
+`az login` opens your browser to sign in. Your account needs the Owner role on the subscription, because the template gives the apps permission to pull from the registry. If `az account show` names the wrong subscription, run `az account set --subscription <id>`.
+
+**4. Create the settings file:**
+
+```bash
+cp deploy/azure/terraform.tfvars.example deploy/azure/terraform.tfvars
+```
+
+Edit `deploy/azure/terraform.tfvars`:
+
+| Setting | What to set |
+|---|---|
+| `subscription_id` | The ID that `az account show` printed. |
+| `name` | A short name for this deployment, for example `evidencelab-demo`. It is also the name of the new resource group, so it must not be the name of one you already have. |
+| `location` | The region, for example `eastus2`. |
+| `evidencelab_version` | The same version you checked out, for example `X.Y.Z`. |
+| `config_json_path` | Leave as `"../../config.json"`. The demo uses its own configuration. |
+| `qdrant_url` | Leave empty, to run Qdrant on a virtual machine. |
+| The `#` lines at the end | Remove the `#` from each line, for smaller and cheaper single-zone settings. The database keeps the smallest General Purpose size: in testing, Azure refused the cheaper Burstable sizes in eastus2 with `SkuNotAvailable`. |
+
+**5. Check your region offers the models.** The template deploys `text-embedding-3-small`, `gpt-4.1-mini` and `Cohere-rerank-v4.0-fast` as Global Standard deployments. List what your region offers:
+
+```bash
+az cognitiveservices model list --location eastus2 \
+  --query "[?model.name=='text-embedding-3-small' || model.name=='gpt-4.1-mini' || model.name=='Cohere-rerank-v4.0-fast'].model.name" -o tsv | sort -u
+```
+
+All three names should be listed. If your subscription has no quota for one of them, the first apply stops with an error naming it. Request quota in the Azure AI Foundry portal, or choose another region.
+
+The reranker's quota is shared by every Foundry resource in your subscription and region. Check how much is free with this command, which prints the units in use and the limit:
+
+```bash
+az cognitiveservices usage list --location eastus2 \
+  --query "[?name.value=='AIServices.GlobalStandard.Cohere-Rerank-V4-Fast'].[currentValue, limit]" -o tsv
+```
+
+The template takes 20 units. If fewer are free, set a lower `capacity` for `Cohere-rerank-v4.0-fast` in `model_deployments` (copy the whole setting from `deploy/azure/variables.tf` into `terraform.tfvars`). In testing, 1 unit was too few: the first search failed with a reranker error (HTTP 429, too many requests). 19 units worked.
+
+**6. Deploy:**
+
+```bash
+deploy/azure/scripts/deploy.sh --demo 2
+```
+
+Terraform asks you to type `yes` twice: once to create the infrastructure, and once to start the apps. The script runs these steps and prints each one as it starts:
+
+1. Writes the demo configuration to `deploy/azure/.demo/`.
+2. Creates the resource group, network, database, Redis, file share, Qdrant, registry, models, Container Apps environment and jobs.
+3. Builds the web app image and pushes it to the registry.
+4. Runs the database migrations.
+5. Creates the ui, api, mcp and embedding apps, and waits until they are all running.
+6. Downloads 2 World Bank documents and processes them.
+7. Checks that the site answers, and prints its address.
+
+With `--demo`, the web app is built with the site's API key, so visitors can use the site without signing in, as on evidencelab.ai. Anyone who opens the site can read that key from the page, so use `--demo` only for demonstrations.
+
+**7. Try it.** Open the address the script printed. Choose the dataset **Demo Data from World Bank**, and search for *What types of fraud are most commonly reported?*
+
+**8. Remove everything:**
+
+```bash
+deploy/azure/scripts/teardown.sh
+```
+
+Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data, and the Foundry resource is purged so its name and quota are free at once. The script then checks that Terraform manages nothing more and that the resource group is gone, and prints `Everything Terraform created for <name> is deleted, and the resource group is gone.`
+
+The template registers the Azure services it uses with your subscription (for example `Microsoft.App`). These registrations are subscription settings that stay after teardown. They cost nothing.
+
+### Deploying your own documents
+
+1. In `deploy/azure/terraform.tfvars`, set `config_json_path` to your `config.json`. Its models can be the deployment's own (the **Azure Foundry** set). For models from other providers, add their keys as `provider_secrets`, for example `provider_secrets = { HUGGINGFACE_API_KEY = "..." }`. They become Container Apps secrets and are kept in Terraform's state.
+2. Run `deploy/azure/scripts/deploy.sh` without `--demo`. Visitors must sign in, because the web app carries no API key. To let them use the site signed out, add `anonymous_access = true`, which puts the key in the page.
+3. Ingest documents with the pipeline job, replacing `<data_subdir>` with the data source's `data_subdir` in your `config.json`:
+
+```bash
+deploy/azure/scripts/run-job.sh pipeline python -m pipeline.orchestrator --data-source <data_subdir>
+```
+
+### Upgrading
+
+1. Check out the new release of the code.
+2. Set the new `evidencelab_version` in `deploy/azure/terraform.tfvars`.
+3. Run `deploy/azure/scripts/deploy.sh` again, with `--demo 2` if the deployment is the demo.
+
+The script applies any changes, builds a new web app image, runs the migrations and then moves each app to a new revision.
 
 ## Example: Google Cloud
 
-> **Not built yet.** There is no Google Cloud template yet. This section describes what it will deploy. Step-by-step instructions will be added with the template, as for AWS.
+> **Not built yet.** There is no Google Cloud template yet, and nothing in this section has been tested. It is a plan: the services and sizes are a starting point, and they may change when the template is built and tested. Step-by-step instructions will be added with the template, as for AWS and Azure.
 
 This example will run Evidence Lab on Cloud Run, with Cloud SQL for PostgreSQL, Qdrant Cloud, Memorystore and Filestore, behind an external Application Load Balancer.
 
@@ -318,12 +460,17 @@ This example will run Evidence Lab on Cloud Run, with Cloud SQL for PostgreSQL, 
 | Postgres | Cloud SQL for PostgreSQL 16, regional high availability, private address only | 2 vCPU, 8 GB, 50 GB SSD |
 | Qdrant | Qdrant Cloud cluster in the same Google Cloud region | Sized from your collection |
 | Redis | Memorystore for Redis, encrypted in transit | Basic tier, 1 GB |
-| Documents and page images | Filestore Basic HDD share, mounted at `/app/data` | 1 TB, the smallest Basic HDD size |
+| Documents and page images | Filestore share, mounted at `/app/data` | Sized from your data |
 | Keys, logs and domain | Secret Manager, Cloud Logging and Cloud DNS | — |
 
-Cloud Run chooses a service by the host name in each request. So nginx must send each service its own host name, not your domain's. That is a small change to the ui's nginx configuration, to be made with this template.
+To check when the template is built:
+
+- How the ui reaches the api and mcp services. nginx forwards each visitor's host name to the api, and Cloud Run may pick the service by host name, as Azure Container Apps does for HTTP. The Azure example avoids this with plain TCP between the apps.
+- Which address ranges the load balancer and the ui connect from, for `NGINX_REAL_IP_FROM` and `FORWARDED_ALLOW_IPS`.
+- The Memorystore and Filestore sizes and settings.
 
 ## Not included
 
 - **Reprocessing from the admin screens.** The reprocess actions queue tasks for a Celery worker, which this layout does not run.
-- **Large ingestions.** Processing many documents needs far more memory than serving them. Give the pipeline task more memory, or run large ingestions elsewhere and copy the results in (see [Database Maintenance](database-maintenance.md)).
+- **Large ingestions.** Processing many documents needs far more memory than serving them. Give the pipeline task more memory, or run large ingestions elsewhere and copy the results in (see [Database Maintenance](database-maintenance.md)). On Azure, the Consumption profile stops at 8 GB per container.
+- **Your own domain on Azure.** The Azure example serves the site at its Container Apps address. The template does not set up a custom domain.

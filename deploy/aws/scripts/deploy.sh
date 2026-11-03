@@ -67,7 +67,7 @@ fi
 deploy_vars=()
 if [ -n "$demo_docs" ]; then
     step "Writing the demo configuration ($provider)"
-    python3 "$scripts/demo_config.py" --provider "$provider" --out-dir "$here/.demo"
+    python3 "$here/../demo_config.py" --provider "$provider" --out-dir "$here/.demo"
     demo_source="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["data_source"])' "$here/.demo/demo.json")"
     names="$(python3 -c 'import json, sys; print(json.dumps(json.load(open(sys.argv[1]))["secret_names"]))' "$here/.demo/demo.json")"
     deploy_vars=(-var "config_json_path=.demo/config.json" -var "provider_secret_names=$names"

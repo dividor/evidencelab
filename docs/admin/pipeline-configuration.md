@@ -137,7 +137,7 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
         "max_tokens": 4096,
         "temperature": 0.0
       },
-      "reranker_model": "azure_rerank"
+      "reranker_model": "Cohere-rerank-v4.0-fast"
     }
   }
 }

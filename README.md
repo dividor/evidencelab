@@ -44,7 +44,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic table extraction, with support for more expensive processing as required
 - AI-assisted document summarization, by map reduce or in a single prompt (`summarize.mode`)
 - AI-assisted tagging of documents
-- Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
+- Indexing with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and extensible to others
 
 2. User interface
 
@@ -523,6 +523,8 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 | `AUTH_LOCKOUT_DURATION_MINUTES` | `15` | Lockout duration |
 
 ## Deployment settings
+
+To run Evidence Lab on a cloud's container service rather than one machine, see [Deploying to Cloud Platforms](docs/admin/cloud-deployment.md). It has tested example deployments for AWS (ECS on Fargate) and Azure (Container Apps), each with a Terraform template, deploy and teardown scripts, and step-by-step instructions.
 
 Four groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
 
