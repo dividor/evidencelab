@@ -179,20 +179,10 @@
       "model": "gpt-4.1-mini",
       "provider": "azure_foundry"
     },
-    "gemini-2.5-flash": {
-      "model": "gemini-2.5-flash",
+    "gemini-3.8-flash": {
+      "model": "gemini-3.8-flash",
       "provider": "google_vertex",
       "max_tokens": 65536
-    },
-    "gemini-2.5-pro": {
-      "model": "gemini-2.5-pro",
-      "provider": "google_vertex",
-      "max_tokens": 65536
-    },
-    "gemini-2.0-flash": {
-      "model": "gemini-2.0-flash",
-      "provider": "google_vertex",
-      "max_tokens": 8192
     },
     "nova-2-lite": {
       "model": "us.amazon.nova-2-lite-v1:0",
@@ -281,21 +271,21 @@
       "embedding_model": "google_gemini_1536",
       "sparse_model": "bm25",
       "summarization_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "semantic_highlighting_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "assistant_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,

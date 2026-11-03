@@ -92,7 +92,32 @@ def test_create_google_vertex_llm_default_location(monkeypatch):
         llm_factory._create_google_vertex_llm("gemini-2.5-flash", 0.7, 500)
 
     call_kwargs = mock_cls.call_args[1]
-    assert call_kwargs["location"] == "us-central1"
+    assert call_kwargs["location"] == "global"
+
+
+@pytest.mark.parametrize(
+    "model", ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"]
+)
+def test_create_google_vertex_llm_gemini_3_flash_does_not_think(monkeypatch, model):
+    """Gemini 3 Flash models think by default, which cut answers off at
+    max_tokens, so thinking is switched off as for Gemini 2.5."""
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "proj")
+
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        llm_factory._create_google_vertex_llm(model, 0.2, 500)
+
+    assert mock_cls.call_args[1]["thinking_budget"] == 0
+
+
+def test_create_google_vertex_llm_gemini_3_pro_keeps_thinking(monkeypatch):
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "proj")
+
+    with patch("langchain_google_vertexai.ChatVertexAI") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        llm_factory._create_google_vertex_llm("gemini-3.1-pro-preview", 0.2, 500)
+
+    assert "thinking_budget" not in mock_cls.call_args[1]
 
 
 def test_create_llm_for_provider_routes_google_vertex(monkeypatch):
