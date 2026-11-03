@@ -1,7 +1,7 @@
-"""deploy/aws/scripts/demo_config.py writes the config for an AWS demo deployment.
+"""deploy/demo_config.py writes the config for a cloud demo deployment.
 
 It reuses the demo script's own setup, so the demo data source and model combo
-on AWS match what ``scripts/demo/run_demo.py`` sets up locally. These tests run
+in the cloud match what ``scripts/demo/run_demo.py`` sets up locally. These tests run
 the real helper on the repository's real config.json.
 """
 
@@ -12,13 +12,13 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HELPER = REPO_ROOT / "deploy" / "aws" / "scripts" / "demo_config.py"
+HELPER = REPO_ROOT / "deploy" / "demo_config.py"
 
 pytestmark = pytest.mark.unit
 
 
 def _load_helper():
-    spec = importlib.util.spec_from_file_location("aws_demo_config", HELPER)
+    spec = importlib.util.spec_from_file_location("deploy_demo_config", HELPER)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

@@ -1,6 +1,7 @@
 """Write the config.json for a demo deployment, with the World Bank demo data.
 
-Uses the demo script's own setup (scripts/demo/run_demo.py): the chosen model
+Used by deploy/aws/scripts/deploy.sh and deploy/azure/scripts/deploy.sh. It
+uses the demo script's own setup (scripts/demo/run_demo.py): the chosen model
 provider's combo becomes the default, and the "Demo Data from World Bank" data
 source is added. It is the only data source in the result, so the site opens
 on it and lists no empty datasets. Writes two files to --out-dir:
@@ -11,7 +12,7 @@ on it and lists no empty datasets. Writes two files to --out-dir:
                      AWS credentials are never among them: on ECS the
                      containers get those from their task role.
 
-Usage: python3 deploy/aws/scripts/demo_config.py --provider azure_foundry --out-dir deploy/aws/.demo
+Usage: python3 deploy/demo_config.py --provider azure_foundry --out-dir deploy/azure/.demo
 """
 
 import argparse
@@ -21,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_run_demo():

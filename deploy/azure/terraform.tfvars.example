@@ -1,0 +1,29 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is not committed.
+
+# Your subscription's ID: az account show --query id -o tsv
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# Also the name of the new resource group that holds everything. Terraform
+# refuses to start if a resource group of this name already exists.
+name                = "evidencelab"
+location            = "eastus2"
+evidencelab_version = "1.6.5"
+config_json_path    = "../../config.json"
+
+# Leave false for the first apply; scripts/deploy.sh sets it true once the web
+# app image is pushed and the migrate job has run.
+services_enabled = false
+
+# Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on a
+# virtual machine.
+qdrant_url = ""
+
+# Smaller, single-zone settings for a throwaway test deployment. The database
+# stays on the smallest General Purpose size: Azure refused the Burstable
+# sizes (B1ms, B2s) in eastus2 for the subscription this was tested with.
+# db_storage_mb           = 32768
+# db_high_availability    = false
+# redis_high_availability = false
+# api = { cpu = 2, memory = "4Gi", replicas = 1 }
+# mcp = { cpu = 0.5, memory = "1Gi", replicas = 1 }
+# ui  = { cpu = 0.25, memory = "0.5Gi", replicas = 1 }

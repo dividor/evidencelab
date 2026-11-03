@@ -443,12 +443,17 @@ jobs:
 
   terraform:
     # Checks the cloud deployment templates: formatting, validity, and the
-    # plan-only tests in deploy/aws/tests (mocked providers, no AWS account).
+    # plan-only tests in deploy/<cloud>/tests (mocked providers, no cloud
+    # account).
     runs-on: ubuntu-latest
     needs: code-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [aws, azure]
     defaults:
       run:
-        working-directory: deploy/aws
+        working-directory: deploy/${{ matrix.template }}
     steps:
       - uses: actions/checkout@v7
 
