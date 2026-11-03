@@ -159,7 +159,7 @@ The api, mcp and embedding services register their addresses in a private DNS na
 
 ### Deploying the AWS demo
 
-These steps deploy a demo: 5 World Bank documents, processed with Amazon Bedrock models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
+These steps deploy a demo: 2 World Bank documents, processed with Amazon Bedrock models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
 
 **1. Install the tools.** The tested versions are in brackets.
 
@@ -167,7 +167,7 @@ These steps deploy a demo: 5 World Bank documents, processed with Amazon Bedrock
 |---|---|---|
 | [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | 2.32 or later (2.35.18) | Signing in with `aws login`, and the scripts' AWS calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 (on an Intel or AMD computer Docker builds it through emulation, which is slower) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -226,7 +226,7 @@ To use Azure Foundry models instead, set `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_
 **6. Deploy:**
 
 ```bash
-deploy/aws/scripts/deploy.sh --demo 5
+deploy/aws/scripts/deploy.sh --demo 2
 ```
 
 Terraform asks you to type `yes` twice: once to create the infrastructure, and once to start the services. The script runs these steps and prints each one as it starts:
@@ -237,7 +237,7 @@ Terraform asks you to type `yes` twice: once to create the infrastructure, and o
 4. Builds the web app image and pushes it to ECR.
 5. Runs the database migrations.
 6. Starts the services, and waits until they are all running.
-7. Downloads 5 World Bank documents and processes them.
+7. Downloads 2 World Bank documents and processes them.
 8. Checks that the site answers, and prints its address.
 
 With `--demo`, the web app is built with the site's API key, so visitors can use the site without signing in, as on evidencelab.ai. Anyone who opens the site can read that key from the page, so use `--demo` only for demonstrations.
@@ -266,7 +266,7 @@ deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-s
 
 1. Check out the new release of the code.
 2. Set the new `evidencelab_version` in `deploy/aws/terraform.tfvars`.
-3. Run `deploy/aws/scripts/deploy.sh` again, with `--demo 5` if the deployment is the demo.
+3. Run `deploy/aws/scripts/deploy.sh` again, with `--demo 2` if the deployment is the demo.
 
 The script applies any changes, rebuilds the web app image, runs the migrations and then replaces the services' tasks.
 
