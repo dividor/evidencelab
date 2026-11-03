@@ -206,7 +206,7 @@ Edit `deploy/aws/terraform.tfvars`:
 | `qdrant_url` | Leave empty, to run Qdrant on EC2. |
 | The `#` lines at the end | Remove the `#` from each line, for smaller and cheaper single-zone settings. |
 
-If your AWS account is on the Free plan, also add this line. The Free plan refuses the default of 7 days of database backups.
+If your AWS account is on the Free plan, check you removed the `#` from the `qdrant_instance_type = "t4g.small"` line, and add the line below. The Free plan refuses the default Qdrant server size and the default of 7 days of database backups.
 
 ```
 db_backup_retention_days = 1

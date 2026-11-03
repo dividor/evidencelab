@@ -29,6 +29,7 @@ provider_secret_names = []
 # db_multi_az            = false
 # db_instance_class      = "db.t4g.micro"
 # db_skip_final_snapshot = true
+# qdrant_instance_type   = "t4g.small"
 # api = { cpu = 2048, memory = 8192, count = 1 }
 # mcp = { cpu = 512, memory = 2048, count = 1 }
 # ui  = { cpu = 256, memory = 512, count = 1 }
