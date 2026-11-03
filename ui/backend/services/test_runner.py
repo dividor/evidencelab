@@ -593,7 +593,7 @@ async def _judge_call(
     from langchain_core.messages import HumanMessage, SystemMessage
 
     from ui.backend.services.llm_service import summarize_usage_metadata
-    from utils.llm_factory import get_llm
+    from utils.llm_factory import get_llm, message_text
 
     llm = get_llm(model=model_key, temperature=0.0, max_tokens=300)
     usage_handler = UsageMetadataCallbackHandler()
@@ -604,7 +604,7 @@ async def _judge_call(
         ],
         config={"callbacks": [usage_handler]},
     )
-    return str(response.content), summarize_usage_metadata(usage_handler, model_key)
+    return message_text(response), summarize_usage_metadata(usage_handler, model_key)
 
 
 def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:

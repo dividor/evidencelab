@@ -23,6 +23,7 @@ import os
 from typing import Any, Dict, Optional, Tuple
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import BaseMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from pydantic import SecretStr
 
@@ -537,6 +538,22 @@ def _create_openai_compatible_llm(
         api_key=SecretStr(api_key),
         base_url=base_url,
     )
+
+
+def message_text(message: BaseMessage) -> str:
+    """The text of a chat model's reply.
+
+    Providers return ``content`` either as a string (OpenAI, Azure Foundry,
+    Hugging Face) or as a list of content blocks (Amazon Bedrock when
+    streaming, Gemini with tool calls). ``str(message.content)`` turns a block
+    list into its Python repr, which reached users as
+    ``[{'type': 'text', 'text': 'The most', ...}]``. LangChain's ``text``
+    property joins a list's text blocks; string content is returned as it is.
+    """
+    content = message.content
+    if isinstance(content, str):
+        return content
+    return str(message.text)
 
 
 def clear_llm_cache():

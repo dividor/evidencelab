@@ -22,6 +22,7 @@ from ui.backend.services.assistant_graph import (
     build_research_agent,
 )
 from ui.backend.services.llm_service import summarize_usage_metadata
+from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
 
@@ -284,9 +285,9 @@ def _process_agent_output(node_output: Dict) -> Dict[str, Any]:
             # Gemini-only carve-out: the synthesis often rides along with
             # a write_todos tool call in the same message.
             if _is_gemini_message(msg) and has_content:
-                result["response_text"] = msg.content
+                result["response_text"] = message_text(msg)
         elif has_content:
-            result["response_text"] = msg.content
+            result["response_text"] = message_text(msg)
     logger.info(
         "[deepres] model-step: msgs=%d summary=%s queries=%d tasks=%d response_text_len=%d",
         len(messages),

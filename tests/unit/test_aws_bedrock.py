@@ -243,3 +243,37 @@ class TestDemo:
             "AWS_SECRET_ACCESS_KEY",
             "AWS_REGION",
         ]
+
+
+class TestMessageText:
+    def test_when_content_is_a_string_then_returned_unchanged(self):
+        from langchain_core.messages import AIMessage
+
+        from utils.llm_factory import message_text
+
+        text = "  Line one\nline two  "
+        assert message_text(AIMessage(content=text)) == text
+
+    def test_when_content_is_text_blocks_then_joined(self):
+        from langchain_core.messages import AIMessageChunk
+
+        from utils.llm_factory import message_text
+
+        chunk = AIMessageChunk(
+            content=[{"type": "text", "text": "The most", "index": 0}]
+        )
+        assert message_text(chunk) == "The most"
+
+    def test_when_blocks_include_a_tool_call_then_only_text_is_kept(self):
+        from langchain_core.messages import AIMessage
+
+        from utils.llm_factory import message_text
+
+        message = AIMessage(
+            content=[
+                {"type": "text", "text": "Searching. "},
+                {"type": "tool_use", "id": "t1", "name": "search", "input": {}},
+                {"type": "text", "text": "Done."},
+            ]
+        )
+        assert message_text(message) == "Searching. Done."

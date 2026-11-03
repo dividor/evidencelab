@@ -315,7 +315,7 @@ async def llm_judge(
     from langchain_core.runnables import RunnableConfig
 
     from ui.backend.services.llm_service import summarize_usage_metadata
-    from utils.llm_factory import get_llm
+    from utils.llm_factory import get_llm, message_text
 
     llm = get_llm(model=model_key, temperature=0.0, max_tokens=JUDGE_MAX_OUTPUT_TOKENS)
     usage_handler = UsageMetadataCallbackHandler()
@@ -323,7 +323,7 @@ async def llm_judge(
         [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
         config=RunnableConfig(callbacks=[usage_handler]),
     )
-    return str(response.content), summarize_usage_metadata(usage_handler, model_key)
+    return message_text(response), summarize_usage_metadata(usage_handler, model_key)
 
 
 def make_judge(model_key: Optional[str]) -> JudgeFn:
