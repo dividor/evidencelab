@@ -68,7 +68,7 @@ Set at least these values:
 - `API_SECRET_KEY`: a random string, for example from `openssl rand -hex 32`. The API will not start without it.
 - `AUTH_SECRET_KEY`: a different random string of 32 or more characters.
 - `REACT_APP_API_KEY`: see [How the web interface reaches the API](#how-the-web-interface-reaches-the-api). The compose file stops if it is missing.
-- The keys for the language model provider your `config.json` uses. The stock `config.json` uses Azure Foundry, which needs `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT`. See [Optional Third-Party Services](third-party-services.md).
+- The keys for the language model provider your `config.json` uses. The stock `config.json` uses Azure Foundry, which needs `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT`. The AWS Bedrock models need `AWS_REGION`, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (see [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock)). See also [Optional Third-Party Services](third-party-services.md).
 
 Then start Evidence Lab and open http://localhost:8080:
 

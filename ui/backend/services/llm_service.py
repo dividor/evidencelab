@@ -17,7 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 # Add utils to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from utils.llm_factory import get_llm  # noqa: E402
+from utils.llm_factory import get_llm, message_text  # noqa: E402
 from utils.tracing import get_trace_recorder  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -176,8 +176,8 @@ async def stream_ai_summary(
         async for chunk in llm.astream(
             messages, config=config  # type: ignore[arg-type]
         ):
-            if chunk.content:
-                token = str(chunk.content)
+            token = message_text(chunk)
+            if token:
                 accumulated += token
                 yield token
 
@@ -282,7 +282,7 @@ async def generate_ai_summary_with_usage(
         )
 
         # Return raw content, matching the streaming endpoint behaviour
-        summary = str(response.content).strip()
+        summary = message_text(response).strip()
 
         # Log the response
         logger.info("AI SUMMARY RESPONSE:")
@@ -428,7 +428,7 @@ async def generate_brief_outline(
     response = await llm.ainvoke(
         messages, config={"callbacks": [usage_handler]}  # type: ignore[arg-type]
     )
-    raw = str(response.content).strip()
+    raw = message_text(response).strip()
     logger.info("Brief outline raw response (%d chars): %s", len(raw), raw[:500])
     title, headings = parse_brief_outline(raw, fallback_title=question.strip())
     return title, headings, summarize_usage_metadata(usage_handler, model_key)
@@ -502,5 +502,5 @@ async def revise_brief_section(
     # Some models HTML-escape quotes/ampersands in their output (e.g. &#34;),
     # which would render literally in the section. Decode entities back to plain
     # text so the stored markdown is clean.
-    revised = html.unescape(_strip_section_wrapper(str(response.content)))
+    revised = html.unescape(_strip_section_wrapper(message_text(response)))
     return revised, summarize_usage_metadata(usage_handler, model_key)

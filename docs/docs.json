@@ -38,6 +38,7 @@
         { "title": "MCP Server", "path": "admin/mcp-server.md" },
         { "title": "A2A Server", "path": "admin/a2a-server.md" },
         { "title": "Running from the Published Image", "path": "admin/docker-images.md" },
+        { "title": "Deploying to Cloud Platforms", "path": "admin/cloud-deployment.md" },
         { "title": "Customization & Branding", "path": "admin/customization.md" },
         { "title": "Optional Third-Party Services", "path": "admin/third-party-services.md" }
       ]

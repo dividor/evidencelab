@@ -286,8 +286,7 @@ async def get_semantic_llm_output(
         ],
         config={"callbacks": [usage_handler]},
     )
-    content = response.content
-    llm_output = (content if isinstance(content, str) else str(content)).strip()
+    llm_output = llm_factory.message_text(response).strip()
     if "```json" in llm_output:
         llm_output = llm_output.split("```json")[1].split("```")[0].strip()
     elif "```" in llm_output:

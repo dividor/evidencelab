@@ -82,12 +82,14 @@ RUN npm run build
 # Stage 2: Production server with nginx
 FROM nginx:alpine AS production
 
-# Copy nginx config as template (API key injected at runtime)
+# Copy nginx config as a template; the entrypoint fills in the api and mcp
+# addresses (see render-nginx-conf.sh)
 COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
 
-# Copy entrypoint script
+# Copy entrypoint and config rendering scripts
 COPY ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
+COPY ui/frontend/render-nginx-conf.sh /render-nginx-conf.sh
+RUN chmod +x /docker-entrypoint.sh /render-nginx-conf.sh
 
 # Copy built assets from builder stage
 COPY --from=builder /app/build /usr/share/nginx/html

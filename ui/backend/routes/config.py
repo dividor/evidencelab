@@ -89,6 +89,8 @@ def get_config_models():
             # Format description for UI
             if source == "azure_foundry":
                 desc = f"Azure Foundry ({name})"
+            elif source == "aws_bedrock":
+                desc = f"Amazon Bedrock ({name})"
             else:
                 desc = f"{name} ({source})"
 
@@ -122,7 +124,7 @@ def get_config_llms():
 def _location_from_source(source: Optional[str]) -> str:
     if not source:
         return "Local"
-    if source in {"azure_foundry", "google_vertex", "openai", "api"}:
+    if source in {"azure_foundry", "google_vertex", "aws_bedrock", "openai", "api"}:
         return "API"
     return "Local"
 
