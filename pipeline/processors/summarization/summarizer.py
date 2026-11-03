@@ -471,7 +471,7 @@ class SummarizeProcessor(SummaryTextMixin, BaseProcessor):
         # regardless of whether the call resolved it to a provider model id.
         self._usage.add_response(response, self.model_key)
         if hasattr(response, "content"):
-            return response.content.strip()
+            return llm_factory.message_text(response).strip()
         return str(response).strip()
 
     def teardown(self) -> None:

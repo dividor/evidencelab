@@ -106,7 +106,7 @@ Run Evidence Lab from the published Docker Hub image
 ([`astrobagel/evidencelab`](https://hub.docker.com/r/astrobagel/evidencelab)),
 with nothing to build. You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose,
 [Python 3](https://www.python.org/downloads/) and git, plus an
-API key for one model provider (Azure Foundry, Hugging Face or Google Vertex).
+API key for one model provider (Azure Foundry, Hugging Face or Google Vertex), or AWS credentials for Amazon Bedrock.
 
 ```bash
 git clone https://github.com/dividor/evidencelab.git
@@ -260,7 +260,7 @@ A dictionary of embedding models available to the pipeline and search engine.
 "model_key": {
   "model_id": "namespace/model-name",   // Model identifier (HuggingFace repo, Azure deployment, etc.)
   "size": 1024,                          // Embedding vector dimensionality
-  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "qdrant", "opensearch"
+  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "aws_bedrock", "qdrant", "opensearch"
   "type": "dense"                        // "dense" or "sparse"
 }
 ```

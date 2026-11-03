@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../config';
 import type { SearchResult } from '../types/api';
+import { generateUUID } from '../utils/uuid';
 
 /**
  * LLM usage payload threaded into activity log POST/PATCH calls.
@@ -31,12 +32,12 @@ export function getSessionId(): string {
   try {
     let id = localStorage.getItem(KEY);
     if (!id) {
-      id = crypto.randomUUID();
+      id = generateUUID();
       localStorage.setItem(KEY, id);
     }
     return id;
   } catch {
-    return crypto.randomUUID();
+    return generateUUID();
   }
 }
 

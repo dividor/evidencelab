@@ -71,20 +71,20 @@ Each entry defines a model that can be used for vector embeddings:
 |-------|------|-------------|
 | `model_id` | string | Full model identifier (e.g., `"intfloat/multilingual-e5-large"`) |
 | `size` | int | Vector dimensionality (e.g., 1024) |
-| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"fastembed"` |
+| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"fastembed"` |
 | `type` | string | `"dense"` or `"sparse"` |
 | `max_tokens` | int | Maximum input token length |
 
 The `source` field determines how the model is loaded:
 - **`huggingface`** / **`fastembed`** — runs locally via an embedding server (requires GPU or MPS for best performance)
-- **`azure_foundry`** / **`google_vertex`** — accessed via remote API (requires API keys in `.env`)
+- **`azure_foundry`** / **`google_vertex`** / **`aws_bedrock`** — accessed via remote API (requires credentials in `.env`, see [Amazon Bedrock](#amazon-bedrock) for AWS)
 
 #### LLM Models (`supported_llms`)
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-2.5-flash"`) |
-| `provider` | string | `"huggingface"`, `"azure_foundry"`, or `"google_vertex"` |
+| `provider` | string | `"huggingface"`, `"azure_foundry"`, `"google_vertex"` or `"aws_bedrock"` |
 | `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"scaleway"`, `"together"`). If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
 
@@ -93,7 +93,26 @@ The `source` field determines how the model is loaded:
 | Field | Type | Description |
 |-------|------|-------------|
 | `model_id` | string | Model identifier |
-| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` for API |
+| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` / `"aws_bedrock"` for API |
+| `region` | string | `aws_bedrock` only: the AWS region to call the reranker in, when it differs from `AWS_REGION` (rerank models are offered in only some regions) |
+
+#### Amazon Bedrock
+
+The stock `config.json` includes Bedrock models and an **AWS Bedrock** model combo:
+
+| Key | Kind | Bedrock model |
+|---|---|---|
+| `aws_titan_v2` | Embedding | Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`), 1024 dimensions |
+| `nova-2-lite` | LLM | Amazon Nova 2 Lite, through the US inference profile `us.amazon.nova-2-lite-v1:0` |
+| `cohere-rerank-3.5-bedrock` | Reranker | Cohere Rerank 3.5 (`cohere.rerank-v3-5:0`), called in `us-west-2` |
+
+Evidence Lab calls Bedrock with the standard AWS credentials: `AWS_REGION` plus `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN` for temporary credentials) in `.env`, or the task role when running on Amazon ECS. The credentials need permission for `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`.
+
+Model availability differs by region. Check what your region offers with `aws bedrock list-foundation-models --region <region>`, then adjust the entries:
+
+- **Embedding:** Titan Text Embeddings V2 is offered in most regions. Embedding models cannot be changed after a data source is indexed.
+- **LLM:** Nova 2 Lite is called through an inference profile whose prefix matches your region's geography: `us.` in the United States, `eu.` in Europe, `apac.` in Asia Pacific.
+- **Reranker:** Cohere Rerank 3.5 is offered in only a few regions, including `us-west-2`, `eu-central-1` and `ap-northeast-1`. Set `region` to one near you.
 
 ---
 

@@ -16,7 +16,7 @@ from pipeline.db import Database, PostgresClient
 from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_llm import resolve_llm_config
 from pipeline.utilities.llm_retry import invoke_with_retry
-from utils.llm_factory import get_llm
+from utils.llm_factory import get_llm, message_text
 from utils.tracing import traceable
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ class TaxonomyTagger(BaseTagger):
             response = invoke_with_retry(llm, messages)
             if self.usage_collector is not None:
                 self.usage_collector.add_response(response, model_key)
-            return self._parse_llm_response(str(response.content))
+            return self._parse_llm_response(message_text(response))
         except Exception as exc:
             logger.error("LLM call failed for taxonomy: %s", exc)
             return None

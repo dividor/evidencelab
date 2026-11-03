@@ -441,6 +441,35 @@ jobs:
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration/test_translation_integration.py -v -s"
 
+  terraform:
+    # Checks the cloud deployment templates: formatting, validity, and the
+    # plan-only tests in deploy/aws/tests (mocked providers, no AWS account).
+    runs-on: ubuntu-latest
+    needs: code-quality
+    defaults:
+      run:
+        working-directory: deploy/aws
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialise
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Test
+        run: terraform test
+
   ui-tests:
     runs-on: ubuntu-latest
     needs: tests

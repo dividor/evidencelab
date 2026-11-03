@@ -152,7 +152,7 @@ class LlmTranslationProvider(TranslationProvider):
     def translate(self, text: str, source: str, target: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        from utils.llm_factory import get_llm
+        from utils.llm_factory import get_llm, message_text
 
         llm = get_llm(
             model=self._model_key,
@@ -166,7 +166,7 @@ class LlmTranslationProvider(TranslationProvider):
         response = llm.invoke(
             [SystemMessage(content=system_prompt), HumanMessage(content=text)]
         )
-        translated = str(response.content).strip()
+        translated = message_text(response).strip()
         if not translated:
             raise TranslationError("LLM returned an empty translation")
         return translated
