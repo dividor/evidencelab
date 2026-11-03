@@ -28,6 +28,8 @@ mock_provider "aws" {
     }
   }
   mock_resource "aws_iam_role" {
+    # Known while planning, so tests can compare role ARNs.
+    override_during = plan
     defaults = {
       arn = "arn:aws:iam::123456789012:role/evidencelab-ecs-execution"
     }
@@ -212,5 +214,18 @@ run "anonymous_access_is_off_unless_asked_for" {
   assert {
     condition     = output.anonymous_access == false
     error_message = "The web app should not carry the API key unless anonymous_access is set."
+  }
+}
+
+run "containers_can_call_bedrock_in_their_region" {
+  command = plan
+
+  assert {
+    condition     = local.app_environment["AWS_REGION"] == "us-east-2"
+    error_message = "The containers should be told the deployment's region."
+  }
+  assert {
+    condition     = aws_ecs_task_definition.app["api"].task_role_arn == aws_iam_role.task.arn
+    error_message = "The api should run as the task role that may call Bedrock."
   }
 }

@@ -156,6 +156,13 @@
       "type": "dense",
       "max_tokens": 2048,
       "output_dimensionality": 768
+    },
+    "aws_titan_v2": {
+      "model_id": "amazon.titan-embed-text-v2:0",
+      "size": 1024,
+      "source": "aws_bedrock",
+      "type": "dense",
+      "max_tokens": 8192
     }
   },
   "supported_llms": {
@@ -186,6 +193,10 @@
       "model": "gemini-2.0-flash",
       "provider": "google_vertex",
       "max_tokens": 8192
+    },
+    "nova-2-lite": {
+      "model": "us.amazon.nova-2-lite-v1:0",
+      "provider": "aws_bedrock"
     }
   },
   "supported_rerank_models": {
@@ -204,6 +215,11 @@
     "vertex-ai-ranker-fast": {
       "model_id": "semantic-ranker-fast-004",
       "provider": "google_vertex"
+    },
+    "cohere-rerank-3.5-bedrock": {
+      "model_id": "cohere.rerank-v3-5:0",
+      "provider": "aws_bedrock",
+      "region": "us-west-2"
     }
   },
   "ui_model_combos": {
@@ -286,6 +302,33 @@
         "chunk_tokens_ratio": 0.5
       },
       "reranker_model": "vertex-ai-ranker"
+    },
+    "AWS Bedrock": {
+      "embedding_model": "aws_titan_v2",
+      "sparse_model": "bm25",
+      "summarization_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "semantic_highlighting_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 500,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "assistant_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "reranker_model": "cohere-rerank-3.5-bedrock",
+      "rerank_model_page_size": 10
     }
   },
   "datasources": {

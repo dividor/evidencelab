@@ -131,6 +131,8 @@ def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "model_id": model_info.get("model_id", model_name),
             "source": model_info.get("source", "huggingface"),
             "provider": model_info.get("provider"),
+            # Bedrock rerank models are offered in only some AWS regions.
+            "region": model_info.get("region"),
         }
     return result
 

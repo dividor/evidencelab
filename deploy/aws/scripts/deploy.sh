@@ -7,8 +7,10 @@
 #                    with the demo data source from scripts/demo/run_demo.py.
 #                    The site is then usable without signing in: the web app
 #                    is built with the API key (anonymous_access).
-#   --provider NAME  Model provider for --demo: azure_foundry (default) or
-#                    huggingface. Its keys must be set in your environment
+#   --provider NAME  Model provider for --demo: aws_bedrock (default),
+#                    azure_foundry or huggingface. aws_bedrock needs no keys:
+#                    the containers call Amazon Bedrock with their task role.
+#                    The others need their keys set in your environment
 #                    (azure_foundry: AZURE_FOUNDRY_KEY and AZURE_FOUNDRY_ENDPOINT;
 #                    huggingface: HUGGINGFACE_API_KEY).
 #   --yes            Apply Terraform changes without asking first.
@@ -31,7 +33,7 @@
 set -euo pipefail
 
 demo_docs=""
-provider="azure_foundry"
+provider="aws_bedrock"
 auto_approve=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -42,9 +44,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 case "$provider" in
-    azure_foundry | huggingface) ;;
+    aws_bedrock | azure_foundry | huggingface) ;;
     *)
-        echo "--provider must be azure_foundry or huggingface. ($provider needs credentials this example cannot pass to the containers.)" >&2
+        echo "--provider must be aws_bedrock, azure_foundry or huggingface. ($provider needs credentials this example cannot pass to the containers.)" >&2
         exit 2
         ;;
 esac

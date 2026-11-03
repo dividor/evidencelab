@@ -125,7 +125,8 @@ def get_llm(
 
     Args:
         provider: LLM provider ("huggingface", "openai", "anthropic",
-                 "azure_foundry", "google_vertex", "openai-compatible").
+                 "azure_foundry", "google_vertex", "openai-compatible",
+                 "aws_bedrock").
                  Resolved from model config or LLM_PROVIDER env var.
                  Raises ValueError if no provider can be determined.
         model: Model identifier. If None, reads from LLM_MODEL env var
@@ -314,10 +315,12 @@ def _create_llm_for_provider(
         return _create_google_vertex_llm(model, temperature, max_tokens)
     if provider == "openai-compatible":
         return _create_openai_compatible_llm(model, temperature, max_tokens)
+    if provider == "aws_bedrock":
+        return _create_aws_bedrock_llm(model, temperature, max_tokens)
     raise ValueError(
         f"Unsupported LLM_PROVIDER: {provider}. "
         f"Supported: huggingface, openai, azure_foundry, anthropic, "
-        f"google_vertex, openai-compatible"
+        f"google_vertex, openai-compatible, aws_bedrock"
     )
 
 
@@ -399,6 +402,27 @@ def _create_azure_foundry_llm(
         default_query={"api-version": api_version},
         temperature=temperature,
         max_tokens=max_tokens,
+    )
+
+
+def _create_aws_bedrock_llm(
+    model: str, temperature: float, max_tokens: int
+) -> BaseChatModel:
+    """Create an Amazon Bedrock chat model (Converse API).
+
+    ``model`` is a Bedrock model or inference profile ID, for example
+    ``us.amazon.nova-2-lite-v1:0``. Credentials and region come from the
+    standard AWS sources (environment, profile or ECS task role).
+    """
+    from langchain_aws import ChatBedrockConverse
+
+    from pipeline.utilities.aws_bedrock_client import bedrock_region
+
+    return ChatBedrockConverse(
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        region_name=bedrock_region(),
     )
 
 

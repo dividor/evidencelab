@@ -7,7 +7,9 @@ on it and lists no empty datasets. Writes two files to --out-dir:
 
   config.json        the configuration to deploy and to build the web app with
   demo.json          {"data_source": ..., "secret_names": [...]}: the pipeline
-                     data source and the provider settings the containers need
+                     data source and the provider settings the containers need.
+                     AWS credentials are never among them: on ECS the
+                     containers get those from their task role.
 
 Usage: python3 deploy/aws/scripts/demo_config.py --provider azure_foundry --out-dir deploy/aws/.demo
 """
@@ -55,7 +57,7 @@ def build_demo_config(base_config, provider):
     config["datasources"] = {key: config["datasources"][key]}
     demo = {
         "data_source": run_demo.DEMO_DATA_SUBDIR,
-        "secret_names": list(combo["required_env"]),
+        "secret_names": [n for n in combo["required_env"] if not n.startswith("AWS_")],
     }
     return config, demo
 

@@ -61,6 +61,7 @@ locals {
     EMBEDDING_API_URL     = local.embedding_url
     DATA_MOUNT_PATH       = "/app/data"
     PYTHONPATH            = "/app"
+    AWS_REGION            = var.region
     USER_MODULE           = var.user_module
     APP_BASE_URL          = local.site_url
     CORS_ALLOWED_ORIGINS  = local.site_url
@@ -115,6 +116,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = each.value.size.cpu
   memory                   = each.value.size.memory
   execution_role_arn       = aws_iam_role.execution.arn
+  task_role_arn            = aws_iam_role.task.arn
 
   runtime_platform {
     operating_system_family = "LINUX"

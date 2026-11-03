@@ -130,7 +130,8 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Redis | Amazon ElastiCache (Valkey, compatible with Redis), encrypted in transit | cache.t4g.micro |
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
 | Web app image | Amazon ECR repository `<name>/ui` | — |
-| Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` your model provider keys | — |
+| Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
+| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
 | Domain | A Route 53 record pointing at the load balancer, if you set a domain | — |
 
@@ -152,12 +153,13 @@ The api, mcp and embedding services register their addresses in a private DNS na
 | api, mcp, pipeline, migrate | `PGSSLMODE`, `PGSSLROOTCERT` | `verify-full`, and the RDS certificate bundle for the region |
 | api, mcp, pipeline, migrate | `QDRANT_HOST`, `QDRANT_API_KEY` | The Qdrant instance's address and generated key, or your Qdrant Cloud URL and key |
 | api, mcp, pipeline, migrate | `EMBEDDING_API_URL` | `http://embedding.<name>.internal:7997` |
+| api, mcp, pipeline, migrate | `AWS_REGION` | The deployment's region, used for Amazon Bedrock calls |
 
 `config.json` is too large for a container setting. It travels compressed, and each container writes it to `/app/config.json` when it starts.
 
 ### Deploying the AWS demo
 
-These steps deploy a demo: 5 World Bank documents, processed with Azure Foundry models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
+These steps deploy a demo: 5 World Bank documents, processed with Amazon Bedrock models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
 
 **1. Install the tools.** The tested versions are in brackets.
 
@@ -210,14 +212,16 @@ If your AWS account is on the Free plan, also add this line. The Free plan refus
 db_backup_retention_days = 1
 ```
 
-**5. Set the Azure Foundry keys.** The deploy script copies them into Secrets Manager. They are not stored in Terraform.
+**5. Check the Bedrock models.** The demo uses the **AWS Bedrock** models in `config.json`: Titan Text Embeddings V2, Amazon Nova 2 Lite and Cohere Rerank 3.5. No model keys are needed, because the containers call Bedrock with their task role. Check your region offers the first two:
 
 ```bash
-export AZURE_FOUNDRY_KEY=<your key>
-export AZURE_FOUNDRY_ENDPOINT=<your endpoint URL>
+aws bedrock list-foundation-models --region us-east-2 \
+  --query "modelSummaries[?modelId=='amazon.titan-embed-text-v2:0' || modelId=='amazon.nova-2-lite-v1:0'].modelId"
 ```
 
-To use the Hugging Face models instead, set `HUGGINGFACE_API_KEY` and add `--provider huggingface` to the command in step 6.
+Both IDs should be listed. If your region is outside the United States, or offers different models, edit the Bedrock entries in `config.json` first, as described in [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock). Cohere Rerank 3.5 is called in `us-west-2`, because us-east-2 does not offer it.
+
+To use Azure Foundry models instead, set `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT` and add `--provider azure_foundry` to the command in step 6. The deploy script copies the keys into Secrets Manager.
 
 **6. Deploy:**
 
@@ -229,7 +233,7 @@ Terraform asks you to type `yes` twice: once to create the infrastructure, and o
 
 1. Writes the demo configuration to `deploy/aws/.demo/`.
 2. Creates the network, database, Redis, file share, Qdrant, image registry, load balancer and ECS cluster.
-3. Stores your Azure Foundry keys in Secrets Manager.
+3. Stores any model provider keys in Secrets Manager (none for Bedrock).
 4. Builds the web app image and pushes it to ECR.
 5. Runs the database migrations.
 6. Starts the services, and waits until they are all running.
@@ -250,8 +254,8 @@ Terraform lists what it will delete and asks you to type `yes`. The database, fi
 
 ### Deploying your own documents
 
-1. In `deploy/aws/terraform.tfvars`, set `config_json_path` to your `config.json`. Set `provider_secret_names` to the names of the model provider keys it needs, for example `["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]`.
-2. Export those keys, and run `deploy/aws/scripts/deploy.sh` without `--demo`. Visitors must sign in, because the web app carries no API key. To let them use the site signed out, add `anonymous_access = true`, which puts the key in the page.
+1. In `deploy/aws/terraform.tfvars`, set `config_json_path` to your `config.json`. If it uses models from other providers than Amazon Bedrock, set `provider_secret_names` to the names of their keys, for example `["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]`, and export those keys.
+2. Run `deploy/aws/scripts/deploy.sh` without `--demo`. Visitors must sign in, because the web app carries no API key. To let them use the site signed out, add `anonymous_access = true`, which puts the key in the page.
 3. Ingest documents with the pipeline task, replacing `<data_subdir>` with the data source's `data_subdir` in your `config.json`:
 
 ```bash

@@ -17,10 +17,13 @@ route53_zone_id = ""
 # Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on EC2.
 qdrant_url = ""
 
-# Names of the model provider keys your config.json needs. scripts/deploy.sh
-# copies their values from your environment into Secrets Manager, so they
-# never pass through Terraform. With --demo, deploy.sh sets this for you.
-provider_secret_names = ["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]
+# Names of the model provider keys your config.json needs. Amazon Bedrock
+# models need none: the containers call Bedrock with their task role. For
+# other providers, scripts/deploy.sh copies the values from your environment
+# into Secrets Manager, so they never pass through Terraform, for example
+# ["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]. With --demo, deploy.sh
+# sets this for you.
+provider_secret_names = []
 
 # Smaller, single-zone settings for a throwaway test deployment:
 # db_multi_az            = false

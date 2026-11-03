@@ -61,6 +61,14 @@ DEMO_DATA_SUBDIR = "demo"
 # ---------------------------------------------------------------------------
 # Provider combo definitions
 # ---------------------------------------------------------------------------
+# Standard AWS settings the Bedrock combo needs, and what to ask for each.
+_AWS_ENV = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION")
+_AWS_ENV_PROMPTS = (
+    "AWS access key ID (IAM user with Amazon Bedrock access)",
+    "The matching AWS secret access key",
+    "AWS region for Bedrock, for example us-east-2",
+)
+
 PROVIDER_COMBOS = [
     {
         "name": "Azure Foundry",
@@ -108,6 +116,21 @@ PROVIDER_COMBOS = [
         "required_env": [],
         "env_prompts": {},
         "setup_instructions": ("Run: gcloud auth application-default login"),
+    },
+    {
+        "name": "AWS Bedrock",
+        "description": (
+            "Embedding: Titan Text Embeddings V2, LLM: Amazon Nova 2 Lite, "
+            "Reranker: Cohere Rerank 3.5"
+        ),
+        "embedding_model": "aws_titan_v2",
+        "dense_models": ["aws_titan_v2"],
+        "summarize_dense": "aws_titan_v2",
+        "llm_model_id": "nova-2-lite",
+        "llm_provider": "aws_bedrock",
+        "reranker": "cohere-rerank-3.5-bedrock",
+        "required_env": list(_AWS_ENV),
+        "env_prompts": dict(zip(_AWS_ENV, _AWS_ENV_PROMPTS)),
     },
 ]
 

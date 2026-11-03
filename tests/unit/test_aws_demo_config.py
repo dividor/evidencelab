@@ -42,6 +42,11 @@ class TestBuildDemoConfig:
         assert source["pipeline"]["download"]["command"] == "scripts/demo/download.py"
         assert demo["secret_names"] == ["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]
 
+    def test_build_when_aws_bedrock_then_needs_no_secrets(self):
+        _, demo = demo_config.build_demo_config(BASE_CONFIG, "aws_bedrock")
+
+        assert demo["secret_names"] == []
+
     def test_build_when_huggingface_then_asks_for_its_token_only(self):
         _, demo = demo_config.build_demo_config(BASE_CONFIG, "huggingface")
 

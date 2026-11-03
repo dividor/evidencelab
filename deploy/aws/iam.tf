@@ -1,6 +1,7 @@
-# The role ECS uses to pull images, write logs and read the secrets (the app
-# keys, the model provider keys and the RDS-managed database password). The containers
-# themselves need no AWS permissions.
+# Two roles: the execution role ECS uses to pull images, write logs and read
+# the secrets (the app keys, the model provider keys and the RDS-managed
+# database password), and the task role the api, mcp, pipeline and migrate
+# containers run as, which may call Amazon Bedrock models.
 
 data "aws_iam_policy_document" "ecs_tasks_assume" {
   statement {
@@ -37,4 +38,31 @@ resource "aws_iam_role_policy" "read_secrets" {
   name   = "read-secrets"
   role   = aws_iam_role.execution.id
   policy = data.aws_iam_policy_document.read_secrets.json
+}
+
+# --- Task role: Amazon Bedrock ---------------------------------------------
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_role" "task" {
+  name               = "${var.name}-ecs-task"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+}
+
+# Any region: US inference profiles (us.*) route requests across US regions,
+# and rerank models are offered in only some regions.
+data "aws_iam_policy_document" "bedrock" {
+  statement {
+    actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
+    resources = [
+      "arn:aws:bedrock:*::foundation-model/*",
+      "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "bedrock" {
+  name   = "invoke-bedrock"
+  role   = aws_iam_role.task.id
+  policy = data.aws_iam_policy_document.bedrock.json
 }
