@@ -6,7 +6,7 @@ Evidence Lab runs as a set of containers. On one machine, Docker Compose runs th
 - The databases and file storage are the cloud's managed services, not containers.
 - A few settings tell the containers where everything is.
 
-This page describes that layout and its settings, with an example deployment for AWS, Azure and Google Cloud.
+This page describes that layout and its settings, with tested example deployments for AWS and Azure, and a plan for Google Cloud.
 
 **On this page**
 
@@ -52,7 +52,7 @@ The sizes in the figure come from the memory limits in `docker-compose.prod.yml`
 
 ### Why the databases are managed services
 
-Managed container services don't keep a long-running service's disk when it is redeployed or restarted. On Amazon ECS, a block-storage volume attached to a service's container is deleted when the container stops. Azure Container Apps and Google Cloud Run offer only network file shares and memory. Qdrant needs block storage and does not work on network file systems. So Postgres runs on the cloud's managed Postgres, and Qdrant runs on Qdrant Cloud or on its own virtual machine.
+Managed container services don't keep a long-running service's disk when it is redeployed or restarted. On Amazon ECS, a block-storage volume attached to a service's container is deleted when the container stops. Azure Container Apps offers Azure Files shares and storage that lasts only as long as each replica. Google Cloud Run's documentation lists network file shares, Cloud Storage buckets and memory. Qdrant needs block storage and does not work on network file systems. So Postgres runs on the cloud's managed Postgres, and Qdrant runs on Qdrant Cloud or on its own virtual machine.
 
 ## Settings
 

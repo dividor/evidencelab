@@ -62,9 +62,9 @@ The system also supports configurable document-level taxonomies (defined in `con
 Prepares and stores content in **Qdrant** with placeholders for a range of vector embedding models.
 
 * **Multi-Vector Indexing**: Stores multiple vectors per chunk to support different retrieval strategies.
-  * **Dense**: Semantic vectors (defaulting to `multilingual-e5-large`, with support for Azure Foundry `text-embedding-3` models).
+  * **Dense**: Semantic vectors (defaulting to `multilingual-e5-large`, with support for Azure Foundry `text-embedding-3`, Google Vertex Gemini and Amazon Titan models).
   * **Sparse**: BM25 keyword vectors for exact term matching.
-* **Model Agnostic**: Designed to swap embedding backends (Azure Foundry, Huggingface) via configuration.
+* **Model Agnostic**: Designed to swap embedding backends (Hugging Face, Azure Foundry, Google Vertex, Amazon Bedrock) via configuration.
 * **Document Embeddings**: Generates a separate "Document Level" embedding (Title + Summary) to support "More like this" recommendations at the document level.
 
 ## Search & Discovery
@@ -74,7 +74,7 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 Search powered by hybrid retrieval and AI.
 
 * **Hybrid Search (RRF)**: Uses Reciprocal Rank Fusion to mathematically combine results from Semantic Search (Dense) and Keyword Search (Sparse). This captures both "conceptual matches" and "exact phrase matches".
-* **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry) and Jina Reranker (via Huggingface).
+* **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry or Amazon Bedrock), the Google Vertex ranker, and Jina Reranker (via Huggingface).
 * **Recency Boosting**: Applies a Gaussian decay function to boost newer documents while retaining relevance for older, highly distinct matches.
 * **Field Boosting**: Configurable per data source, detects field values (e.g., country names, organizations) mentioned in the query and boosts matching results. At weight < 1.0, uses a multiplicative bonus (`score * (1 + weight)`) so non-matching results are never penalized. At weight = 1.0, acts as a hard filter — results whose metadata field does not match the detected value are excluded entirely.
 * **Faceted Navigation**: Filter by Organization, Year, Language, and Format.
@@ -119,7 +119,7 @@ Toggle between modes with the **Deep research** checkbox below the chat input.
 * **Inline citations** — numbered references link each claim to specific document chunks with page numbers
 * **Expandable references** — click to expand the full reference list with document titles and page links
 * **Star ratings** — rate assistant responses to provide feedback on quality
-* **Configurable models** — the assistant respects the model selection in the top bar (Azure Foundry, Huggingface, etc.)
+* **Configurable models** — the assistant respects the model selection in the top bar (Azure Foundry, Huggingface, Google Vertex, Amazon Bedrock, etc.)
 * **Search settings passthrough** — dense/sparse weights, reranking, field boost, and recency boost settings from the Search Settings panel are forwarded to the assistant's search tool
 
 ### API
@@ -163,7 +163,7 @@ Above you can see a menu options for models. The demo data was processed using t
 
 ### User Interface
 
-As shown in the above models drop-down, this user interface can use either open models found on Huggingface or Azure foundry (Azure open AI). Over time, more will be added.
+As shown in the above models drop-down, this user interface can use open models found on Huggingface, or hosted models from Azure Foundry (Azure OpenAI), Google Vertex or Amazon Bedrock.
 
 One thing to note, is that if using Huggingface models, the search reranker model runs locally on the application host. Since this project aims for low-cost, using such a model will result in slow search queries as the host isn't that powerful. With more work and engineering (and hosting cost) this could be addressed in future.
 
