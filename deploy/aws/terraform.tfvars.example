@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is not committed.
+
+name                = "evidencelab"
+region              = "us-east-2"
+evidencelab_version = "1.6.5"
+config_json_path    = "../../config.json"
+
+# Leave false for the first apply; set true once the web app image is pushed
+# and the migrate task has run.
+services_enabled = false
+
+# HTTPS on your own domain, with a Route 53 hosted zone for it. Leave both
+# empty to serve plain HTTP on the load balancer's address (testing only).
+domain_name     = ""
+route53_zone_id = ""
+
+# Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on EC2.
+qdrant_url = ""
+
+# Names of the model provider keys your config.json needs. scripts/deploy.sh
+# copies their values from your environment into Secrets Manager, so they
+# never pass through Terraform. With --demo, deploy.sh sets this for you.
+provider_secret_names = ["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]
+
+# Smaller, single-zone settings for a throwaway test deployment:
+# db_multi_az            = false
+# db_instance_class      = "db.t4g.micro"
+# db_skip_final_snapshot = true
+# api = { cpu = 2048, memory = 8192, count = 1 }
+# mcp = { cpu = 512, memory = 2048, count = 1 }
+# ui  = { cpu = 256, memory = 512, count = 1 }
