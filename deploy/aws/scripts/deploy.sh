@@ -76,9 +76,12 @@ fi
 
 $tf -chdir="$here" init -input=false >/dev/null
 
-# Keep the services as they are on this first apply: off for a new
-# deployment, running for an upgrade.
-services_now="$(output services_enabled 2>/dev/null || echo false)"
+# Keep the services as they are on this first apply: running for an
+# upgrade, off for a new or torn-down deployment, whose state has no value.
+services_now=false
+if [ "$(output services_enabled 2>/dev/null)" = true ]; then
+    services_now=true
+fi
 
 step "1/7 Creating or updating the infrastructure"
 $tf -chdir="$here" apply -input=false ${auto_approve[@]+"${auto_approve[@]}"} \

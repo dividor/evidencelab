@@ -250,7 +250,7 @@ With `--demo`, the web app is built with the site's API key, so visitors can use
 deploy/aws/scripts/teardown.sh
 ```
 
-Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data. The script then lists anything still tagged with the deployment name. AWS can take a few minutes to drop deleted resources from that list.
+Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data. The script then checks that Terraform manages nothing more for the deployment, and prints `Everything Terraform created for <name> is deleted.` It also prints a command to list anything else tagged with the deployment name. AWS's tag list keeps showing deleted resources for a while, so run that command later if you want to check.
 
 ### Deploying your own documents
 

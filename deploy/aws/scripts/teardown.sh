@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Remove an AWS deployment made with deploy.sh, then list anything still
-# tagged with its name.
+# Remove an AWS deployment made with deploy.sh, and confirm Terraform no
+# longer manages anything for it.
 #
 # Usage: deploy/aws/scripts/teardown.sh [--yes]
 #
@@ -36,13 +36,19 @@ fi
 $tf -chdir="$here" destroy -input=false ${auto_approve[@]+"${auto_approve[@]}"} \
     ${destroy_vars[@]+"${destroy_vars[@]}"}
 
-echo
-echo "Resources still tagged Deployment=$name (AWS can take a few minutes to drop deleted ones):"
-left="$(aws resourcegroupstaggingapi get-resources --region "$region" \
-    --tag-filters "Key=Deployment,Values=$name" \
-    --query 'ResourceTagMappingList[].ResourceARN' --output text)"
-if [ -z "$left" ] || [ "$left" = None ]; then
-    echo "  none"
-else
-    echo "$left" | tr '\t' '\n' | sed 's/^/  /'
+# Terraform's state lists everything it still manages: it must be empty.
+remaining="$($tf -chdir="$here" state list)"
+if [ -n "$remaining" ]; then
+    echo "Terraform still manages these resources; run teardown.sh again:" >&2
+    while IFS= read -r resource; do echo "  $resource" >&2; done <<<"$remaining"
+    exit 1
 fi
+echo
+echo "Everything Terraform created for $name is deleted."
+
+# AWS's tag index lags behind deletions, so it can keep listing deleted
+# resources for a while. Anything still listed later was not made by
+# Terraform (such as a snapshot or an image repository you added).
+echo "To check later for anything else tagged with this deployment, run:"
+echo "  aws resourcegroupstaggingapi get-resources --region $region \\"
+echo "    --tag-filters Key=Deployment,Values=$name --query 'ResourceTagMappingList[].ResourceARN'"
