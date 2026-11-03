@@ -44,7 +44,8 @@ class TestRenderNginxConf:
         assert "api:8000" not in text
         assert "mcp:8001" not in text
         assert "127.0.0.11" not in text
-        assert text.count("proxy_pass __API_UPSTREAM__/;") == 2
+        assert "set $api_upstream __API_UPSTREAM__;" in text
+        assert text.count("proxy_pass $api_upstream;") == 2
         assert "set $mcp_upstream __MCP_UPSTREAM__;" in text
         assert "resolver __NGINX_RESOLVER__ valid=10s;" in text
         assert "set_real_ip_from __NGINX_REAL_IP_FROM__;" in text
@@ -54,7 +55,7 @@ class TestRenderNginxConf:
 
         assert result.returncode == 0, result.stderr
         text = output.read_text()
-        assert text.count("proxy_pass http://api:8000/;") == 2
+        assert "set $api_upstream http://api:8000;" in text
         assert "set $mcp_upstream http://mcp:8001;" in text
         assert "resolver 127.0.0.11 valid=10s;" in text
         assert "set_real_ip_from 127.0.0.1;" in text
@@ -71,7 +72,7 @@ class TestRenderNginxConf:
 
         assert result.returncode == 0, result.stderr
         text = output.read_text()
-        assert text.count("proxy_pass http://api.evidencelab.internal:8000/;") == 2
+        assert "set $api_upstream http://api.evidencelab.internal:8000;" in text
         assert "set $mcp_upstream http://mcp.evidencelab.internal:8001;" in text
         assert "resolver 169.254.169.253 valid=10s;" in text
         assert "set_real_ip_from 10.0.0.0/16;" in text
