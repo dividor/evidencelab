@@ -450,7 +450,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        template: [aws, azure]
+        template: [aws, azure, gcp]
     defaults:
       run:
         working-directory: deploy/${{ matrix.template }}

@@ -25,8 +25,8 @@ It runs the newest release, `latest`; add `--version` with a tag to pin a
 specific release. See
 [Running from the Published Image](../admin/docker-images.md) for the details.
 
-To run Evidence Lab on AWS or Azure container services instead of one
-machine, see [Deploying to Cloud Platforms](../admin/cloud-deployment.md).
+To run Evidence Lab on AWS, Azure or Google Cloud container services instead
+of one machine, see [Deploying to Cloud Platforms](../admin/cloud-deployment.md).
 
 **Running on host instead** (faster parsing, because it can use hardware
 acceleration such as Apple MPS or NVIDIA CUDA, but it needs the Python

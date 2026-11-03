@@ -6,7 +6,7 @@ Evidence Lab runs as a set of containers. On one machine, Docker Compose runs th
 - The databases and file storage are the cloud's managed services, not containers.
 - A few settings tell the containers where everything is.
 
-This page describes that layout and its settings, with tested example deployments for AWS and Azure, and a plan for Google Cloud.
+This page describes that layout and its settings, with tested example deployments for AWS, Azure and Google Cloud.
 
 **On this page**
 
@@ -16,7 +16,7 @@ This page describes that layout and its settings, with tested example deployment
 | [Settings](#settings) | The settings a load-balanced deployment needs |
 | [Example: AWS](#example-aws) | Amazon ECS on Fargate, with step-by-step deploy and teardown |
 | [Example: Azure](#example-azure) | Azure Container Apps, with step-by-step deploy and teardown |
-| [Example: Google Cloud](#example-google-cloud) | Cloud Run (template not built yet) |
+| [Example: Google Cloud](#example-google-cloud) | Cloud Run, with step-by-step deploy and teardown |
 | [Not included](#not-included) | What this layout does not cover |
 
 > **These are demonstration deployments, not a production design.** They show that Evidence Lab runs on each cloud's container service and how the parts fit together. Before running a production service, review the deployment for your organisation, including:
@@ -441,36 +441,168 @@ The script applies any changes, builds a new web app image, runs the migrations 
 
 ## Example: Google Cloud
 
-> **Not built yet.** There is no Google Cloud template yet, and nothing in this section has been tested. It is a plan: the services and sizes are a starting point, and they may change when the template is built and tested. Step-by-step instructions will be added with the template, as for AWS and Azure.
-
-This example will run Evidence Lab on Cloud Run, with Cloud SQL for PostgreSQL, Qdrant Cloud, Memorystore and Filestore, behind an external Application Load Balancer.
+This example runs Evidence Lab on Cloud Run. The template and scripts are in [`deploy/gcp`](../../deploy/gcp/). Use a Google Cloud project of its own: every resource the template creates is in that project.
 
 ![What the Google Cloud example deploys](../images/admin/cloud-gcp.png)
 
-| Part | Google Cloud service | Planned size |
+### What the Google Cloud example deploys
+
+The sizes are the template's defaults. The demo below uses smaller ones.
+
+| Part | Google Cloud service | Default size |
 |---|---|---|
-| Network | A VPC network. Cloud Run reaches it with Direct VPC egress. Cloud SQL, Memorystore and Filestore use private addresses in it. | — |
-| Load balancer | Global external Application Load Balancer with a Google-managed certificate | — |
-| ui | Cloud Run service, running your web app image from Artifact Registry, reachable only through the load balancer | At least 2 instances, 1 vCPU and 512 MB |
-| api | Cloud Run service, `astrobagel/evidencelab`, internal traffic only, with CPU kept allocated for streaming answers | At least 2 instances, 2 vCPU and 8 GB |
-| mcp | Cloud Run service, `astrobagel/evidencelab`, internal traffic only | At least 2 instances, 1 vCPU and 2 GB |
-| embedding | Cloud Run service, `michaelf34/infinity:0.0.70`, internal traffic only | At least 1 instance, 2 vCPU and 4 GB |
-| migrate | Cloud Run job, run before each release | 1 vCPU, 1 GB |
+| APIs | The template enables the APIs it uses, such as Cloud Run, Cloud SQL and Vertex AI. They stay enabled after teardown. | — |
+| Network | A VPC network with one subnet, a private connection for Cloud SQL and Memorystore, and Cloud NAT for outbound internet access. Nothing in the network has a public address of its own. | — |
+| Entry point | The web service's own Cloud Run address, `https://<name>-web-<project number>.<region>.run.app`, served over HTTPS by Cloud Run | — |
+| web | One Cloud Run service whose instances run three containers together: ui (the web app image the deploy script pushes to Artifact Registry), api and mcp (`astrobagel/evidencelab`) | 2 to 4 instances, each with ui 1 vCPU and 0.5 GB, api 2 vCPU and 8 GB, mcp 1 vCPU and 2 GB |
+| embedding | Cloud Run service, `michaelf34/infinity:0.0.70`, reachable only from the network | 1 instance, 2 vCPU and 8 GB, always running |
+| migrate | Cloud Run job, run by the deploy script before the services start | 1 vCPU, 1 GB |
 | pipeline | Cloud Run job, run when you ingest documents | 4 vCPU, 16 GB |
-| Postgres | Cloud SQL for PostgreSQL 16, regional high availability, private address only | 2 vCPU, 8 GB, 50 GB SSD |
-| Qdrant | Qdrant Cloud cluster in the same Google Cloud region | Sized from your collection |
-| Redis | Memorystore for Redis, encrypted in transit | Basic tier, 1 GB |
-| Documents and page images | Filestore share, mounted at `/app/data` | Sized from your data |
-| Keys, logs and domain | Secret Manager, Cloud Logging and Cloud DNS | — |
+| Postgres | Cloud SQL for PostgreSQL 16, with a standby in a second zone, a private address only, and encrypted connections required | 2 vCPU, 8 GB, 50 GB storage, automated backups |
+| Qdrant | Qdrant 1.18.3 on a Debian virtual machine with no public address, or your Qdrant Cloud cluster if you set `qdrant_url` | e2-medium, 30 GB disk |
+| Redis | Memorystore for Redis with a replica, a password and TLS | 1 GB, Standard tier |
+| Documents and page images | A Cloud Storage bucket, mounted at `/app/data` | — |
+| Images | Artifact Registry: one repository for the web app image, and one that fetches the Docker Hub images and keeps a copy | — |
+| Models | Vertex AI: the **Google Vertex** model set in `config.json` (Gemini embeddings, `gemini-3.8-flash` and the Vertex ranker). The containers call them as their own service account, so no keys are needed. | — |
+| Keys and passwords | Secret Manager, generated by Terraform | — |
+| Logs | Cloud Logging | — |
 
-To check when the template is built:
+`<name>` is the deployment name you choose. Every resource that takes labels is labelled `deployment=<name>`.
 
-- How the ui reaches the api and mcp services. nginx forwards each visitor's host name to the api, and Cloud Run may pick the service by host name, as Azure Container Apps does for HTTP. The Azure example avoids this with plain TCP between the apps.
-- Which address ranges the load balancer and the ui connect from, for `NGINX_REAL_IP_FROM` and `FORWARDED_ALLOW_IPS`.
-- The Memorystore and Filestore sizes and settings.
+### How the Google Cloud services find each other
+
+Cloud Run picks the service for each request by its host name, and nginx passes on the visitor's, so nginx could not reach a separate api service. The web service therefore runs the ui, api and mcp containers side by side in each instance, and nginx reaches the api and mcp on `127.0.0.1`. The api and mcp listen on all addresses, because Cloud Run's startup checks do not reach a server listening on `127.0.0.1` only. Visitors still reach only nginx, the one container with a port. The api and mcp copies scale with the web service's instances.
+
+| Container | Setting | Value |
+|---|---|---|
+| ui | `API_UPSTREAM`, `MCP_UPSTREAM` | `http://127.0.0.1:8000`, `http://127.0.0.1:8001` |
+| ui | `NGINX_RESOLVER` | `169.254.169.254`, the metadata server, which containers resolve names through |
+| ui | `NGINX_REAL_IP_FROM` | `169.254.0.0/16`: Cloud Run's front end connects to nginx from a link-local address |
+| api | `FORWARDED_ALLOW_IPS` | Left at its default, `127.0.0.1`, since nginx is in the same instance |
+| api, mcp, pipeline, migrate | `RATELIMIT_STORAGE_URL` | `rediss://` with the Redis password, address and port, and `ssl_ca_certs=/tmp/redis-ca.pem` to check Memorystore's own certificate authority, from Secret Manager |
+| api, mcp, pipeline, migrate | `POSTGRES_HOST` | The Cloud SQL instance's DNS name, **with its trailing dot**, for example `abc123.def456.us-central1.sql-psa.goog.` |
+| api, mcp, pipeline, migrate | `PGSSLMODE`, `PGSSLROOTCERT` | `verify-full`, and Cloud SQL's certificate authority, written to `/tmp/pg-ca.pem` at start |
+| api, mcp, pipeline, migrate | `EMBEDDING_API_URL` | The embedding service's address, `https://<name>-embedding-<project number>.<region>.run.app` |
+| api, mcp, pipeline, migrate | `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION` | The project, and `global` for the Gemini models |
+
+Cloud SQL's server certificate names the instance's DNS name, so connections must use that name to be verified. Cloud SQL reports the name but does not publish it, so the template adds a private DNS zone that points it at the private address. The certificate's name ends with a dot, and both Postgres drivers the app uses (psycopg2 and asyncpg) match it only when the host does too.
+
+### Deploying the Google Cloud demo
+
+These steps deploy a demo: 2 World Bank documents, processed with Vertex AI models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.
+
+**1. Install the tools.** The tested versions are in brackets.
+
+| Tool | Version | Used for |
+|---|---|---|
+| [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) | A recent version (553.0.0) | Signing in, and the scripts' Google Cloud calls |
+| [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| Python 3 and curl | Any recent version | The scripts' helpers and checks |
+
+**2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
+
+```bash
+git clone https://github.com/dividor/evidencelab.git
+cd evidencelab
+git checkout vX.Y.Z
+```
+
+**3. Create a project and sign in.** In the [Cloud Console](https://console.cloud.google.com/), create a new project and link a billing account to it. Then sign in twice, once for the command-line tools and once for Terraform, and choose the project, replacing `PROJECT_ID` with its ID:
+
+```bash
+gcloud auth login
+```
+
+```bash
+gcloud auth application-default login
+```
+
+```bash
+gcloud config set project PROJECT_ID
+```
+
+**4. Create the settings file:**
+
+```bash
+cp deploy/gcp/terraform.tfvars.example deploy/gcp/terraform.tfvars
+```
+
+Edit `deploy/gcp/terraform.tfvars`:
+
+| Setting | What to set |
+|---|---|
+| `project_id` | The project's ID. |
+| `name` | A short name for this deployment, for example `evidencelab-demo`. |
+| `region` | The region, for example `us-central1`. |
+| `evidencelab_version` | The same version you checked out, for example `X.Y.Z`. |
+| `config_json_path` | Leave as `"../../config.json"`. The demo uses its own configuration. |
+| `qdrant_url` | Leave empty, to run Qdrant on a virtual machine. |
+| The `#` lines at the end | Remove the `#` from each line, for smaller and cheaper single-zone settings. `db_deletion_protection = false` lets teardown delete the database. |
+
+**5. Turn on Gemini for the project.** The demo uses the **Google Vertex** model set in `config.json`: Gemini embeddings, `gemini-3.8-flash`, and the Vertex ranker. In testing, a new project answered every Gemini model with HTTP 404 ("Publisher model ... was not found or your project does not have access to it"). They worked after these steps:
+
+1. Open [Agent Platform Studio](https://console.cloud.google.com/agent-platform/studio) in the Cloud Console, with your project selected. Google renamed Vertex AI to Agent Platform.
+2. Accept its prompt to enable APIs, and send any prompt to a Gemini model there.
+3. Check that the project can call `gemini-3.8-flash`, replacing `PROJECT_ID`:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
+  "https://aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/global/publishers/google/models/gemini-3.8-flash:generateContent" \
+  -d '{"contents":[{"role":"user","parts":[{"text":"Say OK"}]}]}'
+```
+
+The reply should contain `"text": "OK"`. In testing, the check failed with 404 on some calls for over an hour after the APIs were enabled, and then passed every time. Wait until it passes before you deploy. The Gemini 3 models answer only on the `global` location, which is what the template sets.
+
+**6. Deploy:**
+
+```bash
+deploy/gcp/scripts/deploy.sh --demo 2
+```
+
+Terraform asks you to type `yes` twice: once to create the infrastructure, and once to start the services. The script runs these steps and prints each one as it starts:
+
+1. Writes the demo configuration to `deploy/gcp/.demo/`.
+2. Enables the Cloud Resource Manager API, which Terraform needs before it can read the project, then creates the network, database, Redis, bucket, Qdrant, secrets, registries and jobs, and enables the other APIs.
+3. Builds the web app image and pushes it to Artifact Registry.
+4. Runs the database migrations.
+5. Creates the web and embedding services, and waits until they are running. The first start pulls the 4.5 GB image and loads the embedding model, which can take 10 minutes or more.
+6. Downloads 2 World Bank documents and processes them.
+7. Checks that the site answers, and prints its address.
+
+With `--demo`, the web app is built with the site's API key, so visitors can use the site without signing in, as on evidencelab.ai. Anyone who opens the site can read that key from the page, so use `--demo` only for demonstrations.
+
+**7. Try it.** Open the address the script printed. Choose the dataset **Demo Data from World Bank**, and search for *What types of fraud are most commonly reported?*
+
+**8. Remove everything:**
+
+```bash
+deploy/gcp/scripts/teardown.sh
+```
+
+Terraform lists what it will delete and asks you to type `yes`. The database, bucket and Qdrant are deleted with all their data. The script then checks that Terraform manages nothing more, and prints `Everything Terraform created for <name> in <project> is deleted.` The APIs the deployment enabled stay enabled; they cost nothing. To remove everything else in the project too, delete the project.
+
+### Deploying your own documents
+
+1. In `deploy/gcp/terraform.tfvars`, set `config_json_path` to your `config.json`. Its models can be Vertex AI models, which need no keys. For models from other providers, add their keys as `provider_secrets`, for example `provider_secrets = { HUGGINGFACE_API_KEY = "..." }`. They are stored in Secret Manager and kept in Terraform's state.
+2. Run `deploy/gcp/scripts/deploy.sh` without `--demo`. Visitors must sign in, because the web app carries no API key. To let them use the site signed out, add `anonymous_access = true`, which puts the key in the page.
+3. Ingest documents with the pipeline job, replacing `<data_subdir>` with the data source's `data_subdir` in your `config.json`:
+
+```bash
+deploy/gcp/scripts/run-job.sh pipeline python -m pipeline.orchestrator --data-source <data_subdir>
+```
+
+### Upgrading
+
+1. Check out the new release of the code.
+2. Set the new `evidencelab_version` in `deploy/gcp/terraform.tfvars`.
+3. Run `deploy/gcp/scripts/deploy.sh` again, with `--demo 2` if the deployment is the demo.
+
+The script applies any changes, builds a new web app image, runs the migrations and then moves each service to a new revision.
 
 ## Not included
 
 - **Reprocessing from the admin screens.** The reprocess actions queue tasks for a Celery worker, which this layout does not run.
 - **Large ingestions.** Processing many documents needs far more memory than serving them. Give the pipeline task more memory, or run large ingestions elsewhere and copy the results in (see [Database Maintenance](database-maintenance.md)). On Azure, the Consumption profile stops at 8 GB per container.
-- **Your own domain on Azure.** The Azure example serves the site at its Container Apps address. The template does not set up a custom domain.
+- **Your own domain on Azure or Google Cloud.** These examples serve the site at the platform's own address. Their templates do not set up a custom domain.
+- **Separate scaling of the api on Google Cloud.** The api and mcp run in the same Cloud Run instances as the web app, so they scale together.
