@@ -266,7 +266,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
     // Generated up front and sent with the stream request so the backend can
     // record this turn's token usage server-side against the same activity
     // row logSearch upserts below.
-    const activityId = crypto.randomUUID();
+    const activityId = generateUUID();
 
     const handlers: AssistantStreamHandlers = {
       onPhase: (phase) => setStreamingPhase(phase),

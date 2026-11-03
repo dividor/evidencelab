@@ -15,6 +15,10 @@ from dotenv import load_dotenv
 
 from pipeline.db import DENSE_VECTOR_NAME  # noqa: E402
 from pipeline.db import DB_VECTORS, SUPPORTED_RERANK_MODELS, get_application_config
+from pipeline.utilities.aws_bedrock_client import (
+    BedrockEmbeddingClient,
+    rerank_with_aws_bedrock,
+)
 from pipeline.utilities.azure_client import AzureEmbeddingClient  # noqa: E402
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E402
 from pipeline.utilities.google_vertex_client import (  # noqa: E402
@@ -277,6 +281,11 @@ def _init_dense_model(vector_name: str, vec_config: Dict[str, Any]) -> Any:
             output_dimensionality=output_dimensionality,
         )
 
+    if source == "aws_bedrock":
+        return BedrockEmbeddingClient(
+            model_id=str(model_id), dimensions=vec_config.get("size")
+        )
+
     if USE_EMBEDDING_SERVER:
         if source not in {"huggingface", "fastembed"}:
             raise ValueError(
@@ -462,6 +471,14 @@ def _compute_rerank_scores(
         vertex_model_id = rerank_config.get("model_id", model_name)
         with _remote_rerank_semaphore:
             return _rerank_via_vertex_with_fallback(query, documents, vertex_model_id)
+    if _is_aws_bedrock_reranker(rerank_config):
+        with _remote_rerank_semaphore:
+            return rerank_with_aws_bedrock(
+                query=query,
+                documents=documents,
+                model_id=rerank_config.get("model_id", model_name),
+                region=rerank_config.get("region"),
+            )
     if rerank_model_loader is not None:
         reranker = rerank_model_loader(rerank_model)
     else:
@@ -477,6 +494,10 @@ def _is_google_vertex_reranker(config: Dict[str, Any]) -> bool:
         config.get("provider") == "google_vertex"
         or config.get("source") == "google_vertex"
     )
+
+
+def _is_aws_bedrock_reranker(config: Dict[str, Any]) -> bool:
+    return config.get("provider") == "aws_bedrock"
 
 
 def get_rerank_model(
@@ -509,6 +530,8 @@ def get_rerank_model(
             model = {"type": "azure_foundry", "config": rerank_config}
         elif _is_google_vertex_reranker(rerank_config):
             model = {"type": "google_vertex", "config": rerank_config}
+        elif _is_aws_bedrock_reranker(rerank_config):
+            model = {"type": "aws_bedrock", "config": rerank_config}
         else:
             cross_encoder_module = importlib.import_module(
                 "fastembed.rerank.cross_encoder"

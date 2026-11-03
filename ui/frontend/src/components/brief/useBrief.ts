@@ -65,13 +65,13 @@ import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
 } from '../../config';
+import { generateUUID } from '../../utils/uuid';
 
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
 
 // A real UUID for the Activity-log search_id (one stable id per brief).
-const newActivityId = (): string =>
-  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : uid();
+const newActivityId = (): string => generateUUID();
 
 // Capitalise the first letter of each word, leaving the rest as-is so existing
 // capitalisation / acronyms (e.g. WFP) survive. Used on generated brief titles.

@@ -78,6 +78,38 @@ async def test_stream_ai_summary_yields_tokens(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_ai_summary_when_chunks_are_content_blocks_then_yields_text(
+    monkeypatch,
+):
+    """Bedrock streams content as lists of blocks; users saw the raw lists."""
+    from langchain_core.messages import AIMessageChunk
+
+    class FakeBedrockLLM:
+        async def astream(self, _messages, config=None):
+            yield AIMessageChunk(
+                content=[{"type": "text", "text": "The most", "index": 0}]
+            )
+            yield AIMessageChunk(content=[])
+            yield AIMessageChunk(
+                content=[{"type": "text", "text": " common", "index": 0}]
+            )
+
+    monkeypatch.setattr(
+        llm_service,
+        "get_llm",
+        lambda model=None, temperature=None, max_tokens=None: FakeBedrockLLM(),
+    )
+
+    chunks = [
+        token
+        async for token in llm_service.stream_ai_summary("query", [{"text": "a"}])
+        if isinstance(token, str)
+    ]
+
+    assert chunks == ["The most", " common"]
+
+
+@pytest.mark.asyncio
 async def test_stream_ai_summary_raises_on_error(monkeypatch):
     monkeypatch.setattr(
         llm_service,

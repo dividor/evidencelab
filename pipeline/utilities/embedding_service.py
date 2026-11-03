@@ -8,6 +8,7 @@ Routing:
 - HuggingFace models: served via the Infinity embedding server
   (local or remote, configured via EMBEDDING_API_URL)
 - Azure Foundry models: passthrough to Azure API
+- Amazon Bedrock models: passthrough to the Bedrock API
 """
 
 import logging
@@ -15,6 +16,7 @@ import os
 from typing import Any, Dict, Optional
 
 from pipeline.db import DB_VECTORS
+from pipeline.utilities.aws_bedrock_client import BedrockEmbeddingClient
 from pipeline.utilities.azure_client import AzureEmbeddingClient
 from pipeline.utilities.embedding_client import RemoteEmbeddingClient
 from pipeline.utilities.google_vertex_client import GoogleVertexEmbeddingClient
@@ -72,12 +74,27 @@ class EmbeddingService:
             return self._create_azure_client(name, model_id)
         if source == "google_vertex":
             return self._create_google_vertex_client(name, model_id, vec_config)
+        if source == "aws_bedrock":
+            return self._create_aws_bedrock_client(name, model_id, vec_config)
         if source == "huggingface":
             return self._create_huggingface_client(name, model_id)
 
         raise ValueError(
             f"Unsupported embedding model source '{source}' for model '{name}'. "
-            "Supported sources: 'huggingface', 'azure_foundry', 'google_vertex'."
+            "Supported sources: 'huggingface', 'azure_foundry', 'google_vertex', "
+            "'aws_bedrock'."
+        )
+
+    def _create_aws_bedrock_client(
+        self, name: str, model_id: str, vec_config: Dict[str, Any]
+    ) -> BedrockEmbeddingClient:
+        logger.info(
+            "EmbeddingService: created Amazon Bedrock client for '%s' (%s)",
+            name,
+            model_id,
+        )
+        return BedrockEmbeddingClient(
+            model_id=model_id, dimensions=vec_config.get("size")
         )
 
     def _create_azure_client(self, name: str, model_id: str) -> AzureEmbeddingClient:
