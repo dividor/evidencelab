@@ -1,6 +1,7 @@
 import React from 'react';
 import { IconHistory, IconSparkle } from './BriefIcons';
 import { BriefLengthControl } from './BriefLengthControl';
+import { PROMPT_MAX_CHARS } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
@@ -87,6 +88,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
           className="brief-textarea brief-textarea-sm"
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
+          maxLength={PROMPT_MAX_CHARS}
           placeholder="e.g. focus on East Africa, prioritise RCTs since 2018, structure around outcomes"
           rows={2}
         />

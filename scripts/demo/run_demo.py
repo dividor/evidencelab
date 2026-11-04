@@ -104,13 +104,13 @@ PROVIDER_COMBOS = [
     {
         "name": "Google Vertex",
         "description": (
-            "Embedding: google_gemini_1536, LLM: Gemini 2.5 Flash, "
+            "Embedding: google_gemini_1536, LLM: Gemini 3.8 Flash, "
             "Reranker: Vertex AI"
         ),
         "embedding_model": "google_gemini_1536",
         "dense_models": ["google_gemini_1536"],
         "summarize_dense": "google_gemini_1536",
-        "llm_model_id": "gemini-2.5-flash",
+        "llm_model_id": "gemini-3.8-flash",
         "llm_provider": "google_vertex",
         "reranker": "vertex-ai-ranker",
         "required_env": [],

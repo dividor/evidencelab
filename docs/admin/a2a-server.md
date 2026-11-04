@@ -235,4 +235,4 @@ Ensure `APP_BASE_URL` is set to the externally-accessible domain. The Agent Card
 
 ### Research skill returns model errors
 
-The research skill uses the assistant service which requires Azure OpenAI (default) or another configured LLM. Verify `AZURE_FOUNDRY_API_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set, or configure an alternative `model_combo`.
+The research skill uses the assistant service which requires Azure OpenAI (default) or another configured LLM. Verify `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set, or configure an alternative `model_combo`.

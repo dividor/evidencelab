@@ -487,12 +487,15 @@ def _create_google_vertex_llm(
             "Google Cloud project not found. Set GOOGLE_CLOUD_PROJECT or "
             "GOOGLE_APPLICATION_CREDENTIALS pointing to a service account JSON."
         )
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
-    # Gemini 2.5 models enable "thinking" by default, which consumes output
-    # tokens from max_output_tokens and truncates the visible response.
+    # Gemini 3 models are served from the global location; a new project got
+    # 404 for them from us-central1.
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
+    # Gemini 2.5 and Gemini 3 Flash models "think" by default, which consumes
+    # output tokens from max_output_tokens and truncates the visible response
+    # (gemini-3.8-flash at 500 tokens: 406 thinking, answer cut off).
     # Disable thinking so all output tokens are used for the actual response.
     kwargs: dict[str, Any] = {}
-    if "2.5" in model:
+    if "2.5" in model or (model.startswith("gemini-3") and "flash" in model):
         kwargs["thinking_budget"] = 0
     # Throttle requests to stay within GCP Vertex AI per-minute quotas.
     # VERTEX_AI_RPM env var controls requests-per-minute (default 5).

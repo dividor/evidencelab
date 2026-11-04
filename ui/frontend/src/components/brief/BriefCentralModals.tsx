@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BriefLengthControl } from './BriefLengthControl';
 import { IconPlus, IconSparkle } from './BriefIcons';
-import { BriefTemplate, BriefTemplateHeading, VoiceProfile } from './briefTypes';
+import { BriefTemplate, BriefTemplateHeading, PROMPT_MAX_CHARS, VoiceProfile } from './briefTypes';
 import { BriefVoiceSelect } from './BriefVoiceSelect';
 
 /**
@@ -155,6 +155,7 @@ export const BriefNewModal: React.FC<{
                 rows={2}
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
+                maxLength={PROMPT_MAX_CHARS}
                 placeholder="e.g. focus on East Africa, prioritise RCTs since 2018, structure around outcomes"
               />
               <div className="bc-field-row">
@@ -232,6 +233,7 @@ export const BriefNewModal: React.FC<{
                 rows={2}
                 value={instructions}
                 onChange={(e) => setInstructions(e.target.value)}
+                maxLength={PROMPT_MAX_CHARS}
                 placeholder="e.g. focus on East Africa, prioritise evaluations since 2018"
               />
               <label className="brief-label brief-label-spaced" htmlFor="bc-new-manual-voice">
@@ -446,6 +448,7 @@ export const BriefRegenAllModal: React.FC<{
             rows={3}
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
+            maxLength={PROMPT_MAX_CHARS}
             placeholder="e.g. emphasise evidence since 2020, foreground cost-efficiency, flag where evidence is thin"
           />
           <label className="brief-label brief-label-spaced" htmlFor="bc-regen-voice">

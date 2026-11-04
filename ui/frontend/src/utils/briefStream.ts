@@ -10,7 +10,12 @@
 import { API_KEY } from '../config';
 import { getSessionId } from '../hooks/useActivityLogging';
 import { SourceReference, SummaryModelConfig } from '../types/api';
-import { AssistantSearchSettings, streamAssistantChat } from './assistantStream';
+import {
+  AssistantSearchSettings,
+  BriefOutlineSection,
+  BriefSectionPrompt,
+  streamAssistantChat,
+} from './assistantStream';
 
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
@@ -214,6 +219,8 @@ export interface RunDeepResearchOptions {
   targetWords?: number | null;
   // Sub-headings this text introduces (see briefIntro.ts); null otherwise.
   introducesSubSections?: string[] | null;
+  // A brief section's prompt parts; the API writes the prompt from them.
+  briefSection?: BriefSectionPrompt | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -234,6 +241,7 @@ export const runDeepResearch = async ({
   activityId = null,
   targetWords = null,
   introducesSubSections = null,
+  briefSection = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -253,6 +261,7 @@ export const runDeepResearch = async ({
     usageContext: 'brief',
     targetWords: targetWords ?? null,
     introducesSubSections,
+    briefSection,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];
@@ -298,28 +307,27 @@ export interface ResearchSectionOptions {
   apiBaseUrl: string;
   dataSource: string;
   heading: string;
+  // The whole brief, in order, with each written section's text, and the
+  // index of the section being written: the API writes the section's place
+  // in the brief (its parent, what other sections cover) into the prompt.
+  outline: BriefOutlineSection[];
+  currentIndex: number;
   context?: string | null;
   // Overall brief subject — situates the section and steers its searches.
   briefTopic?: string | null;
   // Author guidance that shaped the outline; also steers section research.
   briefInstructions?: string | null;
-  // For sub-sections (level 2): the parent section title, so the section stays
-  // scoped to its parent and the generated queries reflect that context.
-  parentTitle?: string | null;
   assistantModelConfig?: SummaryModelConfig | null;
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
-  // Edit/Update: the mode, the current draft, the user's instruction, and (for
-  // Update) the ISO date after which the library search is constrained.
+  // Update: the current draft, the user's instruction, and the ISO date after
+  // which the library search is constrained.
   mode?: SectionResearchMode;
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
   // Voice & tone profile instructions applied to the section's writing.
   voiceInstructions?: string | null;
-  // Rendered outline of the whole brief (see buildOutlineContext), so the
-  // section stays in scope and doesn't duplicate other sections.
-  outlineContext?: string | null;
   // Usage-recording context (see RunDeepResearchOptions).
   activityId?: string | null;
   // Target length of the section in words (see briefLength.ts).
@@ -331,58 +339,9 @@ export interface ResearchSectionOptions {
   signal?: AbortSignal;
 }
 
-// 'edit' revises the existing draft per an instruction; 'update' folds in
-// sources published since `publishedAfterIso`. Both keep the current draft.
-export type SectionResearchMode = 'generate' | 'edit' | 'update';
-
-const updateInstruction = (instr: string, publishedAfterIso?: string | null): string => {
-  const after = (publishedAfterIso || '').slice(0, 10);
-  const base = after
-    ? `Search the document library for relevant sources PUBLISHED AFTER ${after} and fold any new findings into the draft, citing them. Keep the existing content; add or refresh only where newer evidence warrants. If no newer sources are found, return the draft unchanged and note that no newer sources were available.`
-    : 'Search the document library for the most recent relevant sources and fold any new findings into the draft, citing them.';
-  return instr ? `${base} Additional instruction: ${instr}` : base;
-};
-
-// Update: preserve the existing draft; the model folds in newer sources rather
-// than rewriting, returning the FULL section with a coherent sequential [n]
-// citation set. (Edit uses the backend /brief/revise .j2 prompt, not this.)
-const buildReviseQuery = (args: {
-  scope: string;
-  draft: string;
-  instr: string;
-  guidance: string;
-  publishedAfterIso?: string | null;
-}): string => {
-  const parts = [
-    `You are revising ${args.scope}.`,
-    `Here is the current draft of the section. Preserve its wording, structure and citations except where the instruction below requires a change:\n\n"""\n${args.draft}\n"""`,
-    updateInstruction(args.instr, args.publishedAfterIso),
-    'Return the FULL revised section as markdown with sequential [n] citation markers and cite a source for every claim.',
-  ];
-  if (args.guidance) parts.push(`Overall brief guidance: ${args.guidance}`);
-  return parts.join(' ');
-};
-
-const buildGenerateQuery = (args: {
-  scope: string;
-  parent: string;
-  guidance: string;
-  focus: string;
-}): string => {
-  const parts = [`Write ${args.scope}.`];
-  if (args.parent) {
-    parts.push(
-      `This section sits under the parent section "${args.parent}" — keep it specifically about that aspect of the brief and avoid repeating material that belongs in sibling sections.`,
-    );
-  }
-  parts.push(
-    'Search the document library for evidence relevant to this specific section and cite a source for every claim.',
-    'Your final answer must be the finished section text itself — never a description of what you are about to do, a promise to research, or narration of your process.',
-  );
-  if (args.guidance) parts.push(`Overall brief guidance: ${args.guidance}`);
-  if (args.focus) parts.push(`Focus for this section: ${args.focus}`);
-  return parts.join(' ');
-};
+// 'generate' writes the section; 'update' folds in sources published since
+// `publishedAfterIso` and keeps the current draft. (Edit uses /brief/revise.)
+export type SectionResearchMode = 'generate' | 'update';
 
 /**
  * Heuristic for a deep-research run that returned process narration instead of
@@ -404,125 +363,44 @@ export const isLikelyNonAnswer = (
   return sourceCount >= 3 && !hasCitations && text.length < shortLimit;
 };
 
-// A minimal shape of the brief's sections for outline context.
-export interface OutlineContextSection {
-  id: string;
-  title: string;
-  level: number; // 1 = section, 2 = sub-section
-  content?: string;
-}
-
-// First ~`max` characters of a section's markdown as plain-ish text, so the
-// model knows what a written section already covers without burning tokens.
-const briefGist = (markdown: string, max = 180): string => {
-  const text = markdown
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/\[(\d+)\]/g, '')
-    .replace(/[#*_>`]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!text) return '';
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-};
-
 /**
- * Render the brief's outline (with a marker on the section being written and a
- * one-line gist of each already-written section) plus scope rules, so section
- * research knows the whole document structure and doesn't duplicate material
- * that belongs elsewhere. Returns '' when there is no other section.
+ * The parts of one section's research prompt, as the API takes them; empty
+ * parts are left out.
  */
-export const buildOutlineContext = (
-  sections: OutlineContextSection[],
-  currentId: string,
-): string => {
-  if (sections.length <= 1) return '';
-  const idx = sections.findIndex((s) => s.id === currentId);
-  const current = idx >= 0 ? sections[idx] : null;
-  const lines = sections.map((s, i) => {
-    const indent = s.level === 2 ? '  - ' : '- ';
-    const marker = s.id === currentId ? ' ← the section you are writing' : '';
-    const gist = s.id !== currentId && s.content ? ` (already written; covers: ${briefGist(s.content)})` : '';
-    return `${indent}${s.title}${marker}${gist}`;
-  });
-  const parts = [
-    `For context, the full outline of the brief is:\n${lines.join('\n')}`,
-    'Keep this section strictly to its own scope: do NOT repeat or pre-empt material that belongs in the other sections listed above.',
-  ];
-  // A top-level heading with sub-headings is an introduction/frame — the
-  // detail belongs to the sub-sections that follow it.
-  if (current && current.level !== 2) {
-    const subs: string[] = [];
-    for (let i = idx + 1; i < sections.length && sections[i].level === 2; i++) {
-      subs.push(sections[i].title);
-    }
-    if (subs.length) {
-      parts.push(
-        `This section has sub-sections (${subs.join('; ')}) — write it as a short high-level introduction to the theme and leave the detail to those sub-sections.`,
-      );
-    }
-  }
-  return parts.join(' ');
-};
-
-/**
- * Build the deep-research instruction for one brief section. For generate it
- * weaves in the brief topic, parent section and author guidance; for edit/update
- * it embeds the current draft with revise-don't-replace semantics.
- */
-export const buildSectionQuery = ({
-  heading,
+export const sectionPromptParts = ({
+  outline,
+  currentIndex,
   briefTopic,
   briefInstructions,
-  parentTitle,
   context,
   mode = 'generate',
   existingContent,
   instruction,
   publishedAfterIso,
   voiceInstructions,
-  outlineContext,
 }: {
-  heading: string;
+  outline: BriefOutlineSection[];
+  currentIndex: number;
   briefTopic?: string | null;
   briefInstructions?: string | null;
-  parentTitle?: string | null;
   context?: string | null;
   mode?: SectionResearchMode;
   existingContent?: string | null;
   instruction?: string | null;
   publishedAfterIso?: string | null;
   voiceInstructions?: string | null;
-  outlineContext?: string | null;
-}): string => {
-  const topic = (briefTopic || '').trim();
-  const guidance = (briefInstructions || '').trim();
-  const draft = (existingContent || '').trim();
-  const voice = (voiceInstructions || '').trim();
-  const outline = (outlineContext || '').trim();
-  const scope = topic
-    ? `the "${heading}" section of an evidence brief on "${topic}"`
-    : `the "${heading}" section of an evidence brief`;
-
-  const base =
-    mode === 'update' && draft
-      ? buildReviseQuery({
-          scope,
-          draft,
-          instr: (instruction || '').trim(),
-          guidance,
-          publishedAfterIso,
-        })
-      : buildGenerateQuery({
-          scope,
-          parent: (parentTitle || '').trim(),
-          guidance,
-          focus: (context || '').trim(),
-        });
-  const withOutline = outline ? `${base} ${outline}` : base;
-  return voice
-    ? `${withOutline} Voice & tone profile — write the section in this style: ${voice}`
-    : withOutline;
-};
+}): BriefSectionPrompt => ({
+  outline,
+  current: currentIndex,
+  mode,
+  topic: briefTopic || undefined,
+  instructions: briefInstructions || undefined,
+  focus: context || undefined,
+  draft: mode === 'update' ? existingContent || undefined : undefined,
+  instruction: instruction || undefined,
+  published_after: publishedAfterIso || undefined,
+  voice_instructions: voiceInstructions || undefined,
+});
 
 /**
  * Research a single brief section by running one deep-research turn for the
@@ -534,10 +412,11 @@ export const researchBriefSection = ({
   apiBaseUrl,
   dataSource,
   heading,
+  outline,
+  currentIndex,
   context,
   briefTopic,
   briefInstructions,
-  parentTitle,
   assistantModelConfig,
   rerankerModel,
   searchSettings,
@@ -546,36 +425,34 @@ export const researchBriefSection = ({
   instruction,
   publishedAfterIso,
   voiceInstructions,
-  outlineContext,
   activityId,
   targetWords,
   introducesSubSections = null,
   handlers,
   signal,
-}: ResearchSectionOptions): Promise<void> => {
-  const query = buildSectionQuery({
-    heading,
-    briefTopic,
-    briefInstructions,
-    parentTitle,
-    context,
-    mode,
-    existingContent,
-    instruction,
-    publishedAfterIso,
-    voiceInstructions,
-    outlineContext,
-  });
-  return runDeepResearch({
+}: ResearchSectionOptions): Promise<void> =>
+  runDeepResearch({
     apiBaseUrl,
     dataSource,
-    query,
+    query: heading,
+    briefSection: sectionPromptParts({
+      outline,
+      currentIndex,
+      briefTopic,
+      briefInstructions,
+      context,
+      mode,
+      existingContent,
+      instruction,
+      publishedAfterIso,
+      voiceInstructions,
+    }),
     assistantModelConfig,
     rerankerModel,
     searchSettings,
     // Update also constrains the *search* to newer documents via a publish-date
     // filter the backend applies to the Qdrant query (belt-and-braces with the
-    // prompt instruction above).
+    // prompt instruction).
     publishedAfter: mode === 'update' ? publishedAfterIso : null,
     activityId,
     targetWords,
@@ -583,4 +460,3 @@ export const researchBriefSection = ({
     handlers,
     signal,
   });
-};
