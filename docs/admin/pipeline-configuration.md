@@ -83,7 +83,7 @@ The `source` field determines how the model is loaded:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-2.5-flash"`) |
+| `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-3.8-flash"`) |
 | `provider` | string | `"huggingface"`, `"azure_foundry"`, `"google_vertex"` or `"aws_bedrock"` |
 | `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"scaleway"`, `"together"`). If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
@@ -137,7 +137,7 @@ Model combos are named presets that bundle embedding, LLM, and reranking models 
         "max_tokens": 4096,
         "temperature": 0.0
       },
-      "reranker_model": "azure_rerank"
+      "reranker_model": "Cohere-rerank-v4.0-fast"
     }
   }
 }

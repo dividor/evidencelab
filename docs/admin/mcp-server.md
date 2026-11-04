@@ -173,4 +173,4 @@ RATE_LIMIT_MCP_AI=20/minute
 
 ### Model Errors
 
-If the A2A `research` skill returns model errors, verify the configured model combo is available. The default is "Azure Foundry" which requires Azure OpenAI credentials. Check that `AZURE_FOUNDRY_API_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set. See [A2A Server](a2a-server.md#troubleshooting).
+If the A2A `research` skill returns model errors, verify the configured model combo is available. The default is "Azure Foundry" which requires Azure OpenAI credentials. Check that `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT` are set. See [A2A Server](a2a-server.md#troubleshooting).

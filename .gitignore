@@ -302,5 +302,7 @@ notebooks/output/
 !*.tfvars.example
 tfplan*
 
-# deploy/aws/scripts/deploy.sh --demo writes its configuration here
+# deploy/<cloud>/scripts/deploy.sh --demo writes its configuration here
 deploy/aws/.demo/
+deploy/azure/.demo/
+deploy/gcp/.demo/

@@ -76,6 +76,8 @@ Seven workers against six summary workers is **42 concurrent LLM calls**. A depl
 
 On Azure OpenAI, a `GlobalStandard` deployment's capacity is quoted in thousands of tokens per minute, so capacity `200` is 200,000 TPM. Capacity sets the rate ceiling; billing stays per-token, so raising it does not create a standing cost.
 
+The Cohere reranker on Azure Foundry is much smaller per unit: each unit of capacity allows 1 request and 1,000 tokens a minute. One search reranks several documents in one request, so a reranker at capacity `1` fails searches with HTTP 429. The [Azure example deployment](cloud-deployment.md#example-azure) gives it 20 units. Its quota is shared by every Foundry resource in a subscription and region.
+
 ## Do not add uvicorn workers to go faster
 
 Running the API with more than one worker looks like the obvious fix for a busy deployment. It is not safe here, and it weakens a security control:

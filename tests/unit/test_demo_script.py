@@ -161,7 +161,7 @@ class TestEnsureDemoDatasource:
         assert result is True
         ds = base_config["datasources"][demo.DEMO_DATASOURCE_KEY]
         assert ds["pipeline"]["index"]["dense_models"] == ["google_gemini_1536"]
-        assert ds["pipeline"]["summarize"]["llm_model"]["model"] == "gemini-2.5-flash"
+        assert ds["pipeline"]["summarize"]["llm_model"]["model"] == "gemini-3.8-flash"
 
     def test_skips_if_already_exists(self, base_config):
         base_config["datasources"][demo.DEMO_DATASOURCE_KEY] = {"existing": True}

@@ -251,6 +251,30 @@ describe('useBrief introduction sections', () => {
     expect(mockResearchSection.mock.calls.map(([args]) => args.heading)).toEqual([SUBS[0], SUBS[1], INTRO, LEAF]);
   });
 
+  test('each section is researched with the whole outline, its own index and the text written so far', async () => {
+    const hook = briefWithIntro();
+    for (const title of [SUBS[0], SUBS[1], INTRO]) {
+      await act(async () => {
+        await hook.result.current.regenerate(idOf(hook, title), null);
+      });
+    }
+    const [intro] = callFor(INTRO);
+    expect(intro.currentIndex).toBe(0);
+    expect(intro.outline.map((s: { title: string; level: number }) => [s.title, s.level])).toEqual([
+      [INTRO, 1],
+      [SUBS[0], 2],
+      [SUBS[1], 2],
+      [LEAF, 1],
+    ]);
+    // The written sub-sections send their text; the sections not yet written
+    // (the introduction itself, and Costs) send none.
+    expect(intro.outline[1].content).toBe(CLEAN);
+    expect(intro.outline[2].content).toBe(CLEAN);
+    expect(intro.outline[0].content).toBeUndefined();
+    expect(intro.outline[3].content).toBeUndefined();
+    expect(callFor(SUBS[1])[0].currentIndex).toBe(2);
+  });
+
   test('AI Edit on an introduction tells the revise request its sub-headings, and flags headings it leaves', async () => {
     mockRequestRevise.mockResolvedValue(WITH_HEADINGS);
     const hook = briefWithIntro();

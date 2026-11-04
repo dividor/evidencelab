@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is not committed.
+
+# A project of its own, with billing linked: gcloud config get-value project
+project_id = "my-evidencelab-project"
+
+name                = "evidencelab"
+region              = "us-central1"
+evidencelab_version = "1.6.5"
+config_json_path    = "../../config.json"
+
+# Leave false for the first apply; scripts/deploy.sh sets it true once the web
+# app image is pushed and the migrate job has run.
+services_enabled = false
+
+# Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on a
+# virtual machine.
+qdrant_url = ""
+
+# Smaller, single-zone settings for a throwaway test deployment:
+# db_tier                = "db-custom-1-3840"
+# db_high_availability   = false
+# db_deletion_protection = false
+# redis_tier             = "BASIC"
+# web = {
+#   min_instances = 1
+#   max_instances = 2
+#   ui            = { cpu = "1", memory = "512Mi" }
+#   api           = { cpu = "2", memory = "4Gi" }
+#   mcp           = { cpu = "1", memory = "1Gi" }
+# }
