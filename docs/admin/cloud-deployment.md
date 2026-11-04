@@ -580,7 +580,7 @@ With `--demo`, the web app is built with the site's API key, so visitors can use
 deploy/gcp/scripts/teardown.sh
 ```
 
-Terraform lists what it will delete and asks you to type `yes`. The database, bucket and Qdrant are deleted with all their data. The script then checks that Terraform manages nothing more, and prints `Everything Terraform created for <name> in <project> is deleted.` The APIs the deployment enabled stay enabled; they cost nothing. To remove everything else in the project too, delete the project.
+Terraform lists what it will delete and asks you to type `yes`. The database, bucket and Qdrant are deleted with all their data. Cloud Run keeps the addresses it reserved in the network's subnet for 1 to 2 hours after its services and jobs are deleted, and the subnet cannot be deleted until then. When Terraform stops with `resourceInUseByAnotherResource` on the subnet, the script prints `Waiting for Cloud Run to release its addresses`, checks every 5 minutes for up to 3 hours, and then deletes the network and subnet without asking again. If you stop it while it waits, run `teardown.sh` again later. The script then checks that Terraform manages nothing more, and prints `Everything Terraform created for <name> in <project> is deleted.` The APIs the deployment enabled stay enabled; they cost nothing. To remove everything else in the project too, delete the project.
 
 ### Deploying your own documents
 
