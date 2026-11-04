@@ -524,7 +524,7 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 
 ## Deployment settings
 
-To run Evidence Lab on a cloud's container service rather than one machine, see [Deploying to Cloud Platforms](docs/admin/cloud-deployment.md). It has tested example deployments for AWS (ECS on Fargate) and Azure (Container Apps), each with a Terraform template, deploy and teardown scripts, and step-by-step instructions.
+To run Evidence Lab on a cloud's container service rather than one machine, see [Deploying to Cloud Platforms](docs/admin/cloud-deployment.md). It has tested example deployments for AWS (ECS on Fargate), Azure (Container Apps) and Google Cloud (Cloud Run), each with a Terraform template, deploy and teardown scripts, and step-by-step instructions.
 
 Four groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
 
