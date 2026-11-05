@@ -1,18 +1,22 @@
 """Unit tests for the Brief section research prompt the API writes."""
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
+from fastapi import HTTPException
 from pydantic import ValidationError
 
 from ui.backend.auth.schemas import (
     BRIEF_PROMPT_MAX_CHARS,
     BRIEF_RUN_CONTENT_MAX_CHARS,
-    BRIEF_SAVED_GUIDANCE_MAX_CHARS,
     VOICE_INSTRUCTIONS_MAX_CHARS,
     AssistantChatRequest,
     BriefSectionPrompt,
+    BriefSurveyPrompt,
 )
 from ui.backend.services.brief_section_prompt import (
     build_section_prompt,
+    build_survey_prompt,
     outline_context,
 )
 
@@ -178,9 +182,8 @@ class TestBriefSectionPromptSchema:
         assert draft in prompt
 
     @pytest.mark.parametrize("field", ["instructions", "focus"])
-    def test_schema_when_saved_guidance_is_long_then_accepted(self, field):
-        """Guidance saved before the boxes had a limit keeps working."""
-        guidance = "x" * BRIEF_SAVED_GUIDANCE_MAX_CHARS
+    def test_schema_when_guidance_is_at_its_limit_then_accepted(self, field):
+        guidance = "x" * BRIEF_PROMPT_MAX_CHARS
         assert guidance in _prompt(0, **{field: guidance})
 
     @pytest.mark.parametrize(
@@ -188,8 +191,8 @@ class TestBriefSectionPromptSchema:
         [
             {"draft": "x" * (BRIEF_RUN_CONTENT_MAX_CHARS + 1)},
             {"voice_instructions": "x" * (VOICE_INSTRUCTIONS_MAX_CHARS + 1)},
-            {"instructions": "x" * (BRIEF_SAVED_GUIDANCE_MAX_CHARS + 1)},
-            {"focus": "x" * (BRIEF_SAVED_GUIDANCE_MAX_CHARS + 1)},
+            {"instructions": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
+            {"focus": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
             {"instruction": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
             {"outline": [{"title": "t", "level": 1}] * 101},
             {"outline": [{"title": "t" * 501, "level": 1}]},
@@ -209,3 +212,86 @@ class TestBriefSectionPromptSchema:
         assert request.brief_section is not None
         with pytest.raises(ValidationError):
             AssistantChatRequest(query="x" * 5001, brief_section=section)
+
+    def test_chat_request_when_survey_at_limits_then_question_stays_short(self):
+        """Longest topic and instructions go in their own fields, not the question."""
+        survey = {
+            "topic": "t" * 2000,
+            "instructions": "x" * BRIEF_PROMPT_MAX_CHARS,
+        }
+        request = AssistantChatRequest(query=survey["topic"], brief_survey=survey)
+        assert request.brief_survey is not None
+        assert len(build_survey_prompt(request.brief_survey)) > 5000
+
+    def test_schema_when_survey_instructions_over_limit_then_rejected(self):
+        with pytest.raises(ValidationError):
+            BriefSurveyPrompt(
+                topic="t", instructions="x" * (BRIEF_PROMPT_MAX_CHARS + 1)
+            )
+
+
+@pytest.mark.unit
+class TestBuildSurveyPrompt:
+    def test_survey_when_no_instructions_then_topic_only(self):
+        survey = BriefSurveyPrompt(topic="school meals")
+        assert build_survey_prompt(survey) == (
+            "Research the document library to inform an evidence brief on "
+            '"school meals".'
+        )
+
+    def test_survey_when_instructions_then_exact_text(self):
+        survey = BriefSurveyPrompt(topic="school meals", instructions="focus on Kenya")
+        assert build_survey_prompt(survey) == (
+            "Research the document library to inform an evidence brief on "
+            '"school meals". Follow these author instructions closely and let them '
+            "drive what you search for — focus your queries on the specific angles, "
+            "sectors, regions, populations and outcomes the instructions call for, "
+            "not just generic restatements of the topic: focus on Kenya"
+        )
+
+
+@pytest.mark.unit
+class TestReviseInstructionLimit:
+    """The Edit box's instruction has the same limit as the other prompts."""
+
+    async def _revise(self, instruction: str):
+        from starlette.requests import Request
+
+        from ui.backend.routes import brief as brief_routes
+        from ui.backend.schemas import BriefReviseRequest
+        from ui.backend.utils.app_limits import limiter
+
+        limiter.enabled = False
+        request = Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/brief/revise",
+                "headers": [],
+                "client": ("1.1.1.1", 1),
+                "app": None,
+            }
+        )
+        body = BriefReviseRequest(
+            content="Text [1].", instruction=instruction, data_source="wfp"
+        )
+        # No model configured: a request that clears the limit stops with 503.
+        with patch.object(
+            brief_routes, "settle_data_source", AsyncMock(return_value="wfp")
+        ), patch.object(brief_routes, "_validate_data_source"), patch.object(
+            brief_routes, "_resolve_configured_model", return_value=None
+        ):
+            with pytest.raises(HTTPException) as err:
+                await brief_routes.revise_section(request, body, None, None)
+        return err.value
+
+    @pytest.mark.asyncio
+    async def test_revise_when_instruction_at_limit_then_clears_the_check(self):
+        err = await self._revise("x" * BRIEF_PROMPT_MAX_CHARS)
+        assert err.status_code == 503
+
+    @pytest.mark.asyncio
+    async def test_revise_when_instruction_over_limit_then_rejected(self):
+        err = await self._revise("x" * (BRIEF_PROMPT_MAX_CHARS + 1))
+        assert err.status_code == 400
+        assert err.detail == "instruction is too long"

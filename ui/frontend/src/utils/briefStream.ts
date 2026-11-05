@@ -14,6 +14,7 @@ import {
   AssistantSearchSettings,
   BriefOutlineSection,
   BriefSectionPrompt,
+  BriefSurveyPrompt,
   streamAssistantChat,
 } from './assistantStream';
 
@@ -221,6 +222,8 @@ export interface RunDeepResearchOptions {
   introducesSubSections?: string[] | null;
   // A brief section's prompt parts; the API writes the prompt from them.
   briefSection?: BriefSectionPrompt | null;
+  // The survey before an outline; the API writes the prompt from these parts.
+  briefSurvey?: BriefSurveyPrompt | null;
   handlers: BriefSectionHandlers;
   signal?: AbortSignal;
 }
@@ -242,6 +245,7 @@ export const runDeepResearch = async ({
   targetWords = null,
   introducesSubSections = null,
   briefSection = null,
+  briefSurvey = null,
   handlers,
   signal,
 }: RunDeepResearchOptions): Promise<void> => {
@@ -262,6 +266,7 @@ export const runDeepResearch = async ({
     targetWords: targetWords ?? null,
     introducesSubSections,
     briefSection,
+    briefSurvey,
     handlers: {
       onPhase: (phase) => {
         const pct = PHASE_PROGRESS[phase];

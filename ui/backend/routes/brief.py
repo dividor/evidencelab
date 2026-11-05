@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ui.backend.auth.optional_user import optional_session as _session_dep
 from ui.backend.auth.optional_user import resolve_optional_user as _resolve_user_dep
+from ui.backend.auth.schemas import BRIEF_PROMPT_MAX_CHARS
 from ui.backend.schemas import (
     BriefHeading,
     BriefOutlineRequest,
@@ -171,7 +172,7 @@ async def revise_section(
         raise HTTPException(status_code=400, detail="content is required")
     if not instruction:
         raise HTTPException(status_code=400, detail="instruction is required")
-    if len(instruction) > _MAX_QUESTION_CHARS:
+    if len(instruction) > BRIEF_PROMPT_MAX_CHARS:
         raise HTTPException(status_code=400, detail="instruction is too long")
     body.data_source = await settle_data_source(body.data_source, user, session)
     _validate_data_source(body.data_source)

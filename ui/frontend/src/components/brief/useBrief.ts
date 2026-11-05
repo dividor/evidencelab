@@ -994,13 +994,12 @@ export const useBrief = ({
     // loaded brief's activity row.
     const activityId = newActivityId();
     try {
-      const surveyQuery = guidance
-        ? `Research the document library to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
-        : `Research the document library to inform an evidence brief on "${topic}".`;
       await runDeepResearch({
         apiBaseUrl,
         dataSource,
-        query: surveyQuery,
+        // The API writes the survey prompt; the topic labels the Activity row.
+        query: topic,
+        briefSurvey: { topic, instructions: guidance || undefined },
         doneLabel: 'Document library surveyed',
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,

@@ -223,7 +223,7 @@ export interface SavedBrief {
 // The longest research prompt a brief takes: its instructions, a section's
 // guidance, an Edit/Update instruction, a template prompt. The API refuses
 // longer ones (BRIEF_PROMPT_MAX_CHARS in ui/backend/auth/schemas.py).
-export const PROMPT_MAX_CHARS = 2000;
+export const PROMPT_MAX_CHARS = 5000;
 
 export const BRIEF_HISTORY_KEY = 'evidencelab_brief_history_v1';
 
