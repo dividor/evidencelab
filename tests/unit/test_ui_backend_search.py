@@ -152,13 +152,19 @@ def test_get_rerank_model_caches(monkeypatch):
         sys.modules, "fastembed.rerank.cross_encoder", cross_encoder_module
     )
     monkeypatch.setattr(search, "_rerank_models_cache", {}, raising=False)
-    monkeypatch.setattr(search, "SUPPORTED_RERANK_MODELS", {}, raising=False)
+    monkeypatch.setattr(search, "RERANK_MODEL", "local-reranker")
+    monkeypatch.setattr(
+        search,
+        "SUPPORTED_RERANK_MODELS",
+        {"local-reranker": {"model_id": "local-reranker", "source": "huggingface"}},
+        raising=False,
+    )
 
     first = search.get_rerank_model()
     second = search.get_rerank_model()
 
     assert first is second
-    assert calls == [search.RERANK_MODEL]
+    assert calls == ["local-reranker"]
 
 
 def test_rerank_results_updates_scores_and_limit(monkeypatch):
@@ -176,7 +182,13 @@ def test_rerank_results_updates_scores_and_limit(monkeypatch):
 
     monkeypatch.setattr(search, "get_rerank_model", lambda _model=None: FakeReranker())
 
-    reranked = search.rerank_results("query", results, limit=2, max_rerank_candidates=2)
+    reranked = search.rerank_results(
+        "query",
+        results,
+        limit=2,
+        max_rerank_candidates=2,
+        rerank_model="local-reranker",
+    )
 
     assert [result.score for result in reranked] == [0.9, 0.2]
     assert reranked[0].payload["text"] == "two"

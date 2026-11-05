@@ -44,7 +44,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic table extraction, with support for more expensive processing as required
 - AI-assisted document summarization, by map reduce or in a single prompt (`summarize.mode`)
 - AI-assisted tagging of documents
-- Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
+- Indexing with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and extensible to others
 
 2. User interface
 
@@ -102,11 +102,30 @@ You can explore the hosted version at [evidencelab.ai](https://evidencelab.ai).
 
 ### Demo (quickest way to try it)
 
-The interactive demo script guides you through provider selection, API key
-setup, downloads a few World Bank documents, and runs the full pipeline.
+Run Evidence Lab from the published Docker Hub image
+([`astrobagel/evidencelab`](https://hub.docker.com/r/astrobagel/evidencelab)),
+with nothing to build. You need [Docker](https://docs.docker.com/get-started/get-docker/) with Compose,
+[Python 3](https://www.python.org/downloads/) and git, plus an
+API key for one model provider (Azure Foundry, Hugging Face or Google Vertex), or AWS credentials for Amazon Bedrock.
 
-**Running on host** (recommended — can use hardware acceleration such as Apple
-MPS or NVIDIA CUDA, but may require some adjustments to suit your environment):
+```bash
+git clone https://github.com/dividor/evidencelab.git
+cd evidencelab
+python3 scripts/demo/run_demo.py --mode hub
+```
+
+The script asks which provider to use and for its key, then writes `.env`
+(generating every password and secret), adds a demo data source to
+`config.json`, downloads three World Bank reports, processes them inside the
+published image and starts Evidence Lab. When it finishes, open
+http://localhost:8080 and select the **Demo Data from World Bank** data source.
+It runs the newest release, `latest`; add `--version` with a tag to pin a
+specific release. See
+[Running from the Published Image](docs/admin/docker-images.md) for the details.
+
+**Running on host instead** (faster parsing, because it can use hardware
+acceleration such as Apple MPS or NVIDIA CUDA, but it needs the Python
+dependencies and may require some adjustments to suit your environment):
 
 ```bash
 # Create and activate a virtual environment
@@ -121,12 +140,7 @@ docker compose up -d qdrant postgres
 python scripts/demo/run_demo.py --mode host
 ```
 
-The script will automatically configure `.env`, add a demo datasource to
-`config.json`, download documents, and run the pipeline.
-
-**Running in Docker** (guaranteed to work on any Docker-capable machine, but
-can be significantly slower as it cannot utilise GPU or Apple MPS acceleration
-on your host):
+**Running with the development Docker stack** (builds the images from source):
 
 ```bash
 # Start all services
@@ -136,14 +150,15 @@ docker compose up -d --build
 python scripts/demo/run_demo.py --mode docker
 ```
 
-Once complete, open http://localhost:3000 and select the **demo** data source.
+With the host or development stack, open http://localhost:3000 and select the
+**Demo Data from World Bank** data source.
 
-**Options:**
+**Options** (any mode):
 
 ```bash
-python scripts/demo/run_demo.py --mode host --num-docs 10   # Download more documents
-python scripts/demo/run_demo.py --mode host --skip-download  # Re-run pipeline only
-python scripts/demo/run_demo.py --mode host --skip-pipeline  # Download only
+python3 scripts/demo/run_demo.py --mode hub --num-docs 10    # Download more documents
+python3 scripts/demo/run_demo.py --mode hub --skip-download  # Re-run pipeline only
+python3 scripts/demo/run_demo.py --mode hub --skip-pipeline  # Download only
 ```
 
 ### Quick Start
@@ -215,6 +230,7 @@ Global application settings.
 | `ai_summary.enabled` | `bool` | Enable AI-generated summaries in search results |
 | `features.semantic_highlights` | `bool` | Enable semantic highlighting of relevant passages |
 | `features.pdf_highlights` | `bool` | Enable highlighting within the PDF preview |
+| `features.anonymous_ratings` | `bool` | Let visitors who are not signed in rate content (needs `USER_MODULE` `on_passive`); one rating per item per browser. Off when absent |
 | `search.dense_weight` | `float` | Default weight for the dense (semantic) component in hybrid search (0–1) |
 | `search.short_query_dense_weight` | `float` | Dense weight override for short queries |
 | `search.highlight_threshold` | `float` | Minimum score for semantic highlights |
@@ -244,7 +260,7 @@ A dictionary of embedding models available to the pipeline and search engine.
 "model_key": {
   "model_id": "namespace/model-name",   // Model identifier (HuggingFace repo, Azure deployment, etc.)
   "size": 1024,                          // Embedding vector dimensionality
-  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "qdrant", "opensearch"
+  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "aws_bedrock", "qdrant", "opensearch"
   "type": "dense"                        // "dense" or "sparse"
 }
 ```
@@ -507,6 +523,8 @@ See [`.env.example`](.env.example) for the full list of auth-related settings in
 | `AUTH_LOCKOUT_DURATION_MINUTES` | `15` | Lockout duration |
 
 ## Deployment settings
+
+To run Evidence Lab on a cloud's container service rather than one machine, see [Deploying to Cloud Platforms](docs/admin/cloud-deployment.md). It has tested example deployments for AWS (ECS on Fargate), Azure (Container Apps) and Google Cloud (Cloud Run), each with a Terraform template, deploy and teardown scripts, and step-by-step instructions.
 
 Four groups of settings every deployment should review before going live; each has a page in the in-app docs (Admin section):
 

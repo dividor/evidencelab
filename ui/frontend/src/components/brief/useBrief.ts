@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LinkTarget } from '../../utils/exportResultsToDocx';
 import { SourceReference, SummaryModelConfig } from '../../types/api';
-import { SearchSettings } from '../../types/auth';
+import type { AssistantSearchSettings } from '../../utils/assistantStream';
 import { buildCondenseInstruction, countWords, exceedsTarget } from './briefLength';
 import {
   BriefActivityEvent,
   BriefSourceSample,
-  buildOutlineContext,
   isLikelyNonAnswer,
   requestBriefOutline,
   requestBriefRevise,
@@ -65,13 +64,13 @@ import {
   SEARCH_SEMANTIC_HIGHLIGHTS,
   SEMANTIC_HIGHLIGHT_THRESHOLD,
 } from '../../config';
+import { generateUUID } from '../../utils/uuid';
 
 let _uid = 0;
 const uid = (): string => `b${++_uid}_${Date.now()}`;
 
 // A real UUID for the Activity-log search_id (one stable id per brief).
-const newActivityId = (): string =>
-  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : uid();
+const newActivityId = (): string => generateUUID();
 
 // Capitalise the first letter of each word, leaving the rest as-is so existing
 // capitalisation / acronyms (e.g. WFP) survive. Used on generated brief titles.
@@ -286,7 +285,7 @@ export interface UseBriefOptions {
   // settings). Passed only for logged-in users so briefs search like the rest
   // of the app; null for anonymous users (no rerank).
   rerankerModel?: string | null;
-  searchSettings?: Partial<SearchSettings> | null;
+  searchSettings?: AssistantSearchSettings | null;
   // Identifier for the logged-in user; saved briefs are scoped to it. When
   // absent (anonymous), the shared default bucket is used.
   userKey?: string | null;
@@ -1248,7 +1247,7 @@ export const useBrief = ({
       const section = list[idx];
       if (!section) return Promise.resolve();
       const mode: SectionResearchMode = opts?.mode ?? 'generate';
-      const isRevise = mode === 'edit' || mode === 'update';
+      const isRevise = mode === 'update';
       const instruction = (opts?.instruction || '').trim() || null;
       const attempt = opts?.attempt ?? 0;
       // The current display text, for a revise to work from.
@@ -1258,17 +1257,6 @@ export const useBrief = ({
         mode === 'update' && section.lastResearchedAt
           ? new Date(section.lastResearchedAt).toISOString()
           : null;
-      // For a sub-section (level 2), find the nearest preceding level-1 heading
-      // so its research stays scoped to the right parent.
-      let parentTitle: string | null = null;
-      if (section.level === 2) {
-        for (let i = idx - 1; i >= 0; i--) {
-          if (list[i].level === 1) {
-            parentTitle = list[i].title;
-            break;
-          }
-        }
-      }
       // Generate clears the section; Edit/Update keep the current draft in place
       // (rendered greyed-out, still in the citation numbering) and swap
       // atomically on completion.
@@ -1298,10 +1286,17 @@ export const useBrief = ({
         apiBaseUrl,
         dataSource,
         heading: section.title,
+        // The whole brief with each written section's text, so the API keeps
+        // this section in scope and doesn't duplicate the others.
+        outline: list.map((s) => ({
+          title: s.title,
+          level: s.level,
+          content: s.status === 'done' ? s.content : undefined,
+        })),
+        currentIndex: idx,
         context,
         briefTopic,
         briefInstructions: instructionsRef.current.trim() || null,
-        parentTitle,
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
         searchSettings: searchSettingsRef.current,
@@ -1313,17 +1308,6 @@ export const useBrief = ({
         voiceInstructions: voiceInstructionsFor(section.voiceId),
         targetWords: sectionTarget,
         introducesSubSections: subSections.length ? subSections : null,
-        // The whole document structure (plus a gist of written sections), so
-        // this section stays in scope and doesn't duplicate the others.
-        outlineContext: buildOutlineContext(
-          list.map((s) => ({
-            id: s.id,
-            title: s.title,
-            level: s.level,
-            content: s.status === 'done' ? s.content : undefined,
-          })),
-          id,
-        ),
         signal,
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),

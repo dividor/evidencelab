@@ -22,6 +22,12 @@ export const PDF_SEMANTIC_HIGHLIGHTS = config.application.features.pdf_highlight
 // When true, uses semantic matching API to highlight similar phrases in search results
 export const SEARCH_SEMANTIC_HIGHLIGHTS = config.application.features.semantic_highlights;
 
+// Visitors who are not signed in may rate content (off when the key is absent,
+// so a deployment's own config.json need not list it). The API enforces the
+// same setting.
+export const ANONYMOUS_RATINGS =
+  (config.application.features as { anonymous_ratings?: boolean }).anonymous_ratings === true;
+
 // Semantic highlighting threshold (0.0 to 1.0, higher = more strict)
 // Default 0.4 = 40% similarity required for highlighting
 export const SEMANTIC_HIGHLIGHT_THRESHOLD = config.application.search.highlight_threshold;

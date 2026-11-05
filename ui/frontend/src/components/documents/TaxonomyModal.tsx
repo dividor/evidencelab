@@ -3,6 +3,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useRatings } from '../../hooks/useRatings';
 import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
+import { canRate } from '../../utils/ratingAccess';
 
 interface TaxonomyValue {
   code: string;
@@ -35,10 +36,11 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
   docSummary,
 }) => {
   const { isAuthenticated } = useAuth();
+  const ratingsAllowed = canRate(isAuthenticated);
   const { ratings, submitRating, deleteRating } = useRatings({
     ratingType: 'taxonomy',
     referenceId: docId || '',
-    enabled: isAuthenticated && !!docId && isOpen,
+    enabled: ratingsAllowed && !!docId && isOpen,
   });
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [modalInitialScore, setModalInitialScore] = useState(0);
@@ -143,7 +145,7 @@ export const TaxonomyModal: React.FC<TaxonomyModalProps> = ({
               </section>
             )}
           </div>
-          {isAuthenticated && docId && (
+          {ratingsAllowed && docId && (
             <div style={{
               display: 'flex',
               alignItems: 'center',

@@ -2,7 +2,7 @@
 
 Evidence Lab lets you rate AI-generated content and search results using a 1–5 star system. Your feedback helps administrators understand what's working well and where improvements are needed.
 
-> **Note:** Ratings are only available when you're signed in.
+> **Note:** Ratings are available when you're signed in. If your administrator has turned on anonymous ratings, you can also rate without signing in: your browser keeps one rating per item, which you can change or remove from the same browser. Chat answers can be rated without signing in only while the conversation is open, because anonymous conversations are not saved.
 
 ---
 
@@ -50,7 +50,7 @@ When you click a star, a modal opens where you can:
 
 If you've already rated something, the modal shows your previous score and comment. You can update your rating at any time, or click **"Remove Rating"** to delete it.
 
-> Each rating is unique per user — you can only have one rating per item. Submitting again updates your existing rating rather than creating a duplicate.
+> Each rating is unique per user, or per browser if you rate without signing in — you can only have one rating per item. Submitting again updates your existing rating rather than creating a duplicate.
 
 ---
 

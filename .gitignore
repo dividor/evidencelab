@@ -293,3 +293,16 @@ config.json
 
 # Analysis notebook outputs (per-brief exports and judge cache)
 notebooks/output/
+
+# Terraform (deploy/): state holds generated keys; local settings and plans
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan*
+
+# deploy/<cloud>/scripts/deploy.sh --demo writes its configuration here
+deploy/aws/.demo/
+deploy/azure/.demo/
+deploy/gcp/.demo/

@@ -12,6 +12,7 @@ from pydantic import (
     StringConstraints,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 # ---------------------------------------------------------------------------
@@ -486,6 +487,12 @@ class SavedResearchListItem(BaseModel):
 # research question cap in routes/brief.py), and a length target the same
 # bounds as the assistant request that carries it.
 BRIEF_PROMPT_MAX_CHARS = 2000
+VOICE_INSTRUCTIONS_MAX_CHARS = 10_000
+# A brief's topic is its question (``BriefCreate.query``); a section heading
+# is a template heading's title.
+BRIEF_TOPIC_MAX_CHARS = 5000
+BRIEF_HEADING_MAX_CHARS = 500
+BRIEF_MAX_SECTIONS = 100
 TARGET_WORDS_MIN = 50
 TARGET_WORDS_MAX = 5000
 
@@ -495,7 +502,9 @@ class VoiceProfileCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    instructions: str = Field(..., min_length=1, max_length=10_000)
+    instructions: str = Field(
+        ..., min_length=1, max_length=VOICE_INSTRUCTIONS_MAX_CHARS
+    )
 
 
 class VoiceProfileUpdate(BaseModel):
@@ -503,7 +512,9 @@ class VoiceProfileUpdate(BaseModel):
 
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    instructions: Optional[str] = Field(None, min_length=1, max_length=10_000)
+    instructions: Optional[str] = Field(
+        None, min_length=1, max_length=VOICE_INSTRUCTIONS_MAX_CHARS
+    )
 
 
 class VoiceProfileRead(BaseModel):
@@ -534,7 +545,7 @@ class BriefTemplateHeading(BaseModel):
     three are optional, and absent means "use the brief default".
     """
 
-    title: str = Field(..., min_length=1, max_length=500)
+    title: str = Field(..., min_length=1, max_length=BRIEF_HEADING_MAX_CHARS)
     sub: bool = False
     text: Optional[str] = Field(None, max_length=100_000)
     prompt: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
@@ -547,7 +558,9 @@ class BriefTemplateCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    headings: List[BriefTemplateHeading] = Field(..., min_length=1, max_length=100)
+    headings: List[BriefTemplateHeading] = Field(
+        ..., min_length=1, max_length=BRIEF_MAX_SECTIONS
+    )
     with_text: bool = False
     # Brief-wide defaults: research instructions for every section, the
     # default voice & tone profile and the default section length.
@@ -871,6 +884,54 @@ class AssistantSearchSettings(BaseModel):
     wide_search: Optional[bool] = None
     wide_group_size: Optional[int] = Field(None, ge=1, le=50)
     wide_limit: Optional[int] = Field(None, ge=1, le=1000)
+    # From the selected model combo, like reranker_model: how many candidates
+    # the reranker scores, and which embedding model searches use.
+    rerank_model_page_size: Optional[int] = Field(None, ge=1, le=1000)
+    embedding_model: Optional[str] = Field(None, max_length=255)
+
+
+class BriefOutlineSection(BaseModel):
+    """One section of a brief, as its research prompt describes the outline.
+
+    ``content`` is the section's text when it is written, so the prompt can
+    say what it already covers; omitted for a section not yet written.
+    """
+
+    title: str = Field(..., max_length=BRIEF_HEADING_MAX_CHARS)
+    level: Literal[1, 2] = 1
+    content: Optional[str] = Field(None, max_length=BRIEF_RUN_CONTENT_MAX_CHARS)
+
+
+class BriefSectionPrompt(BaseModel):
+    """The parts of a Brief section's research prompt.
+
+    The API composes the prompt from these (see
+    ``services/brief_section_prompt.py``), so each part keeps the limit it
+    has when stored and the chat question stays a short question.
+    ``current`` is the index in ``outline`` of the section being written.
+    ``draft`` is the section's current text, used by ``update``.
+    """
+
+    outline: List[BriefOutlineSection] = Field(
+        ..., min_length=1, max_length=BRIEF_MAX_SECTIONS
+    )
+    current: int = Field(..., ge=0)
+    mode: Literal["generate", "update"] = "generate"
+    topic: Optional[str] = Field(None, max_length=BRIEF_TOPIC_MAX_CHARS)
+    instructions: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    focus: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    draft: Optional[str] = Field(None, max_length=BRIEF_RUN_CONTENT_MAX_CHARS)
+    instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    published_after: Optional[str] = Field(None, max_length=40)
+    voice_instructions: Optional[str] = Field(
+        None, max_length=VOICE_INSTRUCTIONS_MAX_CHARS
+    )
+
+    @model_validator(mode="after")
+    def current_in_outline(self) -> "BriefSectionPrompt":
+        if self.current >= len(self.outline):
+            raise ValueError("current must index a section in outline")
+        return self
 
 
 class AssistantChatRequest(BaseModel):
@@ -912,6 +973,10 @@ class AssistantChatRequest(BaseModel):
     activity_id: Optional[str] = Field(None, max_length=100)
     session_id: Optional[str] = Field(None, max_length=64)
     usage_context: Optional[str] = Field(None, max_length=32)
+    # Brief only: the section being researched. The API writes the research
+    # prompt from it, and ``query`` is then the section heading, used for
+    # the Activity row and logs.
+    brief_section: Optional[BriefSectionPrompt] = None
 
 
 class ThreadRenameRequest(BaseModel):

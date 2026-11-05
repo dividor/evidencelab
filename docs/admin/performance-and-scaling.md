@@ -10,7 +10,7 @@ All of these are environment variables set in `.env`. **Every one has a default,
 |----------|---------|------------------|
 | `MAX_CONCURRENT_SEARCHES` | `8` | Searches running at once. Lower it if embedding or reranking models run inside the API process and memory is tight. |
 | `MAX_CONCURRENT_RERANKS` | `1` | **Local** reranker inferences at once. A local reranker holds a model in the API process, so running several at once multiplies memory and has stopped the API outright. Raise with care. |
-| `MAX_CONCURRENT_REMOTE_RERANKS` | `8` | **Hosted** reranker calls at once (Azure Foundry, Google Vertex). These are ordinary HTTP requests and cost no local memory, so they are bounded separately — by the provider's rate limit rather than by this process's memory. |
+| `MAX_CONCURRENT_REMOTE_RERANKS` | `8` | **Hosted** reranker calls at once (Azure Foundry, Google Vertex, Amazon Bedrock). These are ordinary HTTP requests and cost no local memory, so they are bounded separately — by the provider's rate limit rather than by this process's memory. |
 | `VERTEX_RERANK_BATCH_SIZE` | `200` | Records in one Google Vertex Ranking API request. A search that reranks more candidates than this is scored in slices of this size, one after another, inside a single remote-rerank slot; the scores are comparable across slices. A heatmapper cell can send up to 1000 documents (5000 chunks with wide search), which is why one request per search is not an option. The API accepts at most 1000 records per request. |
 
 If your model combo reranks through a hosted service, `MAX_CONCURRENT_RERANKS` does not apply to it, and leaving that value at `1` costs you nothing.
@@ -75,6 +75,8 @@ Retries cope with brief throttling. They cannot rescue a run that asks for sever
 Seven workers against six summary workers is **42 concurrent LLM calls**. A deployment provisioned well below that will throttle most of them. If you see sustained 429s, either raise the deployment's quota or lower one of the two numbers — raising retries alone only converts the failures into a very slow run.
 
 On Azure OpenAI, a `GlobalStandard` deployment's capacity is quoted in thousands of tokens per minute, so capacity `200` is 200,000 TPM. Capacity sets the rate ceiling; billing stays per-token, so raising it does not create a standing cost.
+
+The Cohere reranker on Azure Foundry is much smaller per unit: each unit of capacity allows 1 request and 1,000 tokens a minute. One search reranks several documents in one request, so a reranker at capacity `1` fails searches with HTTP 429. The [Azure example deployment](cloud-deployment.md#example-azure) gives it 20 units. Its quota is shared by every Foundry resource in a subscription and region.
 
 ## Do not add uvicorn workers to go faster
 

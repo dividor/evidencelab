@@ -32,14 +32,15 @@
     },
     "features": {
       "semantic_highlights": true,
-      "pdf_highlights": true
+      "pdf_highlights": true,
+      "anonymous_ratings": true
     },
     "search": {
       "dense_weight": 0.5,
       "short_query_dense_weight": 0.25,
       "highlight_threshold": 0.6,
       "page_size": 50,
-      "rerank_model": "jinaai/jina-reranker-v2-base-multilingual",
+      "rerank_model": "Cohere-rerank-v4.0-fast",
       "default_dense_model": "e5_large",
       "default_included_section_types": [
         "executive_summary",
@@ -155,13 +156,20 @@
       "type": "dense",
       "max_tokens": 2048,
       "output_dimensionality": 768
+    },
+    "aws_titan_v2": {
+      "model_id": "amazon.titan-embed-text-v2:0",
+      "size": 1024,
+      "source": "aws_bedrock",
+      "type": "dense",
+      "max_tokens": 8192
     }
   },
   "supported_llms": {
-    "qwen3-235b-instruct": {
-      "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "kimi-k2-instruct": {
+      "model": "moonshotai/Kimi-K2-Instruct-0905",
       "provider": "huggingface",
-      "inference_provider": "scaleway"
+      "inference_provider": "novita"
     },
     "llama-3.1-8b-instruct": {
       "model": "meta-llama/Llama-3.1-8B-Instruct",
@@ -171,20 +179,14 @@
       "model": "gpt-4.1-mini",
       "provider": "azure_foundry"
     },
-    "gemini-2.5-flash": {
-      "model": "gemini-2.5-flash",
+    "gemini-3.8-flash": {
+      "model": "gemini-3.8-flash",
       "provider": "google_vertex",
       "max_tokens": 65536
     },
-    "gemini-2.5-pro": {
-      "model": "gemini-2.5-pro",
-      "provider": "google_vertex",
-      "max_tokens": 65536
-    },
-    "gemini-2.0-flash": {
-      "model": "gemini-2.0-flash",
-      "provider": "google_vertex",
-      "max_tokens": 8192
+    "nova-2-lite": {
+      "model": "us.amazon.nova-2-lite-v1:0",
+      "provider": "aws_bedrock"
     }
   },
   "supported_rerank_models": {
@@ -203,6 +205,11 @@
     "vertex-ai-ranker-fast": {
       "model_id": "semantic-ranker-fast-004",
       "provider": "google_vertex"
+    },
+    "cohere-rerank-3.5-bedrock": {
+      "model_id": "cohere.rerank-v3-5:0",
+      "provider": "aws_bedrock",
+      "region": "us-west-2"
     }
   },
   "ui_model_combos": {
@@ -237,54 +244,81 @@
       "embedding_model": "e5_large",
       "sparse_model": "bm25",
       "summarization_model": {
-        "model": "qwen3-235b-instruct",
+        "model": "kimi-k2-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "semantic_highlighting_model": {
-        "model": "qwen3-235b-instruct",
+        "model": "kimi-k2-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "assistant_model": {
-        "model": "qwen3-235b-instruct",
+        "model": "kimi-k2-instruct",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
-      "reranker_model": "jinaai/jina-reranker-v2-base-multilingual",
+      "reranker_model": "Cohere-rerank-v4.0-fast",
       "rerank_model_page_size": 10
     },
     "Google Vertex": {
       "embedding_model": "google_gemini_1536",
       "sparse_model": "bm25",
       "summarization_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "semantic_highlighting_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 500,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "assistant_model": {
-        "model": "gemini-2.5-flash",
+        "model": "gemini-3.8-flash",
         "max_tokens": 2000,
         "temperature": 0.2,
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
       "reranker_model": "vertex-ai-ranker"
+    },
+    "AWS Bedrock": {
+      "embedding_model": "aws_titan_v2",
+      "sparse_model": "bm25",
+      "summarization_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "semantic_highlighting_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 500,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "assistant_model": {
+        "model": "nova-2-lite",
+        "max_tokens": 2000,
+        "temperature": 0.2,
+        "chunk_overlap": 800,
+        "chunk_tokens_ratio": 0.5
+      },
+      "reranker_model": "cohere-rerank-3.5-bedrock",
+      "rerank_model_page_size": 10
     }
   },
   "datasources": {
@@ -613,7 +647,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+            "model": "moonshotai/Kimi-K2-Instruct-0905",
             "provider": "huggingface",
             "temperature": 0.2,
             "max_tokens": 2000
@@ -627,7 +661,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+            "model": "moonshotai/Kimi-K2-Instruct-0905",
             "provider": "huggingface",
             "temperature": 0.0,
             "max_tokens": 4000
@@ -816,7 +850,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+            "model": "moonshotai/Kimi-K2-Instruct-0905",
             "provider": "huggingface",
             "temperature": 0.2,
             "max_tokens": 2000
@@ -830,7 +864,7 @@
           "enabled": true,
           "dense_model": "e5_large",
           "llm_model": {
-            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+            "model": "moonshotai/Kimi-K2-Instruct-0905",
             "provider": "huggingface",
             "temperature": 0.0,
             "max_tokens": 4000

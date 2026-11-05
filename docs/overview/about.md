@@ -33,7 +33,7 @@ Evidence Lab document processing pipeline includes the following features:
 - Basic table extraction, with support for more expensive processing as required
 - AI-assisted document summarization
 - AI-assisted tagging of documents
-- Indexing with Open (Huggingface) or proprietary models (Azure foundry, but extensible)
+- Indexing with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and extensible to others
 
 ### User interface
 

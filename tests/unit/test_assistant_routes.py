@@ -97,6 +97,31 @@ class TestAssistantChatRequest:
         assert req.data_source == "test_collection"
         assert req.assistant_model_config.model == "gpt-4.1-mini"
 
+    def test_search_settings_when_combo_fields_sent_then_kept(self):
+        req = AssistantChatRequest(
+            query="q",
+            reranker_model="jina",
+            search_settings={
+                "dense_weight": 0.8,
+                "rerank_model_page_size": 10,
+                "embedding_model": "e5_large",
+            },
+        )
+
+        assert req.search_settings.model_dump(exclude_none=True) == {
+            "dense_weight": 0.8,
+            "rerank_model_page_size": 10,
+            "embedding_model": "e5_large",
+        }
+
+    def test_rerank_model_page_size_when_zero_then_rejected(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            AssistantChatRequest(
+                query="q", search_settings={"rerank_model_page_size": 0}
+            )
+
     def test_query_too_long(self):
         from pydantic import ValidationError
 
@@ -694,3 +719,75 @@ class TestMessageToHistoryEntry:
         msg = MagicMock(role="assistant", content="answer", sources={"foo": "bar"})
         entry = helper(msg)
         assert entry == {"role": "assistant", "content": "answer"}
+
+
+class TestStreamAssistantChatBriefSection:
+    """A Brief section sends its prompt parts; the API writes the prompt."""
+
+    _SECTION = {
+        "outline": [
+            {"title": "Context", "level": 1},
+            {"title": "Findings", "level": 1, "content": "Done text [1]."},
+        ],
+        "current": 1,
+        "mode": "update",
+        "topic": "school meals",
+        "draft": "Attendance rose [1]. " * 400,
+        "voice_instructions": "Plain English.",
+    }
+
+    async def _run(self, body):
+        from ui.backend.routes.assistant import stream_assistant_chat
+
+        response = await stream_assistant_chat(
+            request=_make_request(path="/assistant/chat/stream"),
+            body=body,
+            user=None,
+            session=None,
+        )
+        async for _chunk in response.body_iterator:
+            pass
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.schedule_llm_usage_recording")
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_stream_when_brief_section_then_research_gets_written_prompt(
+        self, mock_stream, mock_usage
+    ):
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1", "usage": {"tokens": 1}}
+
+        mock_stream.return_value = mock_gen()
+        body = AssistantChatRequest(
+            query="Findings",
+            deep_research=True,
+            usage_context="brief",
+            activity_id="act-1",
+            brief_section=self._SECTION,
+        )
+        assert len(self._SECTION["draft"]) > 5000
+
+        await self._run(body)
+
+        from ui.backend.services.brief_section_prompt import build_section_prompt
+
+        query = mock_stream.call_args[1]["query"]
+        assert query == build_section_prompt(body.brief_section)
+        assert 'You are revising the "Findings" section' in query
+        assert "Voice & tone profile" in query
+        # The Activity row is labelled with the heading, not the prompt.
+        assert mock_usage.call_args[1]["query"] == "Findings"
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_stream_when_no_brief_section_then_question_passes_through(
+        self, mock_stream
+    ):
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1"}
+
+        mock_stream.return_value = mock_gen()
+
+        await self._run(AssistantChatRequest(query="What works?"))
+
+        assert mock_stream.call_args[1]["query"] == "What works?"

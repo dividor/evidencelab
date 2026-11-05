@@ -12,7 +12,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pipeline.db import SUPPORTED_LLMS
 from pipeline.processors.tagging.tagger_constants import SECTION_TYPES
 from pipeline.utilities.llm_retry import invoke_with_retry
-from utils.llm_factory import get_llm
+from utils.llm_factory import get_llm, message_text
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +223,7 @@ def invoke_and_parse_toc(
         return None
     if usage_collector is not None:
         usage_collector.add_response(response, model_key)
-    response_text = str(response.content).strip()
+    response_text = message_text(response).strip()
 
     try:
         output_items = json.loads(response_text)

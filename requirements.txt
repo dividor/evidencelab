@@ -81,11 +81,14 @@ langchain-community==0.4.2
 langchain-huggingface==1.2.2
 langchain-openai==1.6.0
 langchain-anthropic==1.7.0
+# langchain-aws 1.7.5 is the newest release compatible with langchain-core 1.6.1
+langchain-aws==1.7.5
+boto3==1.43.123
 langchain-google-vertexai>=3.2.4,<4.0.0
 
 # Google Cloud AI Platform (Vertex AI)
 google-cloud-aiplatform>=1.154.0
-google-cloud-discoveryengine>=0.13.0
+google-cloud-discoveryengine>=0.20.5
 
 
 # LangGraph agent framework

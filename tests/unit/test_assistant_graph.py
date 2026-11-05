@@ -895,6 +895,16 @@ class TestSearchSettingsThreading:
 
         assert kwargs == {"wide_search": True, "wide_group_size": 3, "wide_limit": 12}
 
+    def test_build_search_kwargs_when_combo_settings_then_caps_rerank_and_sets_embedding(
+        self,
+    ):
+        """The combo's reranker cap and embedding model reach search_chunks."""
+        settings = {"rerank_model_page_size": 10, "embedding_model": "e5_large"}
+        tracker = SearchTracker(search_settings=settings)
+        kwargs = tracker._build_search_kwargs()
+
+        assert kwargs == {"max_rerank_candidates": 10, "dense_model": "e5_large"}
+
     def test_build_search_kwargs_empty_settings(self):
         """Empty settings should produce empty kwargs."""
         tracker = SearchTracker(search_settings={})

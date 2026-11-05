@@ -75,7 +75,7 @@ The GitHub Actions workflow includes dedicated security jobs:
 | API Image | Trivy | Scans built Docker image for OS and application vulnerabilities (CRITICAL, HIGH severity) |
 | UI Image | Trivy | Scans built Docker image for OS and application vulnerabilities (CRITICAL, HIGH severity) |
 
-Container images are built from `Dockerfile.base` (shared runtime layer), then scanned before any integration tests run.
+The scanned images are the ones production runs and the release workflow publishes: the `runtime` target of `Dockerfile` (API, MCP server and pipeline) and `ui/frontend/Dockerfile.prod` (nginx web interface). They are scanned before any integration tests run.
 
 #### `sbom` Job
 

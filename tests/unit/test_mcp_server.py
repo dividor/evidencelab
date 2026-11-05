@@ -256,6 +256,46 @@ async def test_ask_assistant_basic(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ask_assistant_when_combo_has_cap_then_search_settings_sent(monkeypatch):
+    """The combo's reranker cap and embedding model reach the assistant."""
+    seen = {}
+
+    async def fake_stream(**kwargs):
+        seen.update(kwargs)
+        yield {"type": "token", "token": "ok"}
+
+    assistant_svc_mod = ModuleType("ui.backend.services.assistant_service")
+    assistant_svc_mod.stream_research_response = fake_stream
+    monkeypatch.setitem(
+        sys.modules, "ui.backend.services.assistant_service", assistant_svc_mod
+    )
+    import pipeline.db as pipeline_db
+
+    monkeypatch.setattr(
+        pipeline_db,
+        "UI_MODEL_COMBOS",
+        {
+            "HF": {
+                "assistant_model": {"model": "qwen"},
+                "reranker_model": "jina",
+                "rerank_model_page_size": 10,
+                "embedding_model": "e5_large",
+            }
+        },
+    )
+
+    from mcp_server.tools.assistant import mcp_ask_assistant
+
+    await mcp_ask_assistant(query="q", model_combo="HF")
+
+    assert seen["reranker_model"] == "jina"
+    assert seen["search_settings"] == {
+        "rerank_model_page_size": 10,
+        "embedding_model": "e5_large",
+    }
+
+
+@pytest.mark.asyncio
 async def test_ask_assistant_timeout(monkeypatch):
     """mcp_ask_assistant raises RuntimeError on timeout with no partial answer."""
     import mcp_server.tools.assistant as assistant_mod

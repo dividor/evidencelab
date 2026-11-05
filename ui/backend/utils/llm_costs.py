@@ -27,6 +27,10 @@ LLM_COSTS_PER_1K: Mapping[str, tuple[Decimal, Decimal]] = {
     "gemini-2.0-flash": (Decimal("0.00010"), Decimal("0.00040")),
     "gemini-2.5-flash": (Decimal("0.00030"), Decimal("0.00250")),
     "gemini-2.5-pro": (Decimal("0.00125"), Decimal("0.01000")),
+    # Introductory price through 2026-12-31; $1.50 / $7.50 per 1M from 2027.
+    "gemini-3.8-flash": (Decimal("0.00075"), Decimal("0.00375")),
+    # Amazon Bedrock (us-east-2, from the AWS Price List API, 2026-11)
+    "nova-2-lite": (Decimal("0.00033"), Decimal("0.00275")),
     # HuggingFace-hosted open-weights — provider-dependent; left None
     # below by omitting an entry so the UI shows "—" for these models.
 }

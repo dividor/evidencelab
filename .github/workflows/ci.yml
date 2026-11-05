@@ -207,25 +207,24 @@ jobs:
         with:
           driver: docker
 
-      - name: Build base image (required by backend)
+      # Scan the images production runs and publish-images.yml publishes:
+      # the Python runtime target and the nginx UI build.
+      - name: Build API image for scanning
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.base
-          tags: evidencelab-ai-base:latest
-
-      - name: Build backend image for scanning
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ui/backend/Dockerfile
+          file: Dockerfile
+          target: runtime
           tags: evidencelab-api:scan
 
       - name: Build frontend image for scanning
         uses: docker/build-push-action@v7
         with:
-          context: ui/frontend
-          file: ui/frontend/Dockerfile
+          context: .
+          file: ui/frontend/Dockerfile.prod
+          build-contexts: |
+            customize=./customize
+            config=.
           tags: evidencelab-ui:scan
 
       - name: Run Trivy on API image
@@ -384,7 +383,8 @@ jobs:
 
       - name: Build shared Python image
         run: |
-          docker build -t evidencelab-ai-python:latest --target runtime .
+          # The test target adds the browsers the UI integration tests drive.
+          docker build -t evidencelab-ai-python:latest --target test .
         working-directory: ${{ github.workspace }}
 
       - name: Start Docker services
@@ -440,6 +440,40 @@ jobs:
         continue-on-error: true
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration/test_translation_integration.py -v -s"
+
+  terraform:
+    # Checks the cloud deployment templates: formatting, validity, and the
+    # plan-only tests in deploy/<cloud>/tests (mocked providers, no cloud
+    # account).
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        template: [aws, azure, gcp]
+    defaults:
+      run:
+        working-directory: deploy/${{ matrix.template }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialise
+        run: terraform init -backend=false -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Test
+        run: terraform test
 
   ui-tests:
     runs-on: ubuntu-latest

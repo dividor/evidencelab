@@ -41,6 +41,23 @@ Notes:
 - Pipeline service is commented out in prod compose by default.
 - API binds to `127.0.0.1:8000` — never publicly exposed.
 
+### Published Images (Docker Hub + GHCR)
+
+`.github/workflows/publish-images.yml` publishes the Python image (`Dockerfile` target `runtime`: API, MCP server, pipeline) for `linux/amd64` and `linux/arm64` to Docker Hub `astrobagel/evidencelab` and GHCR `ghcr.io/dividor/evidencelab`. It runs by itself; nobody publishes by hand.
+
+| Trigger | Docker tags |
+|---|---|
+| Push to `rc/vX.Y.Z` (every PR merged into the RC) | `rc-vX.Y.Z`, moving, for testing |
+| Push of release tag `vX.Y.Z` (release step 6 in CONTRIBUTING.md) | `X.Y.Z`, `X.Y`, `latest` (pre-release tags get no `X.Y`/`latest`) |
+| Every PR to `main` or `rc/**` | build only, both platforms, no push; `build (amd64)` and `build (arm64)` are required checks |
+
+- Push credentials: GitHub environment `dockerhub` (only `rc/**` branches and `v*` tags may use it), secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` (Read & Write PAT), repo variable `DOCKERHUB_NAMESPACE=astrobagel`. The repo-level `DOCKERHUB_*` secrets are only for CI pull rate limits. A failed "Log in to Docker Hub" step means the token expired: the user creates a new one; never ask for it in chat.
+- **The web interface is deliberately not published.** Its build bakes in `REACT_APP_API_KEY` or the sign-in mode, `config.json` and branding, so a shared image either gets 401s from the API or exposes a key. `docker-compose.hub.yml` pulls the Python image, mounts `config.json` at `/app/config.json`, and builds the UI locally with the production build args. Don't add a UI image without runtime configuration, and never bake a key into a published image.
+- Releases before v1.6.5 were tagged before the workflow existed and have no images.
+- The supported quick start for the published image is `python3 scripts/demo/run_demo.py --mode hub` (stdlib only on the host): it writes `.env` (keeping existing secrets, since a new `POSTGRES_PASSWORD` locks out an existing database), sets `EVIDENCELAB_VERSION`, adds the demo data source, downloads and processes the documents inside the image, rebuilds the UI and waits on `/api/health`. It checks Docker before asking anything. Before the pipeline it starts Postgres, Qdrant and the embedding server and shows the embedding server's log until all are healthy (a first start spent about 6 minutes loading the model with no output, which looked like a hang), then runs `alembic upgrade head`, because the API that normally migrates has not started yet and the pipeline logged a `user_activity` traceback per document. The pipeline's output goes through `run_streaming`, which prints a still-working line after 60 s of silence (converting one document was silent for 185 s). Keep it working when changing `docker-compose.hub.yml`. That file keeps Postgres and Qdrant in named volumes on purpose: on Docker Desktop for Mac a bind-mounted Postgres data folder failed with "wrong ownership" on first start, which leaves the cluster without its database permanently.
+- The Docker Hub overview is `docker/README.md`, pasted into Docker Hub by hand (syncing needs a delete-scope token). Keep the two identical.
+- User docs: `docs/admin/docker-images.md`. Release steps: CONTRIBUTING.md → Release Process.
+
 ## Commands
 
 ```bash
@@ -236,6 +253,8 @@ Before submitting, verify: no hardcoded secrets, input validation in place, no d
 ## Gotchas
 
 - `ui/frontend/public/docs/` is auto-generated — never edit files there directly.
+- `Dockerfile` has two final targets: `runtime` (shipped, no browsers) and `test` (runtime + Chromium and Playwright's browser). The dev `docker-compose.yml`, CI integration tests and Demo E2E build `test`; prod compose, Azure scripts and the published image build `runtime`. Anything that drives a browser must use `test`.
+- Migrations may import application code (`0036` imports `ui.backend`). `alembic.ini` sets `prepend_sys_path = %(here)s`, so `alembic upgrade` works from a host checkout without `PYTHONPATH`; keep it.
 - Language filter requires a DB lookup: `_convert_language_to_doc_ids()` replaces language with doc_id filter because language isn't stored on chunks.
 - API key caching: `get_active_key_hashes()` returns cached hashes — new keys won't work until cache expires.
 - Search runs sync code in `run_in_threadpool()` to avoid blocking the async event loop.

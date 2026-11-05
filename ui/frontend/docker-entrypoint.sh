@@ -1,8 +1,9 @@
 #!/bin/sh
 # Docker entrypoint script for UI container
 
-# Copy nginx config template (no variable substitution needed)
-cp /etc/nginx/conf.d/default.conf.template /etc/nginx/conf.d/default.conf
+# Render the nginx config: fill in the api and mcp addresses and the DNS
+# resolver. Stop here if that fails, rather than start with a broken config.
+/render-nginx-conf.sh /etc/nginx/conf.d/default.conf.template /etc/nginx/conf.d/default.conf || exit 1
 
 # Generate Microsoft identity association file for publisher verification.
 # Only needed for multi-tenant apps (common/organizations) where users from
