@@ -163,7 +163,7 @@ class TestChatDataSource:
 @pytest.mark.unit
 class TestRejectedRequestLogging:
     @pytest.mark.asyncio
-    async def test_422_when_logged_then_names_fields_not_values(self, caplog):
+    async def test_422_when_logged_then_names_fields_not_values(self):
         from ui.backend import main as main_module
 
         guidance_text = "private guidance text"
@@ -180,9 +180,10 @@ class TestRejectedRequestLogging:
         request = SimpleNamespace(
             method="POST", url=SimpleNamespace(path="/assistant/chat/stream")
         )
-        with caplog.at_level("WARNING"):
+        with patch.object(main_module, "_main_logger") as logger:
             response = await main_module.request_validation_handler(request, exc)
         assert response.status_code == 422
-        assert "body.brief_section.instructions" in caplog.text
-        assert "string_too_long" in caplog.text
-        assert guidance_text not in caplog.text
+        logged = str(logger.warning.call_args)
+        assert "body.brief_section.instructions" in logged
+        assert "string_too_long" in logged
+        assert guidance_text not in logged

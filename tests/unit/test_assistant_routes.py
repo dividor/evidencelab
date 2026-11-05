@@ -10,6 +10,8 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
 # ---------------------------------------------------------------------------
 # Mock the heavy transitive imports that assistant routes pull in.
 # assistant_service -> assistant_graph -> search -> google.cloud
@@ -18,9 +20,6 @@ from starlette.requests import Request
 # then IMMEDIATELY clean up so later test modules see the real modules.
 # ---------------------------------------------------------------------------
 _mock_service = ModuleType("ui.backend.services.assistant_service")
-
-
-pytestmark = pytest.mark.usefixtures("one_data_source")
 
 
 async def _noop_stream(*args, **kwargs):

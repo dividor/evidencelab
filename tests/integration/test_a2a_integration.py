@@ -14,6 +14,8 @@ _BASE_URL = os.getenv("MCP_BASE_URL", "http://mcp:8001")
 A2A_URL = _BASE_URL + "/a2a"
 AGENT_CARD_URL = _BASE_URL + "/.well-known/agent.json"
 API_KEY = os.getenv("API_SECRET_KEY", os.getenv("REACT_APP_API_KEY", ""))
+# The CI config lists several data sources, so a task must name one.
+DATA_SOURCE = "uneg"
 
 
 def _a2a_call(method: str, params: dict | None = None, call_id: int = 1) -> dict:
@@ -63,7 +65,11 @@ class TestA2AIntegration:
                     "parts": [
                         {"type": "text", "text": "search for health evaluations"}
                     ],
-                    "metadata": {"skill": "search", "limit": 3},
+                    "metadata": {
+                        "skill": "search",
+                        "limit": 3,
+                        "data_source": DATA_SOURCE,
+                    },
                 }
             },
         )
@@ -84,7 +90,11 @@ class TestA2AIntegration:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "search for education"}],
-                    "metadata": {"skill": "search", "limit": 2},
+                    "metadata": {
+                        "skill": "search",
+                        "limit": 2,
+                        "data_source": DATA_SOURCE,
+                    },
                 }
             },
         )
@@ -106,7 +116,11 @@ class TestA2AIntegration:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "search for water"}],
-                    "metadata": {"skill": "search", "limit": 1},
+                    "metadata": {
+                        "skill": "search",
+                        "limit": 1,
+                        "data_source": DATA_SOURCE,
+                    },
                 }
             },
         )
@@ -125,7 +139,11 @@ class TestA2AIntegration:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "search for water"}],
-                    "metadata": {"skill": "search", "limit": 1},
+                    "metadata": {
+                        "skill": "search",
+                        "limit": 1,
+                        "data_source": DATA_SOURCE,
+                    },
                 },
             },
         )
@@ -152,7 +170,11 @@ class TestA2AIntegration:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "search for health"}],
-                    "metadata": {"skill": "search", "limit": 1},
+                    "metadata": {
+                        "skill": "search",
+                        "limit": 1,
+                        "data_source": DATA_SOURCE,
+                    },
                 },
             },
         )
@@ -218,7 +240,11 @@ class TestA2AIntegration:
                     "message": {
                         "role": "user",
                         "parts": [{"type": "text", "text": "search for climate"}],
-                        "metadata": {"skill": "search", "limit": 1},
+                        "metadata": {
+                            "skill": "search",
+                            "limit": 1,
+                            "data_source": DATA_SOURCE,
+                        },
                     }
                 },
             },
@@ -257,7 +283,7 @@ class TestA2AIntegration:
                 "message": {
                     "role": "user",
                     "parts": [{"type": "text", "text": "search for health"}],
-                    "metadata": {"skill": "search"},
+                    "metadata": {"skill": "search", "data_source": DATA_SOURCE},
                 }
             },
         )
@@ -278,7 +304,7 @@ class TestA2AIntegration:
                             "text": "what are the key findings on humanitarian evaluations?",
                         }
                     ],
-                    "metadata": {"skill": "research"},
+                    "metadata": {"skill": "research", "data_source": DATA_SOURCE},
                 }
             },
             call_id=99,
@@ -325,6 +351,21 @@ class TestA2AIntegration:
         assert (
             has_title or has_source
         ), f"Citation needs a title or source identifier; got: {first_cit}"
+
+    def test_research_when_no_data_source_among_several_then_not_completed(self):
+        """With several data sources, research fails rather than searching none."""
+        data = _a2a_call(
+            "tasks/send",
+            {
+                "id": "integration-test-no-source-001",
+                "message": {
+                    "role": "user",
+                    "parts": [{"type": "text", "text": "what about health?"}],
+                    "metadata": {"skill": "research"},
+                },
+            },
+        )
+        assert data["result"]["status"]["state"] == "failed"
 
     def test_invalid_data_source_returns_error(self):
         """tasks/send with an unknown data_source returns a task-failed status."""
