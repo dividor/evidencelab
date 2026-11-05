@@ -709,7 +709,8 @@ h6,
 .search-input-filters {
   position: absolute;
   right: 1.25rem;
-  top: 50%;
+  /* Centre of the first line, so it stays put as the box grows. */
+  top: 32px;
   transform: translateY(-50%);
   color: var(--gray-400);
   font-size: 1.3rem;
@@ -746,11 +747,9 @@ h6,
 
 .search-container.search-container-landing .search-input {
   font-size: 1.25rem;
-  padding: 0 1.75rem;
-  padding-right: 9rem;
-  height: 64px;
-  display: flex;
-  align-items: center;
+  /* One line sits 64px tall to match the Search button: 3 + 14 + 30 + 14 + 3. */
+  line-height: 30px;
+  padding: 14px 9rem 14px 1.75rem;
 }
 
 /* Mobile: icon-only filter button, shorter placeholder */
@@ -813,8 +812,9 @@ h6,
 /* Results page: normal top search box */
 .search-container.search-container-results .search-input {
   font-size: 1.0625rem;
-  padding: 1rem 1.25rem;
-  height: 56px;
+  /* One line sits 56px tall to match the Search button: 3 + 12 + 26 + 12 + 3. */
+  line-height: 26px;
+  padding: 12px 1.25rem;
 }
 
 .search-container.search-container-results .search-button {
@@ -2896,13 +2896,19 @@ h6,
   padding: 0 var(--spacing-xl);
   display: flex;
   gap: var(--spacing-sm);
-  align-items: center;
+  /* Top-aligned so the button stays on the first line as the box grows. */
+  align-items: flex-start;
 }
 
 .search-input {
   flex: 1;
   padding: 1rem 1.25rem;
   font-size: 1.125rem;
+  line-height: 1.5;
+  font-family: inherit;
+  /* A textarea that grows with the query (AutoGrowTextarea); it scrolls only at its max height. */
+  resize: none;
+  overflow-y: hidden;
   border: 3px solid var(--gray-300);
   border-radius: var(--radius-md);
   outline: none;
