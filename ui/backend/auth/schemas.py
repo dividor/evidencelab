@@ -493,6 +493,10 @@ VOICE_INSTRUCTIONS_MAX_CHARS = 10_000
 BRIEF_TOPIC_MAX_CHARS = 5000
 BRIEF_HEADING_MAX_CHARS = 500
 BRIEF_MAX_SECTIONS = 100
+# Guidance already saved in a brief can be longer than the guidance boxes now
+# allow (BRIEF_PROMPT_MAX_CHARS): they had no limit, and the 5,000-character
+# limit on the whole prompt was what stopped it. Those briefs keep working.
+BRIEF_SAVED_GUIDANCE_MAX_CHARS = 5000
 TARGET_WORDS_MIN = 50
 TARGET_WORDS_MAX = 5000
 
@@ -918,8 +922,8 @@ class BriefSectionPrompt(BaseModel):
     current: int = Field(..., ge=0)
     mode: Literal["generate", "update"] = "generate"
     topic: Optional[str] = Field(None, max_length=BRIEF_TOPIC_MAX_CHARS)
-    instructions: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
-    focus: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    instructions: Optional[str] = Field(None, max_length=BRIEF_SAVED_GUIDANCE_MAX_CHARS)
+    focus: Optional[str] = Field(None, max_length=BRIEF_SAVED_GUIDANCE_MAX_CHARS)
     draft: Optional[str] = Field(None, max_length=BRIEF_RUN_CONTENT_MAX_CHARS)
     instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
     published_after: Optional[str] = Field(None, max_length=40)

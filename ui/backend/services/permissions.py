@@ -4,9 +4,12 @@ import logging
 import uuid
 from typing import Optional, Set
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
+from pipeline.db import load_datasources_config
 from ui.backend.auth.models import GroupDatasourceAccess, UserGroup, UserGroupMember
 
 logger = logging.getLogger(__name__)
@@ -85,3 +88,29 @@ async def add_user_to_default_group(
     membership = UserGroupMember(user_id=user_id, group_id=default_group.id)
     session.add(membership)
     await session.commit()
+
+
+async def ensure_data_source_access(session, user, data_source: str) -> None:
+    """Refuse a signed-in user a data source none of their groups grants.
+
+    Without this, a request naming no data source would reach the deployment's
+    only one even for a user who has been given no access to it. Superusers
+    and signed-out requests see every data source (see /config/datasources).
+    """
+    if getattr(user, "id", None) is None or user.is_superuser:
+        return
+    allowed = await get_user_datasource_keys(session, user.id)
+    datasources = await run_in_threadpool(
+        lambda: load_datasources_config().get("datasources", {})
+    )
+    permitted: Set[str] = set()
+    for key, conf in filter_datasources(datasources, allowed).items():
+        permitted.update({key, conf.get("data_subdir") or key})
+    if data_source not in permitted:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You don't have access to this data source. Ask an administrator "
+                "to add you to a group that has it."
+            ),
+        )

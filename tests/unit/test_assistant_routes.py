@@ -10,6 +10,8 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
 # ---------------------------------------------------------------------------
 # Mock the heavy transitive imports that assistant routes pull in.
 # assistant_service -> assistant_graph -> search -> google.cloud

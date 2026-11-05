@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from ui.backend.auth.schemas import (
     BRIEF_PROMPT_MAX_CHARS,
     BRIEF_RUN_CONTENT_MAX_CHARS,
+    BRIEF_SAVED_GUIDANCE_MAX_CHARS,
     VOICE_INSTRUCTIONS_MAX_CHARS,
     AssistantChatRequest,
     BriefSectionPrompt,
@@ -176,13 +177,19 @@ class TestBriefSectionPromptSchema:
         prompt = _prompt(0, mode="update", draft=draft)
         assert draft in prompt
 
+    @pytest.mark.parametrize("field", ["instructions", "focus"])
+    def test_schema_when_saved_guidance_is_long_then_accepted(self, field):
+        """Guidance saved before the boxes had a limit keeps working."""
+        guidance = "x" * BRIEF_SAVED_GUIDANCE_MAX_CHARS
+        assert guidance in _prompt(0, **{field: guidance})
+
     @pytest.mark.parametrize(
         "parts",
         [
             {"draft": "x" * (BRIEF_RUN_CONTENT_MAX_CHARS + 1)},
             {"voice_instructions": "x" * (VOICE_INSTRUCTIONS_MAX_CHARS + 1)},
-            {"instructions": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
-            {"focus": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
+            {"instructions": "x" * (BRIEF_SAVED_GUIDANCE_MAX_CHARS + 1)},
+            {"focus": "x" * (BRIEF_SAVED_GUIDANCE_MAX_CHARS + 1)},
             {"instruction": "x" * (BRIEF_PROMPT_MAX_CHARS + 1)},
             {"outline": [{"title": "t", "level": 1}] * 101},
             {"outline": [{"title": "t" * 501, "level": 1}]},

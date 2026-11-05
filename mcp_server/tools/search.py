@@ -63,6 +63,7 @@ async def mcp_search(
     include_facets: bool = False,
 ) -> MCPSearchResponse:
     """Run search using the same code path as the API search endpoint."""
+    from pipeline.db import resolve_data_source
     from ui.backend.routes.search import (
         _build_chunk_cache,
         _build_doc_cache,
@@ -72,7 +73,7 @@ async def mcp_search(
     from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source
 
     limit = max(1, min(limit, 100))
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     loop = asyncio.get_running_loop()
 
     def _run():

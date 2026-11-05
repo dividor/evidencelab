@@ -4,6 +4,8 @@ import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch  # noqa: F811 — patch used as decorator below
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Mock the heavy imports that assistant_graph pulls in transitively.
 # search -> search_models -> google_vertex_reranker -> google.cloud
@@ -48,6 +50,7 @@ from ui.backend.services.assistant_service import (  # noqa: E402
     _is_gemini_message,
     _process_agent_output,
     _summarize_message,
+    stream_research_response,
 )
 
 # Immediately restore sys.modules so other test files are not affected.
@@ -1346,3 +1349,29 @@ class TestSpreadAcrossDocuments:
         assert wide_docs == {"a", "b"}
         assert len(narrow.all_results) == len(points)
         assert narrow_docs == {"a", "b"}
+
+
+class TestResearchDataSource:
+    """MCP and A2A call the research service directly, without the chat route."""
+
+    @pytest.mark.asyncio
+    async def test_research_when_no_source_among_several_then_raises(self):
+        from pipeline.db import config as db_config
+
+        with patch.object(
+            db_config, "_configured_data_sources", return_value=["uneg", "worldbank"]
+        ), patch.object(db_config, "DEFAULT_DATA_SOURCE", None):
+            with pytest.raises(ValueError, match="Invalid data_source: none given"):
+                async for _event in stream_research_response(query="q"):
+                    pass
+
+    @pytest.mark.asyncio
+    async def test_research_when_source_not_in_deployment_then_raises(self):
+        from ui.backend.utils import app_state
+
+        with patch.object(app_state, "_get_valid_data_sources", return_value={"wfp"}):
+            with pytest.raises(ValueError, match="Invalid data_source: uneg"):
+                async for _event in stream_research_response(
+                    query="q", data_source="uneg"
+                ):
+                    pass

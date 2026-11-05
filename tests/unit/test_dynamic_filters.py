@@ -125,13 +125,17 @@ def test_ignores_empty_values(mock_get):
     "ui.backend.utils.filter_helpers.get_default_filter_fields",
     return_value=MOCK_FILTER_FIELDS,
 )
-def test_defaults_to_uneg_when_no_data_source(mock_get):
+@patch(
+    "ui.backend.utils.filter_helpers.resolve_data_source",
+    return_value="only",
+)
+def test_filters_when_no_data_source_then_resolved_source(_resolve, mock_get):
     core = {}
     add_dynamic_filters(
         core,
         _make_query_params({"tag_sdg": "sdg2"}),
     )
-    mock_get.assert_called_once_with("uneg")
+    mock_get.assert_called_once_with("only")
     assert core == {"tag_sdg": "sdg2"}
 
 

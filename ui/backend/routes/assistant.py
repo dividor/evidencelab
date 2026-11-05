@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.services.brief_section_prompt import build_section_prompt
+from ui.backend.services.data_source_access import settle_data_source
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -237,6 +238,7 @@ async def stream_assistant_chat(
     The agent performs: plan -> search -> synthesize -> reflect
     in a loop, streaming progress events at each phase.
     """
+    body.data_source = await settle_data_source(body.data_source, user, session)
     model_key, temperature, max_tokens = _resolve_model_config(body)
     # A Brief section sends its parts and the API writes its research prompt.
     research_query = (

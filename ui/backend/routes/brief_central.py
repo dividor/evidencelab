@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
@@ -45,6 +46,7 @@ from ui.backend.services.brief_sharing import (
     shared_with,
     user_group_ids,
 )
+from ui.backend.utils.app_state import validate_data_source
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +271,7 @@ async def create_brief(
         user_id=user.id,
         title=body.title,
         query=body.query,
-        data_source=body.data_source,
+        data_source=await run_in_threadpool(validate_data_source, body.data_source),
         voice_profile_id=body.voice_profile_id,
         content=new_brief_content(body.content, body.convert),
     )

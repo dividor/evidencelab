@@ -6,7 +6,7 @@ from functools import lru_cache
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Set
 
-from pipeline.db import Database, get_db
+from pipeline.db import Database, get_db, resolve_data_source
 from pipeline.db.postgres_client import PostgresClient
 
 _db_cache: dict[str, Database] = {}
@@ -37,13 +37,12 @@ def _get_valid_data_sources() -> Set[str]:
         except (FileNotFoundError, json.JSONDecodeError):
             continue
 
-    # Fallback to known defaults if config can't be loaded
-    return {"uneg", "worldbank"}
+    raise RuntimeError(f"config.json not found in any of {config_paths}")
 
 
-def _validate_data_source(data_source: Optional[str]) -> str:
+def validate_data_source(data_source: Optional[str]) -> str:
     """Validate and normalize data source parameter."""
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     valid_sources = _get_valid_data_sources()
 
     if source not in valid_sources:
@@ -55,7 +54,7 @@ def _validate_data_source(data_source: Optional[str]) -> str:
 
 def get_db_for_source(data_source: Optional[str] = None) -> Database:
     """Get or create a Database instance for a specific data source."""
-    source = _validate_data_source(data_source)
+    source = validate_data_source(data_source)
     if source not in _db_cache:
         _db_cache[source] = get_db(source)
     return _db_cache[source]
@@ -63,7 +62,7 @@ def get_db_for_source(data_source: Optional[str] = None) -> Database:
 
 def get_pg_for_source(data_source: Optional[str] = None) -> PostgresClient:
     """Get or create a PostgresClient instance for a specific data source."""
-    source = _validate_data_source(data_source)
+    source = validate_data_source(data_source)
     if source not in _pg_cache:
         _pg_cache[source] = PostgresClient(source)
     return _pg_cache[source]

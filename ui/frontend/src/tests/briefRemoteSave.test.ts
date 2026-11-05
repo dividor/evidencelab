@@ -36,12 +36,13 @@ jest.mock('../utils/briefStream', () => ({
 const mockCreateBrief = jest.fn();
 const mockUpdateBrief = jest.fn();
 const mockListMyBriefs = jest.fn();
+const mockGetBrief = jest.fn();
 jest.mock('../components/brief/briefCentralApi', () => ({
   __esModule: true,
   createBrief: (...args: unknown[]) => mockCreateBrief(...args),
   updateBrief: (...args: unknown[]) => mockUpdateBrief(...args),
   listMyBriefs: (...args: unknown[]) => mockListMyBriefs(...args),
-  getBrief: jest.fn(),
+  getBrief: (...args: unknown[]) => mockGetBrief(...args),
   deleteBriefRemote: jest.fn(),
 }));
 
@@ -205,5 +206,25 @@ describe('saving a researched section to the server', () => {
 
     await waitFor(() => expect(hook.result.current.error).toBe('Network down'));
     await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
+  });
+
+  // A saved brief's data_source is a record of where it was made. Research
+  // always runs against the data source of the page the user is on.
+  test('a saved brief naming another data source still researches the page data source', async () => {
+    mockCreateBrief.mockImplementation(async (args: { content: SavedBrief }) =>
+      serverBrief(args.content),
+    );
+    const hook = renderRemoteBrief();
+    startBrief(hook);
+    await waitFor(() => expect(mockCreateBrief).toHaveBeenCalledTimes(1));
+    const saved = mockCreateBrief.mock.calls[0][0].content as SavedBrief;
+    mockGetBrief.mockResolvedValue({ ...serverBrief(saved), data_source: 'uneg' });
+
+    act(() => hook.result.current.loadBrief({ id: 'srv-1' } as SavedBrief));
+    await waitFor(() => expect(hook.result.current.briefDataSource).toBe('uneg'));
+    await researchFirstSection(hook);
+
+    expect(mockResearchSection).toHaveBeenCalledTimes(1);
+    expect(mockResearchSection.mock.calls[0][0].dataSource).toBe('wfp');
   });
 });

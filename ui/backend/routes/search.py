@@ -11,6 +11,7 @@ from pipeline.db import (
     get_default_filter_fields,
     get_src_field_mapping,
     get_taxonomy_filter_fields,
+    resolve_data_source,
 )
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
@@ -867,7 +868,7 @@ async def search(
     """
 
     t_start = time.time()
-    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
 
@@ -1093,7 +1094,7 @@ async def docsearch(
     Used by heatmap when no query is specified and rows are not 'queries'.
     """
     t_start = time.time()
-    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
 
@@ -1175,7 +1176,7 @@ async def search_facet_values_endpoint(
     Used for server-side filtering in the facet UI.
     """
     try:
-        source = data_source or "uneg"
+        source = resolve_data_source(data_source)
 
         # Use simple dense search (or native Facet API) to find values
         results = search_facet_values(
@@ -1215,7 +1216,7 @@ async def get_facets(
     Accepts filter parameters (core field names) to return facets based on current selections.
     """
     try:
-        source = data_source or "uneg"
+        source = resolve_data_source(data_source)
         db = get_db_for_source(source)
         pg = get_pg_for_source(source)
         filter_fields_config = get_default_filter_fields(source)

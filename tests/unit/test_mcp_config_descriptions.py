@@ -14,6 +14,9 @@ from mcp_server.schemas import MCPSearchResponse
 # ── Config-driven description tests ──────────────────────────────────
 
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
+
 def test_data_source_description_reads_config(monkeypatch, tmp_path):
     """_data_source_description reads datasources from config.json."""
     config = {
@@ -36,11 +39,12 @@ def test_data_source_description_reads_config(monkeypatch, tmp_path):
     desc = server_mod._data_source_description()
     assert '"testreports" (Test Reports)' in desc
     assert '"other" (Other Data)' in desc
-    assert 'Default: "testreports"' in desc
+    assert "Required when there is more than one" in desc
+    assert "Default" not in desc
 
 
-def test_data_source_description_fallback_on_error(monkeypatch):
-    """_data_source_description returns fallback when config fails."""
+def test_data_source_description_when_config_missing_then_raises(monkeypatch):
+    """A missing config fails loudly rather than listing another deployment's data."""
     import mcp_server.app as server_mod
 
     monkeypatch.setattr(
@@ -49,9 +53,8 @@ def test_data_source_description_fallback_on_error(monkeypatch):
         lambda: (_ for _ in ()).throw(FileNotFoundError("missing")),
     )
 
-    desc = server_mod._data_source_description()
-    assert "uneg" in desc
-    assert "worldbank" in desc
+    with pytest.raises(FileNotFoundError):
+        server_mod._data_source_description()
 
 
 def test_filters_description_reads_config(monkeypatch):

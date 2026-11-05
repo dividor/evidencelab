@@ -30,3 +30,20 @@ def _build_dep() -> Callable[..., Any]:
 
 # FastAPI dependency: yields the authenticated user or None.
 resolve_optional_user = _build_dep()
+
+
+async def _no_session() -> None:
+    """No-op session for deployments without the user module."""
+    return None
+
+
+def _build_session_dep() -> Callable[..., Any]:
+    if USER_MODULE_ENABLED:
+        from ui.backend.auth.db import get_async_session
+
+        return get_async_session
+    return _no_session
+
+
+# FastAPI dependency: yields a database session, or None without the user module.
+optional_session = _build_session_dep()
