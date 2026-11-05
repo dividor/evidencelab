@@ -17,6 +17,7 @@ This page describes that layout and its settings, with tested example deployment
 | [Example: AWS](#example-aws) | Amazon ECS on Fargate, with step-by-step deploy and teardown |
 | [Example: Azure](#example-azure) | Azure Container Apps, with step-by-step deploy and teardown |
 | [Example: Google Cloud](#example-google-cloud) | Cloud Run, with step-by-step deploy and teardown |
+| [Your own domain](#your-own-domain) | Which examples can serve your own domain, and how to add one |
 | [Not included](#not-included) | What this layout does not cover |
 
 > **These are demonstration deployments, not a production design.** They show that Evidence Lab runs on each cloud's container service and how the parts fit together. Before running a production service, review the deployment for your organisation, including:
@@ -600,9 +601,47 @@ deploy/gcp/scripts/run-job.sh pipeline python -m pipeline.orchestrator --data-so
 
 The script applies any changes, builds a new web app image, runs the migrations and then moves each service to a new revision.
 
+## Your own domain
+
+Each example serves the site at an address the cloud gives it. Of the three templates, only AWS can serve it on your own domain.
+
+| Cloud | Address without a domain | Your own domain |
+|---|---|---|
+| AWS | `http://<load balancer>.<region>.elb.amazonaws.com`, over plain HTTP | Set `domain_name` and `route53_zone_id` in `terraform.tfvars`. The domain must be in a Route 53 hosted zone in the same account. The template then requests an ACM certificate, proves you own the domain with a Route 53 record, serves HTTPS on the load balancer, redirects HTTP to HTTPS, and points the domain at the load balancer. Terraform's own tests check these settings, but they have not yet been tried on a real deployment. |
+| Azure | `https://ui.<environment domain>`, over HTTPS with a certificate Container Apps manages | Not set up by the template |
+| Google Cloud | `https://<name>-web-<project number>.<region>.run.app`, over HTTPS from Cloud Run | Not set up by the template |
+
+### What the site address controls
+
+Each template works out one site address and passes it to the containers and the web app:
+
+| Setting | What uses it |
+|---|---|
+| `APP_BASE_URL` on the api and mcp | Links in account verification and password reset emails, the MCP sign-in page, and the A2A Agent Card |
+| `CORS_ALLOWED_ORIGINS` on the api | The page address browsers may call the API from |
+| `AUTH_COOKIE_SECURE` on the api | Whether sign-in cookies are sent over HTTPS only. It is on in every example except AWS without a domain. |
+| `REACT_APP_SITE_URL`, built into the web app image | The site address shown in the web app, for example in the MCP and A2A instructions |
+
+So adding a domain by hand in the cloud's console is not enough: these settings would still name the old address. A domain has to be set in the template, and the deploy script run again so that it rebuilds the web app image.
+
+### Recommendations
+
+- **Use a domain for anything beyond a test on AWS.** Without one, the site is plain HTTP, so passwords, sign-in cookies and any API key in the page cross the internet unencrypted.
+- **Use a domain for a long-lived site on any cloud.** The Azure and Google Cloud addresses are HTTPS already, but they are long, and they change if you deploy again under another name, environment or project. Links people have saved and MCP clients set up with the old address then stop working.
+- **Use a subdomain**, such as `evidencelab.example.org`, rather than the bare domain. Azure needs only a CNAME record for a subdomain, but an A record for the bare domain.
+- **Keep the domain's DNS in the same cloud** (Route 53, Azure DNS or Cloud DNS), so Terraform can create the records itself, as the AWS template does. With DNS elsewhere, you add the records by hand and the deploy waits until they exist.
+- **Try a new domain on a test deployment first**, since the certificate is only issued once the DNS records are in place.
+
+To add a domain to the Azure or Google Cloud template, follow the cloud's own guidance:
+
+- **Azure:** bind the domain to the ui app with a free managed certificate, as in [Custom domain names and free managed certificates](https://learn.microsoft.com/azure/container-apps/custom-domains-managed-certificates). The app proves you own the domain with a TXT record named `asuid.<subdomain>`, and the subdomain is a CNAME to the ui app's own address. If the domain has a CAA record, it must allow DigiCert (`0 issue digicert.com`), and the ui app must stay running while the certificate is issued and renewed. Microsoft says issuing it can take several minutes.
+- **Google Cloud:** put a global external Application Load Balancer in front of the web service, which Google recommends in [Mapping custom domains](https://docs.cloud.google.com/run/docs/mapping-custom-domains). Cloud Run's own domain mapping is in Preview, works in only some regions, and Google does not recommend it for production. The load balancer is a separately charged resource. Visitors would then reach nginx through the load balancer rather than Cloud Run's front end, so check `NGINX_REAL_IP_FROM` (see [Visitors' real addresses](#visitors-real-addresses)) keeps rate limits counting each visitor separately.
+
+Then set the template's site address to `https://<your domain>`, and run the deploy script again.
+
 ## Not included
 
 - **Reprocessing from the admin screens.** The reprocess actions queue tasks for a Celery worker, which this layout does not run.
 - **Large ingestions.** Processing many documents needs far more memory than serving them. Give the pipeline task more memory, or run large ingestions elsewhere and copy the results in (see [Database Maintenance](database-maintenance.md)). On Azure, the Consumption profile stops at 8 GB per container.
-- **Your own domain on Azure or Google Cloud.** These examples serve the site at the platform's own address. Their templates do not set up a custom domain.
+- **Your own domain on Azure or Google Cloud.** These examples serve the site at the platform's own address. See [Your own domain](#your-own-domain).
 - **Separate scaling of the api on Google Cloud.** The api and mcp run in the same Cloud Run instances as the web app, so they scale together.
