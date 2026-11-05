@@ -28,6 +28,7 @@ import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
 import { BriefRunOriginal } from './BriefRunOriginal';
+import { AutoGrowTextarea } from '../AutoGrowTextarea';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
@@ -84,7 +85,7 @@ const AiInstructionPanel: React.FC<{
         ? 'Keeps the current text and revises it to your instruction (does not replace it unless you ask).'
         : 'Searches the library for sources published since this section was last run and folds any new findings in. Add an optional focus below.'}
     </div>
-    <textarea
+    <AutoGrowTextarea
       value={value}
       onChange={(e) => onChange(e.target.value)}
       maxLength={PROMPT_MAX_CHARS}
@@ -179,7 +180,7 @@ const GuidancePanel: React.FC<{
       <div className="brief-regen-title">
         {isPending ? 'Research' : 'Regenerate'} “{section.title}”
       </div>
-      <textarea
+      <AutoGrowTextarea
         value={section.guidance || ''}
         onChange={(e) => brief.setSectionGuidance(section.id, e.target.value)}
         maxLength={PROMPT_MAX_CHARS}
