@@ -483,20 +483,16 @@ class SavedResearchListItem(BaseModel):
 # Brief Central schemas (briefs, templates, voice profiles, shares)
 # ---------------------------------------------------------------------------
 
-# A research prompt has the same limit as a section's typed guidance (the
-# research question cap in routes/brief.py), and a length target the same
-# bounds as the assistant request that carries it.
-BRIEF_PROMPT_MAX_CHARS = 2000
+# The longest research prompt an author can write: a brief's instructions, a
+# section's guidance, an Edit or Update instruction, a template prompt. A length
+# target has the same bounds as the assistant request that carries it.
+BRIEF_PROMPT_MAX_CHARS = 5000
 VOICE_INSTRUCTIONS_MAX_CHARS = 10_000
 # A brief's topic is its question (``BriefCreate.query``); a section heading
 # is a template heading's title.
 BRIEF_TOPIC_MAX_CHARS = 5000
 BRIEF_HEADING_MAX_CHARS = 500
 BRIEF_MAX_SECTIONS = 100
-# Guidance already saved in a brief can be longer than the guidance boxes now
-# allow (BRIEF_PROMPT_MAX_CHARS): they had no limit, and the 5,000-character
-# limit on the whole prompt was what stopped it. Those briefs keep working.
-BRIEF_SAVED_GUIDANCE_MAX_CHARS = 5000
 TARGET_WORDS_MIN = 50
 TARGET_WORDS_MAX = 5000
 
@@ -922,8 +918,8 @@ class BriefSectionPrompt(BaseModel):
     current: int = Field(..., ge=0)
     mode: Literal["generate", "update"] = "generate"
     topic: Optional[str] = Field(None, max_length=BRIEF_TOPIC_MAX_CHARS)
-    instructions: Optional[str] = Field(None, max_length=BRIEF_SAVED_GUIDANCE_MAX_CHARS)
-    focus: Optional[str] = Field(None, max_length=BRIEF_SAVED_GUIDANCE_MAX_CHARS)
+    instructions: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+    focus: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
     draft: Optional[str] = Field(None, max_length=BRIEF_RUN_CONTENT_MAX_CHARS)
     instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
     published_after: Optional[str] = Field(None, max_length=40)
@@ -936,6 +932,13 @@ class BriefSectionPrompt(BaseModel):
         if self.current >= len(self.outline):
             raise ValueError("current must index a section in outline")
         return self
+
+
+class BriefSurveyPrompt(BaseModel):
+    """The parts of the library survey run before a brief's outline is drafted."""
+
+    topic: str = Field(..., min_length=1, max_length=BRIEF_TOPIC_MAX_CHARS)
+    instructions: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
 
 
 class AssistantChatRequest(BaseModel):
@@ -981,6 +984,9 @@ class AssistantChatRequest(BaseModel):
     # prompt from it, and ``query`` is then the section heading, used for
     # the Activity row and logs.
     brief_section: Optional[BriefSectionPrompt] = None
+    # Brief only: the survey before an outline. As with ``brief_section``, the
+    # API writes the prompt and ``query`` stays a short label (the topic).
+    brief_survey: Optional[BriefSurveyPrompt] = None
 
 
 class ThreadRenameRequest(BaseModel):

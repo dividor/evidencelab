@@ -781,6 +781,33 @@ class TestStreamAssistantChatBriefSection:
         assert mock_usage.call_args[1]["query"] == "Findings"
 
     @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.schedule_llm_usage_recording")
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_stream_when_brief_survey_then_research_gets_written_prompt(
+        self, mock_stream, mock_usage
+    ):
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1", "usage": {"tokens": 1}}
+
+        mock_stream.return_value = mock_gen()
+        instructions = "x" * 5000
+        body = AssistantChatRequest(
+            query="School meals",
+            deep_research=True,
+            usage_context="brief",
+            activity_id="act-1",
+            brief_survey={"topic": "School meals", "instructions": instructions},
+        )
+
+        await self._run(body)
+
+        query = mock_stream.call_args[1]["query"]
+        assert query.startswith("Research the document library")
+        assert query.endswith(instructions)
+        # The Activity row is labelled with the topic, not the prompt.
+        assert mock_usage.call_args[1]["query"] == "School meals"
+
+    @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
     async def test_stream_when_no_brief_section_then_question_passes_through(
         self, mock_stream

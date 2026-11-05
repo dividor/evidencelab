@@ -19,7 +19,10 @@ from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.assistant_service import stream_research_response
-from ui.backend.services.brief_section_prompt import build_section_prompt
+from ui.backend.services.brief_section_prompt import (
+    build_section_prompt,
+    build_survey_prompt,
+)
 from ui.backend.services.data_source_access import settle_data_source
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
@@ -118,6 +121,15 @@ async def _anext_or_stop(ait):
 # ---------------------------------------------------------------------------
 # Streaming chat helpers
 # ---------------------------------------------------------------------------
+
+
+def _research_query(body: AssistantChatRequest) -> str:
+    """The prompt to research. The Brief sends parts and the API writes it."""
+    if body.brief_section:
+        return build_section_prompt(body.brief_section)
+    if body.brief_survey:
+        return build_survey_prompt(body.brief_survey)
+    return body.query
 
 
 def _resolve_model_config(body: AssistantChatRequest):
@@ -240,10 +252,7 @@ async def stream_assistant_chat(
     """
     body.data_source = await settle_data_source(body.data_source, user, session)
     model_key, temperature, max_tokens = _resolve_model_config(body)
-    # A Brief section sends its parts and the API writes its research prompt.
-    research_query = (
-        build_section_prompt(body.brief_section) if body.brief_section else body.query
-    )
+    research_query = _research_query(body)
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history
     if not conversation_messages and body.conversation_history:
