@@ -23,13 +23,11 @@ config.refresh_config()
 _datasources_config = config._datasources_config
 
 from pipeline.db.config import (  # noqa: E402
-    CHUNKS_COLLECTION,
     DB_VECTORS,
     DEFAULT_DATA_SOURCE,
     DEFAULT_SEGMENT_NUMBER,
     DENSE_VECTOR_NAME,
     DENSE_VECTOR_SIZE,
-    DOCUMENTS_COLLECTION,
     ENABLE_QUANTIZATION,
     HNSW_EF_CONSTRUCT,
     HNSW_M,
@@ -56,6 +54,7 @@ from pipeline.db.config import (  # noqa: E402
     get_src_field_mapping,
     get_taxonomy_filter_fields,
     load_datasources_config,
+    resolve_data_source,
     source_to_core_field,
 )
 from pipeline.db.database import Database, get_db, get_default_db  # noqa: E402
@@ -68,13 +67,12 @@ from pipeline.db.stages import (  # noqa: E402
 )
 
 __all__ = [
-    "CHUNKS_COLLECTION",
     "DB_VECTORS",
     "DEFAULT_DATA_SOURCE",
+    "resolve_data_source",
     "DEFAULT_SEGMENT_NUMBER",
     "DENSE_VECTOR_NAME",
     "DENSE_VECTOR_SIZE",
-    "DOCUMENTS_COLLECTION",
     "ENABLE_QUANTIZATION",
     "HNSW_EF_CONSTRUCT",
     "HNSW_M",

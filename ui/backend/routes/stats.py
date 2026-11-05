@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from qdrant_client.http import models as qmodels
 
+from pipeline.db import resolve_data_source
 from ui.backend.routes.stats_timeline import (
     _timeline_build_error_buckets,
     _timeline_build_histograms,
@@ -639,7 +640,7 @@ def get_stats(
     Returns counts and breakdowns by organization, type, status.
     Uses Postgres sidecar fields for counting.
     """
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     if not refresh:
         cached = _pipeline_cache.get(f"stats:{source}")
         if cached is not None:
@@ -684,7 +685,7 @@ def get_sankey_data(
     Get Sankey diagram data for pipeline flow visualization.
     Based on the logic from scripts/stats.py
     """
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     if not refresh:
         cached = _pipeline_cache.get(f"sankey:{source}")
         if cached is not None:
@@ -745,7 +746,7 @@ def get_timeline_data(
     Get timeline data for pipeline processing visualization.
     Returns events for parsing, summarizing, tagging, and indexing phases.
     """
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     if not refresh:
         cached = _pipeline_cache.get(f"timeline:{source}")
         if cached is not None:
@@ -761,7 +762,7 @@ def get_timeline_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def warm_pipeline_cache(data_source: str = "uneg") -> None:
+def warm_pipeline_cache(data_source: str) -> None:
     """Pre-compute and cache all pipeline data at startup."""
     for name, func in [
         ("stats", _compute_stats),

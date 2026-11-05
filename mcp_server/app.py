@@ -31,26 +31,16 @@ def _load_config() -> dict:
 
 def _data_source_description() -> str:
     """Build data_source field description from config.json."""
-    try:
-        cfg = _load_config()
-        sources = cfg.get("datasources", {})
-        entries = []
-        for name, conf in sources.items():
-            subdir = conf.get("data_subdir", "")
-            entries.append(f'"{subdir}" ({name})')
-        first_subdir = list(sources.values())[0].get("data_subdir", "uneg")
-        return (
-            "Data collection to search. Options: "
-            + ", ".join(entries)
-            + f'. Default: "{first_subdir}".'
-        )
-    except Exception:
-        return (
-            "Data collection to search. Options: "
-            '"uneg" (UN Humanitarian Evaluation Reports, default), '
-            '"worldbank" (World Bank Fraud and Integrity Reports), '
-            '"unmandates" (UN Mandates Registry)'
-        )
+    sources = _load_config().get("datasources", {})
+    entries = []
+    for name, conf in sources.items():
+        subdir = conf.get("data_subdir", "")
+        entries.append(f'"{subdir}" ({name})')
+    return (
+        "Data collection to search. Options: "
+        + ", ".join(entries)
+        + ". Required when there is more than one."
+    )
 
 
 def _filters_description() -> str:
@@ -151,9 +141,9 @@ async def search(
         ),
     ],
     data_source: Annotated[
-        str,
+        Optional[str],
         Field(description=_data_source_description()),
-    ] = "uneg",
+    ] = None,
     limit: Annotated[
         int,
         Field(description="Maximum number of results to return (1-100, default 10)"),
@@ -311,14 +301,9 @@ async def get_document(
         ),
     ],
     data_source: Annotated[
-        str,
-        Field(
-            description=(
-                "Data collection containing the document. Options: "
-                '"uneg" (default), "worldbank", "unmandates"'
-            )
-        ),
-    ] = "uneg",
+        Optional[str],
+        Field(description=_data_source_description()),
+    ] = None,
 ) -> MCPDocumentResponse:
     """Retrieve full metadata and content for a specific document.
 
@@ -371,7 +356,7 @@ async def get_document(
 
 
 @mcp.prompt()
-def research_question(topic: str, data_source: str = "uneg") -> str:
+def research_question(topic: str, data_source: Optional[str] = None) -> str:
     """Generate a structured research prompt for investigating a topic.
 
     Creates a prompt that guides thorough research across evaluation
@@ -382,8 +367,8 @@ def research_question(topic: str, data_source: str = "uneg") -> str:
         topic: The research topic or question to investigate.
             Examples: "climate adaptation", "gender mainstreaming",
             "food security programs"
-        data_source: The document collection to search.
-            "uneg" (default), "worldbank", or "unmandates"
+        data_source: The document collection to search. Required when
+            there is more than one.
     """
     from mcp_server.prompts.research import research_question_prompt
 

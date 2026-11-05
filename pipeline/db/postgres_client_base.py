@@ -11,6 +11,8 @@ from typing import Any, Dict, Optional
 
 from psycopg2.pool import ThreadedConnectionPool
 
+from pipeline.db.config import resolve_data_source
+
 logger = logging.getLogger(__name__)
 
 
@@ -118,7 +120,7 @@ class PostgresClientBase:
     _ALLOWED_SYS_FIELDS: set[str]
 
     def __init__(self, data_source: Optional[str] = None):
-        source = (data_source or "uneg").lower().replace(" ", "_")
+        source = resolve_data_source(data_source).lower().replace(" ", "_")
         self.data_source = source
         self.docs_table = f"docs_{source}"
         self.chunks_table = f"chunks_{source}"

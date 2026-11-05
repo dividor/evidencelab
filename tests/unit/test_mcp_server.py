@@ -18,6 +18,9 @@ from mcp_server.schemas import (
 # ── Search tool tests ──────────────────────────────────────────────────
 
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
+
 @pytest.mark.asyncio
 async def test_search_tool_basic(monkeypatch):
     """mcp_search returns an MCPSearchResponse for a basic query."""

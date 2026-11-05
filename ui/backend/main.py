@@ -10,6 +10,8 @@ from typing import List, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
@@ -237,6 +239,18 @@ class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
 _SAFE_VALUE_ERROR_PREFIXES = ("Invalid data_source:",)
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    """Log which fields a 422 rejected: FastAPI's default logs nothing, which
+    leaves a rejected request undiagnosable. Names and reasons only, never the
+    values, which can hold a user's text."""
+    fields = [(".".join(str(p) for p in e["loc"]), e["type"]) for e in exc.errors()]
+    _main_logger.warning(
+        "Request rejected on %s %s: %s", request.method, request.url.path, fields
+    )
+    return await request_validation_exception_handler(request, exc)
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """Convert ValueError to HTTP 400 — sanitise detail in production."""
@@ -459,7 +473,7 @@ def perform_title_search(
     q: str,
     limit: int = 50,
     dense_weight: Optional[float] = None,
-    data_source: Optional[str] = "uneg",
+    data_source: Optional[str] = None,
     model: Optional[str] = None,
     organization: Optional[str] = None,
     published_year: Optional[str] = None,

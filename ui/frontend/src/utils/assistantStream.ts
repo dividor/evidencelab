@@ -275,6 +275,29 @@ const buildSearchSettingsPayload = (
   return Object.keys(payload).length > 0 ? payload : undefined;
 };
 
+/**
+ * What a refused request says, using the API's own reason so the person sees
+ * why: its message, or for a 422 each rejected field and what is wrong with it.
+ */
+export const requestFailureMessage = async (response: Response): Promise<string> => {
+  const prefix = `Request failed: ${response.status}`;
+  let detail: unknown;
+  try {
+    detail = (await response.json())?.detail;
+  } catch {
+    return `${prefix} ${response.statusText}`;
+  }
+  if (typeof detail === 'string') return `${prefix}: ${detail}`;
+  if (Array.isArray(detail)) {
+    const fields = detail.map((e: { loc?: unknown[]; msg?: string }) => {
+      const field = (e.loc ?? []).filter((part) => part !== 'body').join('.');
+      return `${field}: ${e.msg}`;
+    });
+    return `${prefix}: ${fields.join('; ')}`;
+  }
+  return `${prefix} ${response.statusText}`;
+};
+
 export const streamAssistantChat = async ({
   apiBaseUrl,
   query,
@@ -324,7 +347,7 @@ export const streamAssistantChat = async ({
   });
 
   if (!response.ok) {
-    handlers.onError(`Request failed: ${response.status} ${response.statusText}`);
+    handlers.onError(await requestFailureMessage(response));
     return;
   }
 

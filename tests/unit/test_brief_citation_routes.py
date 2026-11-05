@@ -21,7 +21,7 @@ from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.utils.app_limits import limiter
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("one_data_source")]
 limiter.enabled = False
 
 NOW = datetime.now(timezone.utc)

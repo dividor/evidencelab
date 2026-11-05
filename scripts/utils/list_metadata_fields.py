@@ -8,7 +8,7 @@ import sys
 from collections import Counter, defaultdict
 from typing import Any, Dict
 
-from pipeline.db import CHUNKS_COLLECTION, DOCUMENTS_COLLECTION, get_default_db
+from pipeline.db import get_default_db
 
 # Add parent directory to path for imports
 
@@ -156,7 +156,7 @@ def main():
         print("INDEXED FIELDS (for filtering/faceting)")
         print("=" * 80)
 
-        for collection_name in [DOCUMENTS_COLLECTION, CHUNKS_COLLECTION]:
+        for collection_name in [db.documents_collection, db.chunks_collection]:
             if collection_name in collection_names:
                 print("\n{collection_name}:")
                 print(

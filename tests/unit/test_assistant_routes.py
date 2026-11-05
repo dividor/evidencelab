@@ -20,6 +20,9 @@ from starlette.requests import Request
 _mock_service = ModuleType("ui.backend.services.assistant_service")
 
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
+
 async def _noop_stream(*args, **kwargs):
     yield {"type": "done", "messageId": "msg-1"}
 

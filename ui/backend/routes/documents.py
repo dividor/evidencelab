@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from qdrant_client.http import models as qmodels
 
 import pipeline.utilities.tasks as pipeline_tasks
+from pipeline.db import resolve_data_source
 from pipeline.db.moderation import is_hidden
 from pipeline.processors.summarization.summary_text import SUMMARY_USER_SET_FIELD
 from pipeline.utilities.text_cleaning import clean_text
@@ -406,7 +407,7 @@ async def get_document_thumbnail(
 
 def _thumbnail_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
     """Resolve a document's thumbnail path; runs in a worker thread."""
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     pg = get_pg_for_source(source)
     doc = pg.fetch_docs([doc_id]).get(str(doc_id))
 
@@ -761,7 +762,7 @@ def reprocess_document(
     # Declared sync on purpose: the body uses the synchronous Postgres and
     # Qdrant clients, so FastAPI runs it in the threadpool instead of
     # holding the event loop and stalling every other request.
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     db = get_db_for_source(source)
     doc = db.get_document(doc_id)
     doc = normalize_document_payload(doc) if doc else doc
