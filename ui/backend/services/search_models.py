@@ -24,6 +24,7 @@ from pipeline.utilities.embedding_client import RemoteEmbeddingClient  # noqa: E
 from pipeline.utilities.google_vertex_client import (  # noqa: E402
     GoogleVertexEmbeddingClient,
 )
+from pipeline.utilities.openai_embedding_client import OpenAIEmbeddingClient
 from ui.backend.services.azure_foundry_reranker import rerank_with_azure_foundry
 from ui.backend.services.google_vertex_reranker import (  # noqa: E402
     RerankerUnavailableError,
@@ -284,6 +285,17 @@ def _init_dense_model(vector_name: str, vec_config: Dict[str, Any]) -> Any:
     if source == "aws_bedrock":
         return BedrockEmbeddingClient(
             model_id=str(model_id), dimensions=vec_config.get("size")
+        )
+
+    if source == "openai":
+        base_url_env = vec_config.get("base_url_env", "OPENAI_BASE_URL")
+        base_url = os.getenv(base_url_env)
+        if not base_url:
+            raise ValueError(f"{base_url_env} is required for source 'openai'.")
+        return OpenAIEmbeddingClient(
+            base_url=base_url,
+            model_name=str(model_id),
+            api_key=os.getenv(vec_config.get("api_key_env", "OPENAI_API_KEY")),
         )
 
     if USE_EMBEDDING_SERVER:
