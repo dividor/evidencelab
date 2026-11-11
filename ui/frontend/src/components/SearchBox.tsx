@@ -1,4 +1,5 @@
 import React from 'react';
+import { AutoGrowTextarea } from './AutoGrowTextarea';
 
 interface SearchBoxProps {
   isActive: boolean;
@@ -60,8 +61,10 @@ export const SearchBox = ({
           <form onSubmit={onSubmit} className="search-form">
             <div className="search-input-column">
               <div className="search-input-wrapper">
-                <input
-                  type="text"
+                <AutoGrowTextarea
+                  rows={1}
+                  submitOnEnter
+                  aria-label="Search query"
                   value={query}
                   onChange={(event) => onQueryChange(event.target.value)}
                   placeholder={placeholder}
@@ -113,8 +116,10 @@ export const SearchBox = ({
         </div>
       ) : (
         <form onSubmit={onSubmit} className="search-form">
-          <input
-            type="text"
+          <AutoGrowTextarea
+            rows={1}
+            submitOnEnter
+            aria-label="Search query"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             placeholder={placeholder}

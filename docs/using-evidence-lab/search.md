@@ -8,6 +8,8 @@ Type your question or topic into the search bar using natural language. Evidence
 
 The search bar also contains a **Filters** toggle button (≡ Filters) that lets you pre-filter by section type before running a search. By default, all sections are included (executive summary, context, methodology, findings, conclusions, recommendations).
 
+The search bar grows as you type, so a long, detailed question stays fully visible instead of scrolling out of view. Press **Shift+Enter** to start a new line.
+
 Click **Search** or press Enter to run your query.
 
 ![Search results overview](../images/search-guide/search-results-full.png)

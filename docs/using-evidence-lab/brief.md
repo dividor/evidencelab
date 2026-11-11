@@ -20,7 +20,7 @@ The workspace itself has three parts:
 
 **Signed in**, click **New brief** in Brief Central. The dialog has two tabs:
 
-- **Generate using AI** — give a **Title**, optional **Instructions** (they steer the headings and, as the brief prompt, every section's research), a **Voice & tone profile**, the number of **Sections** and the **Section length**, then click **Generate outline**.
+- **Generate using AI** — give a **Title**, optional **Instructions** (they steer the headings and, as the brief prompt, every section's research; the box grows as you type so long instructions stay readable), a **Voice & tone profile**, the number of **Sections** and the **Section length**, then click **Generate outline**.
 - **Manual** — give a **Title** and pick a **Template**, or none for a blank outline. A template fills in its **Brief prompt**, **Voice & tone profile** and **Section length**, which you can change before clicking **Create brief** (see [Templates](#7-templates)).
 
 **Signed out**, the Brief tab opens on the start screen instead.
