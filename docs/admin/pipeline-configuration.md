@@ -93,8 +93,30 @@ The `source` field determines how the model is loaded:
 | Field | Type | Description |
 |-------|------|-------------|
 | `model_id` | string | Model identifier |
-| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` / `"aws_bedrock"` for API |
+| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` / `"aws_bedrock"` / `"cohere_compatible"` for API |
 | `region` | string | `aws_bedrock` only: the AWS region to call the reranker in, when it differs from `AWS_REGION` (rerank models are offered in only some regions) |
+| `base_url_env` | string | `cohere_compatible` only: name of the environment variable holding the rerank base URL (default `COHERE_BASE_URL`) |
+| `api_key_env` | string | `cohere_compatible` only: name of the environment variable holding the API key (default `COHERE_API_KEY`) |
+| `endpoint_url` | string | `cohere_compatible` only: full HTTPS endpoint; overrides `base_url_env` |
+| `timeout` | number | `cohere_compatible` only: request timeout in seconds (default 30) |
+
+#### Cohere-compatible rerank endpoint
+
+Any service that implements Cohere's `/rerank` API can be used with `"provider": "cohere_compatible"`. Set the HTTPS base URL and API key in `.env`:
+
+```bash
+COHERE_BASE_URL=https://api.example.com/v2
+COHERE_API_KEY=your-key
+```
+
+```json
+"my_reranker": {
+  "model_id": "provider/model-name",
+  "provider": "cohere_compatible"
+}
+```
+
+`/rerank` is appended to the base URL if missing. If the service is temporarily unavailable (HTTP 429 or 5xx, network error or timeout), search returns the results without reranking and logs a warning. To use other environment variable names, for example to keep two providers apart, set `base_url_env` and `api_key_env` on the model.
 
 #### Amazon Bedrock
 
