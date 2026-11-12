@@ -65,6 +65,9 @@ export interface RenumberedSection {
   unresolved: UnresolvedMarker[];
   grouping: ReferenceGrouping;
   computedAt: number;
+  // True when the API dropped a reference list the agent appended to the
+  // section; the original run (the Log) still carries it.
+  strippedReferenceList?: boolean;
 }
 
 // One row of the compiled References list; `source` is the display record of

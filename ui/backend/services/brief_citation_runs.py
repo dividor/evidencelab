@@ -40,6 +40,7 @@ from ui.backend.services.brief_citation_model import (
     is_visible,
     parse_marker_numbers,
     require_current_format,
+    run_body,
     strip_leading_title,
     unresolved_markers,
 )
@@ -199,7 +200,7 @@ def record_run(
         "sourcesRetained": SOURCES_EXACT,
         "mapping": mapping,
         "rejected": rejected,
-        "unresolved": unresolved_markers(run["content"], mapping, rejected),
+        "unresolved": unresolved_markers(run_body(run), mapping, rejected),
         "status": RUN_CURRENT,
     }
     for key in ("runId", "question", "instruction"):
@@ -219,7 +220,7 @@ def _trim_run(run: Dict[str, Any]) -> None:
     """Keep only the cited records, without their excerpt, of an older run."""
     if run.get("sourcesRetained") == SOURCES_TRIMMED:
         return
-    cited = set(cited_numbers_in_order(run.get("content") or ""))
+    cited = set(cited_numbers_in_order(run_body(run)))
     kept = []
     for src in run.get("sources") or []:
         if src.get("index") in cited:
@@ -290,7 +291,7 @@ def _assign_numbers(
         run = current_run(section)
         if not is_visible(section) or run is None:
             continue
-        for number in cited_numbers_in_order(run["content"]):
+        for number in cited_numbers_in_order(run_body(run)):
             source_id = run["mapping"].get(str(number))
             if source_id is None or source_id not in sources_by_id:
                 continue
@@ -354,7 +355,7 @@ def _section_sources(
     citation; other chunks sharing the number (per-document grouping) ride
     along as variants so the hover card can show the cited passage."""
     rows: Dict[int, Dict[str, Any]] = {}
-    for number in cited_numbers_in_order(run["content"]):
+    for number in cited_numbers_in_order(run_body(run)):
         if number not in numbers:
             continue
         display, source_id = numbers[number]
@@ -388,9 +389,10 @@ def _renumber_section(
     def display_of(number: int) -> Optional[int]:
         return numbers[number][0] if number in numbers else None
 
+    body = run_body(run)
     rewritten = CITATION_RE.sub(
         lambda m: _rewrite_marker(parse_marker_numbers(m.group(1)), display_of),
-        strip_leading_title(run["content"], section.get("title") or ""),
+        strip_leading_title(body, section.get("title") or ""),
     )
     section["renumbered"] = {
         "content": collapse_adjacent_duplicates(rewritten),
@@ -398,6 +400,8 @@ def _renumber_section(
         "unresolved": list(run.get("unresolved") or []),
         "grouping": grouping,
         "computedAt": now_ms,
+        # The agent appended its own reference list; the body above omits it.
+        "strippedReferenceList": body != run["content"],
     }
 
 
