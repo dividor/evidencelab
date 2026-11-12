@@ -35,64 +35,101 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 
 <a href="https://www.loom.com/share/b3043d80834e44b3b935b7db7a086a1d"><img src="https://cdn.loom.com/sessions/thumbnails/b3043d80834e44b3b935b7db7a086a1d-04eb569ecf17a386-full-play.gif" alt="Watch overview video" width="400"></a>
 
-Evidence Lab document processing pipeline includes the following features:
+### Document pipeline
 
-1. Processing pipeline
+- Parses PDF and Word files with Docling, keeping the document's structure
+- Detects footnotes, references, images and tables
+- Extracts tables, with more thorough (and more expensive) processing when needed
+- Summarizes each document with AI, by map-reduce or in a single prompt (`summarize.mode`)
+- Tags documents with AI
+- Indexes with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and can be extended to others
 
-- PDF/Word parsing with Docling, to include document structure detection
-- Footnote and references, images and table detection
-- Basic table extraction, with support for more expensive processing as required
-- AI-assisted document summarization, by map reduce or in a single prompt (`summarize.mode`)
-- AI-assisted tagging of documents
-- Indexing with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and extensible to others
-
-2. User interface
+### User interface
 
 | Search | Research Assistant | Brief | Heatmapper | Pipeline |
 |:---:|:---:|:---:|:---:|:---:|
 | <img src="docs/images/search-guide/search-results-full.png" alt="Search" height="200"> | <img src="docs/images/assistant/assistant-response.png" alt="Research Assistant" height="200"> | <img src="docs/images/brief/brief-workspace.png" alt="Brief" height="200"> | <img src="docs/images/heatmapper-overview.png" alt="Heatmapper" height="200"> | <img src="docs/images/monitor/pipeline-view.png" alt="Pipeline" height="200"> |
 
-- Hybrid search with AI summary and reranking
-- **Research Assistant** — chat-based AI agent that searches, analyzes, and synthesizes findings with inline citations and multi-turn conversations with thread history
-- **Deep Research mode** — coordinator/researcher sub-agent architecture using [deepagents](https://github.com/krrome/deepagents) for thorough multi-step investigations with real-time streaming progress
-- **Brief** — turn a topic into a structured, evidence-backed research brief: generate an outline grounded in the document library, add/move/remove/rename headings in a drag-and-drop table of contents, research each heading into cited prose with AI, then export a branded Word document with a clickable contents page and citations linked to source documents. Briefs can be **shared** (viewer-only) with people or groups, **commented on** in anchored threads for review, and started from reusable **templates** and **voice & tone profiles**. See [Brief](docs/using-evidence-lab/brief.md)
-- **Star ratings** — rate search results, AI summaries, and assistant responses with 1–5 stars and optional comments
-- **Document summaries** — administrators can edit a document's summary, regenerate it with AI choosing the mode, sections and prompt, or regenerate many in a queue; each summary shows how, when and by whom it was made, and groups can set defaults. See [Document Summaries](docs/admin/document-summaries.md)
-- **Drilldown research** — highlight text or click "Find out more" to drill into sub-topics, building an explorable research tree with query inheritance and PDF export
-- Field boosting — detects countries/organizations in the query and promotes matching results; at full weight, non-matching results are excluded
-- Experimental features such as heatmapper for tracking trends in content
-- Config-driven filter fields — control which metadata fields appear in the filter panel
-- Filtering by metadata, in-document section types
-- Search and reranking settings to explore different models
-- Auto min score filtering using percentile-based thresholding (filters bottom 30% of results)
-- Semantic highlighting in search results
-- Basic language translation
-- PDF preview with in-document search
-- Built-in searchable documentation area with sidebar navigation
-- **In-system evaluation** — built-in, superuser-only evaluation/regression tooling (Admin → Testing): define reusable datasets, build experiments with assertions, and run them against the live Search and AI-Summary pipelines with per-case pass/fail review, and fact-check a finished Brief with a citation check that judges every cited passage against the exact source excerpts it cites. See [Evaluation Harness](docs/admin/evaluation.md)
-- Administration views to track pipeline, documents, performance and errors
-- Evaluation harness (superuser) — build reusable datasets and experiments to regression-test Search and AI-Summary quality against the live system, including a one-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row), plus a Brief citation check with a filterable review table and Excel export. See [Evaluation Harness](docs/admin/evaluation.md)
+#### Search
 
-3. AI platform integrations
+- Hybrid search with AI summaries and reranking
+- Semantic highlighting in results
+- Filters by metadata and by section type within documents
+  - `config.json` chooses which metadata fields appear in the filter panel
+- Field boosting: countries and organizations named in the query promote matching results
+  - At full weight, results that don't match are left out
+- Automatic minimum score that drops the bottom 30% of results
+- Search and reranking settings for comparing models
+- PDF preview with search inside the document
+- Basic translation
+- Drilldown: highlight text or click "Find out more" to explore sub-topics
+  - Builds a research tree, with query inheritance and PDF export
 
-- **REST API** — full programmatic access to search, documents, and admin functions. Protected by API key authentication. Interactive docs at `/api/docs` (Swagger UI). See [API docs](docs/admin/api-keys.md)
-- **MCP Server** — [Model Context Protocol](https://modelcontextprotocol.io/) server allowing Claude, ChatGPT, and other AI assistants to search Evidence Lab documents as tools. Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT. Tools: `search` (semantic search with filters, facets, and citations) and `get_document` (full document metadata)
-- **A2A Agent** — [Agent-to-Agent protocol](https://google.github.io/A2A/) server for AI agent frameworks (Google ADK, CrewAI, LangGraph, etc.). Exposes a `research` skill (full assistant synthesis with streaming) and `search` skill. Runs on the same service as MCP. Agent Card at `/.well-known/agent.json`
-- Both protocols share OAuth 2.0 authentication (or `X-API-Key` header), rate limiting, and audit logging
-- API keys are managed via Admin → API Keys. After generating a new key, allow up to 60 seconds before using it with MCP or A2A (key hashes are cached per-process on a 60-second TTL). The `API_SECRET_KEY` env var takes effect immediately.
+#### Research Assistant
 
-4. User authentication & permissions (opt-in)
+- Chat agent that searches, analyzes and summarizes findings, with inline citations
+- Multi-turn conversations, with thread history
+- Deep Research mode for thorough, multi-step investigations
+  - A coordinator agent directs researcher sub-agents, built with [deepagents](https://github.com/krrome/deepagents)
+  - Progress streams in real time
 
-- Email/password registration with email verification, or OAuth single sign-on (Google, Microsoft)
-- Cookie-based sessions with CSRF protection — no tokens in localStorage
-- Account lockout, rate limiting, and audit logging for security
-- Group-based data-source access control — restrict which datasets users can see
-- Admin panel for managing users, groups, and permissions
-- User feedback — rate search results, AI summaries, documents, and taxonomy with 1–5 stars
-- Activity logging — automatic search activity capture with admin views and XLSX export
-- Self-service profile management and account deletion
-- Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/) with future MFA support in mind
-- Three modes via `USER_MODULE` in `.env`: `off` (default), `on_passive` (optional login), `on_active` (login required)
+#### Brief
+
+Turns a topic into a structured research brief backed by evidence. See [Brief](docs/using-evidence-lab/brief.md).
+
+- Generates an outline grounded in the document library
+- Add, move, remove and rename headings in a drag-and-drop table of contents
+- Researches each heading into cited prose with AI
+- Exports a branded Word document, with a clickable contents page and citations linked to the source documents
+- Shares briefs (view only) with people or groups
+- Comment threads anchored to the text, for review
+- Starts from reusable templates and voice and tone profiles
+
+#### Also in the interface
+
+- Star ratings (1–5, with optional comments) for search results, AI summaries, assistant responses, documents and taxonomy
+- Heatmapper (experimental) for tracking trends in content
+- Searchable documentation, with sidebar navigation
+
+### Administration
+
+- Views of the pipeline, documents, performance and errors
+- Document summaries. See [Document Summaries](docs/admin/document-summaries.md).
+  - Edit a summary, regenerate it with AI (choosing the mode, sections and prompt), or regenerate many in a queue
+  - Each summary records how, when and by whom it was made
+  - Groups can set defaults
+- Evaluation harness, for superusers in Admin → Testing. See [Evaluation Harness](docs/admin/evaluation.md).
+  - Reusable datasets and experiments with assertions, run against the live Search and AI summary pipelines, with pass/fail review for each case
+  - One-step CSV upload that creates a dataset and a paired LLM-judge experiment (one expected answer per row)
+  - Brief citation check, which judges every cited passage against the exact source excerpts it cites, with a filterable review table and Excel export
+
+### AI platform integrations
+
+- **REST API** for programmatic access to search, documents and admin functions. See [API docs](docs/admin/api-keys.md).
+  - Protected by API keys
+  - Interactive docs at `/api/docs` (Swagger UI)
+- **MCP server** ([Model Context Protocol](https://modelcontextprotocol.io/)), so Claude, ChatGPT and other AI assistants can search Evidence Lab documents
+  - Connect via `+ > Connectors` in Claude or `+ > More Add Sources` in ChatGPT
+  - Tools: `search` (semantic search with filters, facets and citations) and `get_document` (full document metadata)
+- **A2A agent** ([Agent-to-Agent protocol](https://google.github.io/A2A/)) for agent frameworks such as Google ADK, CrewAI and LangGraph
+  - Skills: `research` (full assistant answers, streamed) and `search`
+  - Runs on the same service as MCP, with its Agent Card at `/.well-known/agent.json`
+- Both protocols share OAuth 2.0 authentication (or an `X-API-Key` header), rate limiting and audit logging
+- API keys are managed in Admin → API Keys
+  - A new key can take up to 60 seconds to work with MCP or A2A, because key hashes are cached per process for 60 seconds
+  - The `API_SECRET_KEY` environment variable takes effect immediately
+
+### Sign-in and permissions (optional)
+
+- Three modes, set by `USER_MODULE` in `.env`: `off` (default), `on_passive` (sign-in optional) and `on_active` (sign-in required)
+- Email and password registration with email verification, or single sign-on with Google or Microsoft
+- Cookie-based sessions with CSRF protection, so no tokens are kept in localStorage
+- Account lockout, rate limiting and audit logging
+- Groups control which data sources each user can see
+- Admin panel for users, groups and permissions
+- Activity log of searches, with admin views and XLSX export
+- Users manage their own profile and can delete their account
+- Built on [fastapi-users](https://fastapi-users.github.io/fastapi-users/), designed with future multi-factor sign-in in mind
 
 See the [CHANGELOG](CHANGELOG.md) for the full list of recent additions.
 
