@@ -64,7 +64,7 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 * **Multi-Vector Indexing**: Stores multiple vectors per chunk to support different retrieval strategies.
   * **Dense**: Semantic vectors (defaulting to `multilingual-e5-large`, with support for Azure Foundry `text-embedding-3`, Google Vertex Gemini and Amazon Titan models).
   * **Sparse**: BM25 keyword vectors for exact term matching.
-* **Model Agnostic**: Designed to swap embedding backends (Hugging Face, Azure Foundry, Google Vertex, Amazon Bedrock) via configuration.
+* **Model Agnostic**: Designed to swap embedding backends (Hugging Face, Azure Foundry, Google Vertex, Amazon Bedrock, or any OpenAI-compatible endpoint) via configuration.
 * **Document Embeddings**: Generates a separate "Document Level" embedding (Title + Summary) to support "More like this" recommendations at the document level.
 
 ## Search & Discovery
