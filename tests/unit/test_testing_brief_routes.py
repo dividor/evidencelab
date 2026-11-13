@@ -1,7 +1,7 @@
 """Unit tests for the brief citation check routes (DB and runner faked)."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -201,6 +201,55 @@ class TestListBriefs:
         session = FakeSession([mine], [theirs], [], [me, other], others=[unshared])
         out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
         assert sorted(c.title for c in out) == ["Mine", "Theirs"]
+
+
+class TestStaleSweep:
+    """Reading checks also fails the ones whose runner is gone, so a check
+    orphaned by a stopped api copy does not show as running until some api
+    copy happens to restart."""
+
+    @pytest.mark.asyncio
+    async def test_list_when_running_check_lost_its_heartbeat_then_failed(self):
+        me = _user()
+        mine = _brief(me.id, "Mine")
+        old = NOW - timedelta(minutes=30)
+        orphan = _check(
+            mine,
+            status="running",
+            started_at=old,
+            created_at=old,
+            summary_stats={
+                "progress": {"completed": 3, "total": 9, "at": old.isoformat()}
+            },
+        )
+        alive = _check(
+            mine,
+            status="running",
+            started_at=old,
+            created_at=old,
+            summary_stats={
+                "progress": {"completed": 3, "total": 9, "at": NOW.isoformat()}
+            },
+        )
+        session = FakeSession([mine], [], [orphan, alive], [me])
+        out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
+        assert orphan.status == "failed"
+        assert orphan.summary_stats["error"].startswith("no progress for")
+        assert alive.status == "running"
+        assert alive.summary_stats["progress"]["completed"] == 3
+        assert out[0].last_check.id in (orphan.id, alive.id)
+
+    @pytest.mark.asyncio
+    async def test_get_when_pending_check_is_old_then_failed(self):
+        me = _user()
+        mine = _brief(me.id)
+        old = NOW - timedelta(hours=1)
+        stuck = _check(mine, status="pending", created_at=old, summary_stats=None)
+        session = FakeSession([mine], [], [stuck], [me])
+        out = await routes.get_brief_check(
+            _request(), check_id=stuck.id, admin=me, session=session
+        )
+        assert out.status == "failed" and "orphaned task" in out.summary_stats["error"]
 
 
 class TestCreateCheck:

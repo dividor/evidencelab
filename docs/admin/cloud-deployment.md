@@ -106,6 +106,10 @@ uvicorn ui.backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 
 Run `alembic upgrade head` once, as a job, before new api copies start. If every copy migrated at start-up, as the compose files do, they would run the same migration at the same time.
 
+### Evaluation runs and Brief checks run in one copy
+
+An experiment run or a Brief citation check started from the admin page runs inside the api copy that received the request, and writes its progress to Postgres after every case or passage. A copy that starts up leaves running jobs alone, since another copy may be running them; a job is marked failed only after 15 minutes without progress, with that reason stored on it. So stopping a copy mid-job (a deploy, a scale-down) loses that job, and its page says so a quarter of an hour later; the cases or passages finished until then are kept. On Cloud Run, a container gets CPU only while it handles a request unless `cpu_idle` is set to `false` on it (the example sets that only for the embedding service), so a job in the web service slows down once nobody is polling its page.
+
 ## Example: AWS
 
 This example runs Evidence Lab on Amazon ECS with Fargate. The template and scripts are in [`deploy/aws`](../../deploy/aws/).

@@ -1,18 +1,23 @@
 """Unit tests for the brief citation check runner (judge and DB faked)."""
 
 import asyncio
+import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from types import SimpleNamespace
 
 import pytest
 from openpyxl import load_workbook
+from sqlalchemy import Select
 
 from ui.backend.services import citation_check_runner as runner
 from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.services.citation_fidelity import CitedPassage
 
 pytestmark = pytest.mark.unit
+
+NOW = datetime(2026, 11, 10, 14, 30, tzinfo=timezone.utc)
 
 EXCERPT = "Dropout fell from 12 to 7 percent in schools receiving meals."
 SOURCE = {
@@ -175,8 +180,11 @@ class TestSummary:
         monkeypatch.setattr(
             "ui.backend.utils.llm_costs.compute_cost", lambda m, p, c: 0.0123
         )
-        stats = runner.summarise(self._rows(), 1500, "judge-x")
+        stats = runner.summarise(
+            self._rows(), 1500, "judge-x", reference_lines_skipped=5
+        )
         assert stats["total"] == 3 and stats["flagged"] == 2
+        assert stats["reference_lines_skipped"] == 5
         assert stats["verdicts"] == {
             "supported": 1,
             "partially_supported": 1,
@@ -238,25 +246,47 @@ class TestSummary:
 
 
 class FakeSession:
-    """Just enough AsyncSession for the runner: get/add/commit/execute."""
+    """Just enough AsyncSession for the runner. The runner owns its row only
+    through conditional UPDATEs, so those are interpreted: the values apply
+    only when the row's status is in the statement's WHERE list, and
+    ``rowcount`` says whether they did. Rows added since the last commit are
+    dropped by a rollback, as in SQLAlchemy."""
 
-    def __init__(self, check, brief):
-        self.rows = {("check", check.id): check, ("brief", brief.id): brief}
-        self.added = []
-        self.commits = 0
+    def __init__(self, check, brief, checks=()):
+        self.brief = brief
+        self.checks = [check, *checks]
+        self.added, self.pending = [], []
+        self.commits = self.rollbacks = 0
 
     async def get(self, model, key):
-        kind = "brief" if model.__name__ == "Brief" else "check"
-        return self.rows.get((kind, key))
+        if model.__name__ == "Brief":
+            return self.brief if self.brief and self.brief.id == key else None
+        return next((c for c in self.checks if c.id == key), None)
 
     def add(self, row):
-        self.added.append(row)
+        self.pending.append(row)
 
     async def commit(self):
         self.commits += 1
+        self.added.extend(self.pending)
+        self.pending = []
+
+    async def rollback(self):
+        self.rollbacks += 1
+        self.pending = []
 
     async def execute(self, statement):
-        return SimpleNamespace(rowcount=0)
+        if isinstance(statement, Select):
+            rows = list(self.checks)
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+        params = statement.compile().params
+        row = next((c for c in self.checks if c.id == params.get("id_1")), None)
+        if row is None or row.status not in (params.get("status_1") or []):
+            return SimpleNamespace(rowcount=0)
+        for key, value in params.items():
+            if not re.search(r"_\d+$", key):
+                setattr(row, key, value)
+        return SimpleNamespace(rowcount=1)
 
     async def __aenter__(self):
         return self
@@ -265,21 +295,22 @@ class FakeSession:
         return False
 
 
-def _check_and_brief():
+def _check_and_brief(status="pending", **over):
     brief = SimpleNamespace(id=uuid.uuid4(), content=BRIEF)
-    check = SimpleNamespace(
+    fields = dict(
         id=uuid.uuid4(),
         brief_id=brief.id,
         brief_title="B",
         data_source="wfp",
         created_by_user_id=uuid.uuid4(),
         judge_model="judge-x",
-        status="pending",
+        status=status,
         summary_stats=None,
         started_at=None,
         finished_at=None,
+        created_at=NOW,
     )
-    return check, brief
+    return SimpleNamespace(**{**fields, **over}), brief
 
 
 class TestRunCheck:
@@ -306,6 +337,7 @@ class TestRunCheck:
 
         await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
         assert check.status == "completed"
+        assert check.started_at is not None and check.finished_at is not None
         assert [
             r.passage_id for r in sorted(session.added, key=lambda r: r.passage_id)
         ] == [1, 2]
@@ -318,32 +350,67 @@ class TestRunCheck:
             and stats["flagged"] == 1
             and stats["prompt_tokens"] == 7
         )
+        assert stats["reference_lines_skipped"] == 0
         assert recorded and recorded[0]["activity_type"] == "evaluation"
         assert recorded[0]["search_id"] == check.id
+        assert session.rollbacks == 0
+
+    @pytest.mark.asyncio
+    async def test_run_when_progress_written_then_each_write_carries_heartbeat(self):
+        check, brief = _check_and_brief()
+        session = FakeSession(check, brief)
+        seen = []
+
+        async def judge(system, user):
+            seen.append(check.summary_stats["progress"])
+            return GOOD_REPLY, {}
+
+        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
+        # The claim wrote 0 of 2 with a stamp before the first judge call.
+        assert seen[0]["completed"] == 0 and seen[0]["total"] == 2
+        assert datetime.fromisoformat(seen[0]["at"]).tzinfo is not None
 
     @pytest.mark.asyncio
     async def test_run_when_brief_missing_then_failed_with_message(self):
         check, brief = _check_and_brief()
         session = FakeSession(check, brief)
-        del session.rows[("brief", brief.id)]
+        session.brief = None
         await runner.run_check(check.id, session_factory=lambda: session)
         assert check.status == "failed"
         assert check.summary_stats == {"error": "Brief not found"}
 
     @pytest.mark.asyncio
-    async def test_run_when_cancelled_midway_then_stops_without_completing(
-        self, monkeypatch
+    async def test_run_when_cancelled_midway_then_stops_and_keeps_cancel_record(
+        self,
     ):
         check, brief = _check_and_brief()
         session = FakeSession(check, brief)
 
         async def judge(system, user):
-            check.status = "failed"  # the cancel route flips the row
+            # The cancel route (or orphan recovery on another api copy) flips
+            # the row while the judge is out.
+            check.status = "failed"
+            check.summary_stats = {"error": "Cancelled by user"}
             return GOOD_REPLY, {}
 
         await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
         assert check.status == "failed"
-        assert session.added == []
+        assert check.summary_stats == {"error": "Cancelled by user"}
+        assert session.added == [] and session.rollbacks >= 1
+
+    @pytest.mark.asyncio
+    async def test_run_when_no_longer_pending_then_not_started(self):
+        check, brief = _check_and_brief(status="failed", summary_stats={"error": "x"})
+        session = FakeSession(check, brief)
+        calls = []
+
+        async def judge(system, user):
+            calls.append(user)
+            return GOOD_REPLY, {}
+
+        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
+        assert calls == [] and session.added == [] and session.commits == 0
+        assert check.summary_stats == {"error": "x"}
 
     @pytest.mark.asyncio
     async def test_run_when_execution_raises_then_generic_failure(self, monkeypatch):
@@ -353,6 +420,74 @@ class TestRunCheck:
         await runner.run_check(check.id, session_factory=lambda: session)
         assert check.status == "failed"
         assert check.summary_stats == {"error": "Check failed"}
+
+
+class TestStaleChecks:
+    @pytest.mark.asyncio
+    async def test_fail_stale_when_no_heartbeat_then_failed_with_reason(self):
+        old = NOW - timedelta(minutes=40)
+        orphan, brief = _check_and_brief(
+            status="running",
+            started_at=old,
+            created_at=old,
+            summary_stats=runner.progress_stats(4, 9, now=old),
+        )
+        alive, _ = _check_and_brief(
+            status="running",
+            started_at=old,
+            created_at=old,
+            summary_stats=runner.progress_stats(4, 9, now=NOW - timedelta(minutes=1)),
+        )
+        stuck, _ = _check_and_brief(status="pending", created_at=old)
+        done, _ = _check_and_brief(status="completed", created_at=old)
+        session = FakeSession(orphan, brief, checks=[alive, stuck, done])
+
+        assert await runner.fail_stale_checks(session, now=NOW) == 2
+        assert orphan.status == "failed" and orphan.finished_at == NOW
+        assert orphan.summary_stats["error"].startswith("no progress for 40 min")
+        assert stuck.status == "failed"
+        assert (
+            alive.status == "running"
+            and alive.summary_stats["progress"]["completed"] == 4
+        )
+        assert done.status == "completed"
+        assert session.commits == 1
+
+    @pytest.mark.asyncio
+    async def test_fail_stale_when_nothing_stale_then_no_commit(self):
+        check, brief = _check_and_brief(status="running", started_at=NOW)
+        session = FakeSession(check, brief)
+        assert await runner.fail_stale_checks(session, now=NOW) == 0
+        assert session.commits == 0 and check.status == "running"
+
+    @pytest.mark.asyncio
+    async def test_recover_orphaned_when_called_then_sweeps_through_factory(self):
+        old = NOW - timedelta(hours=1)
+        check, brief = _check_and_brief(
+            status="running", started_at=old, created_at=old
+        )
+        session = FakeSession(check, brief)
+        await runner.recover_orphaned_checks(session_factory=lambda: session)
+        assert check.status == "failed"
+
+
+class TestReferenceLines:
+    def test_count_skipped_when_section_has_reference_list_then_counted(self):
+        content = convert_legacy(
+            {
+                "sections": [
+                    {
+                        "title": "S",
+                        "status": "done",
+                        "content": "Fact [1].\n\n[1] WFP. 2023. Report.\n[2] WFP. 2024. Other.",
+                        "sources": [SOURCE],
+                    }
+                ]
+            }
+        )[0]
+        assert runner.count_skipped_reference_lines(content) == 2
+        assert runner.count_cited_passages(content) == 1
+        assert runner.count_skipped_reference_lines(BRIEF) == 0
 
 
 class TestResolveJudgeModel:

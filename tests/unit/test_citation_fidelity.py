@@ -15,6 +15,8 @@ from ui.backend.services.citation_fidelity import (
     QUOTE_VERBATIM,
     CitedPassage,
     build_judge_messages,
+    count_reference_lines,
+    drop_reference_lines,
     extract_cited_numbers,
     extract_cited_passages,
     find_fragment,
@@ -25,8 +27,10 @@ from ui.backend.services.citation_fidelity import (
     parse_judge_response,
     parse_section_breadcrumb,
     passage_source_rows,
+    plain_text,
     quotable_text,
     quote_fragments,
+    reference_lines,
     researched_sections,
     source_body,
     source_label,
@@ -95,6 +99,32 @@ class TestMarkdownParsing:
     def test_parse_section_breadcrumb_when_no_marker_then_full_text(self):
         assert parse_section_breadcrumb("Plain text.") == (None, "Plain text.")
 
+    def test_plain_text_when_inline_markdown_then_prose_only(self):
+        assert (
+            plain_text("**The World Food Programme (WFP)** uses *SBC* in __schools__.")
+            == "The World Food Programme (WFP) uses SBC in schools."
+        )
+        assert plain_text("- item with `code` and snake_case_name") == (
+            "item with code and snake_case_name"
+        )
+        assert plain_text("## Heading [1]") == "Heading [1]"
+        assert plain_text("> 3 * 4 = 12") == "3 * 4 = 12"
+        assert plain_text("2. Second point.") == "Second point."
+
+    def test_reference_lines_when_marker_led_then_detected_and_dropped(self):
+        text = (
+            "Claim [1].\n[1] WFP. 2023. Evaluation of X.\n[?2] Dangling entry.\n"
+            "[3, 4] Two numbers.\nNot a reference [2]."
+        )
+        assert reference_lines(text) == [
+            "[1] WFP. 2023. Evaluation of X.",
+            "[?2] Dangling entry.",
+            "[3, 4] Two numbers.",
+        ]
+        assert count_reference_lines(text) == 3
+        assert drop_reference_lines(text) == "Claim [1].\nNot a reference [2]."
+        assert count_reference_lines("[1]WFP and [1] alone") == 0
+
 
 @pytest.mark.unit
 class TestSourceHelpers:
@@ -143,6 +173,19 @@ class TestSourceHelpers:
 
 @pytest.mark.unit
 class TestExtractCitedPassages:
+    def test_extract_cited_passages_when_reference_list_then_entries_skipped(self):
+        section = {
+            **SECTION,
+            "content": (
+                "**Bold claim** in Mali [1].\n\n"
+                "[1] Mali Evaluation. 2024. Report.\n[2] Kenya Review. 2023. Study."
+            ),
+        }
+        passages = extract_cited_passages(section)
+        assert [p.passage for p in passages] == ["**Bold claim** in Mali [1]."]
+        assert passages[0].passage_clean == "Bold claim in Mali."
+        assert passages[0].sources == [SOURCE_1]
+
     def test_extract_cited_passages_when_section_then_one_per_citing_sentence(self):
         passages = extract_cited_passages(SECTION)
         assert [p.citation_indices for p in passages] == [[1], [1, 2], [9]]

@@ -5,9 +5,13 @@ isolation, pass/fail classification, latency capture, judge wiring — is tested
 without touching the live search/LLM services.
 """
 
+import re
 import uuid
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import Select, Update
 
 import ui.backend.services.test_runner as test_runner
 from ui.backend.auth.testing_models import (
@@ -427,8 +431,10 @@ async def test_evaluate_case_when_no_assertions_then_passes():
     assert outcome["status"] == "pass" and outcome["score"] == 1.0
 
 
-async def test_progress_stats_reports_completed_and_total():
-    assert _progress_stats(3, 10) == {"progress": {"completed": 3, "total": 10}}
+async def test_progress_stats_reports_completed_and_total_with_heartbeat():
+    progress = _progress_stats(3, 10)["progress"]
+    assert (progress["completed"], progress["total"]) == (3, 10)
+    assert datetime.fromisoformat(progress["at"]).tzinfo is not None
 
 
 async def test_active_case_plan_keeps_only_active_cases_with_assertions():
@@ -486,33 +492,67 @@ class _FakeResult:
 
 class _FakeSession:
     """Minimal async-session stand-in that records summary_stats at each commit,
-    so a test can assert progress is published incrementally."""
+    so a test can assert progress is published incrementally.
 
-    def __init__(self, dataset):
+    The runner owns its rows only through conditional UPDATEs, so those are
+    interpreted: the values apply to the run or the experiment only when its
+    status is in the statement's WHERE list, and ``rowcount`` says whether
+    they did. Rows added since the last commit are dropped by a rollback."""
+
+    def __init__(self, dataset, experiment=None, runs=(), experiments=()):
         self._dataset = dataset
+        self._experiment = experiment
         self._run = None
+        self.runs, self.experiments = list(runs), list(experiments)
         self.commits = []  # snapshot of run.summary_stats per commit
-        self.added = []
+        self.added, self.pending = [], []
+        self.rollbacks = 0
 
     async def get(self, _model, _ident):
         return self._dataset
 
-    async def execute(self, _stmt):
-        return _FakeResult()
+    async def execute(self, stmt):
+        if isinstance(stmt, Select):
+            rows = (
+                self.experiments if "FROM test_experiments" in str(stmt) else self.runs
+            )
+            # ``scalar()`` serves the run-number query; ``scalars()`` the sweep.
+            return SimpleNamespace(
+                scalar=lambda: 0,
+                scalars=lambda: SimpleNamespace(all=lambda: rows),
+            )
+        if not isinstance(stmt, Update):
+            return _FakeResult()
+        params = stmt.compile().params
+        is_experiment = stmt.table.name == TestExperiment.__tablename__
+        row = self._experiment if is_experiment else self._run
+        if row is None or row.status not in (params.get("status_1") or []):
+            return SimpleNamespace(rowcount=0)
+        for key, value in params.items():
+            if not re.search(r"_\d+$", key):
+                setattr(row, key, value)
+        return SimpleNamespace(rowcount=1)
 
     def add(self, obj):
-        self.added.append(obj)
+        self.pending.append(obj)
         if isinstance(obj, TestRun):
             self._run = obj
 
     async def commit(self):
-        self.commits.append(self._run.summary_stats if self._run else None)
+        self.added.extend(self.pending)
+        self.pending = []
+        self.commits.append(
+            dict(self._run.summary_stats)
+            if self._run and self._run.summary_stats
+            else None
+        )
 
     async def refresh(self, _obj):
         return None
 
     async def rollback(self):
-        return None
+        self.rollbacks += 1
+        self.pending = []
 
 
 async def test_execute_publishes_incremental_progress(monkeypatch):
@@ -551,20 +591,25 @@ async def test_execute_publishes_incremental_progress(monkeypatch):
             },
         },
     )
-    session = _FakeSession(dataset)
+    session = _FakeSession(dataset, experiment)
 
     await _execute(session, experiment)
 
-    progress = [c["progress"] for c in session.commits if c and "progress" in c]
-    # 0/2 at start, then 1/2 and 2/2 as each case finishes.
-    assert {"completed": 0, "total": 2} in progress
-    assert {"completed": 1, "total": 2} in progress
-    assert {"completed": 2, "total": 2} in progress
+    progress = [
+        (c["progress"]["completed"], c["progress"]["total"])
+        for c in session.commits
+        if c and "progress" in c
+    ]
+    # 0/2 at start, then 1/2 and 2/2 as each case finishes, each stamped.
+    assert progress == [(0, 2), (1, 2), (2, 2)]
+    assert all("at" in c["progress"] for c in session.commits if c and "progress" in c)
     # Final commit carries the real aggregate stats, not a progress marker.
     final = session.commits[-1]
     assert "progress" not in final
     assert final["pass_rate"] == 1.0 and final["total"] == 2
     assert experiment.status == "completed"
+    assert experiment.summary_stats == final and experiment.finished_at is not None
+    assert session.rollbacks == 0
     # One persisted result row per active case.
     result_rows = [o for o in session.added if o.__class__.__name__ == "TestResult"]
     assert len(result_rows) == 2
@@ -732,7 +777,7 @@ async def test_execute_attributes_run_to_triggering_user(monkeypatch):
 
     record_calls = []
 
-    async def fake_record(experiment, run, dataset, cfg):
+    async def fake_record(experiment, run, dataset, cfg, stats=None):
         record_calls.append(run)
 
     c1 = uuid.uuid4()
@@ -759,7 +804,7 @@ async def test_execute_attributes_run_to_triggering_user(monkeypatch):
             "cases": {str(c1): {"active": True, "cols": [True]}},
         },
     )
-    session = _FakeSession(dataset)
+    session = _FakeSession(dataset, experiment)
 
     await _execute(session, experiment, triggered_by_user_id=clicker)
 
@@ -768,6 +813,183 @@ async def test_execute_attributes_run_to_triggering_user(monkeypatch):
     (run,) = [o for o in session.added if isinstance(o, TestRun)]
     assert run.created_by_user_id == clicker
     assert record_calls == [run]
+
+
+def _planned_experiment(case_id, status="pending"):
+    return TestExperiment(
+        id=uuid.uuid4(),
+        dataset_id=uuid.uuid4(),
+        status=status,
+        config=None,
+        case_expectations={
+            "columns": [{"type": "min_results", "value": 1}],
+            "cases": {str(case_id): {"active": True, "cols": [True]}},
+        },
+    )
+
+
+def _fake_engine(monkeypatch, cases):
+    async def fake_runner(_case_input):
+        return {"results": [{"id": "A", "doc_id": "A"}], "count": 1}
+
+    async def fake_factory(_output, _expectations):
+        return lambda _text, _rubric: 0.0
+
+    async def fake_load_cases(_session, _dataset_id):
+        return cases
+
+    monkeypatch.setattr(test_runner, "build_case_runner", lambda *a, **k: fake_runner)
+    monkeypatch.setattr(test_runner, "make_judge_factory", lambda _cfg: fake_factory)
+    monkeypatch.setattr(test_runner, "_load_cases", fake_load_cases)
+
+
+async def test_execute_when_experiment_no_longer_pending_then_not_run(monkeypatch):
+    """A cancel, or orphan recovery on another api copy, got there first: the
+    experiment keeps that record and no run row is created."""
+    case = TestCase(id=uuid.uuid4(), input={"query": "a"})
+    _fake_engine(monkeypatch, [case])
+    experiment = _planned_experiment(case.id, status="failed")
+    experiment.summary_stats = {"error": "Cancelled by user"}
+    dataset = TestDataset(
+        id=experiment.dataset_id, capability="search", data_source="uneg"
+    )
+    session = _FakeSession(dataset, experiment)
+
+    await _execute(session, experiment)
+
+    assert session.added == [] and session.rollbacks == 1
+    assert experiment.status == "failed"
+    assert experiment.summary_stats == {"error": "Cancelled by user"}
+
+
+async def test_execute_when_run_cancelled_midway_then_stops_keeping_cancel(monkeypatch):
+    c1, c2 = uuid.uuid4(), uuid.uuid4()
+    cases = [
+        TestCase(id=c1, input={"query": "a"}),
+        TestCase(id=c2, input={"query": "b"}),
+    ]
+    _fake_engine(monkeypatch, cases)
+    experiment = _planned_experiment(c1)
+    experiment.case_expectations["cases"][str(c2)] = {"active": True, "cols": [True]}
+    dataset = TestDataset(
+        id=experiment.dataset_id, capability="search", data_source="uneg"
+    )
+    session = _FakeSession(dataset, experiment)
+
+    async def cancelling_case(case_input, assertions, runner, judge_factory):
+        # The cancel route flips the run while the first case is evaluated.
+        session._run.status = "failed"
+        session._run.summary_stats = {"error": "Cancelled by user"}
+        return {
+            "status": "pass",
+            "score": 1.0,
+            "latency_ms": 1,
+            "error_message": None,
+            "actual_output": {},
+            "assertion_results": [],
+        }
+
+    monkeypatch.setattr(test_runner, "evaluate_case", cancelling_case)
+
+    await _execute(session, experiment)
+
+    assert session._run.status == "failed"
+    assert session._run.summary_stats == {"error": "Cancelled by user"}
+    assert [o for o in session.added if o.__class__.__name__ == "TestResult"] == []
+    assert experiment.status == "running"  # the cancel route fails it itself
+
+
+def _stamp(at):
+    return test_runner.progress_stats(2, 5, now=at)
+
+
+async def test_fail_stale_runs_when_no_heartbeat_then_run_and_experiment_failed():
+    now = datetime(2026, 11, 10, 14, 30, tzinfo=timezone.utc)
+    old = now - timedelta(hours=1)
+    orphaned_exp = TestExperiment(
+        id=uuid.uuid4(), status="running", started_at=old, created_at=old
+    )
+    orphaned_run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=orphaned_exp.id,
+        status="running",
+        started_at=old,
+        created_at=old,
+        summary_stats=_stamp(old),
+    )
+    live_exp = TestExperiment(
+        id=uuid.uuid4(), status="running", started_at=old, created_at=old
+    )
+    live_run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=live_exp.id,
+        status="running",
+        started_at=old,
+        created_at=old,
+        summary_stats=_stamp(now - timedelta(minutes=2)),
+    )
+    # Pending with no run yet: the Run route stamped started_at when asked.
+    fresh_pending = TestExperiment(
+        id=uuid.uuid4(), status="pending", started_at=now, created_at=old
+    )
+    dead_pending = TestExperiment(
+        id=uuid.uuid4(), status="pending", started_at=old, created_at=old
+    )
+    session = _FakeSession(
+        None,
+        runs=[orphaned_run, live_run],
+        experiments=[orphaned_exp, live_exp, fresh_pending, dead_pending],
+    )
+
+    assert await test_runner.fail_stale_runs(session, now=now) == 3
+    assert orphaned_run.status == "failed"
+    assert orphaned_run.summary_stats["error"].startswith("no progress for 60 min")
+    assert orphaned_exp.status == "failed" and orphaned_exp.finished_at == now
+    assert live_run.status == "running" and live_exp.status == "running"
+    assert fresh_pending.status == "pending"
+    assert dead_pending.status == "failed"
+    assert len(session.commits) == 1
+
+
+async def test_fail_stale_runs_when_all_fresh_then_nothing_written():
+    now = datetime(2026, 11, 10, 14, 30, tzinfo=timezone.utc)
+    run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=uuid.uuid4(),
+        status="running",
+        started_at=now,
+        created_at=now,
+        summary_stats=_stamp(now),
+    )
+    session = _FakeSession(None, runs=[run], experiments=[])
+    assert await test_runner.fail_stale_runs(session, now=now) == 0
+    assert session.commits == [] and run.status == "running"
+
+
+async def test_recover_orphaned_runs_when_called_then_sweeps_through_factory():
+    old = datetime.now(timezone.utc) - timedelta(hours=2)
+    run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=uuid.uuid4(),
+        status="running",
+        started_at=old,
+        created_at=old,
+        summary_stats=_stamp(old),
+    )
+    session = _FakeSession(None, runs=[run], experiments=[])
+
+    class Factory:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return session
+
+        async def __aexit__(self, *exc):
+            return False
+
+    await test_runner.recover_orphaned_runs(session_factory=Factory())
+    assert run.status == "failed"
 
 
 # ---------------------------------------------------------------------------
