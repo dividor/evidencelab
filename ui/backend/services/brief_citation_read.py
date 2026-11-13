@@ -19,6 +19,7 @@ from ui.backend.services.brief_citation_model import (
     find_section,
     is_visible,
     require_current_format,
+    run_body,
 )
 from ui.backend.services.brief_citation_runs import (
     _assign_numbers,
@@ -71,7 +72,7 @@ def _expand_section_sources(
 def _run_summary(run: Dict[str, Any]) -> Dict[str, Any]:
     summary = {key: run.get(key) for key in RUN_SUMMARY_FIELDS if key in run}
     summary["sourceCount"] = len(run.get("sources") or [])
-    summary["citedCount"] = len(cited_numbers_in_order(run.get("content") or ""))
+    summary["citedCount"] = len(cited_numbers_in_order(run_body(run)))
     return summary
 
 

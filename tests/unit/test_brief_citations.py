@@ -523,3 +523,135 @@ class TestTrace:
         brief = empty_brief("a")
         bc.record_run(brief, "a", run("A [1].", [src(1, "c1")]))
         json.dumps(bc.expand_for_read(brief))
+
+
+# ---------------------------------------------------------------------------
+# Reference lists the agent appended despite the prompt
+# ---------------------------------------------------------------------------
+
+
+PROSE = "A claim [1]. Another claim [2]."
+
+
+class TestAgentReferenceList:
+    @pytest.mark.parametrize(
+        "heading",
+        [
+            "References",
+            "References:",
+            "## References",
+            "### Cited References",
+            "**References:**",
+            "**Cited References**",
+            "Reference List",
+            "List of References",
+            "Sources",
+            "Cited Sources",
+            "Works Cited",
+            "Bibliography",
+            "Citations",
+            "5. References",
+            "REFERENCES",
+        ],
+    )
+    def test_strip_trailing_reference_list_when_heading_variant_then_removed(
+        self, heading
+    ):
+        text = f"{PROSE}\n\n{heading}\n[1] WFP. (2023). A.\n[2] WFP. (2023). B.\n"
+        assert bc.strip_trailing_reference_list(text) == PROSE
+
+    @pytest.mark.parametrize(
+        "entries",
+        [
+            # The shape seen in briefs: one `[n]` entry per line, no blank lines.
+            "[1] WFP. (2023). Strategic Plan.\n[2] WFP. (2023). Iraq Country Brief.",
+            "[1, 2] WFP. (2023). Both.",
+            "- [1] WFP (2023) A.\n- [2] WFP (2023) B.",
+            "* [1] A.\n\n* [2] B.",
+            "1. WFP A [1]\n2. WFP B [2]",
+            "1) WFP A [1]\n2) WFP B [2]",
+            "- WFP. (2023). A. [1]\n- WFP. (2023). B. [2]",
+            "• WFP. (2023). A. [1]",
+        ],
+    )
+    def test_strip_trailing_reference_list_when_entries_are_list_lines_then_removed(
+        self, entries
+    ):
+        text = f"{PROSE}\n\n## References\n\n{entries}\n"
+        assert bc.strip_trailing_reference_list(text) == PROSE
+
+    def test_strip_trailing_reference_list_when_entries_inline_then_removed(self):
+        text = f"{PROSE}\n\nReferences: [1] WFP. (2023). A. [2] WFP. (2023). B."
+        assert bc.strip_trailing_reference_list(text) == PROSE
+
+    def test_strip_trailing_reference_list_when_heading_alone_then_removed(self):
+        assert bc.strip_trailing_reference_list(f"{PROSE}\n\nReferences\n") == PROSE
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Prose after the list: the block is not trailing.
+            f"{PROSE}\n\n## References\n[1] A.\n\nMore prose follows [1].",
+            # Prose under the heading, not a list.
+            f"{PROSE}\n\n## Sources\nThe sources were mainly country briefs [2].",
+            # A year and a period open a sentence, not a list entry.
+            f"{PROSE}\n\n## Sources\n2023. The year was hard [1].",
+            # A real heading that only starts with one of the words.
+            f"{PROSE}\n\n## Sources of funding\nDonors gave more [2].",
+            # No heading at all.
+            f"{PROSE}\n[1] A.\n[2] B.",
+            # A list with no prose before it is left as it is, never emptied.
+            "References\n[1] A.\n[2] B.",
+            "",
+        ],
+    )
+    def test_strip_trailing_reference_list_when_not_a_trailing_list_then_untouched(
+        self, text
+    ):
+        assert bc.strip_trailing_reference_list(text) == text
+
+    def test_record_run_when_reference_list_appended_then_display_omits_it(self):
+        brief = empty_brief("a")
+        text = (
+            "# Section a\n\nA claim [1]. Another [2].\n\n"
+            "References\n[1] WFP. (2023). A.\n[2] WFP. (2023). B.\n"
+        )
+        bc.record_run(brief, "a", run(text, [src(1, "c1"), src(2, "c2")]), now_ms=1)
+        section = bc.find_section(brief, "a")
+        assert section["runs"][0]["content"] == text  # the original keeps it
+        assert section["renumbered"]["content"] == "A claim [1]. Another [2]."
+        assert section["renumbered"]["strippedReferenceList"] is True
+        assert references(brief) == [(1, "s1", None), (2, "s2", None)]
+
+    def test_record_run_when_no_reference_list_then_flag_is_false(self):
+        brief = empty_brief("a")
+        bc.record_run(brief, "a", run("A claim [1].", [src(1, "c1")]), now_ms=1)
+        assert (
+            bc.find_section(brief, "a")["renumbered"]["strippedReferenceList"] is False
+        )
+
+    def test_number_cited_only_in_reference_list_gets_no_display_number(self):
+        brief = empty_brief("a", "b")
+        text = "A claim [2].\n\n## Cited References\n- [1] WFP A.\n- [2] WFP B.\n- [3] WFP C."
+        sources = [src(1, "c1"), src(2, "c2")]  # [3] has no source record at all
+        bc.record_run(brief, "a", run(text, sources), now_ms=1)
+        bc.record_run(brief, "b", run("B cites [1].", [src(1, "c1")]), now_ms=2)
+        # Only the prose citation counts: c2 is 1, and c1 is first cited in b.
+        assert references(brief) == [(1, "s2", None), (2, "s1", None)]
+        section_a = bc.find_section(brief, "a")
+        assert [s["index"] for s in section_a["renumbered"]["sources"]] == [1]
+        assert section_a["runs"][0]["unresolved"] == []
+        read = bc.expand_for_read(brief)
+        assert read["sections"][0]["runs"][0]["citedCount"] == 1
+
+    def test_trim_run_when_reference_list_appended_then_keeps_prose_citations_only(
+        self,
+    ):
+        brief = empty_brief("a")
+        text = "A claim [1].\n\nReferences\n[1] A.\n[2] B."
+        sources = [src(1, "c1"), src(2, "c2")]
+        for i in range(bc.RETAINED_TRIMMED_RUNS + 2):
+            bc.record_run(brief, "a", run(text, sources), now_ms=i + 1)
+        trimmed = bc.find_section(brief, "a")["runs"][0]
+        assert trimmed["sourcesRetained"] == bc.SOURCES_TRIMMED
+        assert [s["index"] for s in trimmed["sources"]] == [1]

@@ -23,7 +23,12 @@ Activity log and the citation check all carry the same numbers:
   (first citation = 1), the References list, the grouping used and when it was
   computed. Recomputed by :func:`renumber` on every change. A marker with no
   source is rewritten to ``[?n]`` (``n`` = the agent's number): visible as
-  literal text, listed as unresolved, never dropped.
+  literal text, listed as unresolved, never dropped. A reference list the
+  agent appended despite the prompt ("References", "Cited References",
+  "Sources", "Bibliography"... followed only by entries) is not part of the
+  body: numbering, display and the citation counts use
+  :func:`strip_trailing_reference_list` (``run_body``) and the renumbered
+  block records ``strippedReferenceList``; the original run keeps it.
 
 Pure functions over the ``briefs.content`` JSON; the Brief Central routes and
 the anonymous ``/brief/citations`` endpoint call them, and the conversion of
@@ -67,7 +72,9 @@ from ui.backend.services.brief_citation_model import (
     is_visible,
     parse_marker_numbers,
     require_current_format,
+    run_body,
     strip_leading_title,
+    strip_trailing_reference_list,
     unresolved_markers,
 )
 from ui.backend.services.brief_citation_read import (
@@ -177,7 +184,9 @@ __all__ = [
     "run_detail",
     "set_grouping",
     "set_highlights",
+    "run_body",
     "strip_leading_title",
+    "strip_trailing_reference_list",
     "trace",
     "unresolved_markers",
 ]
