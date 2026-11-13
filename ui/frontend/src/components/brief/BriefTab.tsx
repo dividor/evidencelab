@@ -328,6 +328,11 @@ export const briefWordExportOptions = (
   fileBaseUrl: API_BASE_URL,
 });
 
+// The server id of the open brief, or null when there is no saved brief for
+// the Fact Checker to ask about (anonymous use, or a brief not yet saved).
+const checkableBriefId = (loggedIn: boolean, id: string | null): string | null =>
+  loggedIn && id ? id : null;
+
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -364,7 +369,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   const annotations = useBriefAnnotations(brief.sections, comments);
   // The Fact Checker applies to saved briefs only: the check lives on the server.
   const factCheck = useBriefFactCheck(
-    loggedIn && brief.currentBriefId ? brief.currentBriefId : null,
+    checkableBriefId(loggedIn, brief.currentBriefId),
     brief.contentRevision,
   );
   const {
