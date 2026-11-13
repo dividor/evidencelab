@@ -3,7 +3,7 @@
 import logging
 import os
 import uuid
-from typing import List, Sequence
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import delete, select, update
@@ -27,6 +27,7 @@ from ui.backend.auth.users import (
     fastapi_users,
     get_user_manager,
 )
+from ui.backend.services.group_settings import user_effective_settings
 from ui.backend.services.permissions import add_user_to_default_group
 
 logger = logging.getLogger(__name__)
@@ -242,63 +243,6 @@ async def get_my_groups(
     ]
 
 
-# Main feature tabs that a group can show/hide and relabel.
-TAB_KEYS = ("search", "assistant", "brief", "heatmap")
-
-
-def _merge_tabs(tab_configs: Sequence[dict]) -> dict:
-    """Union per-group tab visibility/labels.
-
-    ``tab_configs`` is each group's ``search_settings['tabs']`` dict, ordered by
-    group name ASC. A tab is **enabled if any group enables it**; its label comes
-    from the first (lowest-priority-first) enabling group that sets a non-empty
-    label, else ``None`` (the frontend then uses its default label).
-    """
-    result: dict = {}
-    for tab in TAB_KEYS:
-        enabled = False
-        label = None
-        for cfg in tab_configs:
-            entry = cfg.get(tab) or {}
-            if entry.get("enabled"):
-                enabled = True
-                if label is None:
-                    candidate = (entry.get("label") or "").strip()
-                    if candidate:
-                        label = candidate
-        result[tab] = {"enabled": enabled, "label": label}
-    return result
-
-
-def _merge_group_settings(groups: Sequence) -> dict:
-    """Merge search_settings from multiple groups (first non-null per key wins).
-
-    Groups are expected to be ordered by name ASC so that the "Default" group
-    has lowest priority (comes first alphabetically for most custom group names).
-
-    The ``tabs`` key is special-cased: instead of first-non-null, it is unioned
-    across groups (see :func:`_merge_tabs`) so a feature tab shows if *any* group
-    enables it. ``tabs`` is only present in the result when at least one group
-    configured it.
-    """
-    merged: dict = {}
-    tab_configs: list = []
-    for group in groups:
-        settings = group.search_settings
-        if not settings:
-            continue
-        for key, value in settings.items():
-            if key == "tabs":
-                if isinstance(value, dict):
-                    tab_configs.append(value)
-                continue
-            if key not in merged:
-                merged[key] = value
-    if tab_configs:
-        merged["tabs"] = _merge_tabs(tab_configs)
-    return merged
-
-
 @router.get("/me/effective-settings", tags=["users"])
 async def get_effective_settings(
     user: User = Depends(current_active_user),
@@ -310,15 +254,7 @@ async def get_effective_settings(
     ordered by group name ASC (so "Default" group is lowest priority).
     Returns only the overridden keys; empty dict means no overrides.
     """
-    stmt = (
-        select(UserGroup)
-        .join(UserGroupMember, UserGroupMember.group_id == UserGroup.id)
-        .where(UserGroupMember.user_id == user.id)
-        .order_by(UserGroup.name)
-    )
-    result = await session.execute(stmt)
-    groups = result.scalars().all()
-    return _merge_group_settings(groups)
+    return await user_effective_settings(session, user.id)
 
 
 # ---------------------------------------------------------------------------

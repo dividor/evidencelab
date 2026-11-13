@@ -1,3 +1,5 @@
+import type { CitationVerdict } from './testing';
+
 /** TypeScript types for user authentication and permissions. */
 
 export interface AuthUser {
@@ -62,12 +64,24 @@ export interface DocumentSummaryDefaults {
 }
 
 /**
+ * Team defaults for the brief Fact Checker: which citation-check verdicts
+ * are highlighted in an open brief. Unset means the system default
+ * (unsupported only); the API applies it when it builds the marks.
+ */
+export interface BriefFactCheckDefaults {
+  briefFactCheckVerdicts?: CitationVerdict[];
+}
+
+/**
  * The full /users/me/effective-settings payload: search settings plus the
  * per-group feature-tab visibility/labels (merged across the user's groups by
  * the backend; see components/layout/tabConfig.ts). Kept separate from
  * SearchSettings so `tabs` doesn't leak into the search-defaults setters.
  */
-export interface EffectiveSettings extends SearchSettings, DocumentSummaryDefaults {
+export interface EffectiveSettings
+  extends SearchSettings,
+    DocumentSummaryDefaults,
+    BriefFactCheckDefaults {
   tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
 }
 
@@ -79,7 +93,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (SearchSettings & DocumentSummaryDefaults) | null;
+  search_settings?: (SearchSettings & DocumentSummaryDefaults & BriefFactCheckDefaults) | null;
   summary_prompt?: string | null;
 }
 

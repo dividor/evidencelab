@@ -153,6 +153,8 @@ class SearchSettings(BaseModel):
     fieldBoost: Optional[bool] = None
     fieldBoostFields: Optional[dict[str, float]] = None
     greetingMessage: Optional[str] = None
+    # Brief Fact Checker: the citation-check verdicts highlighted in a brief.
+    briefFactCheckVerdicts: Optional[list[str]] = None
 
 
 class GroupUpdate(BaseModel):
@@ -162,6 +164,21 @@ class GroupUpdate(BaseModel):
     description: Optional[str] = None
     search_settings: Optional[dict] = None
     summary_prompt: Optional[str] = None
+
+    @field_validator("search_settings")
+    @classmethod
+    def validate_fact_check_verdicts(cls, value: Optional[dict]) -> Optional[dict]:
+        """The Fact Checker verdict list must name known verdicts only."""
+        from ui.backend.services.brief_fact_check import (
+            FACT_CHECK_SETTING_KEY,
+            validate_verdicts,
+        )
+
+        if value and value.get(FACT_CHECK_SETTING_KEY) is not None:
+            value[FACT_CHECK_SETTING_KEY] = validate_verdicts(
+                value[FACT_CHECK_SETTING_KEY]
+            )
+        return value
 
 
 class GroupRead(GroupBase):

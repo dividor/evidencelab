@@ -61,6 +61,7 @@ describe('GroupSettingsManager', () => {
       DOC_SUMMARIES,
       'Features & Tabs',
       'Appearance',
+      'Fact Checker',
     ]);
     expect(screen.getByText('Enable Reranker')).toBeInTheDocument();
     expect(screen.queryByLabelText('Max results for summary')).toBeNull();
@@ -362,5 +363,52 @@ describe('GroupSettingsManager', () => {
       fireEvent.change(box, { target: { value: DEFAULT_PROMPT } });
       expect(section.getByRole('button', { name: 'Reset to default' })).toBeDisabled();
     });
+  });
+});
+
+describe('GroupSettingsManager — Fact Checker tab', () => {
+  const FACT_CHECKER = 'Fact Checker';
+  const OPT_IN = 'Configure the highlighted verdicts for this group';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxios.get.mockResolvedValue({ data: mockGroups });
+  });
+
+  test('opting in starts from Unsupported and saves the ticked verdicts', async () => {
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: FACT_CHECKER }));
+    const optIn = screen.getByLabelText(OPT_IN);
+    expect(optIn).not.toBeChecked();
+    expect(screen.queryByLabelText(/^Unsupported/)).toBeNull();
+
+    fireEvent.click(optIn);
+    expect(screen.getByLabelText(/^Unsupported/)).toBeChecked();
+    expect(screen.getByLabelText(/^Partially supported/)).not.toBeChecked();
+    fireEvent.click(screen.getByLabelText(/^Partially supported/));
+
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalled());
+    const body = mockedAxios.patch.mock.calls[0][1] as { search_settings: Record<string, unknown> };
+    expect(body.search_settings.briefFactCheckVerdicts).toEqual(['unsupported', 'partially_supported']);
+  });
+
+  test('a group that chose verdicts shows them ticked; opting out drops the key', async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: [{ ...mockGroups[1], search_settings: { briefFactCheckVerdicts: ['cannot_assess'] } }],
+    });
+    mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: FACT_CHECKER }));
+    expect(screen.getByLabelText(OPT_IN)).toBeChecked();
+    expect(screen.getByLabelText(/^Cannot assess/)).toBeChecked();
+    expect(screen.getByLabelText(/^Unsupported/)).not.toBeChecked();
+
+    fireEvent.click(screen.getByLabelText(OPT_IN));
+    fireEvent.click(screen.getByText(SAVE_SETTINGS));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalled());
+    const body = mockedAxios.patch.mock.calls[0][1] as { search_settings: Record<string, unknown> };
+    expect(body.search_settings).not.toHaveProperty('briefFactCheckVerdicts');
   });
 });

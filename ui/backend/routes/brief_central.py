@@ -35,9 +35,19 @@ from ui.backend.auth.schemas import (
     BriefUpdate,
 )
 from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.schemas.testing import (
+    BriefCitationCheckRead,
+    BriefFactCheckMark,
+    BriefFactCheckRead,
+)
 from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
+from ui.backend.services.brief_fact_check import (
+    current_check,
+    fact_check_marks,
+    highlight_verdicts,
+)
 from ui.backend.services.brief_sharing import (
     add_share,
     owner_name,
@@ -46,6 +56,8 @@ from ui.backend.services.brief_sharing import (
     shared_with,
     user_group_ids,
 )
+from ui.backend.services.group_settings import user_effective_settings
+from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.app_state import validate_data_source
 
 logger = logging.getLogger(__name__)
@@ -55,6 +67,7 @@ logger = logging.getLogger(__name__)
 MIN_SHARE_QUERY_CHARS = 2
 SHARE_SUGGESTION_LIMIT = 8
 router = APIRouter()
+_RL_SEARCH, _RL_DEFAULT, _RL_AI = get_rate_limits()
 
 _BRIEF_NOT_FOUND = "Brief not found"
 EVENT_BRIEF_ADMIN_VIEWED = "brief_admin_viewed"
@@ -413,6 +426,33 @@ async def get_brief(
     brief, can_edit = await _get_viewable_brief(session, brief_id, user)
     await _audit_admin_access(session, request, brief, user, EVENT_BRIEF_ADMIN_VIEWED)
     return await _to_brief_read(session, brief, can_edit)
+
+
+@router.get(
+    "/briefs/{brief_id}/fact-check", response_model=BriefFactCheckRead, tags=["briefs"]
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_brief_fact_check(
+    brief_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckRead:
+    """The Fact Checker of a brief the user can view: the completed citation
+    check that judged its current cited passages, if any, and the passages
+    to highlight for the verdicts the user's groups chose."""
+    brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    verdicts = highlight_verdicts(await user_effective_settings(session, user.id))
+    try:
+        check = await current_check(session, brief)
+        marks = fact_check_marks(brief.content or {}, check, verdicts) if check else []
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
+    return BriefFactCheckRead(
+        check=BriefCitationCheckRead.model_validate(check) if check else None,
+        highlight_verdicts=verdicts,
+        marks=[BriefFactCheckMark(**mark) for mark in marks],
+    )
 
 
 @router.post("/briefs/{brief_id}/copy", response_model=BriefRead, tags=["briefs"])

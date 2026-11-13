@@ -219,7 +219,7 @@ The **Group Settings** tab lets you configure default search behavior for each g
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, Features & Tabs, Appearance, Fact Checker); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -253,6 +253,17 @@ Select a group using the buttons at the top. The settings are grouped into tabs 
 | Setting | Description |
 |---------|-------------|
 | **Greeting Message** | Custom text for the search placeholder on the landing page |
+
+#### Fact Checker
+
+![Group Settings, Fact Checker tab](../images/admin/group-settings-fact-checker.png)
+
+The [Fact Checker](../using-evidence-lab/brief.md#11-fact-checker) button on an open brief highlights the passages that the brief's [citation check](evaluation.md#brief-citation-check) flagged. This tab chooses which verdicts are highlighted for the group's members.
+
+| Setting | Description |
+|---------|-------------|
+| **Configure the highlighted verdicts for this group** | Untick to leave the group on the system default (Unsupported only). Tick to choose for the group. |
+| **Unsupported**, **Partially supported**, **Cannot assess**, **Supported** | The verdicts highlighted when a member clicks Fact Checker. With nothing ticked the button highlights nothing. A member of several groups gets the first group's choice (groups are ordered by name, so a named group overrides the Default group). |
 
 #### Search AI Summary
 

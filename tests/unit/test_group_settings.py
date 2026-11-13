@@ -57,26 +57,32 @@ class TestSearchSettingsSchema:
 
 
 class TestMergeGroupSettings:
-    """Test the _merge_group_settings helper from routes/users.py."""
+    """Test the merge_group_settings helper from services/group_settings.py."""
 
     def _make_group(self, settings):
         """Create a mock group object with search_settings attribute."""
         return SimpleNamespace(search_settings=settings)
 
     def test_empty_list(self):
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         result = _merge_group_settings([])
         assert result == {}
 
     def test_single_group_no_settings(self):
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         result = _merge_group_settings([self._make_group(None)])
         assert result == {}
 
     def test_single_group_with_settings(self):
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         result = _merge_group_settings(
             [self._make_group({"denseWeight": 0.5, "rerank": False})]
@@ -85,7 +91,9 @@ class TestMergeGroupSettings:
 
     def test_multi_group_first_wins(self):
         """First non-null value per key wins (groups ordered by name)."""
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         groups = [
             self._make_group({"denseWeight": 0.3}),  # group "Analysts"
@@ -97,7 +105,9 @@ class TestMergeGroupSettings:
 
     def test_multi_group_skips_none_settings(self):
         """Groups with no settings are skipped."""
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         groups = [
             self._make_group(None),
@@ -108,7 +118,9 @@ class TestMergeGroupSettings:
 
     def test_multi_group_empty_dict(self):
         """Groups with empty dict are skipped (no keys to merge)."""
-        from ui.backend.routes.users import _merge_group_settings
+        from ui.backend.services.group_settings import (
+            merge_group_settings as _merge_group_settings,
+        )
 
         groups = [
             self._make_group({}),

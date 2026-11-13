@@ -3385,3 +3385,107 @@
   font-size: 12px;
   color: var(--brand-text-secondary);
 }
+
+/* ---------- Fact Checker ---------- */
+/* The button beside Export to Word; pressed while the highlights are shown. */
+.brief-fact-check[aria-pressed='true'] {
+  border-color: var(--brand-accent);
+  background: rgba(91, 143, 168, 0.12);
+  background: color-mix(in srgb, var(--brand-accent) 12%, transparent);
+}
+.brief-fact-check svg {
+  flex-shrink: 0;
+}
+
+/* A passage the citation check flagged, marked inline in the prose. The tint
+   names the verdict; the same classes colour the tooltip's verdict chip and
+   the admin's verdict choices. */
+.brief-fact-mark {
+  border-bottom: 2px solid transparent;
+  cursor: help;
+}
+.brief-fact-mark-unsupported {
+  background: rgba(239, 68, 68, 0.16);
+  background: color-mix(in srgb, var(--brand-error) 16%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-unsupported {
+  border-bottom-color: var(--brand-error);
+}
+.brief-fact-mark-partially_supported {
+  background: rgba(245, 158, 11, 0.18);
+  background: color-mix(in srgb, var(--brand-warning) 18%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-partially_supported {
+  border-bottom-color: var(--brand-warning);
+}
+.brief-fact-mark-cannot_assess {
+  background: rgba(107, 114, 128, 0.16);
+  background: color-mix(in srgb, var(--brand-text-tertiary) 16%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-cannot_assess {
+  border-bottom-color: var(--brand-text-tertiary);
+}
+.brief-fact-mark-supported {
+  background: rgba(16, 185, 129, 0.14);
+  background: color-mix(in srgb, var(--brand-success) 14%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-supported {
+  border-bottom-color: var(--brand-success);
+}
+.brief-fact-mark:hover {
+  filter: saturate(1.4) brightness(0.97);
+}
+
+/* The judge's explanation, floated beside the passage under the pointer. */
+.brief-fact-tooltip {
+  position: fixed;
+  z-index: 400;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px 9px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--brand-text-primary);
+  pointer-events: none;
+}
+.brief-fact-tooltip-verdict {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 2px 7px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.brief-fact-tooltip-confidence {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-tooltip-problems {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+.brief-fact-tooltip-explanation {
+  margin: 0;
+}
+.brief-fact-tooltip-foot {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--brand-text-tertiary);
+}
+
+/* Group Settings → Fact Checker: one row per verdict, tinted like its mark. */
+.group-fact-check-verdict {
+  width: fit-content;
+  margin: 2px 0;
+  padding: 4px 8px;
+  border-bottom: none;
+}
