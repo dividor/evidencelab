@@ -78,6 +78,8 @@ For each completed section you can:
 
 After an AI Edit or Get Updates, the changes are shown as a comparison. Click **Keep Edits** to accept them or **Reject Edits** to go back to the text before.
 
+If searching the library fails part-way through any research, the run stops and says so; nothing is written from it. A section that already had text keeps it. Try again, or ask your administrator to check the search service if it keeps failing.
+
 For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
