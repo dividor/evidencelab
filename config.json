@@ -17,6 +17,9 @@
       "introductions": {
         "target_words": 120,
         "heading_retries": 1
+      },
+      "versions": {
+        "merge_minutes": 5
       }
     },
     "assistant": {

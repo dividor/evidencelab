@@ -46,6 +46,8 @@ from ui.backend.services.brief_sharing import (
     shared_with,
     user_group_ids,
 )
+from ui.backend.services.brief_version_store import VersionChange, record_version
+from ui.backend.services.brief_versions import KIND_COPIED, KIND_CREATED
 from ui.backend.utils.app_state import validate_data_source
 
 logger = logging.getLogger(__name__)
@@ -161,11 +163,26 @@ def read_content(brief: Brief) -> dict:
 
 
 async def store_brief_content(
-    session: AsyncSession, brief: Brief, content: dict
+    session: AsyncSession,
+    brief: Brief,
+    content: dict,
+    user: User,
+    change: Optional[VersionChange] = None,
+    created: bool = False,
 ) -> None:
-    """Save recomputed content and refresh the brief's Activity row in the
-    same transaction. A new dict is assigned so the ORM sees the change."""
+    """Save recomputed content, write the version it makes and refresh the
+    brief's Activity row, all in one transaction. ``created`` marks a brief
+    being saved for the first time (it has no earlier content). A new dict is
+    assigned so the ORM sees the change."""
+    previous = None if created else brief.content
+    previous_at = None if created else brief.updated_at
     brief.content = copy.deepcopy(content)
+    try:
+        await record_version(
+            session, brief, previous, user.id, change, previous_at=previous_at
+        )
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
     await upsert_brief_activity(
         session,
         content=brief.content,
@@ -277,7 +294,14 @@ async def create_brief(
     )
     session.add(brief)
     await session.flush()
-    await store_brief_content(session, brief, brief.content)
+    await store_brief_content(
+        session,
+        brief,
+        brief.content,
+        user,
+        VersionChange(kind=KIND_CREATED),
+        created=True,
+    )
     return await _to_brief_read(session, brief, can_edit=True)
 
 
@@ -446,8 +470,15 @@ async def copy_brief(
         content=content,
     )
     session.add(brief)
-    await session.commit()
-    await session.refresh(brief)
+    await session.flush()
+    await store_brief_content(
+        session,
+        brief,
+        content,
+        user,
+        VersionChange(kind=KIND_COPIED, detail=source.title),
+        created=True,
+    )
     await _audit_admin_access(session, request, source, user, EVENT_BRIEF_ADMIN_COPIED)
     return await _to_brief_read(session, brief, can_edit=True)
 
@@ -478,7 +509,7 @@ async def update_brief(
             content = bc.apply_structure(content, body.content)
         except bc.BriefCitationError as exc:
             raise citation_http_error(exc)
-    await store_brief_content(session, brief, content)
+    await store_brief_content(session, brief, content, user)
     return await _to_brief_read(session, brief, can_edit=True)
 
 

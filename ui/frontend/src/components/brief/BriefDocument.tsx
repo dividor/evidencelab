@@ -27,45 +27,12 @@ import { BriefVoiceSelect, briefDefaultSuffix, voiceHint } from './BriefVoiceSel
 import { UseBriefReturn } from './useBrief';
 import { BriefDiff } from './BriefDiff';
 import { BriefSectionAudit } from './BriefSectionAudit';
+import { ReviewBar, SectionVersionView, useSectionChanges } from './BriefSectionChanges';
 import { BriefRunOriginal } from './BriefRunOriginal';
+import { BriefVersionsModal } from './BriefVersionsModal';
 import { AutoGrowTextarea } from '../AutoGrowTextarea';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
-
-// The changes view for one audit entry: a diff header (Hide, plus Keep/Reject
-// for the still-pending change) over the rendered before→after diff.
-const SectionChangesView: React.FC<{
-  entry: SectionAuditEntry;
-  viewingPending: boolean;
-  onHide: () => void;
-  onKeep: () => void;
-  onReject: () => void;
-}> = ({ entry, viewingPending, onHide, onKeep, onReject }) => (
-  <div className="brief-doc-content">
-    <div className="brief-diff-head">
-      <span>
-        Changes from the {entry.kind === 'update' ? 'update' : 'edit'}
-        {viewingPending ? '' : ` on ${new Date(entry.at).toLocaleDateString()}`}
-      </span>
-      <span className="brief-diff-actions">
-        <button className="brief-diff-dismiss brief-diff-hide" onClick={onHide} title="Hide the diff">
-          Hide changes
-        </button>
-        {viewingPending && (
-          <>
-            <button className="brief-diff-dismiss brief-diff-keep" onClick={onKeep}>
-              Keep Edits
-            </button>
-            <button className="brief-diff-dismiss brief-diff-reject" onClick={onReject}>
-              Reject Edits
-            </button>
-          </>
-        )}
-      </span>
-    </div>
-    <BriefDiff oldText={entry.before || ''} newText={entry.after || ''} />
-  </div>
-);
 
 // The Edit/Update instruction panel (keeps the current text; runs a revise).
 const AiInstructionPanel: React.FC<{
@@ -146,7 +113,7 @@ export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarke
       {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
       could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
       {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
-      number it never returned. Open the Log to see the original output.
+      number it never returned. Open Section History to see the original output.
     </div>
   );
 };
@@ -231,12 +198,22 @@ const GuidancePanel: React.FC<{
 const SectionTools: React.FC<{
   editing: boolean;
   auditCount: number;
+  showLog: boolean;
   onToggleEdit: () => void;
   onRegenerate: () => void;
   onAiEdit: () => void;
   onAiUpdate: () => void;
   onOpenLog: () => void;
-}> = ({ editing, auditCount, onToggleEdit, onRegenerate, onAiEdit, onAiUpdate, onOpenLog }) => (
+}> = ({
+  editing,
+  auditCount,
+  showLog,
+  onToggleEdit,
+  onRegenerate,
+  onAiEdit,
+  onAiUpdate,
+  onOpenLog,
+}) => (
   <div className="brief-doc-section-tools">
     <button className="brief-regen-btn" onClick={onToggleEdit}>
       <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
@@ -258,11 +235,30 @@ const SectionTools: React.FC<{
     >
       <IconClock /> AI Get Updates
     </button>
-    <button className="brief-section-log-link" onClick={onOpenLog}>
-      Log{auditCount ? ` (${auditCount})` : ''}
-    </button>
+    {showLog && (
+      <button className="brief-section-log-link" onClick={onOpenLog}>
+        Section History{auditCount ? ` (${auditCount})` : ''}
+      </button>
+    )}
   </div>
 );
+
+// A signed-in viewer's way into the section Log (the owner's is in the
+// section tools).
+const ViewerLogButton: React.FC<{ show: boolean; auditCount: number; onOpen: () => void }> = ({
+  show,
+  auditCount,
+  onOpen,
+}) => {
+  if (!show) return null;
+  return (
+    <div className="brief-doc-section-tools">
+      <button className="brief-section-log-link" onClick={onOpen}>
+        Section History{auditCount ? ` (${auditCount})` : ''}
+      </button>
+    </div>
+  );
+};
 
 // The "research this section" prompt shown for a pending section.
 const SectionPending: React.FC<{ sample?: boolean; onResearch: () => void }> = ({
@@ -324,10 +320,14 @@ const SectionDoneBody: React.FC<{
   section: BriefSection;
   brief: UseBriefReturn;
   editing: boolean;
-  diffEntry: SectionAuditEntry | null;
-  viewingPending: boolean;
+  readOnly: boolean;
+  // A Log row opened to view that version, or null.
+  versionEntry: SectionAuditEntry | null;
+  onCloseVersion: () => void;
+  // Whether a change awaiting review is shown as tracked changes.
+  showingChanges: boolean;
+  onToggleChanges: () => void;
   onSourceClick: (source: SourceReference) => void;
-  onCloseDiff: () => void;
   onRequestHighlight?: (source: SourceReference) => void;
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
@@ -336,10 +336,12 @@ const SectionDoneBody: React.FC<{
   section,
   brief,
   editing,
-  diffEntry,
-  viewingPending,
+  readOnly,
+  versionEntry,
+  onCloseVersion,
+  showingChanges,
+  onToggleChanges,
   onSourceClick,
-  onCloseDiff,
   onRequestHighlight,
   marks,
   onOpenThread,
@@ -348,6 +350,8 @@ const SectionDoneBody: React.FC<{
   // Rendered exactly as the API returned them: the renumbered text and the
   // display sources behind its numbers.
   const { content, sources } = section;
+  // Only the owner can keep or reject; a viewer sees the text as it stands.
+  const review = readOnly ? null : (section.pendingReview ?? null);
   const proseRef = useRef<HTMLDivElement>(null);
 
   // Paint commented passages after the markdown renders. The marks live in the
@@ -393,37 +397,55 @@ const SectionDoneBody: React.FC<{
           onBlur={() => void brief.commitManualEdit(section.id)}
           rows={Math.min(28, Math.max(8, section.content.split('\n').length + 2))}
         />
-      ) : diffEntry && diffEntry.before != null ? (
-        <SectionChangesView
-          entry={diffEntry}
-          viewingPending={viewingPending}
-          onHide={onCloseDiff}
-          onKeep={() => {
-            onCloseDiff();
-            brief.dismissChanges(section.id);
+      ) : versionEntry ? (
+        <SectionVersionView
+          entry={versionEntry}
+          canRestore={!readOnly && !!versionEntry.restorable}
+          onRestore={() => {
+            onCloseVersion();
+            void brief.restoreSectionEntry(section.id, versionEntry.id);
           }}
-          onReject={() => {
-            onCloseDiff();
-            brief.rejectChanges(section.id);
-          }}
+          onClose={onCloseVersion}
         />
-      ) : (
-        <div
-          className="brief-doc-content"
-          ref={proseRef}
-          onClick={(e) => {
-            const bubble = (e.target as HTMLElement).closest(`.${BUBBLE_CLASS}`);
-            const threadId = bubble?.getAttribute('data-thread-id');
-            if (threadId && onOpenThread) onOpenThread(threadId);
-          }}
-        >
-          <CitedMarkdown
-            content={content}
-            sources={sources}
-            onSourceClick={onSourceClick}
-            onRequestHighlight={onRequestHighlight}
+      ) : review && showingChanges ? (
+        <div className="brief-doc-content">
+          <ReviewBar
+            kind={review.kind}
+            showingChanges
+            onToggle={onToggleChanges}
+            onKeep={() => void brief.dismissChanges(section.id)}
+            onReject={() => void brief.rejectChanges(section.id)}
           />
+          <BriefDiff oldText={review.before} newText={content} />
         </div>
+      ) : (
+        <>
+          {review && (
+            <ReviewBar
+              kind={review.kind}
+              showingChanges={false}
+              onToggle={onToggleChanges}
+              onKeep={() => void brief.dismissChanges(section.id)}
+              onReject={() => void brief.rejectChanges(section.id)}
+            />
+          )}
+          <div
+            className="brief-doc-content"
+            ref={proseRef}
+            onClick={(e) => {
+              const bubble = (e.target as HTMLElement).closest(`.${BUBBLE_CLASS}`);
+              const threadId = bubble?.getAttribute('data-thread-id');
+              if (threadId && onOpenThread) onOpenThread(threadId);
+            }}
+          >
+            <CitedMarkdown
+              content={content}
+              sources={sources}
+              onSourceClick={onSourceClick}
+              onRequestHighlight={onRequestHighlight}
+            />
+          </div>
+        </>
       )}
       <CitedReferences
         content={content}
@@ -484,24 +506,6 @@ const pendingResearchMode = (
   return section.sample ? 'button' : 'inline';
 };
 
-// Which audit entry's diff is on screen, and whether it is the still-pending
-// change: the latest entry while an AI edit/update awaits Keep/Reject (only it
-// offers those buttons; everything else is view-only).
-const diffState = (
-  section: BriefSection,
-  audit: SectionAuditEntry[],
-  diffEntryId: string | null,
-): {
-  pendingEntryId: string | null;
-  diffEntry: SectionAuditEntry | null;
-  viewingPending: boolean;
-} => {
-  const pendingEntryId =
-    section.pendingRunId && audit.length ? audit[audit.length - 1].id : null;
-  const diffEntry = diffEntryId ? audit.find((e) => e.id === diffEntryId) ?? null : null;
-  return { pendingEntryId, diffEntry, viewingPending: !!diffEntryId && diffEntryId === pendingEntryId };
-};
-
 const BriefSectionView: React.FC<SectionViewProps> = ({
   section,
   num,
@@ -521,27 +525,21 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const [aiPanel, setAiPanel] = useState<null | 'edit' | 'update'>(null);
   const [aiText, setAiText] = useState('');
   const [logOpen, setLogOpen] = useState(false);
-  // Which audit entry's diff is on screen (by id), or null. Any edit/update
-  // entry with a stored before/after can be viewed — including on a reloaded
-  // brief — not just the latest pending change.
-  const [diffEntryId, setDiffEntryId] = useState<string | null>(null);
+  const changes = useSectionChanges(section, !!readOnly);
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
   const anyResearching = brief.sections.some((s) => s.status === 'researching');
   const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
-  const { pendingEntryId, diffEntry, viewingPending } = diffState(section, audit, diffEntryId);
-  // Surface the pending diff automatically once an edit/update completes (a new
-  // pending entry appears).
-  useEffect(() => {
-    if (pendingEntryId) setDiffEntryId(pendingEntryId);
-  }, [pendingEntryId]);
+  // Signed-in users who can open the brief see the Log; a brief kept only in
+  // this browser has no stored history to show.
+  const showLog = brief.remote;
   const submitAi = () => {
     const panel = aiPanel;
     if (!panel) return;
     setAiPanel(null);
-    setDiffEntryId(null);
+    changes.closeVersion();
     brief.reviseSection(section.id, panel, aiText.trim() || null);
     setAiText('');
   };
@@ -568,10 +566,15 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         )}
       </div>
 
+      {/* The owner gets the section tools; a signed-in viewer gets the Log. */}
+      {isDone && readOnly && (
+        <ViewerLogButton show={showLog} auditCount={auditCount} onOpen={() => setLogOpen(true)} />
+      )}
       {isDone && !readOnly && (
         <SectionTools
           editing={editing}
           auditCount={auditCount}
+          showLog={showLog}
           onToggleEdit={() => setEditing((v) => !v)}
           onRegenerate={() => brief.openRegen(section.id)}
           onAiEdit={() => {
@@ -607,12 +610,12 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         <BriefSectionAudit
           title={section.title}
           audit={audit}
-          pendingEntryId={pendingEntryId}
-          // Any edit/update entry with a stored before/after can be re-viewed —
-          // clicking its row opens that change's diff.
+          pendingRunId={changes.pendingRunId}
+          // Clicking a row opens that version compared with the one before
+          // it; the change awaiting review opens its tracked changes.
           onShowChanges={(entryId) => {
             setLogOpen(false);
-            setDiffEntryId(entryId);
+            changes.openEntry(entryId);
           }}
           runs={section.runs || []}
           onViewOriginal={(runId) => {
@@ -649,10 +652,12 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           section={section}
           brief={brief}
           editing={editing}
-          diffEntry={diffEntry}
-          viewingPending={viewingPending}
+          readOnly={readOnly}
+          versionEntry={changes.versionEntry}
+          onCloseVersion={changes.closeVersion}
+          showingChanges={changes.showingChanges}
+          onToggleChanges={changes.toggleChanges}
           onSourceClick={onSourceClick}
-          onCloseDiff={() => setDiffEntryId(null)}
           onRequestHighlight={onRequestHighlight}
           marks={marks}
           onOpenThread={onOpenThread}
@@ -952,6 +957,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const hasOutlineLog = brief.generatingActivity.length > 0;
 
@@ -1002,19 +1008,37 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             exportBusy={exportBusy}
           />
         </div>
-        <textarea
-          ref={titleRef}
-          className="brief-doc-title-input"
-          value={brief.briefTitle}
-          onChange={(e) => {
-            brief.setBriefTitle(e.target.value);
-            autoSizeTitle(e.target);
-          }}
-          onBlur={brief.commitEdits}
-          rows={1}
-          aria-label="Brief title"
-          readOnly={readOnly}
-        />
+        <div className="brief-title-row">
+          <textarea
+            ref={titleRef}
+            className="brief-doc-title-input"
+            value={brief.briefTitle}
+            onChange={(e) => {
+              brief.setBriefTitle(e.target.value);
+              autoSizeTitle(e.target);
+            }}
+            onBlur={brief.commitEdits}
+            rows={1}
+            aria-label="Brief title"
+            readOnly={readOnly}
+          />
+          {brief.remote && sections.length > 0 && (
+            <button
+              className="brief-section-log-link brief-title-log-link"
+              onClick={() => setVersionsOpen(true)}
+              title="Every version of this brief, with what changed in each"
+            >
+              Document History
+            </button>
+          )}
+        </div>
+        {versionsOpen && (
+          <BriefVersionsModal
+            briefId={brief.getServerBriefId()}
+            onRestore={brief.restoreBriefVersion}
+            onClose={() => setVersionsOpen(false)}
+          />
+        )}
         <BriefMeta
           brief={brief}
           readOnly={readOnly}

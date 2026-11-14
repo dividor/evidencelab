@@ -249,7 +249,7 @@ class TestOtherOperations:
         await brief_citations.record_section_run(
             brief.id,
             "a",
-            BriefRunCreate(mode="edit", content="A edited [1]."),
+            BriefRunCreate(mode="edit", content="A edited [1].", review=True),
             user,
             session,
         )

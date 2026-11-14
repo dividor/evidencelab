@@ -35,6 +35,8 @@ export interface RunPayload {
   question?: string;
   instruction?: string;
   note?: string;
+  // A single-section change that waits for Keep or Reject.
+  review?: boolean;
 }
 
 const runBody = (run: RunPayload) => ({
@@ -46,6 +48,7 @@ const runBody = (run: RunPayload) => ({
   question: run.question ?? null,
   instruction: run.instruction ?? null,
   note: run.note ?? null,
+  review: !!run.review,
 });
 
 // ---- Brief Central (signed in) ----
@@ -69,6 +72,29 @@ export const rejectRun = async (
 ): Promise<RemoteBrief> => {
   const res = await axios.post(
     `${API_BASE_URL}/briefs/${briefId}/sections/${sectionId}/runs/${runId}/reject`,
+  );
+  return res.data as RemoteBrief;
+};
+
+export const keepRun = async (
+  briefId: string,
+  sectionId: string,
+  runId: string,
+): Promise<RemoteBrief> => {
+  const res = await axios.post(
+    `${API_BASE_URL}/briefs/${briefId}/sections/${sectionId}/runs/${runId}/keep`,
+  );
+  return res.data as RemoteBrief;
+};
+
+/** Restore the version of a section one of its Log rows records. */
+export const restoreSectionVersion = async (
+  briefId: string,
+  sectionId: string,
+  entryId: string,
+): Promise<RemoteBrief> => {
+  const res = await axios.post(
+    `${API_BASE_URL}/briefs/${briefId}/sections/${sectionId}/audit/${entryId}/restore`,
   );
   return res.data as RemoteBrief;
 };
@@ -115,6 +141,7 @@ export type StoredBrief = SavedBrief & Record<string, unknown>;
 export type CitationOp =
   | { type: 'run'; sectionId: string; run: RunPayload }
   | { type: 'reject'; sectionId: string; runId: string }
+  | { type: 'keep'; sectionId: string; runId: string }
   | { type: 'grouping'; grouping: ReferenceGrouping }
   | { type: 'structure'; brief: SavedBrief }
   | { type: 'highlights'; highlights: HighlightsPayload }

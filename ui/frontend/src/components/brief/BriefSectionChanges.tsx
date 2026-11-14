@@ -1,0 +1,119 @@
+import React, { useEffect, useState } from 'react';
+import { BriefDiff } from './BriefDiff';
+import { formatWhen, KIND_LABEL } from './BriefSectionAudit';
+import { BriefSection, SectionAuditEntry, SectionAuditKind } from './briefTypes';
+
+// A section's changes: the review bar over a single-section Generate, Edit or
+// Update awaiting Keep or Reject, and an earlier version opened from the Log.
+
+// What a change was, for the review bar and the version view headings.
+const CHANGE_NOUN: Record<SectionAuditKind, string> = {
+  generate: 'regeneration',
+  edit: 'AI edit',
+  update: 'update',
+  condense: 'condense pass',
+  manual: 'manual edit',
+  restore: 'restore',
+};
+
+// The bar over a section whose single-section Generate, Edit or Update awaits
+// review: show or hide the tracked changes, keep them or reject them.
+export const ReviewBar: React.FC<{
+  kind: SectionAuditKind;
+  showingChanges: boolean;
+  onToggle: () => void;
+  onKeep: () => void;
+  onReject: () => void;
+}> = ({ kind, showingChanges, onToggle, onKeep, onReject }) => (
+  <div className="brief-diff-head">
+    <span title="Compared with the previous version">Changes from the {CHANGE_NOUN[kind]}</span>
+    <span className="brief-diff-actions">
+      <button
+        className="brief-diff-dismiss brief-diff-hide"
+        onClick={onToggle}
+        title={showingChanges ? 'Show just the new text' : 'Show the tracked changes'}
+      >
+        {showingChanges ? 'Hide Changes' : 'Show Changes'}
+      </button>
+      <button className="brief-diff-dismiss brief-diff-keep" onClick={onKeep}>
+        Keep Edits
+      </button>
+      <button className="brief-diff-dismiss brief-diff-reject" onClick={onReject}>
+        Reject Edits
+      </button>
+    </span>
+  </div>
+);
+
+// "Edited Nov 13 · 7:02 PM (rejected), compared with the version before it".
+const versionHeading = (entry: SectionAuditEntry): string => {
+  const notes: string[] = [];
+  if (entry.status === 'rejected') notes.push('rejected');
+  if (entry.current) notes.push('current version');
+  const suffix = notes.length ? ` (${notes.join(', ')})` : '';
+  return `${KIND_LABEL[entry.kind]} ${formatWhen(entry.at)}${suffix}, compared with the version before it`;
+};
+
+// An earlier version of a section opened from its Log: that version compared
+// with the one before it, and (for the owner) a way to bring it back.
+export const SectionVersionView: React.FC<{
+  entry: SectionAuditEntry;
+  canRestore: boolean;
+  onRestore: () => void;
+  onClose: () => void;
+}> = ({ entry, canRestore, onRestore, onClose }) => (
+  <div className="brief-doc-content">
+    <div className="brief-diff-head">
+      <span>{versionHeading(entry)}</span>
+      <span className="brief-diff-actions">
+        {canRestore && (
+          <button className="brief-diff-dismiss brief-diff-keep" onClick={onRestore}>
+            Restore this section version
+          </button>
+        )}
+        <button
+          className="brief-diff-close"
+          onClick={onClose}
+          title="Back to the current text"
+          aria-label="Close this version"
+        >
+          ×
+        </button>
+      </span>
+    </div>
+    <BriefDiff oldText={entry.before || ''} newText={entry.after || ''} />
+  </div>
+);
+
+// What a section shows of its changes: the Log row whose version is open, and
+// whether a change awaiting review shows as tracked changes. A viewer cannot
+// keep or reject, so for them nothing awaits review.
+export const useSectionChanges = (section: BriefSection, readOnly: boolean) => {
+  const [versionEntryId, setVersionEntryId] = useState<string | null>(null);
+  const [hideChanges, setHideChanges] = useState(false);
+  const audit = section.audit ?? [];
+  const pendingRunId = readOnly ? null : section.pendingReview?.runId ?? null;
+  // A new change awaiting review opens with its tracked changes showing.
+  useEffect(() => {
+    if (pendingRunId) {
+      setHideChanges(false);
+      setVersionEntryId(null);
+    }
+  }, [pendingRunId]);
+  // A Log row opens its version; the row of the change awaiting review opens
+  // the review itself.
+  const openEntry = (entryId: string): void => {
+    const entry = audit.find((e) => e.id === entryId);
+    const isPending = !!pendingRunId && entry?.runId === pendingRunId;
+    setVersionEntryId(isPending ? null : entryId);
+    if (isPending) setHideChanges(false);
+  };
+  return {
+    versionEntry: versionEntryId ? audit.find((e) => e.id === versionEntryId) ?? null : null,
+    closeVersion: () => setVersionEntryId(null),
+    showingChanges: !hideChanges,
+    toggleChanges: () => setHideChanges((v) => !v),
+    pendingRunId,
+    openEntry,
+  };
+};

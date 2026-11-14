@@ -16,8 +16,9 @@ export type SectionStatus = 'pending' | 'researching' | 'done';
 // What kind of operation produced a version (a "run") of a section. `generate`
 // is the initial (re-)research; `edit` revises the existing draft per an
 // instruction; `update` folds in new sources published since the last run;
-// `condense` shortens an overshooting draft; `manual` is the author's own edit.
-export type SectionAuditKind = 'generate' | 'edit' | 'update' | 'condense' | 'manual';
+// `condense` shortens an overshooting draft; `manual` is the author's own edit;
+// `restore` brings back an earlier version (written by the API only).
+export type SectionAuditKind = 'generate' | 'edit' | 'update' | 'condense' | 'manual' | 'restore';
 
 // A `[n]` marker in a run's text that resolved to no source: the agent cited a
 // number it never returned, or the record it returned carries no chunk id. The
@@ -105,14 +106,33 @@ export interface SectionAuditEntry {
   // Something the user should know about this run, shown in the Log (e.g. an
   // introduction that still had headings after its re-runs).
   note?: string;
-  // For edit/update: the section content immediately before and after this
-  // operation, so its diff stays viewable from the Log even after it's kept and
-  // even on a reloaded (saved) brief. Absent for generate.
+  // The section's text as readers saw it immediately before and after this
+  // change, so its diff stays viewable from the Log. Rows written before
+  // version history began may lack them (generate rows always did).
   before?: string;
   after?: string;
   // The stored original this entry describes (see SectionRunSummary).
   runId?: string;
   unresolvedCount?: number;
+  // 'rejected' when the change was rejected; the row stays in the Log.
+  status?: 'rejected';
+  // What a restore brought back: a Log row of this section, or a whole-brief
+  // version.
+  restoredFrom?: { entryId?: string; kind?: SectionAuditKind; at?: number; version?: number };
+  // Set by the API: this row is the version shown now, and whether it can be
+  // restored.
+  current?: boolean;
+  restorable?: boolean;
+}
+
+// A single-section Generate, Edit or Update awaiting Keep or Reject, as the
+// API stores it on the section: `before` is the text before the change.
+export interface PendingReview {
+  runId: string;
+  baseRunId: string;
+  kind: SectionAuditKind;
+  at: number;
+  before: string;
 }
 
 export interface BriefSection {
@@ -145,11 +165,9 @@ export interface BriefSection {
   // but its current content stays in place (rendered greyed-out) and keeps its
   // slot in the global citation numbering.
   revising?: boolean;
-  // The run of the most recent AI edit/update, while it awaits Keep or Reject.
-  // Keep clears it; Reject asks the API to make the previous run current again.
-  pendingRunId?: string;
-  // The kind of the most recent AI op that changed content, for the changes UI.
-  lastChangeKind?: SectionAuditKind;
+  // The change awaiting Keep or Reject, as the API stores it (it survives a
+  // reload). Absent when nothing awaits review.
+  pendingReview?: PendingReview | null;
   // Author instructions for researching this section, kept per section so they
   // survive and are applied by a document-wide "Regenerate all".
   guidance?: string;
@@ -188,6 +206,7 @@ export interface SavedBriefSection {
 export interface BriefSectionRead extends SavedBriefSection {
   id: string;
   audit?: SectionAuditEntry[];
+  pendingReview?: PendingReview | null;
   runs: SectionRunSummary[];
   currentRunId: string | null;
   renumbered: RenumberedSection;
@@ -340,4 +359,38 @@ export interface RemoteBrief {
   shared_with: BriefShareTarget[];
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Whole-brief versions (signed-in briefs; the API writes one per change)
+// ---------------------------------------------------------------------------
+
+export interface BriefVersionItem {
+  number: number;
+  kind: string;
+  section_id: string | null;
+  summary: string;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string;
+  is_current: boolean;
+}
+
+// One section of a version compared with the version before it.
+export interface BriefVersionSection {
+  id: string;
+  title: string;
+  level: number;
+  change: 'added' | 'removed' | 'changed' | 'unchanged';
+  before: string | null;
+  after: string | null;
+  beforeTitle: string | null;
+}
+
+export interface BriefVersionRead extends BriefVersionItem {
+  previous_number: number | null;
+  title: string;
+  sections: BriefVersionSection[];
+  settings: string[];
+  can_restore: boolean;
 }

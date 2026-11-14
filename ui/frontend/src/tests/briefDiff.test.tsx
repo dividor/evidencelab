@@ -31,6 +31,15 @@ describe('diffBlocks', () => {
     expect(changed?.markdown).toContain(MARK_DEL_OPEN);
   });
 
+  test('a rewritten paragraph shows as removed then added, not word by word', () => {
+    const blocks = diffBlocks(
+      'Kept.\n\nGirls enrolment rose sharply in Turkana schools.',
+      'Kept.\n\nResearch on retention found mixed results overall.',
+    );
+    expect(blocks.map((b) => b.type)).toEqual(['same', 'del', 'add']);
+    expect(blocks[1].markdown).toBe('Girls enrolment rose sharply in Turkana schools.');
+  });
+
   test('a paragraph removed with no replacement becomes a del block', () => {
     const blocks = diffBlocks('Kept.\n\nRemoved paragraph.', 'Kept.');
     expect(blocks.some((b) => b.type === 'del' && b.markdown.includes('Removed'))).toBe(true);
