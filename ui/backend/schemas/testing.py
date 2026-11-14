@@ -240,4 +240,33 @@ class BriefCitationCheckDetail(BriefCitationCheckRead):
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
 
 
+class BriefFactCheckMark(BaseModel):
+    """One passage the Fact Checker highlights in an open brief: where it is,
+    what the judge decided and why. ``passage`` is the prose as the check
+    stored it (markers and markdown removed), which the browser locates in
+    the rendered section."""
+
+    passage_id: int
+    section_id: Optional[str] = None
+    section_title: str
+    passage: str
+    verdict: str
+    verdict_label: str
+    explanation: str
+    problems: List[str] = Field(default_factory=list)
+    confidence: Optional[float] = None
+    citations: str
+    quote_not_in_source: bool
+
+
+class BriefFactCheckRead(BaseModel):
+    """What the Fact Checker button needs: the completed check that judged
+    the brief's current passages (``None`` when there is none, so the button
+    stays hidden), the verdicts the reader's group highlights, and the marks."""
+
+    check: Optional[BriefCitationCheckRead] = None
+    highlight_verdicts: List[str]
+    marks: List[BriefFactCheckMark] = Field(default_factory=list)
+
+
 BriefCheckCandidate.model_rebuild()

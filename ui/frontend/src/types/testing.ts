@@ -248,3 +248,30 @@ export interface BriefCitationCheckPassage {
 export interface BriefCitationCheckDetail extends BriefCitationCheck {
   passages: BriefCitationCheckPassage[];
 }
+
+// One passage the Fact Checker highlights in an open brief: where it is,
+// what the judge decided and why. `passage` is the prose as the check stored
+// it (citation markers and markdown removed); the document locates it in the
+// rendered section.
+export interface BriefFactCheckMark {
+  passage_id: number;
+  section_id: string | null;
+  section_title: string;
+  passage: string;
+  verdict: CitationVerdict;
+  verdict_label: string;
+  explanation: string;
+  problems: string[];
+  confidence?: number | null;
+  citations: string;
+  quote_not_in_source: boolean;
+}
+
+// GET /briefs/{id}/fact-check: the completed check that judged the brief's
+// current passages (null when there is none, so the button stays hidden),
+// the verdicts the reader's group highlights, and the marks to paint.
+export interface BriefFactCheckRead {
+  check: BriefCitationCheck | null;
+  highlight_verdicts: CitationVerdict[];
+  marks: BriefFactCheckMark[];
+}

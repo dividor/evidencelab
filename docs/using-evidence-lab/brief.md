@@ -261,3 +261,15 @@ Comments let reviewers respond to a brief in place, which is the usual next step
 Anyone who can see a brief can comment on it, including viewers of a shared brief — that is the point of sharing one for review.
 
 Because a comment is anchored to the **text** you highlighted rather than to a position in the document, it survives ordinary editing and re-flowing. If a section is re-researched and the quoted passage is gone entirely, the comment remains in the rail with its quote, so the discussion is not lost.
+
+---
+
+### 11. Fact Checker
+
+When an administrator has run a [citation check](../admin/evaluation.md#brief-citation-check) on a saved brief, a **Fact Checker** button appears beside **Export to Word**. It is shown only while the check still applies: the check judged exactly the cited passages the brief holds now. Editing, re-researching or updating a section changes those passages, so the button disappears until the brief is checked again.
+
+![Fact Checker highlights in a brief, with the judge's explanation on hover](../images/brief/brief-fact-checker.png)
+
+Click **Fact Checker** to highlight, in place, every cited passage the judge flagged; click it again to hide the highlights. Hover a highlighted passage to read the judge's verdict, the problems it found and its explanation, together with the citation numbers it judged the passage against. The highlights are a reading aid: nothing in the brief changes.
+
+Which verdicts are highlighted is a group setting. By default only passages judged **Unsupported** are shown; an administrator can add **Partially supported**, **Cannot assess** or **Supported** for a group under Administration → Group Settings → Fact Checker (see [User Administration](../admin/user-administration.md#fact-checker)). The judge reads only the stored excerpts, not the whole document, so treat a highlight as a prompt to re-read the source, not as a final verdict.

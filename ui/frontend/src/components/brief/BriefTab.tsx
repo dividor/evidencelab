@@ -30,6 +30,7 @@ import {
   BriefSelectionMenu,
 } from './BriefSelectionMenu';
 import { useBriefAnnotations, UseBriefAnnotationsReturn } from './useBriefAnnotations';
+import { useBriefFactCheck, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import { useBriefComments, UseBriefCommentsReturn } from './useBriefComments';
 import { BriefHistoryModal } from './BriefHistoryModal';
 import { BriefHistoryRail } from './BriefHistoryRail';
@@ -136,6 +137,7 @@ const BriefWorkspace: React.FC<{
   showComments?: boolean;
   onToggleComments?: (show: boolean) => void;
   orphanedThreadIds?: string[];
+  factCheck?: UseBriefFactCheckReturn;
 }> = ({
   brief,
   loggedIn,
@@ -153,6 +155,7 @@ const BriefWorkspace: React.FC<{
   showComments,
   onToggleComments,
   orphanedThreadIds,
+  factCheck,
 }) => {
   // Logged-in layout (Brief Central): the side rail is the sticky Contents
   // panel — history lives on the landing page. Anonymous layout keeps the
@@ -209,6 +212,7 @@ const BriefWorkspace: React.FC<{
           activeThreadId={activeThreadId}
           showComments={showComments}
           onToggleComments={onToggleComments}
+          factCheck={factCheck}
         />
         {comments && showComments !== false && (
           <BriefComments
@@ -324,6 +328,11 @@ export const briefWordExportOptions = (
   fileBaseUrl: API_BASE_URL,
 });
 
+// The server id of the open brief, or null when there is no saved brief for
+// the Fact Checker to ask about (anonymous use, or a brief not yet saved).
+const checkableBriefId = (loggedIn: boolean, id: string | null): string | null =>
+  loggedIn && id ? id : null;
+
 export const BriefTab: React.FC<BriefTabProps> = ({
   dataSource,
   assistantModelConfig,
@@ -358,6 +367,11 @@ export const BriefTab: React.FC<BriefTabProps> = ({
   // Comments on the open brief, plus the selection awaiting a comment body.
   const comments = useBriefComments(brief.currentBriefId, loggedIn);
   const annotations = useBriefAnnotations(brief.sections, comments);
+  // The Fact Checker applies to saved briefs only: the check lives on the server.
+  const factCheck = useBriefFactCheck(
+    checkableBriefId(loggedIn, brief.currentBriefId),
+    brief.contentRevision,
+  );
   const {
     showComments,
     toggleComments,
@@ -529,6 +543,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
           showComments={showComments}
           onToggleComments={toggleComments}
           orphanedThreadIds={orphanedThreadIds}
+          factCheck={factCheck}
         />
       )}
       <BriefAnnotationLayer
