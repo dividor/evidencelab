@@ -5,6 +5,9 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch  # noqa: F811 — patch used as decorator below
 
 import pytest
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 # ---------------------------------------------------------------------------
 # Mock the heavy imports that assistant_graph pulls in transitively.
@@ -35,6 +38,7 @@ sys.modules["ui.backend.services.search"] = _mock_search
 sys.modules["ui.backend.services.search_models"] = _mock_search_models
 
 from ui.backend.services.assistant_graph import (  # noqa: E402
+    ResearchSearchError,
     SearchTracker,
     _build_search_tool,
     _format_search_result,
@@ -190,16 +194,23 @@ class TestSearchTracker:
         assert tracker.per_query[0]["query"] == "query 1"
         assert tracker.per_query[1]["query"] == "query 2"
 
-    def test_handles_search_error(self):
+    def test_search_when_search_fails_then_raises_not_empty_results(self):
         _mock_search_fn.reset_mock()
-        _mock_search_fn.side_effect = Exception("Connection error")
+        cause = Exception("403 Permission 'discoveryengine.rankingConfigs.rank'")
+        _mock_search_fn.side_effect = cause
 
         tracker = SearchTracker()
-        results = tracker.search("bad query")
+        with pytest.raises(ResearchSearchError) as raised:
+            tracker.search("bad query")
 
-        assert results == []
-        assert len(tracker.per_query) == 1
-        assert tracker.per_query[0]["result_count"] == 0
+        assert raised.value.__cause__ is cause
+        # The user sees a plain message: no query, service or permission.
+        assert str(raised.value) == ResearchSearchError.USER_MESSAGE
+        assert "discoveryengine" not in str(raised.value)
+        assert "bad query" not in str(raised.value)
+        # A failed search is not recorded as a search that found nothing.
+        assert tracker.per_query == []
+        _mock_search_fn.side_effect = None
 
     def test_get_sources_returns_all_results_by_index(self):
         _mock_search_fn.reset_mock()
@@ -524,6 +535,15 @@ class TestBuildSearchTool:
         result = tool_fn.invoke("nonexistent topic")
 
         assert "No results found" in result
+
+    def test_tool_when_search_fails_then_raises_not_no_results(self):
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = RuntimeError("reranker unavailable")
+
+        tool_fn = _build_search_tool(SearchTracker())
+        with pytest.raises(ResearchSearchError):
+            tool_fn.invoke("food security")
+        _mock_search_fn.side_effect = None
 
     def test_tool_tracks_via_tracker(self):
         _mock_search_fn.reset_mock()
@@ -1375,3 +1395,73 @@ class TestResearchDataSource:
                     query="q", data_source="uneg"
                 ):
                     pass
+
+
+def _tool_call(name, args):
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": name}])
+
+
+class _ScriptedResearchModel(BaseChatModel):
+    """Plays both deep-research roles, answering by the latest message: the
+    coordinator hands the question to the researcher, the researcher runs one
+    search, and a search result gets the answer the agent would write if a
+    failed search were treated as "no results"."""
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    @property
+    def _llm_type(self) -> str:
+        return "scripted-research"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        last = messages[-1]
+        if isinstance(last, HumanMessage) and last.content == "School meals coverage":
+            reply = _tool_call(
+                "task",
+                {"description": "Research school meals", "subagent_type": "researcher"},
+            )
+        elif isinstance(last, HumanMessage):
+            reply = _tool_call("search_documents", {"query": "school meals"})
+        else:
+            reply = AIMessage(content="There is no information available.")
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+@patch("ui.backend.services.assistant_graph.search_chunks", new=_mock_search_fn)
+class TestResearchWhenSearchFails:
+    """A failed search stops the run with a plain error, through the real
+    deep-research agent (coordinator, researcher sub-agent, search tool)."""
+
+    @pytest.mark.asyncio
+    async def test_deep_research_when_search_fails_then_stream_ends_in_error(self):
+        from ui.backend.services import assistant_service
+        from ui.backend.utils import app_state
+
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = RuntimeError(
+            "403 Permission 'discoveryengine.rankingConfigs.rank' denied"
+        )
+        try:
+            with patch.object(
+                app_state, "validate_data_source", return_value="wfp"
+            ), patch.object(
+                assistant_service, "_get_llm", return_value=_ScriptedResearchModel()
+            ):
+                events = [
+                    e
+                    async for e in stream_research_response(
+                        query="School meals coverage", deep_research=True
+                    )
+                ]
+        finally:
+            _mock_search_fn.side_effect = None
+
+        _mock_search_fn.assert_called_once()
+        assert events[-1] == {
+            "type": "error",
+            "error": ResearchSearchError.USER_MESSAGE,
+        }
+        tokens = [e["token"] for e in events if e["type"] == "token"]
+        assert not any("no information" in t for t in tokens)
+        assert not [e for e in events if e["type"] in ("sources", "done")]

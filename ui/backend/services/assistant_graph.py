@@ -84,6 +84,22 @@ def _spread_across_documents(points: List[Any], limit: int) -> List[Any]:
     return selected
 
 
+class ResearchSearchError(RuntimeError):
+    """A search inside a research run failed, so the run stops.
+
+    Its message is what the user sees: it names no query, service or
+    permission. The failure itself is logged where the search ran.
+    """
+
+    USER_MESSAGE = (
+        "Search failed, so this could not be researched. Try again, or ask "
+        "your administrator to check the search service."
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.USER_MESSAGE)
+
+
 class SearchTracker:
     """Track search calls and accumulate results for source extraction."""
 
@@ -352,8 +368,10 @@ class SearchTracker:
             self._enrich_from_postgres(formatted, self.data_source)
             self._enrich_doc_links(formatted, self.data_source)
         except Exception as exc:
+            # Not "no results": an answer written from a failed search would
+            # say the documents hold no information when nobody looked.
             logger.error("Search failed for query %r: %s", query, exc)
-            formatted = []
+            raise ResearchSearchError() from exc
 
         # Build result cards (title + snippet) for UI display
         result_cards = []

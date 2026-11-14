@@ -201,6 +201,21 @@ const introAuditNote = (headings: number, attempt: number): string | undefined =
   return attempt > 0 ? introRerunNote(attempt) : undefined;
 };
 
+// What a section shows again when its research fails or is not kept. An
+// Update or Edit never cleared its draft; a Generate cleared the text when it
+// started, so a section that had text gets it back (the saved brief still has
+// it); a first research goes back to pending.
+export const failedResearchState = (
+  isRevise: boolean,
+  before: BriefSection,
+): Partial<BriefSection> => {
+  if (isRevise) return { status: 'done', progress: 100, revising: undefined };
+  if (before.status === 'done' && before.content) {
+    return { status: 'done', progress: 100, content: before.content, sources: before.sources };
+  }
+  return { status: 'pending', progress: 0 };
+};
+
 const rerunActivityText = (headings: number, attempt: number): string =>
   `The introduction came back with ${headingCount(headings)}; re-running (${attempt + 1} of ${
     BRIEF_INTRO.heading_retries
@@ -1251,6 +1266,8 @@ export const useBrief = ({
       const attempt = opts?.attempt ?? 0;
       // The current display text, for a revise to work from.
       const priorContent = section.content;
+      // What the section shows again if this research fails.
+      const failed = failedResearchState(isRevise, section);
       // Update: only surface sources newer than the last time this section ran.
       const publishedAfterIso =
         mode === 'update' && section.lastResearchedAt
@@ -1321,9 +1338,9 @@ export const useBrief = ({
           onDone: ({ content, sources, runId }) => {
             // A run that read sources but answered with process narration
             // ("I'll go research that…") instead of the section is a failure —
-            // surface it and keep the section pending rather than storing it.
+            // surface it and put the section back as it was rather than storing it.
             if (!isRevise && isLikelyNonAnswer(content, sources.length, sectionTarget)) {
-              updateSection(id, { status: 'pending', progress: 0 });
+              updateSection(id, failed);
               setError(
                 `The model did not return researched content for “${section.title}” — please try again.`,
               );
@@ -1387,12 +1404,7 @@ export const useBrief = ({
               .catch((e) => {
                 if (signal.aborted) return;
                 // The research is lost unless the API recorded it: say so.
-                updateSection(
-                  id,
-                  isRevise
-                    ? { status: 'done', progress: 100, revising: undefined }
-                    : { status: 'pending', progress: 0 },
-                );
+                updateSection(id, failed);
                 setError(
                   `“${section.title}” was researched but could not be saved: ${
                     e instanceof Error ? e.message : 'the citation service failed'
@@ -1401,25 +1413,12 @@ export const useBrief = ({
               });
           },
           onError: (m) => {
-            // A revise keeps its previous good content; a fresh research reverts.
-            updateSection(
-              id,
-              isRevise
-                ? { status: 'done', progress: 100, revising: undefined }
-                : { status: 'pending', progress: 0 },
-            );
+            updateSection(id, failed);
             setError(m);
           },
         },
       })
-        .catch(() =>
-          updateSection(
-            id,
-            isRevise
-              ? { status: 'done', progress: 100, revising: undefined }
-              : { status: 'pending', progress: 0 },
-          ),
-        )
+        .catch(() => updateSection(id, failed))
         .then(() => postRun)
         .then(() =>
           rerun

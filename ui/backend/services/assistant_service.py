@@ -380,8 +380,8 @@ async def stream_research_response(
     search query as it happens (instead of waiting for the whole
     sub-agent to finish).
     """
-    # Before the agent starts: its search tool catches errors, so a bad source
-    # would otherwise produce an answer written from no evidence.
+    # Before the agent starts, so a bad source fails with its own message
+    # rather than as a failed search part-way through the run.
     from ui.backend.utils.app_state import validate_data_source
 
     data_source = validate_data_source(data_source)
