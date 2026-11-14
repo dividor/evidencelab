@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BriefDiff } from './BriefDiff';
 import { formatWhen, KIND_LABEL } from './BriefSectionAudit';
 import { BriefSection, SectionAuditEntry, SectionAuditKind } from './briefTypes';
@@ -90,15 +90,19 @@ export const SectionVersionView: React.FC<{
 // keep or reject, so for them nothing awaits review.
 export const useSectionChanges = (section: BriefSection, readOnly: boolean) => {
   const [versionEntryId, setVersionEntryId] = useState<string | null>(null);
-  const [hideChanges, setHideChanges] = useState(false);
   const audit = section.audit ?? [];
   const pendingRunId = readOnly ? null : section.pendingReview?.runId ?? null;
-  // A new change awaiting review opens with its tracked changes showing.
+  // A change already awaiting review when the brief opens shows its plain
+  // text, with the review buttons; the tracked changes show for a change made
+  // while the brief is open, or when chosen from the Section History.
+  const [hideChanges, setHideChanges] = useState(true);
+  const seenPendingRunId = useRef(pendingRunId);
   useEffect(() => {
-    if (pendingRunId) {
+    if (pendingRunId && pendingRunId !== seenPendingRunId.current) {
       setHideChanges(false);
       setVersionEntryId(null);
     }
+    seenPendingRunId.current = pendingRunId;
   }, [pendingRunId]);
   // A Log row opens its version; the row of the change awaiting review opens
   // the review itself.

@@ -1,9 +1,9 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ReviewBar, SectionVersionView } from '../components/brief/BriefSectionChanges';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { ReviewBar, SectionVersionView, useSectionChanges } from '../components/brief/BriefSectionChanges';
 import { BriefSectionAudit } from '../components/brief/BriefSectionAudit';
 import { BriefVersionsModal } from '../components/brief/BriefVersionsModal';
-import { SectionAuditEntry } from '../components/brief/briefTypes';
+import { BriefSection, SectionAuditEntry } from '../components/brief/briefTypes';
 import * as versionsApi from '../components/brief/briefVersionsApi';
 
 jest.mock('../config', () => ({ __esModule: true, default: '/api', API_KEY: undefined, USER_MODULE: true }));
@@ -42,6 +42,41 @@ describe('review bar for a change awaiting Keep or Reject', () => {
       <ReviewBar kind="edit" showingChanges={false} onToggle={jest.fn()} onKeep={jest.fn()} onReject={jest.fn()} />,
     );
     expect(screen.getByRole('button', { name: 'Show Changes' })).toBeInTheDocument();
+  });
+});
+
+describe('when a change awaiting review shows its tracked changes', () => {
+  const awaiting = (runId: string | null): BriefSection =>
+    ({
+      id: 's1',
+      title: 'Findings',
+      level: 1,
+      status: 'done',
+      content: 'New words here.',
+      sources: [],
+      audit: [entry({ id: 'a-r1', runId: 'r1' }), entry({ id: 'a-r2', runId: 'r2' })],
+      pendingReview: runId ? { runId, baseRunId: 'r1', kind: 'edit', at: 1, before: 'Old words here.' } : undefined,
+    }) as BriefSection;
+
+  test('a change already awaiting review when the brief opens shows plain text', () => {
+    const { result } = renderHook(() => useSectionChanges(awaiting('r2'), false));
+    expect(result.current.pendingRunId).toBe('r2');
+    expect(result.current.showingChanges).toBe(false);
+  });
+
+  test('a change made while the brief is open shows its tracked changes', () => {
+    const { result, rerender } = renderHook(({ section }) => useSectionChanges(section, false), {
+      initialProps: { section: awaiting(null) },
+    });
+    rerender({ section: awaiting('r2') });
+    expect(result.current.showingChanges).toBe(true);
+  });
+
+  test('choosing the waiting change in Section History shows its tracked changes', () => {
+    const { result } = renderHook(() => useSectionChanges(awaiting('r2'), false));
+    act(() => result.current.openEntry('a-r2'));
+    expect(result.current.showingChanges).toBe(true);
+    expect(result.current.versionEntry).toBeNull();
   });
 });
 

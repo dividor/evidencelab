@@ -82,7 +82,7 @@ After an **AI Regenerate**, **AI Edit** or **AI Get Updates** on one section, th
 - **Keep Edits** accepts the change.
 - **Reject Edits** puts back the text the section had before.
 
-The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
+The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows the new text with these buttons, and **Show Changes** brings the tracked changes back. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
 
 For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
 
