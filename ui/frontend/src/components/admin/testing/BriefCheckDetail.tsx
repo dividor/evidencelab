@@ -100,6 +100,10 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
       help: SUMMARY_HELP.flagged,
     },
     { label: 'Quote not in source', value: stats.quote_not_in_source ?? 0, help: SUMMARY_HELP.quote_not_in_source },
+    // Checks made before the count existed have no key; nothing to show then.
+    ...(stats.reference_lines_skipped !== undefined
+      ? [{ label: 'Reference lines skipped', value: stats.reference_lines_skipped, help: SUMMARY_HELP.reference_lines_skipped }]
+      : []),
     { label: 'Duration', value: formatMs(stats.duration_ms), help: SUMMARY_HELP.duration },
     { label: 'Tokens', value: formatTokens(stats.total_tokens), help: SUMMARY_HELP.tokens },
     { label: 'Cost', value: formatCostUsd(stats.cost_usd), help: SUMMARY_HELP.cost },
@@ -472,7 +476,10 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
           <button
             className="btn-sm"
             onClick={handleExport}
-            disabled={busy || status !== 'completed'}
+            // The workbook holds the judged passages, so a check that stopped
+            // early (failed, or its api copy went away) can still be exported.
+            disabled={busy || isActive(status) || passages.length === 0}
+            title={passages.length === 0 && !isActive(status) ? 'No passages were judged' : undefined}
           >
             Download Excel
           </button>

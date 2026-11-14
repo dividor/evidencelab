@@ -41,6 +41,19 @@ UNRESOLVED_RE = re.compile(r"\[\?(\d+)\]")
 # items) break sentences too — same as SENTENCE_SPLIT_RE in briefHighlights.ts.
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
+# A line that opens with a citation marker is a reference-list entry
+# ("[3] WFP. 2023. Evaluation of …") written into the section, not a claim:
+# in brief prose a marker follows the sentence it supports. Such lines are
+# left out of the check and counted, so the summary can say so.
+REFERENCE_LINE_RE = re.compile(r"^\s*\[\??\d+(?:,\s*\d+)*\]\s")
+
+# Inline markdown the judge and the review table should not see: heading,
+# list and quote prefixes, bold/italic markers and code ticks.
+_MD_LINE_PREFIX_RE = re.compile(r"^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)")
+_MD_STRONG_RE = re.compile(r"\*\*|__")
+_MD_EMPHASIS_RE = re.compile(r"(?<![\w*])[*_](?=\S)|(?<=\S)[*_](?![\w*])")
+_MD_CODE_RE = re.compile(r"`+")
+
 # A leading "-- h1 > h2 -- " line is the chunk's heading breadcrumb.
 SECTION_BREADCRUMB_RE = re.compile(r"^\s*--\s*(.+?)\s*--\s*$")
 
@@ -84,6 +97,35 @@ def strip_citation_markers(text: str) -> str:
     stripped = UNRESOLVED_RE.sub("", CITATION_RE.sub("", text))
     stripped = re.sub(r"[ \t]+([.,;:!?])", r"\1", stripped)
     return re.sub(r"[ \t]{2,}", " ", stripped).strip()
+
+
+def plain_text(markdown: str) -> str:
+    """One sentence of section markdown as prose: heading, list and quote
+    prefixes, bold/italic markers and code ticks removed."""
+    text = _MD_LINE_PREFIX_RE.sub("", markdown)
+    text = _MD_STRONG_RE.sub("", text)
+    text = _MD_EMPHASIS_RE.sub("", text)
+    return _MD_CODE_RE.sub("", text).strip()
+
+
+def _lines(markdown: str) -> List[str]:
+    return markdown.replace("\r\n", "\n").split("\n")
+
+
+def reference_lines(markdown: str) -> List[str]:
+    """The reference-list lines of a section (``REFERENCE_LINE_RE``)."""
+    return [line for line in _lines(markdown) if REFERENCE_LINE_RE.match(line)]
+
+
+def count_reference_lines(markdown: str) -> int:
+    return len(reference_lines(markdown))
+
+
+def drop_reference_lines(markdown: str) -> str:
+    """The section markdown without its reference-list lines."""
+    return "\n".join(
+        line for line in _lines(markdown) if not REFERENCE_LINE_RE.match(line)
+    )
 
 
 def parse_section_breadcrumb(text: str) -> Tuple[Optional[str], str]:
@@ -143,7 +185,9 @@ class CitedPassage:
 
     @property
     def passage_clean(self) -> str:
-        return strip_citation_markers(self.passage)
+        """The passage as prose: markers and inline markdown removed. This is
+        what the judge reads and what the review table shows."""
+        return plain_text(strip_citation_markers(self.passage))
 
     @property
     def dangling(self) -> bool:
@@ -157,6 +201,7 @@ def extract_cited_passages(section: Dict[str, Any]) -> List[CitedPassage]:
     Sources are matched by the ``index`` the markdown refers to. A number
     with no matching source is recorded in ``missing_indices`` rather than
     silently dropped, so dangling citations surface in the review.
+    Reference-list lines (``reference_lines``) are not claims and are left out.
     """
     sources_by_index = {
         src["index"]: src
@@ -164,7 +209,8 @@ def extract_cited_passages(section: Dict[str, Any]) -> List[CitedPassage]:
         if src.get("index") is not None
     }
     passages: List[CitedPassage] = []
-    for sentence in split_sentences(section.get("content") or ""):
+    content = drop_reference_lines(section.get("content") or "")
+    for sentence in split_sentences(content):
         indices = extract_cited_numbers(sentence)
         unresolved = unresolved_numbers(sentence)
         if not indices and not unresolved:

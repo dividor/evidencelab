@@ -41,6 +41,12 @@ from ui.backend.auth.testing_models import (
 )
 from ui.backend.services.citations import render_reference_lines
 from ui.backend.services.evaluation_metrics import compute_summary_stats
+from ui.backend.services.job_liveness import (
+    is_stale,
+    orphan_message,
+    progress_stats,
+    write_while,
+)
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -814,48 +820,96 @@ def _mirror_run_to_experiment(experiment: TestExperiment, run: TestRun) -> None:
     experiment.finished_at = run.finished_at
 
 
+# Several api copies may share the database, so a run owns its rows only
+# while they still say running: every write below is conditional on that
+# (``job_liveness.write_while``), and a run that a cancel or orphan recovery
+# failed meanwhile stops, keeping that record.
+_ACTIVE = (EXPERIMENT_RUNNING, EXPERIMENT_PENDING)
+
+
 async def _fail_run(
     session, experiment: TestExperiment, run: TestRun, message: str
 ) -> None:
-    run.status = EXPERIMENT_FAILED
-    run.finished_at = _utcnow()
-    run.summary_stats = {"error": message[:500]}
-    _mirror_run_to_experiment(experiment, run)
-    await session.commit()
+    """Fail a run (and its experiment) this runner still owns."""
+    run_id, experiment_id = run.id, experiment.id
+    now = _utcnow()
+    error = {"error": message[:500]}
+    await write_while(
+        session,
+        TestRun,
+        run_id,
+        _ACTIVE,
+        status=EXPERIMENT_FAILED,
+        finished_at=now,
+        summary_stats=error,
+    )
+    await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        _ACTIVE,
+        status=EXPERIMENT_FAILED,
+        finished_at=now,
+        summary_stats=error,
+    )
 
 
 async def _mark_failed(session, experiment: TestExperiment, message: str) -> None:
     """Catastrophic-failure path: fail the experiment and any running run."""
+    experiment_id = experiment.id
     # The triggering error may have left the session in a failed transaction;
-    # roll back so these status writes can commit.
+    # roll back so these status writes can commit. The rollback expires the
+    # experiment's attributes, hence the id kept above.
     await session.rollback()
-    experiment = await session.get(TestExperiment, experiment.id) or experiment
+    now = _utcnow()
+    error = {"error": message[:500]}
     await session.execute(
         update(TestRun)
         .where(
-            TestRun.experiment_id == experiment.id,
+            TestRun.experiment_id == experiment_id,
             TestRun.status == EXPERIMENT_RUNNING,
         )
-        .values(
-            status=EXPERIMENT_FAILED,
-            finished_at=_utcnow(),
-            summary_stats={"error": message[:500]},
-        )
+        .values(status=EXPERIMENT_FAILED, finished_at=now, summary_stats=error)
+        .execution_options(synchronize_session=False)
     )
-    experiment.status = EXPERIMENT_FAILED
-    experiment.finished_at = _utcnow()
-    experiment.summary_stats = {"error": message[:500]}
+    await session.execute(
+        update(TestExperiment)
+        .where(
+            TestExperiment.id == experiment_id,
+            TestExperiment.status.in_(list(_ACTIVE)),
+        )
+        .values(status=EXPERIMENT_FAILED, finished_at=now, summary_stats=error)
+        .execution_options(synchronize_session=False)
+    )
     await session.commit()
 
 
 def _progress_stats(completed: int, total: int) -> Dict[str, Any]:
     """A lightweight progress marker stored in a run's ``summary_stats`` while it
-    is in flight, so the polling UI can show "completed of total cases".
+    is in flight, so the polling UI can show "completed of total cases". Its
+    ``at`` stamp is the run's heartbeat (``job_liveness``).
 
     It is replaced by the real aggregate stats (``compute_summary_stats``) once
     the run finishes, so a running run never carries pass/score numbers.
     """
-    return {"progress": {"completed": completed, "total": total}}
+    return progress_stats(completed, total)
+
+
+async def _publish_progress(session, run: TestRun, completed: int, total: int) -> bool:
+    """Store the run's progress, with whatever rows the session holds. False
+    when the run is no longer ours (cancelled, or failed as orphaned by
+    another api copy); the pending rows are then dropped."""
+    run_id = run.id
+    if await write_while(
+        session,
+        TestRun,
+        run_id,
+        (EXPERIMENT_RUNNING,),
+        summary_stats=_progress_stats(completed, total),
+    ):
+        return True
+    logger.info("Test run %s was stopped by another writer", run_id)
+    return False
 
 
 def _active_case_plan(
@@ -894,7 +948,11 @@ def _build_result_row(
 
 
 async def _record_run_usage(
-    experiment: TestExperiment, run: TestRun, dataset: TestDataset, cfg: Dict[str, Any]
+    experiment: TestExperiment,
+    run: TestRun,
+    dataset: TestDataset,
+    cfg: Dict[str, Any],
+    stats: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Mirror a finished run's token totals into a ``user_activity`` row.
 
@@ -913,7 +971,9 @@ async def _record_run_usage(
     from ui.backend.services.usage_recorder import record_llm_usage
 
     try:
-        stats = run.summary_stats or {}
+        # The runner passes the stats it just wrote: the session's copy of the
+        # run is not synchronised with its conditional writes.
+        stats = stats if stats is not None else (run.summary_stats or {})
         usage = {
             "llm_model": cfg.get("summary_model") or cfg.get("judge_model"),
             "prompt_tokens": stats.get("prompt_tokens"),
@@ -946,22 +1006,35 @@ async def _execute(
 ) -> None:
     dataset = await session.get(TestDataset, experiment.dataset_id)
     started = time.time()
+    # A rolled-back write expires the row's attributes, so keep what is needed
+    # afterwards in locals.
+    experiment_id = experiment.id
     # Each execution is a new run; prior runs and their results are preserved.
     # The run is attributed to whoever clicked Run (falling back to the
     # experiment's creator for programmatic invocations) so token usage is
     # charged to the actual spender.
     run = TestRun(
-        experiment_id=experiment.id,
-        run_number=await _next_run_number(session, experiment.id),
+        experiment_id=experiment_id,
+        run_number=await _next_run_number(session, experiment_id),
         status=EXPERIMENT_RUNNING,
         started_at=_utcnow(),
         created_by_user_id=triggered_by_user_id or experiment.created_by_user_id,
     )
     session.add(run)
-    experiment.status = EXPERIMENT_RUNNING
-    experiment.started_at = run.started_at
-    experiment.finished_at = None
-    await session.commit()
+    # The experiment is ours only while it still says pending: a cancel, or
+    # orphan recovery on another api copy, may have failed it meanwhile.
+    claimed = await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        (EXPERIMENT_PENDING,),
+        status=EXPERIMENT_RUNNING,
+        started_at=run.started_at,
+        finished_at=None,
+    )
+    if not claimed:
+        logger.info("Experiment %s is no longer pending; not run", experiment_id)
+        return
     await session.refresh(run)
 
     if dataset is None:
@@ -987,57 +1060,108 @@ async def _execute(
     # the polling UI report how far along the run is instead of a blind "running".
     plan = _active_case_plan(matrix, await _load_cases(session, dataset.id))
     total = len(plan)
-    run.summary_stats = _progress_stats(0, total)
-    await session.commit()
+    if not await _publish_progress(session, run, 0, total):
+        return
 
     case_results: List[Dict[str, Any]] = []
     for completed, (case, assertions) in enumerate(plan, start=1):
         outcome = await evaluate_case(case.input, assertions, runner, judge_factory)
         case_results.append(outcome)
         session.add(_build_result_row(experiment, run, case, outcome))
-        run.summary_stats = _progress_stats(completed, total)
-        await session.commit()
+        if not await _publish_progress(session, run, completed, total):
+            return
 
-    run.summary_stats = compute_summary_stats(
-        case_results, int((time.time() - started) * 1000)
+    stats = compute_summary_stats(case_results, int((time.time() - started) * 1000))
+    now = _utcnow()
+    run_id, run_started = run.id, run.started_at
+    finished = await write_while(
+        session,
+        TestRun,
+        run_id,
+        (EXPERIMENT_RUNNING,),
+        status=EXPERIMENT_COMPLETED,
+        finished_at=now,
+        summary_stats=stats,
     )
-    run.status = EXPERIMENT_COMPLETED
-    run.finished_at = _utcnow()
-    _mirror_run_to_experiment(experiment, run)
-    await session.commit()
-    await _record_run_usage(experiment, run, dataset, config)
+    if not finished:
+        return
+    # The experiment mirrors its latest run for the list/summary view.
+    await write_while(
+        session,
+        TestExperiment,
+        experiment_id,
+        (EXPERIMENT_RUNNING,),
+        status=EXPERIMENT_COMPLETED,
+        started_at=run_started,
+        finished_at=now,
+        summary_stats=stats,
+    )
+    await _record_run_usage(experiment, run, dataset, config, stats)
+
+
+def _stale(row: Any, now: datetime) -> bool:
+    return row.status in _ACTIVE and is_stale(
+        row.summary_stats, row.started_at, row.created_at, now
+    )
+
+
+def _orphan(row: Any, now: datetime) -> None:
+    row.status = EXPERIMENT_FAILED
+    row.finished_at = now
+    row.summary_stats = {
+        "error": orphan_message(row.summary_stats, row.started_at, row.created_at, now)
+    }
+
+
+async def fail_stale_runs(session, now: Optional[datetime] = None) -> int:
+    """Fail the pending/running runs that have shown no progress for
+    ``job_liveness.STALE_AFTER``, and the pending/running experiments that
+    have no live run and are as old: their background task is gone (the api
+    copy running it stopped). A run with a fresh heartbeat belongs to a live
+    runner, possibly on another api copy, and is left alone, as is its
+    experiment. Returns how many rows were failed."""
+    now = now or _utcnow()
+    active = list(_ACTIVE)
+    runs = (
+        (await session.execute(select(TestRun).where(TestRun.status.in_(active))))
+        .scalars()
+        .all()
+    )
+    stale_runs = [run for run in runs if _stale(run, now)]
+    live = {run.experiment_id for run in runs if run not in stale_runs}
+    experiments = (
+        (
+            await session.execute(
+                select(TestExperiment).where(TestExperiment.status.in_(active))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stale_experiments = [
+        experiment
+        for experiment in experiments
+        if experiment.id not in live and _stale(experiment, now)
+    ]
+    for row in [*stale_runs, *stale_experiments]:
+        _orphan(row, now)
+    if stale_runs or stale_experiments:
+        await session.commit()
+    return len(stale_runs) + len(stale_experiments)
 
 
 async def recover_orphaned_runs(session_factory=None) -> None:
-    """Fail any runs/experiments still marked running/pending.
-
-    Runs execute as in-process background tasks that do NOT survive an api
-    restart (deploy, crash, OOM). On startup any such row is therefore orphaned
-    — mark it failed so the UI never shows a permanently "running" run.
-    """
+    """At api start, fail the runs and experiments whose task is gone
+    (``fail_stale_runs``). Not every running one: another api copy may be
+    running it."""
     factory = session_factory or async_session_factory
-    message = "api restarted mid-run (orphaned background task)"
-    active = [EXPERIMENT_RUNNING, EXPERIMENT_PENDING]
     try:
         async with factory() as session:
-            result = await session.execute(
-                update(TestRun)
-                .where(TestRun.status.in_(active))
-                .values(
-                    status=EXPERIMENT_FAILED,
-                    finished_at=_utcnow(),
-                    summary_stats={"error": message},
-                )
-            )
-            await session.execute(
-                update(TestExperiment)
-                .where(TestExperiment.status.in_(active))
-                .values(status=EXPERIMENT_FAILED)
-            )
-            await session.commit()
-            recovered = getattr(result, "rowcount", 0) or 0
+            recovered = await fail_stale_runs(session)
             if recovered:
-                logger.info("Recovered %s orphaned test run(s)", recovered)
+                logger.info(
+                    "Recovered %s orphaned test run(s)/experiment(s)", recovered
+                )
     except Exception:
         logger.exception("Failed to recover orphaned test runs")
 

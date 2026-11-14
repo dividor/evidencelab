@@ -15,6 +15,9 @@ const TS = '2026-09-24T10:00:00Z';
 const KENYA = 'Kenya evaluation';
 const BRIEF_TITLE = 'School feeding';
 const GIRLS = 'Girls benefited most.';
+const EXPORT = 'Download Excel';
+const CHECKS_PATH = 'brief-checks';
+const SKIPPED_TILE = 'Reference lines skipped';
 
 const check = {
   id: 'chk1',
@@ -163,13 +166,15 @@ describe('BriefCheckDetail', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Download Excel' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: EXPORT })).toBeEnabled();
+    // A check made before the count existed shows no tile for it.
+    expect(screen.queryByText(SKIPPED_TILE)).toBeNull();
   });
 
   test('a running check shows progress and disables export', async () => {
     mockedAxios.get.mockImplementation((url: string) =>
       Promise.resolve({
-        data: url.includes('brief-checks')
+        data: url.includes(CHECKS_PATH)
           ? { ...check, status: 'running', summary_stats: { progress: { completed: 1, total: 3 } }, passages: [passages[0]] }
           : [],
       }),
@@ -177,7 +182,49 @@ describe('BriefCheckDetail', () => {
     render(<BriefCheckDetail check={{ ...check, status: 'running' } as never} dataSource="wfp" onBack={jest.fn()} />);
     await waitFor(() => expect(screen.getByText('1 of 3 passages judged')).toBeInTheDocument());
     expect(within(screen.getByRole('status')).getByText('33%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Download Excel' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: EXPORT })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+  });
+
+  test('a check that stopped early says why and still exports the passages it judged', async () => {
+    const reason = 'no progress for 20 min: the api copy running it stopped (orphaned task)';
+    mockedAxios.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes(CHECKS_PATH)
+          ? { ...check, status: 'failed', summary_stats: { error: reason }, passages: [passages[0]] }
+          : [],
+      }),
+    );
+    render(<BriefCheckDetail check={{ ...check, status: 'failed' } as never} dataSource="wfp" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(reason)).toBeInTheDocument());
+    expect(screen.getByText('Showing 1 of 1 passages.', { exact: false })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: EXPORT })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+  });
+
+  test('a failed check without passages has nothing to export', async () => {
+    mockedAxios.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes(CHECKS_PATH) ? { ...check, status: 'failed', summary_stats: {}, passages: [] } : [],
+      }),
+    );
+    render(<BriefCheckDetail check={{ ...check, status: 'failed' } as never} dataSource="wfp" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText('The check failed.')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: EXPORT })).toBeDisabled();
+  });
+
+  test('the summary counts the reference lines the check skipped', async () => {
+    mockedAxios.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes(CHECKS_PATH)
+          ? { ...check, summary_stats: { ...check.summary_stats, reference_lines_skipped: 30 }, passages }
+          : [],
+      }),
+    );
+    render(<BriefCheckDetail check={check as never} dataSource="wfp" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText(SKIPPED_TILE)).toBeInTheDocument());
+    const tile = screen.getByText(SKIPPED_TILE).closest('div') as HTMLElement;
+    expect(tile).toHaveTextContent('30');
+    expect(tile).toHaveAttribute('title', expect.stringContaining('not claims'));
   });
 });
