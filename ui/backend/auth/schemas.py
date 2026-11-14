@@ -794,6 +794,8 @@ class BriefRead(BaseModel):
     owner_name: Optional[str] = None
     can_edit: bool = True
     shared_with: List[BriefShareTarget] = []
+    # Number of whole-brief versions, for the Document History link.
+    version_count: int = 0
     created_at: datetime
     updated_at: datetime
 

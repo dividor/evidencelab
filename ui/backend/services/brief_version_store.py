@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -227,6 +227,16 @@ async def _author_names(session: AsyncSession, ids) -> Dict[Any, str]:
         user.id: (user.full_name or user.email)
         for user in result.scalars().unique().all()
     }
+
+
+async def count_versions(session: AsyncSession, brief_id) -> int:
+    """How many versions a brief has, shown on its Document History link."""
+    result = await session.execute(
+        select(func.count())
+        .select_from(BriefVersion)
+        .where(BriefVersion.brief_id == brief_id)
+    )
+    return int(result.scalar_one())
 
 
 async def list_versions(session: AsyncSession, brief_id) -> List[Dict[str, Any]]:

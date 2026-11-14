@@ -74,7 +74,7 @@ For each completed section you can:
 - **AI Regenerate** — re-run the research from scratch, optionally with new guidance, a different voice or a different length.
 - **AI Edit** — give an instruction (for example *make the viewpoint relate more to domestic policy*) and the section is revised to it, keeping its current text and citations rather than starting again.
 - **AI Get Updates** — search the library for sources published since the section was last researched and fold any new findings in, with an optional focus.
-- **Section History** — every change to the section: every generation, edit, update, manual edit and restore, with the question or instruction used. Click a row to see that version of the section compared with the version before it, and **Restore this section version** to bring it back (see [Section history](#section-history) below).
+- **Section History** — every change to the section: every generation, edit, update, manual edit and restore, with the question or instruction used. Click a row to see that version of the section compared with the version before it, and **Restore this version** to bring it back (see [Section history](#section-history) below).
 
 After an **AI Regenerate**, **AI Edit** or **AI Get Updates** on one section, the section shows its changes like tracked changes in Word: removed text struck through in red, new text in green. Three buttons sit above it:
 
@@ -82,7 +82,7 @@ After an **AI Regenerate**, **AI Edit** or **AI Get Updates** on one section, th
 - **Keep Edits** accepts the change.
 - **Reject Edits** puts back the text the section had before.
 
-The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows the new text with these buttons, and **Show Changes** brings the tracked changes back. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
+The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
 
 For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
 
@@ -115,7 +115,7 @@ The numbering is computed and stored by the server when a section is researched,
 
 #### Section history
 
-Each section's **Section History** lists every change to the section, newest first. The row marked *current* is the version on screen. Click any row to see that version compared with the one before it; **Restore this section version** brings it back as a new *Restored* row, so nothing in the history is lost and a restore can itself be undone. Generation rows recorded before version history was added (Evidence Lab v1.6.6) list the run but cannot be opened, because their text was not kept; older edit and update rows can.
+Each section's **Section History** lists every change to the section, newest first. The row marked *current* is the version on screen. Click any row to see that version compared with the one before it; **Restore this version** brings it back as a new *Restored* row, so nothing in the history is lost and a restore can itself be undone. Generation rows recorded before version history was added (Evidence Lab v1.6.6) list the run but cannot be opened, because their text was not kept; older edit and update rows can.
 
 Section History is stored with the brief on the server, so it is the same in every browser and for everyone the brief is shared with. People the brief is shared with can open it and view old versions but not restore them. Signed out, a brief lives only in your browser and has no Section History.
 
@@ -125,7 +125,7 @@ The **Original** link on a run opens the agent's output exactly as it was return
 
 **Document History**, beside the brief title, lists every version of the whole brief: each research run, edit, rejected change, restore, and change to the headings or settings, with who made it and when. Saves made while typing (renaming headings, editing text by hand, changing settings) by the same person within five minutes are merged into one version, so the list is not flooded with keystrokes.
 
-Click a version to see the whole brief as it was then, compared with the version before it: changed text is struck out in red or added in green, new sections are marked *added* and removed sections *removed*. **Restore whole brief to this version** (owner only) puts back that version's headings, settings and section text. The restore is itself a new version, each restored section gets a *Restored* row in its own Section History, and comments are kept as they are.
+Click a version to see the whole brief as it was then, compared with the version before it: changed text is struck out in red or added in green, new sections are marked *added* and removed sections *removed*. **Restore this version** (owner only) puts back that version's headings, settings and section text. The restore is itself a new version, each restored section gets a *Restored* row in its own Section History, and comments are kept as they are.
 
 Versions are written by the server with every change, so they never depend on the browser. Administrators can change the merging window with `application.brief.versions.merge_minutes` in `config.json` (5 if left out; 0 records every save as its own version).
 

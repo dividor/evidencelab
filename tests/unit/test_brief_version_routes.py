@@ -116,6 +116,7 @@ class Session:
                 unique=lambda: SimpleNamespace(all=lambda: rows),
             ),
             all=lambda: rows,
+            scalar_one=lambda: len(rows),
         )
 
     async def get(self, model, key):
@@ -169,6 +170,9 @@ class TestVersionsWrittenBySaves:
         ]
         assert session.versions[1].summary == "Regenerated “A”"
         assert session.versions[2].summary == "Rejected the changes to “A”"
+        # Every brief the API returns says how many versions it has.
+        read = await brief_central.get_brief(brief.id, request(), owner, session)
+        assert read.version_count == 3
         # The first version keeps the time the brief was last saved before.
         assert session.versions[0].created_at == NOW
         read = await run(session, brief, owner, "Three [1].", review=True)

@@ -339,6 +339,8 @@ export interface BriefContentRead extends Omit<SavedBrief, 'sections'> {
   references: BriefReference[];
   referenceGroups: BriefReferenceGroup[];
   renumberedAt?: number;
+  // Whole-brief versions the API holds (signed-in briefs only).
+  versionCount?: number;
 }
 
 // The current citation format; a saved brief carries it, and the API converts
@@ -357,6 +359,7 @@ export interface RemoteBrief {
   owner_name: string | null;
   can_edit: boolean;
   shared_with: BriefShareTarget[];
+  version_count: number;
   created_at: string;
   updated_at: string;
 }

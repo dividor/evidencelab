@@ -133,7 +133,9 @@ class FakeSession:
         else:
             rows = []
         return SimpleNamespace(
-            scalars=lambda: FakeScalars(rows), all=lambda: list(rows)
+            scalars=lambda: FakeScalars(rows),
+            all=lambda: list(rows),
+            scalar_one=lambda: len(rows),
         )
 
     async def get(self, model, key):

@@ -408,6 +408,8 @@ export const useBrief = ({
   const [referenceGroups, setReferenceGroups] = useState<BriefReferenceGroup[]>([]);
   // Sources registered in the brief (every record the agent returned).
   const [sourceCount, setSourceCount] = useState(0);
+  // How many whole-brief versions the API holds, for the Document History link.
+  const [versionCount, setVersionCount] = useState(0);
   // Where the Word export's links point: the source documents (default) or
   // their copies in Evidence Lab.
   const [wordLinkTarget, setWordLinkTarget] = useState<LinkTarget>('source');
@@ -620,6 +622,7 @@ export const useBrief = ({
     setReferenceGroups(read.referenceGroups || []);
     setReferenceGroupingState(read.referenceGrouping || 'passage');
     setSourceCount(read.sourceCount || 0);
+    if (read.versionCount !== undefined) setVersionCount(read.versionCount);
   }, []);
 
   // Store the highlights the browser computed on the brief's source list.
@@ -1787,6 +1790,7 @@ export const useBrief = ({
       setReferenceGroups(entry.referenceGroups || []);
       setReferenceGroupingState(entry.referenceGrouping || 'passage');
       setSourceCount(entry.sourceCount || 0);
+      setVersionCount(entry.versionCount ?? 0);
       // Record the brief as opened, so the autosave sends nothing until
       // something actually changes (opening never writes a brief back).
       lastSavedSigRef.current.set(
@@ -2069,6 +2073,7 @@ export const useBrief = ({
     doneCount,
     totalProgress,
     totalSources,
+    versionCount,
     totalWords,
     targetWords,
     briefVoiceId,

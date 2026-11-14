@@ -103,8 +103,10 @@ const VersionDetail: React.FC<{
           Version {detail.number}
           {detail.is_current && <span className="brief-version-current">current</span>}
         </div>
+        <div className="brief-modal-sub">{detail.summary}</div>
         <div className="brief-modal-sub">
-          {detail.summary} · {detail.author_name || 'Unknown'} · {when(detail.updated_at)}
+          {detail.author_name || 'Unknown'} ·{' '}
+          <span className="brief-version-when">{when(detail.updated_at)}</span>
         </div>
         <div className="brief-modal-sub">
           {detail.previous_number
@@ -114,7 +116,7 @@ const VersionDetail: React.FC<{
       </div>
       {detail.can_restore && (
         <button className="brief-btn brief-btn-primary" onClick={onRestore} disabled={restoring}>
-          {restoring ? 'Restoring…' : 'Restore whole brief to this version'}
+          {restoring ? 'Restoring…' : 'Restore this version'}
         </button>
       )}
     </div>

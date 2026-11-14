@@ -46,7 +46,11 @@ from ui.backend.services.brief_sharing import (
     shared_with,
     user_group_ids,
 )
-from ui.backend.services.brief_version_store import VersionChange, record_version
+from ui.backend.services.brief_version_store import (
+    VersionChange,
+    count_versions,
+    record_version,
+)
 from ui.backend.services.brief_versions import KIND_COPIED, KIND_CREATED
 from ui.backend.utils.app_state import validate_data_source
 
@@ -242,6 +246,7 @@ async def _to_brief_read(
             if can_edit
             else []
         ),
+        version_count=await count_versions(session, brief.id),
         created_at=brief.created_at,
         updated_at=brief.updated_at,
     )

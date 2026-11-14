@@ -1613,6 +1613,10 @@
   padding-bottom: 6px;
   border-bottom: 1px solid var(--brand-border-light);
 }
+/* The review buttons over a section, on the right. */
+.brief-review-bar {
+  justify-content: flex-end;
+}
 .brief-diff-actions {
   display: inline-flex;
   align-items: center;
@@ -3519,6 +3523,10 @@
 }
 .brief-version-detail-head .brief-btn {
   flex: none;
+}
+/* A date such as "Nov 13 · 11:33 PM" never breaks across lines. */
+.brief-version-when {
+  white-space: nowrap;
 }
 .brief-version-detail-title {
   font-family: var(--font-heading);

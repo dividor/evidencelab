@@ -5,6 +5,8 @@ import { BriefSectionAudit } from '../components/brief/BriefSectionAudit';
 import { BriefVersionsModal } from '../components/brief/BriefVersionsModal';
 import { BriefSection, SectionAuditEntry } from '../components/brief/briefTypes';
 import * as versionsApi from '../components/brief/briefVersionsApi';
+import { remoteToRead } from '../components/brief/briefRemote';
+import type { RemoteBrief } from '../components/brief/briefTypes';
 
 jest.mock('../config', () => ({ __esModule: true, default: '/api', API_KEY: undefined, USER_MODULE: true }));
 jest.mock('../components/brief/briefVersionsApi');
@@ -28,7 +30,7 @@ describe('review bar for a change awaiting Keep or Reject', () => {
     render(
       <ReviewBar kind="generate" showingChanges onToggle={onToggle} onKeep={onKeep} onReject={onReject} />,
     );
-    expect(screen.getByText('Changes from the regeneration')).toBeInTheDocument();
+    expect(screen.queryByText(/Changes from the/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hide Changes' }));
     fireEvent.click(screen.getByRole('button', { name: 'Keep Edits' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reject Edits' }));
@@ -58,9 +60,10 @@ describe('when a change awaiting review shows its tracked changes', () => {
       pendingReview: runId ? { runId, baseRunId: 'r1', kind: 'edit', at: 1, before: 'Old words here.' } : undefined,
     }) as BriefSection;
 
-  test('a change already awaiting review when the brief opens shows plain text', () => {
+  test('a change already awaiting review when the brief opens shows plain text, no review', () => {
     const { result } = renderHook(() => useSectionChanges(awaiting('r2'), false));
     expect(result.current.pendingRunId).toBe('r2');
+    expect(result.current.reviewOpen).toBe(false);
     expect(result.current.showingChanges).toBe(false);
   });
 
@@ -70,12 +73,14 @@ describe('when a change awaiting review shows its tracked changes', () => {
     });
     rerender({ section: awaiting('r2') });
     expect(result.current.showingChanges).toBe(true);
+    expect(result.current.reviewOpen).toBe(true);
   });
 
   test('choosing the waiting change in Section History shows its tracked changes', () => {
     const { result } = renderHook(() => useSectionChanges(awaiting('r2'), false));
     act(() => result.current.openEntry('a-r2'));
     expect(result.current.showingChanges).toBe(true);
+    expect(result.current.reviewOpen).toBe(true);
     expect(result.current.versionEntry).toBeNull();
   });
 });
@@ -89,14 +94,14 @@ describe('an earlier section version opened from the Log', () => {
     expect(container.querySelector('del')).toHaveTextContent('Old');
     expect(container.querySelector('ins')).toHaveTextContent('New');
     const buttons = screen.getAllByRole('button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['Restore this section version', '×']);
-    fireEvent.click(screen.getByRole('button', { name: 'Restore this section version' }));
+    expect(buttons.map((b) => b.textContent)).toEqual(['Restore this version', '×']);
+    fireEvent.click(screen.getByRole('button', { name: 'Restore this version' }));
     expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
   test('a viewer or the current version gets no restore button', () => {
     render(<SectionVersionView entry={entry({ current: true })} canRestore={false} onRestore={jest.fn()} onClose={jest.fn()} />);
-    expect(screen.queryByText('Restore this section version')).not.toBeInTheDocument();
+    expect(screen.queryByText('Restore this version')).not.toBeInTheDocument();
     expect(screen.getByText(/current version/)).toBeInTheDocument();
   });
 });
@@ -185,9 +190,9 @@ describe('brief log (whole-brief versions)', () => {
     expect(screen.getByText('Document History')).toBeInTheDocument();
     expect(container.querySelector('.brief-version-section-removed')).toHaveTextContent('Gone');
     // The current version cannot be restored.
-    expect(screen.queryByText('Restore whole brief to this version')).not.toBeInTheDocument();
+    expect(screen.queryByText('Restore this version')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /v1/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restore whole brief to this version' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore this version' }));
     await waitFor(() => expect(onRestore).toHaveBeenCalledWith(1));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
@@ -195,5 +200,19 @@ describe('brief log (whole-brief versions)', () => {
   test('an unsaved brief explains that its log starts with the first save', () => {
     render(<BriefVersionsModal briefId={null} onRestore={jest.fn()} onClose={jest.fn()} />);
     expect(screen.getByText(/its log starts with the first save/)).toBeInTheDocument();
+  });
+});
+
+describe('Document History count', () => {
+  test('the version count the API returns travels with the brief', () => {
+    const remote = {
+      id: 'b1',
+      title: 'Brief',
+      query: null,
+      voice_profile_id: null,
+      version_count: 23,
+      content: { sections: [], references: [], referenceGroups: [], referenceGrouping: 'passage' },
+    } as unknown as RemoteBrief;
+    expect(remoteToRead(remote).versionCount).toBe(23);
   });
 });

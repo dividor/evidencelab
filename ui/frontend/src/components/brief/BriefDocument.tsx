@@ -324,7 +324,10 @@ const SectionDoneBody: React.FC<{
   // A Log row opened to view that version, or null.
   versionEntry: SectionAuditEntry | null;
   onCloseVersion: () => void;
-  // Whether a change awaiting review is shown as tracked changes.
+  // Whether a change awaiting review has its review open (made while the
+  // brief is open, or chosen from the Section History), and whether it is
+  // shown as tracked changes.
+  reviewOpen: boolean;
   showingChanges: boolean;
   onToggleChanges: () => void;
   onSourceClick: (source: SourceReference) => void;
@@ -339,6 +342,7 @@ const SectionDoneBody: React.FC<{
   readOnly,
   versionEntry,
   onCloseVersion,
+  reviewOpen,
   showingChanges,
   onToggleChanges,
   onSourceClick,
@@ -350,8 +354,9 @@ const SectionDoneBody: React.FC<{
   // Rendered exactly as the API returned them: the renumbered text and the
   // display sources behind its numbers.
   const { content, sources } = section;
-  // Only the owner can keep or reject; a viewer sees the text as it stands.
-  const review = readOnly ? null : (section.pendingReview ?? null);
+  // Only the owner can keep or reject, once the review is open; otherwise the
+  // section shows the text as it stands.
+  const review = readOnly || !reviewOpen ? null : (section.pendingReview ?? null);
   const proseRef = useRef<HTMLDivElement>(null);
 
   // Paint commented passages after the markdown renders. The marks live in the
@@ -655,6 +660,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           readOnly={readOnly}
           versionEntry={changes.versionEntry}
           onCloseVersion={changes.closeVersion}
+          reviewOpen={changes.reviewOpen}
           showingChanges={changes.showingChanges}
           onToggleChanges={changes.toggleChanges}
           onSourceClick={onSourceClick}
@@ -1028,7 +1034,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
               onClick={() => setVersionsOpen(true)}
               title="Every version of this brief, with what changed in each"
             >
-              Document History
+              Document History{brief.versionCount ? ` (${brief.versionCount})` : ''}
             </button>
           )}
         </div>

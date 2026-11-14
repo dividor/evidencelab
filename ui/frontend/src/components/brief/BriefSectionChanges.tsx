@@ -16,8 +16,8 @@ const CHANGE_NOUN: Record<SectionAuditKind, string> = {
   restore: 'restore',
 };
 
-// The bar over a section whose single-section Generate, Edit or Update awaits
-// review: show or hide the tracked changes, keep them or reject them.
+// The buttons over a section whose single-section Generate, Edit or Update
+// awaits review: show or hide the tracked changes, keep them or reject them.
 export const ReviewBar: React.FC<{
   kind: SectionAuditKind;
   showingChanges: boolean;
@@ -25,13 +25,16 @@ export const ReviewBar: React.FC<{
   onKeep: () => void;
   onReject: () => void;
 }> = ({ kind, showingChanges, onToggle, onKeep, onReject }) => (
-  <div className="brief-diff-head">
-    <span title="Compared with the previous version">Changes from the {CHANGE_NOUN[kind]}</span>
+  <div className="brief-diff-head brief-review-bar">
     <span className="brief-diff-actions">
       <button
         className="brief-diff-dismiss brief-diff-hide"
         onClick={onToggle}
-        title={showingChanges ? 'Show just the new text' : 'Show the tracked changes'}
+        title={
+          showingChanges
+            ? 'Show just the new text'
+            : `Show the tracked changes from the ${CHANGE_NOUN[kind]}`
+        }
       >
         {showingChanges ? 'Hide Changes' : 'Show Changes'}
       </button>
@@ -68,7 +71,7 @@ export const SectionVersionView: React.FC<{
       <span className="brief-diff-actions">
         {canRestore && (
           <button className="brief-diff-dismiss brief-diff-keep" onClick={onRestore}>
-            Restore this section version
+            Restore this version
           </button>
         )}
         <button
@@ -92,13 +95,20 @@ export const useSectionChanges = (section: BriefSection, readOnly: boolean) => {
   const [versionEntryId, setVersionEntryId] = useState<string | null>(null);
   const audit = section.audit ?? [];
   const pendingRunId = readOnly ? null : section.pendingReview?.runId ?? null;
-  // A change already awaiting review when the brief opens shows its plain
-  // text, with the review buttons; the tracked changes show for a change made
-  // while the brief is open, or when chosen from the Section History.
+  // A change already awaiting review when the brief opens shows as plain
+  // text, with no review buttons. The review (tracked changes, Keep and
+  // Reject) opens for a change made while the brief is open, or when the
+  // change is chosen from the Section History.
   const [hideChanges, setHideChanges] = useState(true);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const openReview = (): void => {
+    setReviewOpen(true);
+    setHideChanges(false);
+  };
   const seenPendingRunId = useRef(pendingRunId);
   useEffect(() => {
     if (pendingRunId && pendingRunId !== seenPendingRunId.current) {
+      setReviewOpen(true);
       setHideChanges(false);
       setVersionEntryId(null);
     }
@@ -110,13 +120,14 @@ export const useSectionChanges = (section: BriefSection, readOnly: boolean) => {
     const entry = audit.find((e) => e.id === entryId);
     const isPending = !!pendingRunId && entry?.runId === pendingRunId;
     setVersionEntryId(isPending ? null : entryId);
-    if (isPending) setHideChanges(false);
+    if (isPending) openReview();
   };
   return {
     versionEntry: versionEntryId ? audit.find((e) => e.id === versionEntryId) ?? null : null,
     closeVersion: () => setVersionEntryId(null),
     showingChanges: !hideChanges,
     toggleChanges: () => setHideChanges((v) => !v),
+    reviewOpen,
     pendingRunId,
     openEntry,
   };
