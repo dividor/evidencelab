@@ -19,11 +19,13 @@ from ui.backend.services.brief_citation_model import (
     find_section,
     is_visible,
     require_current_format,
+    run_body,
 )
 from ui.backend.services.brief_citation_runs import (
     _assign_numbers,
     _section_display_numbers,
 )
+from ui.backend.services.brief_section_history import annotate_audit
 
 
 def _display_source(
@@ -71,7 +73,7 @@ def _expand_section_sources(
 def _run_summary(run: Dict[str, Any]) -> Dict[str, Any]:
     summary = {key: run.get(key) for key in RUN_SUMMARY_FIELDS if key in run}
     summary["sourceCount"] = len(run.get("sources") or [])
-    summary["citedCount"] = len(cited_numbers_in_order(run.get("content") or ""))
+    summary["citedCount"] = len(cited_numbers_in_order(run_body(run)))
     return summary
 
 
@@ -113,6 +115,7 @@ def expand_for_read(content: Dict[str, Any]) -> Dict[str, Any]:
     for section in content.get("sections") or []:
         read = {k: copy.deepcopy(v) for k, v in section.items() if k != "runs"}
         read["runs"] = [_run_summary(run) for run in section.get("runs") or []]
+        read["audit"] = annotate_audit(content, section)
         read["renumbered"] = {
             **copy.deepcopy(section.get("renumbered") or {}),
             "sources": _expand_section_sources(section, sources_by_id),
