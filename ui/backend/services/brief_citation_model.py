@@ -17,7 +17,12 @@ GROUPINGS = ("passage", "document-multiple", "document-single")
 GROUPING_PASSAGE, GROUPING_DOC_MULTIPLE, GROUPING_DOC_SINGLE = GROUPINGS
 
 
-RUN_MODES = ("generate", "edit", "update", "condense", "manual")
+RUN_MODES = ("generate", "edit", "update", "condense", "manual", "restore")
+
+
+# The run modes a browser may record; ``restore`` is written only by the API
+# (restoring an earlier version of a section).
+CLIENT_RUN_MODES = RUN_MODES[:-1]
 
 
 RUN_CURRENT = "current"
@@ -27,6 +32,10 @@ RUN_SUPERSEDED = "superseded"
 
 
 RUN_REJECTED = "rejected"
+
+
+# A Log entry whose change was rejected keeps its row, marked with this status.
+AUDIT_REJECTED = "rejected"
 
 
 SOURCES_EXACT = "exact"

@@ -649,7 +649,6 @@ class BriefUpdate(BaseModel):
         return _validate_research_jsonb(v)
 
 
-BRIEF_RUN_MODES = ("generate", "edit", "update", "condense", "manual")
 BRIEF_GROUPINGS = ("passage", "document-multiple", "document-single")
 # A section's markdown; the longest stored section is a few thousand words.
 BRIEF_RUN_CONTENT_MAX_CHARS = 200_000
@@ -675,6 +674,9 @@ class BriefRunCreate(BaseModel):
     question: Optional[str] = Field(None, max_length=5000)
     instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
     note: Optional[str] = Field(None, max_length=2000)
+    # A single-section Generate, Edit or Update: the change waits for Keep or
+    # Reject (whole-brief runs leave this false).
+    review: bool = False
 
     @field_validator("sources")
     @classmethod
@@ -694,6 +696,7 @@ class BriefRunCreate(BaseModel):
             ("question", self.question),
             ("instruction", self.instruction),
             ("note", self.note),
+            ("review", self.review),
         ):
             if value:
                 run[key] = value
@@ -791,10 +794,55 @@ class BriefRead(BaseModel):
     owner_name: Optional[str] = None
     can_edit: bool = True
     shared_with: List[BriefShareTarget] = []
+    # Number of whole-brief versions, for the Document History link.
+    version_count: int = 0
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BriefVersionItem(BaseModel):
+    """One row of a brief's version Log (no content)."""
+
+    number: int
+    kind: str
+    section_id: Optional[str] = None
+    summary: str
+    author_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_current: bool
+
+
+class BriefVersionSection(BaseModel):
+    """One section of a version compared with the version before it: its
+    text as readers saw it before and after, and what happened to it."""
+
+    id: str
+    title: str
+    level: int
+    change: Literal["added", "removed", "changed", "unchanged"]
+    before: Optional[str] = None
+    after: Optional[str] = None
+    beforeTitle: Optional[str] = None
+
+
+class BriefVersionRead(BaseModel):
+    """One version of a brief, compared with the version before it."""
+
+    number: int
+    kind: str
+    summary: str
+    author_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_current: bool
+    previous_number: Optional[int] = None
+    title: str
+    sections: List[BriefVersionSection]
+    settings: List[str]
+    can_restore: bool
 
 
 class BriefListItem(BaseModel):

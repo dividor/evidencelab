@@ -39,9 +39,11 @@ from typing import Any, Dict, Optional
 
 from ui.backend.services.brief_citation_model import (
     ADJACENT_DUPLICATE_RE,
+    AUDIT_REJECTED,
     BRIEF_SETTING_FIELDS,
     CITATION_RE,
     CITATIONS_VERSION,
+    CLIENT_RUN_MODES,
     DISPLAY_FIELDS,
     FILLABLE_FIELDS,
     GROUPING_DOC_MULTIPLE,
@@ -90,15 +92,24 @@ from ui.backend.services.brief_citation_runs import (
     display_numbering,
     record_run,
     register_sources,
-    reject_run,
     renumber,
+    section_display_text,
     set_grouping,
     set_highlights,
 )
+from ui.backend.services.brief_section_history import (
+    annotate_audit,
+    current_entry_id,
+    keep_review,
+    reject_run,
+    restorable_text,
+    restore_section_version,
+)
 
-OP_RUN, OP_REJECT, OP_GROUPING, OP_STRUCTURE, OP_HIGHLIGHTS, OP_READ = (
+OP_RUN, OP_REJECT, OP_KEEP, OP_GROUPING, OP_STRUCTURE, OP_HIGHLIGHTS, OP_READ = (
     "run",
     "reject",
+    "keep",
     "grouping",
     "structure",
     "highlights",
@@ -114,9 +125,13 @@ def apply_op(
     ``read`` changes nothing: it only produces the read model."""
     kind = op.get("type")
     if kind == OP_RUN:
+        if (op["run"] or {}).get("mode") not in CLIENT_RUN_MODES:
+            raise BriefCitationError(f"Unknown run mode: {op['run'].get('mode')!r}")
         return record_run(content, op["sectionId"], op["run"], now_ms)
     if kind == OP_REJECT:
         return reject_run(content, op["sectionId"], op["runId"], now_ms)
+    if kind == OP_KEEP:
+        return keep_review(content, op["sectionId"], op["runId"])
     if kind == OP_GROUPING:
         return set_grouping(content, op["grouping"], now_ms)
     if kind == OP_STRUCTURE:
@@ -131,6 +146,15 @@ def apply_op(
 
 __all__ = [
     "ADJACENT_DUPLICATE_RE",
+    "AUDIT_REJECTED",
+    "CLIENT_RUN_MODES",
+    "OP_KEEP",
+    "annotate_audit",
+    "current_entry_id",
+    "keep_review",
+    "restorable_text",
+    "restore_section_version",
+    "section_display_text",
     "BRIEF_SETTING_FIELDS",
     "BriefCitationError",
     "BriefTooLargeError",

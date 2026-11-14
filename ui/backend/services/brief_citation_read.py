@@ -25,6 +25,7 @@ from ui.backend.services.brief_citation_runs import (
     _assign_numbers,
     _section_display_numbers,
 )
+from ui.backend.services.brief_section_history import annotate_audit
 
 
 def _display_source(
@@ -114,6 +115,7 @@ def expand_for_read(content: Dict[str, Any]) -> Dict[str, Any]:
     for section in content.get("sections") or []:
         read = {k: copy.deepcopy(v) for k, v in section.items() if k != "runs"}
         read["runs"] = [_run_summary(run) for run in section.get("runs") or []]
+        read["audit"] = annotate_audit(content, section)
         read["renumbered"] = {
             **copy.deepcopy(section.get("renumbered") or {}),
             "sources": _expand_section_sources(section, sources_by_id),

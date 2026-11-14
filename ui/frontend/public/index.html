@@ -22,10 +22,55 @@
     <title>Evidence Lab</title>
     <!-- Analytics (optional) is loaded by src/utils/analytics.ts after cookie
          consent, so no inline script and no CSP hash are needed here. -->
+    <!-- The loading spinner shown until the app starts: the search page's
+         orbiting dots, in CSS only (no script, so the CSP is unchanged). React
+         replaces #root's content when it renders. -->
+    <style>
+      .boot-spinner {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background: #fafbfc;
+        animation: boot-rainbow 3s linear infinite;
+      }
+      .boot-spinner span {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 12px;
+        height: 12px;
+        margin: -6px 0 0 -6px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: boot-orbit 1.8s linear infinite;
+      }
+      /* Each dot trails the one before by a sixth of a second. */
+      .boot-spinner span:nth-child(2) { opacity: 0.8; animation-delay: -1.633s; }
+      .boot-spinner span:nth-child(3) { opacity: 0.6; animation-delay: -1.467s; }
+      .boot-spinner span:nth-child(4) { opacity: 0.4; animation-delay: -1.3s; }
+      .boot-spinner span:nth-child(5) { opacity: 0.2; animation-delay: -1.133s; }
+      @keyframes boot-orbit {
+        from { transform: rotate(0deg) translateX(30px); }
+        to { transform: rotate(360deg) translateX(30px); }
+      }
+      @keyframes boot-rainbow {
+        0% { color: #ef4444; }
+        16.66% { color: #f97316; }
+        33.33% { color: #eab308; }
+        50% { color: #22c55e; }
+        66.66% { color: #3b82f6; }
+        83.33% { color: #a855f7; }
+        100% { color: #ef4444; }
+      }
+    </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-spinner" role="status" aria-label="Loading Evidence Lab">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
     <!-- Static links visible to crawlers that do not execute JavaScript -->
     <div id="static-footer" style="text-align:center;padding:1rem;font-size:0.85rem;">
       <a href="/privacy">Privacy Policy</a> |

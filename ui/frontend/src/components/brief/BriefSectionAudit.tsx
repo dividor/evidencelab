@@ -13,6 +13,15 @@ export const KIND_LABEL: Record<SectionAuditKind, string> = {
   update: 'Updated',
   condense: 'Condensed',
   manual: 'Edited by hand',
+  restore: 'Restored',
+};
+
+// Where a restored version came from, for its Log row.
+const restoredFromText = (e: SectionAuditEntry): string | null => {
+  const from = e.restoredFrom;
+  if (!from) return null;
+  if (from.version != null) return `With the whole brief, to version ${from.version}`;
+  return from.at ? `The version from ${formatWhen(from.at)}` : null;
 };
 
 export const formatWhen = (ts: number): string => {
@@ -30,11 +39,10 @@ export const formatWhen = (ts: number): string => {
 interface Props {
   title: string;
   audit: SectionAuditEntry[];
-  // The entry whose change is still pending (not yet kept/rejected) — labelled
-  // as such; its diff also offers Keep/Reject.
-  pendingEntryId?: string | null;
-  // Open a given entry's diff. Any edit/update entry with a stored before/after
-  // is viewable (including on a reloaded brief).
+  // The run of the change awaiting Keep or Reject; its row is labelled.
+  pendingRunId?: string | null;
+  // Open a row's version, compared with the version before it. Any row with
+  // stored text can be opened.
   onShowChanges?: (entryId: string) => void;
   // The section's runs as the API summarises them, so an entry can open the
   // stored original it describes (when the API still retains it).
@@ -72,7 +80,7 @@ const RunLink: React.FC<{
 export const BriefSectionAudit: React.FC<Props> = ({
   title,
   audit,
-  pendingEntryId,
+  pendingRunId,
   onShowChanges,
   runs = [],
   onViewOriginal,
@@ -82,7 +90,7 @@ export const BriefSectionAudit: React.FC<Props> = ({
     <div className="brief-modal" onClick={(e) => e.stopPropagation()}>
       <div className="brief-modal-head">
         <div>
-          <div className="brief-modal-title">Research log</div>
+          <div className="brief-modal-title">Section History</div>
           <div className="brief-modal-sub">{title}</div>
         </div>
         <button className="brief-modal-close" onClick={onClose} aria-label="Close">
@@ -98,15 +106,20 @@ export const BriefSectionAudit: React.FC<Props> = ({
             .slice()
             .reverse()
             .map((e) => {
-              const pending = !!pendingEntryId && e.id === pendingEntryId;
-              const viewable = e.before != null && !!onShowChanges;
+              const pending = !!pendingRunId && e.runId === pendingRunId;
+              const viewable = e.after != null && !!onShowChanges;
+              const restoredFrom = restoredFromText(e);
               const body = (
                 <div className="brief-modal-row-main">
                   <div className="brief-modal-row-title">
                     <span className={`brief-audit-kind brief-audit-kind-${e.kind}`}>
                       {KIND_LABEL[e.kind]}
                     </span>
-                    {pending && <span className="brief-audit-pending">· pending</span>}
+                    {e.current && <span className="brief-audit-current">· current</span>}
+                    {e.status === 'rejected' && (
+                      <span className="brief-audit-rejected">· rejected</span>
+                    )}
+                    {pending && <span className="brief-audit-pending">· awaiting review</span>}
                     {viewable && <span className="brief-audit-view">· view changes</span>}
                     <RunLink entry={e} runs={runs} onViewOriginal={onViewOriginal} />
                   </div>
@@ -118,6 +131,11 @@ export const BriefSectionAudit: React.FC<Props> = ({
                   {e.instruction && (
                     <div className="brief-modal-row-query">
                       <span className="brief-audit-label">Instruction</span> {e.instruction}
+                    </div>
+                  )}
+                  {restoredFrom && (
+                    <div className="brief-modal-row-query">
+                      <span className="brief-audit-label">From</span> {restoredFrom}
                     </div>
                   )}
                   {e.note && (
@@ -150,7 +168,7 @@ export const BriefSectionAudit: React.FC<Props> = ({
                       onShowChanges?.(e.id);
                     }
                   }}
-                  title="View the changes from this edit"
+                  title="View this version, compared with the version before it"
                 >
                   {body}
                 </div>

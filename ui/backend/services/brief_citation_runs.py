@@ -18,7 +18,6 @@ from ui.backend.services.brief_citation_model import (
     RETAINED_TRIMMED_RUNS,
     RUN_CURRENT,
     RUN_MODES,
-    RUN_REJECTED,
     RUN_SUPERSEDED,
     SECTION_STRUCTURE_FIELDS,
     SOURCES_EXACT,
@@ -35,7 +34,6 @@ from ui.backend.services.brief_citation_model import (
     cited_numbers_in_order,
     collapse_adjacent_duplicates,
     current_run,
-    find_run,
     find_section,
     is_visible,
     parse_marker_numbers,
@@ -91,9 +89,15 @@ def _doc_ids(sources: Iterable[Dict[str, Any]]) -> set:
 
 
 def _audit_entry(
-    run: Dict[str, Any], previous: Optional[Dict[str, Any]], note: Optional[str]
+    run: Dict[str, Any],
+    previous: Optional[Dict[str, Any]],
+    note: Optional[str],
+    before: str,
 ) -> Dict[str, Any]:
-    """The Log row for a run; a revise keeps before/after for its diff view."""
+    """The Log row for a run. ``before`` is the section's text as readers saw
+    it just before the run ("" for its first); the text after it, and the
+    numbering behind that text, are added once the brief is renumbered (see
+    :func:`_complete_entry`), so every row can be diffed and restored."""
     prior_docs = _doc_ids(previous.get("sources") or []) if previous else set()
     added = len(_doc_ids(run["sources"]) - prior_docs)
     entry: Dict[str, Any] = {
@@ -104,16 +108,71 @@ def _audit_entry(
         "sourceCount": len(run["sources"]),
         "addedSourceCount": added if previous else 0,
         "unresolvedCount": len(run["unresolved"]),
+        "before": before,
     }
-    for key in ("question", "instruction"):
+    for key in ("question", "instruction", "restoredFrom"):
         if run.get(key):
             entry[key] = run[key]
     if note:
         entry["note"] = note
-    if run["mode"] != "generate" and previous is not None:
-        entry["before"] = previous.get("content") or ""
-        entry["after"] = run["content"]
     return entry
+
+
+def section_display_text(section: Dict[str, Any]) -> str:
+    """The section's text as readers see it right now (renumbered)."""
+    return (section.get("renumbered") or {}).get("content") or ""
+
+
+def complete_entry(section: Dict[str, Any], entry: Dict[str, Any]) -> None:
+    """Record on a Log row the text readers see after its change, and which
+    brief source each displayed number points to, so the row stays viewable
+    and restorable however the brief is renumbered or its runs trimmed."""
+    entry["after"] = section_display_text(section)
+    entry["afterSources"] = display_numbering(section)
+
+
+def _next_review(
+    section: Dict[str, Any],
+    previous: Optional[Dict[str, Any]],
+    stored: Dict[str, Any],
+    review: bool,
+    before: str,
+) -> Optional[Dict[str, Any]]:
+    """The change awaiting Keep or Reject after this run, if any.
+
+    A single-section Generate, Edit or Update (``review``) on a section that
+    had text awaits review against that text. A condense pass that follows
+    it straight away is part of the same change, so the review carries over
+    to it. Any other run ends the review."""
+    pending = section.get("pendingReview")
+    if (
+        stored["mode"] == "condense"
+        and pending
+        and previous is not None
+        and pending.get("runId") == previous["id"]
+    ):
+        return {**pending, "runId": stored["id"]}
+    if review and previous is not None:
+        return {
+            "runId": stored["id"],
+            "baseRunId": previous["id"],
+            "kind": stored["mode"],
+            "at": stored["at"],
+            "before": before,
+        }
+    return None
+
+
+def _new_run_id(content: Dict[str, Any]) -> str:
+    """A run id never used in this brief, including by a Log row whose run
+    has since been trimmed or came back with a restored version."""
+    logged = [
+        entry.get("runId")
+        for section in content.get("sections") or []
+        for entry in section.get("audit") or []
+        if entry.get("runId")
+    ]
+    return _next_id("r", _all_run_ids(content) + logged)
 
 
 def _validate_run_input(run: Dict[str, Any]) -> None:
@@ -174,22 +233,24 @@ def record_run(
     """Store a run's original output, map it and renumber the brief.
 
     ``run``: ``{mode, content, sources?, basedOn?, runId?, question?, instruction?,
-    note?}``. ``sources`` omitted means the text was written against the
-    section's display numbering (an AI edit, a condense pass, a manual edit):
-    the run's sources are then the display sources, numbered as shown, and
-    ``basedOn`` (display number -> source id, as the client saw it) guards
-    against a renumbering in between.
+    note?, review?, restoredFrom?}``. ``sources`` omitted means the text was
+    written against the section's display numbering (an AI edit, a condense
+    pass, a manual edit): the run's sources are then the display sources,
+    numbered as shown, and ``basedOn`` (display number -> source id, as the
+    client saw it) guards against a renumbering in between. ``review`` marks a
+    single-section change that waits for Keep or Reject (``pendingReview``).
     """
     require_current_format(content)
     _ensure_lists(content)
     _validate_run_input(run)
     section = find_section(content, section_id)
     previous = current_run(section)
+    before = section_display_text(section) if previous is not None else ""
     sources = run.get("sources")
     if sources is None:
         _check_based_on(section, run.get("basedOn"))
         sources = _display_sources(section, _sources_by_id(content))
-    run_id = _next_id("r", _all_run_ids(content))
+    run_id = _new_run_id(content)
     mapping, rejected = register_sources(content, section_id, run_id, sources, now_ms)
     stored: Dict[str, Any] = {
         "id": run_id,
@@ -203,7 +264,7 @@ def record_run(
         "unresolved": unresolved_markers(run_body(run), mapping, rejected),
         "status": RUN_CURRENT,
     }
-    for key in ("runId", "question", "instruction"):
+    for key in ("runId", "question", "instruction", "restoredFrom"):
         if run.get(key):
             stored[key] = run[key]
     if previous is not None:
@@ -211,9 +272,18 @@ def record_run(
     section["runs"].append(stored)
     section["currentRunId"] = run_id
     section["status"] = "done"
-    section["audit"].append(_audit_entry(stored, previous, run.get("note")))
+    review = _next_review(section, previous, stored, bool(run.get("review")), before)
+    if review is None:
+        section.pop("pendingReview", None)
+    else:
+        section["pendingReview"] = review
+    entry = _audit_entry(stored, previous, run.get("note"), before)
+    section["audit"].append(entry)
     apply_retention(section)
-    return renumber(content, now_ms)
+    renumber(content, now_ms)
+    complete_entry(section, entry)
+    check_size(content)
+    return content
 
 
 def _trim_run(run: Dict[str, Any]) -> None:
@@ -230,47 +300,22 @@ def _trim_run(run: Dict[str, Any]) -> None:
 
 
 def apply_retention(section: Dict[str, Any]) -> None:
-    """Latest and current runs stay exact; the next four are trimmed; older go."""
+    """Latest and current runs stay exact, and so does the run a change awaiting
+    review would go back to; the next four are trimmed; older go."""
     runs = section.get("runs") or []
     if not runs:
         return
-    exact = {runs[-1]["id"], section.get("currentRunId")}
+    exact = {
+        runs[-1]["id"],
+        section.get("currentRunId"),
+        (section.get("pendingReview") or {}).get("baseRunId"),
+    }
     others = [run for run in runs if run["id"] not in exact]
     keep = others[-RETAINED_TRIMMED_RUNS:] if RETAINED_TRIMMED_RUNS else []
     for run in keep:
         _trim_run(run)
     kept_ids = exact | {run["id"] for run in keep}
     section["runs"] = [run for run in runs if run["id"] in kept_ids]
-
-
-def reject_run(
-    content: Dict[str, Any],
-    section_id: str,
-    run_id: str,
-    now_ms: Optional[int] = None,
-) -> Dict[str, Any]:
-    """Reject edits: the run before the current one becomes current again."""
-    require_current_format(content)
-    section = find_section(content, section_id)
-    run = find_run(section, run_id)
-    if run is None or section.get("currentRunId") != run_id:
-        raise BriefCitationError("Only the current run can be rejected")
-    run["status"] = RUN_REJECTED
-    earlier = [
-        r
-        for r in section["runs"][: section["runs"].index(run)]
-        if r.get("status") != RUN_REJECTED
-    ]
-    section["audit"] = [
-        a for a in section.get("audit") or [] if a.get("runId") != run_id
-    ]
-    if earlier:
-        earlier[-1]["status"] = RUN_CURRENT
-        section["currentRunId"] = earlier[-1]["id"]
-    else:
-        section["currentRunId"] = None
-        section["status"] = "pending"
-    return renumber(content, now_ms)
 
 
 def _citation_key(source: Dict[str, Any], grouping: str) -> str:

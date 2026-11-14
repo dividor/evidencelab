@@ -416,7 +416,7 @@ class TestRunsAndRetention:
                 brief, "b", {"mode": "manual", "content": "x", "basedOn": {"1": "s2"}}
             )
 
-    def test_reject_restores_previous_run_and_drops_its_audit_row(self):
+    def test_reject_restores_previous_run_and_marks_its_audit_row(self):
         brief = empty_brief("a")
         bc.record_run(brief, "a", run("Draft [1].", [src(1, "c1")]))
         bc.record_run(
@@ -426,24 +426,30 @@ class TestRunsAndRetention:
                 "mode": "update",
                 "content": "Updated [1] [2].",
                 "sources": [src(1, "c1"), src(2, "c2")],
+                "review": True,
             },
         )
         bc.reject_run(brief, "a", "r2")
         section = bc.find_section(brief, "a")
         assert section["currentRunId"] == "r1"
         assert section["runs"][1]["status"] == "rejected"
-        assert [a["runId"] for a in section["audit"]] == ["r1"]
+        # The rejected change keeps its Log row, marked rejected.
+        assert [(a["runId"], a.get("status")) for a in section["audit"]] == [
+            ("r1", None),
+            ("r2", "rejected"),
+        ]
+        assert "pendingReview" not in section
         assert display_content(brief, "a") == "Draft [1]."
         with pytest.raises(bc.BriefCitationError):
             bc.reject_run(brief, "a", "r2")
 
-    def test_reject_only_run_leaves_section_pending(self):
+    def test_reject_refused_when_no_change_awaits_review(self):
         brief = empty_brief("a")
-        bc.record_run(brief, "a", run("Draft [1].", [src(1, "c1")]))
-        bc.reject_run(brief, "a", "r1")
-        section = bc.find_section(brief, "a")
-        assert section["status"] == "pending" and section["currentRunId"] is None
-        assert brief["references"] == []
+        bc.record_run(brief, "a", run("Draft [1].", [src(1, "c1")], review=True))
+        # A section's first text has nothing to go back to: no review.
+        assert "pendingReview" not in bc.find_section(brief, "a")
+        with pytest.raises(bc.BriefCitationError):
+            bc.reject_run(brief, "a", "r1")
 
     def test_retention_keeps_latest_exact_trims_four_drops_rest(self):
         brief = empty_brief("a")

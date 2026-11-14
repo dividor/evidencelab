@@ -44,14 +44,17 @@ import {
   getLocalRunDetail,
   getRunDetail,
   HighlightsPayload,
+  keepRun as keepRunRemote,
   recordRun,
   rejectRun as rejectRunRemote,
+  restoreSectionVersion as restoreSectionVersionRemote,
   RunPayload,
   setHighlights as setHighlightsRemote,
   setReferenceGrouping as setReferenceGroupingRemote,
   StoredBrief,
 } from './briefCitationsApi';
 import { listItemToStub, migrateLocalBriefs, remoteToRead } from './briefRemote';
+import { restoreBriefVersion as restoreBriefVersionRemote } from './briefVersionsApi';
 import {
   BRIEF_INTRO,
   extraHeadingLines,
@@ -127,6 +130,8 @@ const remoteCitationOp = (serverId: string, op: CitationOp): Promise<RemoteBrief
       return recordRun(serverId, op.sectionId, op.run);
     case 'reject':
       return rejectRunRemote(serverId, op.sectionId, op.runId);
+    case 'keep':
+      return keepRunRemote(serverId, op.sectionId, op.runId);
     case 'grouping':
       return setReferenceGroupingRemote(serverId, op.grouping);
     case 'highlights':
@@ -403,6 +408,8 @@ export const useBrief = ({
   const [referenceGroups, setReferenceGroups] = useState<BriefReferenceGroup[]>([]);
   // Sources registered in the brief (every record the agent returned).
   const [sourceCount, setSourceCount] = useState(0);
+  // How many whole-brief versions the API holds, for the Document History link.
+  const [versionCount, setVersionCount] = useState(0);
   // Where the Word export's links point: the source documents (default) or
   // their copies in Evidence Lab.
   const [wordLinkTarget, setWordLinkTarget] = useState<LinkTarget>('source');
@@ -443,7 +450,13 @@ export const useBrief = ({
       id: string,
       context: string | null,
       signal: AbortSignal,
-      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+      // `review`: a single-section change that waits for Keep or Reject.
+      opts?: {
+        mode?: SectionResearchMode;
+        instruction?: string | null;
+        attempt?: number;
+        review?: boolean;
+      },
     ) => Promise<void>
   >(() => {
     throw new Error('researchOne used before it was defined');
@@ -601,6 +614,7 @@ export const useBrief = ({
           runs: r.runs || [],
           currentRunId: r.currentRunId ?? null,
           audit: r.audit || [],
+          pendingReview: r.pendingReview ?? null,
         };
       }),
     );
@@ -608,6 +622,7 @@ export const useBrief = ({
     setReferenceGroups(read.referenceGroups || []);
     setReferenceGroupingState(read.referenceGrouping || 'passage');
     setSourceCount(read.sourceCount || 0);
+    if (read.versionCount !== undefined) setVersionCount(read.versionCount);
   }, []);
 
   // Store the highlights the browser computed on the brief's source list.
@@ -1239,7 +1254,13 @@ export const useBrief = ({
       context: string | null,
       signal: AbortSignal,
       // `attempt` counts re-runs of an introduction that came back with headings.
-      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+      // `review`: a single-section change that waits for Keep or Reject.
+      opts?: {
+        mode?: SectionResearchMode;
+        instruction?: string | null;
+        attempt?: number;
+        review?: boolean;
+      },
     ): Promise<void> => {
       const list = sectionsRef.current;
       const idx = list.findIndex((s) => s.id === id);
@@ -1348,6 +1369,7 @@ export const useBrief = ({
               question: mode === 'generate' ? section.title : undefined,
               instruction: mode === 'generate' ? context || undefined : instruction || undefined,
               note: introAuditNote(intro.headings, attempt),
+              review: !!opts?.review,
             };
             postRun = citationsCall({ type: 'run', sectionId: id, run })
               .then((read) => {
@@ -1360,8 +1382,6 @@ export const useBrief = ({
                   introHeadingWarning: intro.headings || undefined,
                   lastResearchedAt: doneAt,
                   revising: undefined,
-                  pendingRunId: isRevise ? shown?.currentRunId ?? undefined : undefined,
-                  lastChangeKind: isRevise ? mode : undefined,
                 });
                 applyRead(read);
                 const shownContent = shown?.renumbered.content || '';
@@ -1539,7 +1559,7 @@ export const useBrief = ({
       let controller = abortRef.current;
       if (!controller || controller.signal.aborted) controller = new AbortController();
       abortRef.current = controller;
-      await researchOne(id, context, controller.signal);
+      await researchOne(id, context, controller.signal, { review: true });
       finishIfComplete();
     },
     [stage, researchOne, finishIfComplete],
@@ -1581,7 +1601,13 @@ export const useBrief = ({
         const read = await citationsCall({
           type: 'run',
           sectionId: id,
-          run: { mode: 'edit', content: revised, instruction: instruction.trim(), basedOn },
+          run: {
+            mode: 'edit',
+            content: revised,
+            instruction: instruction.trim(),
+            basedOn,
+            review: true,
+          },
         });
         if (controller.signal.aborted) return;
         const shown = read.sections.find((s) => s.id === id);
@@ -1592,8 +1618,6 @@ export const useBrief = ({
           introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           lastResearchedAt: doneAt,
           revising: undefined,
-          pendingRunId: shown?.currentRunId ?? undefined,
-          lastChangeKind: 'edit',
         });
         applyRead(read);
         researchTokenRef.current[id] = doneAt;
@@ -1641,32 +1665,39 @@ export const useBrief = ({
       let controller = abortRef.current;
       if (!controller || controller.signal.aborted) controller = new AbortController();
       abortRef.current = controller;
-      await researchOne(id, null, controller.signal, { mode, instruction });
+      await researchOne(id, null, controller.signal, { mode, instruction, review: true });
       finishIfComplete();
     },
     [stage, editSectionAI, researchOne, finishIfComplete],
   );
 
-  // Keep Edits: accept the revised run; it stays current.
+  // Keep Edits: the change awaiting review stays; the API ends the review.
   const dismissChanges = useCallback(
-    (id: string) => updateSection(id, { pendingRunId: undefined, lastChangeKind: undefined }),
-    [updateSection],
+    async (id: string) => {
+      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingReview?.runId;
+      if (!runId) return;
+      try {
+        applyRead(await citationsCall({ type: 'keep', sectionId: id, runId }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not keep the edits.');
+      }
+    },
+    [citationsCall, applyRead],
   );
 
-  // Reject Edits: the API makes the run before the revision current again
-  // (its Log row goes with it) and renumbers the brief.
+  // Reject Edits: the API puts back the section's text from before the change
+  // (the change's Log rows stay, marked rejected) and renumbers the brief.
   const rejectChanges = useCallback(
     async (id: string) => {
-      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingRunId;
+      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingReview?.runId;
       if (!runId) return;
-      updateSection(id, { pendingRunId: undefined, lastChangeKind: undefined });
       try {
         applyRead(await citationsCall({ type: 'reject', sectionId: id, runId }));
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not reject the edits.');
       }
     },
-    [updateSection, citationsCall, applyRead],
+    [citationsCall, applyRead],
   );
 
   // A manual edit, once the editor is left, is recorded as a run of the
@@ -1747,6 +1778,7 @@ export const useBrief = ({
         runs: h.runs || [],
         currentRunId: h.currentRunId ?? null,
         audit: h.audit || [],
+        pendingReview: h.pendingReview ?? null,
         lastResearchedAt: h.lastResearchedAt,
         voiceId: h.voiceId ?? null,
         guidance: h.guidance || '',
@@ -1758,6 +1790,7 @@ export const useBrief = ({
       setReferenceGroups(entry.referenceGroups || []);
       setReferenceGroupingState(entry.referenceGrouping || 'passage');
       setSourceCount(entry.sourceCount || 0);
+      setVersionCount(entry.versionCount ?? 0);
       // Record the brief as opened, so the autosave sends nothing until
       // something actually changes (opening never writes a brief back).
       lastSavedSigRef.current.set(
@@ -1874,6 +1907,55 @@ export const useBrief = ({
   );
 
   // Open a server brief by id (Brief Central cards and /brief/<id> URLs).
+  // The open brief's server id, for the version Log (signed-in briefs only).
+  const getServerBriefId = useCallback((): string | null => {
+    const id = briefIdRef.current;
+    return remote && id ? serverIdsRef.current.get(id) ?? null : null;
+  }, [remote]);
+
+  const requireServerId = useCallback((): string => {
+    const serverId = getServerBriefId();
+    if (!serverId) throw new Error('Versions are kept only for saved, signed-in briefs');
+    return serverId;
+  }, [getServerBriefId]);
+
+  // Restore the version of a section one of its Log rows records. The API
+  // records it as a new "Restored" run and renumbers the brief.
+  const restoreSectionEntry = useCallback(
+    async (id: string, entryId: string): Promise<void> => {
+      try {
+        const serverId = requireServerId();
+        const restored = await withBriefLock(() =>
+          restoreSectionVersionRemote(serverId, id, entryId),
+        );
+        applyRead(remoteToRead(restored));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not restore the section.');
+      }
+    },
+    [requireServerId, withBriefLock, applyRead],
+  );
+
+  // Restore the whole brief to a version: headings, settings and text can all
+  // change, so the brief is reloaded from what the API returns.
+  const restoreBriefVersion = useCallback(
+    async (number: number): Promise<void> => {
+      try {
+        const serverId = requireServerId();
+        const full = await withBriefLock(() => restoreBriefVersionRemote(serverId, number));
+        applyLoadedBrief(remoteToRead(full), {
+          canEdit: full.can_edit,
+          ownerName: full.owner_name,
+          saved: true,
+          dataSource: full.data_source,
+        });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not restore the brief.');
+      }
+    },
+    [requireServerId, withBriefLock, applyLoadedBrief],
+  );
+
   const openBriefById = useCallback(
     (id: string) => loadBrief({ id } as SavedBrief),
     [loadBrief],
@@ -1991,6 +2073,7 @@ export const useBrief = ({
     doneCount,
     totalProgress,
     totalSources,
+    versionCount,
     totalWords,
     targetWords,
     briefVoiceId,
@@ -2040,6 +2123,9 @@ export const useBrief = ({
     reviseSection,
     dismissChanges,
     rejectChanges,
+    restoreSectionEntry,
+    restoreBriefVersion,
+    getServerBriefId,
     commitManualEdit,
     references,
     referenceGroups,
