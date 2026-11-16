@@ -179,8 +179,7 @@ const sourceLink = (r: SearchResult): string | null => {
   const directPdf =
     r.pdf_url ||
     r.metadata?.pdf_url ||
-    r.metadata?.map_pdf_url ||
-    r.metadata?.src_doc_raw_metadata?.pdf_url;
+    r.metadata?.map_pdf_url;
   if (typeof directPdf === 'string' && directPdf.trim()) {
     return withPageAnchor(directPdf.trim(), r.page_num);
   }

@@ -235,6 +235,8 @@ Global application settings.
 | `search.short_query_dense_weight` | `float` | Dense weight override for short queries |
 | `search.highlight_threshold` | `float` | Minimum score for semantic highlights |
 | `search.page_size` | `int` | Default number of search results per page |
+| `search.max_limit` | `int` | Largest `limit` (and `wide_limit`) one `/search` request may ask for; a larger one is rejected with HTTP 422. Default 1000. See [Performance & Scaling](docs/admin/performance-and-scaling.md#search-response-size) |
+| `search.heatmap_cell_limit` | `int` | Results one Heatmap cell asks for (at most `search.max_limit`). Baked into the web app at build time |
 | `search.rerank_model` | `string` | Default reranker model ID (must exist in `supported_rerank_models`) |
 | `search.default_dense_model` | `string` | Default dense embedding model key (must exist in `supported_embedding_models`) |
 

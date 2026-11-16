@@ -249,7 +249,7 @@ export const SearchResultElements = ({
   // If no query, show full summary with markdown
   const hasNoQuery = !query || query.trim() === '' || query === 'No query';
   if (hasNoQuery) {
-    const summary = result.sys_full_summary || result.metadata?.sys_full_summary || result.text;
+    const summary = result.sys_full_summary || result.metadata?.full_summary || result.text;
     if (summary) {
       // Smart truncation: show first heading + first paragraph, then "Show more" for rest
       const paragraphs = summary.split(/\n\n+/); // Split by double newlines (paragraphs)

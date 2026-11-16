@@ -78,6 +78,23 @@ On Azure OpenAI, a `GlobalStandard` deployment's capacity is quoted in thousands
 
 The Cohere reranker on Azure Foundry is much smaller per unit: each unit of capacity allows 1 request and 1,000 tokens a minute. One search reranks several documents in one request, so a reranker at capacity `1` fails searches with HTTP 429. The [Azure example deployment](cloud-deployment.md#example-azure) gives it 20 units. Its quota is shared by every Foundry resource in a subscription and region.
 
+## Search response size
+
+A search result is a chunk joined to its document's record. The record is sent once per result, so a response's size is set by the number of results, not of documents, and a request for many results can be large: before v1.6.6 one Heatmap cell with wide search on, which returned 1600 results, measured 264 MB (52 MB compressed), and some hosts refuse a response that big. Google Cloud Run, for one, fails a non-streamed response above 32 MiB with HTTP 500 and the system log line "Response size was too large" ([Cloud Run quotas](https://cloud.google.com/run/quotas)); the api itself neither fails nor restarts. Three things keep a response small.
+
+**Results carry only what readers use.** A result's `metadata` holds the data source's `metadata_panel_fields`, the core and `map_*` fields, the unpacked `src_*` fields, paths, ids and URLs. It no longer repeats the raw pipeline record (`sys_data`), the table of contents, the taxonomies, the raw source metadata or the `sys_*` copies of the summary and classified contents. The Documents tab and the `/documents` endpoint still return the whole record.
+
+**Lean results for callers that never open a result.** `GET /search?lean=true` leaves out each result's chunk elements, tables, images and bounding boxes, and the document summary and classified contents from its metadata. The Heatmap sends it: a cell lists results and exports their text, but opening one happens in the Search tab. The same cell measured 82 MB (17 MB compressed) with the trimmed metadata alone, and 10 MB (1.3 MB compressed) lean.
+
+**Limits in `config.json`**, next to `page_size` under `application.search`:
+
+| Setting | Default | What it controls |
+|---------|---------|------------------|
+| `max_limit` | `1000` | The largest `limit`, and `wide_limit`, one `/search` request may ask for. A larger one is rejected with HTTP 422, so no client can ask for a response bigger than the deployment allows. |
+| `heatmap_cell_limit` | `1000` | How many results one Heatmap cell asks for, at most `max_limit`. It replaces the `REACT_APP_HEATMAP_LIMIT` environment variable. Like `page_size`, it is baked into the web app at build time, so rebuild the ui after changing it. |
+
+With wide search on, a cell's `wide_limit` is the cell limit and the response holds up to `wide_group_size` chunks per document, so a cell that matches many documents can hold several times `heatmap_cell_limit` results; the lean shape keeps each one small. If a host has a response limit, size `max_limit` for it: about 6 KB per lean result and 50 KB per full result, before compression.
+
 ## Do not add uvicorn workers to go faster
 
 Running the API with more than one worker looks like the obvious fix for a busy deployment. It is not safe here, and it weakens a security control:

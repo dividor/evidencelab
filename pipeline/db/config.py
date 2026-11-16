@@ -244,8 +244,8 @@ def get_summarize_config(data_source: str) -> Dict[str, Any]:
     raise ValueError(f"No pipeline.summarize config for data source {data_source!r}")
 
 
-def get_default_filter_fields(data_source: str) -> Dict[str, str]:
-    """Get default filter fields for a data source (core field -> display label)."""
+def _find_datasource_config(data_source: str) -> Dict[str, Any]:
+    """Return the config.json entry whose ``data_subdir`` is ``data_source``."""
     config = load_datasources_config()
     # Handle new config structure (datasources key) or legacy structure
     datasources = config.get("datasources", config)
@@ -258,8 +258,39 @@ def get_default_filter_fields(data_source: str) -> Dict[str, str]:
             isinstance(domain_config, dict)
             and domain_config.get("data_subdir") == data_source
         ):
-            return domain_config.get("default_filter_fields", {})
+            return domain_config
     return {}
+
+
+def get_default_filter_fields(data_source: str) -> Dict[str, str]:
+    """Get default filter fields for a data source (core field -> display label)."""
+    return _find_datasource_config(data_source).get("default_filter_fields", {})
+
+
+def get_metadata_panel_fields(data_source: str) -> Dict[str, str]:
+    """Get the metadata panel fields of a data source (field -> display label).
+
+    These are the document fields the search result's metadata panel shows, so
+    a search result always carries them whatever else it leaves out.
+    """
+    return _find_datasource_config(data_source).get("metadata_panel_fields", {})
+
+
+# Cap on the ``limit`` and ``wide_limit`` of one ``/search`` request when
+# ``application.search.max_limit`` is not set in config.json.
+DEFAULT_SEARCH_MAX_LIMIT = 1000
+
+
+def get_search_max_limit() -> int:
+    """Return the largest ``limit`` one ``/search`` request may ask for.
+
+    Reads ``application.search.max_limit`` from config.json. The API rejects a
+    larger ``limit`` or ``wide_limit`` with HTTP 422, so no client can ask for
+    a response bigger than the deployment allows (Google Cloud Run, for one,
+    refuses a non-streamed response above 32 MiB).
+    """
+    search_config = get_application_config().get("search", {})
+    return int(search_config.get("max_limit", DEFAULT_SEARCH_MAX_LIMIT))
 
 
 def get_src_field_mapping(data_source: str) -> Dict[str, str]:

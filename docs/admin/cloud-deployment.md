@@ -488,6 +488,8 @@ Cloud Run picks the service for each request by its host name, and nginx passes 
 
 Cloud SQL's server certificate names the instance's DNS name, so connections must use that name to be verified. Cloud SQL reports the name but does not publish it, so the template adds a private DNS zone that points it at the private address. The certificate's name ends with a dot, and both Postgres drivers the app uses (psycopg2 and asyncpg) match it only when the host does too.
 
+**Response size.** Cloud Run fails a non-streamed response above 32 MiB with HTTP 500, logged as "Response size was too large", without the api failing or restarting. The largest responses Evidence Lab sends are search results, and a Heatmap cell asks for the most at once. The api keeps them small: a result carries only the document fields readers use, the Heatmap asks for lean results, and `application.search.max_limit` in `config.json` caps what any client may ask for. See [Search response size](performance-and-scaling.md#search-response-size) before raising `max_limit` or `heatmap_cell_limit`.
+
 ### Deploying the Google Cloud demo
 
 These steps deploy a demo: 2 World Bank documents, processed with Vertex AI models, on a site anyone with the address can use without signing in. Run every command from the root of the Evidence Lab checkout.

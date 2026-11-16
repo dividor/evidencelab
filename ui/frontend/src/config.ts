@@ -45,8 +45,9 @@ export const ASSISTANT_MAX_ITERATIONS = (config.application as any).assistant?.m
 // Search results page size (defaults to 50)
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
-// Heatmap per-cell result limit (defaults to 1000)
-export const HEATMAP_CELL_LIMIT = process.env.REACT_APP_HEATMAP_LIMIT || '1000';
+// Results one Heatmap cell asks for (application.search.heatmap_cell_limit).
+// The API rejects a limit above application.search.max_limit.
+export const HEATMAP_CELL_LIMIT = String(config.application.search.heatmap_cell_limit);
 
 // User feedback mode — enables document reprocessing and TOC editing controls
 // Set REACT_APP_USER_FEEDBACK=1 in .env to enable (default: off)

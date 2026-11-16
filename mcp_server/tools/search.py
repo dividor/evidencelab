@@ -68,6 +68,7 @@ async def mcp_search(
         _build_doc_cache,
         _build_search_results,
     )
+    from ui.backend.services.result_shape import ResultShape
     from ui.backend.services.search import search_chunks
     from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source
 
@@ -103,6 +104,7 @@ async def mcp_search(
         # Build caches and results using same functions as API
         doc_cache = _build_doc_cache(pg, raw_results)
         chunk_cache = _build_chunk_cache(pg, raw_results)
+        # Results keep ``taxonomies``: _KEEP_FIELDS below passes it on to clients.
         search_results = _build_search_results(
             raw_results,
             doc_cache,
@@ -110,6 +112,7 @@ async def mcp_search(
             data_source=source,
             limit=limit,
             min_chunk_size=0,
+            shape=ResultShape.for_source(source, keep=("taxonomies",)),
         )
 
         return search_results
