@@ -819,6 +819,19 @@ class BriefRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BriefVersionCheck(BaseModel):
+    """The citation check that judged a version, as its Log row shows it:
+    ``label`` is the display text (verdict counts once complete, else the
+    status)."""
+
+    id: uuid.UUID
+    status: str
+    created_at: datetime
+    flagged: Optional[int] = None
+    total: Optional[int] = None
+    label: str
+
+
 class BriefVersionItem(BaseModel):
     """One row of a brief's version Log (no content)."""
 
@@ -830,6 +843,8 @@ class BriefVersionItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_current: bool
+    # The newest citation check that judged this version, if any.
+    citation_check: Optional[BriefVersionCheck] = None
 
 
 class BriefVersionSection(BaseModel):

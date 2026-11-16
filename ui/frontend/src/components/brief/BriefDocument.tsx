@@ -86,9 +86,11 @@ interface SectionViewProps {
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
-  // Fact Checker: the flagged passages of this section to highlight, and the
-  // pointer moving over them (the document shows the judge's explanation).
+  // Fact Checker: the flagged passages of this section to highlight, the
+  // note shown when the check no longer covers this section, and the pointer
+  // moving over the marks (the document shows the judge's explanation).
   factMarks?: BriefFactCheckMark[];
+  factNote?: string;
   onFactPointerOver?: (target: EventTarget | null) => void;
   onFactPointerLeave?: () => void;
 }
@@ -336,6 +338,7 @@ const SectionDoneBody: React.FC<{
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
   factMarks?: BriefFactCheckMark[];
+  factNote?: string;
   onFactPointerOver?: (target: EventTarget | null) => void;
   onFactPointerLeave?: () => void;
 }> = ({
@@ -354,6 +357,7 @@ const SectionDoneBody: React.FC<{
   onOpenThread,
   activeThreadId,
   factMarks,
+  factNote,
   onFactPointerOver,
   onFactPointerLeave,
 }) => {
@@ -442,6 +446,11 @@ const SectionDoneBody: React.FC<{
               onKeep={() => void brief.dismissChanges(section.id)}
               onReject={() => void brief.rejectChanges(section.id)}
             />
+          )}
+          {factNote && (
+            <div className="brief-fact-stale" role="note">
+              <IconFactCheck /> {factNote}
+            </div>
           )}
           <div
             className="brief-doc-content"
@@ -533,6 +542,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   onOpenThread,
   activeThreadId,
   factMarks,
+  factNote,
   onFactPointerOver,
   onFactPointerLeave,
 }) => {
@@ -683,6 +693,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
           factMarks={factMarks}
+          factNote={factNote}
           onFactPointerOver={onFactPointerOver}
           onFactPointerLeave={onFactPointerLeave}
         />
@@ -708,20 +719,24 @@ const ExportButton: React.FC<{
   </button>
 );
 
-// "Fact Checker": shown only when a completed citation check judged the brief
-// as it is now. Pressed, it highlights the passages the check flagged.
+// "Fact Checker": shown only while a completed citation check still covers
+// part of the brief as it is now. Pressed, it highlights the passages the
+// check flagged; the tooltip says which version was checked.
+const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
+  const what = factCheck.verdictLabels.length
+    ? `Highlight the passages the citation check judged ${factCheck.verdictLabels
+        .map((l) => l.toLowerCase())
+        .join(' or ')}; hover one for the judge's explanation.`
+    : 'Your group highlights no verdicts of the citation check.';
+  return factCheck.note ? `${what} ${factCheck.note}` : what;
+};
+
 const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
   <button
     className="brief-export-word brief-fact-check"
     onClick={factCheck.toggle}
     aria-pressed={factCheck.active}
-    title={
-      factCheck.verdictLabels.length
-        ? `Highlight the passages the citation check judged ${factCheck.verdictLabels
-            .map((l) => l.toLowerCase())
-            .join(' or ')}; hover one for the judge's explanation`
-        : 'Your group highlights no verdicts of the citation check'
-    }
+    title={factCheckTitle(factCheck)}
   >
     <IconFactCheck /> Fact Checker
   </button>
@@ -1118,6 +1133,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
           factMarks={factCheck?.marks.get(s.id)}
+          factNote={factCheck?.changedSections.get(s.id)?.note}
           onFactPointerOver={factCheck?.onPointerOver}
           onFactPointerLeave={factCheck?.onPointerLeave}
         />

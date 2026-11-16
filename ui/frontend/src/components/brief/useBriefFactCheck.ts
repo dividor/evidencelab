@@ -3,14 +3,19 @@
 // the verdicts the reader's group chose), whether the reader has switched the
 // highlights on, and which highlighted passage the pointer is resting on.
 //
-// The API decides everything about the check: which one is current, which
-// verdicts to show and what each mark says. This hook fetches that answer
-// again whenever the brief's content changes on the server, so a brief edited
-// after its check loses the button until it is checked again.
+// The API decides everything about the check: which one applies, which of
+// the brief's sections it still covers (a check judges one version of the
+// brief; sections changed since are reported, not highlighted), which
+// verdicts to show and what each mark and note says. This hook fetches that
+// answer again whenever the brief's content changes on the server.
 
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import type { BriefFactCheckMark, BriefFactCheckRead } from '../../types/testing';
+import type {
+  BriefFactCheckMark,
+  BriefFactCheckRead,
+  BriefFactCheckSection,
+} from '../../types/testing';
 import { getBriefFactCheck } from './briefFactCheckApi';
 import {
   allPainted,
@@ -27,15 +32,20 @@ export interface FactMarkHover {
 }
 
 export interface UseBriefFactCheckReturn {
-  // A completed check judged the brief as it is now.
+  // A completed check still covers part of the brief as it is now.
   available: boolean;
   // The reader switched the highlights on.
   active: boolean;
   toggle: () => void;
   // The flagged passages to paint, keyed by section id; empty while inactive.
   marks: Map<string, BriefFactCheckMark[]>;
+  // Sections the check no longer covers (changed since it judged the brief),
+  // keyed by section id; empty while inactive.
+  changedSections: Map<string, BriefFactCheckSection>;
   // Passages the reader's group highlights, for the button's tooltip.
   verdictLabels: string[];
+  // How the brief relates to the version the check judged, for the tooltip.
+  note: string;
   hover: FactMarkHover | null;
   // The pointer moved over the prose: `target` is what it is over now.
   onPointerOver: (target: EventTarget | null) => void;
@@ -61,6 +71,7 @@ const marksBySection = (marks: BriefFactCheckMark[]): Map<string, BriefFactCheck
 };
 
 const EMPTY: Map<string, BriefFactCheckMark[]> = new Map();
+const NO_SECTIONS: Map<string, BriefFactCheckSection> = new Map();
 
 /**
  * @param briefId the open brief's server id, or null when there is no saved
@@ -122,6 +133,13 @@ export const useBriefFactCheck = (
     () => (active && result ? marksBySection(result.marks) : EMPTY),
     [active, result],
   );
+  const changedSections = useMemo(
+    () =>
+      active && result
+        ? new Map((result.changed_sections || []).map((s) => [s.id, s]))
+        : NO_SECTIONS,
+    [active, result],
+  );
 
   const onPointerOver = useCallback(
     (target: EventTarget | null) => {
@@ -146,7 +164,9 @@ export const useBriefFactCheck = (
     active,
     toggle: useCallback(() => setActive((v) => !v), []),
     marks,
+    changedSections,
     verdictLabels: (result?.highlight_verdicts || []).map((v) => VERDICT_LABELS.get(v) || v),
+    note: result?.note || '',
     hover,
     onPointerOver,
     onPointerLeave: useCallback(() => setHover(null), []),

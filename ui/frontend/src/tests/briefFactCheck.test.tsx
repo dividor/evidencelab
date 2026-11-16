@@ -61,16 +61,28 @@ const remoteBrief = {
         id: 's1', title: 'Findings', level: 1, status: 'done', runs: [], currentRunId: null,
         renumbered: { content: 'School meals raised attendance [1]. Costs rose [1].', sources: [source], unresolved: [] },
       },
+      {
+        id: 's2', title: 'Costs', level: 1, status: 'done', runs: [], currentRunId: null,
+        renumbered: { content: 'Costs fell sharply [1].', sources: [source], unresolved: [] },
+      },
     ],
   },
 };
+
+const NOTE = 'Checked at version 1; the brief is now at version 2. 1 section changed since and is not highlighted: “Costs”.';
+const SECTION_NOTE = 'Changed since the citation check (version 1); not covered by the Fact Checker.';
 
 const withCheck: BriefFactCheckRead = {
   check: {
     id: 'chk1', brief_id: 'b1', brief_title: TITLE, status: 'completed',
     created_at: '2026-11-02T00:00:00Z', judge_model: 'gpt-4.1-mini',
+    brief_version_number: 1, brief_changed: true,
   },
+  brief_version: 1,
+  current_version: 2,
   highlight_verdicts: ['unsupported'],
+  note: NOTE,
+  changed_sections: [{ id: 's2', title: 'Costs', note: SECTION_NOTE }],
   marks: [
     {
       passage_id: 1, section_id: 's1', section_title: 'Findings', passage: PASSAGE,
@@ -109,15 +121,16 @@ describe('Fact Checker on an open brief', () => {
     const button = await screen.findByRole('button', { name: FACT_CHECKER });
     expect(mockGet).toHaveBeenCalledWith(FACT_CHECK_URL);
     expect(button).toHaveAttribute('aria-pressed', 'false');
+    // The tooltip says which version was checked and how the brief moved on.
+    expect(button).toHaveAttribute('title', expect.stringContaining(NOTE));
     expect(document.querySelector('.brief-fact-mark')).toBeNull();
+    expect(screen.queryByText(SECTION_NOTE)).toBeNull();
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');
-    const mark = await waitFor(() => {
-      const el = document.querySelector('.brief-fact-mark-unsupported');
-      expect(el).not.toBeNull();
-      return el as HTMLElement;
-    });
+    // The section changed since the check carries the note instead of marks.
+    expect(await screen.findByText(SECTION_NOTE)).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.brief-fact-mark-unsupported')).not.toBeNull());
     // The judged sentence is marked up to its full stop, as one span either
     // side of the citation badge; the rest of the section is untouched.
     const markText = () =>
@@ -125,8 +138,12 @@ describe('Fact Checker on an open brief', () => {
     expect(markText()).toBe('School meals raised attendance .');
     expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"])').length).toBe(0);
 
-    fireEvent.mouseOver(mark);
-    const tooltip = await screen.findByRole('tooltip');
+    // Source enrichment re-renders the sections meanwhile and the painter
+    // puts the marks back, so hover the mark as it is in the DOM right now.
+    const tooltip = await waitFor(() => {
+      fireEvent.mouseOver(document.querySelector('.brief-fact-mark-unsupported') as HTMLElement);
+      return screen.getByRole('tooltip');
+    });
     expect(tooltip).toHaveTextContent('Unsupported');
     expect(tooltip).toHaveTextContent('90% confidence');
     expect(tooltip).toHaveTextContent('Contradicted by the source');
@@ -138,9 +155,10 @@ describe('Fact Checker on an open brief', () => {
     fireEvent.mouseLeave(document.querySelector('.brief-doc-content') as HTMLElement);
     await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
 
-    // Pressing again hides the highlights.
+    // Pressing again hides the highlights and the note.
     fireEvent.click(button);
     await waitFor(() => expect(document.querySelector('.brief-fact-mark')).toBeNull());
+    expect(screen.queryByText(SECTION_NOTE)).toBeNull();
   });
 
   test('without a check that matches the brief as it is now, there is no button', async () => {

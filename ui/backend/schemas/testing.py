@@ -205,6 +205,11 @@ class BriefCitationCheckRead(BaseModel):
     created_by_user_id: Optional[uuid.UUID] = None
     judge_model: Optional[str] = None
     model_combo: Optional[str] = None
+    # The brief version the check judged (None on checks made before
+    # versions were linked) and whether the brief has a newer version since
+    # (None when no version was recorded). The routes set ``brief_changed``.
+    brief_version_number: Optional[int] = None
+    brief_changed: Optional[bool] = None
     status: str
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
@@ -259,13 +264,30 @@ class BriefFactCheckMark(BaseModel):
     quote_not_in_source: bool
 
 
+class BriefFactCheckSection(BaseModel):
+    """A section with cited passages that changed since the check judged
+    the brief, so the Fact Checker does not cover it; ``note`` is shown
+    above it while the highlights are on."""
+
+    id: str
+    title: str
+    note: str
+
+
 class BriefFactCheckRead(BaseModel):
-    """What the Fact Checker button needs: the completed check that judged
-    the brief's current passages (``None`` when there is none, so the button
-    stays hidden), the verdicts the reader's group highlights, and the marks."""
+    """What the Fact Checker button needs: the completed check that still
+    covers at least one section of the brief (``None`` when there is none,
+    so the button stays hidden), the version it judged and the brief's
+    current version, a note on how they relate, the sections the check no
+    longer covers, the verdicts the reader's group highlights, and the
+    marks."""
 
     check: Optional[BriefCitationCheckRead] = None
+    brief_version: Optional[int] = None
+    current_version: Optional[int] = None
     highlight_verdicts: List[str]
+    note: str = ""
+    changed_sections: List[BriefFactCheckSection] = Field(default_factory=list)
     marks: List[BriefFactCheckMark] = Field(default_factory=list)
 
 

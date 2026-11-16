@@ -39,13 +39,14 @@ from ui.backend.schemas.testing import (
     BriefCitationCheckRead,
     BriefFactCheckMark,
     BriefFactCheckRead,
+    BriefFactCheckSection,
 )
 from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
 from ui.backend.services.brief_fact_check import (
-    current_check,
-    fact_check_marks,
+    brief_changed,
+    fact_check,
     highlight_verdicts,
 )
 from ui.backend.services.brief_sharing import (
@@ -467,20 +468,32 @@ async def get_brief_fact_check(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefFactCheckRead:
-    """The Fact Checker of a brief the user can view: the completed citation
-    check that judged its current cited passages, if any, and the passages
-    to highlight for the verdicts the user's groups chose."""
+    """The Fact Checker of a brief the user can view: the newest completed
+    citation check while it still covers part of the brief, the version it
+    judged against the brief's current one, the sections changed since, and
+    the passages to highlight for the verdicts the user's groups chose."""
     brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
     verdicts = highlight_verdicts(await user_effective_settings(session, user.id))
     try:
-        check = await current_check(session, brief)
-        marks = fact_check_marks(brief.content or {}, check, verdicts) if check else []
+        answer = await fact_check(session, brief, verdicts)
     except bc.BriefCitationError as exc:
         raise citation_http_error(exc)
+    check = answer["check"]
+    check_read = None
+    if check is not None:
+        check_read = BriefCitationCheckRead.model_validate(check).model_copy(
+            update={"brief_changed": brief_changed(check, answer["current_version"])}
+        )
     return BriefFactCheckRead(
-        check=BriefCitationCheckRead.model_validate(check) if check else None,
+        check=check_read,
+        brief_version=answer["brief_version"],
+        current_version=answer["current_version"],
         highlight_verdicts=verdicts,
-        marks=[BriefFactCheckMark(**mark) for mark in marks],
+        note=answer["note"],
+        changed_sections=[
+            BriefFactCheckSection(**section) for section in answer["changed_sections"]
+        ],
+        marks=[BriefFactCheckMark(**mark) for mark in answer["marks"]],
     )
 
 

@@ -3472,6 +3472,40 @@
   filter: saturate(1.4) brightness(0.97);
 }
 
+/* A section the check no longer covers (changed since the version it
+   judged), noted above its prose while the highlights are on. */
+.brief-fact-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  background: rgba(91, 143, 168, 0.08);
+  background: color-mix(in srgb, var(--brand-accent) 8%, transparent);
+}
+.brief-fact-stale svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* Document History: the row of a version a citation check judged. */
+.brief-versions-row-check {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--brand-accent);
+}
+.brief-versions-row-check-running,
+.brief-versions-row-check-pending {
+  color: var(--brand-text-tertiary);
+}
+.brief-versions-row-check-failed {
+  color: var(--brand-error);
+}
+
 /* The judge's explanation, floated beside the passage under the pointer. */
 .brief-fact-tooltip {
   position: fixed;

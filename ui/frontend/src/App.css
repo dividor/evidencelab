@@ -12192,6 +12192,16 @@ a.admin-citation-clickable:hover {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+/* Testing (Brief): a check's result describes an earlier brief version. */
+.testing-check-changed {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--brand-warning);
+}
+.testing-check-version {
+  white-space: nowrap;
+}
+
 .testing-config-badge {
   display: inline-flex;
   align-items: center;

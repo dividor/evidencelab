@@ -176,6 +176,11 @@ export interface BriefCitationCheck {
   created_by_user_id?: string | null;
   judge_model?: string | null;
   model_combo?: string | null;
+  // The brief version the check judged (null on checks made before versions
+  // were linked) and whether the brief has a newer version since (null when
+  // no version was recorded). Both decided by the API.
+  brief_version_number?: number | null;
+  brief_changed?: boolean | null;
   status: CheckStatus;
   summary_stats?: CheckSummaryStats | null;
   started_at?: string | null;
@@ -267,11 +272,25 @@ export interface BriefFactCheckMark {
   quote_not_in_source: boolean;
 }
 
-// GET /briefs/{id}/fact-check: the completed check that judged the brief's
-// current passages (null when there is none, so the button stays hidden),
-// the verdicts the reader's group highlights, and the marks to paint.
+// A section with cited passages that changed since the check judged the
+// brief: not covered, with the note the document shows above it.
+export interface BriefFactCheckSection {
+  id: string;
+  title: string;
+  note: string;
+}
+
+// GET /briefs/{id}/fact-check: the newest completed check while it still
+// covers part of the brief (null when there is none, so the button stays
+// hidden), the version it judged and the brief's current version, a note on
+// how they relate, the sections it no longer covers, the verdicts the
+// reader's group highlights, and the marks to paint.
 export interface BriefFactCheckRead {
   check: BriefCitationCheck | null;
+  brief_version?: number | null;
+  current_version?: number | null;
   highlight_verdicts: CitationVerdict[];
+  note?: string;
+  changed_sections?: BriefFactCheckSection[];
   marks: BriefFactCheckMark[];
 }
