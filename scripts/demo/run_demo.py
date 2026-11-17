@@ -309,8 +309,11 @@ def interactive_setup(ci_mode=False, provider=None):
     env_vars["AUTH_SECRET_KEY"] = _gen_or_env(
         "AUTH_SECRET_KEY", lambda: secrets.token_hex(32)
     )
+    # The web interface's key is built into the page, so anyone who opens it
+    # can read it. Keep it separate from API_SECRET_KEY: the API accepts both,
+    # while MCP and A2A refuse the public one.
     env_vars["REACT_APP_API_KEY"] = _gen_or_env(
-        "REACT_APP_API_KEY", lambda: env_vars["API_SECRET_KEY"]
+        "REACT_APP_API_KEY", lambda: secrets.token_hex(32)
     )
     env_vars["KEY_ENCRYPTION_KEY"] = _gen_or_env(
         "KEY_ENCRYPTION_KEY", _generate_fernet_key

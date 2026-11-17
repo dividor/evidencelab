@@ -233,6 +233,7 @@ Scans are configured for CRITICAL and HIGH severity. Results are uploaded as SAR
 
 - API key required for all endpoints except `/health`, `/auth/*`, file serving
 - API key validated using timing-safe comparison
+- The key built into the web interface (`REACT_APP_API_KEY`) is public: anyone who loads the site can read it. The API accepts it when sign-in is off or optional, so the open demo works; it is ignored as a credential when sign-in is required (`on_active`), in both the API-key check and the middleware; and MCP and A2A never accept it, even when it is also `API_SECRET_KEY`. Give it its own value so the master key stays private. The API logs a warning at startup when the two are the same.
 - Auth routes exempt from API key — protected by their own rate-limiting and CSRF
 - Development mode allows unauthenticated access (no `API_SECRET_KEY` set)
 
@@ -426,6 +427,11 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
 | eslint-plugin-security | JS security linting | https://github.com/eslint-community/eslint-plugin-security |
 
 ## Changelog
+
+- **2026-11-17**: The web interface's public key no longer opens MCP, A2A or sign-in-required mode
+  - MCP and A2A refuse `REACT_APP_API_KEY`, even when it is also `API_SECRET_KEY` or an admin-created key; signed-in users and other keys still work
+  - With `on_active`, the API-key check and the middleware ignore that key as a credential
+  - The API accepts a `REACT_APP_API_KEY` that differs from `API_SECRET_KEY`, so the two can be separated; the demo, CI and dev compose now use separate values, and the API warns at startup when they are the same
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)
