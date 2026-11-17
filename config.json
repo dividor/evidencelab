@@ -166,6 +166,13 @@
       "source": "aws_bedrock",
       "type": "dense",
       "max_tokens": 8192
+    },
+    "openai_small": {
+      "model_id": "text-embedding-3-small",
+      "size": 1536,
+      "source": "openai",
+      "type": "dense",
+      "max_tokens": 8192
     }
   },
   "supported_llms": {

@@ -74,11 +74,44 @@ Each entry defines a model that can be used for vector embeddings:
 | `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"openai"`, `"fastembed"` |
 | `type` | string | `"dense"` or `"sparse"` |
 | `max_tokens` | int | Maximum input token length |
+| `base_url_env` | string | `openai` only: name of the environment variable holding the base URL (default `OPENAI_BASE_URL`) |
+| `api_key_env` | string | `openai` only: name of the environment variable holding the API key (default `OPENAI_API_KEY`) |
 
 The `source` field determines how the model is loaded:
 - **`huggingface`** / **`fastembed`** — runs locally via an embedding server (requires GPU or MPS for best performance)
 - **`azure_foundry`** / **`google_vertex`** / **`aws_bedrock`** — accessed via remote API (requires credentials in `.env`, see [Amazon Bedrock](#amazon-bedrock) for AWS)
-- **`openai`**: any OpenAI-compatible `/embeddings` endpoint (OpenAI, vLLM, Ollama, hosted providers). Set `OPENAI_BASE_URL` and, if the service needs one, `OPENAI_API_KEY` in `.env`. Optional model keys `base_url_env` and `api_key_env` name other environment variables, so several providers can coexist. Requests are batched, and transient errors (HTTP 429/5xx, timeouts) are retried with backoff.
+- **`openai`** — any OpenAI-compatible `/embeddings` endpoint (OpenAI, vLLM, Ollama, LiteLLM, hosted providers), see [OpenAI-compatible embedding endpoint](#openai-compatible-embedding-endpoint)
+
+#### OpenAI-compatible embedding endpoint
+
+Any service that implements the OpenAI embeddings API can be used with `"source": "openai"`. Set its base URL, without the `/embeddings` path, and its key in `.env`. For OpenAI itself:
+
+```bash
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=your-key
+```
+
+Leave `OPENAI_API_KEY` empty for a local server that needs no key; no `Authorization` header is then sent.
+
+The stock `config.json` includes one such model:
+
+| Key | Kind | Model |
+|---|---|---|
+| `openai_small` | Embedding | OpenAI `text-embedding-3-small` through OpenAI's own API, 1536 dimensions: the same model as the stock `azure_small`, but vectors from the two are separate slots, so a data source indexed with one is searched with that one |
+
+For another service, add an entry with that service's model name and vector size:
+
+```json
+"my_embed": {
+  "model_id": "Qwen/Qwen3-Embedding-8B",
+  "size": 4096,
+  "source": "openai",
+  "type": "dense",
+  "max_tokens": 8192
+}
+```
+
+To use a model, list its key in the data source's `dense_models` before the first pipeline run (see the note above), and in the `embedding_model` of a model combo. Requests are sent in batches of 16, and transient errors (HTTP 429 or 5xx, network errors, timeouts) are retried with backoff. To use other environment variable names, for example to keep two services apart, set `base_url_env` and `api_key_env` on the model.
 
 #### LLM Models (`supported_llms`)
 
