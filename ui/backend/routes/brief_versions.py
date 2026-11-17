@@ -24,6 +24,7 @@ from ui.backend.routes.brief_central import (
 )
 from ui.backend.services import brief_citations as bc
 from ui.backend.services import brief_version_store as store
+from ui.backend.services.brief_fact_check import checks_by_version, version_check
 from ui.backend.services.brief_versions import KIND_BRIEF_RESTORE
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -43,9 +44,14 @@ async def list_brief_versions(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Every version of the brief, newest first."""
+    """Every version of the brief, newest first, each naming the citation
+    check that judged it, if one did."""
     await _get_viewable_brief(session, brief_id, user)
-    return await store.list_versions(session, brief_id)
+    rows = await store.list_versions(session, brief_id)
+    checks = await checks_by_version(session, brief_id)
+    return [
+        {**row, "citation_check": version_check(checks.get(row["id"]))} for row in rows
+    ]
 
 
 @router.get(

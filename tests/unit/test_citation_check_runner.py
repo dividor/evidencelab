@@ -240,8 +240,9 @@ class TestSummary:
 class FakeSession:
     """Just enough AsyncSession for the runner: get/add/commit/execute."""
 
-    def __init__(self, check, brief):
+    def __init__(self, check, brief, versions=()):
         self.rows = {("check", check.id): check, ("brief", brief.id): brief}
+        self.versions = list(versions)
         self.added = []
         self.commits = 0
 
@@ -256,6 +257,11 @@ class FakeSession:
         self.commits += 1
 
     async def execute(self, statement):
+        if "FROM brief_versions" in str(statement):
+            rows = sorted(self.versions, key=lambda v: -v.number)
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(first=lambda: rows[0] if rows else None)
+            )
         return SimpleNamespace(rowcount=0)
 
     async def __aenter__(self):
@@ -274,12 +280,22 @@ def _check_and_brief():
         data_source="wfp",
         created_by_user_id=uuid.uuid4(),
         judge_model="judge-x",
+        brief_version_id=None,
+        brief_version_number=None,
         status="pending",
         summary_stats=None,
         started_at=None,
         finished_at=None,
     )
     return check, brief
+
+
+def _version(brief, number):
+    return SimpleNamespace(id=uuid.uuid4(), brief_id=brief.id, number=number)
+
+
+async def _no_usage(**kwargs):
+    pass
 
 
 class TestRunCheck:
@@ -329,6 +345,38 @@ class TestRunCheck:
         await runner.run_check(check.id, session_factory=lambda: session)
         assert check.status == "failed"
         assert check.summary_stats == {"error": "Brief not found"}
+
+    @pytest.mark.asyncio
+    async def test_run_when_brief_still_at_pinned_version_then_runs(self, monkeypatch):
+        monkeypatch.setattr(
+            "ui.backend.services.usage_recorder.record_llm_usage", _no_usage
+        )
+        monkeypatch.setattr(
+            "ui.backend.utils.llm_costs.compute_cost", lambda m, p, c: None
+        )
+        check, brief = _check_and_brief()
+        pinned = _version(brief, 2)
+        check.brief_version_id, check.brief_version_number = pinned.id, 2
+        session = FakeSession(check, brief, versions=[_version(brief, 1), pinned])
+
+        async def judge(system, user):
+            return GOOD_REPLY, {}
+
+        await runner.run_check(check.id, session_factory=lambda: session, judge=judge)
+        assert check.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_run_when_brief_moved_on_before_start_then_failed_with_message(
+        self,
+    ):
+        check, brief = _check_and_brief()
+        pinned = _version(brief, 2)
+        check.brief_version_id, check.brief_version_number = pinned.id, 2
+        session = FakeSession(check, brief, versions=[pinned, _version(brief, 3)])
+        await runner.run_check(check.id, session_factory=lambda: session)
+        assert check.status == "failed"
+        assert check.summary_stats == {"error": runner.CHANGED_BEFORE_RUN}
+        assert session.added == []
 
     @pytest.mark.asyncio
     async def test_run_when_cancelled_midway_then_stops_without_completing(

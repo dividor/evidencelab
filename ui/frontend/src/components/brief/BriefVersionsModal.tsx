@@ -239,6 +239,14 @@ export const BriefVersionsModal: React.FC<Props> = ({ briefId, onRestore, onClos
                   </span>
                   <span className="brief-versions-row-summary">{v.summary}</span>
                   <span className="brief-versions-row-who">{v.author_name || 'Unknown'}</span>
+                  {v.citation_check && (
+                    <span
+                      className={`brief-versions-row-check brief-versions-row-check-${v.citation_check.status}`}
+                      title={`A citation check judged this version on ${when(v.citation_check.created_at)}`}
+                    >
+                      {v.citation_check.label}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>

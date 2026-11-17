@@ -9,10 +9,13 @@ text by hand) by the same person within ``application.brief.versions.
 merge_minutes`` of the latest such version merge into it; research runs,
 rejects and restores always start a new one. A brief saved before version
 history began gets a first version holding it as it was, the first time it
-changes.
+changes. A version a citation check judged (``brief_citation_checks.
+brief_version_id``) is frozen: later typing saves start a new version rather
+than merging into it, so the check always describes the version it names.
 """
 
 import copy
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -104,6 +107,19 @@ def _merges(
     )
 
 
+async def is_checked(session: AsyncSession, version_id) -> bool:
+    """Whether a citation check judged this version. Such a version is
+    frozen: nothing merges into it, so the check keeps describing it."""
+    from ui.backend.auth.testing_models import BriefCitationCheck
+
+    result = await session.execute(
+        select(BriefCitationCheck.id)
+        .where(BriefCitationCheck.brief_version_id == version_id)
+        .limit(1)
+    )
+    return result.scalars().first() is not None
+
+
 async def latest_version(session: AsyncSession, brief_id) -> Optional[BriefVersion]:
     result = await session.execute(
         select(BriefVersion)
@@ -112,6 +128,48 @@ async def latest_version(session: AsyncSession, brief_id) -> Optional[BriefVersi
         .limit(1)
     )
     return result.scalars().first()
+
+
+async def latest_numbers(session: AsyncSession, brief_ids) -> Dict[Any, int]:
+    """The current version number of each brief that has versions."""
+    ids = list(brief_ids)
+    if not ids:
+        return {}
+    result = await session.execute(
+        select(BriefVersion.brief_id, func.max(BriefVersion.number))
+        .where(BriefVersion.brief_id.in_(ids))
+        .group_by(BriefVersion.brief_id)
+    )
+    return {brief_id: int(number) for brief_id, number in result.all()}
+
+
+async def ensure_version(session: AsyncSession, brief: Brief) -> BriefVersion:
+    """The brief's current version, for something that must name one (a
+    citation check pins the version it judges). A brief saved before version
+    history began has none yet: it gets its baseline version, the brief as
+    it is, dated when it was last saved. Added to the session, not
+    committed."""
+    await session.execute(
+        select(Brief.id).where(Brief.id == brief.id).with_for_update()
+    )
+    latest = await latest_version(session, brief.id)
+    if latest is not None:
+        return latest
+    snap = await run_in_threadpool(bv.snapshot, brief.content or {})
+    row = _row(
+        brief,
+        1,
+        brief.user_id,
+        bv.KIND_BASELINE,
+        None,
+        bv.summarise(bv.KIND_BASELINE),
+        snap,
+        brief.updated_at or datetime.now(timezone.utc),
+    )
+    # The caller references the row before it is flushed.
+    row.id = uuid.uuid4()
+    session.add(row)
+    return row
 
 
 async def get_version(
@@ -202,7 +260,11 @@ async def record_version(
         latest.content = snap
         return latest
     kind, section_id, summary = _resolve(change, latest, snap)
-    if latest is not None and _merges(latest, kind, user_id, now, merge_window()):
+    if (
+        latest is not None
+        and _merges(latest, kind, user_id, now, merge_window())
+        and not await is_checked(session, latest.id)
+    ):
         return await _merge_into(session, brief, latest, snap, now)
     row = _row(
         brief,
@@ -243,6 +305,7 @@ async def list_versions(session: AsyncSession, brief_id) -> List[Dict[str, Any]]
     """Every version of a brief, newest first, without their content."""
     result = await session.execute(
         select(
+            BriefVersion.id,
             BriefVersion.number,
             BriefVersion.kind,
             BriefVersion.section_id,
@@ -259,6 +322,7 @@ async def list_versions(session: AsyncSession, brief_id) -> List[Dict[str, Any]]
     latest = rows[0].number if rows else None
     return [
         {
+            "id": row.id,
             "number": row.number,
             "kind": row.kind,
             "section_id": row.section_id,
