@@ -17,6 +17,9 @@
       "introductions": {
         "target_words": 120,
         "heading_retries": 1
+      },
+      "versions": {
+        "merge_minutes": 5
       }
     },
     "assistant": {
@@ -163,6 +166,13 @@
       "source": "aws_bedrock",
       "type": "dense",
       "max_tokens": 8192
+    },
+    "openai_small": {
+      "model_id": "text-embedding-3-small",
+      "size": 1536,
+      "source": "openai",
+      "type": "dense",
+      "max_tokens": 8192
     }
   },
   "supported_llms": {
@@ -210,6 +220,10 @@
       "model_id": "cohere.rerank-v3-5:0",
       "provider": "aws_bedrock",
       "region": "us-west-2"
+    },
+    "cohere-api-rerank-v4.0-fast": {
+      "model_id": "rerank-v4.0-fast",
+      "provider": "cohere_compatible"
     }
   },
   "ui_model_combos": {

@@ -365,6 +365,57 @@ class Brief(Base):
     )
 
 
+class BriefVersion(Base):
+    """One version of a brief, written by the API with every change to it.
+
+    ``content`` is a snapshot (see ``services/brief_versions.snapshot``): the
+    brief's settings and each section's structure and current text, without
+    the source records the brief itself keeps. ``number`` counts from 1 per
+    brief. Saves made while typing merge into the latest version for a few
+    minutes (``application.brief.versions.merge_minutes``), so
+    ``updated_at`` can be later than ``created_at``.
+    """
+
+    __tablename__ = "brief_versions"
+    __table_args__ = (
+        UniqueConstraint("brief_id", "number", name="uq_brief_versions_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    brief_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("briefs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Who made the change; null once that account is deleted.
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # What kind of change: a section run mode (generate, edit, update,
+    # condense, manual, restore), reject, structure, settings, grouping,
+    # created, copied, baseline or brief-restore.
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    # The section changed, when the change was to one section.
+    section_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # One line describing the change, as the version Log shows it.
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 class BriefComment(Base):
     """A comment on a brief, optionally anchored to a quoted passage.
 

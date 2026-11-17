@@ -42,7 +42,7 @@ Some lofty, often conflicting, goals! Always a work in progress, and low-cost hi
 - Extracts tables, with more thorough (and more expensive) processing when needed
 - Summarizes each document with AI, by map-reduce or in a single prompt (`summarize.mode`)
 - Tags documents with AI
-- Indexes with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock), and can be extended to others
+- Indexes with open models (Hugging Face) or hosted ones (Azure Foundry, Google Vertex, Amazon Bedrock, any OpenAI-compatible endpoint), and can be extended to others
 
 ### User interface
 
@@ -297,7 +297,7 @@ A dictionary of embedding models available to the pipeline and search engine.
 "model_key": {
   "model_id": "namespace/model-name",   // Model identifier (HuggingFace repo, Azure deployment, etc.)
   "size": 1024,                          // Embedding vector dimensionality
-  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "aws_bedrock", "qdrant", "opensearch"
+  "source": "huggingface",              // Provider: "huggingface", "azure_foundry", "google_vertex", "aws_bedrock", "openai", "qdrant", "opensearch"
   "type": "dense"                        // "dense" or "sparse"
 }
 ```

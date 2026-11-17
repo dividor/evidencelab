@@ -40,6 +40,7 @@ from ui.backend.auth.testing_models import (
     TestRun,
 )
 from ui.backend.auth.users import current_superuser
+from ui.backend.routes.brief_central import citation_http_error
 from ui.backend.schemas.testing import (
     BRIEF_ACCESS_OTHER,
     BRIEF_ACCESS_OWN,
@@ -61,6 +62,9 @@ from ui.backend.schemas.testing import (
     TestExperimentRead,
     TestExperimentUpdate,
 )
+from ui.backend.services import brief_version_store as versions
+from ui.backend.services.brief_citation_model import BriefCitationError
+from ui.backend.services.brief_fact_check import brief_changed
 from ui.backend.services.brief_sharing import user_group_ids
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
@@ -603,7 +607,9 @@ async def list_checkable_briefs(
     # show as running until some api copy restarts.
     await fail_stale_checks(session)
     pairs = await _accessible_briefs(session, admin)
-    latest = await _latest_checks(session, [b.id for b, _ in pairs])
+    ids = [b.id for b, _ in pairs]
+    latest = await _latest_checks(session, ids)
+    current = await versions.latest_numbers(session, ids)
     owners = await _owner_names(session, list({b.user_id for b, _ in pairs}))
     out = []
     for brief, access in pairs:
@@ -619,13 +625,28 @@ async def list_checkable_briefs(
                 researched_sections=len(researched_sections(content)),
                 cited_passages=count_cited_passages(content),
                 last_check=(
-                    BriefCitationCheckRead.model_validate(latest[brief.id])
+                    _check_read(latest[brief.id], current.get(brief.id))
                     if brief.id in latest
                     else None
                 ),
             )
         )
     return out
+
+
+def _check_read(
+    check: BriefCitationCheck, current_version: Optional[int], detail: bool = False
+) -> BriefCitationCheckRead:
+    """A check as the API returns it, saying whether the brief has moved on
+    to a newer version than the one the check judged."""
+    model = BriefCitationCheckDetail if detail else BriefCitationCheckRead
+    return model.model_validate(check).model_copy(
+        update={"brief_changed": brief_changed(check, current_version)}
+    )
+
+
+async def _current_version(session: AsyncSession, brief_id: uuid.UUID) -> Optional[int]:
+    return (await versions.latest_numbers(session, [brief_id])).get(brief_id)
 
 
 async def _get_check(
@@ -662,6 +683,12 @@ async def create_brief_check(
     judge_model = resolve_judge_model(combo)
     if not judge_model:
         raise HTTPException(status_code=503, detail="No judge model is configured")
+    # The check judges the brief's current version and pins it: a brief with
+    # no version yet gets its baseline version in the same transaction.
+    try:
+        version = await versions.ensure_version(session, brief)
+    except BriefCitationError as exc:
+        raise citation_http_error(exc)
     check = BriefCitationCheck(
         brief_id=brief.id,
         brief_title=brief.title,
@@ -669,6 +696,8 @@ async def create_brief_check(
         created_by_user_id=admin.id,
         judge_model=judge_model,
         model_combo=combo,
+        brief_version_id=version.id,
+        brief_version_number=version.number,
         status=EXPERIMENT_PENDING,
         summary_stats=None,
     )
@@ -694,7 +723,7 @@ async def list_brief_checks(
     brief_id: uuid.UUID = Query(...),
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
-) -> List[BriefCitationCheck]:
+) -> List[BriefCitationCheckRead]:
     """All checks of one brief, newest first."""
     await _accessible_brief(session, brief_id, admin)
     result = await session.execute(
@@ -702,7 +731,8 @@ async def list_brief_checks(
         .where(BriefCitationCheck.brief_id == brief_id)
         .order_by(BriefCitationCheck.created_at.desc())
     )
-    return list(result.scalars().all())
+    current = await _current_version(session, brief_id)
+    return [_check_read(check, current) for check in result.scalars().all()]
 
 
 @router.get(
@@ -716,11 +746,12 @@ async def get_brief_check(
     check_id: uuid.UUID,
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
-) -> BriefCitationCheck:
+) -> BriefCitationCheckRead:
     await fail_stale_checks(session)
     check = await _get_check(session, check_id, admin)
     await session.refresh(check, attribute_names=["passages"])
-    return check
+    current = await _current_version(session, check.brief_id)
+    return _check_read(check, current, detail=True)
 
 
 @router.post(

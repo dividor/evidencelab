@@ -71,16 +71,19 @@ def _brief(owner_id, title="B"):
 
 
 class FakeScalars(list):
-    """``result.scalars()``: iterable, with ``.all()``."""
+    """``result.scalars()``: iterable, with ``.all()`` and ``.first()``."""
 
     def all(self):
         return list(self)
+
+    def first(self):
+        return self[0] if self else None
 
 
 class FakeSession:
     """Answers the route helpers' queries from in-memory lists."""
 
-    def __init__(self, own, shared, checks=(), users=(), others=()):
+    def __init__(self, own, shared, checks=(), users=(), others=(), versions=()):
         self.own, self.shared, self.checks, self.users = (
             list(own),
             list(shared),
@@ -90,7 +93,21 @@ class FakeSession:
         # Every brief not owned by the user: what the admin-only "others"
         # query returns (shared briefs included, like the real table).
         self.others = list(shared) + list(others)
+        # brief_versions rows: (brief id, number) pairs become version rows.
+        self.versions = [
+            SimpleNamespace(id=uuid.uuid4(), brief_id=b, number=n) for b, n in versions
+        ]
         self.added, self.deleted, self.commits = [], [], 0
+
+    def _version_rows(self, text):
+        """``latest_numbers`` reads (brief id, max number) tuples; the
+        store's other reads want the newest row first."""
+        if "max(" in text:
+            numbers = {}
+            for v in self.versions:
+                numbers[v.brief_id] = max(numbers.get(v.brief_id, 0), v.number)
+            return list(numbers.items())
+        return sorted(self.versions, key=lambda v: -v.number)
 
     async def execute(self, statement):
         text = str(statement)
@@ -100,6 +117,8 @@ class FakeSession:
             rows = self.others if "!=" in text else self.own
         elif "FROM brief_citation_checks" in text:
             rows = sorted(self.checks, key=lambda c: c.created_at, reverse=True)
+        elif "FROM brief_versions" in text:
+            rows = self._version_rows(text)
         elif "FROM users" in text or "FROM user_group_members" in text:
             rows = self.users if "FROM users" in text else []
         else:
@@ -117,8 +136,11 @@ class FakeSession:
 
     def add(self, row):
         row.id = uuid.uuid4()
-        row.created_at = NOW
         self.added.append(row)
+        if type(row).__name__ == "BriefVersion":
+            self.versions.append(row)
+            return
+        row.created_at = NOW
         self.checks.append(row)
 
     async def delete(self, row):
@@ -145,6 +167,8 @@ def _check(brief, status="completed", **over):
         created_by_user_id=None,
         judge_model="m",
         model_combo=None,
+        brief_version_id=uuid.uuid4(),
+        brief_version_number=3,
         status=status,
         summary_stats={
             "total": 2,
@@ -167,7 +191,9 @@ class TestListBriefs:
         old, new = _check(
             mine, created_at=datetime(2026, 1, 1, tzinfo=timezone.utc)
         ), _check(mine)
-        session = FakeSession([mine], [theirs], [old, new], [me, other])
+        session = FakeSession(
+            [mine], [theirs], [old, new], [me, other], versions=[(mine.id, 4)]
+        )
         out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
         by_title = {c.title: c for c in out}
         assert by_title["Mine"].access == "own"
@@ -179,6 +205,19 @@ class TestListBriefs:
         assert by_title["Mine"].last_check.id == new.id
         assert by_title["Theirs"].last_check is None
         assert by_title["Mine"].owner_name == "Jan"
+        # The check judged version 3; the brief is at version 4 since.
+        last = by_title["Mine"].last_check
+        assert last.brief_version_number == 3 and last.brief_changed is True
+
+    @pytest.mark.asyncio
+    async def test_list_when_check_predates_versions_then_changed_unknown(self):
+        me = _user()
+        mine = _brief(me.id, "Mine")
+        check = _check(mine, brief_version_id=None, brief_version_number=None)
+        session = FakeSession([mine], [], [check], [me])
+        out = await routes.list_checkable_briefs(_request(), admin=me, session=session)
+        last = out[0].last_check
+        assert last.brief_version_number is None and last.brief_changed is None
 
     @pytest.mark.asyncio
     async def test_list_when_admin_then_other_users_briefs_included_once(self):
@@ -319,6 +358,34 @@ class TestCreateCheck:
         )
         assert check.created_by_user_id == me.id and check.brief_title == brief.title
         assert len(tasks.tasks) == 1 and tasks.tasks[0].args == (check.id,)
+        # A brief with no version yet gets its baseline version, which the
+        # check pins, in the same transaction.
+        version = next(r for r in session.added if type(r).__name__ == "BriefVersion")
+        assert (version.number, version.kind) == (1, "baseline")
+        assert (
+            version.content["sections"][0]["id"] == BRIEF_CONTENT["sections"][0]["id"]
+        )
+        assert check.brief_version_id == version.id and check.brief_version_number == 1
+        assert session.commits == 1
+
+    @pytest.mark.asyncio
+    async def test_create_when_brief_has_versions_then_the_current_one_is_pinned(
+        self, monkeypatch
+    ):
+        me = _user()
+        brief = _brief(me.id)
+        monkeypatch.setattr(routes, "resolve_judge_model", lambda combo: "judge")
+        session = FakeSession([brief], [], versions=[(brief.id, 1), (brief.id, 2)])
+        check = await routes.create_brief_check(
+            _request(),
+            routes.BriefCitationCheckCreate(brief_id=brief.id),
+            BackgroundTasks(),
+            admin=me,
+            session=session,
+        )
+        current = max(session.versions, key=lambda v: v.number)
+        assert check.brief_version_id == current.id and check.brief_version_number == 2
+        assert not any(type(r).__name__ == "BriefVersion" for r in session.added)
 
 
 class TestCheckAccess:

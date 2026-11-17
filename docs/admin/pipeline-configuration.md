@@ -71,13 +71,47 @@ Each entry defines a model that can be used for vector embeddings:
 |-------|------|-------------|
 | `model_id` | string | Full model identifier (e.g., `"intfloat/multilingual-e5-large"`) |
 | `size` | int | Vector dimensionality (e.g., 1024) |
-| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"fastembed"` |
+| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"openai"`, `"fastembed"` |
 | `type` | string | `"dense"` or `"sparse"` |
 | `max_tokens` | int | Maximum input token length |
+| `base_url_env` | string | `openai` only: name of the environment variable holding the base URL (default `OPENAI_BASE_URL`) |
+| `api_key_env` | string | `openai` only: name of the environment variable holding the API key (default `OPENAI_API_KEY`) |
 
 The `source` field determines how the model is loaded:
 - **`huggingface`** / **`fastembed`** — runs locally via an embedding server (requires GPU or MPS for best performance)
 - **`azure_foundry`** / **`google_vertex`** / **`aws_bedrock`** — accessed via remote API (requires credentials in `.env`, see [Amazon Bedrock](#amazon-bedrock) for AWS)
+- **`openai`** — any OpenAI-compatible `/embeddings` endpoint (OpenAI, vLLM, Ollama, LiteLLM, hosted providers), see [OpenAI-compatible embedding endpoint](#openai-compatible-embedding-endpoint)
+
+#### OpenAI-compatible embedding endpoint
+
+Any service that implements the OpenAI embeddings API can be used with `"source": "openai"`. Set its base URL, without the `/embeddings` path, and its key in `.env`. For OpenAI itself:
+
+```bash
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_API_KEY=your-key
+```
+
+Leave `OPENAI_API_KEY` empty for a local server that needs no key; no `Authorization` header is then sent.
+
+The stock `config.json` includes one such model:
+
+| Key | Kind | Model |
+|---|---|---|
+| `openai_small` | Embedding | OpenAI `text-embedding-3-small` through OpenAI's own API, 1536 dimensions: the same model as the stock `azure_small`, but vectors from the two are separate slots, so a data source indexed with one is searched with that one |
+
+For another service, add an entry with that service's model name and vector size:
+
+```json
+"my_embed": {
+  "model_id": "Qwen/Qwen3-Embedding-8B",
+  "size": 4096,
+  "source": "openai",
+  "type": "dense",
+  "max_tokens": 8192
+}
+```
+
+To use a model, list its key in the data source's `dense_models` before the first pipeline run (see the note above), and in the `embedding_model` of a model combo. Requests are sent in batches of 16, and transient errors (HTTP 429 or 5xx, network errors, timeouts) are retried with backoff. To use other environment variable names, for example to keep two services apart, set `base_url_env` and `api_key_env` on the model.
 
 #### LLM Models (`supported_llms`)
 
@@ -93,8 +127,38 @@ The `source` field determines how the model is loaded:
 | Field | Type | Description |
 |-------|------|-------------|
 | `model_id` | string | Model identifier |
-| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` / `"aws_bedrock"` for API |
+| `source` or `provider` | string | `"huggingface"` for local, `"azure_foundry"` / `"google_vertex"` / `"aws_bedrock"` / `"cohere_compatible"` for API |
 | `region` | string | `aws_bedrock` only: the AWS region to call the reranker in, when it differs from `AWS_REGION` (rerank models are offered in only some regions) |
+| `base_url_env` | string | `cohere_compatible` only: name of the environment variable holding the rerank base URL (default `COHERE_BASE_URL`) |
+| `api_key_env` | string | `cohere_compatible` only: name of the environment variable holding the API key (default `COHERE_API_KEY`) |
+| `endpoint_url` | string | `cohere_compatible` only: full HTTPS endpoint; overrides `base_url_env` |
+| `timeout` | number | `cohere_compatible` only: request timeout in seconds (default 30) |
+
+#### Cohere-compatible rerank endpoint
+
+Any service that implements Cohere's `/rerank` API can be used with `"provider": "cohere_compatible"`. Set the HTTPS base URL and API key in `.env`. For Cohere's own API:
+
+```bash
+COHERE_BASE_URL=https://api.cohere.com/v2
+COHERE_API_KEY=your-key
+```
+
+The stock `config.json` includes one such model:
+
+| Key | Kind | Model |
+|---|---|---|
+| `cohere-api-rerank-v4.0-fast` | Reranker | Cohere Rerank 4.0 Fast (`rerank-v4.0-fast`) through Cohere's own API: the same model as the stock Azure Foundry reranker. Cohere also offers newer models, such as `rerank-v5.0-pro`; change `model_id` to use one. |
+
+To use it, set the reranker of a model combo to its key. For another service, add an entry with that service's model name:
+
+```json
+"my_reranker": {
+  "model_id": "provider/model-name",
+  "provider": "cohere_compatible"
+}
+```
+
+`/rerank` is appended to the base URL if missing. If the service is temporarily unavailable (HTTP 429 or 5xx, network error or timeout), search returns the results without reranking and logs a warning. To use other environment variable names, for example to keep two providers apart, set `base_url_env` and `api_key_env` on the model.
 
 #### Amazon Bedrock
 

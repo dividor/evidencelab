@@ -10,7 +10,7 @@ import type {
   CheckSource,
   CitationVerdict,
 } from '../../../types/testing';
-import { formatCostUsd, formatMs, formatPercent, formatTimestamp, formatTokens } from './testingFormat';
+import { formatCostUsd, formatElapsed, formatPercent, formatTimestamp, formatTokens } from './testingFormat';
 import {
   EMPTY_FILTERS,
   filterPassages,
@@ -104,7 +104,7 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
     ...(stats.reference_lines_skipped !== undefined
       ? [{ label: 'Reference lines skipped', value: stats.reference_lines_skipped, help: SUMMARY_HELP.reference_lines_skipped }]
       : []),
-    { label: 'Duration', value: formatMs(stats.duration_ms), help: SUMMARY_HELP.duration },
+    { label: 'Duration', value: formatElapsed(stats.duration_ms), help: SUMMARY_HELP.duration },
     { label: 'Tokens', value: formatTokens(stats.total_tokens), help: SUMMARY_HELP.tokens },
     { label: 'Cost', value: formatCostUsd(stats.cost_usd), help: SUMMARY_HELP.cost },
   ];
@@ -355,6 +355,22 @@ const PassageRow: React.FC<{ passage: BriefCitationCheckPassage; onOpen?: OpenSo
 /*  Detail view                                                       */
 /* ------------------------------------------------------------------ */
 
+// How long a check ran, for the header: a finished check reports its
+// duration; one still running is timed from when it started (the header
+// re-renders with every poll).
+const runTime = (check: BriefCitationCheck, status: string): string => {
+  const stats = check.summary_stats || {};
+  if (isActive(status)) {
+    return check.started_at ? `running for ${formatElapsed(Date.now() - Date.parse(check.started_at))}` : '';
+  }
+  const ms =
+    stats.duration_ms ??
+    (check.started_at && check.finished_at
+      ? Date.parse(check.finished_at) - Date.parse(check.started_at)
+      : null);
+  return ms == null ? '' : `ran ${formatElapsed(ms)}`;
+};
+
 const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   check,
   dataSource,
@@ -445,6 +461,7 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
   };
 
   const status = detail?.status || check.status;
+  const ran = runTime(detail || check, status);
   return (
     <div className="admin-section testing-section">
       {error && (
@@ -464,7 +481,18 @@ const BriefCheckDetail: React.FC<BriefCheckDetailProps> = ({
           <div className="text-muted">
             Checked {formatTimestamp(check.created_at)} · judge {check.judge_model || '—'}
             {check.model_combo ? ` (${check.model_combo})` : ''}
+            {' · '}
+            {check.brief_version_number != null
+              ? `brief version ${check.brief_version_number}`
+              : 'brief version not recorded'}
+            {ran && ` · ${ran}`}
           </div>
+          {check.brief_changed && (
+            <div className="testing-check-changed" role="note">
+              The brief has changed since this check; its results describe version{' '}
+              {check.brief_version_number}, not the brief as it is now.
+            </div>
+          )}
         </div>
         <span className={`testing-status testing-status-${status}`}>{status}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>

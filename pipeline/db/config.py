@@ -122,6 +122,12 @@ def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             vec_entry["max_tokens"] = model_info["max_tokens"]
         if "output_dimensionality" in model_info:
             vec_entry["output_dimensionality"] = model_info["output_dimensionality"]
+        # "openai" models name the variables holding their base URL and key,
+        # so several services can be used at once; without them the defaults
+        # (OPENAI_BASE_URL, OPENAI_API_KEY) apply.
+        for option in ("base_url_env", "api_key_env"):
+            if option in model_info:
+                vec_entry[option] = model_info[option]
         result[model_name] = vec_entry
     return result
 
@@ -140,6 +146,12 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+# Options a remote reranker reads from its own entry ("cohere_compatible").
+# Copied only when set: the reranker falls back to its defaults for a missing
+# key, which a key holding None would defeat (no timeout, no variable name).
+_REMOTE_RERANK_OPTIONS = ("base_url_env", "api_key_env", "timeout")
+
+
 def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Build SUPPORTED_RERANK_MODELS dict from supported_rerank_models config."""
     result: Dict[str, Dict[str, Any]] = {}
@@ -154,6 +166,9 @@ def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             # Bedrock rerank models are offered in only some AWS regions.
             "region": model_info.get("region"),
         }
+        for option in _REMOTE_RERANK_OPTIONS:
+            if option in model_info:
+                result[model_name][option] = model_info[option]
     return result
 
 

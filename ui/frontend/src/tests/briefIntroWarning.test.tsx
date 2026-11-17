@@ -27,7 +27,7 @@ test('the Log shows a note on the run that kept an introduction with headings', 
     <BriefSectionAudit
       title="Education outcomes"
       audit={[{ id: 'e1', kind: 'generate', at: Date.now(), question: 'Education outcomes', note: 'Kept with 1 heading.' }]}
-      pendingEntryId={null}
+      pendingRunId={null}
       onShowChanges={jest.fn()}
       onClose={jest.fn()}
     />,

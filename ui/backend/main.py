@@ -806,6 +806,7 @@ if USER_MODULE:
     from ui.backend.routes import api_keys as api_keys_routes
     from ui.backend.routes import brief_central as brief_central_routes
     from ui.backend.routes import brief_library as brief_library_routes
+    from ui.backend.routes import brief_versions as brief_versions_routes
     from ui.backend.routes import document_summary as document_summary_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
@@ -821,6 +822,7 @@ if USER_MODULE:
     app.include_router(brief_central_routes.router, tags=["brief-central"])
     app.include_router(brief_citations_routes.router, tags=["brief-citations"])
     app.include_router(brief_library_routes.router, tags=["brief-library"])
+    app.include_router(brief_versions_routes.router, tags=["brief-versions"])
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])
