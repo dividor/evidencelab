@@ -611,6 +611,13 @@ def apply_sequence_rules(
     """
     final_labels = labels.copy()
     total_pages = _resolve_total_pages(document)
+    if not total_pages:
+        # Fallback when the document has no stored page count: use the highest
+        # page referenced in the TOC so the "first third" front-matter logic
+        # still works (otherwise TOC-page lines like "ANNEX I" can start the
+        # annex boundary too early and relabel the whole report as annexes).
+        toc_pages = [e["page"] for e in entries if e.get("page") is not None]
+        total_pages = max(toc_pages) if toc_pages else None
 
     short_doc_result = _apply_short_doc_rule(entries, final_labels, total_pages)
     if short_doc_result is not None:
