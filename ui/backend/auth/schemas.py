@@ -1,5 +1,6 @@
 """Pydantic schemas for user authentication and permissions."""
 
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -50,6 +51,50 @@ def _validate_jsonb(v: Any) -> Any:
             f"JSONB payload exceeds maximum size of {_MAX_JSONB_SIZE} characters"
         )
     return v
+
+
+# Values anonymous visitors can store (ratings, activity) are later shown to
+# administrators. Two kinds are refused because a browser could run them: a
+# data: URL that is not a raster image (it is shown as an image, and an SVG can
+# carry script), and a javascript: or vbscript: value in a link field (url,
+# link, href, *_url), which the admin screens render as a link. Other text is
+# shown as text, so it is left alone. Browsers ignore whitespace and control
+# characters inside a scheme, so those are removed before the check.
+_RASTER_DATA_URL = re.compile(
+    r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=\s]*$", re.IGNORECASE
+)
+_SCHEME_NOISE = re.compile(r"[\x00-\x20\x7f]+")
+_EXECUTABLE_SCHEMES = ("javascript:", "vbscript:")
+
+
+def _is_link_field(key: Optional[str]) -> bool:
+    return key is not None and (key in ("url", "link", "href") or key.endswith("_url"))
+
+
+def _check_not_executable(value: str, is_link: bool) -> None:
+    compact = _SCHEME_NOISE.sub("", value).lower()
+    if compact.startswith("data:") and not _RASTER_DATA_URL.match(value.strip()):
+        raise ValueError("Only PNG, JPEG, WebP or GIF data URLs are accepted")
+    if is_link and compact.startswith(_EXECUTABLE_SCHEMES):
+        raise ValueError("Script URLs are not accepted in link fields")
+
+
+def _reject_executable_values(obj: Any, key: Optional[str] = None) -> Any:
+    """Raise ValueError if *obj* holds a value a browser would run (see above)."""
+    if isinstance(obj, str):
+        _check_not_executable(obj, _is_link_field(key))
+    elif isinstance(obj, dict):
+        for item_key, item in obj.items():
+            _reject_executable_values(item, str(item_key))
+    elif isinstance(obj, list):
+        for item in obj:
+            _reject_executable_values(item, key)
+    return obj
+
+
+def _validate_untrusted_jsonb(v: Any) -> Any:
+    """Validate a JSONB value an anonymous visitor may have sent."""
+    return _reject_executable_values(_validate_jsonb(v))
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +277,12 @@ class RatingCreate(BaseModel):
     @field_validator("context")
     @classmethod
     def validate_context(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return _reject_executable_values(v, "url")
 
 
 # ---------------------------------------------------------------------------
@@ -326,12 +376,17 @@ class ActivityCreate(_TokenUsageFields):
     @field_validator("filters")
     @classmethod
     def validate_filters(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
     @field_validator("search_results")
     @classmethod
     def validate_search_results(cls, v: Optional[list]) -> Optional[list]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return _reject_executable_values(v, "url")
 
 
 class ActivitySummaryUpdate(_TokenUsageFields):
@@ -349,7 +404,7 @@ class ActivitySummaryUpdate(_TokenUsageFields):
     @field_validator("drilldown_tree")
     @classmethod
     def validate_drilldown_tree(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
 
 class ActivitySummaryUpdateAnonymous(_TokenUsageFields):
@@ -363,7 +418,7 @@ class ActivitySummaryUpdateAnonymous(_TokenUsageFields):
     @field_validator("drilldown_tree")
     @classmethod
     def validate_drilldown_tree(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
 
 class ActivityRead(_TokenUsageFields):

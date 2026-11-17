@@ -26,6 +26,7 @@ from ui.backend.auth.schemas import (
 )
 from ui.backend.auth.users import current_superuser, optional_current_user
 from ui.backend.utils.app_limits import get_rate_limit_ratings, limiter
+from ui.backend.utils.excel_text import append_text_row
 
 logger = logging.getLogger(__name__)
 
@@ -443,10 +444,11 @@ async def export_ratings(
         "Responded By",
         "Responded At",
     ]
-    ws.append(headers)
+    append_text_row(ws, headers)
 
     for rating, user, responder in rows:
-        ws.append(
+        append_text_row(
+            ws,
             [
                 (
                     rating.created_at.strftime("%Y-%m-%d %H:%M")
@@ -469,7 +471,7 @@ async def export_ratings(
                     if rating.responded_at
                     else ""
                 ),
-            ]
+            ],
         )
 
     buf = io.BytesIO()
