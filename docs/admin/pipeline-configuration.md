@@ -103,12 +103,20 @@ The `source` field determines how the model is loaded:
 
 #### Cohere-compatible rerank endpoint
 
-Any service that implements Cohere's `/rerank` API can be used with `"provider": "cohere_compatible"`. Set the HTTPS base URL and API key in `.env`:
+Any service that implements Cohere's `/rerank` API can be used with `"provider": "cohere_compatible"`. Set the HTTPS base URL and API key in `.env`. For Cohere's own API:
 
 ```bash
-COHERE_BASE_URL=https://api.example.com/v2
+COHERE_BASE_URL=https://api.cohere.com/v2
 COHERE_API_KEY=your-key
 ```
+
+The stock `config.json` includes one such model:
+
+| Key | Kind | Model |
+|---|---|---|
+| `cohere-api-rerank-v4.0-fast` | Reranker | Cohere Rerank 4.0 Fast (`rerank-v4.0-fast`) through Cohere's own API: the same model as the stock Azure Foundry reranker. Cohere also offers newer models, such as `rerank-v5.0-pro`; change `model_id` to use one. |
+
+To use it, set the reranker of a model combo to its key. For another service, add an entry with that service's model name:
 
 ```json
 "my_reranker": {

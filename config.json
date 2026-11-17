@@ -213,6 +213,10 @@
       "model_id": "cohere.rerank-v3-5:0",
       "provider": "aws_bedrock",
       "region": "us-west-2"
+    },
+    "cohere-api-rerank-v4.0-fast": {
+      "model_id": "rerank-v4.0-fast",
+      "provider": "cohere_compatible"
     }
   },
   "ui_model_combos": {

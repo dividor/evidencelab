@@ -7,6 +7,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
+from pipeline.db import config as db_config
 from ui.backend.services import cohere_compatible_reranker as mod
 from ui.backend.services.google_vertex_reranker import RerankerUnavailableError
 
@@ -154,3 +155,41 @@ class TestRerank:
         with patch(f"{MODULE}.urlopen", side_effect=exc):
             with pytest.raises(RerankerUnavailableError):
                 mod.rerank_with_cohere_compatible("q", ["d"], "m", {})
+
+
+# The name of the second service's key variable (a name, not a key).
+SECOND_SERVICE_VARIABLE = "SECOND_RERANK_KEY"
+
+
+class TestOptionsFromConfigJson:
+    """The model's options must survive the registry the search path reads."""
+
+    @staticmethod
+    def _registry_entry(**options):
+        config = {
+            "supported_rerank_models": {
+                "two": {"model_id": "m", "provider": "cohere_compatible", **options}
+            }
+        }
+        return db_config._load_rerank_models(config)["two"]
+
+    def test_load_when_options_set_then_reranker_uses_them(self, monkeypatch):
+        second_service = "value-of-the-second-variable"
+        monkeypatch.setenv("SECOND_RERANK_URL", "https://second.example.com/v1")
+        monkeypatch.setenv(SECOND_SERVICE_VARIABLE, second_service)
+        entry = self._registry_entry(
+            base_url_env="SECOND_RERANK_URL",
+            api_key_env=SECOND_SERVICE_VARIABLE,
+            timeout=5,
+        )
+        assert mod._get_endpoint(entry) == "https://second.example.com/v1/rerank"
+        assert mod._get_api_key(entry) == second_service
+        assert entry["timeout"] == 5
+
+    def test_load_when_options_absent_then_defaults_apply(self):
+        entry = self._registry_entry()
+        assert "base_url_env" not in entry
+        assert "api_key_env" not in entry
+        assert "timeout" not in entry
+        assert mod._get_endpoint(entry) == "https://api.example.com/v2/rerank"
+        assert mod._get_api_key(entry) == "secret"

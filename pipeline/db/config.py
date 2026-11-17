@@ -140,6 +140,12 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+# Options a remote reranker reads from its own entry ("cohere_compatible").
+# Copied only when set: the reranker falls back to its defaults for a missing
+# key, which a key holding None would defeat (no timeout, no variable name).
+_REMOTE_RERANK_OPTIONS = ("base_url_env", "api_key_env", "timeout")
+
+
 def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Build SUPPORTED_RERANK_MODELS dict from supported_rerank_models config."""
     result: Dict[str, Dict[str, Any]] = {}
@@ -154,6 +160,9 @@ def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             # Bedrock rerank models are offered in only some AWS regions.
             "region": model_info.get("region"),
         }
+        for option in _REMOTE_RERANK_OPTIONS:
+            if option in model_info:
+                result[model_name][option] = model_info[option]
     return result
 
 
