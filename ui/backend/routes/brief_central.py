@@ -37,6 +37,9 @@ from ui.backend.auth.schemas import (
 from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.schemas.testing import (
     BriefCitationCheckRead,
+    BriefFactCheckEvidence,
+    BriefFactCheckEvidenceRead,
+    BriefFactCheckLegendItem,
     BriefFactCheckMark,
     BriefFactCheckRead,
     BriefFactCheckSection,
@@ -47,7 +50,7 @@ from ui.backend.services.brief_citations_convert import convert_legacy, is_legac
 from ui.backend.services.brief_fact_check import (
     brief_changed,
     fact_check,
-    highlight_verdicts,
+    fact_check_evidence,
 )
 from ui.backend.services.brief_sharing import (
     add_share,
@@ -63,7 +66,6 @@ from ui.backend.services.brief_version_store import (
     record_version,
 )
 from ui.backend.services.brief_versions import KIND_COPIED, KIND_CREATED
-from ui.backend.services.group_settings import user_effective_settings
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.app_state import validate_data_source
 
@@ -471,11 +473,10 @@ async def get_brief_fact_check(
     """The Fact Checker of a brief the user can view: the newest completed
     citation check while it still covers part of the brief, the version it
     judged against the brief's current one, the sections changed since, and
-    the passages to highlight for the verdicts the user's groups chose."""
+    every judged passage to highlight with its verdict."""
     brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
-    verdicts = highlight_verdicts(await user_effective_settings(session, user.id))
     try:
-        answer = await fact_check(session, brief, verdicts)
+        answer = await fact_check(session, brief)
     except bc.BriefCitationError as exc:
         raise citation_http_error(exc)
     check = answer["check"]
@@ -488,12 +489,43 @@ async def get_brief_fact_check(
         check=check_read,
         brief_version=answer["brief_version"],
         current_version=answer["current_version"],
-        highlight_verdicts=verdicts,
         note=answer["note"],
         changed_sections=[
             BriefFactCheckSection(**section) for section in answer["changed_sections"]
         ],
+        legend=[BriefFactCheckLegendItem(**item) for item in answer["legend"]],
         marks=[BriefFactCheckMark(**mark) for mark in answer["marks"]],
+    )
+
+
+@router.get(
+    "/briefs/{brief_id}/fact-check/{check_id}/passages/{passage_id}",
+    response_model=BriefFactCheckEvidenceRead,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_brief_fact_check_evidence(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    passage_id: int,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckEvidenceRead:
+    """The evidence behind one highlighted passage: the excerpts the judge
+    read, with the parts it quoted marked. Loaded when the passage's card
+    opens, since the excerpts are long and most are never looked at."""
+    brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    answer = await fact_check_evidence(session, brief, check_id, passage_id)
+    if answer is None:
+        raise HTTPException(
+            status_code=404, detail="No such passage in a completed check of this brief"
+        )
+    return BriefFactCheckEvidenceRead(
+        passage_id=answer["passage_id"],
+        verdict=answer["verdict"],
+        verdict_label=answer["verdict_label"],
+        evidence=[BriefFactCheckEvidence(**block) for block in answer["evidence"]],
     )
 
 

@@ -6,10 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
-from pydantic import ValidationError
 from starlette.requests import Request
 
-from ui.backend.auth.schemas import GroupUpdate, SearchSettings
 from ui.backend.routes import brief_central as routes
 from ui.backend.services import brief_fact_check as svc
 from ui.backend.services import brief_versions as bv
@@ -59,6 +57,8 @@ def _row(pid, passage, verdict, **over):
         confidence=0.9,
         citations="1",
         quote_not_in_source=False,
+        sources=[],
+        supporting_quotes=[],
     )
     return SimpleNamespace(**{**fields, **over})
 
@@ -120,60 +120,6 @@ def _request():
 
 
 MATCHING_ROWS = [_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
-
-
-# ---------------------------------------------------------------------------
-# Settings
-# ---------------------------------------------------------------------------
-
-
-class TestHighlightVerdicts:
-    def test_when_no_group_set_it_then_unsupported_only(self):
-        assert svc.highlight_verdicts({}) == ["unsupported"]
-        assert svc.highlight_verdicts(None) == ["unsupported"]
-
-    def test_when_group_chose_verdicts_then_those_in_order_once(self):
-        settings = {
-            svc.FACT_CHECK_SETTING_KEY: [
-                "partially_supported",
-                "unsupported",
-                "partially_supported",
-            ]
-        }
-        assert svc.highlight_verdicts(settings) == [
-            "partially_supported",
-            "unsupported",
-        ]
-
-    def test_when_group_chose_none_then_nothing_highlighted(self):
-        assert svc.highlight_verdicts({svc.FACT_CHECK_SETTING_KEY: []}) == []
-
-    @pytest.mark.parametrize("bad", [["maybe"], "unsupported", [1]])
-    def test_when_value_unknown_then_error(self, bad):
-        with pytest.raises(ValueError):
-            svc.validate_verdicts(bad)
-
-    def test_group_update_rejects_unknown_verdict(self):
-        with pytest.raises(ValidationError):
-            GroupUpdate(search_settings={svc.FACT_CHECK_SETTING_KEY: ["maybe"]})
-
-    def test_group_update_keeps_valid_verdicts_and_other_keys(self):
-        body = GroupUpdate(
-            search_settings={
-                "rerank": False,
-                svc.FACT_CHECK_SETTING_KEY: ["unsupported", "cannot_assess"],
-            }
-        )
-        assert body.search_settings == {
-            "rerank": False,
-            svc.FACT_CHECK_SETTING_KEY: ["unsupported", "cannot_assess"],
-        }
-        assert GroupUpdate(search_settings={"rerank": True}).search_settings == {
-            "rerank": True
-        }
-        assert SearchSettings(
-            briefFactCheckVerdicts=["unsupported"]
-        ).briefFactCheckVerdicts == ["unsupported"]
 
 
 # ---------------------------------------------------------------------------
@@ -247,10 +193,9 @@ class TestCoverage:
 class FakeSession:
     """Answers the route's queries from in-memory lists."""
 
-    def __init__(self, briefs=(), checks=(), shares=(), groups=(), versions=()):
+    def __init__(self, briefs=(), checks=(), shares=(), versions=()):
         self.briefs, self.checks = list(briefs), list(checks)
-        self.shares, self.groups = list(shares), list(groups)
-        self.versions = list(versions)
+        self.shares, self.versions = list(shares), list(versions)
         self.refreshed = []
 
     async def execute(self, statement):
@@ -260,6 +205,16 @@ class FakeSession:
             rows = self.briefs
         elif "FROM brief_shares" in text:
             rows = self.shares
+        elif "FROM brief_citation_check_passages" in text:
+            assert "JOIN brief_citation_checks" in text and "LIMIT" in text
+            params = statement.compile().params
+            rows = [
+                row
+                for check in self.checks
+                if check.status == "completed" and check.id == params["id_1"]
+                for row in check.passages
+                if row.passage_id == params["passage_id_1"]
+            ]
         elif "FROM brief_citation_checks" in text:
             assert "status" in text, "only completed checks are candidates"
             assert "LIMIT" in text, "only the newest completed check is read"
@@ -274,8 +229,6 @@ class FakeSession:
             for v in self.versions:
                 numbers[v.brief_id] = max(numbers.get(v.brief_id, 0), v.number)
             rows, tuples = [], list(numbers.items())
-        elif "FROM user_groups JOIN user_group_members" in text:
-            rows = self.groups
         elif "FROM user_group_members" in text:
             rows = []
         else:
@@ -320,7 +273,7 @@ class TestFactCheck:
         brief = _brief(uuid.uuid4())
         pending = _check(brief.id, [], status="running")
         session = FakeSession(briefs=[brief], checks=[pending])
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["check"] is None and out["marks"] == []
         assert session.refreshed == []
 
@@ -329,12 +282,13 @@ class TestFactCheck:
         self,
     ):
         brief, check, session = _checked_brief(uuid.uuid4(), "Costs fell [1].")
-        out = await svc.fact_check(
-            session, brief, ["unsupported", "partially_supported"]
-        )
+        out = await svc.fact_check(session, brief)
         assert out["check"] is check
         assert (out["brief_version"], out["current_version"]) == (1, 2)
-        assert [(m["section_id"], m["passage"]) for m in out["marks"]] == [("s1", FACT)]
+        assert [(m["section_id"], m["passage"]) for m in out["marks"]] == [
+            ("s1", FACT),
+            ("s1", OTHER),
+        ]
         assert out["changed_sections"] == [
             {
                 "id": "s2",
@@ -351,8 +305,8 @@ class TestFactCheck:
     @pytest.mark.asyncio
     async def test_a_newer_version_with_the_same_passages_keeps_every_mark(self):
         brief, check, session = _checked_brief(uuid.uuid4(), "Costs rose [1].")
-        out = await svc.fact_check(session, brief, ["partially_supported"])
-        assert [m["section_id"] for m in out["marks"]] == ["s2"]
+        out = await svc.fact_check(session, brief)
+        assert [m["section_id"] for m in out["marks"]] == ["s1", "s1", "s2"]
         assert out["changed_sections"] == []
         assert out["note"] == (
             "Checked at version 1; the brief is now at version 2, with its cited "
@@ -365,7 +319,7 @@ class TestFactCheck:
         v1 = _version(brief.id, brief.content, 1)
         check = _check(brief.id, MATCHING_ROWS, version=v1)
         session = FakeSession(briefs=[brief], checks=[check], versions=[v1])
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["note"] == "Checked at version 1, the brief's current version."
         assert out["check"].brief_version_number == 1
 
@@ -373,7 +327,7 @@ class TestFactCheck:
     async def test_when_every_section_changed_then_nothing(self):
         brief, _check_, session = _checked_brief(uuid.uuid4(), "Costs fell [1].")
         brief.content = _content("A new fact [1].", second="Costs fell [1].")
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["check"] is None and out["current_version"] == 2
 
     @pytest.mark.asyncio
@@ -387,13 +341,14 @@ class TestFactCheck:
             version=v1,
         )
         session = FakeSession(briefs=[brief], checks=[older, newer], versions=[v1])
-        out = await svc.fact_check(session, brief, ["unsupported"])
-        assert out["check"] is newer and out["marks"] == []
+        out = await svc.fact_check(session, brief)
+        assert out["check"] is newer
+        assert [m["verdict"] for m in out["marks"]] == ["supported", "supported"]
 
     @pytest.mark.asyncio
     async def test_marks_cite_the_numbers_readers_see_now(self):
         brief, _check_, session = _checked_brief(uuid.uuid4())
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["marks"][0]["citations"] == "1"
 
     @pytest.mark.asyncio
@@ -403,7 +358,7 @@ class TestFactCheck:
         check = _check(brief.id, MATCHING_ROWS, version=v1)
         session = FakeSession(briefs=[brief], checks=[check], versions=[v1])
         with pytest.raises(svc.FactCheckError, match="does not match brief version 1"):
-            await svc.fact_check(session, brief, ["unsupported"])
+            await svc.fact_check(session, brief)
 
     @pytest.mark.asyncio
     async def test_a_check_whose_version_is_missing_is_an_error(self):
@@ -413,7 +368,7 @@ class TestFactCheck:
         )
         session = FakeSession(briefs=[brief], checks=[check])
         with pytest.raises(svc.FactCheckError, match="does not exist"):
-            await svc.fact_check(session, brief, ["unsupported"])
+            await svc.fact_check(session, brief)
 
 
 class TestChecksBeforeVersionsWereLinked:
@@ -422,9 +377,9 @@ class TestChecksBeforeVersionsWereLinked:
         brief = _brief(uuid.uuid4())
         check = _check(brief.id, MATCHING_ROWS)
         session = FakeSession(briefs=[brief], checks=[check])
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["check"] is check and out["brief_version"] is None
-        assert [m["passage"] for m in out["marks"]] == [FACT]
+        assert [m["passage"] for m in out["marks"]] == [FACT, OTHER]
         assert out["note"].startswith("Checked before version history began")
 
     @pytest.mark.asyncio
@@ -432,37 +387,156 @@ class TestChecksBeforeVersionsWereLinked:
         brief = _brief(uuid.uuid4(), content=_content(second="Costs rose [1]."))
         check = _check(brief.id, MATCHING_ROWS)
         session = FakeSession(briefs=[brief], checks=[check])
-        out = await svc.fact_check(session, brief, ["unsupported"])
+        out = await svc.fact_check(session, brief)
         assert out["check"] is None
 
 
 class TestFactCheckMarks:
-    def test_only_chosen_verdicts_with_section_and_reasoning(self):
+    def test_every_judged_passage_with_its_section_and_reasoning(self):
         cov = svc.coverage(_content(), svc.judged_passages(_content(), MATCHING_ROWS))
-        assert svc.fact_check_marks(cov, ["unsupported"]) == [
-            {
-                "passage_id": 1,
-                "section_id": "s1",
-                "section_title": "Findings",
-                "passage": FACT,
-                "verdict": "unsupported",
-                "verdict_label": "Unsupported",
-                "explanation": WHY,
-                "problems": ["Contradicted"],
-                "confidence": 0.9,
-                "citations": "1",
-                "quote_not_in_source": False,
-            }
+        marks = svc.fact_check_marks(cov)
+        assert marks[0] == {
+            "passage_id": 1,
+            "section_id": "s1",
+            "section_title": "Findings",
+            "passage": FACT,
+            "verdict": "unsupported",
+            "verdict_label": "Unsupported",
+            "explanation": WHY,
+            "problems": ["Contradicted"],
+            "confidence": 0.9,
+            "citations": "1",
+            "quote_not_in_source": False,
+        }
+        assert [(m["passage"], m["verdict_label"]) for m in marks] == [
+            (FACT, "Unsupported"),
+            (OTHER, "Supported"),
         ]
 
-    def test_every_verdict_can_be_highlighted(self):
+    def test_legend_names_every_verdict_with_its_count(self):
         cov = svc.coverage(_content(), svc.judged_passages(_content(), MATCHING_ROWS))
-        marks = svc.fact_check_marks(cov, ["unsupported", "supported"])
-        assert [m["verdict_label"] for m in marks] == ["Unsupported", "Supported"]
+        assert svc.legend(svc.fact_check_marks(cov)) == [
+            {"verdict": "supported", "label": "Supported", "count": 1},
+            {
+                "verdict": "partially_supported",
+                "label": "Partially supported",
+                "count": 0,
+            },
+            {"verdict": "unsupported", "label": "Unsupported", "count": 1},
+            {"verdict": "cannot_assess", "label": "Cannot assess", "count": 0},
+        ]
+        assert [item["count"] for item in svc.legend([])] == [0, 0, 0, 0]
 
-    def test_when_no_verdict_chosen_then_no_marks(self):
-        cov = svc.coverage(_content(), svc.judged_passages(_content(), MATCHING_ROWS))
-        assert svc.fact_check_marks(cov, []) == []
+
+EXCERPT = (
+    "129. Despite efforts, progress was slow.\n130. The evaluation found that\n"
+    "there was  limited investment in feedback mechanisms. 131. More followed."
+)
+
+
+def _source(index=12, excerpt=EXCERPT, page=57, **over):
+    return {
+        "index": index,
+        "title": "IAHE Covid-19",
+        "page": page,
+        "doc_id": "d1",
+        "chunk_id": "c1",
+        "pdf_url": "https://x/doc.pdf",
+        "section": "6.1 Accountability",
+        "excerpt": excerpt,
+        **over,
+    }
+
+
+class TestEvidence:
+    def test_segments_cut_the_excerpt_by_merged_ranges(self):
+        assert svc.excerpt_segments("abcdefgh", [(1, 3), (2, 5), (6, 7)]) == [
+            {"text": "a", "highlighted": False},
+            {"text": "bcde", "highlighted": True},
+            {"text": "f", "highlighted": False},
+            {"text": "g", "highlighted": True},
+            {"text": "h", "highlighted": False},
+        ]
+        assert svc.excerpt_segments("abc", []) == [
+            {"text": "abc", "highlighted": False}
+        ]
+        assert svc.excerpt_segments("", []) == []
+
+    def test_a_verbatim_quote_is_highlighted_where_it_sits_whatever_the_whitespace(
+        self,
+    ):
+        row = _row(
+            1,
+            FACT,
+            "supported",
+            sources=[_source()],
+            supporting_quotes=[
+                {
+                    "citation": 12,
+                    "quote": "The evaluation found that there was limited investment "
+                    "in feedback mechanisms.",
+                    "status": "verbatim",
+                }
+            ],
+        )
+        [block] = svc.passage_evidence(row)
+        assert block["label"] == "[12] IAHE Covid-19, p. 57"
+        assert (block["citation"], block["section"]) == (12, "6.1 Accountability")
+        assert (block["doc_id"], block["chunk_id"]) == ("d1", "c1")
+        assert block["pdf_url"] == "https://x/doc.pdf" and block["quoted"] is True
+        highlighted = [s["text"] for s in block["segments"] if s["highlighted"]]
+        assert highlighted == [
+            "The evaluation found that\nthere was  limited investment in feedback "
+            "mechanisms."
+        ]
+        assert "".join(s["text"] for s in block["segments"]) == EXCERPT
+
+    def test_a_quote_of_another_citation_does_not_mark_this_excerpt(self):
+        quote = {"citation": 3, "quote": "progress was slow", "status": "verbatim"}
+        row = _row(1, FACT, "supported", sources=[_source()], supporting_quotes=[quote])
+        [block] = svc.passage_evidence(row)
+        assert block["quoted"] is False
+        assert block["segments"] == [{"text": EXCERPT, "highlighted": False}]
+
+    def test_a_quote_without_a_citation_is_looked_for_in_every_excerpt(self):
+        quote = {"citation": None, "quote": "progress was slow", "status": "verbatim"}
+        row = _row(
+            1,
+            FACT,
+            "supported",
+            sources=[_source(index=1, excerpt="Nothing here."), _source(index=2)],
+            supporting_quotes=[quote],
+        )
+        first, second = svc.passage_evidence(row)
+        assert first["quoted"] is False and second["quoted"] is True
+
+    def test_a_near_quote_marks_the_closest_passage(self):
+        quote = {
+            "citation": 12,
+            "quote": "The evaluation found there was limited investment in feedback",
+            "status": "near",
+        }
+        row = _row(1, FACT, "supported", sources=[_source()], supporting_quotes=[quote])
+        [block] = svc.passage_evidence(row)
+        [span] = [s["text"] for s in block["segments"] if s["highlighted"]]
+        assert span.startswith("The evaluation found that") and "feedback" in span
+
+    def test_a_source_without_page_or_title_still_has_a_label(self):
+        row = _row(
+            1, FACT, "supported", sources=[_source(index=4, page=None, title=None)]
+        )
+        assert svc.passage_evidence(row)[0]["label"] == "[4] Untitled"
+
+    @pytest.mark.asyncio
+    async def test_the_evidence_of_a_passage_is_read_off_the_event_loop(self):
+        brief = _brief(uuid.uuid4())
+        row = _row(2, OTHER, "supported", sources=[_source()])
+        check = _check(brief.id, [_row(1, FACT, "unsupported"), row])
+        session = FakeSession(briefs=[brief], checks=[check])
+        out = await svc.fact_check_evidence(session, brief, check.id, 2)
+        assert (out["passage_id"], out["verdict_label"]) == (2, "Supported")
+        assert [b["label"] for b in out["evidence"]] == ["[12] IAHE Covid-19, p. 57"]
+        assert await svc.fact_check_evidence(session, brief, check.id, 3) is None
 
 
 class TestVersionLogChecks:
@@ -529,27 +603,46 @@ class TestRoute:
         assert out.check is not None and out.check.id == check.id
         assert out.check.brief_version_number == 1 and out.check.brief_changed is True
         assert (out.brief_version, out.current_version) == (1, 2)
-        assert out.highlight_verdicts == ["unsupported"]
-        assert [(m.section_id, m.passage) for m in out.marks] == [("s1", FACT)]
+        assert [(m.section_id, m.passage) for m in out.marks] == [
+            ("s1", FACT),
+            ("s1", OTHER),
+        ]
         assert [(s.id, s.title) for s in out.changed_sections] == [("s2", "Costs")]
+        assert [(i.label, i.count) for i in out.legend] == [
+            ("Supported", 1),
+            ("Partially supported", 0),
+            ("Unsupported", 1),
+            ("Cannot assess", 0),
+        ]
         assert out.note.startswith(
             "Checked at version 1; the brief is now at version 2."
         )
 
     @pytest.mark.asyncio
-    async def test_group_setting_decides_the_highlighted_verdicts(self):
+    async def test_the_evidence_of_a_highlighted_passage(self):
+        me = _user()
+        brief = _brief(me.id)
+        row = _row(2, OTHER, "supported", sources=[_source()])
+        check = _check(brief.id, [_row(1, FACT, "unsupported"), row])
+        session = FakeSession(briefs=[brief], checks=[check])
+        out = await routes.get_brief_fact_check_evidence(
+            brief.id, check.id, 2, _request(), user=me, session=session
+        )
+        assert out.passage_id == 2 and out.verdict_label == "Supported"
+        assert out.evidence[0].label == "[12] IAHE Covid-19, p. 57"
+        assert out.evidence[0].segments[0].text == EXCERPT
+
+    @pytest.mark.asyncio
+    async def test_evidence_of_an_unknown_passage_is_404(self):
         me = _user()
         brief = _brief(me.id)
         check = _check(brief.id, MATCHING_ROWS)
-        group = SimpleNamespace(
-            search_settings={svc.FACT_CHECK_SETTING_KEY: ["supported"]}
-        )
-        session = FakeSession(briefs=[brief], checks=[check], groups=[group])
-        out = await routes.get_brief_fact_check(
-            brief.id, _request(), user=me, session=session
-        )
-        assert out.highlight_verdicts == ["supported"]
-        assert [m.passage for m in out.marks] == [OTHER]
+        session = FakeSession(briefs=[brief], checks=[check])
+        with pytest.raises(HTTPException) as exc:
+            await routes.get_brief_fact_check_evidence(
+                brief.id, check.id, 9, _request(), user=me, session=session
+            )
+        assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
     async def test_when_no_check_applies_then_nothing_to_show(self):
@@ -562,7 +655,7 @@ class TestRoute:
         )
         assert out.check is None
         assert out.marks == [] and out.changed_sections == [] and out.note == ""
-        assert out.highlight_verdicts == ["unsupported"]
+        assert [i.count for i in out.legend] == [0, 0, 0, 0]
 
     @pytest.mark.asyncio
     async def test_a_check_that_does_not_match_its_version_is_a_bad_request(self):

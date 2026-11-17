@@ -17,12 +17,6 @@ import {
   docSummaryPayload,
   readDocSummaryDefaults,
 } from './DocumentSummaryGroupSection';
-import {
-  FactCheckGroupSection,
-  factCheckPayload,
-  readFactCheckDefaults,
-} from './FactCheckGroupSection';
-import type { CitationVerdict } from '../../types/testing';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -217,8 +211,7 @@ type SettingsTab =
   | 'brief'
   | 'doc_summary'
   | 'features'
-  | 'appearance'
-  | 'fact_check';
+  | 'appearance';
 
 /** The group settings, one tab per area. */
 const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
@@ -229,7 +222,6 @@ const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
   { key: 'doc_summary', label: 'Document Summaries' },
   { key: 'features', label: 'Features & Tabs' },
   { key: 'appearance', label: 'Appearance' },
-  { key: 'fact_check', label: 'Fact Checker' },
 ];
 
 const SettingsTabs: React.FC<{ active: SettingsTab; onSelect: (tab: SettingsTab) => void }> = ({
@@ -283,10 +275,6 @@ const GroupSettingsManager: React.FC = () => {
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
-  // The citation-check verdicts the brief Fact Checker highlights (null = the
-  // group has not opted in, so the system default applies).
-  const [factCheck, setFactCheck] = useState<CitationVerdict[] | null>(null);
-
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -325,7 +313,6 @@ const GroupSettingsManager: React.FC = () => {
       setTabsOverride(false);
       setTabValues(defaultTabValues());
       setDocSummary({});
-      setFactCheck(null);
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -345,7 +332,6 @@ const GroupSettingsManager: React.FC = () => {
     setOverrides(newOverrides);
     setValues(newValues);
     setDocSummary(readDocSummaryDefaults(settings));
-    setFactCheck(readFactCheckDefaults(settings));
 
     // Load feature-tab override (search_settings.tabs)
     const tabsCfg = (settings as any).tabs;
@@ -390,7 +376,6 @@ const GroupSettingsManager: React.FC = () => {
         }
       }
       Object.assign(payload, docSummaryPayload(docSummary));
-      Object.assign(payload, factCheckPayload(factCheck));
       // Feature-tab overrides: only written when this group opts in.
       if (tabsOverride) {
         payload.tabs = Object.fromEntries(
@@ -433,7 +418,6 @@ const GroupSettingsManager: React.FC = () => {
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
       setDocSummary({});
-      setFactCheck(null);
       setSuccess('Settings reset to system defaults.');
       await fetchGroups();
     } catch (err: any) {
@@ -874,12 +858,6 @@ const GroupSettingsManager: React.FC = () => {
                     setOverrides={setOverrides}
                     setValues={setValues}
                   />
-                </SettingsPanel>
-              )}
-
-              {activeTab === 'fact_check' && (
-                <SettingsPanel tab="fact_check">
-                  <FactCheckGroupSection value={factCheck} onChange={setFactCheck} />
                 </SettingsPanel>
               )}
 

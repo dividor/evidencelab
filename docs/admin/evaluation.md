@@ -204,7 +204,7 @@ A flagged passage, with the problems the judge found:
 
 ![A flagged passage in detail](../images/admin/eval/brief-check-flagged.png)
 
-Once a check has completed, everyone who can open the brief sees a **Fact Checker** button beside **Export to Word** that highlights the flagged passages in place, with the judge's explanation on hover (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and the button goes away only when no judged section is left unchanged. The verdicts it highlights are a [group setting](user-administration.md#fact-checker).
+Once a check has completed, everyone who can open the brief sees a **Fact Checker** button beside **Export to Word** that highlights every judged passage in place in the colour of its verdict, with the verdict, the judge's reason and the cited excerpts (the quoted parts marked) on hover (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and the button goes away only when no judged section is left unchanged.
 
 > The judge sees only the stored excerpts, not the whole document. A passage can be flagged because the brief cites the wrong passage of the right document. Treat flags as a review list, not a final verdict.
 

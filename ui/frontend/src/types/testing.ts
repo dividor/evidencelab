@@ -280,17 +280,54 @@ export interface BriefFactCheckSection {
   note: string;
 }
 
+// One verdict of the legend: its label and how many highlighted passages
+// carry it.
+export interface BriefFactCheckLegendItem {
+  verdict: CitationVerdict;
+  label: string;
+  count: number;
+}
+
 // GET /briefs/{id}/fact-check: the newest completed check while it still
 // covers part of the brief (null when there is none, so the button stays
 // hidden), the version it judged and the brief's current version, a note on
-// how they relate, the sections it no longer covers, the verdicts the
-// reader's group highlights, and the marks to paint.
+// how they relate, the sections it no longer covers, the legend of verdict
+// colours, and the marks to paint (every judged passage, any verdict).
 export interface BriefFactCheckRead {
   check: BriefCitationCheck | null;
   brief_version?: number | null;
   current_version?: number | null;
-  highlight_verdicts: CitationVerdict[];
   note?: string;
   changed_sections?: BriefFactCheckSection[];
+  legend: BriefFactCheckLegendItem[];
   marks: BriefFactCheckMark[];
+}
+
+// A run of a cited excerpt; highlighted when the judge quoted it.
+export interface BriefFactCheckSegment {
+  text: string;
+  highlighted: boolean;
+}
+
+// One cited source as the judge read it, for a highlighted passage's card.
+export interface BriefFactCheckEvidence {
+  citation: number | null;
+  label: string;
+  title: string;
+  page?: number | null;
+  section: string;
+  doc_id?: string | null;
+  chunk_id?: string | null;
+  pdf_url?: string | null;
+  quoted: boolean;
+  segments: BriefFactCheckSegment[];
+}
+
+// GET /briefs/{id}/fact-check/{check_id}/passages/{passage_id}: the evidence
+// behind one highlighted passage, loaded when its card opens.
+export interface BriefFactCheckEvidenceRead {
+  passage_id: number;
+  verdict: CitationVerdict;
+  verdict_label: string;
+  evidence: BriefFactCheckEvidence[];
 }

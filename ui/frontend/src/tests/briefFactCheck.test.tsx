@@ -32,7 +32,7 @@ jest.mock('../utils/briefStream', () => ({
 }));
 
 import { BriefTab } from '../components/brief/BriefTab';
-import type { BriefFactCheckRead } from '../types/testing';
+import type { BriefFactCheckEvidenceRead, BriefFactCheckRead } from '../types/testing';
 
 const TITLE = 'School feeding';
 const PASSAGE = 'School meals raised attendance.';
@@ -40,6 +40,8 @@ const WHY = 'The excerpt reports no change in attendance.';
 const FACT_CHECKER = 'Fact Checker';
 const BRIEF_URL = '/api/briefs/b1';
 const FACT_CHECK_URL = '/api/briefs/b1/fact-check';
+const EVIDENCE_URL = '/api/briefs/b1/fact-check/chk1/passages/1';
+const QUOTED = 'attendance did not change';
 
 const source = { index: 1, chunkId: 'c1', docId: 'd1', title: 'Doc One', text: 'passage', score: 0, page: 3 };
 
@@ -80,24 +82,52 @@ const withCheck: BriefFactCheckRead = {
   },
   brief_version: 1,
   current_version: 2,
-  highlight_verdicts: ['unsupported'],
   note: NOTE,
   changed_sections: [{ id: 's2', title: 'Costs', note: SECTION_NOTE }],
+  legend: [
+    { verdict: 'supported', label: 'Supported', count: 1 },
+    { verdict: 'partially_supported', label: 'Partially supported', count: 0 },
+    { verdict: 'unsupported', label: 'Unsupported', count: 1 },
+    { verdict: 'cannot_assess', label: 'Cannot assess', count: 0 },
+  ],
   marks: [
     {
       passage_id: 1, section_id: 's1', section_title: 'Findings', passage: PASSAGE,
       verdict: 'unsupported', verdict_label: 'Unsupported', explanation: WHY,
       problems: ['Contradicted by the source'], confidence: 0.9, citations: '1', quote_not_in_source: false,
     },
+    {
+      passage_id: 2, section_id: 's1', section_title: 'Findings', passage: 'Costs rose.',
+      verdict: 'supported', verdict_label: 'Supported', explanation: 'Stated in the excerpt.',
+      problems: [], confidence: 0.95, citations: '1', quote_not_in_source: false,
+    },
   ],
 };
 
-const noCheck: BriefFactCheckRead = { check: null, highlight_verdicts: ['unsupported'], marks: [] };
+const evidence: BriefFactCheckEvidenceRead = {
+  passage_id: 1,
+  verdict: 'unsupported',
+  verdict_label: 'Unsupported',
+  evidence: [
+    {
+      citation: 1, label: '[1] Doc One, p. 3', title: 'Doc One', page: 3, section: 'Findings > Schools',
+      doc_id: 'd1', chunk_id: 'c1', pdf_url: null, quoted: true,
+      segments: [
+        { text: 'In the sample schools ', highlighted: false },
+        { text: QUOTED, highlighted: true },
+        { text: ' over the two years.', highlighted: false },
+      ],
+    },
+  ],
+};
+
+const noCheck: BriefFactCheckRead = { check: null, legend: [], marks: [] };
 
 const answer = (factCheck: BriefFactCheckRead) => (url: string) => {
   if (url === '/api/briefs/') return Promise.resolve({ data: [listItem] });
   if (url === BRIEF_URL) return Promise.resolve({ data: remoteBrief });
   if (url === FACT_CHECK_URL) return Promise.resolve({ data: factCheck });
+  if (url === EVIDENCE_URL) return Promise.resolve({ data: evidence });
   return Promise.resolve({ data: [] });
 };
 
@@ -115,7 +145,7 @@ describe('Fact Checker on an open brief', () => {
     window.history.replaceState(null, '', '/brief');
   });
 
-  test('a completed check for the current brief shows the button; pressing it highlights the flagged passage with the judge\'s explanation on hover', async () => {
+  test('a completed check for the current brief shows the button; pressing it highlights every judged passage in its verdict\'s colour, with the verdict, reason and evidence on hover', async () => {
     mockGet.mockImplementation(answer(withCheck));
     await openBrief();
     const button = await screen.findByRole('button', { name: FACT_CHECKER });
@@ -125,40 +155,61 @@ describe('Fact Checker on an open brief', () => {
     expect(button).toHaveAttribute('title', expect.stringContaining(NOTE));
     expect(document.querySelector('.brief-fact-mark')).toBeNull();
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');
+    // The legend explains the colours, with the API's counts.
+    const legend = screen.getByRole('list', { name: 'Fact Checker legend' });
+    expect(legend).toHaveTextContent('Supported 1');
+    expect(legend).toHaveTextContent('Unsupported 1');
+    expect(legend).toHaveTextContent('Cannot assess 0');
     // The section changed since the check carries the note instead of marks.
     expect(await screen.findByText(SECTION_NOTE)).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelector('.brief-fact-mark-unsupported')).not.toBeNull());
-    // The judged sentence is marked up to its full stop, as one span either
-    // side of the citation badge; the rest of the section is untouched.
-    const markText = () =>
-      Array.from(document.querySelectorAll('[data-fact-id="1"]')).map((m) => m.textContent).join('');
-    expect(markText()).toBe('School meals raised attendance .');
-    expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"])').length).toBe(0);
+    await waitFor(() => expect(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported')).not.toBeNull());
+    // Both judged sentences are marked, each in its verdict's colour; the
+    // first up to its full stop, as one span either side of the citation
+    // badge.
+    const markText = (id: string) =>
+      Array.from(document.querySelectorAll(`[data-fact-id="${id}"]`)).map((m) => m.textContent).join('');
+    expect(markText('1')).toBe('School meals raised attendance .');
+    expect(markText('2')).toBe('Costs rose .');
+    expect(document.querySelector('[data-fact-id="2"]')).toHaveClass('brief-fact-mark-supported');
+    expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"]):not([data-fact-id="2"])').length).toBe(0);
 
     // Source enrichment re-renders the sections meanwhile and the painter
-    // puts the marks back, so hover the mark as it is in the DOM right now.
-    const tooltip = await waitFor(() => {
-      fireEvent.mouseOver(document.querySelector('.brief-fact-mark-unsupported') as HTMLElement);
-      return screen.getByRole('tooltip');
+    // puts the marks back, so hover the mark as it is in the DOM right now
+    // (the legend's swatch carries the verdict class too, hence the prose
+    // mark class as well).
+    const card = await waitFor(() => {
+      fireEvent.mouseOver(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
+      return screen.getByRole('note', { name: 'Citation check verdict' });
     });
-    expect(tooltip).toHaveTextContent('Unsupported');
-    expect(tooltip).toHaveTextContent('90% confidence');
-    expect(tooltip).toHaveTextContent('Contradicted by the source');
-    expect(tooltip).toHaveTextContent(WHY);
-    expect(tooltip).toHaveTextContent('Judged against the sources cited as [1]');
+    expect(card).toHaveTextContent('Unsupported');
+    expect(card).toHaveTextContent('90% confidence');
+    expect(card).toHaveTextContent('Judged against [1]');
+    expect(card).toHaveTextContent(WHY);
+    // The evidence is fetched for this passage once its card opens: the cited
+    // excerpt, with what the judge quoted highlighted.
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith(EVIDENCE_URL));
+    await waitFor(() => expect(card).toHaveTextContent('[1] Doc One, p. 3'));
+    expect(card).toHaveTextContent('Evidence in source');
+    expect(card).toHaveTextContent('In the sample schools attendance did not change over the two years.');
+    expect(card.querySelector('.brief-fact-quote')).toHaveTextContent(QUOTED);
 
-    // Source enrichment re-renders the section meanwhile and the painter puts
-    // the mark back, so read the prose container afresh.
+    // The card stays while the pointer is on it, and goes once it leaves.
     fireEvent.mouseLeave(document.querySelector('.brief-doc-content') as HTMLElement);
-    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    fireEvent.mouseEnter(card);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByRole('note', { name: 'Citation check verdict' })).toBe(card);
+    fireEvent.mouseLeave(card);
+    await waitFor(() => expect(screen.queryByRole('note', { name: 'Citation check verdict' })).toBeNull());
 
-    // Pressing again hides the highlights and the note.
+    // Pressing again hides the highlights, the legend and the note.
     fireEvent.click(button);
     await waitFor(() => expect(document.querySelector('.brief-fact-mark')).toBeNull());
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
+    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
   });
 
   test('without a check that matches the brief as it is now, there is no button', async () => {

@@ -4,7 +4,7 @@ import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
-import type { BriefFactCheckMark } from '../../types/testing';
+import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
 import { BriefLengthControl } from './BriefLengthControl';
 import { countWords, describeTarget } from './briefLength';
 import { BriefReferences } from './BriefReferences';
@@ -720,16 +720,29 @@ const ExportButton: React.FC<{
 );
 
 // "Fact Checker": shown only while a completed citation check still covers
-// part of the brief as it is now. Pressed, it highlights the passages the
-// check flagged; the tooltip says which version was checked.
+// part of the brief as it is now. Pressed, it highlights every passage the
+// check judged in the colour of its verdict; the tooltip says which version
+// was checked.
 const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
-  const what = factCheck.verdictLabels.length
-    ? `Highlight the passages the citation check judged ${factCheck.verdictLabels
-        .map((l) => l.toLowerCase())
-        .join(' or ')}; hover one for the judge's explanation.`
-    : 'Your group highlights no verdicts of the citation check.';
+  const what =
+    "Highlight every cited passage in the colour of the citation check's verdict; " +
+    "hover one for the verdict, the judge's reason and the evidence.";
   return factCheck.note ? `${what} ${factCheck.note}` : what;
 };
+
+// The colours explained, with how many passages carry each verdict; shown
+// under the header while the highlights are on.
+const FactCheckLegend: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
+  <div className="brief-fact-legend" role="list" aria-label="Fact Checker legend">
+    {factCheck.legend.map((item) => (
+      <span key={item.verdict} className="brief-fact-legend-item" role="listitem">
+        <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} aria-hidden="true" />
+        {item.label} <b>{item.count}</b>
+      </span>
+    ))}
+    <span className="brief-fact-legend-hint">Hover a highlight for the verdict and its evidence.</span>
+  </div>
+);
 
 const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
   <button
@@ -1031,6 +1044,22 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
   const canEditStructure = !readOnly && !sections.some((s) => s.status === 'researching');
 
+  // A cited excerpt from the Fact Checker's card, opened the same way.
+  const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
+    if (!onResultClick) return;
+    onResultClick({
+      chunk_id: source.chunk_id || '',
+      doc_id: source.doc_id || '',
+      title: source.title,
+      text: source.segments.map((segment) => segment.text).join(''),
+      page_num: source.page || 1,
+      score: 0,
+      headings: source.section ? source.section.split(' > ') : [],
+      report_url: source.pdf_url || undefined,
+      metadata: {},
+    });
+  };
+
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
   const handleSourceClick = (source: SourceReference) => {
@@ -1072,6 +1101,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             factCheck={factCheck}
           />
         </div>
+        {factCheck?.active && <FactCheckLegend factCheck={factCheck} />}
         <div className="brief-title-row">
           <textarea
             ref={titleRef}
@@ -1162,7 +1192,13 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       />
 
       <ResearchStatusBar brief={brief} />
-      <BriefFactCheckTooltip hover={factCheck?.hover ?? null} />
+      <BriefFactCheckTooltip
+        hover={factCheck?.hover ?? null}
+        evidence={factCheck?.evidence ?? null}
+        onEnter={factCheck?.onCardEnter}
+        onLeave={factCheck?.onCardLeave}
+        onOpenSource={onResultClick ? handleEvidenceClick : undefined}
+      />
     </div>
   );
 };

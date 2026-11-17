@@ -264,6 +264,49 @@ class BriefFactCheckMark(BaseModel):
     quote_not_in_source: bool
 
 
+class BriefFactCheckLegendItem(BaseModel):
+    """One verdict of the Fact Checker's legend: its label and how many of
+    the highlighted passages carry it."""
+
+    verdict: str
+    label: str
+    count: int
+
+
+class BriefFactCheckSegment(BaseModel):
+    """A run of an excerpt, highlighted when the judge quoted it."""
+
+    text: str
+    highlighted: bool
+
+
+class BriefFactCheckEvidence(BaseModel):
+    """One cited source as the judge read it: where it comes from, and its
+    excerpt cut into plain and quoted runs. ``quoted`` says whether any of
+    the judge's quotes was found in it."""
+
+    citation: Optional[int] = None
+    label: str
+    title: str
+    page: Optional[int] = None
+    section: str = ""
+    doc_id: Optional[str] = None
+    chunk_id: Optional[str] = None
+    pdf_url: Optional[str] = None
+    quoted: bool
+    segments: List[BriefFactCheckSegment]
+
+
+class BriefFactCheckEvidenceRead(BaseModel):
+    """GET /briefs/{id}/fact-check/{check_id}/passages/{passage_id}: the
+    evidence behind one highlighted passage, loaded when its card opens."""
+
+    passage_id: int
+    verdict: str
+    verdict_label: str
+    evidence: List[BriefFactCheckEvidence]
+
+
 class BriefFactCheckSection(BaseModel):
     """A section with cited passages that changed since the check judged
     the brief, so the Fact Checker does not cover it; ``note`` is shown
@@ -279,15 +322,15 @@ class BriefFactCheckRead(BaseModel):
     covers at least one section of the brief (``None`` when there is none,
     so the button stays hidden), the version it judged and the brief's
     current version, a note on how they relate, the sections the check no
-    longer covers, the verdicts the reader's group highlights, and the
-    marks."""
+    longer covers, the legend of verdict colours with their counts, and the
+    marks (every judged passage of a covered section)."""
 
     check: Optional[BriefCitationCheckRead] = None
     brief_version: Optional[int] = None
     current_version: Optional[int] = None
-    highlight_verdicts: List[str]
     note: str = ""
     changed_sections: List[BriefFactCheckSection] = Field(default_factory=list)
+    legend: List[BriefFactCheckLegendItem] = Field(default_factory=list)
     marks: List[BriefFactCheckMark] = Field(default_factory=list)
 
 

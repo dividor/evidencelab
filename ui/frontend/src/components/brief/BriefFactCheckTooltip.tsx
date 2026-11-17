@@ -1,53 +1,179 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { FactMarkHover } from './useBriefFactCheck';
+import type { BriefFactCheckEvidence } from '../../types/testing';
+import type { FactEvidenceState, FactMarkHover } from './useBriefFactCheck';
 
-// The judge's reasoning for the highlighted passage under the pointer, shown
-// as a card beside it. Rendered into the body so it floats over everything,
-// and placed above the passage when there is no room below.
-export const BriefFactCheckTooltip: React.FC<{ hover: FactMarkHover | null }> = ({ hover }) => {
+// The card for the highlighted passage under the pointer: the verdict as a
+// badge, the judge's reason, then the evidence: each cited excerpt as the
+// judge read it, with the parts it quoted highlighted. Rendered into the
+// body so it floats over everything, placed above the passage when there is
+// no room below, and kept open while the pointer is on it so its excerpts
+// can be scrolled and its sources opened.
+
+const CARD_WIDTH = 440;
+const MARGIN = 8;
+
+// Where the card hangs: below the passage (from `top`) when it fits there or
+// there is more room below than above, else above it (from `bottom`), never
+// taller than the room on that side.
+interface Placement {
+  top?: number;
+  bottom?: number;
+  maxHeight: number;
+}
+
+const placement = (rect: FactMarkHover['rect'], height: number): Placement => {
+  const roomBelow = window.innerHeight - rect.bottom - 2 * MARGIN;
+  const roomAbove = rect.top - 2 * MARGIN;
+  if (height <= roomBelow || roomBelow >= roomAbove) {
+    return { top: rect.bottom + MARGIN, maxHeight: Math.max(roomBelow, 120) };
+  }
+  return {
+    bottom: window.innerHeight - rect.top + MARGIN,
+    maxHeight: Math.max(roomAbove, 120),
+  };
+};
+
+interface BriefFactCheckTooltipProps {
+  hover: FactMarkHover | null;
+  evidence: FactEvidenceState | null;
+  onEnter?: () => void;
+  onLeave?: () => void;
+  // Opens a cited source in the app's document preview.
+  onOpenSource?: (source: BriefFactCheckEvidence) => void;
+}
+
+// Scroll an excerpt to its first quoted run, so the evidence is in view.
+const ExcerptText: React.FC<{ source: BriefFactCheckEvidence }> = ({ source }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const box = ref.current;
+    const first = box?.querySelector<HTMLElement>('.brief-fact-quote');
+    if (box && first) box.scrollTop = Math.max(0, first.offsetTop - box.offsetTop - 12);
+  }, [source]);
+  return (
+    <div ref={ref} className="brief-fact-excerpt">
+      {source.segments.map((segment, i) =>
+        segment.highlighted ? (
+          <mark key={i} className="brief-fact-quote">
+            {segment.text}
+          </mark>
+        ) : (
+          <React.Fragment key={i}>{segment.text}</React.Fragment>
+        ),
+      )}
+    </div>
+  );
+};
+
+const EvidenceBlock: React.FC<{
+  source: BriefFactCheckEvidence;
+  onOpenSource?: (source: BriefFactCheckEvidence) => void;
+}> = ({ source, onOpenSource }) => (
+  <section className={`brief-fact-evidence${source.quoted ? '' : ' brief-fact-evidence-unquoted'}`}>
+    <div className="brief-fact-evidence-head">
+      <span className="brief-fact-evidence-kicker">Evidence in source</span>
+      <span className="brief-fact-evidence-label" title={source.section || undefined}>
+        {source.label}
+      </span>
+      {onOpenSource && (
+        <button
+          type="button"
+          className="brief-fact-evidence-open"
+          onClick={() => onOpenSource(source)}
+          title="Open this excerpt in the document preview"
+        >
+          Open source
+        </button>
+      )}
+    </div>
+    {!source.quoted && (
+      <div className="brief-fact-evidence-note">The judge quoted nothing from this excerpt.</div>
+    )}
+    <ExcerptText source={source} />
+  </section>
+);
+
+const Evidence: React.FC<{
+  evidence: FactEvidenceState | null;
+  onOpenSource?: (source: BriefFactCheckEvidence) => void;
+}> = ({ evidence, onOpenSource }) => {
+  if (!evidence || evidence.status === 'loading') {
+    return <div className="brief-fact-evidence-status">Loading the cited excerpts…</div>;
+  }
+  if (evidence.status === 'failed') {
+    return (
+      <div className="brief-fact-evidence-status brief-fact-evidence-failed">
+        The cited excerpts could not be loaded.
+      </div>
+    );
+  }
+  if (!evidence.blocks.length) {
+    return <div className="brief-fact-evidence-status">No excerpt was stored for this passage.</div>;
+  }
+  return (
+    <>
+      {evidence.blocks.map((source, i) => (
+        <EvidenceBlock key={`${source.citation}-${i}`} source={source} onOpenSource={onOpenSource} />
+      ))}
+    </>
+  );
+};
+
+export const BriefFactCheckTooltip: React.FC<BriefFactCheckTooltipProps> = ({
+  hover,
+  evidence,
+  onEnter,
+  onLeave,
+  onOpenSource,
+}) => {
+  const ref = useRef<HTMLDivElement>(null);
+  // Placed once per passage, anchored to the edge it hangs from: the card
+  // grows as its evidence arrives, and moving it under a resting pointer
+  // would close it.
+  const [place, setPlace] = useState<Placement | null>(null);
+  const placedFor = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (!hover || !ref.current) {
-      setTop(null);
+      setPlace(null);
+      placedFor.current = null;
       return;
     }
-    const height = ref.current.offsetHeight;
-    const below = hover.rect.bottom + 8;
-    const fits = below + height <= window.innerHeight - 8;
-    setTop(fits ? below : Math.max(8, hover.rect.top - height - 8));
+    if (placedFor.current === hover.mark.passage_id) return;
+    placedFor.current = hover.mark.passage_id;
+    setPlace(placement(hover.rect, ref.current.offsetHeight));
   }, [hover]);
   if (!hover) return null;
   const { mark, rect } = hover;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - 376));
+  const left = Math.max(MARGIN, Math.min(rect.left, window.innerWidth - CARD_WIDTH - 2 * MARGIN));
   return createPortal(
     <div
       ref={ref}
-      className="brief-fact-tooltip"
-      role="tooltip"
-      style={{ top: top ?? rect.bottom + 8, left, visibility: top === null ? 'hidden' : 'visible' }}
+      className="brief-fact-card"
+      role="note"
+      aria-label="Citation check verdict"
+      style={{
+        ...(place ?? { top: rect.bottom + MARGIN }),
+        left,
+        visibility: place === null ? 'hidden' : 'visible',
+      }}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
     >
-      <div className={`brief-fact-tooltip-verdict brief-fact-mark-${mark.verdict}`}>
-        {mark.verdict_label}
+      <div className="brief-fact-card-head">
+        <span className={`brief-fact-badge brief-fact-mark-${mark.verdict}`}>{mark.verdict_label}</span>
         {mark.confidence != null && (
-          <span className="brief-fact-tooltip-confidence">
-            {Math.round(mark.confidence * 100)}% confidence
-          </span>
+          <span className="brief-fact-card-meta">{Math.round(mark.confidence * 100)}% confidence</span>
         )}
+        <span className="brief-fact-card-meta">Judged against [{mark.citations}]</span>
       </div>
-      {mark.problems.length > 0 && (
-        <ul className="brief-fact-tooltip-problems">
-          {mark.problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
+      <p className="brief-fact-card-reason">{mark.explanation}</p>
+      {mark.quote_not_in_source && (
+        <div className="brief-fact-card-warning">
+          A quote the judge gave was not found in the source; read the evidence with care.
+        </div>
       )}
-      <p className="brief-fact-tooltip-explanation">{mark.explanation}</p>
-      <div className="brief-fact-tooltip-foot">
-        Judged against the sources cited as [{mark.citations}]
-        {mark.quote_not_in_source ? ' · quote not found in source' : ''}
-      </div>
+      <Evidence evidence={evidence} onOpenSource={onOpenSource} />
     </div>,
     document.body,
   );

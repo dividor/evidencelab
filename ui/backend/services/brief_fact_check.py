@@ -8,21 +8,23 @@ opens the brief later, the judged version is rebuilt from the version Log and
 compared with the brief section by section: a section whose cited passages
 still read exactly as the judge saw them keeps its verdicts; a section
 changed since is reported as not covered, so the reader is told rather than
-shown stale highlights. The passages whose verdict the reader's group chose
-to see (``briefFactCheckVerdicts`` in the group settings, "unsupported" by
-default) are then highlighted in the document with the judge's explanation.
+shown stale highlights. Every judged passage of a covered section is then
+highlighted in the document in the colour of its verdict, with the judge's
+explanation and the cited excerpts (the parts the judge quoted marked) a
+pointer away.
 
 Checks made before versions were linked carry no version; they apply only
 while the whole brief still reads as they judged it.
 
 Everything the document shows is computed here: which check applies, which
-sections it still covers, which passages to highlight with which label, and
-the notes that say how the brief has moved on. The browser only paints what
-it is given.
+sections it still covers, which passages to highlight with which label, the
+legend's counts, the notes that say how the brief has moved on, and where in
+each excerpt the judge's quotes sit. The browser only paints what it is given.
 
 Tests: ``tests/unit/test_brief_fact_check.py``.
 """
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -32,7 +34,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.models import Brief, BriefVersion
-from ui.backend.auth.testing_models import CHECK_COMPLETED, BriefCitationCheck
+from ui.backend.auth.testing_models import (
+    CHECK_COMPLETED,
+    BriefCitationCheck,
+    BriefCitationCheckPassage,
+)
 from ui.backend.services import brief_version_store as store
 from ui.backend.services import brief_versions as bv
 from ui.backend.services.brief_citation_model import BriefCitationError
@@ -40,12 +46,9 @@ from ui.backend.services.citation_fidelity import (
     JUDGE_VERDICTS,
     CitedPassage,
     extract_cited_passages,
+    locate_quote,
     researched_sections,
 )
-
-# The group setting: the verdicts the Fact Checker highlights.
-FACT_CHECK_SETTING_KEY = "briefFactCheckVerdicts"
-DEFAULT_HIGHLIGHT_VERDICTS = ["unsupported"]
 
 # How a verdict reads in the document.
 VERDICT_LABELS = {
@@ -58,31 +61,6 @@ VERDICT_LABELS = {
 
 class FactCheckError(BriefCitationError):
     """A check that does not describe the brief version it names."""
-
-
-def validate_verdicts(values: Any) -> List[str]:
-    """The verdict list a group setting may hold: known verdicts only, each
-    once, in the order given. Raises ``ValueError`` otherwise."""
-    if not isinstance(values, list):
-        raise ValueError(f"{FACT_CHECK_SETTING_KEY} must be a list of verdicts")
-    verdicts: List[str] = []
-    for value in values:
-        if value not in JUDGE_VERDICTS:
-            raise ValueError(
-                f"Unknown verdict {value!r}; expected one of {', '.join(JUDGE_VERDICTS)}"
-            )
-        if value not in verdicts:
-            verdicts.append(value)
-    return verdicts
-
-
-def highlight_verdicts(settings: Optional[Dict[str, Any]]) -> List[str]:
-    """The verdicts to highlight for a user, from their merged group settings;
-    the default when no group set any."""
-    raw = (settings or {}).get(FACT_CHECK_SETTING_KEY)
-    if raw is None:
-        return list(DEFAULT_HIGHLIGHT_VERDICTS)
-    return validate_verdicts(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -214,14 +192,12 @@ def _citations(passage: CitedPassage) -> str:
     return ", ".join(str(i) for i in passage.citation_indices)
 
 
-def fact_check_marks(cov: Coverage, verdicts: Sequence[str]) -> List[Dict[str, Any]]:
-    """The passages to highlight: every judged passage of a covered section
-    whose verdict is in ``verdicts``, with the judge's reasoning."""
+def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
+    """The passages to highlight: every judged passage of a covered section,
+    whatever its verdict, with the judge's reasoning."""
     marks: List[Dict[str, Any]] = []
     for section_id, pairs in cov.covered.items():
         for passage, row in pairs:
-            if row.verdict not in verdicts:
-                continue
             marks.append(
                 {
                     "passage_id": row.passage_id,
@@ -238,6 +214,18 @@ def fact_check_marks(cov: Coverage, verdicts: Sequence[str]) -> List[Dict[str, A
                 }
             )
     return marks
+
+
+def legend(marks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every verdict with its label and how many highlighted passages carry
+    it, in the judge's order, so the document can explain its colours."""
+    counts: Dict[str, int] = {}
+    for mark in marks:
+        counts[mark["verdict"]] = counts.get(mark["verdict"], 0) + 1
+    return [
+        {"verdict": v, "label": VERDICT_LABELS[v], "count": counts.get(v, 0)}
+        for v in JUDGE_VERDICTS
+    ]
 
 
 def _plural(count: int, noun: str) -> str:
@@ -280,29 +268,27 @@ def brief_changed(check: Any, current: Optional[int]) -> Optional[bool]:
     return current != check.brief_version_number
 
 
-def _nothing(current: Optional[int], verdicts: Sequence[str]) -> Dict[str, Any]:
+def _nothing(current: Optional[int]) -> Dict[str, Any]:
     return {
         "check": None,
         "brief_version": None,
         "current_version": current,
-        "highlight_verdicts": list(verdicts),
         "note": "",
         "changed_sections": [],
+        "legend": legend([]),
         "marks": [],
     }
 
 
-async def fact_check(
-    session: AsyncSession, brief: Brief, verdicts: Sequence[str]
-) -> Dict[str, Any]:
+async def fact_check(session: AsyncSession, brief: Brief) -> Dict[str, Any]:
     """The Fact Checker's answer for a brief: the check that applies (the
     newest completed one, while it still covers at least one section with
     cited passages), the brief's version numbers, the sections it no longer
-    covers and the marks to paint."""
+    covers, the marks to paint and the legend that explains their colours."""
     current = (await store.latest_numbers(session, [brief.id])).get(brief.id)
     check = await latest_completed_check(session, brief)
     if check is None:
-        return _nothing(current, verdicts)
+        return _nothing(current)
     content = brief.content or {}
     judged = await judged_content(session, brief, check)
     if judged is None:
@@ -319,18 +305,143 @@ async def fact_check(
         pairs = matched
     cov = coverage(content, pairs)
     if not cov.covered:
-        return _nothing(current, verdicts)
+        return _nothing(current)
     checked = check.brief_version_number
+    marks = fact_check_marks(cov)
     return {
         "check": check,
         "brief_version": checked,
         "current_version": current,
-        "highlight_verdicts": list(verdicts),
         "note": version_note(checked, current, cov.changed),
         "changed_sections": [
             {**section, "note": section_note(checked)} for section in cov.changed
         ],
-        "marks": fact_check_marks(cov, verdicts),
+        "legend": legend(marks),
+        "marks": marks,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Evidence: the cited excerpts with the judge's quotes marked
+# ---------------------------------------------------------------------------
+
+# A highlighted or plain run of an excerpt.
+Segment = Dict[str, Any]
+
+
+def _span_range(span: str, text: str) -> Optional[Tuple[int, int]]:
+    """Where ``span`` sits in ``text``: ``locate_quote`` returns the matched
+    words joined by single spaces, while the excerpt keeps its own
+    whitespace, so the words are searched with any whitespace between."""
+    words = span.split()
+    if not words:
+        return None
+    found = re.search(r"\s+".join(re.escape(word) for word in words), text)
+    return (found.start(), found.end()) if found else None
+
+
+def _merged(ranges: Sequence[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    out: List[Tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
+def excerpt_segments(text: str, ranges: Sequence[Tuple[int, int]]) -> List[Segment]:
+    """``text`` cut into runs, each highlighted or not, by the character
+    ranges to highlight (overlaps merged); never an empty run."""
+    segments: List[Segment] = []
+    at = 0
+    for start, end in _merged(ranges):
+        if start > at:
+            segments.append({"text": text[at:start], "highlighted": False})
+        segments.append({"text": text[start:end], "highlighted": True})
+        at = end
+    if at < len(text):
+        segments.append({"text": text[at:], "highlighted": False})
+    return segments
+
+
+def _quoted_ranges(
+    excerpt: str, citation: Any, quotes: Sequence[Dict[str, Any]]
+) -> List[Tuple[int, int]]:
+    """The parts of one excerpt the judge quoted: each quote the judge
+    attributed to this citation (or to none) is located in it afresh, as
+    the check verified it, and the matched text is highlighted."""
+    ranges: List[Tuple[int, int]] = []
+    for quote in quotes:
+        if quote.get("citation") not in (None, citation):
+            continue
+        for span in locate_quote(quote.get("quote") or "", [excerpt])["spans"]:
+            found = _span_range(span, excerpt)
+            if found:
+                ranges.append(found)
+    return ranges
+
+
+def passage_evidence(row: Any) -> List[Dict[str, Any]]:
+    """What the judge read for one passage: one block per cited source (as
+    the check stored it), its excerpt cut into plain and highlighted runs,
+    the highlighted ones being what the judge quoted from it."""
+    quotes = list(row.supporting_quotes or [])
+    blocks: List[Dict[str, Any]] = []
+    for source in row.sources or []:
+        excerpt = (source.get("excerpt") or "").strip()
+        ranges = _quoted_ranges(excerpt, source.get("index"), quotes)
+        page = source.get("page")
+        title = source.get("title") or "Untitled"
+        blocks.append(
+            {
+                "citation": source.get("index"),
+                "label": f"[{source.get('index')}] {title}"
+                + (f", p. {page}" if page is not None else ""),
+                "title": title,
+                "page": page,
+                "section": source.get("section") or "",
+                "doc_id": source.get("doc_id"),
+                "chunk_id": source.get("chunk_id"),
+                "pdf_url": source.get("pdf_url"),
+                "quoted": bool(ranges),
+                "segments": excerpt_segments(excerpt, ranges),
+            }
+        )
+    return blocks
+
+
+async def fact_check_evidence(
+    session: AsyncSession, brief: Brief, check_id: uuid.UUID, passage_id: int
+) -> Optional[Dict[str, Any]]:
+    """The evidence behind one highlighted passage of a completed check of
+    ``brief``, or None when the check or the passage is not one of its."""
+    row = (
+        (
+            await session.execute(
+                select(BriefCitationCheckPassage)
+                .join(BriefCitationCheck)
+                .where(
+                    BriefCitationCheck.id == check_id,
+                    BriefCitationCheck.brief_id == brief.id,
+                    BriefCitationCheck.status == CHECK_COMPLETED,
+                    BriefCitationCheckPassage.passage_id == passage_id,
+                )
+                .limit(1)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if row is None:
+        return None
+    # Locating quotes in long excerpts is pure CPU work: off the event loop.
+    evidence = await run_in_threadpool(passage_evidence, row)
+    return {
+        "passage_id": row.passage_id,
+        "verdict": row.verdict,
+        "verdict_label": VERDICT_LABELS.get(row.verdict, row.verdict),
+        "evidence": evidence,
     }
 
 
