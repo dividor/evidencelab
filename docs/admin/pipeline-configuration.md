@@ -71,13 +71,14 @@ Each entry defines a model that can be used for vector embeddings:
 |-------|------|-------------|
 | `model_id` | string | Full model identifier (e.g., `"intfloat/multilingual-e5-large"`) |
 | `size` | int | Vector dimensionality (e.g., 1024) |
-| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"fastembed"` |
+| `source` | string | Provider: `"huggingface"`, `"azure_foundry"`, `"google_vertex"`, `"aws_bedrock"`, `"openai"`, `"fastembed"` |
 | `type` | string | `"dense"` or `"sparse"` |
 | `max_tokens` | int | Maximum input token length |
 
 The `source` field determines how the model is loaded:
 - **`huggingface`** / **`fastembed`** — runs locally via an embedding server (requires GPU or MPS for best performance)
 - **`azure_foundry`** / **`google_vertex`** / **`aws_bedrock`** — accessed via remote API (requires credentials in `.env`, see [Amazon Bedrock](#amazon-bedrock) for AWS)
+- **`openai`**: any OpenAI-compatible `/embeddings` endpoint (OpenAI, vLLM, Ollama, hosted providers). Set `OPENAI_BASE_URL` and, if the service needs one, `OPENAI_API_KEY` in `.env`. Optional model keys `base_url_env` and `api_key_env` name other environment variables, so several providers can coexist. Requests are batched, and transient errors (HTTP 429/5xx, timeouts) are retried with backoff.
 
 #### LLM Models (`supported_llms`)
 
