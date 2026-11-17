@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
 # is consistent across the application.
 AUTH_COOKIE_NAME = "evidencelab_auth"
 JWT_ALGORITHM = "HS256"
-JWT_AUDIENCE = ["fastapi-users:auth"]
+# A web sign-in session, issued by the main app.
+SESSION_AUDIENCE = "fastapi-users:auth"
+# A token issued by the MCP OAuth flow (mcp_server/oauth.py). MCP accepts
+# both; the main API accepts only sessions.
+MCP_TOKEN_AUDIENCE = "evidencelab:mcp"
+JWT_AUDIENCE = [SESSION_AUDIENCE, MCP_TOKEN_AUDIENCE]
 
 
 async def verify_mcp_auth(request: Request) -> dict:
@@ -90,17 +95,28 @@ async def _check_api_key(key: str) -> dict | None:
     return None
 
 
-def _check_jwt(token: str) -> dict | None:
+def session_user_id(request: Request) -> str | None:
+    """The signed-in web user behind this browser request, or None.
+
+    Only a web session cookie counts: not an API key and not an MCP token.
+    Used by the consent step, which must be answered by a person signed in to
+    Evidence Lab in this browser.
+    """
+    info = _check_jwt(request.cookies.get(AUTH_COOKIE_NAME, ""), [SESSION_AUDIENCE])
+    return info["user_id"] if info else None
+
+
+def _check_jwt(token: str, audience: list[str] | None = None) -> dict | None:
     """Return auth info if *token* is a valid, non-expired JWT."""
     auth_secret = os.environ.get("AUTH_SECRET_KEY", "")
-    if not auth_secret:
+    if not auth_secret or not token:
         return None
     try:
         payload = jwt.decode(
             token,
             auth_secret,
             algorithms=[JWT_ALGORITHM],
-            audience=JWT_AUDIENCE,
+            audience=audience or JWT_AUDIENCE,
         )
         user_id = payload.get("sub", "unknown")
         return {

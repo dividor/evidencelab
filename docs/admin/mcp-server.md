@@ -77,12 +77,14 @@ The MCP server implements OAuth 2.0 Authorization Server Metadata (RFC 8414) for
 **Flow:**
 
 1. Client discovers OAuth endpoints via `GET /mcp/.well-known/oauth-authorization-server`
-2. Client redirects user to `/mcp/authorize` with PKCE parameters
+2. Client opens `/mcp/authorize` with PKCE parameters in the user's browser, which sets a short-lived cookie tying the request to that browser
 3. User sees the Evidence Lab login page (email/password, Microsoft, or Google)
-4. After login, Evidence Lab redirects back to `/mcp/complete` with the auth session
-5. MCP server generates an authorization code and redirects to the client's callback
+4. After login, the browser goes to `/mcp/complete`, which asks **Allow this app?**, naming the client and where it will be sent
+5. When the user allows it, the MCP server generates an authorization code and redirects to the client's callback; when they deny it, the callback gets `error=access_denied`
 6. Client exchanges the code for an access token via `/mcp/token`
 7. Client uses the access token as a Bearer token in subsequent MCP requests
+
+`/mcp/complete` only works in the browser that opened `/mcp/authorize`, for a person signed in to Evidence Lab there. A link to a request started anywhere else is refused, so nobody can send you a link that connects their app to your account. The access token works for MCP and A2A only; the web app does not accept it.
 
 **OAuth endpoints:**
 
@@ -90,13 +92,14 @@ The MCP server implements OAuth 2.0 Authorization Server Metadata (RFC 8414) for
 |----------|-------------|
 | `GET /mcp/.well-known/oauth-authorization-server` | OAuth metadata discovery |
 | `GET /mcp/authorize` | Authorization endpoint (redirects to login) |
-| `GET /mcp/complete` | Post-login completion (generates auth code) |
+| `GET /mcp/complete` | After login: the consent page |
+| `POST /mcp/complete` | Records the allow/deny answer and redirects to the client |
 | `POST /mcp/token` | Token exchange endpoint |
 | `POST /mcp/register` | Dynamic client registration (RFC 7591) |
 
 ### 3. Bearer JWT
 
-Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The token is verified using the `AUTH_SECRET_KEY`.
+Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The token is verified using the `AUTH_SECRET_KEY`. MCP accepts both an Evidence Lab sign-in token and an MCP access token; the web app accepts only sign-in tokens.
 
 ## Tools
 
