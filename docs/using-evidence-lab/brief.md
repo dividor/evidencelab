@@ -268,7 +268,7 @@ Because a comment is anchored to the **text** you highlighted rather than to a p
 
 When an administrator has run a [citation check](../admin/evaluation.md#brief-citation-check) on a saved brief, a **Fact Checker** button appears beside **Export to Word**. A check judges one version of the brief (the version its **Document History** shows; that version's row in the history names the check). The brief can go on changing afterwards: the Fact Checker compares each section with the version the check judged, keeps the highlights in every section whose cited passages still read exactly as the judge saw them, and marks a section that was edited, re-researched or updated since as *Changed since the citation check; not covered by the Fact Checker* instead of highlighting anything in it. Hover the button to see which version was checked, which version the brief is at now and which sections are no longer covered. The button disappears only when no section the check judged is left unchanged; checking the brief again covers it fully.
 
-![Fact Checker highlights in a brief, with the judge's explanation on hover](../images/brief/brief-fact-checker.png)
+![Fact Checker highlights in a brief, each cited passage in the colour of its verdict, with the legend under the title](../images/brief/brief-fact-checker.png)
 
 Click **Fact Checker** to highlight, in place, every cited passage the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. The highlights are a reading aid: nothing in the brief changes.
 
