@@ -132,6 +132,10 @@ from ui.backend.auth import api_key_verify as _akv  # noqa: E402
 _akv.API_KEY = API_KEY
 _akv.USER_MODULE = USER_MODULE
 _akv.USER_MODULE_MODE = USER_MODULE_MODE
+if USER_MODULE:
+    from ui.backend.auth.users import AUTH_SECRET as _SESSION_SECRET  # noqa: E402
+
+    _akv.AUTH_SECRET = _SESSION_SECRET
 
 
 async def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):

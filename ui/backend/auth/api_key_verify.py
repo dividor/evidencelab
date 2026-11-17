@@ -9,14 +9,18 @@ requires.  ``main.py`` re-exports the function via::
 
 import hashlib
 import logging
+import re
 import secrets
 
 from fastapi import HTTPException, Request
+
+from ui.backend.auth.request_checks import is_exempt_path, is_valid_session_token
 
 logger = logging.getLogger(__name__)
 
 # Module-level state set by main.py at startup.
 API_KEY: str | None = None
+AUTH_SECRET: str = ""
 USER_MODULE: bool = False
 USER_MODULE_MODE: str = "off"  # "off" | "on_passive" | "on_active"
 
@@ -32,6 +36,8 @@ _EXEMPT_PREFIXES = (
     "/pdf/",
 )
 _EXEMPT_EXACT = frozenset(("/health", "/docs", "/redoc", "/openapi.json"))
+# Document thumbnails load as <img> tags, which cannot send the key header.
+_THUMBNAIL_PATH = re.compile(r"^/document/[^/]+/thumbnail$")
 
 
 async def verify_api_key(request: Request, api_key: str | None) -> str | None:
@@ -46,9 +52,9 @@ async def verify_api_key(request: Request, api_key: str | None) -> str | None:
     # --- Exempt paths ---
     if path in _EXEMPT_EXACT:
         return None
-    if any(path.startswith(p) for p in _EXEMPT_PREFIXES):
+    if is_exempt_path(path, _EXEMPT_PREFIXES):
         return None
-    if "/thumbnail" in path:
+    if _THUMBNAIL_PATH.match(path):
         return None
 
     if not API_KEY:
@@ -70,11 +76,12 @@ async def verify_api_key(request: Request, api_key: str | None) -> str | None:
         if key_hash in active_hashes:
             return api_key
 
-    # Allow authenticated UI users through (session cookie / Bearer JWT).
-    # ActiveAuthMiddleware performs full validation; here we just check for
-    # the presence of a cookie so the dependency doesn't reject logged-in
-    # browser requests that don't carry an API key header.
-    if USER_MODULE and request.cookies.get("evidencelab_auth"):
+    # Allow signed-in UI users through on a valid session cookie. The token is
+    # verified here, not just looked for: in on_passive mode no middleware
+    # checks it later, so a made-up cookie would otherwise pass.
+    if USER_MODULE and is_valid_session_token(
+        request.cookies.get("evidencelab_auth", ""), AUTH_SECRET
+    ):
         return None
 
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
