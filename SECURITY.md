@@ -427,6 +427,11 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
 
 ## Changelog
 
+- **2026-11-17**: Limit what one request can cost
+  - AI routes (AI summary, assistant, highlight, Brief outline and revise) accept only a model listed in `config.json`, and at most the output tokens `config.json` sets for it (`ui/backend/utils/llm_request_limits.py`)
+  - Search `limit` is capped by `SEARCH_MAX_LIMIT` (default 10000) and highlight text by `HIGHLIGHT_MAX_TEXT_CHARS` (default 50000)
+  - The MCP and A2A rate limits (`RATE_LIMIT_MCP_SEARCH`, `RATE_LIMIT_MCP_AI`), documented but never applied, are now enforced per caller (signed-in user or API key) rather than per client address
+
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)
   - Replaced f-string interpolation of taxonomy codes in `jsonb_path_exists` with parameterized `vars` argument (`jsonb_build_object('v', %s::text)`)

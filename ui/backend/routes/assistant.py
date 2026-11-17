@@ -26,6 +26,7 @@ from ui.backend.services.brief_section_prompt import (
 from ui.backend.services.data_source_access import settle_data_source
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.llm_request_limits import check_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,7 @@ async def stream_assistant_chat(
     in a loop, streaming progress events at each phase.
     """
     body.data_source = await settle_data_source(body.data_source, user, session)
+    check_model_config(body.assistant_model_config)
     model_key, temperature, max_tokens = _resolve_model_config(body)
     research_query = _research_query(body)
     conversation_messages = await _load_conversation_history(body, user, session)

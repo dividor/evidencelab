@@ -81,8 +81,8 @@ A2A shares all environment variables with the MCP server. No additional variable
 |----------|---------|-------------|
 | `APP_BASE_URL` | `https://evidencelab.ai` | Base URL embedded in the Agent Card `url` field |
 | `REQUIRE_API_KEY` | `true` | Require auth on `/a2a` requests |
-| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit applied to research skill |
-| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit applied to search skill |
+| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit applied to research skill, per caller (signed-in user or API key) |
+| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit applied to search skill, per caller |
 
 ### Nginx Proxy
 
