@@ -25,6 +25,7 @@ from pipeline.utilities.google_vertex_client import (  # noqa: E402
     GoogleVertexEmbeddingClient,
 )
 from ui.backend.services.azure_foundry_reranker import rerank_with_azure_foundry
+from ui.backend.services.cohere_compatible_reranker import rerank_with_cohere_compatible
 from ui.backend.services.google_vertex_reranker import (  # noqa: E402
     RerankerUnavailableError,
     rerank_with_google_vertex,
@@ -442,6 +443,33 @@ def _rerank_via_vertex_with_fallback(
         return None
 
 
+def _rerank_via_cohere_compatible_with_fallback(
+    query: str,
+    documents: List[str],
+    model_id: str,
+    config: Dict[str, Any],
+) -> Optional[List[float]]:
+    """Call a Cohere-compatible reranker; ``None`` on transient unavailability.
+
+    Mirrors the Vertex behaviour: a transient failure (HTTP 429/5xx, network
+    error, timeout) logs a warning and returns ``None`` so the caller falls
+    back to the unranked results. Other errors propagate.
+    """
+    try:
+        return rerank_with_cohere_compatible(
+            query=query, documents=documents, model_id=model_id, config=config
+        )
+    except RerankerUnavailableError as exc:
+        logger.warning(
+            "Cohere-compatible reranker unavailable (%s); falling back to "
+            "no-rerank for %d documents (model %s).",
+            exc,
+            len(documents),
+            model_id,
+        )
+        return None
+
+
 def _compute_rerank_scores(
     query: str,
     documents: List[str],
@@ -479,6 +507,14 @@ def _compute_rerank_scores(
                 model_id=rerank_config.get("model_id", model_name),
                 region=rerank_config.get("region"),
             )
+    if _is_cohere_compatible_reranker(rerank_config):
+        with _remote_rerank_semaphore:
+            return _rerank_via_cohere_compatible_with_fallback(
+                query,
+                documents,
+                rerank_config.get("model_id", model_name),
+                rerank_config,
+            )
     if rerank_model_loader is not None:
         reranker = rerank_model_loader(rerank_model)
     else:
@@ -498,6 +534,10 @@ def _is_google_vertex_reranker(config: Dict[str, Any]) -> bool:
 
 def _is_aws_bedrock_reranker(config: Dict[str, Any]) -> bool:
     return config.get("provider") == "aws_bedrock"
+
+
+def _is_cohere_compatible_reranker(config: Dict[str, Any]) -> bool:
+    return config.get("provider") == "cohere_compatible"
 
 
 def get_rerank_model(
@@ -532,6 +572,8 @@ def get_rerank_model(
             model = {"type": "google_vertex", "config": rerank_config}
         elif _is_aws_bedrock_reranker(rerank_config):
             model = {"type": "aws_bedrock", "config": rerank_config}
+        elif _is_cohere_compatible_reranker(rerank_config):
+            model = {"type": "cohere_compatible", "config": rerank_config}
         else:
             cross_encoder_module = importlib.import_module(
                 "fastembed.rerank.cross_encoder"
