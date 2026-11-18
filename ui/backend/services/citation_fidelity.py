@@ -86,6 +86,36 @@ def strip_citation_markers(text: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", stripped).strip()
 
 
+# Inline markdown a brief sentence may carry; the renderer shows none of it.
+# Paired emphasis first (bold, then single markers at word boundaries so an
+# underscore inside a word survives), then code, strikethrough and links.
+_MD_PAIRS = (
+    (re.compile(r"\*\*(.+?)\*\*"), r"\1"),
+    (re.compile(r"__(.+?)__"), r"\1"),
+    (re.compile(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)"), r"\1"),
+    (re.compile(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)"), r"\1"),
+    (re.compile(r"`([^`]+)`"), r"\1"),
+    (re.compile(r"~~(.+?)~~"), r"\1"),
+    (re.compile(r"!?\[([^\]]*)\]\([^)]*\)"), r"\1"),
+)
+# A heading, blockquote or list marker at the start of the line.
+_MD_BLOCK_START = re.compile(r"^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)")
+# Emphasis left unpaired: bold that opened in an earlier sentence (the
+# splitter cuts at the full stop inside it) leaves "**" at an end.
+_MD_STRAY = re.compile(r"\*\*|__|^[*_]+(?=\S)|(?<=\S)[*_]+$")
+
+
+def strip_inline_markdown(text: str) -> str:
+    """The sentence as it reads once rendered: emphasis, code, strikethrough,
+    link and heading or list markers removed, whitespace collapsed."""
+    out = _MD_BLOCK_START.sub("", text)
+    for pattern, repl in _MD_PAIRS:
+        out = pattern.sub(repl, out)
+    out = _MD_STRAY.sub("", out.strip())
+    out = re.sub(r"[ \t]+([.,;:!?])", r"\1", out)
+    return re.sub(r"\s{2,}", " ", out).strip()
+
+
 def parse_section_breadcrumb(text: str) -> Tuple[Optional[str], str]:
     """Split a stored excerpt into (heading breadcrumb, body)."""
     lines = text.replace("\r\n", "\n").split("\n")
