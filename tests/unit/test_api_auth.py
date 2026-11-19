@@ -9,8 +9,10 @@ Covers:
 
 import hashlib
 import secrets
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt as pyjwt
 import pytest
 from fastapi import HTTPException
 
@@ -51,12 +53,14 @@ def _reset_module_state():
     """Save and restore api_key_verify module state around each test."""
     saved = (
         api_key_verify.API_KEY,
+        api_key_verify.AUTH_SECRET,
         api_key_verify.USER_MODULE,
         api_key_verify.USER_MODULE_MODE,
     )
     yield
     (
         api_key_verify.API_KEY,
+        api_key_verify.AUTH_SECRET,
         api_key_verify.USER_MODULE,
         api_key_verify.USER_MODULE_MODE,
     ) = saved
@@ -66,11 +70,26 @@ def _configure(
     api_key: str | None = _TEST_KEY,
     user_module: bool = False,
     mode: str = "off",
+    auth_secret: str = _JWT_SECRET,
 ):
     """Set api_key_verify module-level config for a test."""
     api_key_verify.API_KEY = api_key
+    api_key_verify.AUTH_SECRET = auth_secret
     api_key_verify.USER_MODULE = user_module
     api_key_verify.USER_MODULE_MODE = mode
+
+
+def _session_token(secret: str = _JWT_SECRET, expires_in: int = 3600) -> str:
+    """A session JWT shaped like the ones fastapi-users issues."""
+    return pyjwt.encode(
+        {
+            "sub": "user-id",
+            "aud": ["fastapi-users:auth"],
+            "exp": int(time.time()) + expires_in,
+        },
+        secret,
+        algorithm="HS256",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +266,39 @@ class TestPassiveMode:
 
     @pytest.mark.asyncio
     async def test_session_cookie_accepted(self):
-        """Logged-in user with session cookie passes in passive mode."""
+        """Logged-in user with a valid session cookie passes in passive mode."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_passive")
-        req = _make_request("/search", cookies={"evidencelab_auth": "jwt-token"})
+        req = _make_request("/search", cookies={"evidencelab_auth": _session_token()})
         result = await api_key_verify.verify_api_key(req, api_key=None)
         assert result is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "cookie",
+        [
+            "x",
+            "not-a-jwt",
+            _session_token(secret=_JWT_SECRET + "-other"),
+            _session_token(expires_in=-60),
+        ],
+        ids=["junk", "not-jwt", "wrong-secret", "expired"],
+    )
+    async def test_invalid_session_cookie_rejected(self, cookie):
+        """A cookie is only accepted if it is a valid signed session token.
+
+        In on_passive mode no middleware checks the cookie after this, so a
+        made-up value must not pass.
+        """
+        _configure(api_key=_TEST_KEY, user_module=True, mode="on_passive")
+        req = _make_request("/search", cookies={"evidencelab_auth": cookie})
+        with patch(
+            "ui.backend.auth.api_key_cache.get_active_key_hashes",
+            new_callable=AsyncMock,
+            return_value=set(),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await api_key_verify.verify_api_key(req, api_key=None)
+        assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_wrong_key_rejected_in_passive(self):
@@ -326,10 +373,9 @@ class TestActiveMode:
 
     @pytest.mark.asyncio
     async def test_session_cookie_allowed(self):
-        """Session cookie passes the verify_api_key check in active mode.
-        (ActiveAuthMiddleware does full JWT validation separately.)"""
+        """A valid session cookie passes the verify_api_key check in active mode."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_active")
-        req = _make_request("/search", cookies={"evidencelab_auth": "jwt-tok"})
+        req = _make_request("/search", cookies={"evidencelab_auth": _session_token()})
         result = await api_key_verify.verify_api_key(req, api_key=None)
         assert result is None
 
@@ -552,11 +598,50 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_thumbnail_path_exempt(self):
-        """Paths containing /thumbnail are exempt."""
+        """The document thumbnail route is exempt (loaded by <img> tags)."""
         _configure(api_key=_TEST_KEY)
         req = _make_request("/document/123/thumbnail")
         result = await api_key_verify.verify_api_key(req, api_key=None)
         assert result is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/docsearch",
+            "/search/thumbnail",
+            "/document/123/thumbnail/extra",
+            "/stats/thumbnails",
+            "/healthcheck-admin",
+            "/pdfs",
+        ],
+    )
+    async def test_paths_that_only_look_exempt_require_key(self, path):
+        """Exempt paths match whole path segments, not any text prefix."""
+        _configure(api_key=_TEST_KEY)
+        req = _make_request(path)
+        with pytest.raises(HTTPException) as exc_info:
+            await api_key_verify.verify_api_key(req, api_key=None)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_middleware_docsearch_not_exempt(self):
+        """In on_active mode /docsearch is not mistaken for the /docs page."""
+        from ui.backend.auth.active_auth import ActiveAuthMiddleware
+
+        mw = ActiveAuthMiddleware(
+            AsyncMock(), auth_secret=_JWT_SECRET, api_key=_ALT_KEY
+        )
+        call_next = AsyncMock(return_value=MagicMock(status_code=200))
+        req = _make_request("/docsearch", cookies={"evidencelab_auth": "junk"})
+        with patch(
+            "ui.backend.auth.api_key_cache.get_active_key_hashes",
+            new_callable=AsyncMock,
+            return_value=set(),
+        ):
+            response = await mw.dispatch(req, call_next)
+        assert response.status_code == 401
+        call_next.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_401_response_is_json_detail(self):

@@ -10,11 +10,23 @@ jest.mock('../config', () => ({
   USER_FEEDBACK: true,
 }));
 
+// Editing the contents is an administrator action; the API refuses everyone
+// else, so the modal only shows the controls to a superuser.
+let mockUser: { is_superuser: boolean } | null = { is_superuser: true };
+jest.mock('../hooks/useAuth', () => ({
+  ...jest.requireActual('../hooks/useAuth'),
+  useAuth: () => ({ user: mockUser }),
+}));
+
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 jest.setTimeout(20000);
 
 describe('TocModal', () => {
+  beforeEach(() => {
+    mockUser = { is_superuser: true };
+  });
+
   test('updates toc category and notifies parent', async () => {
     mockedAxios.put.mockResolvedValueOnce({ data: {} });
 
@@ -64,5 +76,26 @@ describe('TocModal', () => {
 
     await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalled());
     await waitFor(() => expect(onTocApprovedChange).toHaveBeenCalledWith(true));
+  });
+
+  test.each([
+    ['signed out', null],
+    ['not an administrator', { is_superuser: false }],
+  ])('shows no edit controls when %s', (_label, user) => {
+    mockUser = user;
+    render(
+      <TocModal
+        isOpen={true}
+        onClose={jest.fn()}
+        toc="[H2] Intro | other | page 1"
+        docId="doc-3"
+        dataSource="uneg"
+        loading={false}
+      />
+    );
+
+    expect(screen.queryByDisplayValue('other')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.getByText(/Intro/)).toBeInTheDocument();
   });
 });

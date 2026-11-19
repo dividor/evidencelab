@@ -433,6 +433,10 @@ export const useBrief = ({
   const [briefVoiceId, setBriefVoiceId] = useState<string | null>(null);
   // False when the open brief was shared with (not owned by) this user.
   const [canEdit, setCanEdit] = useState(true);
+  // Bumped whenever the API's content for the brief is applied (a load, a
+  // save, a research run), so features that depend on what the server holds
+  // (the Fact Checker) re-check it.
+  const [contentRevision, setContentRevision] = useState(0);
   const [ownerName, setOwnerName] = useState<string | null>(null);
   // The data source a saved brief was researched in, from its server record.
   // Null for a new or local brief, whose sources are in the app's selected
@@ -599,6 +603,7 @@ export const useBrief = ({
     const stamp = read.renumberedAt ?? 0;
     if (stamp && stamp < readStampRef.current) return;
     readStampRef.current = Math.max(readStampRef.current, stamp);
+    setContentRevision((n) => n + 1);
     setSections((prev) =>
       prev.map((s) => {
         const r = read.sections.find((x) => x.id === s.id);
@@ -1790,6 +1795,7 @@ export const useBrief = ({
       setReferenceGroups(entry.referenceGroups || []);
       setReferenceGroupingState(entry.referenceGrouping || 'passage');
       setSourceCount(entry.sourceCount || 0);
+      setContentRevision((n) => n + 1);
       setVersionCount(entry.versionCount ?? 0);
       // Record the brief as opened, so the autosave sends nothing until
       // something actually changes (opening never writes a brief back).
@@ -2078,6 +2084,7 @@ export const useBrief = ({
     targetWords,
     briefVoiceId,
     canEdit,
+    contentRevision,
     ownerName,
     briefDataSource,
     remote,

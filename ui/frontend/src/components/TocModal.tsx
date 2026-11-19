@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL, { USER_FEEDBACK } from '../config';
+import { useAuth } from '../hooks/useAuth';
 
 type ParsedTocLine = {
   level: string;
@@ -158,6 +159,10 @@ const TocModal: React.FC<TocModalProps> = ({
   onTocApprovedChange,
   pageCount
 }) => {
+  // Editing and re-running the contents are administrator actions; the API
+  // refuses them for everyone else, so only administrators see the controls.
+  const { user } = useAuth();
+  const canEditToc = USER_FEEDBACK && Boolean(user?.is_superuser);
   const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [reprocessingToc, setReprocessingToc] = useState(false);
   const [reprocessSuccess, setReprocessSuccess] = useState(false);
@@ -390,7 +395,7 @@ const TocModal: React.FC<TocModalProps> = ({
             ) : null}
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {USER_FEEDBACK && (
+            {canEditToc && (
               <>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', userSelect: 'none', marginRight: '10px' }}>
                   <input
@@ -432,14 +437,14 @@ const TocModal: React.FC<TocModalProps> = ({
                         key={index}
                         className={`toc-item toc-level-${renderInfo.level} ${draggedOverIndices.has(index) ? 'toc-item-drag-over' : ''} ${renderInfo.isBeforeFrontMatterBoundary ? 'toc-item-before-boundary' : ''}`}
                         style={{ paddingLeft: `${renderInfo.indent}px` }}
-                        onDragOver={USER_FEEDBACK ? (e) => handleDragOver(e, index) : undefined}
-                        onDrop={USER_FEEDBACK ? (e) => handleDrop(e) : undefined}
+                        onDragOver={canEditToc ? (e) => handleDragOver(e, index) : undefined}
+                        onDrop={canEditToc ? (e) => handleDrop(e) : undefined}
                       >
                         <span className="toc-title">
                           {renderInfo.title}
                         </span>
                         <div className="toc-controls">
-                          {USER_FEEDBACK ? (
+                          {canEditToc ? (
                             <>
                               <select
                                 value={renderInfo.sectionType}

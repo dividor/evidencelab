@@ -196,6 +196,13 @@ class VersionSession:
         text = str(statement)
         params = statement.compile().params
         rows = []
+        if "FROM brief_citation_checks" in text:
+            wanted = [v for k, v in params.items() if k.startswith("brief_version_id")]
+            rows = (
+                [object()]
+                if wanted and wanted[0] in getattr(self, "checked", ())
+                else []
+            )
         if "FROM brief_versions" in text:
             rows = sorted(self.rows, key=lambda r: -r.number)
             wanted = [v for k, v in params.items() if k.startswith("number")]
@@ -210,6 +217,8 @@ class VersionSession:
         )
 
     def add(self, row):
+        if getattr(row, "id", None) is None:
+            row.id = uuid.uuid4()
         self.rows.append(row)
 
     async def delete(self, row):
@@ -273,6 +282,37 @@ class TestStore:
         later["sections"][1]["title"] = "Three"
         await save(session, brief, later, at=NOW + timedelta(minutes=20))
         assert [r.number for r in session.rows] == [1, 2, 3]
+
+    @pytest.mark.asyncio
+    async def test_typing_never_merges_into_a_version_a_check_judged(self):
+        session = VersionSession()
+        brief = fake_brief(brief_with("A [1].", "B [1]."))
+        await store.record_version(
+            session, brief, None, "owner", store.VersionChange("created"), NOW
+        )
+        renamed = copy.deepcopy(brief.content)
+        renamed["sections"][0]["title"] = "One"
+        await save(session, brief, renamed, at=NOW + timedelta(minutes=1))
+        session.checked = {session.rows[-1].id}
+        later = copy.deepcopy(brief.content)
+        later["sections"][1]["title"] = "Two"
+        await save(session, brief, later, at=NOW + timedelta(minutes=2))
+        assert [r.number for r in session.rows] == [1, 2, 3]
+        assert session.rows[1].content["sections"][1]["title"] != "Two"
+
+    @pytest.mark.asyncio
+    async def test_ensure_version_returns_the_latest_or_writes_the_baseline(self):
+        session = VersionSession()
+        brief = fake_brief(brief_with("A [1]."))
+        first = await store.ensure_version(session, brief)
+        assert (first.number, first.kind, first.created_at) == (1, "baseline", NOW)
+        assert first.content["sections"][0]["id"] == "s0"
+        assert await store.ensure_version(session, brief) is first
+        changed = copy.deepcopy(brief.content)
+        bc.record_run(changed, "s0", {"mode": "manual", "content": "A2 [1]."})
+        await save(session, brief, changed, change=store.VersionChange("manual", "s0"))
+        assert [r.number for r in session.rows] == [1, 2]
+        assert (await store.ensure_version(session, brief)).number == 2
 
     @pytest.mark.asyncio
     async def test_ai_runs_and_other_people_never_merge(self):

@@ -305,7 +305,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
             <col className="col-updated" />
             <col className="col-ocr" />
             <col className="col-chunks" />
-            {USER_FEEDBACK && <col className="col-actions" />}
+            {USER_FEEDBACK && canModerate && <col className="col-actions" />}
           </colgroup>
           <thead>
             <tr>
@@ -339,7 +339,7 @@ export const DocumentsTable: React.FC<DocumentsTableProps> = ({
                 />
               ))}
               <th>Chunks</th>
-              {USER_FEEDBACK && <th>Actions</th>}
+              {USER_FEEDBACK && canModerate && <th>Actions</th>}
               {canModerate && <th>Moderation</th>}
             </tr>
           </thead>

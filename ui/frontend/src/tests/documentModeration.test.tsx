@@ -162,3 +162,23 @@ describe('setDocumentHidden', () => {
     expect(setModeratingDocId).toHaveBeenLastCalledWith(null);
   });
 });
+
+describe('DocumentStatusCell processing logs link', () => {
+  const doc = { id: 'd1', status: 'indexed' };
+
+  test('shows the Logs link to an administrator and opens the logs', () => {
+    const onOpenLogs = jest.fn();
+    renderInRow(
+      <DocumentStatusCell doc={doc} onOpenTimeline={jest.fn()} onOpenLogs={onOpenLogs} canViewLogs />
+    );
+    fireEvent.click(screen.getByText('Logs'));
+    expect(onOpenLogs).toHaveBeenCalledWith(doc);
+  });
+
+  test('hides the Logs link from everyone else, as the API refuses them', () => {
+    renderInRow(
+      <DocumentStatusCell doc={doc} onOpenTimeline={jest.fn()} onOpenLogs={jest.fn()} />
+    );
+    expect(screen.queryByText('Logs')).toBeNull();
+  });
+});
