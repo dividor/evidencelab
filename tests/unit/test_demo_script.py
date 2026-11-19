@@ -483,7 +483,8 @@ class TestSetupKeepsExistingSecrets:
         assert len(values[self.DB_VAR]) == 32
         assert len(values[self.WEB_VAR]) == 64
         assert len(values["AUTH_SECRET_KEY"]) == 64
-        assert values["REACT_APP_API_KEY"] == values[self.WEB_VAR]
+        assert len(values["REACT_APP_API_KEY"]) == 64
+        assert values["REACT_APP_API_KEY"] != values[self.WEB_VAR]
         assert values["KEY_ENCRYPTION_KEY"]
 
     def test_setup_when_ci_env_pins_value_then_env_beats_file(

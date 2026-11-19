@@ -160,6 +160,10 @@ describe('brief log (whole-brief versions)', () => {
         created_at: '2026-11-13T09:00:00Z',
         updated_at: '2026-11-13T09:00:00Z',
         is_current: false,
+        citation_check: {
+          id: 'chk1', status: 'completed', created_at: '2026-11-13T09:30:00Z',
+          flagged: 2, total: 5, label: 'Citation check: 2 of 5 passages flagged',
+        },
       },
     ]);
     mocked.getBriefVersion.mockImplementation(async (_id, number) => ({
@@ -189,6 +193,9 @@ describe('brief log (whole-brief versions)', () => {
     expect(await screen.findByText('Version 2')).toBeInTheDocument();
     expect(screen.getByText('Document History')).toBeInTheDocument();
     expect(container.querySelector('.brief-version-section-removed')).toHaveTextContent('Gone');
+    // A version a citation check judged says so in its row.
+    expect(screen.getByRole('option', { name: /v1/ })).toHaveTextContent('Citation check: 2 of 5 passages flagged');
+    expect(screen.getByRole('option', { name: /v2/ })).not.toHaveTextContent('Citation check');
     // The current version cannot be restored.
     expect(screen.queryByText('Restore this version')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /v1/ }));

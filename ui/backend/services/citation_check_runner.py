@@ -34,6 +34,7 @@ from ui.backend.auth.testing_models import (
     BriefCitationCheck,
     BriefCitationCheckPassage,
 )
+from ui.backend.services.brief_version_store import latest_version
 from ui.backend.services.citation_fidelity import (
     FLAGGED_VERDICTS,
     JUDGE_VERDICTS,
@@ -404,6 +405,22 @@ async def _record_check_usage(check: BriefCitationCheck) -> None:
         logger.warning("Failed to record brief check usage", exc_info=True)
 
 
+CHANGED_BEFORE_RUN = (
+    "The brief changed between starting the check and running it; run the "
+    "check again"
+)
+
+
+async def _at_pinned_version(session: Any, check: BriefCitationCheck) -> bool:
+    """Whether the brief is still at the version the check pinned when it
+    was started, so the rows describe that version. A check made before
+    versions were linked has nothing to compare."""
+    if check.brief_version_id is None:
+        return True
+    latest = await latest_version(session, check.brief_id)
+    return latest is not None and latest.id == check.brief_version_id
+
+
 async def _fail(session: Any, check: BriefCitationCheck, message: str) -> None:
     check.status = CHECK_FAILED
     check.finished_at = _utcnow()
@@ -424,6 +441,9 @@ async def _execute(
     brief = await session.get(Brief, check.brief_id)
     if brief is None:
         await _fail(session, check, "Brief not found")
+        return
+    if not await _at_pinned_version(session, check):
+        await _fail(session, check, CHANGED_BEFORE_RUN)
         return
     passages = brief_passages(brief.content or {})
     check.status = CHECK_RUNNING

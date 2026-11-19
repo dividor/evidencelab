@@ -4,12 +4,15 @@ interface DocumentStatusCellProps {
   doc: any;
   onOpenTimeline: (doc: any) => void;
   onOpenLogs: (doc: any) => void;
+  /** Processing logs are for administrators; the API refuses everyone else. */
+  canViewLogs?: boolean;
 }
 
 export const DocumentStatusCell: React.FC<DocumentStatusCellProps> = ({
   doc,
   onOpenTimeline,
   onOpenLogs,
+  canViewLogs = false,
 }) => (
   <td>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-start' }}>
@@ -42,7 +45,7 @@ export const DocumentStatusCell: React.FC<DocumentStatusCellProps> = ({
             Timeline
           </a>
         )}
-        {doc.id && doc.status && doc.status !== 'downloaded' && (
+        {canViewLogs && doc.id && doc.status && doc.status !== 'downloaded' && (
           <a
             href="#"
             className="timeline-link"

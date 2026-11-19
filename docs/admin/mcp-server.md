@@ -68,6 +68,8 @@ Clients can authenticate by passing an API key in the `X-API-Key` header. This m
 - The `API_SECRET_KEY` environment variable (master key) — takes effect immediately across all services
 - An admin-generated key managed via the Admin → API Keys screen
 
+The key built into the web interface (`REACT_APP_API_KEY`) is never accepted, even when it is also `API_SECRET_KEY`: anyone who loads the site can read it. Give the web interface its own key so the master key stays private, or use an admin-generated key. The MCP service reads `REACT_APP_API_KEY` from `.env` to know which key that is; on a deployment that sets environment variables per service, give the MCP service `REACT_APP_API_KEY` as well.
+
 > **Note:** Admin-generated keys are cached in-memory per service process with a 60-second TTL. After generating or revoking a key in the admin screen, allow up to 60 seconds before it takes effect in the MCP and A2A servers. The `API_SECRET_KEY` env var is always effective immediately.
 
 ### 2. OAuth 2.0 (for Claude and ChatGPT)
