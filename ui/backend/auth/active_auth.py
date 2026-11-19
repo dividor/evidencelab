@@ -12,17 +12,16 @@ import hashlib
 import logging
 import secrets as _secrets
 
-import jwt
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from ui.backend.auth.request_checks import is_exempt_path, is_valid_session_token
+
 logger = logging.getLogger(__name__)
 
 AUTH_COOKIE_NAME = "evidencelab_auth"
-JWT_ALGORITHM = "HS256"
-JWT_AUDIENCE = ["fastapi-users:auth"]
 
 # Paths that do not require authentication through this middleware.
 # They are either public or enforce their own auth via fastapi-users
@@ -66,7 +65,7 @@ class ActiveAuthMiddleware(BaseHTTPMiddleware):
 
         # Exempt paths — public or self-authenticated.
         path = request.url.path
-        if any(path.startswith(prefix) for prefix in EXEMPT_PATH_PREFIXES):
+        if is_exempt_path(path, EXEMPT_PATH_PREFIXES):
             return await call_next(request)
 
         # --- Authentication checks (any one is sufficient) ---
@@ -101,16 +100,7 @@ class ActiveAuthMiddleware(BaseHTTPMiddleware):
 
     def _has_valid_jwt(self, token: str) -> bool:
         """Return True if *token* is a valid, non-expired JWT."""
-        try:
-            jwt.decode(
-                token,
-                self._auth_secret,
-                algorithms=[JWT_ALGORITHM],
-                audience=JWT_AUDIENCE,
-            )
-            return True
-        except jwt.PyJWTError:
-            return False
+        return is_valid_session_token(token, self._auth_secret)
 
     async def _has_valid_api_key_async(self, request: Request) -> bool:
         """Return True if the request carries a valid API key header."""

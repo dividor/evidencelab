@@ -1,15 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
-import {
-  IconClock,
-  IconCopy,
-  IconDownload,
-  IconEdit,
-  IconRefresh,
-  IconShare,
-  IconSparkle,
-} from './BriefIcons';
+import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
+import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
+import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
+import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
 import { BriefLengthControl } from './BriefLengthControl';
 import { countWords, describeTarget } from './briefLength';
 import { BriefReferences } from './BriefReferences';
@@ -91,6 +86,13 @@ interface SectionViewProps {
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
+  // Fact Checker: the flagged passages of this section to highlight, the
+  // note shown when the check no longer covers this section, and the pointer
+  // moving over the marks (the document shows the judge's explanation).
+  factMarks?: BriefFactCheckMark[];
+  factNote?: string;
+  onFactPointerOver?: (target: EventTarget | null) => void;
+  onFactPointerLeave?: () => void;
 }
 
 // Tooltip for a section's word count: which target (if any) it was written to.
@@ -335,6 +337,10 @@ const SectionDoneBody: React.FC<{
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
+  factMarks?: BriefFactCheckMark[];
+  factNote?: string;
+  onFactPointerOver?: (target: EventTarget | null) => void;
+  onFactPointerLeave?: () => void;
 }> = ({
   section,
   brief,
@@ -350,6 +356,10 @@ const SectionDoneBody: React.FC<{
   marks,
   onOpenThread,
   activeThreadId,
+  factMarks,
+  factNote,
+  onFactPointerOver,
+  onFactPointerLeave,
 }) => {
   // Rendered exactly as the API returned them: the renumbered text and the
   // display sources behind its numbers.
@@ -378,6 +388,9 @@ const SectionDoneBody: React.FC<{
     repaint();
     return () => observer.disconnect();
   }, [content, marks]);
+
+  // The Fact Checker's flagged passages, painted the same way.
+  useFactMarkPainter(proseRef, content, factMarks);
 
   // Show which passage the open thread belongs to.
   useEffect(() => {
@@ -434,6 +447,11 @@ const SectionDoneBody: React.FC<{
               onReject={() => void brief.rejectChanges(section.id)}
             />
           )}
+          {factNote && (
+            <div className="brief-fact-stale" role="note">
+              <IconFactCheck /> {factNote}
+            </div>
+          )}
           <div
             className="brief-doc-content"
             ref={proseRef}
@@ -442,6 +460,8 @@ const SectionDoneBody: React.FC<{
               const threadId = bubble?.getAttribute('data-thread-id');
               if (threadId && onOpenThread) onOpenThread(threadId);
             }}
+            onMouseOver={onFactPointerOver ? (e) => onFactPointerOver(e.target) : undefined}
+            onMouseLeave={onFactPointerLeave}
           >
             <CitedMarkdown
               content={content}
@@ -521,6 +541,10 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   marks,
   onOpenThread,
   activeThreadId,
+  factMarks,
+  factNote,
+  onFactPointerOver,
+  onFactPointerLeave,
 }) => {
   const [editing, setEditing] = useState(false);
   // The stored original being viewed from the Log, and its load state.
@@ -668,6 +692,10 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
           marks={marks}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
+          factMarks={factMarks}
+          factNote={factNote}
+          onFactPointerOver={onFactPointerOver}
+          onFactPointerLeave={onFactPointerLeave}
         />
       )}
     </section>
@@ -691,6 +719,42 @@ const ExportButton: React.FC<{
   </button>
 );
 
+// "Fact Checker": shown only while a completed citation check still covers
+// part of the brief as it is now. Pressed, it highlights every passage the
+// check judged in the colour of its verdict; the tooltip says which version
+// was checked.
+const factCheckTitle = (factCheck: UseBriefFactCheckReturn): string => {
+  const what =
+    "Highlight every cited passage in the colour of the citation check's verdict; " +
+    "hover one for the verdict, the judge's reason and the evidence.";
+  return factCheck.note ? `${what} ${factCheck.note}` : what;
+};
+
+// The colours explained, with how many passages carry each verdict; shown
+// under the header while the highlights are on.
+const FactCheckLegend: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
+  <div className="brief-fact-legend" role="list" aria-label="Fact Checker legend">
+    {factCheck.legend.map((item) => (
+      <span key={item.verdict} className="brief-fact-legend-item" role="listitem">
+        <span className={`brief-fact-swatch brief-fact-mark-${item.verdict}`} aria-hidden="true" />
+        {item.label} <b>{item.count}</b>
+      </span>
+    ))}
+    <span className="brief-fact-legend-hint">Hover a highlight for the verdict and its evidence.</span>
+  </div>
+);
+
+const FactCheckButton: React.FC<{ factCheck: UseBriefFactCheckReturn }> = ({ factCheck }) => (
+  <button
+    className="brief-export-word brief-fact-check"
+    onClick={factCheck.toggle}
+    aria-pressed={factCheck.active}
+    title={factCheckTitle(factCheck)}
+  >
+    <IconFactCheck /> Fact Checker
+  </button>
+);
+
 // The document-level action row: regenerate/update all, share, save-as-template
 // and the Word export menu. Owner-only actions are hidden for viewers.
 const HeaderActions: React.FC<{
@@ -702,6 +766,7 @@ const HeaderActions: React.FC<{
   onRegenerateAll?: () => void;
   onExportWord?: () => void;
   exportBusy?: boolean;
+  factCheck?: UseBriefFactCheckReturn;
 }> = ({
   brief,
   readOnly,
@@ -711,6 +776,7 @@ const HeaderActions: React.FC<{
   onRegenerateAll,
   onExportWord,
   exportBusy,
+  factCheck,
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
@@ -761,6 +827,7 @@ const HeaderActions: React.FC<{
           onExportWord={onExportWord}
         />
       )}
+      {factCheck?.available && <FactCheckButton factCheck={factCheck} />}
     </div>
   );
 };
@@ -791,6 +858,8 @@ interface BriefDocumentProps {
   onToggleComments?: (show: boolean) => void;
   // The thread being viewed, so its passage can be shown as active.
   activeThreadId?: string | null;
+  // The Fact Checker of the open brief (remote mode only).
+  factCheck?: UseBriefFactCheckReturn;
 }
 
 // Floating bar fixed to the bottom of the viewport while research runs: which
@@ -960,6 +1029,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   activeThreadId,
   showComments,
   onToggleComments,
+  factCheck,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -973,6 +1043,22 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
   const canEditStructure = !readOnly && !sections.some((s) => s.status === 'researching');
+
+  // A cited excerpt from the Fact Checker's card, opened the same way.
+  const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
+    if (!onResultClick) return;
+    onResultClick({
+      chunk_id: source.chunk_id || '',
+      doc_id: source.doc_id || '',
+      title: source.title,
+      text: source.segments.map((segment) => segment.text).join(''),
+      page_num: source.page || 1,
+      score: 0,
+      headings: source.section ? source.section.split(' > ') : [],
+      report_url: source.pdf_url || undefined,
+      metadata: {},
+    });
+  };
 
   // Convert an assistant SourceReference into the SearchResult the app's
   // document preview expects (same mapping the Research Assistant uses).
@@ -1012,8 +1098,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
             onRegenerateAll={onRegenerateAll}
             onExportWord={onExportWord}
             exportBusy={exportBusy}
+            factCheck={factCheck}
           />
         </div>
+        {factCheck?.active && <FactCheckLegend factCheck={factCheck} />}
         <div className="brief-title-row">
           <textarea
             ref={titleRef}
@@ -1074,6 +1162,10 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}
           activeThreadId={activeThreadId}
+          factMarks={factCheck?.marks.get(s.id)}
+          factNote={factCheck?.changedSections.get(s.id)?.note}
+          onFactPointerOver={factCheck?.onPointerOver}
+          onFactPointerLeave={factCheck?.onPointerLeave}
         />
       ))}
 
@@ -1100,6 +1192,13 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
       />
 
       <ResearchStatusBar brief={brief} />
+      <BriefFactCheckTooltip
+        hover={factCheck?.hover ?? null}
+        evidence={factCheck?.evidence ?? null}
+        onEnter={factCheck?.onCardEnter}
+        onLeave={factCheck?.onCardLeave}
+        onOpenSource={onResultClick ? handleEvidenceClick : undefined}
+      />
     </div>
   );
 };

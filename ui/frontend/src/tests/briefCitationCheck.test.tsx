@@ -23,6 +23,8 @@ const check = {
   status: 'completed',
   judge_model: 'gpt-4.1-mini',
   model_combo: 'Azure Foundry',
+  brief_version_number: 4,
+  brief_changed: true,
   created_at: TS,
   summary_stats: {
     total: 3,
@@ -102,6 +104,9 @@ describe('BriefCheckList', () => {
     expect(screen.getByText(NUTRITION)).toBeInTheDocument();
     expect(screen.getByText('2 of 3 flagged (67%)')).toBeInTheDocument();
     expect(screen.getAllByText('shared')).toHaveLength(1);
+    // The last check names the version it judged; the brief has moved on since.
+    expect(screen.getByTitle('The brief version this check judged')).toHaveTextContent('v4');
+    expect(screen.getByText('brief changed since')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Shared with me' }));
     expect(screen.queryByText(BRIEF_TITLE)).toBeNull();
@@ -130,6 +135,9 @@ describe('BriefCheckDetail', () => {
     const onResultClick = jest.fn();
     render(<BriefCheckDetail check={check as never} dataSource="wfp" onBack={jest.fn()} onResultClick={onResultClick} />);
     await waitFor(() => expect(screen.getByText('Showing 3 of 3 passages.', { exact: false })).toBeInTheDocument());
+    expect(screen.getByText(/brief version 4/)).toBeInTheDocument();
+    expect(screen.getByText(/· ran 1\.5 s/)).toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent('its results describe version 4, not the brief as it is now');
     expect(screen.queryByRole('columnheader', { name: 'Documents' })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: '[1]' })[0]);
     expect(onResultClick).toHaveBeenCalledWith(
@@ -170,7 +178,7 @@ describe('BriefCheckDetail', () => {
     mockedAxios.get.mockImplementation((url: string) =>
       Promise.resolve({
         data: url.includes('brief-checks')
-          ? { ...check, status: 'running', summary_stats: { progress: { completed: 1, total: 3 } }, passages: [passages[0]] }
+          ? { ...check, status: 'running', started_at: new Date(Date.now() - 75_000).toISOString(), summary_stats: { progress: { completed: 1, total: 3 } }, passages: [passages[0]] }
           : [],
       }),
     );
@@ -179,5 +187,6 @@ describe('BriefCheckDetail', () => {
     expect(within(screen.getByRole('status')).getByText('33%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download Excel' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    expect(screen.getByText(/· running for 1 min 1[45] s/)).toBeInTheDocument();
   });
 });

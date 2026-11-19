@@ -297,6 +297,17 @@ class BriefCitationCheck(Base):
     )
     judge_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
     model_combo: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The brief version the check judged (migration 0040): pinned when the
+    # check starts, so the version Log and the check name the same thing and
+    # later typing saves never merge into that version. Null on checks made
+    # before versions were linked; the id is nulled if the version row goes.
+    brief_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brief_versions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    brief_version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     # {progress: {completed, total}} while running; verdict counts, per-section
     # rows, token totals, cost and duration once complete; {error} when failed.

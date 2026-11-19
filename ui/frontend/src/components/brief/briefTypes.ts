@@ -368,6 +368,16 @@ export interface RemoteBrief {
 // Whole-brief versions (signed-in briefs; the API writes one per change)
 // ---------------------------------------------------------------------------
 
+// The citation check that judged a version, as its Log row shows it.
+export interface BriefVersionCheck {
+  id: string;
+  status: string;
+  created_at: string;
+  flagged: number | null;
+  total: number | null;
+  label: string;
+}
+
 export interface BriefVersionItem {
   number: number;
   kind: string;
@@ -377,6 +387,7 @@ export interface BriefVersionItem {
   created_at: string;
   updated_at: string;
   is_current: boolean;
+  citation_check?: BriefVersionCheck | null;
 }
 
 // One section of a version compared with the version before it.

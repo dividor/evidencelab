@@ -133,6 +133,10 @@ _akv.API_KEY = API_KEY
 _akv.BROWSER_KEY = os.environ.get("REACT_APP_API_KEY") or None
 _akv.USER_MODULE = USER_MODULE
 _akv.USER_MODULE_MODE = USER_MODULE_MODE
+if USER_MODULE:
+    from ui.backend.auth.users import AUTH_SECRET as _SESSION_SECRET  # noqa: E402
+
+    _akv.AUTH_SECRET = _SESSION_SECRET
 
 if _akv.BROWSER_KEY and USER_MODULE_MODE == "on_active":
     logger.warning(

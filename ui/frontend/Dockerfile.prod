@@ -85,6 +85,7 @@ FROM nginx:alpine AS production
 # Copy nginx config as a template; the entrypoint fills in the api and mcp
 # addresses (see render-nginx-conf.sh)
 COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY ui/frontend/nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
 
 # Copy entrypoint and config rendering scripts
 COPY ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh
