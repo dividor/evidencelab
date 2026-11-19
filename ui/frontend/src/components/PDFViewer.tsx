@@ -458,8 +458,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   searchModel = null,
 }) => {
   // Extract fields from metadata (check multiple possible field locations)
-  const webUrl = metadata.report_url || metadata.map_report_url || metadata.src_doc_raw_metadata?.report_url;
-  const pdfUrl = metadata.pdf_url || metadata.map_pdf_url || metadata.src_doc_raw_metadata?.pdf_url;
+  const webUrl = metadata.report_url || metadata.map_report_url;
+  const pdfUrl = metadata.pdf_url || metadata.map_pdf_url;
   const organization = metadata.organization;
   const year = metadata.year;
   const score = metadata.score;

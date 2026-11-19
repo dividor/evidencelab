@@ -362,6 +362,10 @@ const buildSearchParams = (options: {
   dataSource: string;
 }) => {
   const params = new URLSearchParams({ q: options.cellQuery, limit: HEATMAP_CELL_LIMIT });
+  // A cell lists results and exports their text; it never opens one, so it
+  // takes lean results (no chunk elements, tables, images or document texts),
+  // which keeps a 1000-result cell far below Cloud Run's 32 MiB response limit.
+  params.append('lean', 'true');
   if (options.wideSearch) {
     // Cap chunks per document; the cell limit is the document cap so counts
     // are not truncated to the Search tab's number-of-documents setting.
@@ -511,13 +515,8 @@ const resolveResultUrl = (result: SearchResult) => {
   if (result.metadata?.document_url) return result.metadata.document_url;
   if (result.metadata?.url) return result.metadata.url;
 
-  // Construct file URL from sys_filepath or sys_parsed_folder
+  // Construct file URL from sys_parsed_folder
   let parsedFolder = result.sys_parsed_folder || result.metadata?.sys_parsed_folder;
-
-  // Check if it's in metadata.sys_data
-  if (!parsedFolder && result.metadata?.sys_data?.sys_parsed_folder) {
-    parsedFolder = result.metadata.sys_data.sys_parsed_folder;
-  }
 
   // Fallback: construct path from available data
   if (!parsedFolder && result.organization && result.year && result.doc_id) {

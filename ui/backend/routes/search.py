@@ -9,6 +9,7 @@ from qdrant_client.http import models as qmodels
 
 from pipeline.db import (
     get_default_filter_fields,
+    get_search_max_limit,
     get_src_field_mapping,
     get_taxonomy_filter_fields,
     resolve_data_source,
@@ -16,6 +17,7 @@ from pipeline.db import (
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
 from ui.backend.schemas import Facets, FacetValue, SearchResponse, SearchResult
+from ui.backend.services.result_shape import ResultShape
 from ui.backend.services.search import (
     get_search_facets,
     scroll_filtered_chunks,
@@ -47,6 +49,10 @@ from ui.backend.utils.filter_helpers import (
 )
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
+# Largest ``limit`` or ``wide_limit`` one /search request may ask for
+# (``application.search.max_limit`` in config.json); above it the request is
+# rejected with 422, so no client can ask for an unbounded response.
+SEARCH_MAX_LIMIT = get_search_max_limit()
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "8"))
 search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 router = APIRouter()
@@ -426,9 +432,11 @@ def _build_search_results(
     data_source: Optional[str],
     limit: int,
     min_chunk_size: int,
+    shape: ResultShape,
 ):
     # Build SearchResult objects from Qdrant results joined with doc/chunk metadata.
     # Skips results whose doc is missing from cache or whose text is too short.
+    # ``shape`` decides which document fields and chunk-level data each carries.
     filtered_results = []
     for result in results:
         doc_id_raw = result.payload.get("doc_id") or result.payload.get("sys_doc_id")
@@ -464,7 +472,6 @@ def _build_search_results(
                     if chunk_payload.get("sys_page_num") is not None
                     else 0
                 ),
-                chunk_elements=chunk_payload.get("sys_chunk_elements"),
                 headings=chunk_payload.get("sys_headings") or [],
                 section_type=(
                     chunk_payload.get("tag_section_type")
@@ -472,11 +479,16 @@ def _build_search_results(
                 ),
                 score=result.score,
                 item_types=chunk_payload.get("sys_item_types"),
-                bbox=chunk_bboxes,
-                elements=chunk_payload.get("sys_elements"),
-                table_data=chunk_payload.get("sys_table_data"),
-                tables=chunk_payload.get("sys_tables"),
-                images=chunk_payload.get("sys_images"),
+                **shape.chunk_fields(
+                    {
+                        "chunk_elements": chunk_payload.get("sys_chunk_elements"),
+                        "bbox": chunk_bboxes,
+                        "elements": chunk_payload.get("sys_elements"),
+                        "table_data": chunk_payload.get("sys_table_data"),
+                        "tables": chunk_payload.get("sys_tables"),
+                        "images": chunk_payload.get("sys_images"),
+                    }
+                ),
                 title=clean_text(normalized_doc.get("title", "Unknown")),
                 organization=normalized_doc.get("organization"),
                 year=(
@@ -485,11 +497,7 @@ def _build_search_results(
                     else None
                 ),
                 language=normalized_doc.get("language"),
-                metadata={
-                    k: v
-                    for k, v in normalized_doc.items()
-                    if k not in ("abstractive_summary",)
-                },
+                metadata=shape.metadata(normalized_doc),
             )
         )
 
@@ -696,7 +704,9 @@ def _parse_boost_fields(raw: Optional[str]) -> Dict[str, float]:
     return config
 
 
-def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
+def _fetch_and_build_results(
+    pg, results, data_source, limit, min_chunk_size, shape: ResultShape
+):
     """Build doc/chunk caches and construct SearchResult list. Returns None if no docs."""
     t_doc = time.time()
     doc_cache = _build_doc_cache(pg, results)
@@ -714,7 +724,7 @@ def _fetch_and_build_results(pg, results, data_source, limit, min_chunk_size):
     )
     t_build = time.time()
     built = _build_search_results(
-        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size
+        results, doc_cache, chunk_cache, data_source, limit, min_chunk_size, shape
     )
     logger.info(
         "[TIMING] build_results: %.3fs (%s results)", time.time() - t_build, len(built)
@@ -776,6 +786,19 @@ def _gather_known_values(
         )
         known[core_field] = _split_facet_values(raw_counts)
     return known
+
+
+def _check_search_limits(limit: int, wide_limit: int) -> None:
+    """Reject a ``limit`` or ``wide_limit`` above ``SEARCH_MAX_LIMIT`` with 422."""
+    for name, value in (("limit", limit), ("wide_limit", wide_limit)):
+        if value > SEARCH_MAX_LIMIT:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"{name} must be at most {SEARCH_MAX_LIMIT} "
+                    "(application.search.max_limit)"
+                ),
+            )
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -859,6 +882,14 @@ async def search(
         description="Comma-separated core field names to boost (e.g. 'country,organization'). "
         "Each field gets a 0.5 weight multiplier.",
     ),
+    lean: bool = Query(
+        False,
+        description=(
+            "Lean results for callers that never open a result: no chunk "
+            "elements, tables, images or bounding boxes, and no document "
+            "summary or classified contents in metadata"
+        ),
+    ),
 ):
     """
     Perform semantic search over document chunks.
@@ -867,10 +898,12 @@ async def search(
     Filter parameters use core field names which are mapped to source fields.
     """
 
+    _check_search_limits(limit, wide_limit)
     t_start = time.time()
     source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
+    shape = ResultShape.for_source(source, lean=lean)
 
     try:
         core_filters = _build_core_filters(
@@ -933,7 +966,7 @@ async def search(
         t2 = time.time()
         effective_limit = wide_limit * wide_group_size if wide_search else limit
         filtered_results = _fetch_and_build_results(
-            pg, results, data_source, effective_limit, min_chunk_size
+            pg, results, data_source, effective_limit, min_chunk_size, shape
         )
         if filtered_results is None:
             return SearchResponse(results=[], total=0, query=q, filters={})

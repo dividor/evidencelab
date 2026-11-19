@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { HeatmapTabContent } from '../components/app/HeatmapTabContent';
 import { Facets } from '../types/api';
+import config from '../config.json';
 
 jest.mock('../components/filters/FiltersPanel', () => ({
   FiltersPanel: () => <div>Filters Panel</div>,
@@ -145,6 +146,33 @@ describe('HeatmapTabContent', () => {
 
     fireEvent.change(rowInputs[0], { target: { value: 'climate' } });
     expect(searchButton).toBeEnabled();
+  });
+
+  test('every cell request asks for lean results and the configured cell limit', async () => {
+    const getSpy = jest.spyOn(axios, 'get').mockResolvedValue({ data: { results: [] } });
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ data: {} });
+    try {
+      render(<HeatmapTabContent {...baseProps} />);
+      await waitFor(() => expect(screen.getByText('2020')).toBeInTheDocument());
+      fireEvent.click(screen.getByRole('button', { name: /Tune your heatmap using a search query/ }));
+      fireEvent.change(screen.getByPlaceholderText(GRID_QUERY_PLACEHOLDER), { target: { value: 'school feeding' } });
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(getSpy).toHaveBeenCalled());
+      const cellUrls = getSpy.mock.calls.map(([url]) => String(url)).filter((u) => u.includes('/search?'));
+      expect(cellUrls.length).toBeGreaterThan(0);
+      // A cell never opens a result, so it takes lean results, and its limit
+      // comes from config.json (application.search.heatmap_cell_limit), not
+      // from a build-time environment variable.
+      const cellLimit = String(config.application.search.heatmap_cell_limit);
+      for (const url of cellUrls) {
+        const params = new URLSearchParams(url.split('?')[1]);
+        expect(params.get('lean')).toBe('true');
+        expect(params.get('limit')).toBe(cellLimit);
+      }
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
   });
 
   test('with wide search on, every cell request carries the per-document cap and the cell limit as document cap', async () => {
