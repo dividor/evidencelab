@@ -166,6 +166,14 @@ API endpoints validate `data_source` parameters against a whitelist loaded from 
 - Unintended database connections
 - Resource exhaustion
 
+### Untrusted Input Shown to Administrators
+
+Anonymous visitors can write ratings (page feedback) and activity rows, and administrators read them in the admin screens and in Excel exports. Three controls keep that input from running in an administrator's browser or spreadsheet:
+
+- **Server-side refusal** (`ui/backend/auth/schemas.py`, ratings and activity payloads): a `data:` URL is accepted only as a PNG, JPEG, WebP or GIF image (an SVG can carry script), and a `javascript:` or `vbscript:` value is refused in any link field (`url`, `link`, `href`, `*_url`). Whitespace and control characters inside the scheme are ignored, as browsers ignore them. Other text is stored as typed, because it is shown as text.
+- **Links rendered safely** (`ui/frontend/src/utils/safeHref.ts`): a link that comes from stored data (document metadata, ratings, activity, the research PDF export) is made clickable only for `http`, `https`, `mailto` or a path on this site. Word exports link only to full `http(s)` addresses. Feedback screenshots open full size inside the page, never as a document in a new tab.
+- **Spreadsheet cells are text** (`ui/backend/utils/excel_text.py`): every export (ratings, activity, LLM usage, citation check) writes cells that start with `=` as text, so a comment such as `=HYPERLINK(...)` is not a formula when the file is opened.
+
 ### CORS Configuration
 
 CORS is configured securely:
@@ -451,6 +459,11 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
   - `reprocess-toc` checks the data source against `config.json` before queueing
   - nginx now sends the security headers, plus HSTS and a framing/plugin CSP, on the web pages and static files; they were missing because locations with their own `add_header` dropped the server-level ones
   - Corrected this file where it did not match the code: CI dependency and image scans report but do not block, Trivy results are not uploaded as SARIF, the OpenAPI docs are served in every deployment, and the password policy checks length only
+- **2026-11-17**: Keep anonymous input from running in admin screens and exports
+  - Ratings and activity payloads refuse non-raster `data:` URLs and `javascript:`/`vbscript:` link values
+  - Admin screens and the research PDF export render links from stored data only for `http`, `https`, `mailto` and site paths; Word exports link only to `http(s)` addresses
+  - Feedback screenshots open full size in the page instead of a new tab
+  - Spreadsheet exports write formula-looking cells as text
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)

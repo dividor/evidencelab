@@ -56,3 +56,29 @@ describe("the brief's Word export follows the chosen link target", () => {
     expect(rels).not.toContain(REPORT);
   });
 });
+
+describe('Word export source links are web addresses only', () => {
+  const { sourceLink } = jest.requireActual('../utils/exportResultsToDocx');
+  const base = { doc_id: 'd1', page_num: 3 } as any;
+
+  test('keeps an https source address with the cited page', () => {
+    expect(sourceLink({ ...base, pdf_url: 'https://example.org/r.pdf' })).toBe(
+      'https://example.org/r.pdf#page=3'
+    );
+  });
+
+  test.each([
+    'file:///C:/secret/report.pdf',
+    '\\\\attacker\\share\\x.pdf',
+    'javascript:alert(1)',
+    'ftp://example.org/r.pdf',
+  ])('does not use %s as a source link', (address) => {
+    expect(sourceLink({ ...base, pdf_url: address, report_url: address })).toBeNull();
+  });
+
+  test('uses the report page when the PDF address is not a web address', () => {
+    expect(
+      sourceLink({ ...base, pdf_url: 'file:///x.pdf', report_url: 'https://example.org/page' })
+    ).toBe('https://example.org/page#page=3');
+  });
+});

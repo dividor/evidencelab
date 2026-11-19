@@ -21,6 +21,7 @@ from ui.backend.auth.schemas import (
     ActivitySummaryUpdateAnonymous,
 )
 from ui.backend.auth.users import current_superuser, optional_current_user
+from ui.backend.utils.excel_text import append_text_row
 from ui.backend.utils.llm_costs import compute_cost
 
 logger = logging.getLogger(__name__)
@@ -482,10 +483,10 @@ async def export_activity(
         "Has Ratings",
         "Search ID",
     ]
-    ws.append(headers)
+    append_text_row(ws, headers)
 
     for activity, user in rows:
-        ws.append(_build_export_row(activity, user))
+        append_text_row(ws, _build_export_row(activity, user))
 
     buf = io.BytesIO()
     wb.save(buf)
