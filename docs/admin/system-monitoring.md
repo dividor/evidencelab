@@ -79,16 +79,18 @@ Click any document row to access detailed inspection modals:
 | Modal | What It Shows |
 |-------|---------------|
 | **Summary** | The AI-generated summary, with how, when and by whom it was made; administrators can edit or regenerate it (see [Document Summaries](document-summaries.md)) |
-| **TOC** | Table of contents with section classification |
+| **TOC** | Table of contents with section classification; administrators can correct the classification, approve it or run it again |
 | **Metadata** | Full document metadata including source fields |
 | **Processing Timeline** | Stage-by-stage processing history with timestamps |
-| **Processing Logs** | Raw processing output and error messages |
+| **Processing Logs** | Raw processing output and error messages (administrators only) |
 | **Chunks** | Vector chunks with PDF viewer overlay |
 | **PDF Preview** | Inline PDF viewer |
 | **Taxonomy** | AI-assigned taxonomy tags with confidence |
-| **Reprocess** | Re-trigger the processing pipeline for this document |
+| **Reprocess** | Re-trigger the processing pipeline for this document (administrators only) |
 
 Administrators can also tick documents and **Regenerate summaries** for all of them in a queue; see [Document Summaries](document-summaries.md).
+
+Correcting or re-running a table of contents, reprocessing a document, the processing queue and the processing logs are for signed-in administrators. Other users do not see these controls, and the API refuses them, so a deployment without sign-in cannot use them from the app; run the pipeline from the command line instead (see [Pipeline Configuration](pipeline-configuration.md)).
 
 ---
 

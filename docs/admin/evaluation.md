@@ -181,6 +181,8 @@ The **Testing (Brief)** tab checks a finished brief against its own sources. Whe
 
 The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the summarisation model of the model combo selected in the **Models** menu at the top of the page, so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
+A check judges one **version** of the brief: when it starts it pins the brief's current version (the one the brief's **Document History** shows; a brief saved before version history began gets its first version at that moment), and that version is kept exactly as judged, so later edits never fold into it. The **Last check** column names the version (`v4`), the check's page says *brief version 4*, and the brief's Document History names the check on that version's row. Once the brief has a newer version, the list shows a **brief changed since** badge and the check's page a warning that its results describe the earlier version; run the check again to judge the brief as it is now. Checks made before versions were linked show *brief version not recorded*. If the brief changes in the moment between clicking **Run check** and the check starting, the check fails with *The brief changed between starting the check and running it; run the check again*.
+
 Each passage gets one of four verdicts:
 
 - **Supported** — every factual element is stated in, or directly follows from, the excerpts.
@@ -201,6 +203,8 @@ A supported passage, with the quotes the judge relied on verified against the ex
 A flagged passage, with the problems the judge found:
 
 ![A flagged passage in detail](../images/admin/eval/brief-check-flagged.png)
+
+Once a check has completed, everyone who can open the brief sees a **Fact Checker** button beside **Export to Word** that highlights every judged passage in place in the colour of its verdict, with the verdict, the judge's reason and the cited excerpts (the quoted parts marked) on hover (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and the button goes away only when no judged section is left unchanged.
 
 > The judge sees only the stored excerpts, not the whole document. A passage can be flagged because the brief cites the wrong passage of the right document. Treat flags as a review list, not a final verdict.
 

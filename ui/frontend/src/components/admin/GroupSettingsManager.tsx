@@ -204,7 +204,14 @@ const FeaturesSection: React.FC<{
   </div>
 );
 
-type SettingsTab = 'search' | 'content' | 'ai_summary' | 'brief' | 'doc_summary' | 'features' | 'appearance';
+type SettingsTab =
+  | 'search'
+  | 'content'
+  | 'ai_summary'
+  | 'brief'
+  | 'doc_summary'
+  | 'features'
+  | 'appearance';
 
 /** The group settings, one tab per area. */
 const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
@@ -268,7 +275,6 @@ const GroupSettingsManager: React.FC = () => {
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
-
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);

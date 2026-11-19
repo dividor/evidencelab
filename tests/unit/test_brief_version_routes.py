@@ -99,6 +99,8 @@ class Session:
                 if k.startswith("number")
             ]
             return [r for r in rows if r.number == numbers[0]] if numbers else rows
+        if "FROM brief_citation_checks" in text:
+            return list(getattr(self, "checks", []))
         if "FROM brief_shares" in text:
             return [object()] if self.shared else []
         if "FROM briefs" in text:
@@ -124,6 +126,8 @@ class Session:
 
     def add(self, row):
         if type(row).__name__ == "BriefVersion":
+            if getattr(row, "id", None) is None:
+                row.id = uuid.uuid4()
             self.versions.append(row)
 
     async def delete(self, row):
@@ -217,6 +221,8 @@ class TestVersionRoutes:
             (2, True),
             (1, False),
         ]
+        # No citation check judged either version.
+        assert [v["citation_check"] for v in listed] == [None, None]
         detail = await brief_versions.get_brief_version(
             request(), brief.id, 2, owner, session
         )
@@ -239,6 +245,30 @@ class TestVersionRoutes:
                 request(), brief.id, 3, owner, session
             )
         assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_list_names_the_check_that_judged_a_version(self):
+        owner = user()
+        brief = brief_of(owner, content_with_one_run())
+        session = Session(brief, owner)
+        await run(session, brief, owner, "Two [1].")
+        judged = session.versions[0]
+        session.checks = [
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                brief_version_id=judged.id,
+                status="completed",
+                created_at=NOW,
+                summary_stats={"total": 5, "flagged": 2},
+            )
+        ]
+        listed = await brief_versions.list_brief_versions(
+            request(), brief.id, owner, session
+        )
+        by_number = {v["number"]: v["citation_check"] for v in listed}
+        assert by_number[2] is None
+        assert by_number[1]["label"] == "Citation check: 2 of 5 passages flagged"
+        assert by_number[1]["id"] == session.checks[0].id
 
     @pytest.mark.asyncio
     async def test_viewer_reads_versions_but_cannot_restore(self):

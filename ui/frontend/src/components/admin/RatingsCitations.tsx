@@ -1,4 +1,5 @@
 import React from 'react';
+import { safeHref } from '../../utils/safeHref';
 
 /**
  * Citation rendering utilities for the Ratings admin panel.
@@ -16,7 +17,7 @@ const buildCitationBadge = (num: number, results: any[], i: number, j: number) =
     const pageSuffix = r.page_num ? ', p.' + String(r.page_num) : '';
     const tip = (r.title || 'Untitled') + pageSuffix;
     return (
-      <a key={`c${i}-${j}`} href={r.link} target="_blank" rel="noopener noreferrer"
+      <a key={`c${i}-${j}`} href={safeHref(r.link)} target="_blank" rel="noopener noreferrer"
         className="admin-citation-badge admin-citation-clickable" title={tip}
         onClick={(e) => e.stopPropagation()}>{num}</a>
     );
@@ -94,7 +95,7 @@ export const AdminReferences: React.FC<{ summary: string; results: any[] }> = ({
             <React.Fragment key={num}>
               {i > 0 && ' '}
               {result.link ? (
-                <a href={result.link} target="_blank" rel="noopener noreferrer"
+                <a href={safeHref(result.link)} target="_blank" rel="noopener noreferrer"
                   className="admin-ref-link" onClick={(e) => e.stopPropagation()}>
                   <span className="admin-citation-badge admin-citation-clickable">{num}</span>
                   {result.page_num ? ` p.${result.page_num}` : ''}
