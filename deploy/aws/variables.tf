@@ -265,6 +265,34 @@ variable "db_backup_retention_days" {
   default     = 7
 }
 
+variable "backups_enabled" {
+  description = "Scheduled AWS Backup backups of Postgres, the EFS documents and Qdrant's instance (backup.tf). False turns them off."
+  type        = bool
+  default     = true
+}
+
+variable "backup_schedule" {
+  description = "When the scheduled backups run, as an AWS Backup cron expression in UTC. The default is every Sunday at 03:00."
+  type        = string
+  default     = "cron(0 3 ? * SUN *)"
+
+  validation {
+    condition     = can(regex("^cron\\(.+\\)$", var.backup_schedule))
+    error_message = "backup_schedule must be an AWS Backup cron expression, for example cron(0 3 ? * SUN *)."
+  }
+}
+
+variable "backup_retention_days" {
+  description = "Days each scheduled backup is kept."
+  type        = number
+  default     = 35
+
+  validation {
+    condition     = var.backup_retention_days >= 1
+    error_message = "backup_retention_days must be at least 1."
+  }
+}
+
 variable "db_skip_final_snapshot" {
   description = "Skip the final database snapshot on destroy. Keep false for real data; set true for throwaway test deployments."
   type        = bool

@@ -6,9 +6,10 @@
 #
 #   --yes  Destroy without asking first.
 #
-# This deletes the database, the file share and Qdrant with all their data.
-# Unless db_skip_final_snapshot is true, RDS keeps a final snapshot named
-# <name>-final, which you delete yourself when it is no longer needed.
+# This deletes the database, the file share and Qdrant with all their data,
+# and the backup vault with its backups. Unless db_skip_final_snapshot is
+# true, RDS keeps a final snapshot named <name>-final, which you delete
+# yourself when it is no longer needed.
 # Needs terraform and the aws CLI. Set AWS_PROFILE to pick the AWS account,
 # and TERRAFORM to run terraform some other way.
 set -euo pipefail

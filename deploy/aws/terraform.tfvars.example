@@ -39,6 +39,12 @@ qdrant_url = ""
 # sets this for you.
 provider_secret_names = []
 
+# Scheduled AWS Backup backups of Postgres, the EFS documents and Qdrant
+# (backup.tf): weekly, kept 35 days. Change or turn off with:
+# backup_schedule       = "cron(0 3 ? * SUN *)"
+# backup_retention_days = 35
+# backups_enabled       = false
+
 # Smaller, single-zone settings for a throwaway test deployment:
 # db_multi_az            = false
 # db_instance_class      = "db.t4g.micro"
