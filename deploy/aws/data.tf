@@ -122,7 +122,8 @@ resource "aws_instance" "qdrant" {
   }
 
   # Docker runs Qdrant with its storage on the instance's disk, restarting it
-  # with the instance. Changing the key or image replaces the instance.
+  # with the instance. Changing the key or image replaces the instance, and
+  # with it the index on its disk.
   user_data_replace_on_change = true
   user_data                   = <<-EOT
     #!/bin/bash
@@ -137,6 +138,13 @@ resource "aws_instance" "qdrant" {
   EOT
 
   tags = { Name = "${var.name}-qdrant" }
+
+  # The image is Amazon Linux's newest when the instance is created. AWS
+  # publishes new ones every few weeks; following them would replace the
+  # instance on the next deploy and delete Qdrant's index with its disk.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   depends_on = [aws_nat_gateway.main, aws_route_table_association.private]
 }
