@@ -139,7 +139,11 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
 
-Qdrant on EC2 keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; run the pipeline again to rebuild it.
+What a deploy keeps:
+
+- **Postgres** keeps its data across deploys. It starts on PostgreSQL 16's default minor version and keeps that version: AWS applies minor upgrades itself in the weekly maintenance window, so a deploy never upgrades or restarts it. RDS keeps 7 days of automated backups (`db_backup_retention_days`), and removing the deployment takes a final snapshot unless `db_skip_final_snapshot` is set.
+- **Qdrant on EC2** keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; run the pipeline again to rebuild it.
+- **Documents and page images** on EFS are kept across deploys. EFS has no backups in this template.
 
 ### How the AWS services find each other
 
