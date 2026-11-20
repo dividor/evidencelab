@@ -9,6 +9,7 @@ import threading
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 
 from pipeline.db.config import resolve_data_source
@@ -102,6 +103,39 @@ def get_shared_pool(data_source: str) -> ThreadedConnectionPool:
     return pool
 
 
+def checkout_live_connection(pool: ThreadedConnectionPool):
+    """A connection from POOL that the server still answers on.
+
+    The server can end a pooled connection while it sits idle: a database
+    restart (AWS applies minor upgrades in the maintenance window), a failover,
+    or a restore that ends every session. psycopg2 only notices when a query on
+    it fails, so without a check each idle connection costs one failed request
+    afterwards. Each connection is pinged on checkout, as SQLAlchemy's
+    ``pool_pre_ping`` does for the API's auth database; one that doesn't answer
+    is closed, dropped from the pool and replaced. If no connection answers
+    after the pool's maximum plus one tries, the database is down, and the last
+    error is raised.
+    """
+    attempts = pool.maxconn + 1
+    for attempt in range(1, attempts + 1):
+        conn = pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            conn.rollback()
+            return conn
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            pool.putconn(conn, close=True)
+            if attempt == attempts:
+                raise
+            logger.warning(
+                "Replaced a Postgres connection the server had closed (%d/%d)",
+                attempt,
+                attempts,
+            )
+    raise RuntimeError("unreachable: the last attempt returns or raises")
+
+
 def close_all_pools() -> None:
     """Close every pool this process opened, for shutdown and test teardown."""
     with _POOL_REGISTRY_LOCK:
@@ -134,7 +168,7 @@ class PostgresClientBase:
     @contextlib.contextmanager
     def _get_conn(self):
         pool = self._get_pool()
-        conn = pool.getconn()
+        conn = checkout_live_connection(pool)
         try:
             yield conn
         finally:
