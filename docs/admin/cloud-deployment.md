@@ -135,15 +135,17 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
 | Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
+| Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
 | Domain | A Route 53 record pointing at the load balancer, or at CloudFront with `cloudfront_enabled`, if you set a domain | — |
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
 
-What a deploy keeps:
+What a deploy keeps, and how it is backed up:
 
 - **Postgres** keeps its data across deploys. It starts on PostgreSQL 16's default minor version and keeps that version: AWS applies minor upgrades itself in the weekly maintenance window, so a deploy never upgrades or restarts it. RDS keeps 7 days of automated backups (`db_backup_retention_days`), and removing the deployment takes a final snapshot unless `db_skip_final_snapshot` is set.
-- **Qdrant on EC2** keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; run the pipeline again to rebuild it.
-- **Documents and page images** on EFS are kept across deploys. EFS has no backups in this template.
+- **Qdrant on EC2** keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; restore it from a backup, or run the pipeline again to rebuild it.
+- **Documents and page images** on EFS are kept across deploys.
+- **Scheduled backups:** AWS Backup backs up all three (the database, the EFS file share and Qdrant's instance) into a backup vault named after the deployment, every Sunday at 03:00 UTC, and keeps each backup for 35 days. Change this with `backup_schedule` (an AWS Backup cron expression) and `backup_retention_days`, or turn it off with `backups_enabled = false`. Restore from the AWS Backup console: a database or file share restores as a new one, and Qdrant's instance as a new instance with the index on its disk. Removing the deployment deletes the vault and its backups.
 
 ### How the AWS services find each other
 
@@ -258,7 +260,7 @@ With `--demo`, the web app is built with the site's API key, so visitors can use
 deploy/aws/scripts/teardown.sh
 ```
 
-Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data. The script then checks that Terraform manages nothing more for the deployment, and prints `Everything Terraform created for <name> is deleted.` It also prints a command to list anything else tagged with the deployment name. AWS's tag list keeps showing deleted resources for a while, so run that command later if you want to check.
+Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data, and the backup vault with its backups; RDS's final snapshot is kept unless `db_skip_final_snapshot` is set. The script then checks that Terraform manages nothing more for the deployment, and prints `Everything Terraform created for <name> is deleted.` It also prints a command to list anything else tagged with the deployment name. AWS's tag list keeps showing deleted resources for a while, so run that command later if you want to check.
 
 ### Deploying your own documents
 

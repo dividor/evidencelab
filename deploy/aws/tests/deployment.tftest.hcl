@@ -103,6 +103,10 @@ variables {
 
   pipeline_files_dir   = ""
   customize_assets_dir = ""
+
+  backups_enabled       = true
+  backup_schedule       = "cron(0 3 ? * SUN *)"
+  backup_retention_days = 35
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -632,7 +636,113 @@ run "a_branding_folder_without_files_is_refused" {
   expect_failures = [var.customize_assets_dir]
 }
 
-# The last two runs share state: the first creates the Qdrant instance (mocked) with
+run "scheduled_backups_cover_postgres_the_documents_and_qdrant" {
+  command = plan
+
+  # Known while planning, so the test can check what the backups cover.
+  override_resource {
+    target          = aws_efs_file_system.data
+    override_during = plan
+    values = {
+      arn = "arn:aws:elasticfilesystem:us-east-2:123456789012:file-system/fs-0123456789abcdef0"
+    }
+  }
+  override_resource {
+    target          = aws_instance.qdrant[0]
+    override_during = plan
+    values = {
+      arn = "arn:aws:ec2:us-east-2:123456789012:instance/i-0123456789abcdef0"
+    }
+  }
+
+  # The database's ARN is unknown while planning; the file share's and
+  # Qdrant's are fixed above, so the list's length and their places show
+  # what is backed up.
+  assert {
+    condition     = length(local.backup_resources) == 3
+    error_message = "The backups should cover Postgres, the EFS documents and Qdrant's instance."
+  }
+  assert {
+    condition     = local.backup_resources[1] == "arn:aws:elasticfilesystem:us-east-2:123456789012:file-system/fs-0123456789abcdef0"
+    error_message = "The backups should cover the EFS file share."
+  }
+  assert {
+    condition     = local.backup_resources[2] == "arn:aws:ec2:us-east-2:123456789012:instance/i-0123456789abcdef0"
+    error_message = "The backups should cover Qdrant's instance."
+  }
+  assert {
+    condition     = length(aws_backup_selection.main) == 1
+    error_message = "One backup selection should hold the backed-up resources."
+  }
+  assert {
+    condition     = aws_backup_vault.main[0].force_destroy
+    error_message = "Removing the deployment should be able to delete its backup vault."
+  }
+}
+
+run "with_a_qdrant_url_backups_cover_postgres_and_the_documents_only" {
+  command = plan
+
+  override_resource {
+    target          = aws_efs_file_system.data
+    override_during = plan
+    values = {
+      arn = "arn:aws:elasticfilesystem:us-east-2:123456789012:file-system/fs-0123456789abcdef0"
+    }
+  }
+
+  variables {
+    qdrant_url = "https://cluster.us-east-2-0.aws.cloud.qdrant.io:6333"
+  }
+
+  assert {
+    condition     = length(local.backup_resources) == 2
+    error_message = "With Qdrant Cloud there is no Qdrant instance to back up."
+  }
+}
+
+run "backup_schedule_and_retention_are_settings" {
+  command = plan
+
+  variables {
+    backup_schedule       = "cron(30 1 * * ? *)"
+    backup_retention_days = 14
+  }
+
+  assert {
+    condition     = one(aws_backup_plan.main[0].rule).schedule == "cron(30 1 * * ? *)"
+    error_message = "backup_schedule should set when backups run."
+  }
+  assert {
+    condition     = one(one(aws_backup_plan.main[0].rule).lifecycle).delete_after == 14
+    error_message = "backup_retention_days should set how long backups are kept."
+  }
+}
+
+run "backups_can_be_turned_off" {
+  command = plan
+
+  variables {
+    backups_enabled = false
+  }
+
+  assert {
+    condition     = length(aws_backup_vault.main) == 0 && length(aws_backup_plan.main) == 0 && length(aws_backup_selection.main) == 0 && length(aws_iam_role.backup) == 0
+    error_message = "backups_enabled = false should create no backup vault, plan, selection or role."
+  }
+}
+
+run "a_backup_schedule_that_is_not_cron_is_refused" {
+  command = plan
+
+  variables {
+    backup_schedule = "weekly"
+  }
+
+  expect_failures = [var.backup_schedule]
+}
+
+# The runs below share state: the first creates the Qdrant instance (mocked) with
 # one Amazon Linux image, the second plans after AWS has published a newer
 # one. Qdrant's index lives on its instance's disk, so the instance must keep
 # its image rather than be replaced.
