@@ -230,6 +230,23 @@ variable "pipeline_task" {
   default     = { cpu = 4096, memory = 16384 }
 }
 
+variable "restore_task" {
+  description = "restore task size (scripts/restore-data.sh): loads a Postgres export and a data archive."
+  type        = object({ cpu = number, memory = number })
+  default     = { cpu = 1024, memory = 4096 }
+}
+
+variable "transfer_retention_days" {
+  description = "Days an upload stays in the transfer bucket (transfer.tf) before S3 deletes it."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.transfer_retention_days >= 1
+    error_message = "transfer_retention_days must be at least 1."
+  }
+}
+
 variable "pipeline_files_dir" {
   description = "Folder of your own pipeline files (for example a data source's downloader script and the spreadsheet it reads), relative to deploy/aws. They are copied into the pipeline task at /app/custom before each run, so a data source's download command can name /app/custom/<file>. Empty: none."
   type        = string

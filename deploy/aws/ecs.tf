@@ -1,5 +1,6 @@
 # The ECS cluster, the services the containers find each other by, and the
-# ui, api, mcp and embedding services plus the migrate and pipeline tasks.
+# ui, api, mcp and embedding services plus the migrate, pipeline and restore
+# tasks.
 
 resource "aws_ecs_cluster" "main" {
   name = var.name
@@ -25,7 +26,7 @@ resource "aws_service_discovery_service" "this" {
 }
 
 resource "aws_cloudwatch_log_group" "this" {
-  for_each          = toset(["ui", "api", "mcp", "embedding", "migrate", "pipeline"])
+  for_each          = toset(["ui", "api", "mcp", "embedding", "migrate", "pipeline", "restore"])
   name              = "/ecs/${var.name}/${each.key}"
   retention_in_days = var.log_retention_days
 }
@@ -89,6 +90,7 @@ locals {
         FORWARDED_ALLOW_IPS = local.vpc_cidr
       }
       fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
     mcp = {
       command              = ["python", "-m", "mcp_server.http_server"]
@@ -96,6 +98,7 @@ locals {
       size                 = var.mcp
       env                  = {}
       fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
     migrate = {
       command              = ["alembic", "upgrade", "head"]
@@ -103,6 +106,7 @@ locals {
       size                 = var.migrate_task
       env                  = {}
       fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
     # Always started with its own command by scripts/run-task.sh. With
     # pipeline_files_dir set, it first copies those files to /app/custom.
@@ -114,6 +118,21 @@ locals {
         PIPELINE_FILES_BUCKET = aws_s3_bucket.pipeline_files[0].bucket
       } : {}
       fetch_pipeline_files = local.pipeline_files_enabled
+      task_role_arn        = aws_iam_role.task.arn
+    }
+    # Loads a Postgres export and a data archive from the transfer bucket
+    # (transfer.tf). Always started with its own command by
+    # scripts/restore-data.sh, as its own role: the only one that can read the
+    # bucket.
+    restore = {
+      command = ["python", "scripts/sync/db/restore_from_s3.py", "--help"]
+      port    = null
+      size    = var.restore_task
+      env = {
+        TRANSFER_BUCKET = aws_s3_bucket.transfer.bucket
+      }
+      fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.restore.arn
     }
   }
 }
@@ -126,7 +145,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = each.value.size.cpu
   memory                   = each.value.size.memory
   execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  task_role_arn            = each.value.task_role_arn
 
   runtime_platform {
     operating_system_family = "LINUX"

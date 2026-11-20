@@ -13,6 +13,9 @@ FROM python:3.11-slim AS base
 
 # LibreOffice converts Word and spreadsheet files. The two font packages stay
 # here because LibreOffice uses installed fonts when it renders documents.
+# postgresql-client gives psql and pg_restore to the cloud restore task
+# (scripts/sync/db/restore_from_s3.py), which loads a database export from
+# inside the deployment's network.
 RUN apt-get update && apt-get install -y \
     poppler-utils \
     tesseract-ocr \
@@ -23,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     libreoffice-calc \
     fonts-liberation \
     fonts-noto-color-emoji \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

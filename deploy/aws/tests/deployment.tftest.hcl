@@ -107,6 +107,9 @@ variables {
   backups_enabled       = true
   backup_schedule       = "cron(0 3 ? * SUN *)"
   backup_retention_days = 35
+
+  transfer_retention_days = 30
+  restore_task            = { cpu = 1024, memory = 4096 }
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -740,6 +743,92 @@ run "a_backup_schedule_that_is_not_cron_is_refused" {
   }
 
   expect_failures = [var.backup_schedule]
+}
+
+run "the_transfer_bucket_is_private_https_only_and_deletes_uploads" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      aws_s3_bucket_public_access_block.transfer.block_public_acls,
+      aws_s3_bucket_public_access_block.transfer.block_public_policy,
+      aws_s3_bucket_public_access_block.transfer.ignore_public_acls,
+      aws_s3_bucket_public_access_block.transfer.restrict_public_buckets,
+    ])
+    error_message = "The transfer bucket must block every kind of public access."
+  }
+  assert {
+    condition     = one(one(aws_s3_bucket_lifecycle_configuration.transfer.rule).expiration).days == 30
+    error_message = "Uploads should be deleted after transfer_retention_days."
+  }
+  assert {
+    condition = anytrue([
+      for st in data.aws_iam_policy_document.transfer_bucket.statement :
+      st.effect == "Deny" && anytrue([for c in st.condition : c.variable == "aws:SecureTransport" && toset(c.values) == toset(["false"])])
+    ])
+    error_message = "The transfer bucket should refuse requests that don't use HTTPS."
+  }
+}
+
+run "only_the_restore_task_can_read_the_transfer_bucket" {
+  command = plan
+
+  # The mocks give every role the same ARN; give the restore role its own.
+  override_resource {
+    target          = aws_iam_role.restore
+    override_during = plan
+    values = {
+      arn = "arn:aws:iam::123456789012:role/evidencelab-ecs-restore"
+    }
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.app["restore"].task_role_arn == "arn:aws:iam::123456789012:role/evidencelab-ecs-restore"
+    error_message = "The restore task should run as its own role."
+  }
+  assert {
+    condition = alltrue([
+      for name in ["api", "mcp", "migrate", "pipeline"] :
+      aws_ecs_task_definition.app[name].task_role_arn != "arn:aws:iam::123456789012:role/evidencelab-ecs-restore"
+    ])
+    error_message = "No other task should run as the restore role."
+  }
+  assert {
+    condition = [for st in data.aws_iam_policy_document.restore.statement : st.actions] == [
+      toset(["s3:ListBucket"]), toset(["s3:GetObject"]),
+    ]
+    error_message = "The restore role should only list and read the transfer bucket."
+  }
+  assert {
+    condition = alltrue([
+      for name in ["api", "mcp", "migrate", "pipeline"] :
+      !contains(keys(local.app_containers[name].env), "TRANSFER_BUCKET")
+    ]) && contains(keys(local.app_containers["restore"].env), "TRANSFER_BUCKET")
+    error_message = "Only the restore task should be told the transfer bucket's name."
+  }
+}
+
+run "transfer_retention_days_is_a_setting" {
+  command = plan
+
+  variables {
+    transfer_retention_days = 7
+  }
+
+  assert {
+    condition     = one(one(aws_s3_bucket_lifecycle_configuration.transfer.rule).expiration).days == 7
+    error_message = "transfer_retention_days should set when uploads are deleted."
+  }
+}
+
+run "a_transfer_retention_below_one_day_is_refused" {
+  command = plan
+
+  variables {
+    transfer_retention_days = 0
+  }
+
+  expect_failures = [var.transfer_retention_days]
 }
 
 # The runs below share state: the first creates the Qdrant instance (mocked) with
