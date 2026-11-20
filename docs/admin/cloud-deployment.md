@@ -139,6 +139,8 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
 
+Qdrant on EC2 keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; run the pipeline again to rebuild it.
+
 ### How the AWS services find each other
 
 The api, mcp and embedding services register their addresses in a private DNS namespace, `<name>.internal` (AWS Cloud Map). The template sets these values:

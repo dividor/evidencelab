@@ -631,3 +631,40 @@ run "a_branding_folder_without_files_is_refused" {
 
   expect_failures = [var.customize_assets_dir]
 }
+
+# The last two runs share state: the first creates the Qdrant instance (mocked) with
+# one Amazon Linux image, the second plans after AWS has published a newer
+# one. Qdrant's index lives on its instance's disk, so the instance must keep
+# its image rather than be replaced.
+run "qdrant_instance_is_created" {
+  command = apply
+
+  plan_options {
+    target = [aws_instance.qdrant]
+  }
+
+  assert {
+    condition     = nonsensitive(aws_instance.qdrant[0].ami) == "ami-0123456789abcdef0"
+    error_message = "Qdrant's instance should start from the Amazon Linux image of the day it is created."
+  }
+}
+
+run "a_newer_amazon_linux_image_keeps_the_qdrant_instance" {
+  command = plan
+
+  plan_options {
+    target = [aws_instance.qdrant]
+  }
+
+  override_data {
+    target = data.aws_ssm_parameter.al2023_arm64[0]
+    values = {
+      value = "ami-0fedcba9876543210"
+    }
+  }
+
+  assert {
+    condition     = nonsensitive(aws_instance.qdrant[0].ami) == "ami-0123456789abcdef0"
+    error_message = "A newer Amazon Linux image must not replace Qdrant's instance: its disk holds the index."
+  }
+}
