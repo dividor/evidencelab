@@ -176,7 +176,15 @@ Model availability differs by region. Check what your region offers with `aws be
 
 - **Embedding:** Titan Text Embeddings V2 is offered in most regions. Embedding models cannot be changed after a data source is indexed.
 - **LLM:** Nova 2 Lite is called through an inference profile whose prefix matches your region's geography: `us.` in the United States, `eu.` in Europe, `apac.` in Asia Pacific.
-- **Reranker:** Cohere Rerank 3.5 is offered in only a few regions, including `us-west-2`, `eu-central-1` and `ap-northeast-1`. Set `region` to one near you.
+- **Reranker:** Cohere Rerank 3.5 is offered in only a few regions, including `us-west-2`, `eu-central-1` and `ap-northeast-1`. Set `region` to one near you. Cohere Rerank is sold through AWS Marketplace, so your account must accept Cohere's terms before the first call. **Amazon Rerank 1.0** (`amazon.rerank-v1:0`) is Amazon's own model and needs no such agreement. It is also offered in only some regions, `eu-central-1` among them. To use it, add an entry and name it as the combo's `reranker_model`:
+
+  ```json
+  "amazon-rerank-1.0-bedrock": {
+    "model_id": "amazon.rerank-v1:0",
+    "provider": "aws_bedrock",
+    "region": "eu-central-1"
+  }
+  ```
 
 ---
 

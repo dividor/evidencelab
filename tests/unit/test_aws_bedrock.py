@@ -118,10 +118,35 @@ class TestBedrockRerank:
                 {"results": [{"index": 5, "relevance_score": 0.5}]}, 2
             )
 
-    def test_rerank_when_model_is_not_cohere_then_raises(self):
-        with pytest.raises(ValueError, match="Cohere Rerank"):
+    def test_rerank_when_amazon_model_then_sends_no_api_version(self):
+        fake = FakeBedrock(
+            lambda body: {
+                "results": [
+                    {"index": 1, "relevance_score": 0.8},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+        scores = bedrock.rerank_with_aws_bedrock(
+            "school meals",
+            ["office budget", "school feeding evaluation"],
+            "amazon.rerank-v1:0",
+            client=fake,
+        )
+
+        assert scores == [0.2, 0.8]
+        assert fake.requests[0]["model"] == "amazon.rerank-v1:0"
+        assert fake.requests[0]["body"] == {
+            "query": "school meals",
+            "documents": ["office budget", "school feeding evaluation"],
+            "top_n": 2,
+        }
+
+    def test_rerank_when_model_is_neither_cohere_nor_amazon_then_raises(self):
+        with pytest.raises(ValueError, match="Amazon Rerank"):
             bedrock.rerank_with_aws_bedrock(
-                "q", ["d"], "amazon.rerank-v1:0", client=FakeBedrock(dict)
+                "q", ["d"], "mistral.rerank-v1:0", client=FakeBedrock(dict)
             )
 
     def test_rerank_when_no_documents_then_returns_empty_without_calling(self):
