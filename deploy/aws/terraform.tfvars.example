@@ -45,6 +45,9 @@ provider_secret_names = []
 # backup_retention_days = 35
 # backups_enabled       = false
 
+# Days an upload stays in the transfer bucket (scripts/restore-data.sh):
+# transfer_retention_days = 30
+
 # Smaller, single-zone settings for a throwaway test deployment:
 # db_multi_az            = false
 # db_instance_class      = "db.t4g.micro"

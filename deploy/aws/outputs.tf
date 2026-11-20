@@ -70,6 +70,20 @@ output "pipeline_task_definition" {
   value = aws_ecs_task_definition.app["pipeline"].family
 }
 
+output "restore_task_definition" {
+  value = aws_ecs_task_definition.app["restore"].family
+}
+
+output "database_name" {
+  description = "The Postgres database the app uses; scripts/restore-data.sh replaces it."
+  value       = aws_db_instance.main.db_name
+}
+
+output "transfer_bucket" {
+  description = "S3 bucket to upload a Postgres export and a data archive to, for scripts/restore-data.sh."
+  value       = aws_s3_bucket.transfer.bucket
+}
+
 output "log_groups" {
   description = "CloudWatch log group of each service and task."
   value       = { for k, g in aws_cloudwatch_log_group.this : k => g.name }

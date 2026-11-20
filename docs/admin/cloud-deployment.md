@@ -136,6 +136,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
 | Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
+| Data transfer | A private S3 bucket `<name>-transfer-…` and a restore task with its own role, for moving existing data in | Uploads deleted after 30 days |
 | Domain | A Route 53 record pointing at the load balancer, or at CloudFront with `cloudfront_enabled`, if you set a domain | — |
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
@@ -273,6 +274,54 @@ deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-s
 ```
 
 Add `--num-records 3` to try a few documents first. `run-task.sh` waits for the task to finish and then shows its log.
+
+### Moving existing data in
+
+To start from another Evidence Lab installation's data (another cloud, or a Docker host), bring two files:
+
+- **A Postgres export** of its database: a plain-SQL dump (`pg_dump`, or a managed database's SQL export), optionally gzipped, such as `postgres-evidencelab.sql.gz`.
+- **An archive of the data source's folder**, the folder named after its `data_subdir` inside the data folder (`/app/data`). Make it on the old host so it holds that one folder:
+
+```bash
+tar -C <data folder> -czf wfp-data.tar.gz wfp
+```
+
+The Qdrant index does not come across: the restore empties the data source's search index, and the pipeline rebuilds it with this deployment's embedding model, without parsing, summarising or tagging again.
+
+1. Upload both files to the deployment's transfer bucket:
+
+```bash
+bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
+aws s3 cp postgres-evidencelab.sql.gz "s3://$bucket/"
+aws s3 cp wfp-data.tar.gz "s3://$bucket/"
+```
+
+2. Check what the export holds. This changes nothing:
+
+```bash
+deploy/aws/scripts/restore-data.sh inspect postgres-evidencelab.sql.gz
+```
+
+It lists the export's tables and row counts, its extensions, and the roles its ownership and privilege statements name. Those statements are left out when it loads: here every object belongs to the deployment's one database user.
+
+3. Load them. You confirm by typing the database's name:
+
+```bash
+deploy/aws/scripts/restore-data.sh restore postgres-evidencelab.sql.gz wfp-data.tar.gz wfp
+```
+
+The restore task unpacks the archive onto the file share, loads the export into a new database in one transaction that stops at the first error, and only then swaps it in. The previous database is kept, renamed `evidencelab_before_<time>` and closed to connections, so nothing is lost if the load fails. The script then runs the migrations, empties the data source's search index and marks its documents for indexing.
+
+4. Rebuild the search index, a few documents first:
+
+```bash
+deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source wfp \
+  --skip-download --skip-scan --skip-parse --skip-summarize --skip-tag --num-records 5
+```
+
+Then run it again without `--num-records` for the rest.
+
+Only the restore task can read the transfer bucket: it runs as its own role, because a database export holds users' password hashes and sign-in tokens. The bucket refuses requests without HTTPS and deletes uploads after 30 days (`transfer_retention_days`).
 
 ### Your own branding and pipeline files
 
