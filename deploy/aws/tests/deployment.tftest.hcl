@@ -56,9 +56,21 @@ mock_provider "http" {
   }
 }
 
+# terraform test also reads deploy/aws/terraform.tfvars, so a deployment's own
+# settings would leak into the tests. Every value a run below relies on is set
+# here, and these take precedence over terraform.tfvars.
 variables {
-  evidencelab_version = "1.6.5"
-  config_json_path    = "tests/fixtures/minimal-config.json"
+  evidencelab_version   = "1.6.5"
+  config_json_path      = "tests/fixtures/minimal-config.json"
+  region                = "us-east-2"
+  domain_name           = ""
+  route53_zone_id       = ""
+  qdrant_url            = ""
+  services_enabled      = false
+  user_module           = "on_passive"
+  anonymous_access      = false
+  provider_secret_names = []
+  api                   = { cpu = 2048, memory = 8192, count = 2 }
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
