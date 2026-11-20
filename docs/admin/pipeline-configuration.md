@@ -168,6 +168,7 @@ The stock `config.json` includes Bedrock models and an **AWS Bedrock** model com
 |---|---|---|
 | `aws_titan_v2` | Embedding | Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`), 1024 dimensions |
 | `nova-2-lite` | LLM | Amazon Nova 2 Lite, through the US inference profile `us.amazon.nova-2-lite-v1:0` |
+| `amazon-rerank-1.0-bedrock` | Reranker | Amazon Rerank 1.0 (`amazon.rerank-v1:0`), called in `us-west-2`; the **AWS Bedrock** combo's reranker |
 | `cohere-rerank-3.5-bedrock` | Reranker | Cohere Rerank 3.5 (`cohere.rerank-v3-5:0`), called in `us-west-2` |
 
 Evidence Lab calls Bedrock with the standard AWS credentials: `AWS_REGION` plus `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (and `AWS_SESSION_TOKEN` for temporary credentials) in `.env`, or the task role when running on Amazon ECS. The credentials need permission for `bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream`.
@@ -176,7 +177,7 @@ Model availability differs by region. Check what your region offers with `aws be
 
 - **Embedding:** Titan Text Embeddings V2 is offered in most regions. Embedding models cannot be changed after a data source is indexed.
 - **LLM:** Nova 2 Lite is called through an inference profile whose prefix matches your region's geography: `us.` in the United States, `eu.` in Europe, `apac.` in Asia Pacific.
-- **Reranker:** Cohere Rerank 3.5 is offered in only a few regions, including `us-west-2`, `eu-central-1` and `ap-northeast-1`. Set `region` to one near you.
+- **Reranker:** rerank models are offered in only a few regions, so set `region` to one near you. Amazon Rerank 1.0 is offered in `us-west-2`, `ca-central-1`, `eu-central-1` and `ap-northeast-1`; Cohere Rerank 3.5 in those and `us-east-1` ([AWS's list](https://docs.aws.amazon.com/bedrock/latest/userguide/rerank-supported.html)). Amazon Rerank is Amazon's own model. Cohere Rerank is sold through AWS Marketplace, so your account must accept Cohere's terms before the first call; to use it instead, name `cohere-rerank-3.5-bedrock` as the combo's `reranker_model`.
 
 ---
 

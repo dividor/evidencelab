@@ -23,6 +23,7 @@ _RETRY_CONFIG = Config(retries={"max_attempts": 10, "mode": "adaptive"})
 
 TITAN_EMBED_V2 = "amazon.titan-embed-text-v2"
 COHERE_RERANK = "cohere.rerank"
+AMAZON_RERANK = "amazon.rerank"
 
 
 def bedrock_region(region: Optional[str] = None) -> Optional[str]:
@@ -121,31 +122,28 @@ def rerank_with_aws_bedrock(
 ) -> List[float]:
     """Relevance scores for ``documents`` against ``query``, in input order.
 
-    Supports Cohere Rerank on Bedrock. Rerank models are offered in only some
-    regions, so ``region`` may differ from the deployment's own.
+    Supports Cohere Rerank and Amazon Rerank on Bedrock. Both take the same
+    request and give the same reply; Cohere also needs ``api_version``. Rerank
+    models are offered in only some regions, so ``region`` may differ from the
+    deployment's own.
     """
-    if not model_id.startswith(COHERE_RERANK):
+    body: dict = {"query": query, "documents": documents, "top_n": len(documents)}
+    if model_id.startswith(COHERE_RERANK):
+        body["api_version"] = 2
+    elif not model_id.startswith(AMAZON_RERANK):
         raise ValueError(
             f"Unsupported Bedrock rerank model {model_id!r}: only Cohere Rerank "
-            f"({COHERE_RERANK}-v3-5:0) is supported."
+            f"({COHERE_RERANK}-v3-5:0) and Amazon Rerank ({AMAZON_RERANK}-v1:0) "
+            "are supported."
         )
     if not documents:
         return []
-    data = _invoke(
-        client or bedrock_runtime_client(region),
-        model_id,
-        {
-            "query": query,
-            "documents": documents,
-            "top_n": len(documents),
-            "api_version": 2,
-        },
-    )
+    data = _invoke(client or bedrock_runtime_client(region), model_id, body)
     return parse_cohere_rerank_scores(data, len(documents))
 
 
 def parse_cohere_rerank_scores(data: dict, doc_count: int) -> List[float]:
-    """Scores in input order from a Cohere rerank response."""
+    """Scores in input order from a Cohere or Amazon rerank response."""
     scores: List[Optional[float]] = [None] * doc_count
     for result in data.get("results", []):
         index = result.get("index")
