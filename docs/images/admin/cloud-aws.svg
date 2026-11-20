@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1120" viewBox="0 0 2000 1120" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif">
+  <!-- Source of cloud-aws.png. Render: Chrome headless screenshot at 2000x1120. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#555e69"/>
+    </marker>
+    <style>
+      .title { font-size: 34px; font-weight: 700; fill: #1f2933; }
+      .group { font-size: 26px; font-weight: 700; }
+      .box-title { font-size: 26px; font-weight: 700; fill: #1f2933; }
+      .box-text { font-size: 21px; fill: #3e4752; }
+      .note { font-size: 20px; }
+      .arrow { stroke: #555e69; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .arrow-dashed { stroke: #555e69; stroke-width: 3; fill: none; stroke-dasharray: 9 7; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="2000" height="1120" fill="#ffffff"/>
+  <text x="40" y="56" class="title">AWS: what Terraform deploys</text>
+
+  <!-- Entry: users, optional CloudFront + WAF, load balancer -->
+  <rect x="40" y="110" width="180" height="84" rx="42" fill="#ffffff" stroke="#555e69" stroke-width="3"/>
+  <text x="130" y="161" text-anchor="middle" class="box-title">Users</text>
+
+  <rect x="260" y="96" width="300" height="160" rx="14" fill="#fff4e6" stroke="#d98e2b" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="410" y="138" text-anchor="middle" class="box-title">CloudFront + WAF</text>
+  <text x="410" y="172" text-anchor="middle" class="box-text">optional: cloudfront_enabled</text>
+  <text x="410" y="204" text-anchor="middle" class="box-text">HTTPS, AWS WAF rules</text>
+  <text x="410" y="236" text-anchor="middle" class="box-text">allow list, rate limit</text>
+
+  <rect x="260" y="300" width="300" height="160" rx="14" fill="#fff4e6" stroke="#d98e2b" stroke-width="3"/>
+  <text x="410" y="342" text-anchor="middle" class="box-title">Load balancer</text>
+  <text x="410" y="376" text-anchor="middle" class="box-text">Application LB</text>
+  <text x="410" y="408" text-anchor="middle" class="box-text">public, HTTPS (ACM)</text>
+  <text x="410" y="440" text-anchor="middle" class="box-text">or private, behind CloudFront</text>
+
+  <!-- Users -> CloudFront -> load balancer; without CloudFront, straight to the load balancer -->
+  <path d="M220,152 L254,152" class="arrow"/>
+  <path d="M410,256 L410,294" class="arrow"/>
+  <path d="M130,194 L130,380 L254,380" class="arrow-dashed"/>
+  <text x="140" y="290" class="note" fill="#555e69">without</text>
+  <text x="140" y="316" class="note" fill="#555e69">CloudFront</text>
+
+  <text x="40" y="520" class="note" fill="#555e69">Dashed border: optional,</text>
+  <text x="40" y="546" class="note" fill="#555e69">or runs only when started</text>
+
+  <!-- ECS on Fargate -->
+  <rect x="600" y="96" width="840" height="744" rx="18" fill="#eef4fb" stroke="#3b6fb6" stroke-width="3"/>
+  <text x="628" y="140" class="group" fill="#3b6fb6">ECS on Fargate: private subnets, 2 zones</text>
+
+  <rect x="632" y="230" width="376" height="140" rx="14" fill="#ffffff" stroke="#3b6fb6" stroke-width="3"/>
+  <text x="820" y="272" text-anchor="middle" class="box-title">ECS service: ui</text>
+  <text x="820" y="306" text-anchor="middle" class="box-text">nginx + web app</text>
+  <text x="820" y="338" text-anchor="middle" class="box-text">2 tasks, 0.5 GB each</text>
+
+  <rect x="1032" y="230" width="376" height="140" rx="14" fill="#ffffff" stroke="#3b6fb6" stroke-width="3"/>
+  <text x="1220" y="272" text-anchor="middle" class="box-title">ECS service: api</text>
+  <text x="1220" y="306" text-anchor="middle" class="box-text">FastAPI</text>
+  <text x="1220" y="338" text-anchor="middle" class="box-text">2 tasks, 8 GB each</text>
+
+  <rect x="632" y="430" width="376" height="140" rx="14" fill="#ffffff" stroke="#3b6fb6" stroke-width="3"/>
+  <text x="820" y="472" text-anchor="middle" class="box-title">ECS service: mcp</text>
+  <text x="820" y="506" text-anchor="middle" class="box-text">MCP + A2A servers</text>
+  <text x="820" y="538" text-anchor="middle" class="box-text">2 tasks, 2 GB each</text>
+
+  <rect x="1032" y="430" width="376" height="140" rx="14" fill="#ffffff" stroke="#3b6fb6" stroke-width="3"/>
+  <text x="1220" y="472" text-anchor="middle" class="box-title">ECS service: embedding</text>
+  <text x="1220" y="506" text-anchor="middle" class="box-text">infinity embedding model</text>
+  <text x="1220" y="538" text-anchor="middle" class="box-text">1 task, 4 GB, always on</text>
+
+  <!-- Load balancer -> ui, drawn after the ECS box so it stays on top -->
+  <path d="M560,380 L584,380 L584,300 L626,300" class="arrow"/>
+  <path d="M1008,300 L1026,300" class="arrow"/>
+  <path d="M820,370 L820,424" class="arrow"/>
+  <text x="832" y="404" class="note" fill="#555e69">/mcp, /a2a</text>
+  <path d="M1008,474 L1026,376" class="arrow"/>
+  <path d="M1220,370 L1220,424" class="arrow"/>
+
+  <text x="1020" y="644" text-anchor="middle" class="note" fill="#3b6fb6">Jobs: run to completion, then stop</text>
+  <rect x="632" y="660" width="376" height="140" rx="14" fill="#f7f9fc" stroke="#3b6fb6" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="820" y="702" text-anchor="middle" class="box-title">ECS task: migrate</text>
+  <text x="820" y="736" text-anchor="middle" class="box-text">alembic upgrade head</text>
+  <text x="820" y="768" text-anchor="middle" class="box-text">once per release</text>
+
+  <rect x="1032" y="660" width="376" height="140" rx="14" fill="#f7f9fc" stroke="#3b6fb6" stroke-width="3" stroke-dasharray="12 8"/>
+  <text x="1220" y="702" text-anchor="middle" class="box-title">ECS task: pipeline</text>
+  <text x="1220" y="736" text-anchor="middle" class="box-text">document ingestion</text>
+  <text x="1220" y="768" text-anchor="middle" class="box-text">on demand</text>
+
+  <path d="M1440,468 L1490,468" class="arrow"/>
+
+  <!-- Managed data services -->
+  <rect x="1496" y="96" width="464" height="744" rx="18" fill="#f5f1fb" stroke="#7b4fb8" stroke-width="3"/>
+  <text x="1524" y="140" class="group" fill="#7b4fb8">Managed data services</text>
+
+  <rect x="1524" y="160" width="408" height="140" rx="14" fill="#ffffff" stroke="#7b4fb8" stroke-width="3"/>
+  <text x="1728" y="202" text-anchor="middle" class="box-title">RDS PostgreSQL 16</text>
+  <text x="1728" y="236" text-anchor="middle" class="box-text">pgvector, Multi-AZ</text>
+  <text x="1728" y="268" text-anchor="middle" class="box-text">automated backups</text>
+
+  <rect x="1524" y="328" width="408" height="140" rx="14" fill="#ffffff" stroke="#7b4fb8" stroke-width="3"/>
+  <text x="1728" y="370" text-anchor="middle" class="box-title">Qdrant</text>
+  <text x="1728" y="404" text-anchor="middle" class="box-text">on a small EC2 instance,</text>
+  <text x="1728" y="436" text-anchor="middle" class="box-text">or Qdrant Cloud</text>
+
+  <rect x="1524" y="496" width="408" height="140" rx="14" fill="#ffffff" stroke="#7b4fb8" stroke-width="3"/>
+  <text x="1728" y="538" text-anchor="middle" class="box-title">ElastiCache Redis</text>
+  <text x="1728" y="572" text-anchor="middle" class="box-text">shared rate-limit counts</text>
+
+  <rect x="1524" y="664" width="408" height="140" rx="14" fill="#ffffff" stroke="#7b4fb8" stroke-width="3"/>
+  <text x="1728" y="706" text-anchor="middle" class="box-title">EFS file share</text>
+  <text x="1728" y="740" text-anchor="middle" class="box-text">documents, page images</text>
+
+  <!-- Supporting services -->
+  <rect x="40" y="876" width="1920" height="216" rx="18" fill="#f3f4f6" stroke="#5f6770" stroke-width="3"/>
+  <text x="68" y="920" class="group" fill="#5f6770">Supporting services</text>
+
+  <rect x="72" y="944" width="348" height="116" rx="14" fill="#ffffff" stroke="#5f6770" stroke-width="3"/>
+  <text x="246" y="986" text-anchor="middle" class="box-title">ECR</text>
+  <text x="246" y="1020" text-anchor="middle" class="box-text">web app image</text>
+
+  <rect x="448" y="944" width="348" height="116" rx="14" fill="#ffffff" stroke="#5f6770" stroke-width="3"/>
+  <text x="622" y="986" text-anchor="middle" class="box-title">Secrets Manager</text>
+  <text x="622" y="1020" text-anchor="middle" class="box-text">keys and passwords</text>
+
+  <rect x="824" y="944" width="348" height="116" rx="14" fill="#ffffff" stroke="#5f6770" stroke-width="3"/>
+  <text x="998" y="986" text-anchor="middle" class="box-title">CloudWatch Logs</text>
+  <text x="998" y="1020" text-anchor="middle" class="box-text">all service logs</text>
+
+  <rect x="1200" y="944" width="348" height="116" rx="14" fill="#ffffff" stroke="#5f6770" stroke-width="3"/>
+  <text x="1374" y="986" text-anchor="middle" class="box-title">ACM</text>
+  <text x="1374" y="1020" text-anchor="middle" class="box-text">certificates for your domain</text>
+
+  <rect x="1576" y="944" width="352" height="116" rx="14" fill="#ffffff" stroke="#5f6770" stroke-width="3"/>
+  <text x="1752" y="986" text-anchor="middle" class="box-title">Route 53</text>
+  <text x="1752" y="1020" text-anchor="middle" class="box-text">DNS for your domain</text>
+</svg>
