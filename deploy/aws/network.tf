@@ -1,7 +1,7 @@
-# A VPC across two availability zones. The load balancer and the NAT gateway
-# sit in the public subnets; everything else is in the private subnets and
-# reaches the internet (image registries, model providers) through the NAT
-# gateway.
+# A VPC across two availability zones. The NAT gateway sits in the public
+# subnets, and so does the load balancer unless CloudFront is in front of it;
+# everything else is in the private subnets and reaches the internet (image
+# registries, model providers) through the NAT gateway.
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -95,7 +95,8 @@ resource "aws_route_table_association" "private" {
 
 # --- Security groups --------------------------------------------------------
 
-# The load balancer: the only thing reachable from the internet.
+# The load balancer: the only thing reachable from the internet, or with
+# CloudFront, reachable only from CloudFront's origin-facing servers.
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb"
   description = "Evidence Lab load balancer"
@@ -104,15 +105,16 @@ resource "aws_security_group" "alb" {
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
-  cidr_ipv4         = "0.0.0.0/0"
+  cidr_ipv4         = local.cloudfront ? null : "0.0.0.0/0"
+  prefix_list_id    = local.cloudfront ? data.aws_ec2_managed_prefix_list.cloudfront[0].id : null
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
-  description       = "HTTP (redirected to HTTPS when a domain is set)"
+  description       = local.cloudfront ? "HTTP from CloudFront" : "HTTP (redirected to HTTPS when a domain is set)"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
-  count             = local.https ? 1 : 0
+  count             = local.alb_https ? 1 : 0
   security_group_id = aws_security_group.alb.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "tcp"

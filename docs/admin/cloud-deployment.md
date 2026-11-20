@@ -118,8 +118,9 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 | Part | AWS service | Default size |
 |---|---|---|
-| Network | A VPC (`10.0.0.0/16`) across two availability zones. The load balancer and a NAT gateway are in public subnets. Everything else is in private subnets. | One NAT gateway, through which the containers pull images and reach the model providers |
-| Load balancer | Application Load Balancer. With a domain, it serves HTTPS with an ACM certificate and redirects HTTP. Without one, it serves plain HTTP on its own address, for testing only. | Idle timeout of 300 seconds, for streaming chat and MCP |
+| Network | A VPC (`10.0.0.0/16`) across two availability zones. A NAT gateway is in the public subnets, and so is the load balancer unless CloudFront is in front of it. Everything else is in private subnets. | One NAT gateway, through which the containers pull images and reach the model providers |
+| Load balancer | Application Load Balancer. With a domain, it serves HTTPS with an ACM certificate and redirects HTTP. Without one, it serves plain HTTP on its own address, for testing only. With `cloudfront_enabled`, it is in the private subnets instead and only CloudFront can reach it (see [CloudFront and AWS WAF](#cloudfront-and-aws-waf)). | Idle timeout of 300 seconds, for streaming chat and MCP |
+| CloudFront and AWS WAF | Only with `cloudfront_enabled`: a CloudFront distribution serving the site over HTTPS, with an AWS WAF web ACL in us-east-1 | North America and Europe edge locations (`PriceClass_100`) |
 | ui | ECS service on Fargate (arm64), running the web app image that the deploy script pushes to ECR | 2 tasks, 0.25 vCPU and 0.5 GB each |
 | api | ECS service on Fargate (arm64), `astrobagel/evidencelab` | 2 tasks, 2 vCPU and 8 GB each |
 | mcp | ECS service on Fargate (arm64), `astrobagel/evidencelab` | 2 tasks, 0.5 vCPU and 2 GB each |
@@ -134,7 +135,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
 | Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
-| Domain | A Route 53 record pointing at the load balancer, if you set a domain | — |
+| Domain | A Route 53 record pointing at the load balancer, or at CloudFront with `cloudfront_enabled`, if you set a domain | — |
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
 
@@ -262,6 +263,77 @@ Terraform lists what it will delete and asks you to type `yes`. The database, fi
 ```bash
 deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source <data_subdir>
 ```
+
+Add `--num-records 3` to try a few documents first. `run-task.sh` waits for the task to finish and then shows its log.
+
+### Your own branding and pipeline files
+
+Two settings in `terraform.tfvars` keep a deployment's own files with its other settings, as paths relative to `deploy/aws`:
+
+| Setting | What it does |
+|---|---|
+| `customize_assets_dir` | Your branding folder (theme, logo, favicon, footer, fonts; see [Customization](customization.md)). Every web app build uses it. When it is empty, the build uses the `CUSTOMIZE_ASSETS` environment variable if set, otherwise the stock look. |
+| `pipeline_files_dir` | A folder of your own pipeline files, such as a data source's downloader script and the spreadsheet it reads. Terraform uploads them to a private S3 bucket, and the pipeline task copies them to `/app/custom` before every run, so a data source's download command in `config.json` can name `/app/custom/<file>`. A changed file is uploaded again on the next deploy. Teardown deletes the bucket with the files. |
+
+### Signing in with Microsoft or Google
+
+The template sets `OAUTH_CALLBACK_BASE_URL` to the site address followed by `/api`, so the sign-in provider sends visitors back to the site.
+
+1. Register the redirect URI with the provider: `<site address>/api/auth/microsoft/callback` for Microsoft, or `<site address>/api/auth/google/callback` for Google. `terraform output site_url` prints the site address once the first apply has run.
+2. Put the settings that are not secret in `extra_environment` in `deploy/aws/terraform.tfvars`, for example:
+
+   ```
+   user_module = "on_active"
+   extra_environment = {
+     OAUTH_MICROSOFT_CLIENT_ID  = "<application (client) ID>"
+     OAUTH_MICROSOFT_TENANT_ID  = "<directory (tenant) ID>"
+     AUTH_ALLOWED_EMAIL_DOMAINS = "example.org"
+     DISABLE_EMAIL_LOGIN        = "true"
+   }
+   ```
+
+3. Add the client secret's name to `provider_secret_names`, which takes any secret setting, not only model provider keys, and export its value before running `deploy.sh`. The script copies it into Secrets Manager, so it never passes through Terraform:
+
+   ```
+   provider_secret_names = ["OAUTH_MICROSOFT_CLIENT_SECRET"]
+   ```
+
+See [User Administration](user-administration.md) for what each sign-in setting does.
+
+### CloudFront and AWS WAF
+
+Set `cloudfront_enabled = true` to put Amazon CloudFront and an AWS WAF web ACL in front of the site:
+
+- The load balancer moves to the private subnets and has no internet address. CloudFront reaches it through a [VPC origin](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html), and its security group accepts only CloudFront's origin-facing servers, so nothing can get past the firewall by going straight to the load balancer.
+- The site is HTTPS even without a domain, on CloudFront's own `https://<id>.cloudfront.net` address. With `domain_name`, the template requests the certificate in us-east-1, where CloudFront needs it, and points the domain at CloudFront.
+- Pages, the API, MCP and A2A are never cached, and reach nginx with every header, cookie and query string. The web app's built files under `/static/` are cached.
+- Between CloudFront and the load balancer the traffic is plain HTTP inside the VPC, because no certificate can match the load balancer's internal name.
+
+The web ACL is in us-east-1, as CloudFront requires. Its rules run in this order:
+
+| Rule | What it does | Setting |
+|---|---|---|
+| `allowed-ip-ranges` | Blocks every address outside the ranges you list, for example an organisation's office and VPN ranges. Only made when the list is set. | `waf_allowed_ip_ranges` (default: empty, every address) |
+| `rate-limit-per-ip` | Blocks an address that sends more requests in 5 minutes than the limit, until its rate drops. Visitors behind one office or VPN address share it. | `waf_rate_limit` (default `2000`; `0` turns it off) |
+| `AWSManagedRulesAmazonIpReputationList` | AWS's list of addresses known for bots and attacks | — |
+| `AWSManagedRulesKnownBadInputsRuleSet` | Requests that match known exploits | — |
+| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. `SizeRestrictions_BODY` in it blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB, so that rule only counts. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY"]`) |
+
+Other settings:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `waf_count_only` | `false` | Every rule counts what it would block and blocks nothing. Use it for the first days of a new site: check the matches in the AWS WAF console (region us-east-1, the web ACL's sampled requests and metrics), add any rule that blocks normal use to `waf_core_rules_to_count`, then set it back to `false`. |
+| `cloudfront_origin_read_timeout` | `60` | Seconds CloudFront waits for a response to start, and between the parts of a streamed one. Chat answers send a heartbeat every 15 seconds. AI summaries send nothing between their first event and the model's first words, so a slower model needs a longer wait. Above 60 needs a CloudFront quota increase first. |
+| `cloudfront_price_class` | `PriceClass_100` | Which edge locations serve the site. `PriceClass_100` covers the United States, Canada, Mexico, Europe, Israel and Türkiye, and is the cheapest. |
+
+Before you deploy:
+
+- **Your own address must get through.** The last step of `deploy.sh` checks that the site answers. With `waf_allowed_ip_ranges` set, run it from an address in the list.
+- **Switching an existing deployment** moves the load balancer between the public and private subnets. Expect Terraform to replace it, and the site to be unavailable meanwhile: check the plan for `forces replacement` before you apply.
+- **Costs**, at AWS's prices in November 2026: a web ACL is $5 a month, each rule or managed rule group $1 a month, and $0.60 per million requests ([AWS WAF pricing](https://aws.amazon.com/waf/pricing/)). CloudFront's pay-as-you-go pricing includes 1 TB of data and 10 million requests a month free ([CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/)), and VPC origins cost nothing extra. CloudFront's flat-rate plans do not suit this layout: the Free and Pro plans do not allow VPC origins.
+
+Terraform's own tests check these settings, but they have not yet been tried on a real deployment.
 
 ### Upgrading
 
@@ -607,7 +679,7 @@ Each example serves the site at an address the cloud gives it. Of the three temp
 
 | Cloud | Address without a domain | Your own domain |
 |---|---|---|
-| AWS | `http://<load balancer>.<region>.elb.amazonaws.com`, over plain HTTP | Set `domain_name` and `route53_zone_id` in `terraform.tfvars`. The domain must be in a Route 53 hosted zone in the same account. The template then requests an ACM certificate, proves you own the domain with a Route 53 record, serves HTTPS on the load balancer, redirects HTTP to HTTPS, and points the domain at the load balancer. Terraform's own tests check these settings, but they have not yet been tried on a real deployment. |
+| AWS | `http://<load balancer>.<region>.elb.amazonaws.com`, over plain HTTP. With `cloudfront_enabled`, `https://<id>.cloudfront.net`. | Set `domain_name` and `route53_zone_id` in `terraform.tfvars`. The domain must be in a Route 53 hosted zone in the same account. The template then requests an ACM certificate, proves you own the domain with a Route 53 record, serves HTTPS on the load balancer, redirects HTTP to HTTPS, and points the domain at the load balancer. With `cloudfront_enabled`, the certificate is in us-east-1 and the domain points at CloudFront instead. Terraform's own tests check these settings, but they have not yet been tried on a real deployment. |
 | Azure | `https://ui.<environment domain>`, over HTTPS with a certificate Container Apps manages | Not set up by the template |
 | Google Cloud | `https://<name>-web-<project number>.<region>.run.app`, over HTTPS from Cloud Run | Not set up by the template |
 
@@ -619,14 +691,15 @@ Each template works out one site address and passes it to the containers and the
 |---|---|
 | `APP_BASE_URL` on the api and mcp | Links in account verification and password reset emails, the MCP sign-in page, and the A2A Agent Card |
 | `CORS_ALLOWED_ORIGINS` on the api | The page address browsers may call the API from |
-| `AUTH_COOKIE_SECURE` on the api | Whether sign-in cookies are sent over HTTPS only. It is on in every example except AWS without a domain. |
+| `AUTH_COOKIE_SECURE` on the api | Whether sign-in cookies are sent over HTTPS only. It is on in every example except AWS with neither a domain nor CloudFront. |
+| `OAUTH_CALLBACK_BASE_URL` on the api (AWS) | Where Google and Microsoft send visitors back after they sign in: the site address followed by `/api` |
 | `REACT_APP_SITE_URL`, built into the web app image | The site address shown in the web app, for example in the MCP and A2A instructions |
 
 So adding a domain by hand in the cloud's console is not enough: these settings would still name the old address. A domain has to be set in the template, and the deploy script run again so that it rebuilds the web app image.
 
 ### Recommendations
 
-- **Use a domain for anything beyond a test on AWS.** Without one, the site is plain HTTP, so passwords, sign-in cookies and any API key in the page cross the internet unencrypted.
+- **Use a domain or CloudFront for anything beyond a test on AWS.** With neither, the site is plain HTTP, so passwords, sign-in cookies and any API key in the page cross the internet unencrypted.
 - **Use a domain for a long-lived site on any cloud.** The Azure and Google Cloud addresses are HTTPS already, but they are long, and they change if you deploy again under another name, environment or project. Links people have saved and MCP clients set up with the old address then stop working.
 - **Use a subdomain**, such as `evidencelab.example.org`, rather than the bare domain. Azure needs only a CNAME record for a subdomain, but an A record for the bare domain.
 - **Keep the domain's DNS in the same cloud** (Route 53, Azure DNS or Cloud DNS), so Terraform can create the records itself, as the AWS template does. With DNS elsewhere, you add the records by hand and the deploy waits until they exist.

@@ -65,7 +65,10 @@ locals {
     USER_MODULE           = var.user_module
     APP_BASE_URL          = local.site_url
     CORS_ALLOWED_ORIGINS  = local.site_url
-    AUTH_COOKIE_SECURE    = local.https ? "true" : "false"
+    AUTH_COOKIE_SECURE    = local.site_https ? "true" : "false"
+    # Google and Microsoft sign-in send visitors back here; nginx forwards
+    # /api to the api. Register {this}/auth/<provider>/callback with them.
+    OAUTH_CALLBACK_BASE_URL = "${local.site_url}/api"
   })
 
   app_secrets_refs = concat(
@@ -85,25 +88,32 @@ locals {
         API_ROOT_PATH       = "/api"
         FORWARDED_ALLOW_IPS = local.vpc_cidr
       }
+      fetch_pipeline_files = false
     }
     mcp = {
-      command = ["python", "-m", "mcp_server.http_server"]
-      port    = 8001
-      size    = var.mcp
-      env     = {}
+      command              = ["python", "-m", "mcp_server.http_server"]
+      port                 = 8001
+      size                 = var.mcp
+      env                  = {}
+      fetch_pipeline_files = false
     }
     migrate = {
-      command = ["alembic", "upgrade", "head"]
-      port    = null
-      size    = var.migrate_task
-      env     = {}
+      command              = ["alembic", "upgrade", "head"]
+      port                 = null
+      size                 = var.migrate_task
+      env                  = {}
+      fetch_pipeline_files = false
     }
-    # Always started with its own command by scripts/run-task.sh.
+    # Always started with its own command by scripts/run-task.sh. With
+    # pipeline_files_dir set, it first copies those files to /app/custom.
     pipeline = {
       command = ["python", "-m", "pipeline.orchestrator", "--help"]
       port    = null
       size    = var.pipeline_task
-      env     = {}
+      env = local.pipeline_files_enabled ? {
+        PIPELINE_FILES_BUCKET = aws_s3_bucket.pipeline_files[0].bucket
+      } : {}
+      fetch_pipeline_files = local.pipeline_files_enabled
     }
   }
 }
@@ -137,10 +147,12 @@ resource "aws_ecs_task_definition" "app" {
   }
 
   container_definitions = jsonencode([{
-    name        = each.key
-    image       = local.app_image
-    essential   = true
-    entryPoint  = ["sh", "-c", local.prepare_and_run, "evidencelab"]
+    name      = each.key
+    image     = local.app_image
+    essential = true
+    entryPoint = ["sh", "-c", each.value.fetch_pipeline_files ? join("\n", [
+      "set -e", local.fetch_pipeline_files, local.prepare_and_run,
+    ]) : local.prepare_and_run, "evidencelab"]
     command     = each.value.command
     environment = [for k, v in merge(local.app_environment, each.value.env) : { name = k, value = v }]
     secrets     = local.app_secrets_refs

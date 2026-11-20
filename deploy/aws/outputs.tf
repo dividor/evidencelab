@@ -75,7 +75,22 @@ output "log_groups" {
   value       = { for k, g in aws_cloudwatch_log_group.this : k => g.name }
 }
 
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution in front of the site (null without cloudfront_enabled)."
+  value       = one(aws_cloudfront_distribution.site[*].id)
+}
+
+output "waf_web_acl_name" {
+  description = "AWS WAF web ACL on the CloudFront distribution, in us-east-1 (null without cloudfront_enabled)."
+  value       = one(aws_wafv2_web_acl.site[*].name)
+}
+
 output "config_json_path" {
   description = "config.json the deployment runs with; the web app image is built from the same file."
   value       = var.config_json_path
+}
+
+output "customize_assets_dir" {
+  description = "Branding folder the web app image is built with (empty: CUSTOMIZE_ASSETS or the stock customize/ folder)."
+  value       = var.customize_assets_dir
 }
