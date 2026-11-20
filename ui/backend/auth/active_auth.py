@@ -49,10 +49,14 @@ class ActiveAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         auth_secret: str,
         api_key: str | None = None,
+        browser_key: str | None = None,
     ) -> None:
         super().__init__(app)
         self._auth_secret = auth_secret
         self._api_key = api_key
+        # The web interface's public key never counts as authentication here,
+        # even when it is also API_SECRET_KEY.
+        self._browser_key = browser_key
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         # CORS preflight must always pass through.
@@ -102,6 +106,8 @@ class ActiveAuthMiddleware(BaseHTTPMiddleware):
         """Return True if the request carries a valid API key header."""
         header_key = request.headers.get("x-api-key", "")
         if not header_key:
+            return False
+        if self._browser_key and _secrets.compare_digest(header_key, self._browser_key):
             return False
         # Check global env key first (timing-safe)
         if self._api_key and _secrets.compare_digest(header_key, self._api_key):

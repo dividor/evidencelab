@@ -59,7 +59,18 @@ async def verify_mcp_auth(request: Request) -> dict:
 
 
 async def _check_api_key(key: str) -> dict | None:
-    """Return auth info if *key* matches the global env key or an admin-managed key."""
+    """Return auth info if *key* matches the global env key or an admin-managed key.
+
+    The key built into the web interface (``REACT_APP_API_KEY``) is never
+    accepted here, even when it is also the global key: anyone who loads the
+    site can read it, so it must not open MCP or A2A. Signed-in users and keys
+    created in Admin > API Keys still work.
+    """
+    browser_key = os.environ.get("REACT_APP_API_KEY", "")
+    if browser_key and secrets.compare_digest(key, browser_key):
+        logger.info("Refused the web interface's public key for MCP/A2A")
+        return None
+
     env_key = os.environ.get("API_SECRET_KEY", "")
     if env_key and secrets.compare_digest(key, env_key):
         return {

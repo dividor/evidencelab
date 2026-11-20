@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 # Module-level state set by main.py at startup.
 API_KEY: str | None = None
 AUTH_SECRET: str = ""
+# The key built into the web interface (REACT_APP_API_KEY). Anyone who loads
+# the site can read it. It opens the API for the open demo (sign-in off or
+# on_passive) but never counts as authentication when sign-in is required.
+BROWSER_KEY: str | None = None
 USER_MODULE: bool = False
 USER_MODULE_MODE: str = "off"  # "off" | "on_passive" | "on_active"
 
@@ -62,6 +66,13 @@ async def verify_api_key(request: Request, api_key: str | None) -> str | None:
             status_code=500,
             detail="Server misconfiguration: API_SECRET_KEY is not set.",
         )
+
+    # The web interface's public key: accepted for the open demo, ignored when
+    # sign-in is required (the request must then carry a valid session).
+    if api_key and BROWSER_KEY and secrets.compare_digest(api_key, BROWSER_KEY):
+        if USER_MODULE_MODE != "on_active":
+            return api_key
+        api_key = None
 
     # Check API key first (external / Swagger users)
     if api_key:

@@ -254,6 +254,7 @@ Scans are configured for CRITICAL and HIGH severity. Results appear in the `cont
 - Exempt paths are matched by whole path segment: `/docs` covers `/docs` and `/docs/...` but not `/docsearch`
 - API key validated using timing-safe comparison
 - With the user module on, a request without a key is let through only if its `evidencelab_auth` cookie is a valid session token (signature, audience and expiry are checked). A cookie that is merely present is not enough.
+- The key built into the web interface (`REACT_APP_API_KEY`) is public: anyone who loads the site can read it. The API accepts it when sign-in is off or optional, so the open demo works; it is ignored as a credential when sign-in is required (`on_active`), in both the API-key check and the middleware; and MCP and A2A never accept it, even when it is also `API_SECRET_KEY`. Give it its own value so the master key stays private. The API logs a warning at startup when the two are the same.
 - Auth routes exempt from API key — protected by their own rate-limiting and CSRF
 - With `on_passive` or `off`, the browser build carries the API key (`REACT_APP_API_KEY`), so anyone who loads the site can read it. Treat routes that rely on the key alone as public, and protect anything that changes data with a user check (see [Authorization](#authorization)).
 
@@ -464,6 +465,10 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
   - Admin screens and the research PDF export render links from stored data only for `http`, `https`, `mailto` and site paths; Word exports link only to `http(s)` addresses
   - Feedback screenshots open full size in the page instead of a new tab
   - Spreadsheet exports write formula-looking cells as text
+- **2026-11-17**: The web interface's public key no longer opens MCP, A2A or sign-in-required mode
+  - MCP and A2A refuse `REACT_APP_API_KEY`, even when it is also `API_SECRET_KEY` or an admin-created key; signed-in users and other keys still work
+  - With `on_active`, the API-key check and the middleware ignore that key as a credential
+  - The API accepts a `REACT_APP_API_KEY` that differs from `API_SECRET_KEY`, so the two can be separated; the demo, CI and dev compose now use separate values, and the API warns at startup when they are the same
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)

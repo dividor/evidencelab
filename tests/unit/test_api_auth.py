@@ -54,6 +54,7 @@ def _reset_module_state():
     saved = (
         api_key_verify.API_KEY,
         api_key_verify.AUTH_SECRET,
+        api_key_verify.BROWSER_KEY,
         api_key_verify.USER_MODULE,
         api_key_verify.USER_MODULE_MODE,
     )
@@ -61,6 +62,7 @@ def _reset_module_state():
     (
         api_key_verify.API_KEY,
         api_key_verify.AUTH_SECRET,
+        api_key_verify.BROWSER_KEY,
         api_key_verify.USER_MODULE,
         api_key_verify.USER_MODULE_MODE,
     ) = saved
@@ -71,10 +73,12 @@ def _configure(
     user_module: bool = False,
     mode: str = "off",
     auth_secret: str = _JWT_SECRET,
+    browser_key: str | None = None,
 ):
     """Set api_key_verify module-level config for a test."""
     api_key_verify.API_KEY = api_key
     api_key_verify.AUTH_SECRET = auth_secret
+    api_key_verify.BROWSER_KEY = browser_key
     api_key_verify.USER_MODULE = user_module
     api_key_verify.USER_MODULE_MODE = mode
 
@@ -674,3 +678,118 @@ class TestEdgeCases:
             response = await mw.dispatch(req, call_next)
             assert response.status_code == 401
             assert isinstance(response, JSONResponse)
+
+
+# ---------------------------------------------------------------------------
+# The web interface's public key (REACT_APP_API_KEY)
+# ---------------------------------------------------------------------------
+
+
+class TestBrowserKey:
+    """The key built into the page opens the API for the open demo, but never
+    counts as authentication when sign-in is required."""
+
+    _BROWSER = secrets.token_hex(16)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("user_module,mode", [(False, "off"), (True, "on_passive")])
+    async def test_browser_key_when_open_demo_then_accepted(self, user_module, mode):
+        _configure(
+            api_key=_TEST_KEY,
+            user_module=user_module,
+            mode=mode,
+            browser_key=self._BROWSER,
+        )
+        req = _make_request("/search")
+        assert (
+            await api_key_verify.verify_api_key(req, api_key=self._BROWSER)
+            == self._BROWSER
+        )
+
+    @pytest.mark.asyncio
+    async def test_master_key_when_separate_browser_key_then_still_accepted(self):
+        _configure(
+            api_key=_TEST_KEY,
+            user_module=True,
+            mode="on_passive",
+            browser_key=self._BROWSER,
+        )
+        req = _make_request("/search")
+        assert await api_key_verify.verify_api_key(req, api_key=_TEST_KEY) == _TEST_KEY
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("same_as_master", [False, True])
+    async def test_browser_key_when_sign_in_required_then_not_a_credential(
+        self, same_as_master
+    ):
+        browser = _TEST_KEY if same_as_master else self._BROWSER
+        _configure(
+            api_key=_TEST_KEY, user_module=True, mode="on_active", browser_key=browser
+        )
+        req = _make_request("/search")
+        with patch(
+            "ui.backend.auth.api_key_cache.get_active_key_hashes",
+            new_callable=AsyncMock,
+            return_value=set(),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await api_key_verify.verify_api_key(req, api_key=browser)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_browser_key_when_sign_in_required_with_cookie_then_allowed(self):
+        """Signed-in users' requests still carry the key; the cookie lets them in."""
+        import time
+
+        import jwt as pyjwt
+
+        _configure(
+            api_key=_TEST_KEY,
+            user_module=True,
+            mode="on_active",
+            browser_key=self._BROWSER,
+        )
+        token = pyjwt.encode(
+            {"sub": "u", "aud": ["fastapi-users:auth"], "exp": int(time.time()) + 600},
+            _JWT_SECRET,
+            algorithm="HS256",
+        )
+        req = _make_request("/search", cookies={"evidencelab_auth": token})
+        assert await api_key_verify.verify_api_key(req, api_key=self._BROWSER) is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("same_as_master", [False, True])
+    async def test_middleware_when_browser_key_header_then_401(self, same_as_master):
+        from ui.backend.auth.active_auth import ActiveAuthMiddleware
+
+        browser = _ALT_KEY if same_as_master else self._BROWSER
+        mw = ActiveAuthMiddleware(
+            AsyncMock(), auth_secret=_JWT_SECRET, api_key=_ALT_KEY, browser_key=browser
+        )
+        call_next = AsyncMock(return_value=MagicMock(status_code=200))
+        req = _make_request("/search", headers={"x-api-key": browser})
+        with patch(
+            "ui.backend.auth.api_key_cache.get_active_key_hashes",
+            new_callable=AsyncMock,
+            return_value=set(),
+        ):
+            response = await mw.dispatch(req, call_next)
+        assert response.status_code == 401
+        call_next.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_middleware_when_master_key_differs_from_browser_key_then_passes(
+        self,
+    ):
+        from ui.backend.auth.active_auth import ActiveAuthMiddleware
+
+        mw = ActiveAuthMiddleware(
+            AsyncMock(),
+            auth_secret=_JWT_SECRET,
+            api_key=_ALT_KEY,
+            browser_key=self._BROWSER,
+        )
+        call_next = AsyncMock(return_value=MagicMock(status_code=200))
+        req = _make_request("/search", headers={"x-api-key": _ALT_KEY})
+        response = await mw.dispatch(req, call_next)
+        assert response.status_code == 200
