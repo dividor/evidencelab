@@ -45,6 +45,9 @@ provider_secret_names = []
 # backup_retention_days = 35
 # backups_enabled       = false
 
+# PostgreSQL major version for a new database (an existing one keeps its own):
+# db_engine_version = "17"
+
 # Days an upload stays in the transfer bucket (scripts/restore-data.sh):
 # transfer_retention_days = 30
 

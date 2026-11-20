@@ -276,6 +276,17 @@ variable "db_multi_az" {
   default     = true
 }
 
+variable "db_engine_version" {
+  description = "PostgreSQL major version for a new database, such as 17. It starts on that version's default minor version; an existing database keeps its version (see data.tf)."
+  type        = string
+  default     = "17"
+
+  validation {
+    condition     = can(regex("^[0-9]{2}$", var.db_engine_version))
+    error_message = "db_engine_version is a major version only, such as \"17\"."
+  }
+}
+
 variable "db_backup_retention_days" {
   description = "Days of automated database backups."
   type        = number

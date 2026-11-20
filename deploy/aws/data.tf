@@ -4,7 +4,7 @@
 
 data "aws_rds_engine_version" "postgres" {
   engine       = "postgres"
-  version      = "16"
+  version      = var.db_engine_version
   default_only = true
 }
 
@@ -39,10 +39,12 @@ resource "aws_db_instance" "main" {
   auto_minor_version_upgrade = true
   apply_immediately          = true
 
-  # The version is PostgreSQL 16's default minor version when the database is
-  # created; after that AWS applies minor upgrades itself in the maintenance
+  # The version is db_engine_version's default minor version when the database
+  # is created; after that AWS applies minor upgrades itself in the maintenance
   # window. Following the default on every run would make a deploy upgrade
-  # (and restart) the database, or try to undo an upgrade AWS already made.
+  # (and restart) the database, or try to undo an upgrade AWS already made. So
+  # changing db_engine_version only affects a new database: an existing one
+  # moves to a new major version by an RDS upgrade, or by being recreated.
   lifecycle {
     ignore_changes = [engine_version]
   }

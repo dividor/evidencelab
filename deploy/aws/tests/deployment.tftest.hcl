@@ -9,7 +9,7 @@ mock_provider "aws" {
   }
   mock_data "aws_rds_engine_version" {
     defaults = {
-      version_actual = "16.13"
+      version_actual = "17.9"
     }
   }
   mock_data "aws_ssm_parameter" {
@@ -109,6 +109,7 @@ variables {
   backup_retention_days = 35
 
   transfer_retention_days = 30
+  db_engine_version       = "17"
   restore_task            = { cpu = 1024, memory = 4096 }
 }
 
@@ -831,6 +832,38 @@ run "a_transfer_retention_below_one_day_is_refused" {
   expect_failures = [var.transfer_retention_days]
 }
 
+run "postgres_is_created_on_the_chosen_major_version" {
+  command = plan
+
+  assert {
+    condition     = data.aws_rds_engine_version.postgres.version == "17"
+    error_message = "A new database should use db_engine_version, 17 by default."
+  }
+}
+
+run "db_engine_version_is_a_setting" {
+  command = plan
+
+  variables {
+    db_engine_version = "16"
+  }
+
+  assert {
+    condition     = data.aws_rds_engine_version.postgres.version == "16"
+    error_message = "db_engine_version should choose the major version of a new database."
+  }
+}
+
+run "a_db_engine_version_with_a_minor_version_is_refused" {
+  command = plan
+
+  variables {
+    db_engine_version = "17.9"
+  }
+
+  expect_failures = [var.db_engine_version]
+}
+
 # The runs below share state: the first creates the Qdrant instance (mocked) with
 # one Amazon Linux image, the second plans after AWS has published a newer
 # one. Qdrant's index lives on its instance's disk, so the instance must keep
@@ -868,8 +901,8 @@ run "a_newer_amazon_linux_image_keeps_the_qdrant_instance" {
   }
 }
 
-# The same for Postgres: created on PostgreSQL 16's default minor version
-# (mocked as 16.13), it keeps that version when AWS's default moves on, because
+# The same for Postgres: created on PostgreSQL 17's default minor version
+# (mocked as 17.9), it keeps that version when AWS's default moves on, because
 # AWS applies minor upgrades itself and a deploy must not upgrade or restart it.
 run "postgres_is_created" {
   command = apply
@@ -879,8 +912,8 @@ run "postgres_is_created" {
   }
 
   assert {
-    condition     = aws_db_instance.main.engine_version == "16.13"
-    error_message = "Postgres should start on PostgreSQL 16's default minor version."
+    condition     = aws_db_instance.main.engine_version == "17.9"
+    error_message = "Postgres should start on PostgreSQL 17's default minor version."
   }
 }
 
@@ -894,12 +927,12 @@ run "a_newer_default_postgres_version_keeps_the_database_as_it_is" {
   override_data {
     target = data.aws_rds_engine_version.postgres
     values = {
-      version_actual = "16.14"
+      version_actual = "17.10"
     }
   }
 
   assert {
-    condition     = aws_db_instance.main.engine_version == "16.13"
+    condition     = aws_db_instance.main.engine_version == "17.9"
     error_message = "A newer default PostgreSQL version must not make a deploy upgrade the database."
   }
 }
