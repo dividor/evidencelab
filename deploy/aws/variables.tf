@@ -49,6 +49,17 @@ variable "config_json_path" {
   type        = string
 }
 
+variable "customize_assets_dir" {
+  description = "Folder of your own branding for the web app (theme.css, logo, favicon, footer, fonts), relative to deploy/aws; see docs/admin/customization.md. Saved with the deployment, so every web app build uses it. Empty: the CUSTOMIZE_ASSETS environment variable if set, otherwise the stock customize/ folder."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.customize_assets_dir == "" || length(fileset(var.customize_assets_dir, "**")) > 0
+    error_message = "customize_assets_dir must be empty, or a folder that holds at least one file."
+  }
+}
+
 variable "services_enabled" {
   description = "Run the ui, api, mcp and embedding services. Leave false on the first apply, push the web app image and run the migrate task, then set true."
   type        = bool
@@ -217,6 +228,17 @@ variable "pipeline_task" {
   description = "pipeline task size."
   type        = object({ cpu = number, memory = number })
   default     = { cpu = 4096, memory = 16384 }
+}
+
+variable "pipeline_files_dir" {
+  description = "Folder of your own pipeline files (for example a data source's downloader script and the spreadsheet it reads), relative to deploy/aws. They are copied into the pipeline task at /app/custom before each run, so a data source's download command can name /app/custom/<file>. Empty: none."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.pipeline_files_dir == "" || length(fileset(var.pipeline_files_dir, "**")) > 0
+    error_message = "pipeline_files_dir must be empty, or a folder that holds at least one file."
+  }
 }
 
 variable "db_instance_class" {

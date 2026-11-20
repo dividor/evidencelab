@@ -49,6 +49,14 @@ mock_provider "aws" {
       id = "pl-3b927c52"
     }
   }
+  mock_resource "aws_s3_bucket" {
+    # Known while planning, so tests can follow the bucket into the task.
+    override_during = plan
+    defaults = {
+      bucket = "evidencelab-pipeline-files-20261120"
+      arn    = "arn:aws:s3:::evidencelab-pipeline-files-20261120"
+    }
+  }
   mock_resource "aws_cloudfront_distribution" {
     # Known while planning, so tests can check the site address.
     override_during = plan
@@ -92,6 +100,9 @@ variables {
   waf_rate_limit                 = 2000
   waf_core_rules_to_count        = ["SizeRestrictions_BODY"]
   waf_count_only                 = false
+
+  pipeline_files_dir   = ""
+  customize_assets_dir = ""
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -493,4 +504,130 @@ run "a_rate_limit_below_the_waf_minimum_is_refused" {
   }
 
   expect_failures = [var.waf_rate_limit]
+}
+
+# --- Your own pipeline files and branding -------------------------------------
+
+run "without_pipeline_files_nothing_is_shipped" {
+  command = plan
+
+  assert {
+    condition = (
+      length(aws_s3_bucket.pipeline_files) == 0 &&
+      length(aws_s3_object.pipeline_files) == 0 &&
+      length(aws_iam_role_policy.pipeline_files) == 0
+    )
+    error_message = "With no pipeline_files_dir there should be no bucket, files or permission."
+  }
+  assert {
+    condition = (
+      !local.app_containers["pipeline"].fetch_pipeline_files &&
+      !contains(keys(local.app_containers["pipeline"].env), "PIPELINE_FILES_BUCKET")
+    )
+    error_message = "With no pipeline_files_dir the pipeline task should start as before."
+  }
+}
+
+run "pipeline_files_are_uploaded_and_copied_into_the_pipeline_task" {
+  command = plan
+
+  variables {
+    pipeline_files_dir = "tests/fixtures/pipeline-files"
+  }
+
+  assert {
+    condition     = toset(keys(aws_s3_object.pipeline_files)) == toset(["downloader.py", "sub/list.csv"])
+    error_message = "Every file in the folder, sub-folders included, should be uploaded."
+  }
+  assert {
+    condition     = aws_s3_object.pipeline_files["sub/list.csv"].key == "files/sub/list.csv"
+    error_message = "Files should keep their place in the folder, under files/."
+  }
+  assert {
+    condition     = aws_s3_bucket.pipeline_files[0].force_destroy
+    error_message = "Teardown should delete the files with the bucket."
+  }
+  assert {
+    condition = (
+      aws_s3_bucket_public_access_block.pipeline_files[0].block_public_acls &&
+      aws_s3_bucket_public_access_block.pipeline_files[0].block_public_policy &&
+      aws_s3_bucket_public_access_block.pipeline_files[0].ignore_public_acls &&
+      aws_s3_bucket_public_access_block.pipeline_files[0].restrict_public_buckets
+    )
+    error_message = "The pipeline files bucket must never be public."
+  }
+  assert {
+    condition = (
+      local.app_containers["pipeline"].fetch_pipeline_files &&
+      local.app_containers["pipeline"].env["PIPELINE_FILES_BUCKET"] == aws_s3_bucket.pipeline_files[0].bucket
+    )
+    error_message = "The pipeline task should be told the bucket and copy its files before running."
+  }
+  assert {
+    condition = alltrue([
+      for c in ["api", "mcp", "migrate"] :
+      !local.app_containers[c].fetch_pipeline_files && !contains(keys(local.app_containers[c].env), "PIPELINE_FILES_BUCKET")
+    ])
+    error_message = "Only the pipeline task should copy the pipeline files."
+  }
+  assert {
+    condition     = strcontains(local.fetch_pipeline_files, "\"/app/custom\"") && strcontains(local.fetch_pipeline_files, "Prefix=\"files/\"")
+    error_message = "The pipeline task should copy the bucket's files/ to /app/custom."
+  }
+  assert {
+    condition = (
+      toset(data.aws_iam_policy_document.pipeline_files[0].statement[1].actions) == toset(["s3:GetObject"]) &&
+      toset(data.aws_iam_policy_document.pipeline_files[0].statement[1].resources) == toset(["arn:aws:s3:::evidencelab-pipeline-files-20261120/files/*"])
+    )
+    error_message = "The task role should only read the files, and only under files/."
+  }
+  assert {
+    condition = (
+      toset(data.aws_iam_policy_document.pipeline_files[0].statement[0].actions) == toset(["s3:ListBucket"]) &&
+      toset(one(data.aws_iam_policy_document.pipeline_files[0].statement[0].condition).values) == toset(["files/*"])
+    )
+    error_message = "The task role should only list the files/ prefix."
+  }
+}
+
+run "a_pipeline_files_folder_without_files_is_refused" {
+  command = plan
+
+  variables {
+    pipeline_files_dir = "tests/fixtures/no-such-folder"
+  }
+
+  expect_failures = [var.pipeline_files_dir]
+}
+
+run "without_a_branding_folder_the_build_falls_back_to_its_own_choice" {
+  command = plan
+
+  assert {
+    condition     = output.customize_assets_dir == ""
+    error_message = "With no customize_assets_dir, the web app build should keep its existing branding choice."
+  }
+}
+
+run "a_branding_folder_reaches_the_web_app_build" {
+  command = plan
+
+  variables {
+    customize_assets_dir = "tests/fixtures/branding"
+  }
+
+  assert {
+    condition     = output.customize_assets_dir == "tests/fixtures/branding"
+    error_message = "The web app build reads the branding folder from this output."
+  }
+}
+
+run "a_branding_folder_without_files_is_refused" {
+  command = plan
+
+  variables {
+    customize_assets_dir = "tests/fixtures/no-such-folder"
+  }
+
+  expect_failures = [var.customize_assets_dir]
 }

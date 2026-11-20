@@ -5,6 +5,11 @@ region              = "us-east-2"
 evidencelab_version = "1.6.5"
 config_json_path    = "../../config.json"
 
+# Your own branding and pipeline files, relative to deploy/aws (see the docs,
+# "Your own branding and pipeline files"). Empty: stock branding, no files.
+# customize_assets_dir = "../../my-branding"
+# pipeline_files_dir   = "../../my-pipeline-files"
+
 # Leave false for the first apply; set true once the web app image is pushed
 # and the migrate task has run.
 services_enabled = false

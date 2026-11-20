@@ -264,6 +264,17 @@ Terraform lists what it will delete and asks you to type `yes`. The database, fi
 deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source <data_subdir>
 ```
 
+Add `--num-records 3` to try a few documents first. `run-task.sh` waits for the task to finish and then shows its log.
+
+### Your own branding and pipeline files
+
+Two settings in `terraform.tfvars` keep a deployment's own files with its other settings, as paths relative to `deploy/aws`:
+
+| Setting | What it does |
+|---|---|
+| `customize_assets_dir` | Your branding folder (theme, logo, favicon, footer, fonts; see [Customization](customization.md)). Every web app build uses it. When it is empty, the build uses the `CUSTOMIZE_ASSETS` environment variable if set, otherwise the stock look. |
+| `pipeline_files_dir` | A folder of your own pipeline files, such as a data source's downloader script and the spreadsheet it reads. Terraform uploads them to a private S3 bucket, and the pipeline task copies them to `/app/custom` before every run, so a data source's download command in `config.json` can name `/app/custom/<file>`. A changed file is uploaded again on the next deploy. Teardown deletes the bucket with the files. |
+
 ### Signing in with Microsoft or Google
 
 The template sets `OAUTH_CALLBACK_BASE_URL` to the site address followed by `/api`, so the sign-in provider sends visitors back to the site.

@@ -89,3 +89,8 @@ output "config_json_path" {
   description = "config.json the deployment runs with; the web app image is built from the same file."
   value       = var.config_json_path
 }
+
+output "customize_assets_dir" {
+  description = "Branding folder the web app image is built with (empty: CUSTOMIZE_ASSETS or the stock customize/ folder)."
+  value       = var.customize_assets_dir
+}
