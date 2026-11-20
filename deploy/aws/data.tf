@@ -38,6 +38,14 @@ resource "aws_db_instance" "main" {
   final_snapshot_identifier  = var.db_skip_final_snapshot ? null : "${var.name}-final"
   auto_minor_version_upgrade = true
   apply_immediately          = true
+
+  # The version is PostgreSQL 16's default minor version when the database is
+  # created; after that AWS applies minor upgrades itself in the maintenance
+  # window. Following the default on every run would make a deploy upgrade
+  # (and restart) the database, or try to undo an upgrade AWS already made.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
 
 # The certificate authorities RDS signs its server certificates with, so the

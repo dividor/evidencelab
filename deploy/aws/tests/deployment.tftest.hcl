@@ -668,3 +668,39 @@ run "a_newer_amazon_linux_image_keeps_the_qdrant_instance" {
     error_message = "A newer Amazon Linux image must not replace Qdrant's instance: its disk holds the index."
   }
 }
+
+# The same for Postgres: created on PostgreSQL 16's default minor version
+# (mocked as 16.13), it keeps that version when AWS's default moves on, because
+# AWS applies minor upgrades itself and a deploy must not upgrade or restart it.
+run "postgres_is_created" {
+  command = apply
+
+  plan_options {
+    target = [aws_db_instance.main]
+  }
+
+  assert {
+    condition     = aws_db_instance.main.engine_version == "16.13"
+    error_message = "Postgres should start on PostgreSQL 16's default minor version."
+  }
+}
+
+run "a_newer_default_postgres_version_keeps_the_database_as_it_is" {
+  command = plan
+
+  plan_options {
+    target = [aws_db_instance.main]
+  }
+
+  override_data {
+    target = data.aws_rds_engine_version.postgres
+    values = {
+      version_actual = "16.14"
+    }
+  }
+
+  assert {
+    condition     = aws_db_instance.main.engine_version == "16.13"
+    error_message = "A newer default PostgreSQL version must not make a deploy upgrade the database."
+  }
+}
