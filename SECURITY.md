@@ -469,6 +469,10 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
   - MCP and A2A refuse `REACT_APP_API_KEY`, even when it is also `API_SECRET_KEY` or an admin-created key; signed-in users and other keys still work
   - With `on_active`, the API-key check and the middleware ignore that key as a credential
   - The API accepts a `REACT_APP_API_KEY` that differs from `API_SECRET_KEY`, so the two can be separated; the demo, CI and dev compose now use separate values, and the API warns at startup when they are the same
+- **2026-11-17**: MCP sign-in asks for consent and is tied to the browser that started it
+  - `/mcp/authorize` sets a short-lived, httpOnly cookie in the starting browser; `/mcp/complete` refuses any other browser, so a link to someone else's request cannot connect their app to your account
+  - `/mcp/complete` shows which client is asking and where it will be sent; the answer is a same-origin POST with a one-time token, and denying returns `error=access_denied`
+  - MCP access tokens carry their own audience (`evidencelab:mcp`): MCP and A2A accept them, the web app does not; only a web sign-in session can answer the consent page
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)
