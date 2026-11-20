@@ -56,15 +56,77 @@ variable "services_enabled" {
 }
 
 variable "domain_name" {
-  description = "Domain for the site, for example evidencelab.example.org. Empty serves plain HTTP on the load balancer's own address, for testing only."
+  description = "Domain for the site, for example evidencelab.example.org. Empty serves the site on CloudFront's own HTTPS address with cloudfront_enabled, or otherwise on the load balancer's own address over plain HTTP, for testing only."
   type        = string
   default     = ""
 }
 
 variable "route53_zone_id" {
-  description = "Route 53 hosted zone for domain_name. Used to validate the HTTPS certificate and to point the domain at the load balancer."
+  description = "Route 53 hosted zone for domain_name. Used to validate the HTTPS certificate and to point the domain at CloudFront or the load balancer."
   type        = string
   default     = ""
+}
+
+variable "cloudfront_enabled" {
+  description = "Serve the site through CloudFront with an AWS WAF web ACL. The load balancer then moves to the private subnets and only CloudFront can reach it, and the site is HTTPS even without domain_name."
+  type        = bool
+  default     = false
+}
+
+variable "cloudfront_price_class" {
+  description = "Edge locations CloudFront serves from: PriceClass_100 (the United States, Canada, Mexico, Europe, Israel and Türkiye; the cheapest), PriceClass_200 (adds Asia, the Middle East and Africa) or PriceClass_All (adds South America, Australia and New Zealand)."
+  type        = string
+  default     = "PriceClass_100"
+
+  validation {
+    condition     = contains(["PriceClass_100", "PriceClass_200", "PriceClass_All"], var.cloudfront_price_class)
+    error_message = "cloudfront_price_class must be PriceClass_100, PriceClass_200 or PriceClass_All."
+  }
+}
+
+variable "cloudfront_origin_read_timeout" {
+  description = "Seconds CloudFront waits for a response to start, and between the parts of a streamed one. Chat answers send a heartbeat every 15 seconds; AI summaries send nothing between their first event and the model's first words. Above 60 needs a CloudFront quota increase first."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.cloudfront_origin_read_timeout >= 1 && var.cloudfront_origin_read_timeout <= 180
+    error_message = "cloudfront_origin_read_timeout must be between 1 and 180 seconds."
+  }
+}
+
+variable "waf_allowed_ip_ranges" {
+  description = "With cloudfront_enabled, the only addresses (CIDR ranges, IPv4 or IPv6) that may reach the site, for example an organisation's office and VPN ranges. Empty lets every address through to the other rules."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for c in var.waf_allowed_ip_ranges : can(cidrhost(c, 0))])
+    error_message = "Every waf_allowed_ip_ranges entry must be a CIDR range, for example 203.0.113.0/24."
+  }
+}
+
+variable "waf_rate_limit" {
+  description = "With cloudfront_enabled, requests one address may make in 5 minutes before AWS WAF blocks it until its rate drops. Visitors behind one office or VPN address share it. 0 turns the rule off."
+  type        = number
+  default     = 2000
+
+  validation {
+    condition     = var.waf_rate_limit == 0 || var.waf_rate_limit >= 10
+    error_message = "waf_rate_limit must be 0 (off) or at least 10."
+  }
+}
+
+variable "waf_core_rules_to_count" {
+  description = "Rules in AWS's core rule set (AWSManagedRulesCommonRuleSet) that count matching requests instead of blocking them. SizeRestrictions_BODY blocks request bodies over 8 KB, and Evidence Lab accepts bodies up to 2 MB (MAX_REQUEST_BODY_BYTES)."
+  type        = list(string)
+  default     = ["SizeRestrictions_BODY"]
+}
+
+variable "waf_count_only" {
+  description = "Run every AWS WAF rule in count mode: WAF records what each rule would have blocked, in CloudWatch metrics and sampled requests, and blocks nothing. For the first days of a new site; check the matches, then set false."
+  type        = bool
+  default     = false
 }
 
 variable "qdrant_url" {

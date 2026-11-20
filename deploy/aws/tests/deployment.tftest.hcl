@@ -44,6 +44,19 @@ mock_provider "aws" {
       repository_url = "123456789012.dkr.ecr.us-east-2.amazonaws.com/evidencelab/ui"
     }
   }
+  mock_data "aws_ec2_managed_prefix_list" {
+    defaults = {
+      id = "pl-3b927c52"
+    }
+  }
+  mock_resource "aws_cloudfront_distribution" {
+    # Known while planning, so tests can check the site address.
+    override_during = plan
+    defaults = {
+      domain_name    = "d111111abcdef8.cloudfront.net"
+      hosted_zone_id = "Z2FDTNDATAQYW2"
+    }
+  }
 }
 
 mock_provider "random" {}
@@ -71,6 +84,14 @@ variables {
   anonymous_access      = false
   provider_secret_names = []
   api                   = { cpu = 2048, memory = 8192, count = 2 }
+
+  cloudfront_enabled             = false
+  cloudfront_price_class         = "PriceClass_100"
+  cloudfront_origin_read_timeout = 60
+  waf_allowed_ip_ranges          = []
+  waf_rate_limit                 = 2000
+  waf_core_rules_to_count        = ["SizeRestrictions_BODY"]
+  waf_count_only                 = false
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -109,6 +130,10 @@ run "with_a_domain_serves_https_and_redirects_http" {
   assert {
     condition     = local.site_url == "https://evidencelab.example.org"
     error_message = "The site address should be the HTTPS domain."
+  }
+  assert {
+    condition     = local.app_environment["OAUTH_CALLBACK_BASE_URL"] == "https://evidencelab.example.org/api"
+    error_message = "Google and Microsoft sign-in should return visitors to the site's /api, not localhost."
   }
   assert {
     condition     = local.app_environment["AUTH_COOKIE_SECURE"] == "true"
@@ -240,4 +265,232 @@ run "containers_can_call_bedrock_in_their_region" {
     condition     = aws_ecs_task_definition.app["api"].task_role_arn == aws_iam_role.task.arn
     error_message = "The api should run as the task role that may call Bedrock."
   }
+}
+
+# --- CloudFront and AWS WAF --------------------------------------------------
+
+run "without_cloudfront_the_load_balancer_is_public_and_no_cloudfront_is_made" {
+  command = plan
+
+  assert {
+    condition     = aws_lb.main.internal == false && aws_vpc_security_group_ingress_rule.alb_http.cidr_ipv4 == "0.0.0.0/0"
+    error_message = "Without CloudFront the load balancer should be the public entry point."
+  }
+  assert {
+    condition     = length(aws_cloudfront_distribution.site) == 0 && length(aws_wafv2_web_acl.site) == 0 && length(aws_cloudfront_vpc_origin.alb) == 0
+    error_message = "Without CloudFront there should be no distribution, VPC origin or web ACL."
+  }
+}
+
+run "with_cloudfront_only_cloudfront_reaches_the_load_balancer" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+  }
+
+  assert {
+    condition     = aws_lb.main.internal == true
+    error_message = "With CloudFront the load balancer should have no internet address."
+  }
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.alb_http.prefix_list_id == "pl-3b927c52" && aws_vpc_security_group_ingress_rule.alb_http.cidr_ipv4 == null
+    error_message = "The load balancer should accept only CloudFront's origin-facing servers."
+  }
+  assert {
+    condition     = length(aws_lb_listener.https) == 0 && length(aws_vpc_security_group_ingress_rule.alb_https) == 0
+    error_message = "CloudFront serves HTTPS; the load balancer should not."
+  }
+  assert {
+    condition     = one(one(aws_cloudfront_distribution.site[0].origin).vpc_origin_config).origin_read_timeout == 60
+    error_message = "CloudFront should reach the load balancer through the VPC origin, waiting cloudfront_origin_read_timeout seconds."
+  }
+}
+
+run "with_cloudfront_the_site_is_https_on_its_cloudfront_address" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+  }
+
+  assert {
+    condition     = local.site_url == "https://d111111abcdef8.cloudfront.net"
+    error_message = "Without a domain the site address should be CloudFront's own HTTPS address."
+  }
+  assert {
+    condition     = local.app_environment["AUTH_COOKIE_SECURE"] == "true" && local.app_environment["OAUTH_CALLBACK_BASE_URL"] == "https://d111111abcdef8.cloudfront.net/api"
+    error_message = "Sign-in cookies should be Secure, and sign-in should return visitors to CloudFront's address."
+  }
+  assert {
+    condition     = local.app_environment["CORS_ALLOWED_ORIGINS"] == "https://d111111abcdef8.cloudfront.net"
+    error_message = "The api should accept browser requests from the CloudFront address."
+  }
+  assert {
+    condition     = one(aws_cloudfront_distribution.site[0].default_cache_behavior).viewer_protocol_policy == "redirect-to-https" && one(aws_cloudfront_distribution.site[0].viewer_certificate).cloudfront_default_certificate == true
+    error_message = "CloudFront should redirect HTTP to HTTPS on its own certificate."
+  }
+  assert {
+    condition     = one(aws_cloudfront_distribution.site[0].default_cache_behavior).compress == false
+    error_message = "Streamed answers should pass through uncompressed, as they are written."
+  }
+}
+
+run "with_cloudfront_and_a_domain_the_certificate_is_in_us_east_1" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+    domain_name        = "evidencelab.example.org"
+    route53_zone_id    = "Z0123456789"
+  }
+
+  assert {
+    condition     = length(aws_acm_certificate.cloudfront) == 1 && aws_acm_certificate.cloudfront[0].region == "us-east-1" && length(aws_acm_certificate.site) == 0
+    error_message = "CloudFront's certificate must be in us-east-1, and the load balancer needs none."
+  }
+  assert {
+    condition     = local.site_url == "https://evidencelab.example.org" && aws_cloudfront_distribution.site[0].aliases == toset(["evidencelab.example.org"])
+    error_message = "CloudFront should serve the domain."
+  }
+  assert {
+    condition     = one(aws_route53_record.site[0].alias).name == "d111111abcdef8.cloudfront.net" && length(aws_route53_record.site_ipv6) == 1
+    error_message = "The domain should point at CloudFront, over IPv4 and IPv6."
+  }
+}
+
+run "with_cloudfront_the_waf_blocks_and_counts_only_the_core_body_size_rule" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+  }
+
+  assert {
+    condition     = aws_wafv2_web_acl.site[0].scope == "CLOUDFRONT" && aws_wafv2_web_acl.site[0].region == "us-east-1"
+    error_message = "CloudFront web ACLs must be in us-east-1."
+  }
+  assert {
+    condition = toset([for r in aws_wafv2_web_acl.site[0].rule : r.name]) == toset([
+      "rate-limit-per-ip",
+      "AWSManagedRulesAmazonIpReputationList",
+      "AWSManagedRulesKnownBadInputsRuleSet",
+      "AWSManagedRulesCommonRuleSet",
+    ])
+    error_message = "The web ACL should have the rate limit and the three AWS managed rule groups, and no allow list."
+  }
+  assert {
+    condition = alltrue([
+      for r in aws_wafv2_web_acl.site[0].rule :
+      length(one(r.override_action).none) == 1 if r.name != "rate-limit-per-ip"
+    ])
+    error_message = "The managed rule groups should block what they match."
+  }
+  assert {
+    condition = [
+      for o in one(one(one([for r in aws_wafv2_web_acl.site[0].rule : r if r.name == "AWSManagedRulesCommonRuleSet"]).statement).managed_rule_group_statement).rule_action_override : o.name
+    ] == ["SizeRestrictions_BODY"]
+    error_message = "Only the core rule that blocks bodies over 8 KB should count instead of block."
+  }
+  assert {
+    condition     = one(one(one([for r in aws_wafv2_web_acl.site[0].rule : r if r.name == "rate-limit-per-ip"]).statement).rate_based_statement).limit == 2000
+    error_message = "The rate limit should be waf_rate_limit requests per address."
+  }
+  assert {
+    condition     = length(aws_wafv2_ip_set.allowed) == 0
+    error_message = "No allow list should be made unless waf_allowed_ip_ranges is set."
+  }
+}
+
+run "waf_allowed_ip_ranges_block_every_other_address" {
+  command = plan
+
+  variables {
+    cloudfront_enabled    = true
+    waf_allowed_ip_ranges = ["203.0.113.0/24", "2001:db8::/32"]
+  }
+
+  assert {
+    condition     = aws_wafv2_ip_set.allowed["IPV4"].addresses == toset(["203.0.113.0/24"]) && aws_wafv2_ip_set.allowed["IPV6"].addresses == toset(["2001:db8::/32"])
+    error_message = "The ranges should be split into an IPv4 and an IPv6 set."
+  }
+  assert {
+    condition = alltrue([
+      for r in aws_wafv2_web_acl.site[0].rule :
+      r.priority == 0 && length(one(r.action).block) == 1 if r.name == "allowed-ip-ranges"
+    ]) && contains([for r in aws_wafv2_web_acl.site[0].rule : r.name], "allowed-ip-ranges")
+    error_message = "The allow list should run first and block everything outside the ranges."
+  }
+}
+
+run "waf_count_only_counts_every_rule" {
+  command = plan
+
+  variables {
+    cloudfront_enabled    = true
+    waf_count_only        = true
+    waf_allowed_ip_ranges = ["203.0.113.0/24"]
+  }
+
+  assert {
+    condition = alltrue([
+      for r in aws_wafv2_web_acl.site[0].rule :
+      (length(r.action) == 1 ? length(one(r.action).count) == 1 && length(one(r.action).block) == 0 : length(one(r.override_action).count) == 1 && length(one(r.override_action).none) == 0)
+    ])
+    error_message = "In count mode no rule should block."
+  }
+}
+
+run "waf_rate_limit_zero_turns_the_rate_rule_off" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+    waf_rate_limit     = 0
+  }
+
+  assert {
+    condition     = !contains([for r in aws_wafv2_web_acl.site[0].rule : r.name], "rate-limit-per-ip")
+    error_message = "waf_rate_limit = 0 should remove the rate limit."
+  }
+}
+
+run "an_unknown_price_class_is_refused" {
+  command = plan
+
+  variables {
+    cloudfront_price_class = "PriceClass_Cheapest"
+  }
+
+  expect_failures = [var.cloudfront_price_class]
+}
+
+run "an_allowed_range_that_is_not_cidr_is_refused" {
+  command = plan
+
+  variables {
+    waf_allowed_ip_ranges = ["203.0.113.7"]
+  }
+
+  expect_failures = [var.waf_allowed_ip_ranges]
+}
+
+run "an_origin_read_timeout_out_of_range_is_refused" {
+  command = plan
+
+  variables {
+    cloudfront_origin_read_timeout = 0
+  }
+
+  expect_failures = [var.cloudfront_origin_read_timeout]
+}
+
+run "a_rate_limit_below_the_waf_minimum_is_refused" {
+  command = plan
+
+  variables {
+    waf_rate_limit = 5
+  }
+
+  expect_failures = [var.waf_rate_limit]
 }

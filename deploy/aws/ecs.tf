@@ -65,7 +65,10 @@ locals {
     USER_MODULE           = var.user_module
     APP_BASE_URL          = local.site_url
     CORS_ALLOWED_ORIGINS  = local.site_url
-    AUTH_COOKIE_SECURE    = local.https ? "true" : "false"
+    AUTH_COOKIE_SECURE    = local.site_https ? "true" : "false"
+    # Google and Microsoft sign-in send visitors back here; nginx forwards
+    # /api to the api. Register {this}/auth/<provider>/callback with them.
+    OAUTH_CALLBACK_BASE_URL = "${local.site_url}/api"
   })
 
   app_secrets_refs = concat(
