@@ -11,7 +11,10 @@ Two commands:
 
   restore --postgres-key KEY --data-key KEY --data-source NAME --database NAME
       1. Unpacks the data archive into /app/data. Its one top-level folder must
-         be the data source's folder (for example wfp/).
+         be the data source's folder (for example wfp/). Links the source
+         machine wrote as its own absolute paths into that folder (the pipeline
+         links each parsed folder to its original file that way) are rewritten
+         to point at the same file here; any other absolute link is refused.
       2. Loads the export into a new database, <database>_restore, in one
          transaction that stops at the first error. The running database is
          untouched until this has succeeded.
@@ -31,6 +34,7 @@ import argparse
 import gzip
 import io
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -38,6 +42,7 @@ import tarfile
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import IO, Dict, Iterable, Iterator, List, Optional
 
 DATA_ROOT = "/app/data"
@@ -157,18 +162,58 @@ def check_archive_members(
         yield member
 
 
-def extract_archive(stream: IO[bytes], folder: str, root: str = DATA_ROOT) -> int:
-    """Unpack the archive's FOLDER/ into ROOT as it streams in; returns the file count.
+def portable_link_target(member_name: str, target: str, folder: str) -> str:
+    """Where a link the source machine wrote as an absolute path should point here.
 
-    tarfile's "data" filter also refuses absolute paths, links that leave ROOT
+    The pipeline links each parsed folder to its original file by the source
+    machine's absolute path, such as ``/mnt/data/pipeline/wfp/pdfs/...``. If
+    TARGET has exactly one FOLDER component and no ``..`` after it, the link is
+    made relative to the member, so it points at the same file in this share.
+    Anything else is refused.
+    """
+    parts = PurePosixPath(target).parts
+    at = [i for i, part in enumerate(parts) if part == folder]
+    if len(at) != 1 or ".." in parts[at[0] :]:
+        raise ValueError(
+            f"{member_name!r} links to {target!r}, which is not a file inside one "
+            f"{folder}/ folder"
+        )
+    inside = PurePosixPath(*parts[at[0] :])
+    name = member_name[2:] if member_name.startswith("./") else member_name
+    return posixpath.relpath(str(inside), str(PurePosixPath(name).parent))
+
+
+@dataclass
+class ArchiveCounts:
+    """What extract_archive unpacked."""
+
+    files: int = 0
+    links_rewritten: int = 0
+
+
+def extract_archive(
+    stream: IO[bytes], folder: str, root: str = DATA_ROOT
+) -> ArchiveCounts:
+    """Unpack the archive's FOLDER/ into ROOT as it streams in.
+
+    Absolute links into FOLDER are rewritten first (portable_link_target);
+    tarfile's "data" filter then refuses absolute paths, links that leave ROOT
     and device files.
     """
-    count = 0
+    counts = ArchiveCounts()
+
+    def portable(member: tarfile.TarInfo, dest_path: str) -> Optional[tarfile.TarInfo]:
+        if member.issym() and member.linkname.startswith("/"):
+            target = portable_link_target(member.name, member.linkname, folder)
+            member = member.replace(linkname=target, deep=False)
+            counts.links_rewritten += 1
+        return tarfile.data_filter(member, dest_path)
+
     with tarfile.open(fileobj=stream, mode="r|*") as archive:
         for member in check_archive_members(archive, folder):
-            archive.extract(member, root, filter="data")
-            count += member.isfile()
-    return count
+            archive.extract(member, root, filter=portable)
+            counts.files += member.isfile()
+    return counts
 
 
 def checked_name(name: str, what: str) -> str:
@@ -269,8 +314,11 @@ def restore(args: argparse.Namespace, environ: Dict[str, str]) -> None:
     }
     bucket = environ["TRANSFER_BUCKET"]
 
-    files = extract_archive(s3_stream(bucket, args.data_key), args.data_source)
-    print(f"Unpacked {files} files into {DATA_ROOT}/{args.data_source}")
+    counts = extract_archive(s3_stream(bucket, args.data_key), args.data_source)
+    print(
+        f"Unpacked {counts.files} files into {DATA_ROOT}/{args.data_source}; "
+        f"rewrote {counts.links_rewritten} absolute links to point inside it"
+    )
 
     run_psql([_RECREATE_RESTORE_DB], environ, "postgres", names)
     summary = ExportSummary()
