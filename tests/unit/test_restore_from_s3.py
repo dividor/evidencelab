@@ -3,6 +3,7 @@
 import argparse
 import gzip
 import io
+import os
 import tarfile
 from unittest.mock import MagicMock, call, patch
 
@@ -43,14 +44,22 @@ ENV = {
 }
 
 
-def _tar(members):
-    """An in-memory .tar.gz holding MEMBERS: (name, bytes) files or (name, None) dirs."""
+def _tar(members, mode="w:gz"):
+    """An in-memory tar holding MEMBERS.
+
+    Each is (name, bytes) for a file, (name, None) for a folder, or
+    (name, "-> target") for a symbolic link.
+    """
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+    with tarfile.open(fileobj=buffer, mode=mode) as archive:
         for name, data in members:
             info = tarfile.TarInfo(name)
             if data is None:
                 info.type = tarfile.DIRTYPE
+                archive.addfile(info)
+            elif isinstance(data, str):
+                info.type = tarfile.SYMTYPE
+                info.linkname = data.removeprefix("-> ")
                 archive.addfile(info)
             else:
                 info.size = len(data)
@@ -126,13 +135,17 @@ class TestExtractArchive:
         archive = _tar(
             [("wfp", None), ("wfp/pdfs/a.pdf", b"%PDF"), ("wfp/parsed/a/a.json", b"{}")]
         )
-        assert rs.extract_archive(archive, "wfp", str(tmp_path)) == 2
+        assert rs.extract_archive(archive, "wfp", str(tmp_path)).files == 2
         assert (tmp_path / "wfp/pdfs/a.pdf").read_bytes() == b"%PDF"
         assert (tmp_path / "wfp/parsed/a/a.json").read_bytes() == b"{}"
 
     def test_extract_archive_when_dot_slash_names_then_accepted(self, tmp_path):
         archive = _tar([("./wfp/pdfs/a.pdf", b"%PDF")])
-        assert rs.extract_archive(archive, "wfp", str(tmp_path)) == 1
+        assert rs.extract_archive(archive, "wfp", str(tmp_path)).files == 1
+
+    def test_extract_archive_when_plain_tar_then_read_too(self, tmp_path):
+        archive = _tar([("./wfp/pdfs/a.pdf", b"%PDF")], mode="w")
+        assert rs.extract_archive(archive, "wfp", str(tmp_path)).files == 1
 
     def test_extract_archive_when_other_folder_then_refused(self, tmp_path):
         archive = _tar([("wfp/a.pdf", b"x"), ("uneg/b.pdf", b"y")])
@@ -152,6 +165,57 @@ class TestExtractArchive:
                 _tar([("wfp/../../escaped.txt", b"x")]), "wfp", str(root)
             )
         assert not (tmp_path / "escaped.txt").exists()
+
+
+PDF = "WFP/2023/report_789.pdf"
+PARSED_LINK = "./wfp/parsed/WFP/2023/report_789/report_789.pdf"
+
+
+class TestPortableLinks:
+    @pytest.mark.parametrize(
+        "target",
+        [
+            "/mnt/data/pipeline/wfp/pdfs/" + PDF,  # pipeline run on the host
+            "/app/data/wfp/pdfs/" + PDF,  # pipeline run in a container
+        ],
+    )
+    def test_extract_archive_when_absolute_link_into_folder_then_points_at_same_file(
+        self, tmp_path, target
+    ):
+        archive = _tar([("./wfp/pdfs/" + PDF, b"%PDF"), (PARSED_LINK, "-> " + target)])
+        counts = rs.extract_archive(archive, "wfp", str(tmp_path))
+        link = tmp_path / PARSED_LINK
+        assert counts.links_rewritten == 1
+        assert os.readlink(link) == "../../../../pdfs/" + PDF
+        assert link.read_bytes() == b"%PDF"
+
+    def test_extract_archive_when_relative_link_inside_then_kept(self, tmp_path):
+        archive = _tar(
+            [("wfp/pdfs/a.pdf", b"%PDF"), ("wfp/parsed/a/a.pdf", "-> ../../pdfs/a.pdf")]
+        )
+        counts = rs.extract_archive(archive, "wfp", str(tmp_path))
+        assert counts.links_rewritten == 0
+        assert (tmp_path / "wfp/parsed/a/a.pdf").read_bytes() == b"%PDF"
+
+    @pytest.mark.parametrize(
+        "target",
+        ["/etc/passwd", "/home/wfp/data/wfp/pdfs/a.pdf", "/data/wfp/../../etc/passwd"],
+    )
+    def test_extract_archive_when_absolute_link_elsewhere_then_refused(
+        self, tmp_path, target
+    ):
+        archive = _tar([("wfp/parsed/a/a.pdf", "-> " + target)])
+        with pytest.raises(ValueError, match="not a file inside one wfp/ folder"):
+            rs.extract_archive(archive, "wfp", str(tmp_path))
+        assert not (tmp_path / "wfp/parsed/a/a.pdf").is_symlink()
+
+    def test_portable_link_target_when_host_path_then_relative_to_member(self):
+        assert (
+            rs.portable_link_target(
+                PARSED_LINK, "/mnt/data/pipeline/wfp/pdfs/" + PDF, "wfp"
+            )
+            == "../../../../pdfs/" + PDF
+        )
 
 
 class TestNamesAndCommands:
@@ -260,7 +324,9 @@ class TestRestore:
             "s3_stream",
             side_effect=lambda bucket, key: io.BytesIO(gzip.compress(b"SELECT 1;\n")),
         ) as s3, patch.object(
-            rs, "extract_archive", side_effect=lambda *a: calls.extract(*a) or 7
+            rs,
+            "extract_archive",
+            side_effect=lambda *a: calls.extract(*a) or rs.ArchiveCounts(files=7),
         ), patch.object(
             rs,
             "run_psql",
@@ -327,7 +393,9 @@ class TestRestore:
 
         with patch.object(rs, "configured_folders", return_value=["wfp"]), patch.object(
             rs, "s3_stream", side_effect=lambda b, k: io.BytesIO(b"SELECT 1;\n")
-        ), patch.object(rs, "extract_archive", return_value=1), patch.object(
+        ), patch.object(
+            rs, "extract_archive", return_value=rs.ArchiveCounts(files=1)
+        ), patch.object(
             rs, "run_psql", side_effect=psql
         ) as run:
             with pytest.raises(RuntimeError):

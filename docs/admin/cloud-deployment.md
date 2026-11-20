@@ -310,7 +310,7 @@ It lists the export's tables and row counts, its extensions, and the roles its o
 deploy/aws/scripts/restore-data.sh restore postgres-evidencelab.sql.gz wfp-data.tar.gz wfp
 ```
 
-The restore task unpacks the archive onto the file share, loads the export into a new database in one transaction that stops at the first error, and only then swaps it in. The previous database is kept, renamed `evidencelab_before_<time>` and closed to connections, so nothing is lost if the load fails. The script then runs the migrations, empties the data source's search index and marks its documents for indexing.
+The restore task unpacks the archive onto the file share (links the old machine wrote as its own absolute paths into the folder, such as the parsed folders' links to their original files, are made to point at the same files here; any other absolute link stops the restore), loads the export into a new database in one transaction that stops at the first error, and only then swaps it in. The previous database is kept, renamed `evidencelab_before_<time>` and closed to connections, so nothing is lost if the load fails. The script then runs the migrations, empties the data source's search index and marks its documents for indexing.
 
 4. Rebuild the search index, a few documents first:
 
