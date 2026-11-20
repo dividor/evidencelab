@@ -121,14 +121,14 @@ PROVIDER_COMBOS = [
         "name": "AWS Bedrock",
         "description": (
             "Embedding: Titan Text Embeddings V2, LLM: Amazon Nova 2 Lite, "
-            "Reranker: Cohere Rerank 3.5"
+            "Reranker: Amazon Rerank 1.0"
         ),
         "embedding_model": "aws_titan_v2",
         "dense_models": ["aws_titan_v2"],
         "summarize_dense": "aws_titan_v2",
         "llm_model_id": "nova-2-lite",
         "llm_provider": "aws_bedrock",
-        "reranker": "cohere-rerank-3.5-bedrock",
+        "reranker": "amazon-rerank-1.0-bedrock",
         "required_env": list(_AWS_ENV),
         "env_prompts": dict(zip(_AWS_ENV, _AWS_ENV_PROMPTS)),
     },

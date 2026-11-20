@@ -213,14 +213,14 @@ If your AWS account is on the Free plan, check you removed the `#` from the `qdr
 db_backup_retention_days = 1
 ```
 
-**5. Check the Bedrock models.** The demo uses the **AWS Bedrock** models in `config.json`: Titan Text Embeddings V2, Amazon Nova 2 Lite and Cohere Rerank 3.5. No model keys are needed, because the containers call Bedrock with their task role. Check your region offers the first two:
+**5. Check the Bedrock models.** The demo uses the **AWS Bedrock** models in `config.json`: Titan Text Embeddings V2, Amazon Nova 2 Lite and Amazon Rerank 1.0. No model keys are needed, because the containers call Bedrock with their task role. Check your region offers the first two:
 
 ```bash
 aws bedrock list-foundation-models --region us-east-2 \
   --query "modelSummaries[?modelId=='amazon.titan-embed-text-v2:0' || modelId=='amazon.nova-2-lite-v1:0'].modelId"
 ```
 
-Both IDs should be listed. If your region is outside the United States, or offers different models, edit the Bedrock entries in `config.json` first, as described in [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock). Cohere Rerank 3.5 is called in `us-west-2`, because us-east-2 does not offer it.
+Both IDs should be listed. If your region is outside the United States, or offers different models, edit the Bedrock entries in `config.json` first, as described in [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock). Amazon Rerank 1.0 is called in `us-west-2`, because us-east-2 does not offer it.
 
 To use Azure Foundry models instead, set `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT` and add `--provider azure_foundry` to the command in step 6. The deploy script copies the keys into Secrets Manager.
 
