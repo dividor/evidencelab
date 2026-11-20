@@ -44,7 +44,7 @@ Every example uses the same layout. Only the names of the cloud services change.
 | embedding | Container service, 1 copy, always running | The `michaelf34/infinity` image. It must keep running, because loading the model takes several minutes. |
 | migrate | A job, run before each release starts | The same image, running `alembic upgrade head`. |
 | pipeline | A job, run when you ingest documents | The same image, running the pipeline orchestrator. |
-| Postgres 16 with pgvector | The cloud's managed Postgres | Backups, a standby copy and patching come with the service. |
+| Postgres with pgvector (17 on AWS, 16 on Azure and Google Cloud) | The cloud's managed Postgres | Backups, a standby copy and patching come with the service. |
 | Qdrant | Qdrant Cloud, or Qdrant on a small virtual machine | See below. |
 | Redis | The cloud's managed Redis | Holds the rate-limit counts that all api and mcp copies share. |
 | Documents and page images | The cloud's network file share | Mounted at `/app/data`. The pipeline writes the files and the api serves them. |
@@ -127,7 +127,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | embedding | ECS service on Fargate (arm64), `michaelf34/infinity:0.0.70` | 1 task, 1 vCPU and 4 GB, always running |
 | migrate | ECS task on Fargate, run by the deploy script before the services start | 0.5 vCPU, 1 GB |
 | pipeline | ECS task on Fargate, run when you ingest documents | 4 vCPU, 16 GB |
-| Postgres | Amazon RDS for PostgreSQL 16, Multi-AZ and encrypted. RDS keeps the password in Secrets Manager. | db.t4g.medium, 50 GB storage, 7 days of backups |
+| Postgres | Amazon RDS for PostgreSQL 17 (`db_engine_version`), Multi-AZ and encrypted. RDS keeps the password in Secrets Manager. | db.t4g.medium, 50 GB storage, 7 days of backups |
 | Qdrant | Qdrant 1.18.3 on an EC2 instance in a private subnet, or your Qdrant Cloud cluster if you set `qdrant_url` | t4g.medium, 30 GB disk |
 | Redis | Amazon ElastiCache (Valkey, compatible with Redis), encrypted in transit | cache.t4g.micro |
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
@@ -143,7 +143,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 What a deploy keeps, and how it is backed up:
 
-- **Postgres** keeps its data across deploys. It starts on PostgreSQL 16's default minor version and keeps that version: AWS applies minor upgrades itself in the weekly maintenance window, so a deploy never upgrades or restarts it. RDS keeps 7 days of automated backups (`db_backup_retention_days`), and removing the deployment takes a final snapshot unless `db_skip_final_snapshot` is set.
+- **Postgres** keeps its data across deploys. It starts on the default minor version of `db_engine_version` (PostgreSQL 17 unless set) and keeps that version: AWS applies minor upgrades itself in the weekly maintenance window, so a deploy never upgrades or restarts it. Changing `db_engine_version` only affects a new database; move an existing one to a new major version with an RDS upgrade in the AWS console, or recreate it and load its data back (see Moving existing data in). RDS keeps 7 days of automated backups (`db_backup_retention_days`), and removing the deployment takes a final snapshot unless `db_skip_final_snapshot` is set.
 - **Qdrant on EC2** keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; restore it from a backup, or run the pipeline again to rebuild it.
 - **Documents and page images** on EFS are kept across deploys.
 - **Scheduled backups:** AWS Backup backs up all three (the database, the EFS file share and Qdrant's instance) into a backup vault named after the deployment, every Sunday at 03:00 UTC, and keeps each backup for 35 days. Change this with `backup_schedule` (an AWS Backup cron expression) and `backup_retention_days`, or turn it off with `backups_enabled = false`. Restore from the AWS Backup console: a database or file share restores as a new one, and Qdrant's instance as a new instance with the index on its disk. Removing the deployment deletes the vault and its backups.
