@@ -1047,7 +1047,7 @@ def main():
         "--version",
         help=(
             "With --mode hub: the published image tag to run, for example "
-            "1.6.5 or rc-v1.6.5 (default: EVIDENCELAB_VERSION, else latest)"
+            "1.6.5, 1.6.6-rc.1 or main (default: EVIDENCELAB_VERSION, else latest)"
         ),
     )
     parser.add_argument(

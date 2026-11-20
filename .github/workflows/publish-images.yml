@@ -7,42 +7,54 @@
 # would either not reach the API or expose a key. docker-compose.hub.yml builds
 # it locally instead (about 3 minutes).
 #
-# When it publishes:
-#   tag vX.Y.Z    -> X.Y.Z, X.Y and latest (latest skipped for pre-release tags)
-#   push rc/vX.Y.Z -> rc-vX.Y.Z (moves with the release candidate)
-#   manual run    -> the branch name
-# Every pull request to main or an RC branch builds both platforms without
-# pushing. The two build jobs are required checks, so a change that breaks the
-# image (a Dockerfile, a requirement, a base-image bump) cannot be merged, by a
-# person or by the Dependabot auto-merge. They run on every PR because a
-# required check that is skipped by a path filter never reports, which would
-# block the PR.
+# The image is built once per commit and never rebuilt for a release:
+#   merge to main          -> builds it: sha-<7 characters of the commit>, and
+#                             main (moves to the newest commit on main)
+#   push to release-X.Y    -> the same for a patch branch: sha-<...>, release-X.Y
+#   tag vX.Y.Z-rc.N        -> adds X.Y.Z-rc.N to that commit's image
+#   tag vX.Y.Z             -> adds X.Y.Z, plus X.Y and latest when it is the
+#                             newest release of its line and overall, and
+#                             publishes the GitHub release (title from the
+#                             annotated tag's message, notes from CHANGELOG.md)
+# Both kinds of tag need CHANGELOG.md's X.Y.Z entry at the tagged commit,
+# because the release is tagged on the tested candidate's own commit.
+# Adding a name copies the image's index as it is, so every name of a commit's
+# image has the same digest. A tag on a commit with no published image (not
+# merged to main, or its build failed) fails with nothing published.
+# scripts/release/release_tags.py decides the names; its unit tests are
+# tests/unit/test_release_tags.py.
 #
-# Nothing broken reaches a published tag: the rc/** ruleset refuses a push
-# whose required CI checks have not passed, and release tags are cut from main
-# after the release PR's CI passes.
+# Every pull request to main or a release-X.Y branch builds both platforms
+# without pushing. The two build jobs are required checks, so a change that
+# breaks the image (a Dockerfile, a requirement, a base-image bump) cannot be
+# merged, by a person or by the Dependabot auto-merge. They run on every PR
+# because a required check that is skipped by a path filter never reports,
+# which would block the PR.
+#
+# Runs share a concurrency group per commit, so a tag pushed while its commit's
+# image is still building waits for that build.
 #
 # Setup (once, by a maintainer):
 #   - Repository variable DOCKERHUB_NAMESPACE: the Docker Hub account to push to.
-#   - Environment "dockerhub", deployment branches limited to rc/** and tags v*,
-#     holding secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub
-#     personal access token with Read & Write scope).
+#   - Environment "dockerhub", deployment branches limited to main, release-*
+#     and tags v*, holding secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a
+#     Docker Hub personal access token with Read & Write scope).
 #   GHCR uses the workflow's own GITHUB_TOKEN.
 
 name: Publish images
 
 on:
   push:
-    branches: [ 'rc/**' ]
+    branches: [ main, 'release-*' ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, 'rc/**' ]
+    branches: [ main, 'release-*' ]
   workflow_dispatch:
 
 permissions: {}
 
 concurrency:
-  group: publish-images-${{ github.ref }}
+  group: publish-images-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -53,6 +65,8 @@ env:
 jobs:
   build:
     name: build (${{ matrix.arch.name }})
+    # A release tag adds names to an image that is already built.
+    if: github.ref_type != 'tag'
     runs-on: ${{ matrix.arch.runner }}
     timeout-minutes: 120
     # Publishing runs read the push credentials from the protected environment.
@@ -186,7 +200,7 @@ jobs:
 
   merge:
     name: publish
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref_type != 'tag'
     needs: build
     runs-on: ubuntu-24.04
     environment: dockerhub
@@ -194,6 +208,8 @@ jobs:
       contents: read
       packages: write
     steps:
+      - uses: actions/checkout@v7
+
       - name: Download digests
         uses: actions/download-artifact@v8
         with:
@@ -213,20 +229,22 @@ jobs:
           echo "dockerhub=docker.io/${DOCKERHUB_NAMESPACE}/${IMAGE}" >> "$GITHUB_OUTPUT"
           echo "ghcr=ghcr.io/${OWNER,,}/${IMAGE}" >> "$GITHUB_OUTPUT"
 
+      # The branch name moves only if this commit is still the branch's newest,
+      # so an older commit's slower build never moves it backwards.
       - name: Tags
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: |
-            ${{ steps.names.outputs.dockerhub }}
-            ${{ steps.names.outputs.ghcr }}
-          flavor: |
-            latest=false
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+        id: tags
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          head="$(git ls-remote origin "refs/heads/${BRANCH}" | cut -f1)"
+          names="$(python3 scripts/release/release_tags.py branch-tags \
+            --branch "$BRANCH" --sha "$GITHUB_SHA" --head "$head" | tr '\n' ' ')"
+          echo "Commit ${GITHUB_SHA} (${BRANCH} head ${head}): ${names}"
+          {
+            echo "source=$(python3 scripts/release/release_tags.py source-tag --sha "$GITHUB_SHA")"
+            echo "names=${names}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -249,15 +267,13 @@ jobs:
         env:
           DOCKERHUB_IMAGE: ${{ steps.names.outputs.dockerhub }}
           GHCR_IMAGE: ${{ steps.names.outputs.ghcr }}
+          NAMES: ${{ steps.tags.outputs.names }}
         run: |
           set -euo pipefail
+          read -ra names <<< "$NAMES"
           for repo in "$DOCKERHUB_IMAGE" "$GHCR_IMAGE"; do
-            mapfile -t tag_args < <(jq -r --arg repo "$repo" \
-              '.tags[] | select(startswith($repo + ":")) | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-            if [ "${#tag_args[@]}" -eq 0 ]; then
-              echo "::error::No tags generated for $repo"
-              exit 1
-            fi
+            tag_args=()
+            for name in "${names[@]}"; do tag_args+=(-t "${repo}:${name}"); done
             sources=()
             for digest in *; do sources+=("${repo}@sha256:${digest}"); done
             docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
@@ -267,7 +283,120 @@ jobs:
         env:
           DOCKERHUB_IMAGE: ${{ steps.names.outputs.dockerhub }}
           GHCR_IMAGE: ${{ steps.names.outputs.ghcr }}
-          VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE: ${{ steps.tags.outputs.source }}
         run: |
-          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${VERSION}"
-          docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
+          docker buildx imagetools inspect "${DOCKERHUB_IMAGE}:${SOURCE}"
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${SOURCE}"
+
+  release:
+    name: release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    environment: dockerhub
+    permissions:
+      contents: write
+      packages: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Everything is worked out and checked before anything is published: the
+      # names, and for a release its notes and title.
+      - name: Read the tag
+        id: tag
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DOCKERHUB_NAMESPACE" ]; then
+            echo "::error::Repository variable DOCKERHUB_NAMESPACE is not set"
+            exit 1
+          fi
+          echo "dockerhub=docker.io/${DOCKERHUB_NAMESPACE}/${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "ghcr=ghcr.io/${OWNER,,}/${IMAGE}" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags --depth=1 origin "+refs/tags/${TAG}:refs/tags/${TAG}"
+          commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          source="$(python3 scripts/release/release_tags.py source-tag --sha "$commit")"
+          git ls-remote --tags --refs origin 'v*' > "${RUNNER_TEMP}/release-tags.txt"
+          names="$(python3 scripts/release/release_tags.py version-tags \
+            --tag "$TAG" --existing "${RUNNER_TEMP}/release-tags.txt" | tr '\n' ' ')"
+          is_release="$(python3 scripts/release/release_tags.py is-release --tag "$TAG")"
+          latest=false
+          case " ${names} " in *" latest "*) latest=true ;; esac
+          # A candidate needs the release's changelog entry too: the release is
+          # tagged on the candidate's own commit.
+          python3 scripts/release/release_tags.py release-notes \
+            --tag "$TAG" --changelog CHANGELOG.md > "${RUNNER_TEMP}/release-notes.md"
+          if [ "$is_release" = "true" ]; then
+            title="$(python3 scripts/release/release_tags.py release-title --tag "$TAG" \
+              --tag-type "$(git for-each-ref --format='%(objecttype)' "refs/tags/${TAG}")" \
+              --subject "$(git for-each-ref --format='%(contents:subject)' "refs/tags/${TAG}")")"
+            echo "title=${title}" >> "$GITHUB_OUTPUT"
+          fi
+          {
+            echo "source=${source}"
+            echo "names=${names}"
+            echo "is_release=${is_release}"
+            echo "latest=${latest}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Commit ${commit}: image ${source} gets ${names}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check the commit's image exists
+        env:
+          DOCKERHUB_IMAGE: ${{ steps.tag.outputs.dockerhub }}
+          GHCR_IMAGE: ${{ steps.tag.outputs.ghcr }}
+          SOURCE: ${{ steps.tag.outputs.source }}
+        run: |
+          set -euo pipefail
+          for repo in "$DOCKERHUB_IMAGE" "$GHCR_IMAGE"; do
+            if ! docker buildx imagetools inspect "${repo}:${SOURCE}" > /dev/null; then
+              echo "::error::${TAG} points at a commit with no published image (${repo}:${SOURCE}). Tag a commit on main, or a release-X.Y branch, whose Publish images run succeeded."
+              exit 1
+            fi
+          done
+
+      - name: Add the release names
+        env:
+          DOCKERHUB_IMAGE: ${{ steps.tag.outputs.dockerhub }}
+          GHCR_IMAGE: ${{ steps.tag.outputs.ghcr }}
+          SOURCE: ${{ steps.tag.outputs.source }}
+          NAMES: ${{ steps.tag.outputs.names }}
+        run: |
+          set -euo pipefail
+          read -ra names <<< "$NAMES"
+          for repo in "$DOCKERHUB_IMAGE" "$GHCR_IMAGE"; do
+            tag_args=()
+            for name in "${names[@]}"; do tag_args+=(-t "${repo}:${name}"); done
+            docker buildx imagetools create "${tag_args[@]}" "${repo}:${SOURCE}"
+            for name in "$SOURCE" "${names[@]}"; do
+              echo "${repo}:${name} $(docker buildx imagetools inspect "${repo}:${name}" --format '{{json .Manifest.Digest}}')"
+            done
+          done
+
+      - name: Publish the GitHub release
+        if: steps.tag.outputs.is_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: ${{ steps.tag.outputs.title }}
+          LATEST: ${{ steps.tag.outputs.latest }}
+        # GitHub's "latest release" follows the same rule as the latest image.
+        run: |
+          gh release create "$TAG" --verify-tag --title "$TITLE" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md" --latest="$LATEST"

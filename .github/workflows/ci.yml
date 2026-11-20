@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop, rc/**, copilot/** ]
+    branches: [ main, 'release-*', copilot/** ]
   pull_request:
-    branches: [ main, master, develop, rc/** ]
+    branches: [ main, 'release-*' ]
 
 permissions: {}
 

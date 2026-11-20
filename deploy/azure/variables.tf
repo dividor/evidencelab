@@ -27,7 +27,7 @@ variable "evidencelab_image" {
 }
 
 variable "evidencelab_version" {
-  description = "Tag of evidencelab_image to run, for example 1.6.5 or rc-v1.6.5."
+  description = "Tag of evidencelab_image to run, for example 1.6.5, 1.6.6-rc.1 or main."
   type        = string
 }
 

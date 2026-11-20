@@ -41,7 +41,7 @@ All contributions must meet the following requirements before they will be accep
 
 5. **Commit messages** — follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `ci:`, etc.).
 
-6. **Pull request target** — open PRs against the current release candidate branch (`rc/vX.Y.Z`) or `main` for hotfixes, never directly to `main` for new features.
+6. **Pull request target** — open every PR against `main`. Nothing is committed to `main` directly. (Only a patch for an older release goes to its `release-X.Y` branch; see [Release Process](#release-process).)
 
 If any of these requirements are not met, CI will fail and the PR will not be merged until the issues are resolved.
 
@@ -254,10 +254,18 @@ If you discover a security vulnerability, please report it responsibly. See [SEC
 
 4. **Commit your changes** (see [Commit Guidelines](#commit-guidelines))
 
-5. **Push and create PR:**
+5. **Push and create a PR against `main`:**
    ```bash
    git push origin feat/your-feature-name
+   gh pr create --base main
    ```
+   CI runs only for PRs to `main` (or a `release-X.Y` patch branch), so never
+   stack a PR on another feature branch.
+
+Keep PRs small, so `main` stays releasable. A feature that is not finished can
+be merged switched off, behind a setting with an off switch; never use a
+setting to hide a bug fix. If a merged PR breaks `main`, revert it with a PR
+first and fix it in a new one.
 
 ### Types of Contributions
 
@@ -435,7 +443,8 @@ Key options:
 
 ## ✅ GitHub Actions (CI)
 
-The CI workflow in `.github/workflows/ci.yml` runs on push and PRs:
+The CI workflow in `.github/workflows/ci.yml` runs on every PR to `main` (or a
+`release-X.Y` patch branch) and on every push to those branches:
 
 - **code-quality**: Pre-commit hooks (formatting, linting, type checks, security scans).
 - **security-scan**: Dependency audits (pip-audit, npm audit), Bandit SAST, Hadolint, Gitleaks.
@@ -452,9 +461,20 @@ PRs the Docker Hub login step is skipped and `integration-tests` does not run.
 A maintainer runs the integration suite on a branch in this repository before
 merging a fork PR.
 
+Two more workflows run on `main`:
+
+- **Publish images** (`.github/workflows/publish-images.yml`) builds the Python
+  image on every PR without publishing it, and publishes it on every merge to
+  `main`; release tags add names to it (see [Release Process](#release-process)).
+- **Demo E2E** (`.github/workflows/demo-e2e.yml`) runs the demo end to end on
+  every merge to `main` and weekly. It is not a required check, so read its
+  result before tagging a release.
+
 ### Dependabot
 
-Dependabot is configured (`.github/dependabot.yml`) to automatically create weekly PRs for:
+Dependabot is configured (`.github/dependabot.yml`) to open monthly PRs against
+`main` for the items below. Patch and minor updates are set to merge by
+themselves once CI passes and a maintainer has approved them.
 
 - Python dependencies (`requirements.txt`)
 - NPM dependencies (`ui/frontend/package.json`)
@@ -597,87 +617,96 @@ New pipeline stages should:
 
 ## 🔄 Release Process
 
-We use **release candidate branches** (`rc/vX.Y.Z`) to stage and stabilise
-changes before they reach `main`. The version of Evidence Lab is the git tag
-and the matching `CHANGELOG.md` entry; there is no version file to bump.
+Evidence Lab is developed on one branch, `main`. Every change reaches it by
+pull request, and a release is a **tag** on a tested commit of `main`: there are
+no release candidate or release branches to create, merge or retarget. The
+version is the tag and its `CHANGELOG.md` entry; there is no version file.
 
-### Branch Strategy
+### How a change becomes a release
 
 ```
-feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main (tag vX.Y.Z)
-                           (staging)      (changelog)       (stable)
+feature/fix branch ──PR + CI──► main ──► image sha-<commit>, and main (moves)
+                                           │
+          tag vX.Y.Z-rc.N on a commit ─────┤──► the same image, also X.Y.Z-rc.N
+                                           │
+          tag vX.Y.Z on the same commit ───┘──► the same image, also X.Y.Z, X.Y
+                                                 and latest; GitHub release
 ```
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Stable, production-ready code. Only receives merges from release branches. |
-| `rc/vX.Y.Z` | Release candidate. All feature and fix PRs target this branch. |
-| `release/vX.Y.Z` | Short-lived: the RC plus its `CHANGELOG.md` entry, merged to `main` by PR. |
-| `feat/*`, `fix/*`, etc. | Short-lived branches for individual changes. |
+| Branch or tag | What it is |
+|---|---|
+| `main` | Where all work lands, by PR, with CI passing first. Kept releasable. |
+| `feat/*`, `fix/*`, etc. | Short-lived branches for one change each. |
+| `vX.Y.Z-rc.N` | A release candidate: a commit of `main` picked for testing before release. |
+| `vX.Y.Z` | A release, on the same commit as its last candidate. |
+| `release-X.Y` | Only for a patch to an older release once `main` has moved on (below). |
 
-### Workflow
+The Python image is **built once**, when a commit merges to `main`, and never
+rebuilt. A tag adds names to that commit's image, so a release runs exactly
+the image that was tested, with the same digest under every name.
 
-1. **Create an RC branch** from `main` when starting a new release cycle, then
-   point Dependabot at it and retarget any open PRs (steps 3 and 4):
+| Docker tag | Meaning |
+|---|---|
+| `main` | The newest commit of `main`. Moves with every merge. |
+| `sha-<commit>` | The image of one commit (its first 7 characters). Never moves. |
+| `X.Y.Z-rc.N` | A release candidate. |
+| `X.Y.Z` | A release. |
+| `X.Y` | The newest release of that minor line. |
+| `latest` | The newest release. |
+
+### Testing before a release
+
+1. **Every PR:** CI must pass before merging (required checks).
+2. **Every merge to `main`:** the image is published as `main` and
+   `sha-<commit>`. A deployment that follows `main`, such as a dev or staging
+   site, picks it up and shows how the merged PRs work together. Demo E2E runs
+   too.
+3. **Release candidate:** tag a commit that passed step 2 as `vX.Y.Z-rc.N`.
+   Deployments that test with real users and data pin `X.Y.Z-rc.N`. Anything
+   merged after the tag is not in the candidate. If testing finds a problem,
+   fix (or revert) it on `main` by PR and tag the next candidate, `rc.N+1`, on
+   the new commit.
+4. **Release:** tag the **same commit** as the candidate that passed `vX.Y.Z`.
+
+### Cutting a release
+
+1. **Merge the changelog entry first.** Open a PR to `main`, titled
+   `docs: add vX.Y.Z changelog entry`, with the `CHANGELOG.md` entry (format
+   below), dated the day you merge it. The release is tagged on the candidate's
+   own commit, so the entry has to be in the candidate: the Publish images
+   workflow refuses a candidate or release tag whose commit has no entry for
+   that version. If a later candidate brings fixes, update the entry in the
+   same way before tagging it.
+
+2. **Tag the candidate** on the merged commit, once its Publish images run has
+   succeeded (that run publishes `sha-<commit>`):
    ```bash
-   git checkout main && git pull
-   git checkout -b rc/v1.2.0
-   git push -u origin rc/v1.2.0
+   git fetch origin
+   git tag -a v1.2.0-rc.1 -m "Release candidate 1 for v1.2.0" origin/main
+   git push origin v1.2.0-rc.1
    ```
-   Every push to an RC branch, including this first one, publishes the Python
-   image as `astrobagel/evidencelab:rc-v1.2.0` (and on `ghcr.io/dividor`) via
-   `.github/workflows/publish-images.yml`. The tag moves with the RC and is for
-   testing only.
+   The tag's run adds `1.2.0-rc.1` to that commit's image on Docker Hub
+   (`astrobagel/evidencelab`) and GHCR (`ghcr.io/dividor/evidencelab`). A tag on
+   a commit with no published image fails with nothing published. Deploy
+   `1.2.0-rc.1` and test it with real data.
 
-2. **Target PRs to the RC branch.** All feature and fix PRs set `rc/vX.Y.Z` as
-   their base branch, not `main`. CI runs only for PRs targeting `main`,
-   `develop` or `rc/**`, so never stack a PR on another feature branch:
+3. **Tag the release** on the candidate's commit when testing passes. Use an
+   annotated tag: its message is the release's headline, and becomes the
+   GitHub release title `Evidence Lab v1.2.0 — <headline>`:
    ```bash
-   gh pr create --base rc/v1.2.0
-   ```
-
-3. **Retarget existing PRs** when switching to a new RC branch:
-   ```bash
-   gh pr edit <PR_NUMBER> --base rc/v1.2.0
-   ```
-
-4. **Dependabot PRs** also target the RC branch (`target-branch` in
-   `.github/dependabot.yml`). Update the value in two PRs when a new RC is
-   created: one against the new RC and one against `main` (see #400 / #421 for
-   the v1.6.1 cycle).
-
-5. **Cut the release** once every PR for the cycle is merged and the RC is
-   green. Create `release/vX.Y.Z` from the RC, add the `CHANGELOG.md` entry
-   (format below) as its only commit, and open a PR to `main`:
-   ```bash
-   git checkout -b release/v1.2.0 origin/rc/v1.2.0
-   # edit CHANGELOG.md, then:
-   git commit -am "docs: add v1.2.0 changelog entry"
-   git push -u origin release/v1.2.0
-   gh pr create --base main --title "Release v1.2.0" --body-file <changelog entry>
-   ```
-   Merge it with a **merge commit** (not squash or rebase) so `main` carries the
-   RC history. Nothing is ever committed directly to `main`.
-
-6. **Tag and publish** from the merge commit. The GitHub Release body is the
-   changelog entry, verbatim; the title is `Evidence Lab vX.Y.Z — <headline>`:
-   ```bash
-   git fetch origin main
-   git tag v1.2.0 origin/main
+   git tag -a v1.2.0 -m "<headline>" "v1.2.0-rc.1^{commit}"
    git push origin v1.2.0
-   gh release create v1.2.0 --title "Evidence Lab v1.2.0 — <headline>" --notes-file <changelog entry>
    ```
-   Pushing the tag starts the **Publish images** workflow, which builds the
-   tagged commit for amd64 and arm64 and publishes `1.2.0`, `1.2` and `latest`
-   to Docker Hub (`astrobagel/evidencelab`) and GHCR (`ghcr.io/dividor/evidencelab`).
-   Pre-release tags such as `v1.3.0-rc.1` get no `1.3` or `latest`. Check that it
-   succeeded and that both platforms are listed:
+   The tag's run adds `1.2.0`, and `1.2` and `latest` when it is the newest
+   release of its line and overall, then publishes the GitHub release with the
+   changelog entry, verbatim, as its notes. Check that it succeeded and that
+   every name has the same digest as the commit's image:
    ```bash
    gh run list --workflow "Publish images" --branch v1.2.0
    docker buildx imagetools inspect astrobagel/evidencelab:1.2.0
    docker buildx imagetools inspect ghcr.io/dividor/evidencelab:1.2.0
    ```
-   If the run fails at "Log in to Docker Hub", the `DOCKERHUB_TOKEN` secret in
+   If a run fails at "Log in to Docker Hub", the `DOCKERHUB_TOKEN` secret in
    the `dockerhub` environment has expired or been revoked: create a new Docker
    Hub personal access token (Read & Write) for `astrobagel`, store it with
    `gh secret set DOCKERHUB_TOKEN --env dockerhub`, and re-run the failed jobs.
@@ -688,7 +717,25 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
    paste it into the repository's overview on Docker Hub, and keep the two
    identical. Its screenshot loads from `main`.
 
-7. **Start the next cycle**: go back to step 1 for `rc/vX.Y.(Z+1)`.
+There is nothing else to do: no branch to create, no PRs to retarget and no
+Dependabot setting to change. The next release starts from `main` as it is.
+
+### Patch releases for an older version
+
+Normally a fix is released from `main` like anything else. Only when an older
+release needs a fix and `main` already holds changes that are not ready, make
+a short-lived patch branch from the release tag:
+
+```bash
+git checkout -b release-1.2 v1.2.0
+git push -u origin release-1.2
+```
+
+Open a PR against `release-1.2` with only the fix (cherry-picked from `main`)
+and the `CHANGELOG.md` entry for `1.2.1`. Every push to `release-1.2` publishes
+`release-1.2` and `sha-<commit>`, so tag the merged commit as above (`v1.2.1`,
+optionally after `v1.2.1-rc.1`). The patch moves `1.2`, and moves `latest` only
+if it is the newest release overall. The fix must reach `main` by its own PR.
 
 ### Changelog format
 
@@ -706,20 +753,19 @@ feature/fix branches ──► rc/vX.Y.Z ──► release/vX.Y.Z ──► main
 
 ### Release Checklist
 
-1. All PRs for the cycle merged into `rc/vX.Y.Z`; open PRs retargeted to the next RC
-2. CI green on the RC (integration tests included; re-run a job that failed only on an external service)
+1. `CHANGELOG.md` entry for the version merged to `main`, in the format above
+2. The candidate commit's CI is green (integration tests included; re-run a job
+   that failed only on an external service), its Publish images run succeeded,
+   and Demo E2E on `main` is green (read its log; it is not a required check)
 3. The production images build. CI's `container-scan` job builds both on every PR
    (`Dockerfile` target `runtime` and `ui/frontend/Dockerfile.prod`, the build
-   #435 broke), so a green RC covers this. Rebuild locally only for a deployment
-   with its own branding or `config.json`:
-   `docker compose -f docker-compose.prod.yml build ui`
-4. Manual verification on a Docker stack with real data
-5. `CHANGELOG.md` entry written in the format above
-6. `release/vX.Y.Z` PR merged to `main` with a merge commit
-7. Tag pushed and GitHub Release published with the changelog entry
-8. **Publish images** run for the tag succeeded, and `X.Y.Z`, `X.Y` and `latest` list
-   `linux/amd64` and `linux/arm64` on Docker Hub and GHCR
-9. Next RC created, Dependabot repointed on both `main` and the RC, open PRs retargeted
+   #435 broke). Rebuild locally only for a deployment with its own branding or
+   `config.json`: `docker compose -f docker-compose.prod.yml build ui`
+4. Candidate `vX.Y.Z-rc.N` tagged and tested on a deployment with real data
+5. Release `vX.Y.Z` tagged, annotated with the headline, on the candidate's commit
+6. **Publish images** run for the tag succeeded: `X.Y.Z` (and `X.Y`, `latest`)
+   have the same digest as `sha-<commit>` and list `linux/amd64` and
+   `linux/arm64` on Docker Hub and GHCR, and the GitHub Release is published
 
 ## 📞 Getting Help
 

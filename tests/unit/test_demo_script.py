@@ -409,7 +409,7 @@ class TestEnvSetting:
 class TestResolveHubVersion:
     def test_resolve_when_flag_given_then_flag_wins(self, monkeypatch):
         monkeypatch.setenv("EVIDENCELAB_VERSION", "1.6.4")
-        assert demo.resolve_hub_version("rc-v1.6.5") == "rc-v1.6.5"
+        assert demo.resolve_hub_version("1.6.6-rc.1") == "1.6.6-rc.1"
 
     def test_resolve_when_only_env_file_then_uses_it(self, tmp_path, monkeypatch):
         env_path = tmp_path / ".env"

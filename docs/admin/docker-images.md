@@ -17,7 +17,9 @@ The database, vector store and embedding model use their own upstream images: Po
 | `X.Y.Z` | An exact release. Use this in production. |
 | `X.Y` | The newest patch of a minor release. |
 | `latest` | The newest release. |
-| `rc-vX.Y.Z` | The release candidate in progress. It changes as work is merged and is for testing only. |
+| `X.Y.Z-rc.N` | A release candidate, for testing before release. The release is the same image. |
+| `main` | The newest development version. It changes with every change merged and is for testing only. |
+| `sha-<commit>` | The image of one commit of the source code (the first 7 characters of its git commit). It never changes. |
 
 Images are published from v1.6.5 onward. Earlier releases have no published image; build them from source with `docker-compose.prod.yml`.
 
