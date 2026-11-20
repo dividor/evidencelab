@@ -38,20 +38,19 @@ class TestDataSourceIsolation:
             assert db.chunks_collection == "chunks_test_source"
             assert db.data_source == "test_source"
 
-    def test_default_data_source(self):
-        """Verify default data source is used when none specified."""
-        from pipeline.db import DEFAULT_DATA_SOURCE, Database
+    def test_database_when_no_source_then_uses_the_only_one(self):
+        from pipeline.db import Database
 
         with patch("pipeline.db.QdrantClient") as mock_qdrant, patch(
             "pipeline.db.database.PostgresClient"
-        ):
+        ), patch("pipeline.db.database.resolve_data_source", return_value="only"):
             mock_qdrant.return_value.get_collections.return_value.collections = []
 
             db = Database()  # No data_source specified
 
-            assert db.data_source == DEFAULT_DATA_SOURCE
-            assert db.documents_collection == f"documents_{DEFAULT_DATA_SOURCE}"
-            assert db.chunks_collection == f"chunks_{DEFAULT_DATA_SOURCE}"
+            assert db.data_source == "only"
+            assert db.documents_collection == "documents_only"
+            assert db.chunks_collection == "chunks_only"
 
     def test_different_data_sources_different_collections(self):
         """Verify different data sources create different collection names."""

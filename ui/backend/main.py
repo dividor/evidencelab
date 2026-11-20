@@ -10,6 +10,8 @@ from typing import List, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: F401
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
@@ -128,8 +130,27 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 from ui.backend.auth import api_key_verify as _akv  # noqa: E402
 
 _akv.API_KEY = API_KEY
+_akv.BROWSER_KEY = os.environ.get("REACT_APP_API_KEY") or None
 _akv.USER_MODULE = USER_MODULE
 _akv.USER_MODULE_MODE = USER_MODULE_MODE
+if USER_MODULE:
+    from ui.backend.auth.users import AUTH_SECRET as _SESSION_SECRET  # noqa: E402
+
+    _akv.AUTH_SECRET = _SESSION_SECRET
+
+if _akv.BROWSER_KEY and USER_MODULE_MODE == "on_active":
+    logger.warning(
+        "REACT_APP_API_KEY is set but sign-in is required (on_active): the key "
+        "built into the web interface is public and is ignored as a credential. "
+        "Build the web interface with REACT_APP_API_KEY empty."
+    )
+elif _akv.BROWSER_KEY and API_KEY and _akv.BROWSER_KEY == API_KEY:
+    logger.warning(
+        "REACT_APP_API_KEY is the same as API_SECRET_KEY, so the master key is "
+        "public. MCP and A2A will not accept it: use a key created in Admin > "
+        "API Keys or sign in, or set a different REACT_APP_API_KEY and rotate "
+        "API_SECRET_KEY."
+    )
 
 
 async def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
@@ -235,6 +256,18 @@ class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
 
 # Safe ValueError prefixes whose details can be shown to clients.
 _SAFE_VALUE_ERROR_PREFIXES = ("Invalid data_source:",)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    """Log which fields a 422 rejected: FastAPI's default logs nothing, which
+    leaves a rejected request undiagnosable. Names and reasons only, never the
+    values, which can hold a user's text."""
+    fields = [(".".join(str(p) for p in e["loc"]), e["type"]) for e in exc.errors()]
+    _main_logger.warning(
+        "Request rejected on %s %s: %s", request.method, request.url.path, fields
+    )
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.exception_handler(ValueError)
@@ -459,7 +492,7 @@ def perform_title_search(
     q: str,
     limit: int = 50,
     dense_weight: Optional[float] = None,
-    data_source: Optional[str] = "uneg",
+    data_source: Optional[str] = None,
     model: Optional[str] = None,
     organization: Optional[str] = None,
     published_year: Optional[str] = None,
@@ -739,7 +772,12 @@ if USER_MODULE_MODE == "on_active":
     from ui.backend.auth.active_auth import ActiveAuthMiddleware  # noqa: E402
     from ui.backend.auth.users import AUTH_SECRET  # noqa: E402
 
-    app.add_middleware(ActiveAuthMiddleware, auth_secret=AUTH_SECRET, api_key=API_KEY)
+    app.add_middleware(
+        ActiveAuthMiddleware,
+        auth_secret=AUTH_SECRET,
+        api_key=API_KEY,
+        browser_key=_akv.BROWSER_KEY,
+    )
 
 
 # Models: the routes bind the canonical request/response models from
@@ -792,6 +830,7 @@ if USER_MODULE:
     from ui.backend.routes import api_keys as api_keys_routes
     from ui.backend.routes import brief_central as brief_central_routes
     from ui.backend.routes import brief_library as brief_library_routes
+    from ui.backend.routes import brief_versions as brief_versions_routes
     from ui.backend.routes import document_summary as document_summary_routes
     from ui.backend.routes import llm_usage as llm_usage_routes
     from ui.backend.routes import mcp_audit as mcp_audit_routes
@@ -807,6 +846,7 @@ if USER_MODULE:
     app.include_router(brief_central_routes.router, tags=["brief-central"])
     app.include_router(brief_citations_routes.router, tags=["brief-citations"])
     app.include_router(brief_library_routes.router, tags=["brief-library"])
+    app.include_router(brief_versions_routes.router, tags=["brief-versions"])
     app.include_router(api_keys_routes.router, prefix="/api-keys", tags=["api-keys"])
     app.include_router(mcp_audit_routes.router, prefix="/mcp-audit", tags=["mcp-audit"])
     app.include_router(llm_usage_routes.router, prefix="/llm-usage", tags=["llm-usage"])

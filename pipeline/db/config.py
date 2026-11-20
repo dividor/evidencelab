@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from qdrant_client.http.models import Distance
@@ -20,14 +20,9 @@ logger = logging.getLogger(__name__)
 # Qdrant Configuration
 QDRANT_HOST = os.getenv("QDRANT_HOST", "http://qdrant:6333")
 
-# Default data source for collection naming (collections become documents_{source}, chunks_{source})
-DEFAULT_DATA_SOURCE = os.getenv("DEFAULT_DATA_SOURCE", "uneg")
-
-# Legacy collection name support (for backwards compatibility)
-DOCUMENTS_COLLECTION = os.getenv(
-    "DOCUMENTS_COLLECTION", f"documents_{DEFAULT_DATA_SOURCE}"
-)
-CHUNKS_COLLECTION = os.getenv("CHUNKS_COLLECTION", f"chunks_{DEFAULT_DATA_SOURCE}")
+# The data source to use when a caller names none and config.json lists several
+# (see resolve_data_source). Unset by default: nothing is assumed.
+DEFAULT_DATA_SOURCE = os.getenv("DEFAULT_DATA_SOURCE") or None
 
 DEFAULT_SEGMENT_NUMBER = int(os.getenv("DEFAULT_SEGMENT_NUMBER", "0"))
 MAX_SEGMENT_SIZE = int(os.getenv("MAX_SEGMENT_SIZE", "200000"))
@@ -67,6 +62,31 @@ def load_datasources_config() -> Dict[str, Any]:
     return _datasources_config
 
 
+def _configured_data_sources() -> List[str]:
+    """The name each data source in config.json goes by (its data_subdir)."""
+    datasources = load_datasources_config().get("datasources", {})
+    return [conf.get("data_subdir") or key for key, conf in datasources.items()]
+
+
+def resolve_data_source(data_source: Optional[str] = None) -> str:
+    """The data source a request or job works on.
+
+    The one it names. If it names none: the deployment's only data source, or
+    with several, the one DEFAULT_DATA_SOURCE sets. With several and no setting
+    there is no right answer, so this raises rather than picking one.
+    """
+    if data_source:
+        return data_source
+    configured = _configured_data_sources()
+    if len(configured) == 1:
+        return configured[0]
+    if DEFAULT_DATA_SOURCE:
+        return DEFAULT_DATA_SOURCE
+    raise ValueError(
+        f"Invalid data_source: none given. Valid sources: {sorted(configured)}"
+    )
+
+
 DB_VECTORS: Dict[str, Dict[str, Any]] = {}
 SUPPORTED_LLMS: Dict[str, Dict[str, Any]] = {}
 SUPPORTED_RERANK_MODELS: Dict[str, Dict[str, Any]] = {}
@@ -102,6 +122,12 @@ def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             vec_entry["max_tokens"] = model_info["max_tokens"]
         if "output_dimensionality" in model_info:
             vec_entry["output_dimensionality"] = model_info["output_dimensionality"]
+        # "openai" models name the variables holding their base URL and key,
+        # so several services can be used at once; without them the defaults
+        # (OPENAI_BASE_URL, OPENAI_API_KEY) apply.
+        for option in ("base_url_env", "api_key_env"):
+            if option in model_info:
+                vec_entry[option] = model_info[option]
         result[model_name] = vec_entry
     return result
 
@@ -120,6 +146,12 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+# Options a remote reranker reads from its own entry ("cohere_compatible").
+# Copied only when set: the reranker falls back to its defaults for a missing
+# key, which a key holding None would defeat (no timeout, no variable name).
+_REMOTE_RERANK_OPTIONS = ("base_url_env", "api_key_env", "timeout")
+
+
 def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Build SUPPORTED_RERANK_MODELS dict from supported_rerank_models config."""
     result: Dict[str, Dict[str, Any]] = {}
@@ -134,6 +166,9 @@ def _load_rerank_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             # Bedrock rerank models are offered in only some AWS regions.
             "region": model_info.get("region"),
         }
+        for option in _REMOTE_RERANK_OPTIONS:
+            if option in model_info:
+                result[model_name][option] = model_info[option]
     return result
 
 

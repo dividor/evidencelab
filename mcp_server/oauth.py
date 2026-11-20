@@ -19,7 +19,13 @@ Security controls:
   - redirect_uri validated against registered client URIs (RFC 6749 §10.6)
   - Per-IP rate limiting on /register, /authorize, /token
   - Audit logging for all OAuth events
-  - CSRF binding: pending auth tied to session via secure token
+  - Browser binding: /authorize sets a short-lived cookie in the browser that
+    started the flow, and /complete refuses a browser without it, so a link
+    to someone else's pending request cannot be completed by a victim
+  - Consent: the signed-in user sees which client is asking and where it
+    will be sent, and approves with a POST carrying a one-time token
+  - MCP tokens carry their own audience (``evidencelab:mcp``): MCP accepts
+    them, the main API does not, so an MCP token is not a web session
   - Short-lived codes (5 min) and tokens (1 hour)
 """
 
@@ -45,8 +51,15 @@ logger = logging.getLogger(__name__)
 
 AUTH_SECRET = os.environ.get("AUTH_SECRET_KEY", "")
 JWT_ALGORITHM = "HS256"
-JWT_AUDIENCE = ["fastapi-users:auth"]
+# Audience of the tokens issued here. The main API only accepts the web
+# session audience ("fastapi-users:auth"), so these tokens open MCP alone.
+MCP_TOKEN_AUDIENCE = "evidencelab:mcp"
 TOKEN_LIFETIME = 3600  # 1 hour
+
+# Cookie set by /authorize in the browser that started the flow. /complete
+# requires it, which ties a pending request to that browser.
+FLOW_COOKIE = "evidencelab_mcp_flow"
+FLOW_LIFETIME = 600  # seconds; matches the pending request's lifetime
 
 # Where the Evidence Lab UI login page lives
 _APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
@@ -240,15 +253,25 @@ def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
 # ---------------------------------------------------------------------------
 
 
-def build_authorize_redirect(params: dict, client_ip: str = "") -> tuple[int, str]:
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def build_authorize_redirect(
+    params: dict, client_ip: str = ""
+) -> tuple[int, str, str | None]:
     """Build the redirect for the /authorize endpoint.
 
-    Returns (status_code, redirect_url_or_error_body).
+    Returns (status_code, redirect_url_or_error_body, flow_secret). On success
+    the caller sets ``flow_secret`` as the FLOW_COOKIE in the browser; it is
+    None on errors.
     """
     rate_err = _check_rate_limit("authorize", client_ip)
     if rate_err:
-        return 429, json.dumps(
-            {"error": "too_many_requests", "error_description": rate_err}
+        return (
+            429,
+            json.dumps({"error": "too_many_requests", "error_description": rate_err}),
+            None,
         )
 
     client_id = params.get("client_id", "")
@@ -259,19 +282,27 @@ def build_authorize_redirect(params: dict, client_ip: str = "") -> tuple[int, st
     scope = params.get("scope", "")
 
     if not client_id or not redirect_uri or not code_challenge:
-        return 400, json.dumps(
-            {
-                "error": "invalid_request",
-                "error_description": "Missing required parameters",
-            }
+        return (
+            400,
+            json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Missing required parameters",
+                }
+            ),
+            None,
         )
 
     if code_challenge_method and code_challenge_method != "S256":
-        return 400, json.dumps(
-            {
-                "error": "invalid_request",
-                "error_description": "Only S256 code_challenge_method supported",
-            }
+        return (
+            400,
+            json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Only S256 code_challenge_method supported",
+                }
+            ),
+            None,
         )
 
     # Validate redirect_uri against registered client (RFC 6749 §10.6)
@@ -284,16 +315,25 @@ def build_authorize_redirect(params: dict, client_ip: str = "") -> tuple[int, st
             redirect_uri=redirect_uri,
             ip=client_ip,
         )
-        return 400, json.dumps(
-            {
-                "error": "invalid_request",
-                "error_description": uri_err,
-            }
+        return (
+            400,
+            json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": uri_err,
+                }
+            ),
+            None,
         )
 
-    # Store the pending authorization request with a unique ID.
+    # Store the pending authorization request with a unique ID, tied to this
+    # browser by flow_secret (sent back as a cookie; only its hash is kept)
+    # and carrying the one-time token the consent form must return.
     pending_id = secrets.token_urlsafe(24)
+    flow_secret = secrets.token_urlsafe(32)
     _auth_codes[pending_id] = {
+        "flow_hash": _hash(flow_secret),
+        "consent_token": secrets.token_urlsafe(24),
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "code_challenge": code_challenge,
@@ -317,34 +357,123 @@ def build_authorize_redirect(params: dict, client_ip: str = "") -> tuple[int, st
     # After login it redirects the browser to /mcp/complete?pending=...
     # which finalises the OAuth handshake.
     login_url = f"{_APP_BASE_URL}?mcp_auth={pending_id}"
-    return 302, login_url
+    return 302, login_url, flow_secret
 
 
-def complete_authorize(pending_id: str, user_id: str) -> tuple[int, str]:
-    """Finalise the OAuth flow after the user has logged in.
+def _pending_for_browser(
+    pending_id: str, flow_secret: str | None
+) -> tuple[dict | None, tuple[int, str] | None]:
+    """Return the pending request if this browser started it.
 
-    Called by the ``/mcp/complete`` endpoint once the browser has a valid
-    session cookie.  Generates the authorization code and redirects the
-    browser back to the MCP client's ``redirect_uri``.
-
-    Returns (status_code, redirect_or_error_body).
+    Returns (pending, None) on success, or (None, (status, json_error)).
     """
     _clean_expired(_auth_codes)
-
-    if pending_id not in _auth_codes:
+    pending = _auth_codes.get(pending_id)
+    if not pending or pending.get("authenticated"):
         _audit_log(
             "authorize_complete_failed",
             reason="expired_or_invalid",
             pending_id=pending_id,
         )
+        return None, (
+            400,
+            json.dumps(
+                {
+                    "error": "invalid_request",
+                    "error_description": "Authorization request expired or invalid",
+                }
+            ),
+        )
+    if not flow_secret or not secrets.compare_digest(
+        _hash(flow_secret), pending["flow_hash"]
+    ):
+        _audit_log(
+            "authorize_complete_failed",
+            reason="other_browser",
+            pending_id=pending_id,
+            client_id=pending["client_id"],
+        )
+        return None, (
+            403,
+            json.dumps(
+                {
+                    "error": "access_denied",
+                    "error_description": (
+                        "This request was started in a different browser. "
+                        "Start connecting again from your app."
+                    ),
+                }
+            ),
+        )
+    return pending, None
+
+
+def consent_details(pending_id: str, flow_secret: str | None) -> tuple[int, dict | str]:
+    """What the consent page shows: the client and where it will be sent.
+
+    Returns (200, details) or (status, json_error).
+    """
+    pending, error = _pending_for_browser(pending_id, flow_secret)
+    if error:
+        return error
+    assert pending is not None
+    client = _clients.get(pending["client_id"], {})
+    redirect = urlparse(pending["redirect_uri"])
+    return 200, {
+        "client_name": str(client.get("client_name") or "An MCP client"),
+        "redirect_host": redirect.netloc or pending["redirect_uri"],
+        "consent_token": pending["consent_token"],
+    }
+
+
+def _redirect_with(redirect_uri: str, params: dict) -> str:
+    separator = "&" if "?" in redirect_uri else "?"
+    return f"{redirect_uri}{separator}{urlencode(params)}"
+
+
+def complete_authorize(
+    pending_id: str,
+    user_id: str,
+    flow_secret: str | None,
+    consent_token: str,
+    approved: bool,
+) -> tuple[int, str]:
+    """Finalise the OAuth flow once the signed-in user has answered the consent page.
+
+    Called by ``POST /mcp/complete``. The browser must be the one that started
+    the flow (``flow_secret``) and must return the consent page's one-time
+    token. Approval redirects to the client with a code; refusal redirects
+    with ``error=access_denied``.
+
+    Returns (status_code, redirect_or_error_body).
+    """
+    pending, error = _pending_for_browser(pending_id, flow_secret)
+    if error:
+        return error
+    assert pending is not None
+    if not consent_token or not secrets.compare_digest(
+        consent_token, pending["consent_token"]
+    ):
+        _audit_log(
+            "authorize_complete_failed",
+            reason="bad_consent_token",
+            pending_id=pending_id,
+            client_id=pending["client_id"],
+        )
         return 400, json.dumps(
             {
                 "error": "invalid_request",
-                "error_description": "Authorization request expired or invalid",
+                "error_description": "Consent could not be confirmed",
             }
         )
 
-    pending = _auth_codes.pop(pending_id)
+    del _auth_codes[pending_id]
+    if not approved:
+        _audit_log("authorize_denied", user_id=user_id, client_id=pending["client_id"])
+        params = {"error": "access_denied"}
+        if pending.get("state"):
+            params["state"] = pending["state"]
+        return 302, _redirect_with(pending["redirect_uri"], params)
 
     # Generate the actual authorization code
     code = secrets.token_urlsafe(32)
@@ -367,9 +496,7 @@ def complete_authorize(pending_id: str, user_id: str) -> tuple[int, str]:
     if pending.get("state"):
         callback_params["state"] = pending["state"]
 
-    separator = "&" if "?" in redirect_uri else "?"
-    redirect_url = f"{redirect_uri}{separator}{urlencode(callback_params)}"
-    return 302, redirect_url
+    return 302, _redirect_with(redirect_uri, callback_params)
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +580,7 @@ def exchange_token(body: dict, client_ip: str = "") -> tuple[int, dict]:
     now = time.time()
     payload = {
         "sub": pending["user_id"],
-        "aud": JWT_AUDIENCE,
+        "aud": [MCP_TOKEN_AUDIENCE],
         "iat": int(now),
         "exp": int(now + TOKEN_LIFETIME),
         "scope": pending.get("scope", ""),

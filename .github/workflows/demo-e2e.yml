@@ -6,7 +6,7 @@ on:
     # Weekly on Monday at 06:00 UTC
     - cron: '0 6 * * 1'
   push:
-    branches: [ rc/**, feature/demo-** ]
+    branches: [ main, feature/demo-** ]
 
 jobs:
   demo-e2e:

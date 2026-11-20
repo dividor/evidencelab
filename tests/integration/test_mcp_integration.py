@@ -13,6 +13,8 @@ import requests
 
 MCP_URL = os.getenv("MCP_BASE_URL", "http://mcp:8001") + "/mcp"
 API_KEY = os.getenv("API_SECRET_KEY", os.getenv("REACT_APP_API_KEY", ""))
+# The CI config lists several data sources, so a tool call must name one.
+DATA_SOURCE = "uneg"
 
 
 def _mcp_call(method: str, params: dict | None = None, call_id: int = 1) -> dict:
@@ -36,6 +38,7 @@ def _mcp_call(method: str, params: dict | None = None, call_id: int = 1) -> dict
 
 def _tool_call(name: str, arguments: dict) -> dict:
     """Call an MCP tool and return the parsed text content."""
+    arguments = {"data_source": DATA_SOURCE, **arguments}
     data = _mcp_call("tools/call", {"name": name, "arguments": arguments})
     result = data.get("result", {})
     if isinstance(result, dict) and result.get("isError"):
@@ -149,7 +152,10 @@ class TestMCPIntegration:
             "tools/call",
             {
                 "name": "get_document",
-                "arguments": {"doc_id": "nonexistent-doc-id-xyz"},
+                "arguments": {
+                    "doc_id": "nonexistent-doc-id-xyz",
+                    "data_source": DATA_SOURCE,
+                },
             },
         )
         result = data.get("result", {})
@@ -193,6 +199,17 @@ class TestMCPIntegration:
                 props = tool["inputSchema"]["properties"]
                 ds_desc = props["data_source"]["description"]
                 assert "uneg" in ds_desc
-                assert "Default:" in ds_desc
+                assert "Default:" not in ds_desc
+                assert "Required when there is more than one" in ds_desc
                 return
         pytest.fail("search tool not found")
+
+    def test_search_when_no_data_source_among_several_then_error(self):
+        """With several data sources, none is assumed."""
+        data = _mcp_call(
+            "tools/call",
+            {"name": "search", "arguments": {"query": "health", "limit": 1}},
+        )
+        result = data.get("result", {})
+        assert result.get("isError") is True
+        assert "Invalid data_source: none given" in result["content"][0]["text"]

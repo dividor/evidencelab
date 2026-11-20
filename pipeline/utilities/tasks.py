@@ -3,6 +3,7 @@
 import logging
 import os
 from collections import deque
+from typing import Optional
 
 from celery import Celery
 
@@ -33,7 +34,9 @@ app.conf.update(
 
 
 @app.task(bind=True, name="pipeline.reprocess_document")
-def reprocess_document(self, doc_id: str, filepath: str, data_source: str = "uneg"):
+def reprocess_document(
+    self, doc_id: str, filepath: str, data_source: Optional[str] = None
+):
     """
     Reprocess a document through the full pipeline.
 
@@ -51,7 +54,7 @@ def reprocess_document(self, doc_id: str, filepath: str, data_source: str = "une
 
         # Create orchestrator - this loads all ML models (slow)
         orchestrator = pipeline_orchestrator.PipelineOrchestrator(
-            data_source=data_source,
+            data_source=pipeline_db.resolve_data_source(data_source),
             skip_download=True,
             skip_scan=True,
             report=filepath,
@@ -114,7 +117,7 @@ def reprocess_document(self, doc_id: str, filepath: str, data_source: str = "une
 
 
 @app.task(bind=True, name="pipeline.reprocess_document_toc")
-def reprocess_document_toc(self, doc_id: str, data_source: str = "uneg"):
+def reprocess_document_toc(self, doc_id: str, data_source: Optional[str] = None):
     """
     Reprocess TOC classification for a document and update chunk tags.
     """
@@ -132,7 +135,7 @@ def reprocess_document_toc(self, doc_id: str, data_source: str = "uneg"):
 
         # Initialize the full TaggerProcessor (includes embedding model and all taggers)
         # This is the heavy part that was timing out in the API
-        tagger = tagger_module.TaggerProcessor(data_source=data_source or "uneg")
+        tagger = tagger_module.TaggerProcessor(data_source=data_source)
         tagger.setup()
 
         # Find the section type tagger

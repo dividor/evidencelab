@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
 from ui.backend.auth.users import current_superuser
+from ui.backend.utils.excel_text import append_text_row
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,8 @@ async def llm_usage_export(
     ws = wb.active
     assert ws is not None
     ws.title = "LLM Usage"
-    ws.append(
+    append_text_row(
+        ws,
         [
             f"Bucket start ({bucket})",
             "User" if group_by == "user" else "Group",
@@ -422,10 +424,11 @@ async def llm_usage_export(
             "Completion Tokens",
             "Total Tokens",
             "Cost (USD)",
-        ]
+        ],
     )
     for r in rows:
-        ws.append(
+        append_text_row(
+            ws,
             [
                 r["bucket_start"],
                 r["group_label"],
@@ -434,9 +437,10 @@ async def llm_usage_export(
                 r["completion_tokens"],
                 r["total_tokens"],
                 float(r["cost_usd"]) if r["cost_usd"] is not None else None,
-            ]
+            ],
         )
-    ws.append(
+    append_text_row(
+        ws,
         [
             "TOTAL",
             "",
@@ -445,7 +449,7 @@ async def llm_usage_export(
             totals["completion_tokens"],
             totals["total_tokens"],
             float(totals["cost_usd"]),
-        ]
+        ],
     )
 
     buf = io.BytesIO()

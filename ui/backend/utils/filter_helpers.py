@@ -9,6 +9,7 @@ from pipeline.db import (
     get_field_mapping,
     get_src_field_mapping,
     get_taxonomy_filter_fields,
+    resolve_data_source,
 )
 from ui.backend.utils.document_utils import map_core_field_to_storage
 from ui.backend.utils.facet_helpers import (
@@ -31,7 +32,7 @@ def resolve_storage_field(core_field: str, data_source: Optional[str]) -> str:
     """Map a core filter field name to the Qdrant storage field."""
     if core_field != "language":
         return map_core_field_to_storage(core_field)
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     field_mapping = get_field_mapping(source)
     if field_mapping.get("language") == "sys_language":
         return "sys_language"
@@ -101,7 +102,7 @@ def add_dynamic_filters(
     data_source: Optional[str] = None,
 ) -> None:
     """Pick up config-driven filter params (src_*, tag_*, etc.) dynamically."""
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     filter_fields = {
         **get_default_filter_fields(source),
         **get_taxonomy_filter_fields(source),

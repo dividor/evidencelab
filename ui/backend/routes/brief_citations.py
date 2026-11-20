@@ -10,9 +10,11 @@ operations statelessly for briefs the browser keeps in localStorage.
 
 import logging
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
@@ -35,6 +37,8 @@ from ui.backend.routes.brief_central import (
 from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy
+from ui.backend.services.brief_version_store import VersionChange
+from ui.backend.services.brief_versions import KIND_GROUPING, KIND_REJECT
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
 logger = logging.getLogger(__name__)
@@ -44,13 +48,20 @@ anonymous_router = APIRouter()
 _RL_SEARCH, _RL_DEFAULT, _RL_AI = get_rate_limits()
 
 
-async def _apply_and_save(session: AsyncSession, brief, apply) -> BriefRead:
-    """Run ``apply(content)`` on a copy of the stored content, save, respond."""
+async def _apply_and_save(
+    session: AsyncSession,
+    brief,
+    user: User,
+    apply,
+    change: Optional[VersionChange] = None,
+) -> BriefRead:
+    """Run ``apply(content)`` on a copy of the stored content, save it with
+    the version it makes, respond."""
     try:
-        content = apply(bc_copy(brief.content))
+        content = await run_in_threadpool(lambda: apply(bc_copy(brief.content)))
     except bc.BriefCitationError as exc:
         raise citation_http_error(exc)
-    await store_brief_content(session, brief, content)
+    await store_brief_content(session, brief, content, user, change)
     return await _to_brief_read(session, brief, can_edit=True)
 
 
@@ -76,7 +87,11 @@ async def record_section_run(
     the brief, renumber the whole brief and return it."""
     brief = await _get_owned_brief(session, brief_id, user)
     return await _apply_and_save(
-        session, brief, lambda c: bc.record_run(c, section_id, body.to_run())
+        session,
+        brief,
+        user,
+        lambda c: bc.record_run(c, section_id, body.to_run()),
+        VersionChange(kind=body.mode, section_id=section_id),
     )
 
 
@@ -92,10 +107,62 @@ async def reject_section_run(
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session),
 ):
-    """Reject edits: the run before the current one becomes current again."""
+    """Reject Edits: the section goes back to its text before the change
+    awaiting review; the change's Log rows stay, marked rejected."""
     brief = await _get_owned_brief(session, brief_id, user)
     return await _apply_and_save(
-        session, brief, lambda c: bc.reject_run(c, section_id, run_id)
+        session,
+        brief,
+        user,
+        lambda c: bc.reject_run(c, section_id, run_id),
+        VersionChange(kind=KIND_REJECT, section_id=section_id),
+    )
+
+
+@router.post(
+    "/briefs/{brief_id}/sections/{section_id}/runs/{run_id}/keep",
+    response_model=BriefRead,
+    tags=["brief-citations"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def keep_section_run(
+    request: Request,
+    brief_id: uuid.UUID,
+    section_id: str,
+    run_id: str,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Keep Edits: the change awaiting review stays and the review ends."""
+    brief = await _get_owned_brief(session, brief_id, user)
+    return await _apply_and_save(
+        session, brief, user, lambda c: bc.keep_review(c, section_id, run_id)
+    )
+
+
+@router.post(
+    "/briefs/{brief_id}/sections/{section_id}/audit/{entry_id}/restore",
+    response_model=BriefRead,
+    tags=["brief-citations"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def restore_section_version(
+    request: Request,
+    brief_id: uuid.UUID,
+    section_id: str,
+    entry_id: str,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+):
+    """Restore the version of a section one of its Log rows records, as a
+    new "Restored" run (nothing is removed)."""
+    brief = await _get_owned_brief(session, brief_id, user)
+    return await _apply_and_save(
+        session,
+        brief,
+        user,
+        lambda c: bc.restore_section_version(c, section_id, entry_id),
+        VersionChange(kind="restore", section_id=section_id),
     )
 
 
@@ -113,7 +180,11 @@ async def set_reference_grouping(
     """Change how citations are numbered and the References list laid out."""
     brief = await _get_owned_brief(session, brief_id, user)
     return await _apply_and_save(
-        session, brief, lambda c: bc.set_grouping(c, body.grouping)
+        session,
+        brief,
+        user,
+        lambda c: bc.set_grouping(c, body.grouping),
+        VersionChange(kind=KIND_GROUPING),
     )
 
 
@@ -131,7 +202,7 @@ async def set_source_highlights(
     """Store the highlighter's claim matches on brief-wide sources."""
     brief = await _get_owned_brief(session, brief_id, user)
     return await _apply_and_save(
-        session, brief, lambda c: bc.set_highlights(c, body.highlights)
+        session, brief, user, lambda c: bc.set_highlights(c, body.highlights)
     )
 
 

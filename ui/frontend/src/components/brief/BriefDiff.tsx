@@ -90,6 +90,22 @@ const mergeChanged = (oldText: string, newText: string): string =>
     })
     .join('');
 
+// A replaced run of lines shares less than this share of its words with what
+// it replaced: it is a rewrite, shown as the old text struck out and the new
+// text added, rather than interleaved word by word (which is unreadable).
+export const REWRITE_SHARED_WORDS = 0.5;
+
+const sharedWordShare = (oldText: string, newText: string): number => {
+  const words = (segs: Seg[], type: SegType) =>
+    segs
+      .filter((seg) => seg.type === type)
+      .reduce((n, seg) => n + seg.text.split(/\s+/).filter(Boolean).length, 0);
+  const segs = diffWords(oldText, newText);
+  const same = words(segs, 'same');
+  const longest = Math.max(same + words(segs, 'del'), same + words(segs, 'add'));
+  return longest ? same / longest : 1;
+};
+
 export type DiffBlockType = 'same' | 'add' | 'del' | 'changed';
 export interface DiffBlock {
   type: DiffBlockType;
@@ -112,8 +128,13 @@ export const diffBlocks = (oldText: string, newText: string): DiffBlock[] => {
     if (type === 'del') {
       // A removal immediately followed by an addition is one changed block.
       const addRun = takeRun('add');
-      if (addRun.length) {
-        blocks.push({ type: 'changed', markdown: mergeChanged(run.join('\n'), addRun.join('\n')) });
+      const oldText = run.join('\n');
+      const newText = addRun.join('\n');
+      if (addRun.length && sharedWordShare(oldText, newText) < REWRITE_SHARED_WORDS) {
+        blocks.push({ type: 'del', markdown: oldText });
+        blocks.push({ type: 'add', markdown: newText });
+      } else if (addRun.length) {
+        blocks.push({ type: 'changed', markdown: mergeChanged(oldText, newText) });
       } else {
         blocks.push({ type: 'del', markdown: run.join('\n') });
       }

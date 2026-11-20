@@ -1,5 +1,6 @@
 """Pydantic schemas for user authentication and permissions."""
 
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -50,6 +51,50 @@ def _validate_jsonb(v: Any) -> Any:
             f"JSONB payload exceeds maximum size of {_MAX_JSONB_SIZE} characters"
         )
     return v
+
+
+# Values anonymous visitors can store (ratings, activity) are later shown to
+# administrators. Two kinds are refused because a browser could run them: a
+# data: URL that is not a raster image (it is shown as an image, and an SVG can
+# carry script), and a javascript: or vbscript: value in a link field (url,
+# link, href, *_url), which the admin screens render as a link. Other text is
+# shown as text, so it is left alone. Browsers ignore whitespace and control
+# characters inside a scheme, so those are removed before the check.
+_RASTER_DATA_URL = re.compile(
+    r"^data:image/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=\s]*$", re.IGNORECASE
+)
+_SCHEME_NOISE = re.compile(r"[\x00-\x20\x7f]+")
+_EXECUTABLE_SCHEMES = ("javascript:", "vbscript:")
+
+
+def _is_link_field(key: Optional[str]) -> bool:
+    return key is not None and (key in ("url", "link", "href") or key.endswith("_url"))
+
+
+def _check_not_executable(value: str, is_link: bool) -> None:
+    compact = _SCHEME_NOISE.sub("", value).lower()
+    if compact.startswith("data:") and not _RASTER_DATA_URL.match(value.strip()):
+        raise ValueError("Only PNG, JPEG, WebP or GIF data URLs are accepted")
+    if is_link and compact.startswith(_EXECUTABLE_SCHEMES):
+        raise ValueError("Script URLs are not accepted in link fields")
+
+
+def _reject_executable_values(obj: Any, key: Optional[str] = None) -> Any:
+    """Raise ValueError if *obj* holds a value a browser would run (see above)."""
+    if isinstance(obj, str):
+        _check_not_executable(obj, _is_link_field(key))
+    elif isinstance(obj, dict):
+        for item_key, item in obj.items():
+            _reject_executable_values(item, str(item_key))
+    elif isinstance(obj, list):
+        for item in obj:
+            _reject_executable_values(item, key)
+    return obj
+
+
+def _validate_untrusted_jsonb(v: Any) -> Any:
+    """Validate a JSONB value an anonymous visitor may have sent."""
+    return _reject_executable_values(_validate_jsonb(v))
 
 
 # ---------------------------------------------------------------------------
@@ -232,7 +277,12 @@ class RatingCreate(BaseModel):
     @field_validator("context")
     @classmethod
     def validate_context(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return _reject_executable_values(v, "url")
 
 
 # ---------------------------------------------------------------------------
@@ -326,12 +376,17 @@ class ActivityCreate(_TokenUsageFields):
     @field_validator("filters")
     @classmethod
     def validate_filters(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
     @field_validator("search_results")
     @classmethod
     def validate_search_results(cls, v: Optional[list]) -> Optional[list]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
+        return _reject_executable_values(v, "url")
 
 
 class ActivitySummaryUpdate(_TokenUsageFields):
@@ -349,7 +404,7 @@ class ActivitySummaryUpdate(_TokenUsageFields):
     @field_validator("drilldown_tree")
     @classmethod
     def validate_drilldown_tree(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
 
 class ActivitySummaryUpdateAnonymous(_TokenUsageFields):
@@ -363,7 +418,7 @@ class ActivitySummaryUpdateAnonymous(_TokenUsageFields):
     @field_validator("drilldown_tree")
     @classmethod
     def validate_drilldown_tree(cls, v: Optional[dict]) -> Optional[dict]:
-        return _validate_jsonb(v)
+        return _validate_untrusted_jsonb(v)
 
 
 class ActivityRead(_TokenUsageFields):
@@ -483,10 +538,10 @@ class SavedResearchListItem(BaseModel):
 # Brief Central schemas (briefs, templates, voice profiles, shares)
 # ---------------------------------------------------------------------------
 
-# A research prompt has the same limit as a section's typed guidance (the
-# research question cap in routes/brief.py), and a length target the same
-# bounds as the assistant request that carries it.
-BRIEF_PROMPT_MAX_CHARS = 2000
+# The longest research prompt an author can write: a brief's instructions, a
+# section's guidance, an Edit or Update instruction, a template prompt. A length
+# target has the same bounds as the assistant request that carries it.
+BRIEF_PROMPT_MAX_CHARS = 5000
 VOICE_INSTRUCTIONS_MAX_CHARS = 10_000
 # A brief's topic is its question (``BriefCreate.query``); a section heading
 # is a template heading's title.
@@ -649,7 +704,6 @@ class BriefUpdate(BaseModel):
         return _validate_research_jsonb(v)
 
 
-BRIEF_RUN_MODES = ("generate", "edit", "update", "condense", "manual")
 BRIEF_GROUPINGS = ("passage", "document-multiple", "document-single")
 # A section's markdown; the longest stored section is a few thousand words.
 BRIEF_RUN_CONTENT_MAX_CHARS = 200_000
@@ -675,6 +729,9 @@ class BriefRunCreate(BaseModel):
     question: Optional[str] = Field(None, max_length=5000)
     instruction: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
     note: Optional[str] = Field(None, max_length=2000)
+    # A single-section Generate, Edit or Update: the change waits for Keep or
+    # Reject (whole-brief runs leave this false).
+    review: bool = False
 
     @field_validator("sources")
     @classmethod
@@ -694,6 +751,7 @@ class BriefRunCreate(BaseModel):
             ("question", self.question),
             ("instruction", self.instruction),
             ("note", self.note),
+            ("review", self.review),
         ):
             if value:
                 run[key] = value
@@ -791,10 +849,70 @@ class BriefRead(BaseModel):
     owner_name: Optional[str] = None
     can_edit: bool = True
     shared_with: List[BriefShareTarget] = []
+    # Number of whole-brief versions, for the Document History link.
+    version_count: int = 0
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BriefVersionCheck(BaseModel):
+    """The citation check that judged a version, as its Log row shows it:
+    ``label`` is the display text (verdict counts once complete, else the
+    status)."""
+
+    id: uuid.UUID
+    status: str
+    created_at: datetime
+    flagged: Optional[int] = None
+    total: Optional[int] = None
+    label: str
+
+
+class BriefVersionItem(BaseModel):
+    """One row of a brief's version Log (no content)."""
+
+    number: int
+    kind: str
+    section_id: Optional[str] = None
+    summary: str
+    author_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_current: bool
+    # The newest citation check that judged this version, if any.
+    citation_check: Optional[BriefVersionCheck] = None
+
+
+class BriefVersionSection(BaseModel):
+    """One section of a version compared with the version before it: its
+    text as readers saw it before and after, and what happened to it."""
+
+    id: str
+    title: str
+    level: int
+    change: Literal["added", "removed", "changed", "unchanged"]
+    before: Optional[str] = None
+    after: Optional[str] = None
+    beforeTitle: Optional[str] = None
+
+
+class BriefVersionRead(BaseModel):
+    """One version of a brief, compared with the version before it."""
+
+    number: int
+    kind: str
+    summary: str
+    author_name: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    is_current: bool
+    previous_number: Optional[int] = None
+    title: str
+    sections: List[BriefVersionSection]
+    settings: List[str]
+    can_restore: bool
 
 
 class BriefListItem(BaseModel):
@@ -934,6 +1052,13 @@ class BriefSectionPrompt(BaseModel):
         return self
 
 
+class BriefSurveyPrompt(BaseModel):
+    """The parts of the library survey run before a brief's outline is drafted."""
+
+    topic: str = Field(..., min_length=1, max_length=BRIEF_TOPIC_MAX_CHARS)
+    instructions: Optional[str] = Field(None, max_length=BRIEF_PROMPT_MAX_CHARS)
+
+
 class AssistantChatRequest(BaseModel):
     """Request payload for assistant chat streaming endpoint."""
 
@@ -977,6 +1102,9 @@ class AssistantChatRequest(BaseModel):
     # prompt from it, and ``query`` is then the section heading, used for
     # the Activity row and logs.
     brief_section: Optional[BriefSectionPrompt] = None
+    # Brief only: the survey before an outline. As with ``brief_section``, the
+    # API writes the prompt and ``query`` stays a short label (the topic).
+    brief_survey: Optional[BriefSurveyPrompt] = None
 
 
 class ThreadRenameRequest(BaseModel):

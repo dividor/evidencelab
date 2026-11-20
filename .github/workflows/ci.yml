@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, develop, rc/**, copilot/** ]
+    branches: [ main, 'release-*', copilot/** ]
   pull_request:
-    branches: [ main, master, develop, rc/** ]
+    branches: [ main, 'release-*' ]
 
 permissions: {}
 
@@ -303,7 +303,10 @@ jobs:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       UI_BASE_URL: ${{ vars.UI_BASE_URL }}
       API_SECRET_KEY: ${{ secrets.API_SECRET_KEY || 'ci-integration-test-key' }}
-      REACT_APP_API_KEY: ${{ secrets.API_SECRET_KEY || 'ci-integration-test-key' }}
+      # The web interface's key is public, so it differs from API_SECRET_KEY:
+      # the MCP and A2A tests use API_SECRET_KEY, which MCP refuses when it is
+      # also the key built into the page.
+      REACT_APP_API_KEY: ${{ format('{0}-web', secrets.API_SECRET_KEY || 'ci-integration-test-key') }}
       DENSE_EMBEDDING_MODEL: ${{ vars.DENSE_EMBEDDING_MODEL }}
       QDRANT_HOST: ${{ vars.QDRANT_HOST }}
       CELERY_BROKER_URL: ${{ vars.CELERY_BROKER_URL }}

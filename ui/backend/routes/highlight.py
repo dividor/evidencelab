@@ -19,6 +19,7 @@ from ui.backend.schemas import (
     UnifiedHighlightRequest,
     UnifiedHighlightResponse,
 )
+from ui.backend.utils.app_limits import get_highlight_max_text_chars
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.highlight_helpers import (
     build_clean_text_index_map,
@@ -32,8 +33,10 @@ from ui.backend.utils.highlight_helpers import (
     parse_semantic_phrases,
     render_highlighted_text,
 )
+from ui.backend.utils.llm_request_limits import check_model_config
 
 router = APIRouter()
+HIGHLIGHT_MAX_TEXT_CHARS = get_highlight_max_text_chars()
 _highlight_cache: Dict[Any, Any] = {}
 
 
@@ -600,6 +603,12 @@ async def highlight_text(
     Returns:
         Unified response with all requested highlight types
     """
+    check_model_config(request.semantic_model_config)
+    if len(request.text) > HIGHLIGHT_MAX_TEXT_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"text is longer than {HIGHLIGHT_MAX_TEXT_CHARS} characters",
+        )
     try:
         query = request.query.strip()
         text = request.text

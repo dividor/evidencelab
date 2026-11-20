@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Optional
 
-def research_question_prompt(topic: str, data_source: str = "uneg") -> str:
+from pipeline.db import resolve_data_source
+
+
+def research_question_prompt(topic: str, data_source: Optional[str] = None) -> str:
     """Generate a structured research prompt for investigating a topic.
 
     Creates a prompt that guides the AI assistant to conduct thorough
@@ -11,13 +15,15 @@ def research_question_prompt(topic: str, data_source: str = "uneg") -> str:
 
     Args:
         topic: The research topic or question to investigate.
-        data_source: The document collection to search (default "uneg").
+        data_source: The document collection to search. Required when
+            there is more than one.
 
     Returns:
         A formatted prompt string.
     """
+    source = resolve_data_source(data_source)
     return (
-        f"Research the following topic using the {data_source} evaluation "
+        f"Research the following topic using the {source} evaluation "
         f"document collection:\n\n"
         f"Topic: {topic}\n\n"
         f"Recommended workflow:\n"

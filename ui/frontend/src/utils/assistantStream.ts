@@ -76,6 +76,12 @@ export interface BriefSectionPrompt {
   voice_instructions?: string;
 }
 
+// The survey run before a brief's outline; the API writes its prompt.
+export interface BriefSurveyPrompt {
+  topic: string;
+  instructions?: string;
+}
+
 interface AssistantStreamOptions {
   apiBaseUrl: string;
   query: string;
@@ -105,6 +111,7 @@ interface AssistantStreamOptions {
   // Brief: the section being researched; the API writes its prompt, and
   // `query` is then the section heading.
   briefSection?: BriefSectionPrompt | null;
+  briefSurvey?: BriefSurveyPrompt | null;
   handlers: AssistantStreamHandlers;
   signal?: AbortSignal;
 }
@@ -275,8 +282,31 @@ const buildSearchSettingsPayload = (
   return Object.keys(payload).length > 0 ? payload : undefined;
 };
 
-export const streamAssistantChat = async ({
-  apiBaseUrl,
+/**
+ * What a refused request says, using the API's own reason so the person sees
+ * why: its message, or for a 422 each rejected field and what is wrong with it.
+ */
+export const requestFailureMessage = async (response: Response): Promise<string> => {
+  const prefix = `Request failed: ${response.status}`;
+  let detail: unknown;
+  try {
+    detail = (await response.json())?.detail;
+  } catch {
+    return `${prefix} ${response.statusText}`;
+  }
+  if (typeof detail === 'string') return `${prefix}: ${detail}`;
+  if (Array.isArray(detail)) {
+    const fields = detail.map((e: { loc?: unknown[]; msg?: string }) => {
+      const field = (e.loc ?? []).filter((part) => part !== 'body').join('.');
+      return `${field}: ${e.msg}`;
+    });
+    return `${prefix}: ${fields.join('; ')}`;
+  }
+  return `${prefix} ${response.statusText}`;
+};
+
+/** The JSON body of a chat request. */
+const buildRequestBody = ({
   query,
   dataSource,
   threadId,
@@ -291,40 +321,45 @@ export const streamAssistantChat = async ({
   targetWords,
   introducesSubSections,
   briefSection,
-  handlers,
-  signal,
-}: AssistantStreamOptions): Promise<void> => {
+  briefSurvey,
+}: AssistantStreamOptions): string => {
   // Fold the per-request publish-date cutoff into the search_settings payload
   // (backend allows extra keys and applies it as a Qdrant range filter).
   const settingsPayload = buildSearchSettingsPayload(searchSettings);
   const searchSettingsBody = publishedAfter
     ? { ...(settingsPayload || {}), published_after: publishedAfter }
     : settingsPayload;
+  return JSON.stringify({
+    query,
+    thread_id: threadId || undefined,
+    data_source: dataSource || undefined,
+    assistant_model_config: assistantModelConfig || undefined,
+    reranker_model: rerankerModel || undefined,
+    search_settings: searchSettingsBody,
+    deep_research: deepResearch || undefined,
+    conversation_history: conversationHistory?.length ? conversationHistory : undefined,
+    activity_id: activityId || undefined,
+    session_id: getSessionId(),
+    usage_context: usageContext || undefined,
+    target_words: targetWords || undefined,
+    introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : undefined,
+    brief_section: briefSection || undefined,
+    brief_survey: briefSurvey || undefined,
+  });
+};
+
+export const streamAssistantChat = async (options: AssistantStreamOptions): Promise<void> => {
+  const { apiBaseUrl, handlers, signal } = options;
   const response = await fetch(`${apiBaseUrl}/assistant/chat/stream`, {
     method: 'POST',
     headers: buildHeaders(),
     credentials: 'include',
-    body: JSON.stringify({
-      query,
-      thread_id: threadId || undefined,
-      data_source: dataSource || undefined,
-      assistant_model_config: assistantModelConfig || undefined,
-      reranker_model: rerankerModel || undefined,
-      search_settings: searchSettingsBody,
-      deep_research: deepResearch || undefined,
-      conversation_history: conversationHistory?.length ? conversationHistory : undefined,
-      activity_id: activityId || undefined,
-      session_id: getSessionId(),
-      usage_context: usageContext || undefined,
-      target_words: targetWords || undefined,
-      introduces_sub_sections: introducesSubSections?.length ? introducesSubSections : undefined,
-      brief_section: briefSection || undefined,
-    }),
+    body: buildRequestBody(options),
     signal,
   });
 
   if (!response.ok) {
-    handlers.onError(`Request failed: ${response.status} ${response.statusText}`);
+    handlers.onError(await requestFailureMessage(response));
     return;
   }
 

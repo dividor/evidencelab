@@ -10,7 +10,11 @@ the limit it has when stored, and the prompt is written here.
 import re
 from typing import List, Optional
 
-from ui.backend.auth.schemas import BriefOutlineSection, BriefSectionPrompt
+from ui.backend.auth.schemas import (
+    BriefOutlineSection,
+    BriefSectionPrompt,
+    BriefSurveyPrompt,
+)
 
 # Characters of a written section quoted in the outline as what it covers.
 _GIST_CHARS = 180
@@ -182,3 +186,20 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
             f"{prompt} Voice & tone profile — write the section in this style: {voice}"
         )
     return prompt
+
+
+def build_survey_prompt(survey: BriefSurveyPrompt) -> str:
+    """The research prompt that surveys the library before an outline is drafted."""
+    base = (
+        "Research the document library to inform an evidence brief on "
+        f'"{survey.topic}".'
+    )
+    instructions = (survey.instructions or "").strip()
+    if not instructions:
+        return base
+    return (
+        f"{base} Follow these author instructions closely and let them drive what "
+        "you search for — focus your queries on the specific angles, sectors, "
+        "regions, populations and outcomes the instructions call for, not just "
+        f"generic restatements of the topic: {instructions}"
+    )

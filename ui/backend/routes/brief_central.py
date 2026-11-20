@@ -19,6 +19,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.audit import write_audit_event
 from ui.backend.auth.db import get_async_session
@@ -34,9 +35,23 @@ from ui.backend.auth.schemas import (
     BriefUpdate,
 )
 from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.schemas.testing import (
+    BriefCitationCheckRead,
+    BriefFactCheckEvidence,
+    BriefFactCheckEvidenceRead,
+    BriefFactCheckLegendItem,
+    BriefFactCheckMark,
+    BriefFactCheckRead,
+    BriefFactCheckSection,
+)
 from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_activity import upsert_brief_activity
 from ui.backend.services.brief_citations_convert import convert_legacy, is_legacy
+from ui.backend.services.brief_fact_check import (
+    brief_changed,
+    fact_check,
+    fact_check_evidence,
+)
 from ui.backend.services.brief_sharing import (
     add_share,
     owner_name,
@@ -45,6 +60,14 @@ from ui.backend.services.brief_sharing import (
     shared_with,
     user_group_ids,
 )
+from ui.backend.services.brief_version_store import (
+    VersionChange,
+    count_versions,
+    record_version,
+)
+from ui.backend.services.brief_versions import KIND_COPIED, KIND_CREATED
+from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_state import validate_data_source
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +76,7 @@ logger = logging.getLogger(__name__)
 MIN_SHARE_QUERY_CHARS = 2
 SHARE_SUGGESTION_LIMIT = 8
 router = APIRouter()
+_RL_SEARCH, _RL_DEFAULT, _RL_AI = get_rate_limits()
 
 _BRIEF_NOT_FOUND = "Brief not found"
 EVENT_BRIEF_ADMIN_VIEWED = "brief_admin_viewed"
@@ -159,11 +183,26 @@ def read_content(brief: Brief) -> dict:
 
 
 async def store_brief_content(
-    session: AsyncSession, brief: Brief, content: dict
+    session: AsyncSession,
+    brief: Brief,
+    content: dict,
+    user: User,
+    change: Optional[VersionChange] = None,
+    created: bool = False,
 ) -> None:
-    """Save recomputed content and refresh the brief's Activity row in the
-    same transaction. A new dict is assigned so the ORM sees the change."""
+    """Save recomputed content, write the version it makes and refresh the
+    brief's Activity row, all in one transaction. ``created`` marks a brief
+    being saved for the first time (it has no earlier content). A new dict is
+    assigned so the ORM sees the change."""
+    previous = None if created else brief.content
+    previous_at = None if created else brief.updated_at
     brief.content = copy.deepcopy(content)
+    try:
+        await record_version(
+            session, brief, previous, user.id, change, previous_at=previous_at
+        )
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
     await upsert_brief_activity(
         session,
         content=brief.content,
@@ -223,6 +262,7 @@ async def _to_brief_read(
             if can_edit
             else []
         ),
+        version_count=await count_versions(session, brief.id),
         created_at=brief.created_at,
         updated_at=brief.updated_at,
     )
@@ -269,13 +309,20 @@ async def create_brief(
         user_id=user.id,
         title=body.title,
         query=body.query,
-        data_source=body.data_source,
+        data_source=await run_in_threadpool(validate_data_source, body.data_source),
         voice_profile_id=body.voice_profile_id,
         content=new_brief_content(body.content, body.convert),
     )
     session.add(brief)
     await session.flush()
-    await store_brief_content(session, brief, brief.content)
+    await store_brief_content(
+        session,
+        brief,
+        brief.content,
+        user,
+        VersionChange(kind=KIND_CREATED),
+        created=True,
+    )
     return await _to_brief_read(session, brief, can_edit=True)
 
 
@@ -413,6 +460,75 @@ async def get_brief(
     return await _to_brief_read(session, brief, can_edit)
 
 
+@router.get(
+    "/briefs/{brief_id}/fact-check", response_model=BriefFactCheckRead, tags=["briefs"]
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_brief_fact_check(
+    brief_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckRead:
+    """The Fact Checker of a brief the user can view: the newest completed
+    citation check while it still covers part of the brief, the version it
+    judged against the brief's current one, the sections changed since, and
+    every judged passage to highlight with its verdict."""
+    brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    try:
+        answer = await fact_check(session, brief)
+    except bc.BriefCitationError as exc:
+        raise citation_http_error(exc)
+    check = answer["check"]
+    check_read = None
+    if check is not None:
+        check_read = BriefCitationCheckRead.model_validate(check).model_copy(
+            update={"brief_changed": brief_changed(check, answer["current_version"])}
+        )
+    return BriefFactCheckRead(
+        check=check_read,
+        brief_version=answer["brief_version"],
+        current_version=answer["current_version"],
+        note=answer["note"],
+        changed_sections=[
+            BriefFactCheckSection(**section) for section in answer["changed_sections"]
+        ],
+        legend=[BriefFactCheckLegendItem(**item) for item in answer["legend"]],
+        marks=[BriefFactCheckMark(**mark) for mark in answer["marks"]],
+    )
+
+
+@router.get(
+    "/briefs/{brief_id}/fact-check/{check_id}/passages/{passage_id}",
+    response_model=BriefFactCheckEvidenceRead,
+    tags=["briefs"],
+)
+@limiter.limit(_RL_DEFAULT)
+async def get_brief_fact_check_evidence(
+    brief_id: uuid.UUID,
+    check_id: uuid.UUID,
+    passage_id: int,
+    request: Request,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> BriefFactCheckEvidenceRead:
+    """The evidence behind one highlighted passage: the excerpts the judge
+    read, with the parts it quoted marked. Loaded when the passage's card
+    opens, since the excerpts are long and most are never looked at."""
+    brief, _can_edit = await _get_viewable_brief(session, brief_id, user)
+    answer = await fact_check_evidence(session, brief, check_id, passage_id)
+    if answer is None:
+        raise HTTPException(
+            status_code=404, detail="No such passage in a completed check of this brief"
+        )
+    return BriefFactCheckEvidenceRead(
+        passage_id=answer["passage_id"],
+        verdict=answer["verdict"],
+        verdict_label=answer["verdict_label"],
+        evidence=[BriefFactCheckEvidence(**block) for block in answer["evidence"]],
+    )
+
+
 @router.post("/briefs/{brief_id}/copy", response_model=BriefRead, tags=["briefs"])
 async def copy_brief(
     brief_id: uuid.UUID,
@@ -444,8 +560,15 @@ async def copy_brief(
         content=content,
     )
     session.add(brief)
-    await session.commit()
-    await session.refresh(brief)
+    await session.flush()
+    await store_brief_content(
+        session,
+        brief,
+        content,
+        user,
+        VersionChange(kind=KIND_COPIED, detail=source.title),
+        created=True,
+    )
     await _audit_admin_access(session, request, source, user, EVENT_BRIEF_ADMIN_COPIED)
     return await _to_brief_read(session, brief, can_edit=True)
 
@@ -476,7 +599,7 @@ async def update_brief(
             content = bc.apply_structure(content, body.content)
         except bc.BriefCitationError as exc:
             raise citation_http_error(exc)
-    await store_brief_content(session, brief, content)
+    await store_brief_content(session, brief, content, user)
     return await _to_brief_read(session, brief, can_edit=True)
 
 

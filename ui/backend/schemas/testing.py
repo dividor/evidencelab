@@ -205,6 +205,11 @@ class BriefCitationCheckRead(BaseModel):
     created_by_user_id: Optional[uuid.UUID] = None
     judge_model: Optional[str] = None
     model_combo: Optional[str] = None
+    # The brief version the check judged (None on checks made before
+    # versions were linked) and whether the brief has a newer version since
+    # (None when no version was recorded). The routes set ``brief_changed``.
+    brief_version_number: Optional[int] = None
+    brief_changed: Optional[bool] = None
     status: str
     summary_stats: Optional[Dict[str, Any]] = None
     started_at: Optional[datetime] = None
@@ -238,6 +243,95 @@ class BriefCitationCheckPassageRead(BaseModel):
 
 class BriefCitationCheckDetail(BriefCitationCheckRead):
     passages: List[BriefCitationCheckPassageRead] = Field(default_factory=list)
+
+
+class BriefFactCheckMark(BaseModel):
+    """One passage the Fact Checker highlights in an open brief: where it is,
+    what the judge decided and why. ``passage`` is the prose as the check
+    stored it (markers and markdown removed), which the browser locates in
+    the rendered section."""
+
+    passage_id: int
+    section_id: Optional[str] = None
+    section_title: str
+    passage: str
+    verdict: str
+    verdict_label: str
+    explanation: str
+    problems: List[str] = Field(default_factory=list)
+    confidence: Optional[float] = None
+    citations: str
+    quote_not_in_source: bool
+
+
+class BriefFactCheckLegendItem(BaseModel):
+    """One verdict of the Fact Checker's legend: its label and how many of
+    the highlighted passages carry it."""
+
+    verdict: str
+    label: str
+    count: int
+
+
+class BriefFactCheckSegment(BaseModel):
+    """A run of an excerpt, highlighted when the judge quoted it."""
+
+    text: str
+    highlighted: bool
+
+
+class BriefFactCheckEvidence(BaseModel):
+    """One cited source as the judge read it: where it comes from, and its
+    excerpt cut into plain and quoted runs. ``quoted`` says whether any of
+    the judge's quotes was found in it."""
+
+    citation: Optional[int] = None
+    label: str
+    title: str
+    page: Optional[int] = None
+    section: str = ""
+    doc_id: Optional[str] = None
+    chunk_id: Optional[str] = None
+    pdf_url: Optional[str] = None
+    quoted: bool
+    segments: List[BriefFactCheckSegment]
+
+
+class BriefFactCheckEvidenceRead(BaseModel):
+    """GET /briefs/{id}/fact-check/{check_id}/passages/{passage_id}: the
+    evidence behind one highlighted passage, loaded when its card opens."""
+
+    passage_id: int
+    verdict: str
+    verdict_label: str
+    evidence: List[BriefFactCheckEvidence]
+
+
+class BriefFactCheckSection(BaseModel):
+    """A section with cited passages that changed since the check judged
+    the brief, so the Fact Checker does not cover it; ``note`` is shown
+    above it while the highlights are on."""
+
+    id: str
+    title: str
+    note: str
+
+
+class BriefFactCheckRead(BaseModel):
+    """What the Fact Checker button needs: the completed check that still
+    covers at least one section of the brief (``None`` when there is none,
+    so the button stays hidden), the version it judged and the brief's
+    current version, a note on how they relate, the sections the check no
+    longer covers, the legend of verdict colours with their counts, and the
+    marks (every judged passage of a covered section)."""
+
+    check: Optional[BriefCitationCheckRead] = None
+    brief_version: Optional[int] = None
+    current_version: Optional[int] = None
+    note: str = ""
+    changed_sections: List[BriefFactCheckSection] = Field(default_factory=list)
+    legend: List[BriefFactCheckLegendItem] = Field(default_factory=list)
+    marks: List[BriefFactCheckMark] = Field(default_factory=list)
 
 
 BriefCheckCandidate.model_rebuild()

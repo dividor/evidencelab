@@ -3,6 +3,7 @@ import { BriefLengthControl } from './BriefLengthControl';
 import { IconPlus, IconSparkle } from './BriefIcons';
 import { BriefTemplate, BriefTemplateHeading, PROMPT_MAX_CHARS, VoiceProfile } from './briefTypes';
 import { BriefVoiceSelect } from './BriefVoiceSelect';
+import { AutoGrowTextarea } from '../AutoGrowTextarea';
 
 /**
  * The Brief Central modals: New brief, voice & tone profile editor and
@@ -149,7 +150,7 @@ export const BriefNewModal: React.FC<{
               <label className="brief-label brief-label-spaced" htmlFor="bc-new-instructions">
                 Instructions <span className="brief-label-hint">(optional — guides the headings)</span>
               </label>
-              <textarea
+              <AutoGrowTextarea
                 id="bc-new-instructions"
                 className="brief-textarea brief-textarea-sm"
                 rows={2}
@@ -227,7 +228,7 @@ export const BriefNewModal: React.FC<{
               <label className="brief-label brief-label-spaced" htmlFor="bc-new-prompt">
                 Brief prompt <span className="brief-label-hint">(optional — applied to every section)</span>
               </label>
-              <textarea
+              <AutoGrowTextarea
                 id="bc-new-prompt"
                 className="brief-textarea brief-textarea-sm"
                 rows={2}
@@ -442,7 +443,7 @@ export const BriefRegenAllModal: React.FC<{
           <label className="brief-label" htmlFor="bc-regen-instructions">
             Instructions <span className="brief-label-hint">(optional — guides the research)</span>
           </label>
-          <textarea
+          <AutoGrowTextarea
             id="bc-regen-instructions"
             className="brief-textarea brief-textarea-sm"
             rows={3}

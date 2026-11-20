@@ -5,6 +5,7 @@ import { IconPlus } from './BriefIcons';
 import { BriefLengthControl } from './BriefLengthControl';
 import { BriefTemplate, BriefTemplateHeading, PROMPT_MAX_CHARS, VoiceProfile } from './briefTypes';
 import { BriefVoiceSelect } from './BriefVoiceSelect';
+import { AutoGrowTextarea } from '../AutoGrowTextarea';
 
 /**
  * The template editor: a new template, one saved from a brief, or an edit of
@@ -137,7 +138,7 @@ const BriefDefaults: React.FC<{
     <label className="brief-label" htmlFor="bc-tpl-prompt">
       Brief prompt <span className="brief-label-hint">(optional — applied to every section)</span>
     </label>
-    <textarea
+    <AutoGrowTextarea
       id="bc-tpl-prompt"
       className="brief-textarea brief-textarea-sm"
       rows={2}
@@ -186,7 +187,7 @@ const HeadingSettings: React.FC<{
     <label className="brief-label" htmlFor={`bc-tpl-prompt-${heading.key}`}>
       Prompt for “{headingName(heading)}”
     </label>
-    <textarea
+    <AutoGrowTextarea
       id={`bc-tpl-prompt-${heading.key}`}
       className="brief-textarea brief-textarea-sm"
       rows={2}

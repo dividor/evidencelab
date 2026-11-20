@@ -16,7 +16,9 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ui.backend.auth.optional_user import optional_session as _session_dep
 from ui.backend.auth.optional_user import resolve_optional_user as _resolve_user_dep
+from ui.backend.auth.schemas import BRIEF_PROMPT_MAX_CHARS
 from ui.backend.schemas import (
     BriefHeading,
     BriefOutlineRequest,
@@ -25,8 +27,10 @@ from ui.backend.schemas import (
     BriefReviseResponse,
 )
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services.data_source_access import settle_data_source
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.llm_request_limits import check_requested_llm
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +110,7 @@ async def generate_outline(
     request: Request,
     body: BriefOutlineRequest,
     user=Depends(_resolve_user_dep),
+    session=Depends(_session_dep),
 ) -> BriefOutlineResponse:
     """Generate a research-brief outline (title + section headings) from a question."""
     question = (body.question or "").strip()
@@ -113,11 +118,13 @@ async def generate_outline(
         raise HTTPException(status_code=400, detail="question is required")
     if len(question) > _MAX_QUESTION_CHARS:
         raise HTTPException(status_code=400, detail="question is too long")
+    body.data_source = await settle_data_source(body.data_source, user, session)
     _validate_data_source(body.data_source)
 
     # Use the model the frontend sent (the selected combo), falling back to the
     # configured chat/deep-research model from config.json — never a hard-coded
     # default — so the outline works even before the UI's combo fetch resolves.
+    check_requested_llm((body.model or "").strip() or None, None)
     model_key = (body.model or "").strip() or _resolve_configured_model(
         body.data_source
     )
@@ -154,6 +161,7 @@ async def revise_section(
     request: Request,
     body: BriefReviseRequest,
     user=Depends(_resolve_user_dep),
+    session=Depends(_session_dep),
 ) -> BriefReviseResponse:
     """Surgically revise a section's markdown per an instruction (Brief "Edit").
 
@@ -166,10 +174,12 @@ async def revise_section(
         raise HTTPException(status_code=400, detail="content is required")
     if not instruction:
         raise HTTPException(status_code=400, detail="instruction is required")
-    if len(instruction) > _MAX_QUESTION_CHARS:
+    if len(instruction) > BRIEF_PROMPT_MAX_CHARS:
         raise HTTPException(status_code=400, detail="instruction is too long")
+    body.data_source = await settle_data_source(body.data_source, user, session)
     _validate_data_source(body.data_source)
 
+    check_requested_llm((body.model or "").strip() or None, None)
     model_key = (body.model or "").strip() or _resolve_configured_model(
         body.data_source
     )

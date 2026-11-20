@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import secrets
 
 import pytest
 from starlette.requests import Request
@@ -27,6 +28,12 @@ def _make_request(headers: dict | None = None, cookies: dict | None = None) -> R
     if cookies:
         req._cookies = cookies
     return req
+
+
+@pytest.fixture(autouse=True)
+def _no_browser_key(monkeypatch):
+    """Tests opt in to a web-interface key explicitly."""
+    monkeypatch.delenv("REACT_APP_API_KEY", raising=False)
 
 
 # ── API key tests ──────────────────────────────────────────────────────
@@ -140,3 +147,51 @@ async def test_no_credentials(monkeypatch):
     request = _make_request()
     with pytest.raises(PermissionError, match="Valid API key or JWT required"):
         await verify_mcp_auth(request)
+
+
+# ── The web interface's public key ────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_browser_key_when_also_master_key_then_refused(monkeypatch):
+    """When the master key is built into the page it is public: MCP refuses it."""
+    key = secrets.token_hex(16)
+    monkeypatch.setenv("API_SECRET_KEY", key)
+    monkeypatch.setenv("REACT_APP_API_KEY", key)
+    monkeypatch.setenv("AUTH_SECRET_KEY", "")
+
+    with pytest.raises(PermissionError):
+        await verify_mcp_auth(_make_request(headers={"x-api-key": key}))
+
+
+@pytest.mark.asyncio
+async def test_browser_key_when_separate_then_refused_and_master_accepted(monkeypatch):
+    master, browser = secrets.token_hex(16), secrets.token_hex(16)
+    monkeypatch.setenv("API_SECRET_KEY", master)
+    monkeypatch.setenv("REACT_APP_API_KEY", browser)
+    monkeypatch.setenv("AUTH_SECRET_KEY", "")
+
+    with pytest.raises(PermissionError):
+        await verify_mcp_auth(_make_request(headers={"x-api-key": browser}))
+    info = await verify_mcp_auth(_make_request(headers={"x-api-key": master}))
+    assert info["user_id"] == "env_key"
+
+
+@pytest.mark.asyncio
+async def test_browser_key_when_also_admin_key_then_refused(monkeypatch):
+    """A created key put into the web interface is public too."""
+    key = secrets.token_hex(16)
+    monkeypatch.setenv("API_SECRET_KEY", "")
+    monkeypatch.setenv("REACT_APP_API_KEY", key)
+    monkeypatch.setenv("AUTH_SECRET_KEY", "")
+    key_hash = hashlib.sha256(key.encode()).hexdigest()
+
+    async def fake_get_active_key_hashes():
+        return {key_hash}
+
+    import ui.backend.auth.api_key_cache as _cache_mod
+
+    monkeypatch.setattr(_cache_mod, "get_active_key_hashes", fake_get_active_key_hashes)
+
+    with pytest.raises(PermissionError):
+        await verify_mcp_auth(_make_request(headers={"x-api-key": key}))

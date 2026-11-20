@@ -184,7 +184,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
+      - API_SECRET_KEY=${API_SECRET_KEY:-${REACT_APP_API_KEY:-}}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - USE_EMBEDDING_SERVER=true
@@ -250,7 +250,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
+      - API_SECRET_KEY=${API_SECRET_KEY:-${REACT_APP_API_KEY:-}}
       - USE_EMBEDDING_SERVER=true
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-}
