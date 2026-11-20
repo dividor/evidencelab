@@ -205,8 +205,21 @@ class TestStreamAssistantChat:
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
-    async def test_passes_model_config(self, mock_stream):
+    async def test_passes_model_config(self, mock_stream, monkeypatch):
         """Model config should be extracted and passed to the service."""
+        from pipeline.db import config as db_config
+
+        # The route accepts only a model config.json lists, within its budget.
+        monkeypatch.setattr(
+            db_config,
+            "SUPPORTED_LLMS",
+            {"gpt-4.1-mini": {"model": "gpt-4.1-mini", "provider": "azure_foundry"}},
+        )
+        monkeypatch.setattr(
+            db_config,
+            "UI_MODEL_COMBOS",
+            {"A": {"assistant_model": {"model": "gpt-4.1-mini", "max_tokens": 2000}}},
+        )
 
         async def mock_gen(*args, **kwargs):
             yield {"type": "done", "messageId": "msg-1"}
@@ -220,7 +233,7 @@ class TestStreamAssistantChat:
             query="test",
             assistant_model_config={
                 "model": "gpt-4.1-mini",
-                "max_tokens": 3000,
+                "max_tokens": 2000,
                 "temperature": 0.5,
             },
         )
@@ -242,7 +255,7 @@ class TestStreamAssistantChat:
         call_kwargs = mock_stream.call_args[1]
         assert call_kwargs["model_key"] == "gpt-4.1-mini"
         assert call_kwargs["temperature"] == 0.5
-        assert call_kwargs["max_tokens"] == 3000
+        assert call_kwargs["max_tokens"] == 2000
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")

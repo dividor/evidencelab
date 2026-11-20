@@ -89,6 +89,10 @@ async def mcp_ask_assistant(
     Returns:
         MCPAssistantResponse with the synthesized answer and sources.
     """
+    from mcp_server.rate_limit import check_caller_rate_limit
+
+    check_caller_rate_limit("ai")
+
     from ui.backend.services.assistant_service import stream_research_response
 
     answer_text = ""

@@ -35,8 +35,8 @@ Qdrant + PostgreSQL
 | `AUTH_SECRET_KEY` | *required* | Secret for JWT token verification |
 | `APP_BASE_URL` | `https://evidencelab.ai` | Base URL for OAuth redirects and citation links |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost:8000` | Base URL for OAuth callbacks |
-| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit for search and get_document tools |
-| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit for ask_assistant tool |
+| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit for search and get_document tools, per caller (signed-in user or API key) |
+| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit for ask_assistant tool, per caller |
 
 ### Docker Compose
 

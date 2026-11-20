@@ -473,6 +473,10 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
   - `/mcp/authorize` sets a short-lived, httpOnly cookie in the starting browser; `/mcp/complete` refuses any other browser, so a link to someone else's request cannot connect their app to your account
   - `/mcp/complete` shows which client is asking and where it will be sent; the answer is a same-origin POST with a one-time token, and denying returns `error=access_denied`
   - MCP access tokens carry their own audience (`evidencelab:mcp`): MCP and A2A accept them, the web app does not; only a web sign-in session can answer the consent page
+- **2026-11-17**: Limit what one request can cost
+  - AI routes (AI summary, assistant, highlight, Brief outline and revise) accept only a model listed in `config.json`, and at most the output tokens `config.json` sets for it (`ui/backend/utils/llm_request_limits.py`)
+  - Search `limit` is capped by `SEARCH_MAX_LIMIT` (default 10000) and highlight text by `HIGHLIGHT_MAX_TEXT_CHARS` (default 50000)
+  - The MCP and A2A rate limits (`RATE_LIMIT_MCP_SEARCH`, `RATE_LIMIT_MCP_AI`), documented but never applied, are now enforced per caller (signed-in user or API key) rather than per client address
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)
