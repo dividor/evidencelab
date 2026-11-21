@@ -419,6 +419,10 @@ run "with_cloudfront_the_waf_blocks_and_counts_only_the_core_body_size_rule" {
     condition     = length(aws_wafv2_ip_set.allowed) == 0
     error_message = "No allow list should be made unless waf_allowed_ip_ranges is set."
   }
+  assert {
+    condition     = output.waf_allow_list_blocks == false
+    error_message = "Without an allow list, check-site.sh should fetch the site over the internet."
+  }
 }
 
 run "waf_allowed_ip_ranges_block_every_other_address" {
@@ -439,6 +443,25 @@ run "waf_allowed_ip_ranges_block_every_other_address" {
       r.priority == 0 && length(one(r.action).block) == 1 if r.name == "allowed-ip-ranges"
     ]) && contains([for r in aws_wafv2_web_acl.site[0].rule : r.name], "allowed-ip-ranges")
     error_message = "The allow list should run first and block everything outside the ranges."
+  }
+  assert {
+    condition     = output.waf_allow_list_blocks == true
+    error_message = "With a blocking allow list, check-site.sh should check the site through AWS."
+  }
+}
+
+run "waf_allow_list_in_count_only_mode_does_not_block" {
+  command = plan
+
+  variables {
+    cloudfront_enabled    = true
+    waf_allowed_ip_ranges = ["203.0.113.0/24"]
+    waf_count_only        = true
+  }
+
+  assert {
+    condition     = output.waf_allow_list_blocks == false
+    error_message = "A count-only allow list blocks nobody, so check-site.sh can fetch the site."
   }
 }
 

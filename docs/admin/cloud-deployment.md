@@ -415,7 +415,7 @@ Other settings:
 
 Before you deploy:
 
-- **Your own address must get through.** The last step of `deploy.sh` checks that the site answers. With `waf_allowed_ip_ranges` set, run it from an address in the list.
+- **The site check runs from anywhere.** The last step of `deploy.sh` (`scripts/check-site.sh`) normally fetches the site and `/api/health`. With `waf_allowed_ip_ranges` set and `waf_count_only = false`, the machine running it, such as a CI agent, may not be on the list. So it checks through AWS instead: CloudFront has finished deploying, and the load balancer reports the web app healthy.
 - **Switching an existing deployment** moves the load balancer between the public and private subnets. Expect Terraform to replace it, and the site to be unavailable meanwhile: check the plan for `forces replacement` before you apply.
 - **Costs**, at AWS's prices in November 2026: a web ACL is $5 a month, each rule or managed rule group $1 a month, and $0.60 per million requests ([AWS WAF pricing](https://aws.amazon.com/waf/pricing/)). CloudFront's pay-as-you-go pricing includes 1 TB of data and 10 million requests a month free ([CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/)), and VPC origins cost nothing extra. CloudFront's flat-rate plans do not suit this layout: the Free and Pro plans do not allow VPC origins.
 

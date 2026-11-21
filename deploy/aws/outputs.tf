@@ -94,6 +94,16 @@ output "cloudfront_distribution_id" {
   value       = one(aws_cloudfront_distribution.site[*].id)
 }
 
+output "waf_allow_list_blocks" {
+  description = "Whether the WAF lets in only waf_allowed_ip_ranges: a list is set and waf_count_only is false. scripts/check-site.sh then checks the site through AWS, because the machine running it may not be on the list."
+  value       = local.cloudfront && local.waf_allow_list && !var.waf_count_only
+}
+
+output "ui_target_group_arn" {
+  description = "The load balancer's target group for the web app (ui)."
+  value       = aws_lb_target_group.ui.arn
+}
+
 output "waf_web_acl_name" {
   description = "AWS WAF web ACL on the CloudFront distribution, in us-east-1 (null without cloudfront_enabled)."
   value       = one(aws_wafv2_web_acl.site[*].name)
