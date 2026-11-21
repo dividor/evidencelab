@@ -80,6 +80,8 @@ export const SUMMARY_HELP: Record<string, string> = {
     'Passages with any verdict other than Supported. These are the ones to review by hand.',
   quote_not_in_source:
     'Passages where the judge backed its verdict with a quote that cannot be found in the cited excerpt. Treat those verdicts with extra care.',
+  reference_lines_skipped:
+    'Lines of the brief that start with a [n] marker, such as a reference list written into a section. They are not claims, so they were left out of the check.',
   duration: 'Wall-clock time of the check.',
   tokens: 'Model tokens used by the judge across all passages.',
   cost: 'Estimated cost of the judge calls at the configured model rates.',

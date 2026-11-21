@@ -69,11 +69,12 @@ from ui.backend.services.brief_sharing import user_group_ids
 from ui.backend.services.citation_check_runner import (
     build_review_workbook,
     count_cited_passages,
+    fail_stale_checks,
     resolve_judge_model,
     run_check,
 )
 from ui.backend.services.citation_fidelity import researched_sections
-from ui.backend.services.test_runner import run_experiment
+from ui.backend.services.test_runner import fail_stale_runs, run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
 logger = logging.getLogger(__name__)
@@ -400,6 +401,10 @@ async def run_experiment_endpoint(
     if experiment.status == EXPERIMENT_RUNNING:
         raise HTTPException(status_code=409, detail="Experiment is already running")
     experiment.status = EXPERIMENT_PENDING
+    # The moment the run was asked for: until its run row exists, this is the
+    # experiment's heartbeat for the orphan sweep (``fail_stale_runs``); the
+    # run overwrites it with its own start.
+    experiment.started_at = func.now()
     await session.commit()
     await session.refresh(experiment)
     # Capture the triggering admin's id here — the request context is gone by
@@ -454,6 +459,9 @@ async def list_experiments(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> List[TestExperiment]:
+    # A run whose api copy stopped would otherwise show as running until
+    # some api copy restarts.
+    await fail_stale_runs(session)
     stmt = select(TestExperiment).order_by(TestExperiment.created_at.desc())
     if dataset_id is not None:
         stmt = stmt.where(TestExperiment.dataset_id == dataset_id)
@@ -472,6 +480,7 @@ async def get_experiment(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestExperimentDetail:
+    await fail_stale_runs(session)
     # Eager-load runs + their results so Pydantic's from_attributes
     # serialization does not trigger an async lazy-load outside the greenlet
     # (MissingGreenlet).
@@ -594,6 +603,9 @@ async def list_checkable_briefs(
 ) -> List[BriefCheckCandidate]:
     """Briefs the current user can check: their own, those shared with them
     and, as an admin, every other user's."""
+    # A check whose runner is gone (its api copy stopped) would otherwise
+    # show as running until some api copy restarts.
+    await fail_stale_checks(session)
     pairs = await _accessible_briefs(session, admin)
     ids = [b.id for b, _ in pairs]
     latest = await _latest_checks(session, ids)
@@ -735,6 +747,7 @@ async def get_brief_check(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> BriefCitationCheckRead:
+    await fail_stale_checks(session)
     check = await _get_check(session, check_id, admin)
     await session.refresh(check, attribute_names=["passages"])
     current = await _current_version(session, check.brief_id)
