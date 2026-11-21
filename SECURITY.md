@@ -62,7 +62,7 @@ The GitHub Actions workflow includes dedicated security jobs:
 
 | Check | Tool | Description |
 |-------|------|-------------|
-| Python Dependencies | pip-audit | Scans `requirements.txt`, `requirements.metrics.txt` and `security-requirements.txt` for known vulnerabilities |
+| Python Dependencies | pip-audit | Scans `requirements.txt`, `ui/backend/requirements.txt`, `requirements.metrics.txt` and `security-requirements.txt` for known vulnerabilities |
 | JavaScript Dependencies | npm audit | Scans `package.json` for known vulnerabilities |
 | Python SAST | Bandit | Static analysis for security issues (JSON report artifact) |
 | Dockerfile Linting | Hadolint | Checks all Dockerfiles for security best practices |

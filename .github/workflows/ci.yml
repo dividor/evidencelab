@@ -77,7 +77,7 @@ jobs:
       # Python dependency vulnerability scanning
       - name: Run pip-audit
         run: |
-          pip-audit -r requirements.txt -r requirements.metrics.txt -r security-requirements.txt --desc on || true
+          pip-audit -r requirements.txt -r ui/backend/requirements.txt -r requirements.metrics.txt -r security-requirements.txt --desc on || true
         continue-on-error: true
 
       # Python SAST with Bandit. Any high-severity finding fails the build,
