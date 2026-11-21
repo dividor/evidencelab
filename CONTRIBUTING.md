@@ -215,6 +215,8 @@ The GitHub Actions CI pipeline includes dedicated security jobs:
 - **Gitleaks**: Repository-wide secret scanning
 - **Trivy**: Container image vulnerability scanning
 
+Which of these fail the build today, and how the actions and scanners are pinned, is in [SECURITY.md](SECURITY.md#which-checks-block-a-merge). A new action goes in pinned to a full commit, with its version in a comment.
+
 ### Frontend Security
 
 The frontend uses ESLint security plugins:
