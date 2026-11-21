@@ -321,7 +321,36 @@ deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-s
 
 Then run it again without `--num-records` for the rest.
 
-Only the restore task can read the transfer bucket: it runs as its own role, because a database export holds users' password hashes and sign-in tokens. The bucket refuses requests without HTTPS and deletes uploads after 30 days (`transfer_retention_days`).
+Only the restore task can read the transfer bucket, and it can write only under `dumps/` (below): it runs as its own role, because a database export holds users' password hashes and sign-in tokens. The bucket refuses requests without HTTPS and deletes uploads after 30 days (`transfer_retention_days`).
+
+### Copying a deployment's data out
+
+To keep a copy of a deployment's data, or to load it into another deployment (for example a production site filled from a checked test site), dump it to the transfer bucket. This is the cloud counterpart of the Docker host's `dump_postgres.py` and `dump_qdrant.py` ([Database Maintenance](database-maintenance.md)), which need direct access to the database and Qdrant. Unlike the scheduled AWS Backup restore points, which stay in the account and are deleted with the deployment, a dump is a set of files you keep and can load anywhere:
+
+```bash
+deploy/aws/scripts/dump-data.sh wfp
+```
+
+The restore task writes, under `dumps/<UTC time>/` in the transfer bucket:
+
+| File | What it holds |
+|---|---|
+| `postgres-<database>-<time>.sql.gz` | The whole database as plain SQL, the format `restore-data.sh` loads, without ownership or privilege statements |
+| `qdrant-chunks_<source>-<time>.snapshot`, `qdrant-documents_<source>-<time>.snapshot` | Snapshots of the data source's two Qdrant collections, taken through Qdrant's API and then removed from the Qdrant server |
+| `<source>-<time>.tar` | The data source's folder on the file share (PDFs, parsed output, page images), links kept as links |
+| `manifest.json` | Each file's size and SHA-256, and the Postgres, `pg_dump` and Qdrant versions that made them |
+
+It writes one file at a time to the task's own storage, uploads it and deletes it, and changes nothing in the database, Qdrant or the file share. Then download it:
+
+```bash
+bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
+aws s3 ls "s3://$bucket/dumps/"
+aws s3 cp --recursive "s3://$bucket/dumps/<time>/" <local folder>/
+```
+
+The transfer bucket deletes its files after `transfer_retention_days` and when the deployment is removed, so copy the dump somewhere that lasts, and check each file against the manifest's SHA-256. A dump holds users' password hashes and sign-in tokens: keep it as private as the database.
+
+The Postgres file and the data archive load into another deployment as described in [Moving existing data in](#moving-existing-data-in). Each Qdrant snapshot loads into a Qdrant server through Qdrant's own snapshot upload (`POST /collections/<collection>/snapshots/upload`). The template does not do that step for a cloud deployment yet, and `restore_qdrant.py` does not take these files: it restores a Docker host's own Qdrant from `dump_qdrant.py`'s output.
 
 ### Your own branding and pipeline files
 

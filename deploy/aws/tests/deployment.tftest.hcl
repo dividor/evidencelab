@@ -796,9 +796,15 @@ run "only_the_restore_task_can_read_the_transfer_bucket" {
   }
   assert {
     condition = [for st in data.aws_iam_policy_document.restore.statement : st.actions] == [
-      toset(["s3:ListBucket"]), toset(["s3:GetObject"]),
+      toset(["s3:ListBucket"]), toset(["s3:GetObject"]), toset(["s3:PutObject", "s3:AbortMultipartUpload"]),
     ]
-    error_message = "The restore role should only list and read the transfer bucket."
+    error_message = "The restore role should list and read the transfer bucket, and write nothing but dumps."
+  }
+  assert {
+    condition = alltrue([
+      for r in data.aws_iam_policy_document.restore.statement[2].resources : endswith(r, "/dumps/*")
+    ])
+    error_message = "The restore role may write only under dumps/ in the transfer bucket."
   }
   assert {
     condition = alltrue([
