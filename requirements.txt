@@ -14,7 +14,11 @@ pdfplumber==0.11.9
 # Docling for advanced PDF parsing with dependencies
 docling==2.58.0
 docling-core==2.70.1
-docling-hierarchical-pdf==0.1.8
+# Held at 0.1.2: from 0.1.6 the add-in turns numbered paragraphs and list items
+# into headings, filing whole chapters under the wrong section and changing
+# their chunks. tests/unit/test_parser_heading_postprocessor.py fails if a
+# newer version still does.
+docling-hierarchical-pdf==0.1.2
 docling-ibm-models==3.11.0
 docling-parse==4.7.3
 pypdfium2==4.30.0
