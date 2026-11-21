@@ -85,8 +85,12 @@ ENV REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL}
 
 RUN npm run build
 
-# Stage 2: Production server with nginx
-FROM nginx:alpine AS production
+# Stage 2: Production server with nginx. The slim image has the same nginx and
+# envsubst without the optional XSLT, njs, image-filter and GeoIP modules, which
+# this config doesn't use; the full nginx:alpine image adds them and the
+# libraries they need (libxml2, libxslt, gd, geoip), so more for the image scan
+# to find and nothing it serves with.
+FROM nginx:alpine-slim AS production
 
 # Copy nginx config as a template; the entrypoint fills in the api and mcp
 # addresses (see render-nginx-conf.sh)
