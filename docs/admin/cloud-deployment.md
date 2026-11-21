@@ -178,7 +178,7 @@ These steps deploy a demo: 2 World Bank documents, processed with Amazon Bedrock
 |---|---|---|
 | [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | 2.32 or later (2.35.18) | Signing in with `aws login`, and the scripts' AWS calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 (on an Intel or AMD computer Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -494,7 +494,7 @@ These steps deploy a demo: 2 World Bank documents, processed with the deployment
 |---|---|---|
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | 2.81 or later (2.81.0) | Signing in with `az login`, and the scripts' Azure calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -656,7 +656,7 @@ These steps deploy a demo: 2 World Bank documents, processed with Vertex AI mode
 |---|---|---|
 | [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) | A recent version (553.0.0) | Signing in, and the scripts' Google Cloud calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
