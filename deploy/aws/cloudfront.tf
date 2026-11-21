@@ -153,6 +153,15 @@ resource "aws_wafv2_ip_set" "allowed" {
   scope              = "CLOUDFRONT"
   ip_address_version = each.key
   addresses          = each.value
+
+  # Switching the allow list off removes these IP sets and the web ACL's rule
+  # that uses them. AWS refuses to delete an IP set a rule still references
+  # (WAFAssociatedItemException), and by default Terraform deletes the IP sets
+  # first. With create_before_destroy, it updates the web ACL first, then
+  # deletes them.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_wafv2_web_acl" "site" {
