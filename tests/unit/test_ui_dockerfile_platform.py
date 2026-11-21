@@ -58,6 +58,12 @@ def test_stages_when_read_then_build_then_nginx():
     assert " nginx:" in STAGES[1][0]
 
 
+def test_nginx_stage_when_read_then_uses_slim_image():
+    # The full nginx:alpine image adds modules this config doesn't load, and
+    # with them libxml2, whose high-severity advisory failed the image scan.
+    assert STAGES[1][0].split()[1] == "nginx:alpine-slim"
+
+
 def test_build_stage_when_read_then_runs_on_build_machine_platform():
     assert STAGES[0][0].split()[1] == "--platform=$BUILDPLATFORM"
 
