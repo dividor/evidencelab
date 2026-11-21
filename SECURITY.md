@@ -62,7 +62,7 @@ The GitHub Actions workflow includes dedicated security jobs:
 
 | Check | Tool | Description |
 |-------|------|-------------|
-| Python Dependencies | pip-audit | Scans `requirements.txt` for known vulnerabilities |
+| Python Dependencies | pip-audit | Scans `requirements.txt`, `ui/backend/requirements.txt`, `requirements.metrics.txt` and `security-requirements.txt` for known vulnerabilities |
 | JavaScript Dependencies | npm audit | Scans `package.json` for known vulnerabilities |
 | Python SAST | Bandit | Static analysis for security issues (JSON report artifact) |
 | Dockerfile Linting | Hadolint | Checks all Dockerfiles for security best practices |
@@ -74,10 +74,19 @@ The GitHub Actions workflow includes dedicated security jobs:
 |-------|-----------------|
 | Pre-commit hooks in `code-quality` (Bandit, Gitleaks, Hadolint, detect-secrets) | Yes |
 | Gitleaks in `security-scan` | Yes |
-| pip-audit, npm audit, Bandit report, Hadolint in `security-scan` | **No: they report and the job carries on** |
-| Trivy in `container-scan` | **No: `exit-code: '0'`** |
+| Bandit in `security-scan`, high severity, every check on | Yes |
+| Trivy on the UI image in `container-scan`, high and critical | Yes |
+| Bandit report in `security-scan`, medium and above | No: a report (`bandit-report` artifact) |
+| pip-audit, npm audit, Hadolint in `security-scan` | **Not yet: they report and the job carries on** |
+| Trivy on the API image in `container-scan` | **Not yet: `exit-code: '0'`** |
 
-The dependency and image scanners do not yet stop a merge, because each one already reports findings on the current dependencies and base images. Making them hard stops follows the dependency upgrades that clear those findings. Until then, read their output in the job logs.
+The scanners marked "not yet" each report findings on the current dependencies and base images. Each becomes a hard stop in the change that clears its findings. Until then, read their output in the job logs.
+
+#### Pinned actions and scanners
+
+Every action in `.github/workflows/` is pinned to a full commit, with its version in a comment. A version tag can be moved to other code; a commit can't. Dependabot's `github-actions` updates move the pins. The scanners are pinned too: the Python ones in `security-requirements.txt`, Trivy by its `version` input, and `@cyclonedx/cyclonedx-npm` in the `npx` call.
+
+trivy-action needs particular care. In March 2026 its version tags were pushed to code that stole CI secrets ([GHSA-69fq-xp46-6x23](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23)). Pin only to the commit of an immutable release.
 
 #### `container-scan` Job
 
