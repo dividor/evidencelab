@@ -26,6 +26,29 @@ describe('NavTabs tooltips', () => {
     ).toBeInTheDocument();
   });
 
+  // Phones hide the tooltips with display: none (App.css, max-width 640px).
+  // Screen readers must still get the copy, through aria-describedby.
+  it('keeps each tooltip as its tab description when the tooltip is hidden', () => {
+    render(<NavTabs activeTab="search" onTabChange={() => {}} />);
+
+    screen.getAllByRole('tooltip').forEach((tooltip) => {
+      (tooltip as HTMLElement).style.display = 'none';
+    });
+
+    expect(screen.getByRole('button', { name: 'Search' })).toHaveAccessibleDescription(
+      TAB_TOOLTIPS.search,
+    );
+    expect(screen.getByRole('button', { name: 'Chat' })).toHaveAccessibleDescription(
+      TAB_TOOLTIPS.assistant,
+    );
+    expect(screen.getByRole('button', { name: 'Brief' })).toHaveAccessibleDescription(
+      TAB_TOOLTIPS.brief,
+    );
+    expect(screen.getByRole('button', { name: 'Map' })).toHaveAccessibleDescription(
+      TAB_TOOLTIPS.heatmap,
+    );
+  });
+
   it('omits tooltips for tabs a group has disabled', () => {
     render(
       <NavTabs
