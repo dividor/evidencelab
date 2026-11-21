@@ -65,9 +65,9 @@ resource "aws_s3_bucket_policy" "transfer" {
   depends_on = [aws_s3_bucket_public_access_block.transfer]
 }
 
-# The restore task's own role: read the transfer bucket, nothing else. Its
-# database password, Qdrant key and app keys come through the execution role,
-# like every other task's.
+# The restore task's own role: read the transfer bucket, and write only under
+# dumps/ (scripts/dump-data.sh), nothing else. Its database password, Qdrant
+# key and app keys come through the execution role, like every other task's.
 resource "aws_iam_role" "restore" {
   name               = "${var.name}-ecs-restore"
   assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
@@ -82,10 +82,14 @@ data "aws_iam_policy_document" "restore" {
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.transfer.arn}/*"]
   }
+  statement {
+    actions   = ["s3:PutObject", "s3:AbortMultipartUpload"]
+    resources = ["${aws_s3_bucket.transfer.arn}/dumps/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "restore" {
-  name   = "read-transfer-bucket"
+  name   = "transfer-bucket"
   role   = aws_iam_role.restore.id
   policy = data.aws_iam_policy_document.restore.json
 }
