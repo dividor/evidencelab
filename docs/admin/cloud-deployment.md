@@ -325,7 +325,7 @@ Only the restore task can read the transfer bucket, and it can write only under 
 
 ### Copying a deployment's data out
 
-To keep a copy of a deployment's data, or to load it into another deployment (for example a production site filled from a checked test site), dump it to the transfer bucket:
+To keep a copy of a deployment's data, or to load it into another deployment (for example a production site filled from a checked test site), dump it to the transfer bucket. This is the cloud counterpart of the Docker host's `dump_postgres.py` and `dump_qdrant.py` ([Database Maintenance](database-maintenance.md)), which need direct access to the database and Qdrant. Unlike the scheduled AWS Backup restore points, which stay in the account and are deleted with the deployment, a dump is a set of files you keep and can load anywhere:
 
 ```bash
 deploy/aws/scripts/dump-data.sh wfp
@@ -349,6 +349,8 @@ aws s3 cp --recursive "s3://$bucket/dumps/<time>/" <local folder>/
 ```
 
 The transfer bucket deletes its files after `transfer_retention_days` and when the deployment is removed, so copy the dump somewhere that lasts, and check each file against the manifest's SHA-256. A dump holds users' password hashes and sign-in tokens: keep it as private as the database.
+
+The Postgres file and the data archive load into another deployment as described in [Moving existing data in](#moving-existing-data-in). Each Qdrant snapshot loads into a Qdrant server through Qdrant's own snapshot upload (`POST /collections/<collection>/snapshots/upload`). The template does not do that step for a cloud deployment yet, and `restore_qdrant.py` does not take these files: it restores a Docker host's own Qdrant from `dump_qdrant.py`'s output.
 
 ### Your own branding and pipeline files
 

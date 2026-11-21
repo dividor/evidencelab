@@ -78,7 +78,7 @@ curl -X PATCH "http://localhost:6333/collections/chunks_uneg" \
 
 ### Qdrant: Snapshot Backups
 
-Qdrant snapshots capture the full state of a collection. Use the dump/restore scripts:
+Qdrant snapshots capture the full state of a collection. On a Docker host, use the dump/restore scripts below. On a cloud deployment, where Qdrant and the database are only reachable inside its network, `deploy/aws/scripts/dump-data.sh` dumps the database, Qdrant and the data folder together (see [Copying a deployment's data out](cloud-deployment.md#copying-a-deployments-data-out)).
 
 ```bash
 # Dump (set QDRANT_HOST=localhost when running outside Docker)
@@ -100,3 +100,4 @@ QDRANT_HOST=localhost python scripts/sync/db/restore_qdrant.py \
 | `scripts/maintenance/update_uneg_data.py` | Deduplicate PDFs, align metadata, stage new files |
 | `scripts/sync/db/dump_postgres.py` | Dump Postgres to backup directory |
 | `scripts/sync/db/dump_qdrant.py` | Dump Qdrant collections to snapshots |
+| `scripts/sync/db/dump_to_s3.py` | On an AWS deployment: dump the database, Qdrant and the data folder to its transfer bucket (run by `deploy/aws/scripts/dump-data.sh`) |
