@@ -82,6 +82,12 @@ The GitHub Actions workflow includes dedicated security jobs:
 
 The scanners marked "not yet" each report findings on the current dependencies and base images. Each becomes a hard stop in the change that clears its findings. Until then, read their output in the job logs.
 
+#### Weekly scan of `main`
+
+A pull request is otherwise the only time the scanners run, so a new advisory against code that hasn't changed would wait for the next merge. Every Monday at 05:00 UTC CI runs again on `main` with only the security jobs: `code-quality`, `security-scan`, `sbom` and `container-scan`. The base images are pulled again, so their new advisories are found too. A check that would block a merge fails the run, and GitHub emails whoever last changed the schedule in `.github/workflows/ci.yml`. Start the same run by hand from Actions → CI → Run workflow. The unit, UI, integration and Terraform tests don't run on a schedule.
+
+The scanners that only report (above) only report on the weekly run too: read their logs. New advisories in dependencies are what Dependabot alerts are for (below). GitHub turns off a public repository's scheduled workflows after 60 days without activity, so a quiet repository needs the schedule turned on again under Actions.
+
 #### Pinned actions and scanners
 
 Every action in `.github/workflows/` is pinned to a full commit, with its version in a comment. A version tag can be moved to other code; a commit can't. Dependabot's `github-actions` updates move the pins. The scanners are pinned too: the Python ones in `security-requirements.txt`, Trivy by its `version` input, and `@cyclonedx/cyclonedx-npm` in the `npx` call.
@@ -114,6 +120,8 @@ Security jobs run in a strict dependency chain to ensure code quality gates pass
 
 `code-quality` → `security-scan` → `sbom` + `container-scan` → `tests` + `ui-tests` → `integration-tests`
 
+On the weekly schedule and runs started by hand, only the first three steps run.
+
 Pre-commit hooks (Bandit, Gitleaks, Hadolint, detect-secrets) also run as part of the `code-quality` job, ensuring the same checks that run locally are enforced in CI.
 
 ### Frontend Security Linting
@@ -129,12 +137,14 @@ ESLint plugins provide JavaScript/TypeScript security analysis:
 
 ### Dependabot Configuration
 
-Dependabot (`.github/dependabot.yml`) automatically monitors and creates PRs for:
+Dependabot's version updates (`.github/dependabot.yml`) open PRs for newer versions, once a month:
 
-- **Python (pip)**: Weekly scans of `requirements.txt`
-- **JavaScript (npm)**: Weekly scans of `ui/frontend/package.json`
-- **Docker**: Weekly scans of base images in all Dockerfiles
-- **GitHub Actions**: Weekly scans of action versions
+- **Python (pip)**: `requirements.txt`
+- **JavaScript (npm)**: `ui/frontend/package.json`
+- **Docker**: the base images in `Dockerfile`, `ui/backend/Dockerfile` and `ui/frontend/Dockerfile*`
+- **GitHub Actions**: the pinned actions
+
+Version updates don't react to new advisories. Two repository settings do, as soon as an advisory is published, without waiting for the monthly run or a merge: **Dependabot alerts**, which flag a vulnerable pinned dependency and email the maintainers, and **Dependabot security updates**, which open the PR that fixes it. Turn both on under Settings → Code security; they are free for public repositories.
 
 ### Dependency Update Policy
 
