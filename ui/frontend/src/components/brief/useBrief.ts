@@ -632,13 +632,19 @@ export const useBrief = ({
 
   // Store the highlights the browser computed on the brief's source list.
   // The API's reply is not applied: the live sources already carry them.
-  const pushHighlights = useCallback((sources: SourceReference[]): void => {
-    const highlights = highlightsOf(sources);
-    if (!Object.keys(highlights).length) return;
-    citationsCallRef.current({ type: 'highlights', highlights }).catch((e) =>
-      setError(e instanceof Error ? e.message : 'Could not save the highlights.'),
-    );
-  }, []);
+  // A brief shared with this user is read-only: its highlights are shown but
+  // not stored, because only the owner may write to it (the API refuses).
+  const pushHighlights = useCallback(
+    (sources: SourceReference[]): void => {
+      if (remote && !canEditRef.current) return;
+      const highlights = highlightsOf(sources);
+      if (!Object.keys(highlights).length) return;
+      citationsCallRef.current({ type: 'highlights', highlights }).catch((e) =>
+        setError(e instanceof Error ? e.message : 'Could not save the highlights.'),
+      );
+    },
+    [remote],
+  );
 
   // After a section's research completes (references validated), run the LLM
   // semantic highlighter over each cited excerpt in the background — the hover
