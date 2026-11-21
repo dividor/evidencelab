@@ -681,7 +681,8 @@ the image that was tested, with the same digest under every name.
    same way before tagging it.
 
 2. **Tag the candidate** on the merged commit, once its Publish images run has
-   succeeded (that run publishes `sha-<commit>`):
+   succeeded (that run publishes `sha-<commit>`) and its CI and Demo E2E runs
+   on `main` have passed:
    ```bash
    git fetch origin
    git tag -a v1.2.0-rc.1 -m "Release candidate 1 for v1.2.0" origin/main
@@ -689,8 +690,13 @@ the image that was tested, with the same digest under every name.
    ```
    The tag's run adds `1.2.0-rc.1` to that commit's image on Docker Hub
    (`astrobagel/evidencelab`) and GHCR (`ghcr.io/dividor/evidencelab`). A tag on
-   a commit with no published image fails with nothing published. Deploy
-   `1.2.0-rc.1` and test it with real data.
+   a commit with no published image fails with nothing published. So does a
+   tag on a commit whose newest CI run (integration tests and image scans
+   included) or Demo E2E run hasn't passed, or hasn't finished: building the
+   image doesn't wait for them, so the tag's run checks them first
+   (`release_tags.py check-tested`). Re-run a run that failed only on an
+   external service, then push the tag again. Deploy `1.2.0-rc.1` and test it
+   with real data.
 
 3. **Tag the release** on the candidate's commit when testing passes. Use an
    annotated tag: its message is the release's headline, and becomes the
@@ -736,7 +742,9 @@ git push -u origin release-1.2
 Open a PR against `release-1.2` with only the fix (cherry-picked from `main`)
 and the `CHANGELOG.md` entry for `1.2.1`. Every push to `release-1.2` publishes
 `release-1.2` and `sha-<commit>`, so tag the merged commit as above (`v1.2.1`,
-optionally after `v1.2.1-rc.1`). The patch moves `1.2`, and moves `latest` only
+optionally after `v1.2.1-rc.1`). Demo E2E doesn't run on `release-*` branches by
+itself, and the tag needs it: start it by hand first (Actions → Demo E2E → Run
+workflow, on `release-1.2`). The patch moves `1.2`, and moves `latest` only
 if it is the newest release overall. The fix must reach `main` by its own PR.
 
 ### Changelog format
@@ -758,7 +766,8 @@ if it is the newest release overall. The fix must reach `main` by its own PR.
 1. `CHANGELOG.md` entry for the version merged to `main`, in the format above
 2. The candidate commit's CI is green (integration tests included; re-run a job
    that failed only on an external service), its Publish images run succeeded,
-   and Demo E2E on `main` is green (read its log; it is not a required check)
+   and Demo E2E on `main` is green (read its log; it is not a required check).
+   The tag's run refuses a commit whose newest CI or Demo E2E run hasn't passed
 3. The production images build. CI's `container-scan` job builds both on every PR
    (`Dockerfile` target `runtime` and `ui/frontend/Dockerfile.prod`, the build
    #435 broke). Rebuild locally only for a deployment with its own branding or

@@ -17,7 +17,9 @@
 #                             publishes the GitHub release (title from the
 #                             annotated tag's message, notes from CHANGELOG.md)
 # Both kinds of tag need CHANGELOG.md's X.Y.Z entry at the tagged commit,
-# because the release is tagged on the tested candidate's own commit.
+# because the release is tagged on the tested candidate's own commit, and the
+# commit's newest CI and Demo E2E runs must have passed: building the image
+# doesn't wait for them, so the tag does.
 # Adding a name copies the image's index as it is, so every name of a commit's
 # image has the same digest. A tag on a commit with no published image (not
 # merged to main, or its build failed) fails with nothing published.
@@ -296,6 +298,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      # To read the tagged commit's CI and Demo E2E runs.
+      actions: read
     env:
       TAG: ${{ github.ref_name }}
     steps:
@@ -335,12 +339,28 @@ jobs:
             echo "title=${title}" >> "$GITHUB_OUTPUT"
           fi
           {
+            echo "commit=${commit}"
             echo "source=${source}"
             echo "names=${names}"
             echo "is_release=${is_release}"
             echo "latest=${latest}"
           } >> "$GITHUB_OUTPUT"
           echo "Commit ${commit}: image ${source} gets ${names}"
+
+      # Building the image doesn't wait for CI or Demo E2E, so a version tag
+      # does: it names only a commit whose newest CI run (unit, UI and
+      # integration tests, the security and image scans, the Terraform tests)
+      # and Demo E2E run both passed.
+      - name: Check the commit passed CI and Demo E2E
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ steps.tag.outputs.commit }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${COMMIT}&per_page=100" \
+            > "${RUNNER_TEMP}/commit-runs.json"
+          python3 scripts/release/release_tags.py check-tested \
+            --sha "$COMMIT" --runs "${RUNNER_TEMP}/commit-runs.json"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
