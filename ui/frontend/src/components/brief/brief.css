@@ -1790,12 +1790,16 @@
   margin-top: 26px;
 }
 
+/* The row scrolls sideways only. With just overflow-x set, overflow-y becomes
+   auto too, and the tabs' -1px bottom margin leaves them 1px taller than the
+   row, which drew a stray vertical scroll bar wherever scroll bars always show. */
 .bc-tabs {
   display: flex;
   gap: 0.5rem;
   border-bottom: 1px solid var(--brand-border);
   margin: 26px 0 22px;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .bc-tab {
@@ -2578,6 +2582,19 @@
 
   .bc-share-row {
     flex-direction: column;
+  }
+}
+
+/* Tablets (641–1024px): the five Brief Central tabs no longer fit below
+   about 770px and the row scrolled sideways. Tighter tabs fit down to about
+   700px; below that they wrap rather than scroll. Phones keep their own rules. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .bc-tabs {
+    flex-wrap: wrap;
+  }
+
+  .bc-tab {
+    padding: 12px;
   }
 }
 

@@ -641,6 +641,21 @@ h6,
   transform: translateX(-50%) translateY(0);
 }
 
+/* Tablets (641–1024px): the desktop tab padding fills the row edge to edge
+   around 750px and runs past it once a page scroll bar takes its share, which
+   scrolls the whole page sideways. Tighter padding leaves room; wrapping is the
+   last resort so the row never overflows. Phones (≤640px) have their own rules. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .nav-tabs {
+    padding: 0 var(--spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .nav-tab {
+    padding: 1.25rem;
+  }
+}
+
 /* Search Container */
 .search-container {
   background: var(--white);
@@ -774,6 +789,24 @@ h6,
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Tablets (641–1024px): the landing container, its content wrapper and the
+   form each add 2rem of side padding, so the search box shrank to about half the
+   screen beside the 200px button. Keep one modest gutter instead. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .search-container.search-container-landing {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .search-container.search-container-landing .search-landing-content {
+    padding: 0;
+  }
+
+  .search-container.search-container-landing .search-form {
+    padding: 0 var(--spacing-md);
+  }
 }
 
 /* Example query chips — centered under the search input */
@@ -1019,9 +1052,11 @@ h6,
   }
 }
 
-/* Chart toggle buttons */
+/* Chart toggle buttons. They wrap when the row is too narrow: a centred row
+   that overflows spills past both edges and the first button is cut off. */
 .chart-toggle-container {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-lg);
   justify-content: center;
@@ -1312,6 +1347,39 @@ h6,
 
 .clear-filter-button:hover {
   background: #e66a3c;
+}
+
+.table-controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Tablets and small laptops (641–1279px): a rule and some space separate the
+   controls from the table header, which otherwise starts straight under the
+   search box. */
+@media (min-width: 641px) and (max-width: 1279px) {
+  .table-controls {
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--gray-200);
+  }
+}
+
+/* Tablets (641–1024px): the title search gets a full row instead of being
+   squeezed beside the count and buttons, which sit on the row below (count
+   left, buttons right). */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .table-filter-input {
+    flex-basis: 100%;
+  }
+
+  .table-controls-actions {
+    flex-basis: 100%;
+  }
+
+  .table-controls-actions .table-count {
+    margin-right: auto;
+  }
 }
 
 .table-count {
@@ -8487,6 +8555,33 @@ li.ai-fact-active::before {
 .heatmap-search-stop:hover {
   background: var(--brand-accent);
   color: var(--white);
+}
+
+/* Heatmap tablet (641–1024px) overrides — after the base definitions to win. Even with the
+   selects shrunk to their minimum, the Rows, Columns and Metric selects plus the
+   Download and Generate buttons are wider than the panel below about 1020px, so
+   the buttons ran past its right edge. Put the three selects on the first line,
+   sharing it equally, and the buttons on a line of their own, right-aligned. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .heatmap-controls-row:not(.heatmap-query-controls) {
+    flex-wrap: wrap;
+  }
+
+  .heatmap-controls-row:not(.heatmap-query-controls) > .heatmap-control {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .heatmap-action-buttons {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  /* The query box's 400px minimum plus the sensitivity slider overflow the
+     panel just above phone width; let the box shrink beside the slider. */
+  .heatmap-query-controls .heatmap-query-input {
+    min-width: 0;
+  }
 }
 
 /* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
