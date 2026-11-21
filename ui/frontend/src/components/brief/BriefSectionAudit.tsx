@@ -72,7 +72,7 @@ const RunLink: React.FC<{
       }}
       title="The agent's text and sources exactly as returned, and where each number went"
     >
-      · Original
+      · original
     </button>
   );
 };
