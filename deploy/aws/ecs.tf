@@ -227,6 +227,17 @@ resource "aws_ecs_task_definition" "embedding" {
   }])
 }
 
+# nginx's settings (ui/frontend/render-nginx-conf.sh). It believes the
+# X-Forwarded-For header only from the load balancer, in the VPC.
+locals {
+  ui_environment = [
+    { name = "API_UPSTREAM", value = local.api_url },
+    { name = "MCP_UPSTREAM", value = local.mcp_url },
+    { name = "NGINX_RESOLVER", value = local.vpc_dns_server },
+    { name = "NGINX_REAL_IP_FROM", value = local.vpc_cidr },
+  ]
+}
+
 resource "aws_ecs_task_definition" "ui" {
   family                   = "${var.name}-ui"
   requires_compatibilities = ["FARGATE"]
@@ -241,15 +252,10 @@ resource "aws_ecs_task_definition" "ui" {
   }
 
   container_definitions = jsonencode([{
-    name      = "ui"
-    image     = "${aws_ecr_repository.ui.repository_url}:${var.ui_image_tag}"
-    essential = true
-    environment = [
-      { name = "API_UPSTREAM", value = local.api_url },
-      { name = "MCP_UPSTREAM", value = local.mcp_url },
-      { name = "NGINX_RESOLVER", value = local.vpc_dns_server },
-      { name = "NGINX_REAL_IP_FROM", value = local.vpc_cidr },
-    ]
+    name         = "ui"
+    image        = "${aws_ecr_repository.ui.repository_url}:${var.ui_image_tag}"
+    essential    = true
+    environment  = local.ui_environment
     portMappings = [{ containerPort = 80, protocol = "tcp" }]
     logConfiguration = {
       logDriver = "awslogs"
