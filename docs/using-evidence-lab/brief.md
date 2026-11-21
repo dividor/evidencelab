@@ -84,6 +84,8 @@ After an **AI Regenerate**, **AI Edit** or **AI Get Updates** on one section, th
 
 The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
 
+If searching the library fails part-way through any research, the run stops and says so; nothing is written from it. A section that already had text keeps it. Try again, or ask your administrator to check the search service if it keeps failing.
+
 For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
