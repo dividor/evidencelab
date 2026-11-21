@@ -36,7 +36,7 @@ Internet → Caddy (:443) → nginx in ui (:80) ─┬─ static assets (1yr cac
 Key files: `docker-compose.prod.yml`, `Caddyfile`, `ui/frontend/Dockerfile.prod`, `ui/frontend/nginx.conf`.
 
 Notes:
-- Frontend is a multi-stage build: `node:18-alpine` builds React → `nginx:alpine-slim` serves static files (the full `nginx:alpine` adds modules the config doesn't load, and libxml2 with them, which failed the image scan). `REACT_APP_*` env vars are **baked in at build time** — Docker rebuild required to change.
+- Frontend is a multi-stage build: `node:18-alpine` builds React → `nginx:alpine-slim` serves static files. `REACT_APP_*` env vars are **baked in at build time** — Docker rebuild required to change.
 - Qdrant runs on the host via systemd (not in Docker) — containers connect via `host.docker.internal:6333`.
 - Pipeline service is commented out in prod compose by default.
 - API binds to `127.0.0.1:8000` — never publicly exposed.
