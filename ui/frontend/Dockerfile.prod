@@ -86,7 +86,11 @@ ENV REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL}
 RUN npm run build
 
 # Stage 2: Production server with nginx
-FROM nginx:alpine AS production
+# alpine-slim is plain nginx without the xslt, njs, image-filter, geoip and acme
+# modules, which this config never loads. Those modules are what bring libxml2
+# and libxslt into nginx:alpine, so leaving them out keeps their advisories out
+# of the image.
+FROM nginx:alpine-slim AS production
 
 # Copy nginx config as a template; the entrypoint fills in the api and mcp
 # addresses (see render-nginx-conf.sh)
