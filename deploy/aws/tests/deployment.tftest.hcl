@@ -301,6 +301,36 @@ run "without_cloudfront_the_load_balancer_is_public_and_no_cloudfront_is_made" {
   }
 }
 
+run "without_cloudfront_the_load_balancer_adds_the_visitors_address" {
+  command = plan
+
+  assert {
+    condition     = aws_lb.main.xff_header_processing_mode == "append"
+    error_message = "Without CloudFront the load balancer should add the address that connected to it to X-Forwarded-For."
+  }
+}
+
+run "with_cloudfront_the_visitors_address_is_the_one_cloudfront_adds" {
+  command = plan
+
+  variables {
+    cloudfront_enabled = true
+  }
+
+  assert {
+    condition     = aws_lb.main.xff_header_processing_mode == "preserve"
+    error_message = "Behind CloudFront the load balancer should pass X-Forwarded-For on unchanged, so its last entry is the visitor's address CloudFront added, not CloudFront's own."
+  }
+  assert {
+    condition     = one([for e in local.ui_environment : e.value if e.name == "NGINX_REAL_IP_FROM"]) == "10.0.0.0/16"
+    error_message = "nginx should trust X-Forwarded-For only from the load balancer in the VPC."
+  }
+  assert {
+    condition     = local.app_containers["api"].env["FORWARDED_ALLOW_IPS"] == "10.0.0.0/16"
+    error_message = "The api should trust X-Forwarded-For only from nginx in the VPC."
+  }
+}
+
 run "with_cloudfront_only_cloudfront_reaches_the_load_balancer" {
   command = plan
 

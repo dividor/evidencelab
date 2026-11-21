@@ -394,6 +394,7 @@ Set `cloudfront_enabled = true` to put Amazon CloudFront and an AWS WAF web ACL 
 - The site is HTTPS even without a domain, on CloudFront's own `https://<id>.cloudfront.net` address. With `domain_name`, the template requests the certificate in us-east-1, where CloudFront needs it, and points the domain at CloudFront.
 - Pages, the API, MCP and A2A are never cached, and reach nginx with every header, cookie and query string. The web app's built files under `/static/` are cached.
 - Between CloudFront and the load balancer the traffic is plain HTTP inside the VPC, because no certificate can match the load balancer's internal name.
+- The api, the mcp server and nginx still see each visitor's own address, so rate limits and the audit log count visitors, not CloudFront's servers. CloudFront adds the visitor's address to `X-Forwarded-For`, and the load balancer passes that header on unchanged instead of adding CloudFront's address after it. Without CloudFront, the load balancer adds the visitor's address itself.
 
 The web ACL is in us-east-1, as CloudFront requires. Its rules run in this order:
 

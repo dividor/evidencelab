@@ -33,6 +33,13 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb.id]
   # Chat answers and MCP connections stream for minutes.
   idle_timeout = 300
+  # nginx takes the visitor's address from the last X-Forwarded-For entry that
+  # is not in the VPC. On its own, the load balancer adds the address that
+  # connected to it, which is the visitor. Behind CloudFront, that address is
+  # CloudFront's, and CloudFront has already added the visitor's address, so
+  # the load balancer passes the header on unchanged. Only CloudFront can
+  # reach it then, so the last entry is always the one CloudFront added.
+  xff_header_processing_mode = local.cloudfront ? "preserve" : "append"
 }
 
 resource "aws_lb_target_group" "ui" {
