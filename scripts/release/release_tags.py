@@ -13,6 +13,9 @@ tested place:
   line and overall.
 - Both kinds of tag need the release's ``CHANGELOG.md`` entry at the tagged
   commit, because the release is tagged on the candidate's own commit.
+- Both kinds of tag also need the commit to have passed CI (unit, UI and
+  integration tests, the security and image scans, the Terraform tests) and
+  Demo E2E: building the image doesn't wait for them, so a tag mustn't either.
 - A ``vX.Y.Z`` tag becomes a GitHub release titled from the tag's message, with
   the version's ``CHANGELOG.md`` entry as its notes.
 
@@ -23,6 +26,7 @@ Usage:
   release_tags.py is-release --tag vX.Y.Z
   release_tags.py release-notes --tag vX.Y.Z --changelog CHANGELOG.md
   release_tags.py release-title --tag vX.Y.Z --tag-type tag --subject "<headline>"
+  release_tags.py check-tested --sha <full commit> --runs <workflow runs JSON>
 
 Each command prints its result, one item per line, and exits non-zero with a
 message on anything it cannot accept.
@@ -31,6 +35,7 @@ message on anything it cannot accept.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -199,6 +204,69 @@ def release_title(tag: str, tag_type: str, subject: str) -> str:
     return f"Evidence Lab {tag} — {headline}"
 
 
+# The workflows a commit must have passed before a version tag names its image,
+# and the kinds of run that count. CI's push run tests the commit itself (a pull
+# request's run tests a preview merge instead). Demo E2E runs on every push to
+# main; on a release-X.Y branch, which it doesn't run on by itself, it is
+# started by hand.
+_REQUIRED_RUNS = {
+    "CI": ("push",),
+    "Demo E2E": ("push", "workflow_dispatch", "schedule"),
+}
+
+
+def _run_problem(name: str, runs: List[dict], short: str) -> Optional[str]:
+    """Why the newest of a workflow's runs doesn't count as passed, or None."""
+    if not runs:
+        hint = (
+            " (on a release-X.Y branch, start it by hand: Actions, Demo E2E, Run workflow)"
+            if name == "Demo E2E"
+            else ""
+        )
+        return f"{name} has no run for {short}{hint}"
+    newest = max(runs, key=lambda run: run["run_number"])
+    if newest.get("status") != "completed":
+        return f"{name} for {short} hasn't finished ({newest.get('html_url')})"
+    if newest.get("conclusion") != "success":
+        return (
+            f"{name} for {short} ended '{newest.get('conclusion')}' "
+            f"({newest.get('html_url')}): fix it, or re-run it if the failure was outside the code"
+        )
+    return None
+
+
+def check_tested(runs: Iterable[dict], sha: str) -> str:
+    """Refuse a commit whose newest CI or Demo E2E run hasn't passed.
+
+    ``runs`` are GitHub's workflow runs for the commit (``workflow_runs`` from
+    ``GET /repos/{owner}/{repo}/actions/runs?head_sha=<sha>``). For each
+    required workflow the newest run of a kind that counts decides; a re-run
+    counts, because GitHub reports a run's latest attempt.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError(f"Expected a full 40-character commit hash, not {sha!r}")
+    short = sha[:_SHORT_SHA]
+    runs = list(runs)
+    problems = []
+    for name, events in _REQUIRED_RUNS.items():
+        mine = [
+            run
+            for run in runs
+            if run.get("name") == name
+            and run.get("head_sha") == sha
+            and run.get("event") in events
+        ]
+        problem = _run_problem(name, mine, short)
+        if problem:
+            problems.append(problem)
+    if problems:
+        raise ValueError(
+            "; ".join(problems)
+            + ". A version tag names only a commit whose CI and Demo E2E passed"
+        )
+    return f"CI and Demo E2E passed for {short}"
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -235,6 +303,17 @@ def _build_parser() -> argparse.ArgumentParser:
     title.add_argument("--tag", required=True)
     title.add_argument("--tag-type", required=True)
     title.add_argument("--subject", required=True)
+
+    tested = commands.add_parser(
+        "check-tested", help="refuse a commit whose CI or Demo E2E hasn't passed"
+    )
+    tested.add_argument("--sha", required=True, help="the full commit hash")
+    tested.add_argument(
+        "--runs",
+        required=True,
+        type=Path,
+        help="GitHub's workflow runs for the commit, as JSON",
+    )
     return parser
 
 
@@ -252,6 +331,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             output = "false" if parse_version_tag(args.tag).is_candidate else "true"
         elif args.command == "release-notes":
             output = release_notes(args.changelog.read_text(), args.tag).rstrip("\n")
+        elif args.command == "check-tested":
+            listing = json.loads(args.runs.read_text())
+            output = check_tested(listing["workflow_runs"], args.sha)
         else:
             output = release_title(args.tag, args.tag_type, args.subject)
     except ValueError as exc:

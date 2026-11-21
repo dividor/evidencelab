@@ -118,7 +118,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 | Part | AWS service | Default size |
 |---|---|---|
-| Network | A VPC (`10.0.0.0/16`) across two availability zones. A NAT gateway is in the public subnets, and so is the load balancer unless CloudFront is in front of it. Everything else is in private subnets. | One NAT gateway, through which the containers pull images and reach the model providers |
+| Network | A VPC (`10.0.0.0/16`) across two availability zones. A NAT gateway is in the public subnets, and so is the load balancer unless CloudFront is in front of it. Everything else is in private subnets. An S3 gateway endpoint carries the private subnets' S3 traffic. | One NAT gateway, through which the containers pull images and reach the model providers. AWS charges for every GB the NAT gateway carries, so S3 traffic (moving data in and out, pipeline files, the web app image's layers in ECR) goes through the gateway endpoint instead, which has no charge |
 | Load balancer | Application Load Balancer. With a domain, it serves HTTPS with an ACM certificate and redirects HTTP. Without one, it serves plain HTTP on its own address, for testing only. With `cloudfront_enabled`, it is in the private subnets instead and only CloudFront can reach it (see [CloudFront and AWS WAF](#cloudfront-and-aws-waf)). | Idle timeout of 300 seconds, for streaming chat and MCP |
 | CloudFront and AWS WAF | Only with `cloudfront_enabled`: a CloudFront distribution serving the site over HTTPS, with an AWS WAF web ACL in us-east-1 | North America and Europe edge locations (`PriceClass_100`) |
 | ui | ECS service on Fargate (arm64), running the web app image that the deploy script pushes to ECR | 2 tasks, 0.25 vCPU and 0.5 GB each |
