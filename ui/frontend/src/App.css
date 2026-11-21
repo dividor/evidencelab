@@ -481,6 +481,65 @@ h6,
   justify-self: end;
 }
 
+/* Tablets and small laptops (641–1279px): the Dataset and Models buttons carry
+   inline min-widths sized to their longest option, so the one-line header grew
+   to about 1170px and the whole page scrolled sideways. Keep the logo and the
+   Info / account menu on the first line and give the two pickers a second line,
+   sharing it equally (long names end in an ellipsis). When a theme hides the
+   pickers the header is a single line, as before. Phones (≤640px) have their own
+   grid layout further down. */
+@media (min-width: 641px) and (max-width: 1279px) {
+  .top-bar-content {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-md);
+  }
+
+  .top-bar-left {
+    display: contents;
+  }
+
+  .top-bar-controls {
+    order: 1;
+    flex: 1 1 100%;
+  }
+
+  .top-bar-controls .dropdown-container {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* !important beats the inline min-width that sizes the button to its longest
+     option on desktop; here the button fills its half of the line instead. */
+  .top-bar-controls .dropdown-trigger {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .top-bar-controls .dropdown-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Open each menu inward so it stays on screen: the Dataset list from the
+     left edge of its button, the model details to the left of the Models list. */
+  .dropdown-menu-domain {
+    right: auto;
+    left: 0;
+    max-width: calc(100vw - 2 * var(--spacing-xl));
+  }
+
+  /* The Models list starts about halfway across, so the details panel gets at
+     most the left half of the screen (360px once that is wide enough). */
+  .model-combo-panel {
+    left: auto;
+    right: 100%;
+    width: min(360px, calc(50vw - 1.5rem));
+    min-width: 0;
+    max-width: none;
+  }
+}
+
 @keyframes dropdownFadeIn {
   from {
     opacity: 0;
