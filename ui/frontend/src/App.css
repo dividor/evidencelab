@@ -6924,6 +6924,16 @@ li.ai-fact-active::before {
     white-space: nowrap;
   }
 
+  /* No hover tooltips on phones. Each one is up to 240px wide and centred
+     under its tab, so on a narrow screen the outer tabs' tooltips reach past
+     the screen edge. Hidden with opacity/visibility they still count toward
+     the page width, so every page scrolled sideways by up to 71px. Screen
+     readers still read the text: each tab points at its tooltip with
+     aria-describedby, which works on hidden elements. */
+  .nav-tab-tooltip {
+    display: none;
+  }
+
   /* Search form — stack input + button vertically */
   .search-form {
     flex-wrap: wrap;
