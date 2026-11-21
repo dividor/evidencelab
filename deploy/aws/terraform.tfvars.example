@@ -2,7 +2,7 @@
 
 name                = "evidencelab"
 region              = "us-east-2"
-evidencelab_version = "1.6.5"
+evidencelab_version = "1.6.6"
 config_json_path    = "../../config.json"
 
 # Your own branding and pipeline files, relative to deploy/aws (see the docs,
