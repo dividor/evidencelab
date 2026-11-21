@@ -13,6 +13,11 @@ jest.mock('../components/brief/briefVersionsApi');
 
 const mocked = versionsApi as jest.Mocked<typeof versionsApi>;
 
+const KEEP = 'Keep Edits';
+const REJECT = 'Reject Edits';
+const RESTORE = 'Restore this version';
+const SAVED_AT = '2026-11-13T09:00:00Z';
+
 const entry = (over: Partial<SectionAuditEntry>): SectionAuditEntry => ({
   id: 'a-r1',
   kind: 'edit',
@@ -32,8 +37,8 @@ describe('review bar for a change awaiting Keep or Reject', () => {
     );
     expect(screen.queryByText(/Changes from the/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Hide Changes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Keep Edits' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reject Edits' }));
+    fireEvent.click(screen.getByRole('button', { name: KEEP }));
+    fireEvent.click(screen.getByRole('button', { name: REJECT }));
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onKeep).toHaveBeenCalledTimes(1);
     expect(onReject).toHaveBeenCalledTimes(1);
@@ -44,6 +49,23 @@ describe('review bar for a change awaiting Keep or Reject', () => {
       <ReviewBar kind="edit" showingChanges={false} onToggle={jest.fn()} onKeep={jest.fn()} onReject={jest.fn()} />,
     );
     expect(screen.getByRole('button', { name: 'Show Changes' })).toBeInTheDocument();
+  });
+
+  test('turns Keep and Reject off while a decision is on its way, not Hide Changes', () => {
+    const onToggle = jest.fn();
+    const onKeep = jest.fn();
+    const onReject = jest.fn();
+    render(
+      <ReviewBar kind="edit" showingChanges busy onToggle={onToggle} onKeep={onKeep} onReject={onReject} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: KEEP }));
+    fireEvent.click(screen.getByRole('button', { name: REJECT }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Changes' }));
+    expect(screen.getByRole('button', { name: KEEP })).toBeDisabled();
+    expect(screen.getByRole('button', { name: REJECT })).toBeDisabled();
+    expect(onKeep).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -94,14 +116,14 @@ describe('an earlier section version opened from the Log', () => {
     expect(container.querySelector('del')).toHaveTextContent('Old');
     expect(container.querySelector('ins')).toHaveTextContent('New');
     const buttons = screen.getAllByRole('button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['Restore this version', '×']);
-    fireEvent.click(screen.getByRole('button', { name: 'Restore this version' }));
+    expect(buttons.map((b) => b.textContent)).toEqual([RESTORE, '×']);
+    fireEvent.click(screen.getByRole('button', { name: RESTORE }));
     expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
   test('a viewer or the current version gets no restore button', () => {
     render(<SectionVersionView entry={entry({ current: true })} canRestore={false} onRestore={jest.fn()} onClose={jest.fn()} />);
-    expect(screen.queryByText('Restore this version')).not.toBeInTheDocument();
+    expect(screen.queryByText(RESTORE)).not.toBeInTheDocument();
     expect(screen.getByText(/current version/)).toBeInTheDocument();
   });
 });
@@ -157,8 +179,8 @@ describe('brief log (whole-brief versions)', () => {
         section_id: null,
         summary: 'Created the brief',
         author_name: 'Jan',
-        created_at: '2026-11-13T09:00:00Z',
-        updated_at: '2026-11-13T09:00:00Z',
+        created_at: SAVED_AT,
+        updated_at: SAVED_AT,
         is_current: false,
         citation_check: {
           id: 'chk1', status: 'completed', created_at: '2026-11-13T09:30:00Z',
@@ -172,8 +194,8 @@ describe('brief log (whole-brief versions)', () => {
       section_id: null,
       summary: number === 1 ? 'Created the brief' : 'Edited “Findings” with AI',
       author_name: 'Jan',
-      created_at: '2026-11-13T09:00:00Z',
-      updated_at: '2026-11-13T09:00:00Z',
+      created_at: SAVED_AT,
+      updated_at: SAVED_AT,
       is_current: number === 2,
       previous_number: number === 1 ? null : 1,
       title: 'Food security brief',
@@ -197,9 +219,9 @@ describe('brief log (whole-brief versions)', () => {
     expect(screen.getByRole('option', { name: /v1/ })).toHaveTextContent('Citation check: 2 of 5 passages flagged');
     expect(screen.getByRole('option', { name: /v2/ })).not.toHaveTextContent('Citation check');
     // The current version cannot be restored.
-    expect(screen.queryByText('Restore this version')).not.toBeInTheDocument();
+    expect(screen.queryByText(RESTORE)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('option', { name: /v1/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Restore this version' }));
+    fireEvent.click(await screen.findByRole('button', { name: RESTORE }));
     await waitFor(() => expect(onRestore).toHaveBeenCalledWith(1));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });

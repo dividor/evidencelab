@@ -53,6 +53,7 @@ import {
   setReferenceGrouping as setReferenceGroupingRemote,
   StoredBrief,
 } from './briefCitationsApi';
+import { errorText } from './briefErrors';
 import { listItemToStub, migrateLocalBriefs, remoteToRead } from './briefRemote';
 import { restoreBriefVersion as restoreBriefVersionRemote } from './briefVersionsApi';
 import {
@@ -467,6 +468,9 @@ export const useBrief = ({
   });
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
+  // Sections whose Keep or Reject is on its way to the API (see decideReview).
+  const reviewBusyRef = useRef<Set<string>>(new Set());
+  const [reviewBusy, setReviewBusy] = useState<ReadonlySet<string>>(() => new Set());
   const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
   outlineLogRef.current = generatingActivity;
   // Refs so saveCurrent is a stable callback (safe to call from effects/timers).
@@ -543,7 +547,7 @@ export const useBrief = ({
         if (!cancelled) setHistory(items.map(listItemToStub));
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Could not load saved briefs.');
+          setError(errorText(e, 'Could not load saved briefs.'));
         }
       }
     })();
@@ -640,7 +644,7 @@ export const useBrief = ({
       const highlights = highlightsOf(sources);
       if (!Object.keys(highlights).length) return;
       citationsCallRef.current({ type: 'highlights', highlights }).catch((e) =>
-        setError(e instanceof Error ? e.message : 'Could not save the highlights.'),
+        setError(errorText(e, 'Could not save the highlights.')),
       );
     },
     [remote],
@@ -772,7 +776,7 @@ export const useBrief = ({
         deleteBriefRemote(id)
           .then(() => setHistory((prev) => prev.filter((e) => e.id !== id)))
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not delete the brief.'),
+            setError(errorText(e, 'Could not delete the brief.')),
           );
         return;
       }
@@ -932,7 +936,7 @@ export const useBrief = ({
       const run = () => {
         remoteSaveBusyRef.current = true;
         drain()
-          .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'))
+          .catch((e) => setError(errorText(e, 'Could not save the brief.')))
           .finally(() => {
             remoteSaveBusyRef.current = false;
             // A save parked after the loop's last check (or while a save
@@ -942,7 +946,7 @@ export const useBrief = ({
               return;
             }
             refreshRemoteHistory().catch((e) =>
-              setError(e instanceof Error ? e.message : 'Could not load your briefs.'),
+              setError(errorText(e, 'Could not load your briefs.')),
             );
           });
       };
@@ -971,7 +975,7 @@ export const useBrief = ({
       .then((read) => {
         if (briefIdRef.current === id) applyRead(read);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'));
+      .catch((e) => setError(errorText(e, 'Could not save the brief.')));
   }, [remote, pushRemoteSave, snapshotSaved, citationsCall, applyRead]);
 
   // A new brief starts with no citation state of its own.
@@ -1076,7 +1080,7 @@ export const useBrief = ({
       setStage('outline');
     } catch (e) {
       if (!controller.signal.aborted) {
-        setError(e instanceof Error ? e.message : 'Could not generate an outline.');
+        setError(errorText(e, 'Could not generate an outline.'));
       }
     } finally {
       setOutlineLoading(false);
@@ -1242,7 +1246,7 @@ export const useBrief = ({
         updateSection(id, { status: 'done', progress: 100, revising: undefined });
         setError(
           `“${section.title}” came back at ${words} words against a target of ${target} and could not be condensed: ${
-            e instanceof Error ? e.message : 'condense failed'
+            errorText(e, 'condense failed')
           }`,
         );
       }
@@ -1426,7 +1430,7 @@ export const useBrief = ({
                 );
                 setError(
                   `“${section.title}” was researched but could not be saved: ${
-                    e instanceof Error ? e.message : 'the citation service failed'
+                    errorText(e, 'the citation service failed')
                   }`,
                 );
               });
@@ -1645,7 +1649,7 @@ export const useBrief = ({
       } catch (e) {
         if (!controller.signal.aborted) {
           updateSection(id, { status: 'done', progress: 100, revising: undefined });
-          setError(e instanceof Error ? e.message : 'Edit failed');
+          setError(errorText(e, 'Edit failed'));
         }
       }
     },
@@ -1682,33 +1686,41 @@ export const useBrief = ({
     [stage, editSectionAI, researchOne, finishIfComplete],
   );
 
-  // Keep Edits: the change awaiting review stays; the API ends the review.
-  const dismissChanges = useCallback(
-    async (id: string) => {
+  // Keep or Reject for a section's change awaiting review. One decision per
+  // section at a time: until the API answers, the page still holds the change
+  // as awaiting review, so a second click would send the same decision again
+  // and the API would refuse it ("no longer awaiting review"). Repeat calls
+  // do nothing while one is on its way, and `reviewBusy` turns the buttons off.
+  const decideReview = useCallback(
+    async (id: string, type: 'keep' | 'reject', failure: string) => {
+      if (reviewBusyRef.current.has(id)) return;
       const runId = sectionsRef.current.find((s) => s.id === id)?.pendingReview?.runId;
       if (!runId) return;
+      reviewBusyRef.current.add(id);
+      setReviewBusy(new Set(reviewBusyRef.current));
       try {
-        applyRead(await citationsCall({ type: 'keep', sectionId: id, runId }));
+        applyRead(await citationsCall({ type, sectionId: id, runId }));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not keep the edits.');
+        setError(errorText(e, failure));
+      } finally {
+        reviewBusyRef.current.delete(id);
+        setReviewBusy(new Set(reviewBusyRef.current));
       }
     },
     [citationsCall, applyRead],
   );
 
+  // Keep Edits: the change awaiting review stays; the API ends the review.
+  const dismissChanges = useCallback(
+    (id: string) => decideReview(id, 'keep', 'Could not keep the edits.'),
+    [decideReview],
+  );
+
   // Reject Edits: the API puts back the section's text from before the change
   // (the change's Log rows stay, marked rejected) and renumbers the brief.
   const rejectChanges = useCallback(
-    async (id: string) => {
-      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingReview?.runId;
-      if (!runId) return;
-      try {
-        applyRead(await citationsCall({ type: 'reject', sectionId: id, runId }));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not reject the edits.');
-      }
-    },
-    [citationsCall, applyRead],
+    (id: string) => decideReview(id, 'reject', 'Could not reject the edits.'),
+    [decideReview],
   );
 
   // A manual edit, once the editor is left, is recorded as a run of the
@@ -1740,7 +1752,7 @@ export const useBrief = ({
           0,
         );
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not save the edit.');
+        setError(errorText(e, 'Could not save the edit.'));
       }
     },
     [citationsCall, applyRead, enrichSectionHighlights],
@@ -1897,7 +1909,7 @@ export const useBrief = ({
             }),
           )
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not open the brief.'),
+            setError(errorText(e, 'Could not open the brief.')),
           );
         return;
       }
@@ -1913,7 +1925,7 @@ export const useBrief = ({
           storedContentRef.current = content;
           if (op.type === 'convert') persistStored(content);
         })
-        .catch((e) => setError(e instanceof Error ? e.message : 'Could not open the brief.'));
+        .catch((e) => setError(errorText(e, 'Could not open the brief.')));
     },
     [remote, applyLoadedBrief, persistStored],
   );
@@ -1942,7 +1954,7 @@ export const useBrief = ({
         );
         applyRead(remoteToRead(restored));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not restore the section.');
+        setError(errorText(e, 'Could not restore the section.'));
       }
     },
     [requireServerId, withBriefLock, applyRead],
@@ -1962,7 +1974,7 @@ export const useBrief = ({
           dataSource: full.data_source,
         });
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not restore the brief.');
+        setError(errorText(e, 'Could not restore the brief.'));
       }
     },
     [requireServerId, withBriefLock, applyLoadedBrief],
@@ -1990,7 +2002,7 @@ export const useBrief = ({
             });
           })
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not copy the brief.'),
+            setError(errorText(e, 'Could not copy the brief.')),
           );
         return;
       }
@@ -2042,7 +2054,7 @@ export const useBrief = ({
       citationsCall({ type: 'grouping', grouping })
         .then(applyRead)
         .catch((e) =>
-          setError(e instanceof Error ? e.message : 'Could not change the grouping.'),
+          setError(errorText(e, 'Could not change the grouping.')),
         );
     },
     [citationsCall, applyRead],
@@ -2136,6 +2148,7 @@ export const useBrief = ({
     reviseSection,
     dismissChanges,
     rejectChanges,
+    isReviewBusy: (id: string) => reviewBusy.has(id),
     restoreSectionEntry,
     restoreBriefVersion,
     getServerBriefId,

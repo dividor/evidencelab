@@ -1633,13 +1633,18 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.brief-diff-keep:hover {
+.brief-diff-keep:hover:not(:disabled) {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
 }
-.brief-diff-reject:hover {
+.brief-diff-reject:hover:not(:disabled) {
   border-color: var(--brand-error);
   color: var(--brand-error);
+}
+/* Keep and Reject while one of them is on its way to the API. */
+.brief-diff-dismiss:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* Rendered-markdown diff: blocks flow like the document itself. */
 .brief-diff {
