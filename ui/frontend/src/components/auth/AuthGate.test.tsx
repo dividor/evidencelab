@@ -94,6 +94,13 @@ describe('AuthGate with Microsoft as the only way to sign in', () => {
     expect(screen.queryByText('the app')).not.toBeInTheDocument();
   });
 
+  it('shows nothing, not the app, while it checks whether someone is signed in', () => {
+    const { container } = renderGate(signedOut({ isLoading: true }));
+
+    expect(container).toBeEmptyDOMElement();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('shows the button after a session times out', async () => {
     renderGate(signedOut({ sessionExpired: true }));
 

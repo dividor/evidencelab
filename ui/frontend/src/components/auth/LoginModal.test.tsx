@@ -429,7 +429,6 @@ describe('LoginModal — only one way to sign in', () => {
   const MICROSOFT_PAGE =
     'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=test-client';
   const GOOGLE_PAGE = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client';
-  const TAKING_YOU_TO_MICROSOFT = 'Taking you to Microsoft sign-in…';
   const originalLocation = window.location;
   let assignedHref = '';
 
@@ -464,10 +463,12 @@ describe('LoginModal — only one way to sign in', () => {
 
   it('goes straight to Microsoft when it is the only way in', async () => {
     mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
-    renderModal(undefined, { autoSignIn: true, required: true });
+    const { container } = renderModal(undefined, { autoSignIn: true, required: true });
 
-    expect(await screen.findByText(TAKING_YOU_TO_MICROSOFT)).toBeInTheDocument();
+    // Nothing shows, before or while it goes: no flash before Microsoft's page.
+    expect(container).toBeEmptyDOMElement();
     await waitFor(() => expect(assignedHref).toBe(MICROSOFT_PAGE));
+    expect(container).toBeEmptyDOMElement();
     const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
     expect(calledUrl).toContain('/auth/microsoft/authorize');
     expect(calledUrl).toContain('return_to=' + encodeURIComponent('/?q=resilience'));
@@ -479,10 +480,10 @@ describe('LoginModal — only one way to sign in', () => {
   it('goes straight to Google when it is the only way in', async () => {
     mockAuthStatusResponse({ email_login_disabled: true, microsoft_oauth_enabled: false });
     mockAuthorize(true, 200, { authorization_url: GOOGLE_PAGE });
-    renderModal(undefined, { autoSignIn: true });
+    const { container } = renderModal(undefined, { autoSignIn: true });
 
-    expect(await screen.findByText('Taking you to Google sign-in…')).toBeInTheDocument();
     await waitFor(() => expect(assignedHref).toBe(GOOGLE_PAGE));
+    expect(container).toBeEmptyDOMElement();
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/auth/google/authorize');
   });
 
@@ -537,15 +538,15 @@ describe('LoginModal — only one way to sign in', () => {
   it('shows the button when Back from the provider restores the page', async () => {
     mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
     global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
-    renderModal(undefined, { autoSignIn: true, required: true });
-    await screen.findByText(TAKING_YOU_TO_MICROSOFT);
+    const { container } = renderModal(undefined, { autoSignIn: true, required: true });
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
 
     act(() => {
       window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
     });
 
     expect(await screen.findByText(/Sign in with Microsoft/)).toBeInTheDocument();
-    expect(screen.queryByText(TAKING_YOU_TO_MICROSOFT)).not.toBeInTheDocument();
   });
 
   it('says so, and shows no sign-in form, when the sign-in options cannot load', async () => {
@@ -560,9 +561,16 @@ describe('LoginModal — only one way to sign in', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('shows no sign-in form until it knows which ways to sign in are on', () => {
+  it('shows nothing until it knows the sign-in options, when it may go straight there', () => {
     mockedAxios.get.mockImplementation(() => new Promise(() => {}));
-    renderModal(undefined, { autoSignIn: true, required: true });
+    const { container } = renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows no sign-in form until it knows the sign-in options, when opened to choose', () => {
+    mockedAxios.get.mockImplementation(() => new Promise(() => {}));
+    renderModal(undefined, { required: true, sessionExpired: true });
 
     expect(screen.getByText('Sign In', { selector: 'button.login-tab' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
