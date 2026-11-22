@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import axios from 'axios';
 
 jest.mock('axios');
@@ -53,6 +53,9 @@ beforeEach(() => {
   mockAuthStatusResponse();
 });
 
+/** The sign-in forms wait for /config/auth-status; this waits for them. */
+const waitForSignInOptions = () => screen.findByText('Sign In', { selector: 'button.auth-submit' });
+
 const renderModal = (
   authValue?: AuthContextValue,
   props?: Partial<React.ComponentProps<typeof LoginModal>>,
@@ -70,14 +73,16 @@ describe('LoginModal', () => {
     expect(signInTab).toHaveClass('login-tab-active');
   });
 
-  it('shows email and password fields', () => {
+  it('shows email and password fields', async () => {
     renderModal();
+    await waitForSignInOptions();
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
   });
 
-  it('shows name fields only on register tab', () => {
+  it('shows name fields only on register tab', async () => {
     renderModal();
+    await waitForSignInOptions();
     expect(screen.queryByLabelText('First name')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Last name')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Register'));
@@ -120,8 +125,9 @@ describe('LoginModal', () => {
     expect(screen.queryByText('or')).not.toBeInTheDocument();
   });
 
-  it('switches to register tab', () => {
+  it('switches to register tab', async () => {
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Register'));
     const registerTab = screen.getByText('Register', { selector: 'button.login-tab' });
     expect(registerTab).toHaveClass('login-tab-active');
@@ -144,19 +150,22 @@ describe('LoginModal', () => {
 /* ------------------------------------------------------------------ */
 
 describe('LoginModal — Forgot password', () => {
-  it('shows "Forgot password?" link in login mode', () => {
+  it('shows "Forgot password?" link in login mode', async () => {
     renderModal();
+    await waitForSignInOptions();
     expect(screen.getByText('Forgot password?')).toBeInTheDocument();
   });
 
-  it('does not show "Forgot password?" link in register mode', () => {
+  it('does not show "Forgot password?" link in register mode', async () => {
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Register'));
     expect(screen.queryByText('Forgot password?')).not.toBeInTheDocument();
   });
 
-  it('switches to forgot mode when link is clicked', () => {
+  it('switches to forgot mode when link is clicked', async () => {
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Forgot password?'));
     expect(
       screen.getByText(/Enter your email address and we'll send you a link/),
@@ -164,14 +173,16 @@ describe('LoginModal — Forgot password', () => {
     expect(screen.getByText('Send Reset Link')).toBeInTheDocument();
   });
 
-  it('shows email field in forgot mode', () => {
+  it('shows email field in forgot mode', async () => {
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Forgot password?'));
     expect(screen.getByLabelText('Email')).toBeInTheDocument();
   });
 
-  it('shows "Back to Sign In" link in forgot mode', () => {
+  it('shows "Back to Sign In" link in forgot mode', async () => {
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Forgot password?'));
     expect(screen.getByText('Back to Sign In')).toBeInTheDocument();
   });
@@ -197,6 +208,7 @@ describe('LoginModal — Forgot password', () => {
   it('submits forgot-password request and shows success', async () => {
     mockedAxios.post.mockResolvedValueOnce({ data: {} });
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Forgot password?'));
 
     const emailInput = screen.getByLabelText('Email');
@@ -215,6 +227,7 @@ describe('LoginModal — Forgot password', () => {
   it('shows success message even when forgot-password request fails', async () => {
     mockedAxios.post.mockRejectedValueOnce(new Error('Network error'));
     renderModal();
+    await waitForSignInOptions();
     fireEvent.click(screen.getByText('Forgot password?'));
 
     const emailInput = screen.getByLabelText('Email');
@@ -405,5 +418,142 @@ describe('LoginModal — Session expired banner', () => {
   it('does not render close button when required is true', () => {
     renderModal(undefined, { required: true, sessionExpired: true });
     expect(screen.queryByText('×')).not.toBeInTheDocument();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Going straight to the only sign-in provider                       */
+/* ------------------------------------------------------------------ */
+
+describe('LoginModal — only one way to sign in', () => {
+  const MICROSOFT_PAGE =
+    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=test-client';
+  const GOOGLE_PAGE = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client';
+  const TAKING_YOU_TO_MICROSOFT = 'Taking you to Microsoft sign-in…';
+  const originalLocation = window.location;
+  let assignedHref = '';
+
+  const mockAuthorize = (ok: boolean, httpStatus: number, body: object) => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok,
+      status: httpStatus,
+      json: () => Promise.resolve(body),
+    }) as unknown as typeof fetch;
+  };
+
+  beforeEach(() => {
+    assignedHref = '';
+    window.sessionStorage.clear();
+    delete (window as unknown as { location?: Location }).location;
+    (window as unknown as { location: Partial<Location> }).location = {
+      pathname: '/',
+      search: '?q=resilience',
+      get href() {
+        return assignedHref;
+      },
+      set href(value: string) {
+        assignedHref = value;
+      },
+    } as Location;
+    mockAuthorize(true, 200, { authorization_url: MICROSOFT_PAGE });
+  });
+
+  afterEach(() => {
+    (window as unknown as { location: Location }).location = originalLocation;
+  });
+
+  it('goes straight to Microsoft when it is the only way in', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
+    renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(await screen.findByText(TAKING_YOU_TO_MICROSOFT)).toBeInTheDocument();
+    await waitFor(() => expect(assignedHref).toBe(MICROSOFT_PAGE));
+    const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/auth/microsoft/authorize');
+    expect(calledUrl).toContain('return_to=' + encodeURIComponent('/?q=resilience'));
+    // A trip that comes back still signed out must show the button, not go again.
+    expect(window.sessionStorage.length).toBe(1);
+    expect(screen.queryByText(/Sign in with Microsoft/)).not.toBeInTheDocument();
+  });
+
+  it('goes straight to Google when it is the only way in', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, microsoft_oauth_enabled: false });
+    mockAuthorize(true, 200, { authorization_url: GOOGLE_PAGE });
+    renderModal(undefined, { autoSignIn: true });
+
+    expect(await screen.findByText('Taking you to Google sign-in…')).toBeInTheDocument();
+    await waitFor(() => expect(assignedHref).toBe(GOOGLE_PAGE));
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/auth/google/authorize');
+  });
+
+  it('shows the button when the caller does not ask to go straight there', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
+    renderModal(undefined, { required: true, sessionExpired: true });
+
+    expect(await screen.findByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('shows the button and the email form when email login is on too', async () => {
+    mockAuthStatusResponse({ google_oauth_enabled: false });
+    renderModal(undefined, { autoSignIn: true });
+
+    expect(await screen.findByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('shows both buttons when both providers are on', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true });
+    renderModal(undefined, { autoSignIn: true });
+
+    expect(await screen.findByText(/Sign in with Google/)).toBeInTheDocument();
+    expect(screen.getByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('shows the error and the button when the trip cannot start', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
+    mockAuthorize(false, 503, {});
+    renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(
+      await screen.findByText('Could not start Microsoft sign-in (HTTP 503). Please try again.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(assignedHref).toBe('');
+  });
+
+  it('refuses a sign-in address that is not the provider\'s', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
+    mockAuthorize(true, 200, { authorization_url: 'https://login.example.org/authorize' });
+    renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(await screen.findByText(/the sign-in address is not Microsoft's/)).toBeInTheDocument();
+    expect(screen.getByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(assignedHref).toBe('');
+  });
+
+  it('shows the button when Back from the provider restores the page', async () => {
+    mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
+    global.fetch = jest.fn(() => new Promise(() => {})) as unknown as typeof fetch;
+    renderModal(undefined, { autoSignIn: true, required: true });
+    await screen.findByText(TAKING_YOU_TO_MICROSOFT);
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    });
+
+    expect(await screen.findByText(/Sign in with Microsoft/)).toBeInTheDocument();
+    expect(screen.queryByText(TAKING_YOU_TO_MICROSOFT)).not.toBeInTheDocument();
+  });
+
+  it('shows no sign-in form until it knows which ways to sign in are on', () => {
+    mockedAxios.get.mockImplementation(() => new Promise(() => {}));
+    renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(screen.getByText('Sign In', { selector: 'button.login-tab' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sign in with/)).not.toBeInTheDocument();
   });
 });
