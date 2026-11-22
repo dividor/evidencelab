@@ -350,7 +350,32 @@ aws s3 cp --recursive "s3://$bucket/dumps/<time>/" <local folder>/
 
 The transfer bucket deletes its files after `transfer_retention_days` and when the deployment is removed, so copy the dump somewhere that lasts, and check each file against the manifest's SHA-256. A dump holds users' password hashes and sign-in tokens: keep it as private as the database.
 
-The Postgres file and the data archive load into another deployment as described in [Moving existing data in](#moving-existing-data-in). Each Qdrant snapshot loads into a Qdrant server through Qdrant's own snapshot upload (`POST /collections/<collection>/snapshots/upload`). The template does not do that step for a cloud deployment yet, and `restore_qdrant.py` does not take these files: it restores a Docker host's own Qdrant from `dump_qdrant.py`'s output.
+`restore_qdrant.py` does not take these files: it restores a Docker host's own Qdrant from `dump_qdrant.py`'s output.
+
+### Loading a dump into another deployment
+
+A dump loads whole into another AWS deployment, search index included, so nothing is indexed again. Both deployments must use the same embedding model, because the dump's search vectors come from the deployment that made it, and the same minor version of Qdrant.
+
+1. **Copy it into this deployment's transfer bucket**, under the same keys. Sign in to both accounts first: `AWS_PROFILE` is this deployment's account, and `SOURCE_PROFILE` the account the dump is in:
+
+```bash
+SOURCE_PROFILE=<other account's profile> deploy/aws/scripts/restore-data.sh copy-dump \
+  <other deployment's transfer bucket> dumps/<time>/manifest.json
+```
+
+Your machine only signs a download link for each file, which lasts as long as `SOURCE_PROFILE`'s sign-in, at most an hour. The restore task downloads each file inside AWS to its own storage, checks its size and SHA-256 against the manifest, and only then stores it; the manifest goes last. The file of links is deleted afterwards, as it is a key to the other bucket while the links last.
+
+To bring in a dump you have downloaded instead, upload its folder to `s3://<bucket>/dumps/<time>/` with `aws s3 cp --recursive`.
+
+2. **Load it.** You confirm by typing the database's name:
+
+```bash
+deploy/aws/scripts/restore-data.sh load-dump dumps/<time>/manifest.json
+```
+
+The restore task checks every file against the manifest again, and then loads the Postgres export and the folder archive, as `restore` does (the previous database is kept, renamed and closed to connections). The migrations run next. Last, Qdrant replaces each of the data source's collections with its snapshot: it downloads the snapshot through a link that lasts an hour, checks its SHA-256 before loading it, and the task prints each collection's point count. A dump made by another minor version of Qdrant is refused before anything in Qdrant changes.
+
+Users, groups and sign-in settings come with the database, as in any restore. A test site's dump gives the new site the test site's users and passwords.
 
 ### Your own branding and pipeline files
 
