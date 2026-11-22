@@ -923,6 +923,21 @@ run "a_db_engine_version_with_a_minor_version_is_refused" {
   expect_failures = [var.db_engine_version]
 }
 
+# S3 traffic from the private subnets skips the NAT gateway, which charges per
+# GB: a gateway endpoint in the deployment's region, on the private route table.
+run "s3_traffic_goes_through_a_gateway_endpoint" {
+  command = plan
+
+  assert {
+    condition     = aws_vpc_endpoint.s3.vpc_endpoint_type == "Gateway"
+    error_message = "S3 should have a gateway endpoint, which has no charge (an interface endpoint charges by the hour)."
+  }
+  assert {
+    condition     = aws_vpc_endpoint.s3.service_name == "com.amazonaws.us-east-2.s3"
+    error_message = "The S3 endpoint should be for S3 in the deployment's own region."
+  }
+}
+
 # The runs below share state: the first creates the Qdrant instance (mocked) with
 # one Amazon Linux image, the second plans after AWS has published a newer
 # one. Qdrant's index lives on its instance's disk, so the instance must keep
@@ -993,5 +1008,19 @@ run "a_newer_default_postgres_version_keeps_the_database_as_it_is" {
   assert {
     condition     = aws_db_instance.main.engine_version == "17.9"
     error_message = "A newer default PostgreSQL version must not make a deploy upgrade the database."
+  }
+}
+
+# The same endpoint, applied with mocked values, so its route table can be compared.
+run "s3_endpoint_is_on_the_private_route_table" {
+  command = apply
+
+  plan_options {
+    target = [aws_vpc_endpoint.s3]
+  }
+
+  assert {
+    condition     = length(aws_vpc_endpoint.s3.route_table_ids) == 1 && contains(aws_vpc_endpoint.s3.route_table_ids, aws_route_table.private.id)
+    error_message = "The S3 endpoint should be on the private subnets' route table, where the containers run, and only there."
   }
 }

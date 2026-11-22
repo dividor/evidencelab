@@ -463,6 +463,16 @@ jobs:
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration/test_translation_integration.py -v -s"
 
+      # When a step above fails, print what the services said, so the cause is
+      # in the job's log: each container's state, and the last lines of the
+      # services the tests depend on (the embedding server's start included).
+      - name: Show the services' state and logs (on failure)
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --timestamps --tail=200 embedding-server api pipeline mcp
+        working-directory: ${{ github.workspace }}
+
   terraform:
     # Checks the cloud deployment templates: formatting, validity, and the
     # plan-only tests in deploy/<cloud>/tests (mocked providers, no cloud
