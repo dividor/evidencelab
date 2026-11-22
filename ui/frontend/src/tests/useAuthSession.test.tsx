@@ -56,6 +56,7 @@ jest.mock('../config', () => ({
 
 // Must import AFTER mocking axios
 import { useAuthState, AuthContext } from '../hooks/useAuth';
+import { autoSignInPaused, pauseAutoSignIn } from '../utils/oauthSignIn';
 import type { AuthContextValue } from '../types/auth';
 
 /* ------------------------------------------------------------------ */
@@ -491,5 +492,50 @@ describe('useAuthState — login/logout session state', () => {
       undefined,
       expect.objectContaining({ timeout: expect.any(Number) }),
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Tests — going straight to a single sign-in provider                */
+/* ------------------------------------------------------------------ */
+
+describe('useAuthState — pausing automatic sign-in', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupInterceptorMock();
+    window.sessionStorage.clear();
+    (axios.post as jest.Mock).mockResolvedValue({ data: {} });
+  });
+
+  it('pauses it on sign-out so the provider does not sign them straight back in', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    await act(async () => {
+      await latestAuth.logout();
+    });
+
+    expect(autoSignInPaused()).toBe(true);
+  });
+
+  it('resumes it once a page load finds the user signed in', async () => {
+    pauseAutoSignIn();
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    expect(autoSignInPaused()).toBe(false);
+  });
+
+  it('stays paused when a page load finds no session', async () => {
+    pauseAutoSignIn();
+    (axios.get as jest.Mock).mockRejectedValue({ response: { status: 401 } });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('false');
+    expect(autoSignInPaused()).toBe(true);
   });
 });

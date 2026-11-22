@@ -64,6 +64,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
           <LoginModal
             onClose={() => { setShowLogin(false); clearResetPasswordToken(); }}
             resetToken={resetPasswordToken}
+            autoSignIn
           />
         )}
       </>

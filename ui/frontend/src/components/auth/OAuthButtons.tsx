@@ -1,5 +1,5 @@
 import React from 'react';
-import API_BASE_URL from '../../config';
+import { OAuthProvider, startOAuthSignIn } from '../../utils/oauthSignIn';
 
 interface OAuthButtonsProps {
   /** Label prefix, e.g. "Sign in" or "Sign up" */
@@ -8,35 +8,22 @@ interface OAuthButtonsProps {
   googleEnabled?: boolean;
   /** Whether the Microsoft OAuth button should be rendered. */
   microsoftEnabled?: boolean;
+  /** Called with a message when the provider's sign-in page cannot be reached. */
+  onError: (message: string) => void;
 }
 
 const OAuthButtons: React.FC<OAuthButtonsProps> = ({
   action = 'Sign in',
   googleEnabled = true,
   microsoftEnabled = true,
+  onError,
 }) => {
   if (!googleEnabled && !microsoftEnabled) {
     return null;
   }
 
-  const handleOAuth = async (provider: string) => {
-    try {
-      // Round-trip the current path+query through the signed state JWT so the
-      // OAuth callback can redirect back here (the bare app root would lose it).
-      const returnTo = window.location.pathname + window.location.search;
-      const authorizeUrl =
-        `${API_BASE_URL}/auth/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
-      const res = await fetch(authorizeUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      });
-      const data = await res.json();
-      if (data.authorization_url) {
-        window.location.href = data.authorization_url;
-      }
-    } catch (err) {
-      console.error(`OAuth ${provider} error:`, err);
-    }
+  const handleOAuth = (provider: OAuthProvider) => {
+    startOAuthSignIn(provider).catch((err: Error) => onError(err.message));
   };
 
   const handleGoogle = () => handleOAuth('google');

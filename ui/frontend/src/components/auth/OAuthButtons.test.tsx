@@ -25,7 +25,9 @@ describe('OAuthButtons', () => {
     } as Location;
 
     global.fetch = jest.fn().mockResolvedValue({
-      json: () => Promise.resolve({ authorization_url: 'https://idp.example/auth' }),
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ authorization_url: 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client' }),
     }) as unknown as typeof fetch;
   });
 
@@ -41,7 +43,7 @@ describe('OAuthButtons', () => {
 
   test('passes current path+query as return_to when starting Google OAuth', async () => {
     setLocation('/', '?q=impact+of+climate+change&rerank=false&dataset=WFP');
-    render(<OAuthButtons />);
+    render(<OAuthButtons onError={jest.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Sign in with Google/i }));
 
@@ -57,7 +59,7 @@ describe('OAuthButtons', () => {
 
   test('passes current path+query as return_to when starting Microsoft OAuth', async () => {
     setLocation('/admin', '?page=2');
-    render(<OAuthButtons />);
+    render(<OAuthButtons onError={jest.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Sign in with Microsoft/i }));
 
@@ -70,7 +72,7 @@ describe('OAuthButtons', () => {
 
   test('sends return_to=%2F when on bare app root', async () => {
     setLocation('/', '');
-    render(<OAuthButtons microsoftEnabled={false} />);
+    render(<OAuthButtons microsoftEnabled={false} onError={jest.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Sign in with Google/i }));
 
@@ -82,10 +84,29 @@ describe('OAuthButtons', () => {
 
   test('navigates to the authorization_url returned by the backend', async () => {
     setLocation('/', '?q=foo');
-    render(<OAuthButtons microsoftEnabled={false} />);
+    render(<OAuthButtons microsoftEnabled={false} onError={jest.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Sign in with Google/i }));
 
-    await waitFor(() => expect(assignedHref).toBe('https://idp.example/auth'));
+    await waitFor(() => expect(assignedHref).toBe('https://accounts.google.com/o/oauth2/v2/auth?client_id=test-client'));
+  });
+
+  test('reports a sign-in that cannot start instead of doing nothing', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: () => Promise.resolve({}),
+    }) as unknown as typeof fetch;
+    const onError = jest.fn();
+    render(<OAuthButtons googleEnabled={false} onError={onError} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Sign in with Microsoft/i }));
+
+    await waitFor(() =>
+      expect(onError).toHaveBeenCalledWith(
+        'Could not start Microsoft sign-in (HTTP 502). Please try again.',
+      ),
+    );
+    expect(assignedHref).toBe('');
   });
 });
