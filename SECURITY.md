@@ -288,7 +288,7 @@ When `USER_MODULE` is set to `on_passive` or `on_active`, fastapi-users provides
 | **Permission model** | Deny-by-default; unauthenticated users see no datasources |
 | **Error handling** | Permission failures logged and return empty data (no leak) |
 | **Audit logging** | All auth events (login, failure, lockout, register, password reset) logged to `audit_log` table |
-| **OAuth** | Google and Microsoft SSO with explicit minimal scopes (`openid, email, profile`) |
+| **OAuth** | Google and Microsoft SSO with explicit minimal scopes (`openid, email, profile`); callers cannot ask for others. Each sign-in is bound to the browser that started it: `/authorize` sets an httpOnly, SameSite=Lax cookie, scoped to the callback path, holding a PKCE code verifier, and the signed state (10-minute lifetime) carries its S256 challenge. `/callback` refuses unless the state is valid and matches the cookie (constant-time comparison), then sends the verifier with the code so the provider checks it too |
 | **Email verification** | Required after registration; token sent via SMTP |
 
 ### Active Authentication Enforcement (`on_active` mode)
@@ -433,7 +433,7 @@ Before submitting a PR, ensure:
 | API key storage | SHA-256 (first 8 hex chars stored for audit; full hash for lookup) | One-way |
 | API key encryption at rest | Fernet (AES-128-CBC + HMAC-SHA256) | See note below |
 | CSRF token comparison | `secrets.compare_digest` (constant-time) | stdlib |
-| OAuth 2.0 | Standard flows via httpx-oauth | No custom crypto |
+| OAuth 2.0 | Authorization code flow with PKCE (S256) via httpx-oauth; state is a signed JWT bound to a browser cookie | No custom crypto |
 
 ### Note on Fernet (AES-128-CBC)
 
