@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { USER_MODULE_MODE } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
+import { autoSignInPaused } from '../../utils/oauthSignIn';
 import LoginModal from './LoginModal';
 
 /**
@@ -9,6 +10,12 @@ import LoginModal from './LoginModal';
  *
  * If the session expired (401 or inactivity timeout), the modal shows an
  * informational banner so the user understands why they need to sign in again.
+ *
+ * When the deployment offers only one way to sign in, the modal goes straight
+ * to that provider's sign-in page — but not after a session times out (an
+ * unattended tab would otherwise be signed back in over and over), nor after
+ * someone signs out or a trip to the provider came back still signed out in
+ * this tab (see pauseAutoSignIn). The button shows in those cases.
  *
  * MCP OAuth flow: when the URL contains ?mcp_auth=<pending_id>, the gate
  * always shows the login modal regardless of USER_MODULE_MODE.  Once the
@@ -33,7 +40,9 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   // MCP auth flow: always show login modal until authenticated
   if (mcpAuth && !isLoading && !user) {
-    return <LoginModal onClose={() => {}} required sessionExpired={false} />;
+    return (
+      <LoginModal onClose={() => {}} required sessionExpired={false} autoSignIn={!autoSignInPaused()} />
+    );
   }
 
   // MCP auth flow: show loading state while redirecting
@@ -46,7 +55,14 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
   }
 
   if (USER_MODULE_MODE === 'on_active' && !isLoading && !user) {
-    return <LoginModal onClose={() => {}} required sessionExpired={sessionExpired} />;
+    return (
+      <LoginModal
+        onClose={() => {}}
+        required
+        sessionExpired={sessionExpired}
+        autoSignIn={!sessionExpired && !autoSignInPaused()}
+      />
+    );
   }
 
   return <>{children}</>;
