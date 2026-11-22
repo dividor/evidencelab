@@ -368,6 +368,31 @@ class TestActiveMode:
         assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
+    async def test_auth_status_when_signed_out_without_key_then_allowed(self):
+        """The sign-in screen reads /config/auth-status before anyone signs in.
+
+        A site that requires sign-in builds its web app without a key, so the
+        request carries neither a key nor a session.
+        """
+        _configure(api_key=_TEST_KEY, user_module=True, mode="on_active")
+        req = _make_request("/config/auth-status")
+        result = await api_key_verify.verify_api_key(req, api_key=None)
+        assert result is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        ["/config/auth-status-x", "/config/auth-status/x", "/config/datasources"],
+    )
+    async def test_other_config_paths_when_signed_out_without_key_then_401(self, path):
+        """Only /config/auth-status itself is exempt, not its neighbours."""
+        _configure(api_key=_TEST_KEY, user_module=True, mode="on_active")
+        req = _make_request(path)
+        with pytest.raises(HTTPException) as exc_info:
+            await api_key_verify.verify_api_key(req, api_key=None)
+        assert exc_info.value.status_code == 401
+
+    @pytest.mark.asyncio
     async def test_valid_api_key_allowed(self):
         """Valid API key passes in active mode."""
         _configure(api_key=_TEST_KEY, user_module=True, mode="on_active")

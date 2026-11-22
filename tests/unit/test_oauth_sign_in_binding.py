@@ -337,3 +337,82 @@ class TestRealProviderAddresses:
         state_data = decode_jwt(state, AUTH_SECRET, [STATE_TOKEN_AUDIENCE])
         assert state_data["challenge"] == _pkce_challenge(verifier)
         assert "sub" not in state_data
+
+
+class _ProviderRefusal(Exception):
+    """Shaped like httpx-oauth's GetAccessTokenError: it carries the response."""
+
+    def __init__(self, response):
+        super().__init__("token request failed")
+        self.response = response
+
+
+class _Response:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("not JSON")
+        return self._body
+
+
+class TestFailureLogging:
+    """Why a sign-in failed goes to the server log, never to the browser."""
+
+    def test_exchange_when_provider_refuses_then_logs_its_reason(
+        self, client, provider, caplog
+    ):
+        refusal = _Response(
+            401,
+            {
+                "error": "invalid_client",
+                "error_codes": [7000222],
+                "error_description": (
+                    "AADSTS7000222: The client secret keys are expired.\nTrace ID: x"
+                ),
+            },
+        )
+
+        async def refuse(*args, **kwargs):
+            raise _ProviderRefusal(refusal)
+
+        provider.get_access_token = refuse
+        state, _ = _start(client)
+        with caplog.at_level("WARNING", logger="ui.backend.routes.auth"):
+            response = _finish(client, state)
+
+        assert response.status_code == 400
+        assert response.json() == {"detail": "OAUTH_EXCHANGE_ERROR"}
+        assert "AADSTS7000222" not in response.text
+        logged = caplog.text
+        assert "OAuth microsoft token exchange failed" in logged
+        assert "HTTP 401 error=invalid_client codes=[7000222]" in logged
+        assert "AADSTS7000222: The client secret keys are expired." in logged
+        assert "Trace ID" not in logged
+
+    def test_provider_error_when_body_not_json_then_says_so(self):
+        exc = _ProviderRefusal(_Response(502, None))
+        assert auth_routes._provider_error(exc) == "HTTP 502, body not JSON"
+
+    def test_provider_error_when_no_response_then_names_the_exception(self):
+        assert auth_routes._provider_error(TimeoutError("timed out")) == (
+            "TimeoutError: timed out"
+        )
+
+    def test_user_step_when_it_fails_then_logs_the_traceback(
+        self, client, caplog, monkeypatch
+    ):
+        async def fail(self, *args, **kwargs):
+            raise RuntimeError("database unavailable")
+
+        monkeypatch.setattr(FakeUserManager, "oauth_callback", fail)
+        state, _ = _start(client)
+        with caplog.at_level("ERROR", logger="ui.backend.routes.auth"):
+            response = _finish(client, state)
+
+        assert response.status_code == 400
+        assert "database unavailable" not in response.text
+        assert "could not create or link the user" in caplog.text
+        assert "RuntimeError: database unavailable" in caplog.text

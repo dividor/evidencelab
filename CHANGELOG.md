@@ -2,12 +2,16 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
-## [1.6.7] - 2026-11-21
+## [1.6.7] - 2026-11-22
 
-Evidence Lab v1.6.7 is a **sign-in** patch release. Google and Microsoft sign-in is now tied to the browser that started it and uses PKCE. When one of those providers is the only way in, the sign-in screen goes straight to its sign-in page. On AWS, S3 traffic goes through a gateway endpoint, which has no charge, instead of the NAT gateway. A whole dump, search index included, can be copied from one AWS deployment to another and loaded there. A version tag now names only a commit whose CI and Demo E2E runs passed.
+Evidence Lab v1.6.7 is a **sign-in** patch release. Google and Microsoft sign-in is now tied to the browser that started it and uses PKCE. When one of those providers is the only way in, the sign-in screen goes straight to its sign-in page. On a site that requires sign-in, the sign-in screen can now read its options before anyone is signed in, where it fell back to an email form, and a new person's first Google or Microsoft sign-in no longer fails. On AWS, S3 traffic goes through a gateway endpoint, which has no charge, instead of the NAT gateway. A whole dump, search index included, can be copied from one AWS deployment to another and loaded there. A version tag now names only a commit whose CI and Demo E2E runs passed.
 
 ### Sign-in
 - **Straight to the only provider.** When email login is off and only Microsoft or only Google is set up, the sign-in screen goes straight to that provider's sign-in page instead of showing a single button. It shows the button instead after someone signs out, after a session times out, when a trip to the provider came back still signed out, and when the browser's Back button returns from the provider's page. The browser is only ever sent to the provider's own sign-in page over HTTPS; any other address is refused with a message. A sign-in that cannot start now shows an error instead of doing nothing, and the email form no longer flashes up before the sign-in options have loaded (#663)
+- **The sign-in screen works on sites that require sign-in.** It asks the API which ways to sign in are on before anyone is signed in. The API refused that question without a key, and a site that requires sign-in builds its web app without one, so the screen fell back to an email form with no Microsoft or Google button, even with email login off. The question is now answered without a key, and if it still fails the screen says so instead of guessing a form (#666)
+- **Nothing flashes up before the provider's page.** On a site that requires sign-in, nothing shows until the sign-in check has answered, and when the screen goes straight to the only provider it shows nothing while it goes (#666)
+- **A new person's first Google or Microsoft sign-in works.** The account was created already verified and then asked to verify its email, which failed that first sign-in with `OAUTH_USER_ALREADY_EXISTS`; the second worked. Verified accounts are no longer asked (#666)
+- Why a Google or Microsoft sign-in failed is now written to the server log: the provider's error code and description for a failed exchange, and the traceback for a failed account step. The browser still gets only the generic error (#666)
 
 ### Security
 - **Google and Microsoft sign-in is tied to the browser that started it.** Starting a sign-in sets a short-lived httpOnly cookie, sent only to the sign-in callback, holding a PKCE code verifier. The signed state and the provider's sign-in address carry its S256 challenge. The callback goes on only when the state is valid, at most 10 minutes old and matches the cookie. It then sends the verifier with the code, so the provider checks it too; anything else is refused with `OAUTH_INVALID_STATE`. Sign-in always asks for the configured scopes, and the state no longer carries the visitor's IP address (#664)
@@ -28,7 +32,7 @@ Evidence Lab v1.6.7 is a **sign-in** patch release. Google and Microsoft sign-in
 ### Upgrade Notes
 - **A Google or Microsoft sign-in must finish in the same browser within 10 minutes.** One that comes back to another browser, or later, stops with `OAUTH_INVALID_STATE`; signing in again works. A proxy or CDN in front of the site must pass cookies to `/api/` and not cache it, as it already must for the session cookie (#664).
 - **`/auth/{provider}/authorize` no longer takes `scopes`.** Sign-in always asks for the configured scopes (#664).
-- **Rebuild the web interface** to go straight to a single provider's sign-in page (#663).
+- **Rebuild the web interface** to go straight to a single provider's sign-in page and to read the sign-in options before sign-in (#663, #666).
 - **AWS template:** the next deploy adds the S3 gateway endpoint and changes nothing else (#660).
 
 ## [1.6.6] - 2026-11-21

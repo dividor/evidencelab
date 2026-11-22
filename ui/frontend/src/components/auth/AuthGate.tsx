@@ -17,6 +17,9 @@ import LoginModal from './LoginModal';
  * someone signs out or a trip to the provider came back still signed out in
  * this tab (see pauseAutoSignIn). The button shows in those cases.
  *
+ * Where sign-in is required, nothing is shown until the session check has
+ * answered, so the app never flashes up before the sign-in page.
+ *
  * MCP OAuth flow: when the URL contains ?mcp_auth=<pending_id>, the gate
  * always shows the login modal regardless of USER_MODULE_MODE.  Once the
  * user authenticates, it redirects the browser to /mcp/complete?pending=...
@@ -38,8 +41,12 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     }
   }, [mcpAuth, user]);
 
+  if ((mcpAuth || USER_MODULE_MODE === 'on_active') && isLoading) {
+    return null;
+  }
+
   // MCP auth flow: always show login modal until authenticated
-  if (mcpAuth && !isLoading && !user) {
+  if (mcpAuth && !user) {
     return (
       <LoginModal onClose={() => {}} required sessionExpired={false} autoSignIn={!autoSignInPaused()} />
     );
@@ -54,7 +61,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
     );
   }
 
-  if (USER_MODULE_MODE === 'on_active' && !isLoading && !user) {
+  if (USER_MODULE_MODE === 'on_active' && !user) {
     return (
       <LoginModal
         onClose={() => {}}
