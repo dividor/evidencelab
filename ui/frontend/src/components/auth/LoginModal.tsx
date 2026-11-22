@@ -6,12 +6,6 @@ import { useAutoSignIn } from '../../hooks/useAutoSignIn';
 import { AuthStatus, OAuthProvider, providerName } from '../../utils/oauthSignIn';
 import OAuthButtons from './OAuthButtons';
 
-const DEFAULT_AUTH_STATUS: AuthStatus = {
-  email_login_disabled: false,
-  google_oauth_enabled: false,
-  microsoft_oauth_enabled: false,
-};
-
 interface LoginModalProps {
   onClose: () => void;
   /** When set, open straight into reset-password mode with this token. */
@@ -337,9 +331,11 @@ const LoginTabs: React.FC<LoginTabsProps> = ({
 
 /**
  * The ways to sign in the backend offers; null until it answers, so the email
- * form never flashes up on a deployment that has turned it off.
+ * form never flashes up on a deployment that has turned it off. If the backend
+ * cannot be asked, ON_ERROR gets a message and no sign-in form is shown: a
+ * guessed form would offer a way in the deployment may not have.
  */
-function useAuthStatus(): AuthStatus | null {
+function useAuthStatus(onError: (message: string) => void): AuthStatus | null {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -352,9 +348,17 @@ function useAuthStatus(): AuthStatus | null {
           microsoft_oauth_enabled: !!res.data.microsoft_oauth_enabled,
         });
       })
-      .catch(() => { if (!cancelled) setAuthStatus(DEFAULT_AUTH_STATUS); });
+      .catch((err) => {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        const code = status ? ` (HTTP ${status})` : '';
+        onError(
+          `Could not load the sign-in options${code}. ` +
+            "Reload the page; if this keeps happening, contact the site's administrator.",
+        );
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [onError]);
   return authStatus;
 }
 
@@ -375,7 +379,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const authStatus = useAuthStatus();
+  const authStatus = useAuthStatus(setError);
 
   useEffect(() => {
     if (authStatus?.email_login_disabled && mode === 'register') {

@@ -548,6 +548,18 @@ describe('LoginModal — only one way to sign in', () => {
     expect(screen.queryByText(TAKING_YOU_TO_MICROSOFT)).not.toBeInTheDocument();
   });
 
+  it('says so, and shows no sign-in form, when the sign-in options cannot load', async () => {
+    mockedAxios.get.mockRejectedValue({ response: { status: 401 } });
+    renderModal(undefined, { autoSignIn: true, required: true });
+
+    expect(
+      await screen.findByText(/Could not load the sign-in options \(HTTP 401\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sign in with/)).not.toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('shows no sign-in form until it knows which ways to sign in are on', () => {
     mockedAxios.get.mockImplementation(() => new Promise(() => {}));
     renderModal(undefined, { autoSignIn: true, required: true });
