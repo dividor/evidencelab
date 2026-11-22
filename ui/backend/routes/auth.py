@@ -1,9 +1,14 @@
 """Authentication routes — login, register, verify, OAuth callbacks."""
 
+import base64
+import hashlib
 import os
-from typing import Optional
+import secrets
+from typing import Optional, TypeGuard
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from fastapi_users.jwt import decode_jwt
 from fastapi_users.router.oauth import STATE_TOKEN_AUDIENCE, generate_state_token
@@ -33,7 +38,7 @@ _APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:3000")
 _MAX_RETURN_TO_LEN = 2048
 
 
-def _is_safe_return_to(return_to: Optional[str]) -> bool:
+def _is_safe_return_to(return_to: Optional[str]) -> TypeGuard[str]:
     """True iff return_to is a same-origin path safe to redirect to.
 
     Rejects protocol-relative URLs (`//evil.com`, `/\\evil.com`) and absolute
@@ -66,6 +71,51 @@ def _resolve_post_login_redirect(state: Optional[str]) -> str:
     if not _is_safe_return_to(return_to):
         return _APP_BASE_URL
     return _APP_BASE_URL.rstrip("/") + return_to
+
+
+# A sign-in with Google or Microsoft is tied to the browser that started it.
+# /authorize puts a random PKCE code verifier in this cookie and the verifier's
+# S256 challenge in the signed state; /callback goes on only when the cookie it
+# receives matches the state, then sends the verifier with the code, so the
+# provider checks it as well. The cookie is httpOnly and is sent only to the
+# callback path.
+_OAUTH_FLOW_COOKIE = "evidencelab_oauth_flow"
+# How long a sign-in may take, from /authorize to /callback.
+_OAUTH_FLOW_SECONDS = 600
+_AUTH_COOKIE_SECURE = os.environ.get("AUTH_COOKIE_SECURE", "true").lower() != "false"
+
+
+def _pkce_challenge(verifier: str) -> str:
+    """The S256 code challenge for VERIFIER (RFC 7636, section 4.2)."""
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _invalid_sign_in() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST, detail="OAUTH_INVALID_STATE"
+    )
+
+
+def _checked_sign_in(state: Optional[str], verifier: Optional[str]) -> str:
+    """VERIFIER, once STATE is ours, unexpired, and was issued with it.
+
+    Raises a 400 unless the state token decodes with the OAuth state audience
+    and carries the challenge of the verifier this browser holds, so a sign-in
+    started elsewhere cannot be finished here.
+    """
+    if not state or not verifier:
+        raise _invalid_sign_in()
+    try:
+        state_data = decode_jwt(state, AUTH_SECRET, [STATE_TOKEN_AUDIENCE])
+    except jwt.PyJWTError:
+        raise _invalid_sign_in()
+    challenge = state_data.get("challenge")
+    if not isinstance(challenge, str) or not secrets.compare_digest(
+        challenge, _pkce_challenge(verifier)
+    ):
+        raise _invalid_sign_in()
+    return verifier
 
 
 # When DISABLE_EMAIL_LOGIN is true, email/password login and registration
@@ -187,25 +237,44 @@ def _make_oauth_router(oauth_client, provider_name: str):
     endpoint authenticates the user, sets the httpOnly auth cookie, then
     redirects the browser back to the application — preserving the path
     and query string the user was on (carried through the signed state JWT).
+
+    Each sign-in is bound to the browser that started it and uses PKCE (see
+    _OAUTH_FLOW_COOKIE). The scopes are always the client's own minimal set.
     """
     oauth_router = APIRouter()
+    callback_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
+    # The browser-facing path of the callback (behind /api in production).
+    callback_path = urlparse(callback_url).path
 
     # --- /authorize --------------------------------------------------------
     @oauth_router.get("/authorize")
-    async def authorize(
-        request: Request,
-        scopes: list[str] = Query(None),
-        return_to: Optional[str] = Query(None),
-    ):
-        authorize_redirect_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
-        state_data: dict = {"sub": str(request.client.host) if request.client else ""}
+    async def authorize(response: Response, return_to: Optional[str] = Query(None)):
+        verifier = secrets.token_urlsafe(64)
+        challenge = _pkce_challenge(verifier)
+        state_data = {"challenge": challenge}
         if _is_safe_return_to(return_to):
             state_data["return_to"] = return_to
-        state = generate_state_token(state_data, AUTH_SECRET)
+        state = generate_state_token(
+            state_data, AUTH_SECRET, lifetime_seconds=_OAUTH_FLOW_SECONDS
+        )
+        # httpx-oauth's Microsoft client drops code_challenge arguments, so the
+        # challenge goes in as extra parameters, which both clients pass on.
         authorization_url = await oauth_client.get_authorization_url(
-            authorize_redirect_url,
+            callback_url,
             state,
-            scopes,
+            extras_params={
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+            },
+        )
+        response.set_cookie(
+            _OAUTH_FLOW_COOKIE,
+            verifier,
+            max_age=_OAUTH_FLOW_SECONDS,
+            path=callback_path,
+            secure=_AUTH_COOKIE_SECURE,
+            httponly=True,
+            samesite="lax",
         )
         return {"authorization_url": authorization_url}
 
@@ -218,10 +287,10 @@ def _make_oauth_router(oauth_client, provider_name: str):
         user_manager=Depends(get_user_manager),
         strategy=Depends(cookie_backend.get_strategy),
     ):
-        redirect_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
-        # Exchange code for token
+        verifier = _checked_sign_in(state, request.cookies.get(_OAUTH_FLOW_COOKIE))
+        # Exchange code for token; the provider checks the verifier too.
         try:
-            token = await oauth_client.get_access_token(code, redirect_url)
+            token = await oauth_client.get_access_token(code, callback_url, verifier)
         except Exception:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -273,6 +342,14 @@ def _make_oauth_router(oauth_client, provider_name: str):
         for header_name, header_value in login_response.raw_headers:
             if header_name.lower() == b"set-cookie":
                 redirect.raw_headers.append((header_name, header_value))
+        # Each sign-in's cookie is used once.
+        redirect.delete_cookie(
+            _OAUTH_FLOW_COOKIE,
+            path=callback_path,
+            secure=_AUTH_COOKIE_SECURE,
+            httponly=True,
+            samesite="lax",
+        )
 
         return redirect
 

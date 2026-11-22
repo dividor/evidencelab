@@ -85,6 +85,8 @@ The **tenant ID** controls who can sign in:
 
 Evidence Lab requests the `openid`, `email`, `profile`, and `User.Read` scopes.
 
+**How Google and Microsoft sign-in is protected.** Each sign-in is tied to the browser that started it, through a short-lived cookie that is only sent back to the sign-in callback, and uses PKCE, so a sign-in code is useless to anyone else. A sign-in has to be finished in the same browser within 10 minutes; otherwise it stops with `OAUTH_INVALID_STATE`, and the person simply signs in again. If the site sits behind a proxy or CDN, it must pass cookies through to the API and never cache `/api/` responses, as it already must for the session cookie.
+
 #### 4. Disabling Email Login (OAuth-only mode)
 
 To force all users to sign in via OAuth (Google and/or Microsoft) and remove email/password login and registration entirely:
