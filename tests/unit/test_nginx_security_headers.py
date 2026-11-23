@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 NGINX_CONF = REPO_ROOT / "ui" / "frontend" / "nginx.conf"
 SNIPPET = REPO_ROOT / "ui" / "frontend" / "nginx-security-headers.conf"
 DOCKERFILE = REPO_ROOT / "ui" / "frontend" / "Dockerfile.prod"
+ENTRYPOINT = REPO_ROOT / "ui" / "frontend" / "docker-entrypoint.sh"
 INCLUDE_LINE = "include /etc/nginx/snippets/security-headers.conf;"
 
 REQUIRED_HEADERS = (
@@ -65,8 +66,21 @@ def test_nginx_conf_when_read_then_no_security_header_set_outside_snippet():
         assert f"add_header {header}" not in conf, f"{header} belongs in the snippet"
 
 
-def test_dockerfile_when_read_then_installs_snippet_where_conf_includes_it():
+def test_dockerfile_when_read_then_renders_snippet_where_conf_includes_it():
+    # The snippet is a template (its Content-Security-Policy comes from
+    # UI_CSP_POLICY), so the image holds the template and the entrypoint
+    # writes the file that nginx.conf includes before nginx starts.
     assert (
         "COPY ui/frontend/nginx-security-headers.conf "
-        "/etc/nginx/snippets/security-headers.conf" in DOCKERFILE.read_text()
+        "/etc/nginx/snippets/security-headers.conf.template\n" in DOCKERFILE.read_text()
     )
+    assert (
+        "/render-nginx-conf.sh /etc/nginx/snippets/security-headers.conf.template "
+        "/etc/nginx/snippets/security-headers.conf || exit 1" in ENTRYPOINT.read_text()
+    )
+
+
+def test_dockerfile_when_read_then_builds_without_inline_script():
+    # script-src 'self' would block Create React App's inline runtime script.
+    build = DOCKERFILE.read_text().split("RUN npm run build", 1)[0]
+    assert "ENV INLINE_RUNTIME_CHUNK=false" in build
