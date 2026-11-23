@@ -1613,8 +1613,14 @@
   padding-bottom: 6px;
   border-bottom: 1px solid var(--brand-border-light);
 }
+/* The review buttons over a section, on the right. */
+.brief-review-bar {
+  justify-content: flex-end;
+}
 .brief-diff-actions {
   display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
   gap: 8px;
 }
 .brief-diff-dismiss {
@@ -1625,14 +1631,20 @@
   font-size: 12px;
   color: var(--brand-text-secondary);
   cursor: pointer;
+  white-space: nowrap;
 }
-.brief-diff-keep:hover {
+.brief-diff-keep:hover:not(:disabled) {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
 }
-.brief-diff-reject:hover {
+.brief-diff-reject:hover:not(:disabled) {
   border-color: var(--brand-error);
   color: var(--brand-error);
+}
+/* Keep and Reject while one of them is on its way to the API. */
+.brief-diff-dismiss:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* Rendered-markdown diff: blocks flow like the document itself. */
 .brief-diff {
@@ -1649,27 +1661,29 @@
 .brief-diff-block {
   margin: 0 0 10px;
 }
+/* Track changes: added text green, removed text red and struck through.
+   Whole blocks are tinted, never marked with a side bar. */
 .brief-diff-block-add {
-  background: rgba(16, 156, 145, 0.08);
-  border-left: 3px solid rgba(16, 156, 145, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
   padding: 6px 10px;
 }
 .brief-diff-block-del {
-  background: rgba(220, 38, 38, 0.06);
-  border-left: 3px solid rgba(220, 38, 38, 0.4);
+  background: rgba(239, 68, 68, 0.07);
+  border-radius: 4px;
   padding: 6px 10px;
   text-decoration: line-through;
-  color: var(--brand-text-tertiary);
+  color: #b91c1c;
 }
 .brief-diff-add {
-  background: rgba(16, 156, 145, 0.16);
-  color: var(--brand-primary-dark);
+  background: rgba(16, 185, 129, 0.18);
+  color: #047857;
   text-decoration: none;
   border-radius: 2px;
 }
 .brief-diff-del {
-  background: rgba(220, 38, 38, 0.12);
-  color: var(--brand-error);
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
   text-decoration: line-through;
   border-radius: 2px;
 }
@@ -1707,6 +1721,33 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-warning);
+}
+.brief-audit-current {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-success);
+}
+.brief-audit-rejected {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-error);
+}
+.brief-audit-kind-restore {
+  color: var(--brand-success);
+}
+.brief-diff-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  color: var(--brand-text-secondary);
+  cursor: pointer;
+}
+.brief-diff-close:hover {
+  color: var(--brand-text-primary);
 }
 .brief-audit-view {
   margin-left: 8px;
@@ -1749,12 +1790,16 @@
   margin-top: 26px;
 }
 
+/* The row scrolls sideways only. With just overflow-x set, overflow-y becomes
+   auto too, and the tabs' -1px bottom margin leaves them 1px taller than the
+   row, which drew a stray vertical scroll bar wherever scroll bars always show. */
 .bc-tabs {
   display: flex;
   gap: 0.5rem;
   border-bottom: 1px solid var(--brand-border);
   margin: 26px 0 22px;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .bc-tab {
@@ -2540,6 +2585,19 @@
   }
 }
 
+/* Tablets (641–1024px): the five Brief Central tabs no longer fit below
+   about 770px and the row scrolled sideways. Tighter tabs fit down to about
+   700px; below that they wrap rather than scroll. Phones keep their own rules. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .bc-tabs {
+    flex-wrap: wrap;
+  }
+
+  .bc-tab {
+    padding: 12px;
+  }
+}
+
 @media (max-width: 640px) {
   .bc-tabs {
     gap: 0;
@@ -3318,54 +3376,188 @@
   border: 1px solid var(--brand-border-light);
 }
 
-/* The stored original of a run (Log → Original) and its trace table. */
+/* The stored original of a run (Section History → original) and its trace
+   table: padded like the head, the text at a readable line length, one scroll. */
 .brief-modal-wide {
   max-width: 920px;
 }
 .brief-original {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
+  padding: 18px 22px 26px;
+}
+.brief-original .brief-section-warning {
+  margin: 0;
 }
 .brief-original-meta {
-  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 0;
+  font-size: 12.5px;
   color: var(--brand-text-secondary);
 }
+.brief-original-meta div {
+  display: flex;
+  gap: 6px;
+}
+.brief-original-meta dt {
+  color: var(--brand-text-tertiary);
+}
+.brief-original-meta dd {
+  margin: 0;
+  color: var(--brand-text-primary);
+}
+.brief-original-part {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brief-original-part-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .brief-modal-section-title {
-  margin-top: 6px;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--brand-text-secondary);
 }
-.brief-original-text {
-  max-height: 320px;
-  overflow: auto;
-  padding: 10px 12px;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  background: var(--brand-bg);
+.brief-original-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-original-switch {
+  display: inline-flex;
   border: 1px solid var(--brand-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.brief-original-switch button {
+  padding: 3px 10px;
+  border: 0;
+  background: var(--brand-surface);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.brief-original-switch button + button {
+  border-left: 1px solid var(--brand-border);
+}
+.brief-original-switch button.is-active {
+  background: var(--brand-bg);
+  color: var(--brand-text-primary);
+  font-weight: 600;
+}
+.brief-original-text {
+  margin: 0;
+  padding: 18px 22px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
+  color: var(--brand-text-primary);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+.brief-original-text > :first-child {
+  margin-top: 0;
+}
+.brief-original-text > :last-child {
+  margin-bottom: 0;
+}
+.brief-original-text p,
+.brief-original-text ul,
+.brief-original-text ol {
+  max-width: 72ch;
+  margin: 0 0 0.85em;
+}
+.brief-original-text ul,
+.brief-original-text ol {
+  padding-left: 1.4em;
+}
+.brief-original-text h1,
+.brief-original-text h2,
+.brief-original-text h3,
+.brief-original-text h4 {
+  max-width: 72ch;
+  margin: 1.3em 0 0.5em;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.brief-original-text h1 {
+  font-size: 18px;
+}
+.brief-original-text h2 {
+  font-size: 16.5px;
+}
+.brief-original-text h3,
+.brief-original-text h4 {
+  font-size: 15px;
+}
+.brief-original-raw {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.brief-trace-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
 }
 .brief-trace-table {
   width: 100%;
+  min-width: 620px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 .brief-trace-table th,
 .brief-trace-table td {
-  padding: 4px 8px;
+  padding: 8px 12px;
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid var(--brand-border);
+  border-bottom: 1px solid var(--brand-border-light);
+}
+.brief-trace-table th {
+  background: var(--brand-bg);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.brief-trace-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.brief-trace-num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.brief-trace-doc {
+  width: 100%;
 }
 .brief-trace-chunk {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  word-break: break-all;
+  font-size: 11.5px;
+  color: var(--brand-text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .brief-original {
+    padding: 14px 14px 20px;
+  }
+  .brief-original-text {
+    padding: 14px 16px;
+    font-size: 14px;
+  }
 }
 .brief-audit-original {
   margin-left: 4px;
@@ -3384,4 +3576,430 @@
   margin-left: 4px;
   font-size: 12px;
   color: var(--brand-text-secondary);
+}
+
+/* ---------- Fact Checker ---------- */
+/* The button beside Export to Word; pressed while the highlights are shown. */
+.brief-fact-check[aria-pressed='true'] {
+  border-color: var(--brand-accent);
+  background: rgba(91, 143, 168, 0.12);
+  background: color-mix(in srgb, var(--brand-accent) 12%, transparent);
+}
+.brief-fact-check svg {
+  flex-shrink: 0;
+}
+
+/* A judged passage, marked inline in the prose in the colour of its verdict.
+   The same classes colour the card's badge and the legend's swatches. */
+.brief-fact-mark {
+  border-bottom: 2px solid transparent;
+  cursor: help;
+}
+.brief-fact-mark-unsupported {
+  background: rgba(239, 68, 68, 0.16);
+  background: color-mix(in srgb, var(--brand-error) 16%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-unsupported,
+.brief-fact-badge.brief-fact-mark-unsupported,
+.brief-fact-swatch.brief-fact-mark-unsupported {
+  border-bottom-color: var(--brand-error);
+}
+.brief-fact-mark-partially_supported {
+  background: rgba(245, 158, 11, 0.18);
+  background: color-mix(in srgb, var(--brand-warning) 18%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-partially_supported,
+.brief-fact-badge.brief-fact-mark-partially_supported,
+.brief-fact-swatch.brief-fact-mark-partially_supported {
+  border-bottom-color: var(--brand-warning);
+}
+.brief-fact-mark-cannot_assess {
+  background: rgba(107, 114, 128, 0.16);
+  background: color-mix(in srgb, var(--brand-text-tertiary) 16%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-cannot_assess,
+.brief-fact-badge.brief-fact-mark-cannot_assess,
+.brief-fact-swatch.brief-fact-mark-cannot_assess {
+  border-bottom-color: var(--brand-text-tertiary);
+}
+.brief-fact-mark-supported {
+  background: rgba(16, 185, 129, 0.14);
+  background: color-mix(in srgb, var(--brand-success) 14%, transparent);
+}
+.brief-fact-mark.brief-fact-mark-supported,
+.brief-fact-badge.brief-fact-mark-supported,
+.brief-fact-swatch.brief-fact-mark-supported {
+  border-bottom-color: var(--brand-success);
+}
+.brief-fact-mark:hover {
+  filter: saturate(1.4) brightness(0.97);
+}
+
+/* A section the check no longer covers (changed since the version it
+   judged), noted above its prose while the highlights are on. */
+.brief-fact-stale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+  background: rgba(91, 143, 168, 0.08);
+  background: color-mix(in srgb, var(--brand-accent) 8%, transparent);
+}
+.brief-fact-stale svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* Document History: the row of a version a citation check judged. */
+.brief-versions-row-check {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--brand-accent);
+}
+.brief-versions-row-check-running,
+.brief-versions-row-check-pending {
+  color: var(--brand-text-tertiary);
+}
+.brief-versions-row-check-failed {
+  color: var(--brand-error);
+}
+
+/* The legend under the header while the highlights are on: one swatch per
+   verdict, coloured like its marks, with its count. */
+.brief-fact-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 6px 0 2px;
+  font-size: 12.5px;
+  color: var(--brand-text-secondary);
+}
+.brief-fact-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.brief-fact-legend-item b {
+  font-weight: 600;
+  color: var(--brand-text-primary);
+}
+.brief-fact-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border-bottom-width: 2px;
+  border-bottom-style: solid;
+}
+.brief-fact-legend-hint {
+  color: var(--brand-text-tertiary);
+}
+
+/* The card for the passage under the pointer: verdict badge, reason, then
+   the cited excerpts with the judge's quotes marked. It stays while the
+   pointer is on it, so its excerpts scroll and its sources open. */
+.brief-fact-card {
+  position: fixed;
+  z-index: 400;
+  width: 440px;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  padding: 10px 12px 10px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--brand-text-primary);
+}
+.brief-fact-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+.brief-fact-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom-width: 2px;
+  border-bottom-style: solid;
+}
+.brief-fact-card-meta {
+  font-size: 11.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-card-reason {
+  margin: 0 0 10px;
+}
+.brief-fact-card-warning {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--brand-text-secondary);
+  background: rgba(245, 158, 11, 0.12);
+  background: color-mix(in srgb, var(--brand-warning) 12%, transparent);
+}
+.brief-fact-evidence {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(91, 143, 168, 0.06);
+  background: color-mix(in srgb, var(--brand-accent) 6%, transparent);
+}
+.brief-fact-evidence-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-evidence-kicker {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.brief-fact-evidence-label {
+  color: var(--brand-text-secondary);
+  font-weight: 600;
+}
+.brief-fact-evidence-open {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--brand-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.brief-fact-evidence-note {
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-excerpt {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--brand-text-secondary);
+  white-space: pre-wrap;
+}
+.brief-fact-evidence-unquoted .brief-fact-excerpt {
+  max-height: 80px;
+}
+.brief-fact-quote {
+  color: var(--brand-text-primary);
+  background: rgba(245, 158, 11, 0.28);
+  background: color-mix(in srgb, var(--brand-warning) 28%, transparent);
+}
+.brief-fact-evidence-status {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-fact-evidence-failed {
+  color: var(--brand-error);
+}
+
+/* ---------- Brief log (whole-brief versions) ---------- */
+.brief-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.brief-title-row .brief-doc-title-input {
+  flex: 1;
+  min-width: 0;
+}
+/* The Document History link sits at the end of the title row, styled like
+   the Section History links. */
+.brief-title-log-link {
+  flex: none;
+  margin-top: 12px;
+}
+.brief-modal.brief-versions-modal {
+  max-width: 1180px;
+  max-height: 84vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.brief-versions-body {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 0;
+  flex: 1;
+}
+.brief-versions-list {
+  border-right: 1px solid var(--brand-border-light);
+  overflow-y: auto;
+  padding: 6px 0;
+}
+.brief-versions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--brand-text-primary);
+}
+.brief-versions-row:hover {
+  background: var(--brand-border-light);
+}
+.brief-versions-row.is-selected {
+  background: rgba(16, 156, 145, 0.1);
+}
+.brief-versions-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-versions-row-number {
+  font-weight: 700;
+  color: var(--brand-text-secondary);
+}
+.brief-versions-row-when {
+  margin-left: auto;
+}
+.brief-versions-row-summary {
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.brief-versions-row.is-selected .brief-versions-row-summary {
+  font-weight: 600;
+}
+.brief-versions-row-who {
+  font-size: 12px;
+  color: var(--brand-text-tertiary);
+}
+.brief-version-current {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-success);
+  margin-left: 6px;
+}
+.brief-versions-pane {
+  overflow-y: auto;
+  padding: 18px 26px 28px;
+}
+.brief-version-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--brand-border-light);
+  margin-bottom: 14px;
+}
+.brief-version-detail-head .brief-btn {
+  flex: none;
+}
+/* A date such as "Nov 13 · 11:33 PM" never breaks across lines. */
+.brief-version-when {
+  white-space: nowrap;
+}
+.brief-version-detail-title {
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 600;
+}
+.brief-version-settings {
+  margin: 0 0 14px;
+  padding: 8px 12px 8px 28px;
+  background: var(--brand-border-light);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--brand-text-secondary);
+}
+.brief-version-brief-title {
+  font-family: var(--font-heading);
+  font-size: 22px;
+  margin: 4px 0 16px;
+}
+.brief-version-section {
+  margin-bottom: 22px;
+}
+.brief-version-section-sub .brief-version-section-title {
+  font-size: 14.5px;
+}
+.brief-version-section-title {
+  font-family: var(--font-heading);
+  font-size: 16.5px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.brief-version-section-title ins {
+  text-decoration: none;
+}
+.brief-version-tag {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.brief-version-tag-added {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+}
+.brief-version-tag-removed {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.1);
+}
+.brief-version-tag-changed {
+  color: var(--brand-text-secondary);
+  background: var(--brand-border-light);
+}
+.brief-version-section-unchanged .brief-diff {
+  color: var(--brand-text-secondary);
+}
+.brief-version-empty {
+  font-size: 13px;
+  color: var(--brand-text-tertiary);
+}
+.brief-version-error {
+  color: var(--brand-error);
+}
+@media (max-width: 760px) {
+  .brief-versions-body {
+    grid-template-columns: 1fr;
+  }
+  .brief-versions-list {
+    border-right: none;
+    border-bottom: 1px solid var(--brand-border-light);
+    max-height: 30vh;
+  }
+  .brief-version-detail-head {
+    flex-direction: column;
+  }
 }

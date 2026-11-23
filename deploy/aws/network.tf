@@ -1,7 +1,8 @@
-# A VPC across two availability zones. The load balancer and the NAT gateway
-# sit in the public subnets; everything else is in the private subnets and
-# reaches the internet (image registries, model providers) through the NAT
-# gateway.
+# A VPC across two availability zones. The NAT gateway sits in the public
+# subnets, and so does the load balancer unless CloudFront is in front of it;
+# everything else is in the private subnets and reaches the internet (image
+# registries, model providers) through the NAT gateway. S3 is the exception: a
+# gateway endpoint carries the private subnets' S3 traffic instead.
 
 data "aws_availability_zones" "available" {
   state = "available"
@@ -93,9 +94,25 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.id
 }
 
+# The private subnets' S3 traffic goes through this gateway endpoint instead of
+# the NAT gateway. A gateway endpoint has no charge; the NAT gateway charges for
+# every GB it carries, and on one deployment it was most of the bill on the days
+# data was restored and dumped. This covers the transfer bucket, the pipeline
+# files and the web app image's layers, which ECR keeps in S3. Docker Hub and
+# Bedrock still go through the NAT gateway, and so does S3 in other regions.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = { Name = "${var.name}-s3" }
+}
+
 # --- Security groups --------------------------------------------------------
 
-# The load balancer: the only thing reachable from the internet.
+# The load balancer: the only thing reachable from the internet, or with
+# CloudFront, reachable only from CloudFront's origin-facing servers.
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb"
   description = "Evidence Lab load balancer"
@@ -104,15 +121,16 @@ resource "aws_security_group" "alb" {
 
 resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   security_group_id = aws_security_group.alb.id
-  cidr_ipv4         = "0.0.0.0/0"
+  cidr_ipv4         = local.cloudfront ? null : "0.0.0.0/0"
+  prefix_list_id    = local.cloudfront ? data.aws_ec2_managed_prefix_list.cloudfront[0].id : null
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
-  description       = "HTTP (redirected to HTTPS when a domain is set)"
+  description       = local.cloudfront ? "HTTP from CloudFront" : "HTTP (redirected to HTTPS when a domain is set)"
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_https" {
-  count             = local.https ? 1 : 0
+  count             = local.alb_https ? 1 : 0
   security_group_id = aws_security_group.alb.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "tcp"

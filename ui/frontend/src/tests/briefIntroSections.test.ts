@@ -71,6 +71,15 @@ describe('briefIntro helpers', () => {
     expect(subSectionTitles(OUTLINE, 'missing')).toEqual([]);
   });
 
+  test('a sub-heading cleared of its title is left out, so the request stays valid', () => {
+    const outline = [
+      { id: 'a', title: INTRO, level: 1 },
+      { id: 'a1', title: '   ', level: 2 },
+      { id: 'a2', title: SUBS[1], level: 2 },
+    ];
+    expect(subSectionTitles(outline, 'a')).toEqual([SUBS[1]]);
+  });
+
   test("the section's own length wins, then the introduction length, never longer than the brief's", () => {
     expect(sectionTargetWords(500, SUBS, 350, 120)).toBe(500);
     expect(sectionTargetWords(null, SUBS, 350, 120)).toBe(120);

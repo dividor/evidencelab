@@ -36,6 +36,7 @@ export const remoteToRead = (remote: RemoteBrief): BriefContentRead => ({
   title: remote.title,
   query: remote.query || remote.content.query || '',
   voiceId: remote.voice_profile_id,
+  versionCount: remote.version_count,
 });
 
 /**

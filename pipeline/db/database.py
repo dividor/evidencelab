@@ -15,7 +15,6 @@ from qdrant_client.http import models
 from qdrant_client.http.models import Distance, SparseVectorParams, VectorParams
 
 from pipeline.db.config import (
-    DEFAULT_DATA_SOURCE,
     DEFAULT_SEGMENT_NUMBER,
     ENABLE_QUANTIZATION,
     HNSW_EF_CONSTRUCT,
@@ -30,6 +29,7 @@ from pipeline.db.config import (
     VECTORS_ON_DISK,
     clean_model_name,
     load_datasources_config,
+    resolve_data_source,
 )
 from pipeline.db.moderation import HIDDEN_FIELD, exclude_hidden
 from pipeline.db.postgres_client import PostgresClient
@@ -86,10 +86,10 @@ class Database:
         Args:
             data_source: Data source name for collection isolation. If provided,
                         collections will be named documents_{data_source} and
-                        chunks_{data_source}. If None, uses DEFAULT_DATA_SOURCE env var.
+                        chunks_{data_source}. If None, see resolve_data_source.
         """
         # Set collection names based on data source
-        source = data_source or DEFAULT_DATA_SOURCE
+        source = resolve_data_source(data_source)
         self.data_source = source
         # Sanitize collection name: lowercase, replace spaces with underscores
         sanitized_source = source.lower().replace(" ", "_")
@@ -1172,7 +1172,7 @@ def get_db(data_source: Optional[str] = None) -> Database:
     Factory function to get a Database instance for a specific data source.
 
     Args:
-        data_source: Data source name (e.g., 'uneg', 'gcf'). If None, uses DEFAULT_DATA_SOURCE.
+        data_source: Data source name (e.g., 'uneg', 'gcf'). If None, see resolve_data_source.
 
     Returns:
         Database instance configured for the specified data source.
@@ -1189,7 +1189,7 @@ def get_db(data_source: Optional[str] = None) -> Database:
     return _db_cache[data_source]
 
 
-# Singleton instance (uses DEFAULT_DATA_SOURCE)
+# Singleton instance (see resolve_data_source)
 # Lazy initialization to avoid connection issues at import time
 _db_instance = None
 

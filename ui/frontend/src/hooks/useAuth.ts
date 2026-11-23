@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import axios from 'axios';
 import API_BASE_URL, { API_KEY, USER_MODULE } from '../config';
 import type { AuthContextValue, AuthState, AuthUser, LoginCredentials, RegisterData } from '../types/auth';
+import { pauseAutoSignIn, resumeAutoSignIn } from '../utils/oauthSignIn';
 
 /**
  * Auth uses httpOnly cookies (set by the backend) — the browser sends the
@@ -267,6 +268,7 @@ export function useAuthState(): AuthContextValue {
     try {
       const resp = await axios.get<AuthUser>(`${API_BASE_URL}/users/me`);
       setState({ user: resp.data, token: null, isLoading: false, isAuthenticated: true });
+      resumeAutoSignIn();
     } catch {
       // No valid session cookie — user is not logged in
       setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
@@ -370,6 +372,7 @@ export function useAuthState(): AuthContextValue {
     // Fetch full user profile (cookie is now set)
     const userResp = await axios.get<AuthUser>(`${API_BASE_URL}/users/me`);
     setState({ user: userResp.data, token: null, isLoading: false, isAuthenticated: true });
+    resumeAutoSignIn();
 
     // Clear session expired state
     setSessionExpired(false);
@@ -392,6 +395,9 @@ export function useAuthState(): AuthContextValue {
     // doing nothing at all.
     setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     setSessionExpired(false);
+    // Show the sign-in button rather than going straight back to a single
+    // sign-in provider, which would sign them in again at once.
+    pauseAutoSignIn();
 
     // Reject any pending 401 retries — user chose to log out
     if (authPromiseRef.current) {

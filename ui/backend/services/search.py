@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client.http import models
 
-from pipeline.db import DEFAULT_DATA_SOURCE  # noqa: E402
+from pipeline.db import resolve_data_source  # noqa: E402
 from pipeline.db import (
     DB_VECTORS,
     DENSE_VECTOR_NAME,
@@ -58,7 +58,7 @@ SYSTEM_FIELD_MAP = {
 
 
 def _language_uses_sys(data_source: Optional[str]) -> bool:
-    source = data_source or DEFAULT_DATA_SOURCE
+    source = resolve_data_source(data_source)
     field_mapping = get_field_mapping(source)
     return field_mapping.get("language") == "sys_language"
 
@@ -952,7 +952,7 @@ def get_search_facets(
         limit: Number of results to analyze for faceting (default 2000)
     """
 
-    source = data_source or "uneg"
+    source = resolve_data_source(data_source)
     db = _get_search_db(None, source)
     filter_fields_config = get_default_filter_fields(source)
     from pipeline.db import (  # noqa: PLC0415
@@ -1325,7 +1325,7 @@ def search_facet_values(
     dense_weight: Optional[float] = None,
     db: Optional[Database] = None,
     dense_model: str = DENSE_VECTOR_NAME,
-    data_source: str = "uneg",
+    data_source: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Search for unique values of a specific field by querying the documents collection.

@@ -1,5 +1,6 @@
 import { DrilldownNode, SearchResult } from '../types/api';
 import { buildGroupedReferences, DocumentGroup } from './citations';
+import { safeHref } from './safeHref';
 
 /** Escape HTML special characters */
 const esc = (text: string): string =>
@@ -66,8 +67,9 @@ const parseInlineMarkdown = (
           const orig = parseInt(n, 10);
           const entry = linkMap.get(orig);
           if (!entry) return n;
-          if (entry.url) {
-            return `<a href="${entry.url}" target="_blank" class="citation-link">${entry.seq}</a>`;
+          const href = safeHref(entry.url);
+          if (href) {
+            return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" class="citation-link">${entry.seq}</a>`;
           }
           return `${entry.seq}`;
         });
@@ -167,8 +169,9 @@ const buildReferencesHtml = (groups: DocumentGroup[]): string => {
         const page = result.page_num ? ` p.${result.page_num}` : '';
         let url = resolveSourceUrl(result);
         if (url && result.page_num) url += `#page=${result.page_num}`;
-        if (url) {
-          return `<a href="${url}" target="_blank" class="citation-link">[${sequential}]${page}</a>`;
+        const href = safeHref(url);
+        if (href) {
+          return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" class="citation-link">[${sequential}]${page}</a>`;
         }
         return `<span>[${sequential}]${page}</span>`;
       })

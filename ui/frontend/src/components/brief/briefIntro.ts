@@ -76,7 +76,8 @@ export const subSectionTitles = (sections: OutlineEntry[], id: string): string[]
   if (idx < 0 || sections[idx].level === 2) return [];
   const subs: string[] = [];
   for (let i = idx + 1; i < sections.length && sections[i].level === 2; i++) {
-    subs.push(sections[i].title);
+    // A heading cleared of its title has nothing to introduce.
+    if (sections[i].title.trim()) subs.push(sections[i].title);
   }
   return subs;
 };

@@ -12,7 +12,11 @@
 # in, and anyone can read that key from the page.
 #
 # Needs docker (with buildx), the aws CLI and terraform. Set TERRAFORM to run
-# terraform some other way, and AWS_PROFILE to pick the AWS account. CUSTOMIZE_ASSETS points at branding assets (default: customize/).
+# terraform some other way, and AWS_PROFILE to pick the AWS account.
+#
+# Branding comes from the customize_assets_dir setting (relative to
+# deploy/aws). When that is empty, CUSTOMIZE_ASSETS points at the branding
+# folder, and without it the stock customize/ folder is used.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,6 +32,13 @@ user_module="$(output user_module)"
 site_url="$(output site_url)"
 config_path="$(output config_json_path)"
 anonymous_access="$(output anonymous_access)"
+customize_dir="$(output customize_assets_dir)"
+
+if [ -n "$customize_dir" ]; then
+    customize="$(cd "$here" && cd "$customize_dir" && pwd)"
+else
+    customize="${CUSTOMIZE_ASSETS:-$repo_root/customize}"
+fi
 
 api_key=""
 if [ "$anonymous_access" = true ]; then
@@ -43,12 +54,12 @@ trap 'rm -rf "$config_dir"' EXIT
 
 registry="${repo_url%%/*}"
 
-echo "Building $repo_url:$tag (sign-in mode $user_module, anonymous access $anonymous_access, site $site_url)"
+echo "Building $repo_url:$tag (sign-in mode $user_module, anonymous access $anonymous_access, site $site_url, branding $customize)"
 docker buildx build \
     --platform linux/arm64 \
     --file "$repo_root/ui/frontend/Dockerfile.prod" \
     --build-context config="$config_dir" \
-    --build-context customize="${CUSTOMIZE_ASSETS:-$repo_root/customize}" \
+    --build-context customize="$customize" \
     --build-arg REACT_APP_API_BASE_URL=/api \
     --build-arg REACT_APP_USER_MODULE="$user_module" \
     --build-arg REACT_APP_API_KEY="$api_key" \

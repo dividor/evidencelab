@@ -21,7 +21,7 @@ from ui.backend.services import brief_citations as bc
 from ui.backend.services.brief_citations_convert import convert_legacy
 from ui.backend.utils.app_limits import limiter
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("one_data_source")]
 limiter.enabled = False
 
 NOW = datetime.now(timezone.utc)
@@ -133,7 +133,9 @@ class FakeSession:
         else:
             rows = []
         return SimpleNamespace(
-            scalars=lambda: FakeScalars(rows), all=lambda: list(rows)
+            scalars=lambda: FakeScalars(rows),
+            all=lambda: list(rows),
+            scalar_one=lambda: len(rows),
         )
 
     async def get(self, model, key):
@@ -249,7 +251,7 @@ class TestOtherOperations:
         await brief_citations.record_section_run(
             brief.id,
             "a",
-            BriefRunCreate(mode="edit", content="A edited [1]."),
+            BriefRunCreate(mode="edit", content="A edited [1].", review=True),
             user,
             session,
         )

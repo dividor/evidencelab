@@ -35,8 +35,8 @@ Qdrant + PostgreSQL
 | `AUTH_SECRET_KEY` | *required* | Secret for JWT token verification |
 | `APP_BASE_URL` | `https://evidencelab.ai` | Base URL for OAuth redirects and citation links |
 | `OAUTH_CALLBACK_BASE_URL` | `http://localhost:8000` | Base URL for OAuth callbacks |
-| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit for search and get_document tools |
-| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit for ask_assistant tool |
+| `RATE_LIMIT_MCP_SEARCH` | `30/minute` | Rate limit for search and get_document tools, per caller (signed-in user or API key) |
+| `RATE_LIMIT_MCP_AI` | `10/minute` | Rate limit for ask_assistant tool, per caller |
 
 ### Docker Compose
 
@@ -68,6 +68,8 @@ Clients can authenticate by passing an API key in the `X-API-Key` header. This m
 - The `API_SECRET_KEY` environment variable (master key) — takes effect immediately across all services
 - An admin-generated key managed via the Admin → API Keys screen
 
+The key built into the web interface (`REACT_APP_API_KEY`) is never accepted, even when it is also `API_SECRET_KEY`: anyone who loads the site can read it. Give the web interface its own key so the master key stays private, or use an admin-generated key. The MCP service reads `REACT_APP_API_KEY` from `.env` to know which key that is; on a deployment that sets environment variables per service, give the MCP service `REACT_APP_API_KEY` as well.
+
 > **Note:** Admin-generated keys are cached in-memory per service process with a 60-second TTL. After generating or revoking a key in the admin screen, allow up to 60 seconds before it takes effect in the MCP and A2A servers. The `API_SECRET_KEY` env var is always effective immediately.
 
 ### 2. OAuth 2.0 (for Claude and ChatGPT)
@@ -77,12 +79,14 @@ The MCP server implements OAuth 2.0 Authorization Server Metadata (RFC 8414) for
 **Flow:**
 
 1. Client discovers OAuth endpoints via `GET /mcp/.well-known/oauth-authorization-server`
-2. Client redirects user to `/mcp/authorize` with PKCE parameters
+2. Client opens `/mcp/authorize` with PKCE parameters in the user's browser, which sets a short-lived cookie tying the request to that browser
 3. User sees the Evidence Lab login page (email/password, Microsoft, or Google)
-4. After login, Evidence Lab redirects back to `/mcp/complete` with the auth session
-5. MCP server generates an authorization code and redirects to the client's callback
+4. After login, the browser goes to `/mcp/complete`, which asks **Allow this app?**, naming the client and where it will be sent
+5. When the user allows it, the MCP server generates an authorization code and redirects to the client's callback; when they deny it, the callback gets `error=access_denied`
 6. Client exchanges the code for an access token via `/mcp/token`
 7. Client uses the access token as a Bearer token in subsequent MCP requests
+
+`/mcp/complete` only works in the browser that opened `/mcp/authorize`, for a person signed in to Evidence Lab there. A link to a request started anywhere else is refused, so nobody can send you a link that connects their app to your account. The access token works for MCP and A2A only; the web app does not accept it.
 
 **OAuth endpoints:**
 
@@ -90,13 +94,14 @@ The MCP server implements OAuth 2.0 Authorization Server Metadata (RFC 8414) for
 |----------|-------------|
 | `GET /mcp/.well-known/oauth-authorization-server` | OAuth metadata discovery |
 | `GET /mcp/authorize` | Authorization endpoint (redirects to login) |
-| `GET /mcp/complete` | Post-login completion (generates auth code) |
+| `GET /mcp/complete` | After login: the consent page |
+| `POST /mcp/complete` | Records the allow/deny answer and redirects to the client |
 | `POST /mcp/token` | Token exchange endpoint |
 | `POST /mcp/register` | Dynamic client registration (RFC 7591) |
 
 ### 3. Bearer JWT
 
-Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The token is verified using the `AUTH_SECRET_KEY`.
+Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The token is verified using the `AUTH_SECRET_KEY`. MCP accepts both an Evidence Lab sign-in token and an MCP access token; the web app accepts only sign-in tokens.
 
 ## Tools
 

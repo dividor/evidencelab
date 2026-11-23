@@ -172,7 +172,12 @@ export const DocumentsTableRow: React.FC<{
         </td>
         <DocumentMetadataCell doc={doc} onOpenToc={onOpenToc} onOpenMetadata={onOpenMetadata} />
         <td>{doc.organization || '-'}</td>
-        <DocumentStatusCell doc={doc} onOpenTimeline={onOpenTimeline} onOpenLogs={onOpenLogs} />
+        <DocumentStatusCell
+          doc={doc}
+          onOpenTimeline={onOpenTimeline}
+          onOpenLogs={onOpenLogs}
+          canViewLogs={canModerate}
+        />
         <td>{doc.document_type || '-'}</td>
         <td>{doc.published_year || '-'}</td>
         <td>{doc.language || '-'}</td>
@@ -192,7 +197,7 @@ export const DocumentsTableRow: React.FC<{
         <td>{lastUpdated || '-'}</td>
         <td>{doc.ocr_applied ? 'Yes' : '-'}</td>
         <DocumentChunksCell doc={doc} onViewChunks={onViewChunks} />
-        {USER_FEEDBACK && (
+        {USER_FEEDBACK && canModerate && (
           <DocumentActionsCell
             doc={doc}
             reprocessingDocId={reprocessingDocId}

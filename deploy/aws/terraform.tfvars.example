@@ -2,17 +2,31 @@
 
 name                = "evidencelab"
 region              = "us-east-2"
-evidencelab_version = "1.6.5"
+evidencelab_version = "1.6.6"
 config_json_path    = "../../config.json"
+
+# Your own branding and pipeline files, relative to deploy/aws (see the docs,
+# "Your own branding and pipeline files"). Empty: stock branding, no files.
+# customize_assets_dir = "../../my-branding"
+# pipeline_files_dir   = "../../my-pipeline-files"
 
 # Leave false for the first apply; set true once the web app image is pushed
 # and the migrate task has run.
 services_enabled = false
 
 # HTTPS on your own domain, with a Route 53 hosted zone for it. Leave both
-# empty to serve plain HTTP on the load balancer's address (testing only).
+# empty to serve plain HTTP on the load balancer's address (testing only), or
+# HTTPS on CloudFront's address with cloudfront_enabled.
 domain_name     = ""
 route53_zone_id = ""
+
+# CloudFront and an AWS WAF web ACL in front of the site; the load balancer
+# then has no internet address. See "CloudFront and AWS WAF" in
+# docs/admin/cloud-deployment.md.
+cloudfront_enabled = false
+# waf_count_only        = true                 # first days: count, don't block
+# waf_allowed_ip_ranges = ["203.0.113.0/24"]   # only these addresses
+# waf_rate_limit        = 2000                 # requests per address per 5 minutes
 
 # Qdrant Cloud cluster in the same region. Leave empty to run Qdrant on EC2.
 qdrant_url = ""
@@ -24,6 +38,18 @@ qdrant_url = ""
 # ["AZURE_FOUNDRY_KEY", "AZURE_FOUNDRY_ENDPOINT"]. With --demo, deploy.sh
 # sets this for you.
 provider_secret_names = []
+
+# Scheduled AWS Backup backups of Postgres, the EFS documents and Qdrant
+# (backup.tf): weekly, kept 35 days. Change or turn off with:
+# backup_schedule       = "cron(0 3 ? * SUN *)"
+# backup_retention_days = 35
+# backups_enabled       = false
+
+# PostgreSQL major version for a new database (an existing one keeps its own):
+# db_engine_version = "17"
+
+# Days an upload stays in the transfer bucket (scripts/restore-data.sh):
+# transfer_retention_days = 30
 
 # Smaller, single-zone settings for a throwaway test deployment:
 # db_multi_az            = false

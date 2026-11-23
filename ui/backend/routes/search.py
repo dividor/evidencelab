@@ -9,9 +9,9 @@ from qdrant_client.http import models as qmodels
 
 from pipeline.db import (
     get_default_filter_fields,
-    get_search_max_limit,
     get_src_field_mapping,
     get_taxonomy_filter_fields,
+    resolve_data_source,
 )
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.routes.highlight import infer_paragraphs_from_bboxes
@@ -25,7 +25,7 @@ from ui.backend.services.search import (
     search_titles,
 )
 from ui.backend.services.search_models import apply_field_boost
-from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.app_limits import get_rate_limits, get_search_max_limit, limiter
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.document_utils import (
     map_core_field_to_storage,
@@ -48,9 +48,6 @@ from ui.backend.utils.filter_helpers import (
 )
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
-# Largest ``limit`` or ``wide_limit`` one /search request may ask for
-# (``application.search.max_limit`` in config.json); above it the request is
-# rejected with 422, so no client can ask for an unbounded response.
 SEARCH_MAX_LIMIT = get_search_max_limit()
 MAX_CONCURRENT_SEARCHES = int(os.environ.get("MAX_CONCURRENT_SEARCHES", "8"))
 search_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
@@ -787,25 +784,12 @@ def _gather_known_values(
     return known
 
 
-def _check_search_limits(limit: int, wide_limit: int) -> None:
-    """Reject a ``limit`` or ``wide_limit`` above ``SEARCH_MAX_LIMIT`` with 422."""
-    for name, value in (("limit", limit), ("wide_limit", wide_limit)):
-        if value > SEARCH_MAX_LIMIT:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"{name} must be at most {SEARCH_MAX_LIMIT} "
-                    "(application.search.max_limit)"
-                ),
-            )
-
-
 @router.get("/search", response_model=SearchResponse)
 @limiter.limit(RATE_LIMIT_SEARCH)
 async def search(
     request: Request,
     q: str = Query("", description="Search query (empty for filter-only counting)"),
-    limit: int = Query(50, description="Maximum results"),
+    limit: int = Query(50, ge=1, le=SEARCH_MAX_LIMIT, description="Maximum results"),
     # Core field names (mapped to source fields internally)
     organization: Optional[str] = Query(None, description="Filter by organization"),
     title: Optional[str] = Query(None, description="Filter by title (partial match)"),
@@ -897,9 +881,8 @@ async def search(
     Filter parameters use core field names which are mapped to source fields.
     """
 
-    _check_search_limits(limit, wide_limit)
     t_start = time.time()
-    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
     shape = ResultShape.for_source(source, lean=lean)
@@ -1126,7 +1109,7 @@ async def docsearch(
     Used by heatmap when no query is specified and rows are not 'queries'.
     """
     t_start = time.time()
-    source = data_source if isinstance(data_source, str) and data_source else "uneg"
+    source = resolve_data_source(data_source if isinstance(data_source, str) else None)
     db = get_db_for_source(source)
     pg = get_pg_for_source(source)
 
@@ -1199,7 +1182,9 @@ async def search_facet_values_endpoint(
     request: Request,
     field: str = Query(..., description="Field to search for (e.g., 'organization')"),
     q: str = Query(..., description="Search query for values"),
-    limit: int = Query(100, description="Max documents to scan"),
+    limit: int = Query(
+        100, ge=1, le=SEARCH_MAX_LIMIT, description="Max documents to scan"
+    ),
     data_source: Optional[str] = Query(None, description="Data source"),
     dense_weight: Optional[float] = Query(None, description="Dense search weight"),
 ):
@@ -1208,7 +1193,7 @@ async def search_facet_values_endpoint(
     Used for server-side filtering in the facet UI.
     """
     try:
-        source = data_source or "uneg"
+        source = resolve_data_source(data_source)
 
         # Use simple dense search (or native Facet API) to find values
         results = search_facet_values(
@@ -1248,7 +1233,7 @@ async def get_facets(
     Accepts filter parameters (core field names) to return facets based on current selections.
     """
     try:
-        source = data_source or "uneg"
+        source = resolve_data_source(data_source)
         db = get_db_for_source(source)
         pg = get_pg_for_source(source)
         filter_fields_config = get_default_filter_fields(source)

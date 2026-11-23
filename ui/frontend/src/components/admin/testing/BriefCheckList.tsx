@@ -185,6 +185,23 @@ const BriefCheckList: React.FC<BriefCheckListProps> = ({ modelCombo, onOpenCheck
                       </span>
                     )}{' '}
                     <span className="text-muted">{lastCheckSummary(last)}</span>
+                    {last?.brief_version_number != null && (
+                      <span
+                        className="text-muted testing-check-version"
+                        title="The brief version this check judged"
+                      >
+                        {' '}
+                        v{last.brief_version_number}
+                      </span>
+                    )}
+                    {last?.brief_changed && (
+                      <span
+                        className="testing-config-badge"
+                        title="The brief has a newer version than the one this check judged"
+                      >
+                        brief changed since
+                      </span>
+                    )}
                   </td>
                   <td onClick={(e) => e.stopPropagation()} className="testing-row-actions">
                     <button

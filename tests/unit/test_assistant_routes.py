@@ -10,6 +10,8 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
 # ---------------------------------------------------------------------------
 # Mock the heavy transitive imports that assistant routes pull in.
 # assistant_service -> assistant_graph -> search -> google.cloud
@@ -203,8 +205,21 @@ class TestStreamAssistantChat:
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
-    async def test_passes_model_config(self, mock_stream):
+    async def test_passes_model_config(self, mock_stream, monkeypatch):
         """Model config should be extracted and passed to the service."""
+        from pipeline.db import config as db_config
+
+        # The route accepts only a model config.json lists, within its budget.
+        monkeypatch.setattr(
+            db_config,
+            "SUPPORTED_LLMS",
+            {"gpt-4.1-mini": {"model": "gpt-4.1-mini", "provider": "azure_foundry"}},
+        )
+        monkeypatch.setattr(
+            db_config,
+            "UI_MODEL_COMBOS",
+            {"A": {"assistant_model": {"model": "gpt-4.1-mini", "max_tokens": 2000}}},
+        )
 
         async def mock_gen(*args, **kwargs):
             yield {"type": "done", "messageId": "msg-1"}
@@ -218,7 +233,7 @@ class TestStreamAssistantChat:
             query="test",
             assistant_model_config={
                 "model": "gpt-4.1-mini",
-                "max_tokens": 3000,
+                "max_tokens": 2000,
                 "temperature": 0.5,
             },
         )
@@ -240,7 +255,7 @@ class TestStreamAssistantChat:
         call_kwargs = mock_stream.call_args[1]
         assert call_kwargs["model_key"] == "gpt-4.1-mini"
         assert call_kwargs["temperature"] == 0.5
-        assert call_kwargs["max_tokens"] == 3000
+        assert call_kwargs["max_tokens"] == 2000
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")
@@ -777,6 +792,33 @@ class TestStreamAssistantChatBriefSection:
         assert "Voice & tone profile" in query
         # The Activity row is labelled with the heading, not the prompt.
         assert mock_usage.call_args[1]["query"] == "Findings"
+
+    @pytest.mark.asyncio
+    @patch("ui.backend.routes.assistant.schedule_llm_usage_recording")
+    @patch("ui.backend.routes.assistant.stream_research_response")
+    async def test_stream_when_brief_survey_then_research_gets_written_prompt(
+        self, mock_stream, mock_usage
+    ):
+        async def mock_gen(*args, **kwargs):
+            yield {"type": "done", "messageId": "msg-1", "usage": {"tokens": 1}}
+
+        mock_stream.return_value = mock_gen()
+        instructions = "x" * 5000
+        body = AssistantChatRequest(
+            query="School meals",
+            deep_research=True,
+            usage_context="brief",
+            activity_id="act-1",
+            brief_survey={"topic": "School meals", "instructions": instructions},
+        )
+
+        await self._run(body)
+
+        query = mock_stream.call_args[1]["query"]
+        assert query.startswith("Research the document library")
+        assert query.endswith(instructions)
+        # The Activity row is labelled with the topic, not the prompt.
+        assert mock_usage.call_args[1]["query"] == "School meals"
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")

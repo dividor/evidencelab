@@ -4,7 +4,7 @@
 
 data "aws_rds_engine_version" "postgres" {
   engine       = "postgres"
-  version      = "16"
+  version      = var.db_engine_version
   default_only = true
 }
 
@@ -38,6 +38,16 @@ resource "aws_db_instance" "main" {
   final_snapshot_identifier  = var.db_skip_final_snapshot ? null : "${var.name}-final"
   auto_minor_version_upgrade = true
   apply_immediately          = true
+
+  # The version is db_engine_version's default minor version when the database
+  # is created; after that AWS applies minor upgrades itself in the maintenance
+  # window. Following the default on every run would make a deploy upgrade
+  # (and restart) the database, or try to undo an upgrade AWS already made. So
+  # changing db_engine_version only affects a new database: an existing one
+  # moves to a new major version by an RDS upgrade, or by being recreated.
+  lifecycle {
+    ignore_changes = [engine_version]
+  }
 }
 
 # The certificate authorities RDS signs its server certificates with, so the
@@ -122,7 +132,8 @@ resource "aws_instance" "qdrant" {
   }
 
   # Docker runs Qdrant with its storage on the instance's disk, restarting it
-  # with the instance. Changing the key or image replaces the instance.
+  # with the instance. Changing the key or image replaces the instance, and
+  # with it the index on its disk.
   user_data_replace_on_change = true
   user_data                   = <<-EOT
     #!/bin/bash
@@ -137,6 +148,13 @@ resource "aws_instance" "qdrant" {
   EOT
 
   tags = { Name = "${var.name}-qdrant" }
+
+  # The image is Amazon Linux's newest when the instance is created. AWS
+  # publishes new ones every few weeks; following them would replace the
+  # instance on the next deploy and delete Qdrant's index with its disk.
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   depends_on = [aws_nat_gateway.main, aws_route_table_association.private]
 }

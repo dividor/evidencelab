@@ -64,7 +64,7 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 * **Multi-Vector Indexing**: Stores multiple vectors per chunk to support different retrieval strategies.
   * **Dense**: Semantic vectors (defaulting to `multilingual-e5-large`, with support for Azure Foundry `text-embedding-3`, Google Vertex Gemini and Amazon Titan models).
   * **Sparse**: BM25 keyword vectors for exact term matching.
-* **Model Agnostic**: Designed to swap embedding backends (Hugging Face, Azure Foundry, Google Vertex, Amazon Bedrock) via configuration.
+* **Model Agnostic**: Designed to swap embedding backends (Hugging Face, Azure Foundry, Google Vertex, Amazon Bedrock, or any OpenAI-compatible endpoint) via configuration.
 * **Document Embeddings**: Generates a separate "Document Level" embedding (Title + Summary) to support "More like this" recommendations at the document level.
 
 ## Search & Discovery
@@ -74,7 +74,7 @@ Prepares and stores content in **Qdrant** with placeholders for a range of vecto
 Search powered by hybrid retrieval and AI.
 
 * **Hybrid Search (RRF)**: Uses Reciprocal Rank Fusion to mathematically combine results from Semantic Search (Dense) and Keyword Search (Sparse). This captures both "conceptual matches" and "exact phrase matches".
-* **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry or Amazon Bedrock), the Google Vertex ranker, and Jina Reranker (via Huggingface).
+* **Intelligent Reranking**: Optionally applies a reranking step to re-score the top results, significantly improving precision. Supports Cohere Rerank (via Azure Foundry, Amazon Bedrock or any Cohere-compatible endpoint), the Google Vertex ranker, and Jina Reranker (via Huggingface).
 * **Recency Boosting**: Applies a Gaussian decay function to boost newer documents while retaining relevance for older, highly distinct matches.
 * **Field Boosting**: Configurable per data source, detects field values (e.g., country names, organizations) mentioned in the query and boosts matching results. At weight < 1.0, uses a multiplicative bonus (`score * (1 + weight)`) so non-matching results are never penalized. At weight = 1.0, acts as a hard filter — results whose metadata field does not match the detected value are excluded entirely.
 * **Faceted Navigation**: Filter by Organization, Year, Language, and Format.

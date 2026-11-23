@@ -14,6 +14,8 @@ from ui.backend.utils import facet_helpers as facet_module
 from ui.backend.utils import filter_helpers as filter_helpers_module
 from ui.backend.utils.language_codes import LANGUAGE_CODES, LANGUAGE_NAMES
 
+pytestmark = pytest.mark.usefixtures("one_data_source")
+
 
 def _make_request(method: str = "GET", path: str = "/", query: str = "") -> Request:
     scope = {

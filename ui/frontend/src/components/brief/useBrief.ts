@@ -44,14 +44,18 @@ import {
   getLocalRunDetail,
   getRunDetail,
   HighlightsPayload,
+  keepRun as keepRunRemote,
   recordRun,
   rejectRun as rejectRunRemote,
+  restoreSectionVersion as restoreSectionVersionRemote,
   RunPayload,
   setHighlights as setHighlightsRemote,
   setReferenceGrouping as setReferenceGroupingRemote,
   StoredBrief,
 } from './briefCitationsApi';
+import { errorText } from './briefErrors';
 import { listItemToStub, migrateLocalBriefs, remoteToRead } from './briefRemote';
+import { restoreBriefVersion as restoreBriefVersionRemote } from './briefVersionsApi';
 import {
   BRIEF_INTRO,
   extraHeadingLines,
@@ -127,6 +131,8 @@ const remoteCitationOp = (serverId: string, op: CitationOp): Promise<RemoteBrief
       return recordRun(serverId, op.sectionId, op.run);
     case 'reject':
       return rejectRunRemote(serverId, op.sectionId, op.runId);
+    case 'keep':
+      return keepRunRemote(serverId, op.sectionId, op.runId);
     case 'grouping':
       return setReferenceGroupingRemote(serverId, op.grouping);
     case 'highlights':
@@ -403,6 +409,8 @@ export const useBrief = ({
   const [referenceGroups, setReferenceGroups] = useState<BriefReferenceGroup[]>([]);
   // Sources registered in the brief (every record the agent returned).
   const [sourceCount, setSourceCount] = useState(0);
+  // How many whole-brief versions the API holds, for the Document History link.
+  const [versionCount, setVersionCount] = useState(0);
   // Where the Word export's links point: the source documents (default) or
   // their copies in Evidence Lab.
   const [wordLinkTarget, setWordLinkTarget] = useState<LinkTarget>('source');
@@ -426,6 +434,10 @@ export const useBrief = ({
   const [briefVoiceId, setBriefVoiceId] = useState<string | null>(null);
   // False when the open brief was shared with (not owned by) this user.
   const [canEdit, setCanEdit] = useState(true);
+  // Bumped whenever the API's content for the brief is applied (a load, a
+  // save, a research run), so features that depend on what the server holds
+  // (the Fact Checker) re-check it.
+  const [contentRevision, setContentRevision] = useState(0);
   const [ownerName, setOwnerName] = useState<string | null>(null);
   // The data source a saved brief was researched in, from its server record.
   // Null for a new or local brief, whose sources are in the app's selected
@@ -443,13 +455,22 @@ export const useBrief = ({
       id: string,
       context: string | null,
       signal: AbortSignal,
-      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+      // `review`: a single-section change that waits for Keep or Reject.
+      opts?: {
+        mode?: SectionResearchMode;
+        instruction?: string | null;
+        attempt?: number;
+        review?: boolean;
+      },
     ) => Promise<void>
   >(() => {
     throw new Error('researchOne used before it was defined');
   });
   const sectionsRef = useRef<BriefSection[]>(sections);
   sectionsRef.current = sections;
+  // Sections whose Keep or Reject is on its way to the API (see decideReview).
+  const reviewBusyRef = useRef<Set<string>>(new Set());
+  const [reviewBusy, setReviewBusy] = useState<ReadonlySet<string>>(() => new Set());
   const outlineLogRef = useRef<BriefActivityEvent[]>(generatingActivity);
   outlineLogRef.current = generatingActivity;
   // Refs so saveCurrent is a stable callback (safe to call from effects/timers).
@@ -526,7 +547,7 @@ export const useBrief = ({
         if (!cancelled) setHistory(items.map(listItemToStub));
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Could not load saved briefs.');
+          setError(errorText(e, 'Could not load saved briefs.'));
         }
       }
     })();
@@ -586,6 +607,7 @@ export const useBrief = ({
     const stamp = read.renumberedAt ?? 0;
     if (stamp && stamp < readStampRef.current) return;
     readStampRef.current = Math.max(readStampRef.current, stamp);
+    setContentRevision((n) => n + 1);
     setSections((prev) =>
       prev.map((s) => {
         const r = read.sections.find((x) => x.id === s.id);
@@ -601,6 +623,7 @@ export const useBrief = ({
           runs: r.runs || [],
           currentRunId: r.currentRunId ?? null,
           audit: r.audit || [],
+          pendingReview: r.pendingReview ?? null,
         };
       }),
     );
@@ -608,17 +631,24 @@ export const useBrief = ({
     setReferenceGroups(read.referenceGroups || []);
     setReferenceGroupingState(read.referenceGrouping || 'passage');
     setSourceCount(read.sourceCount || 0);
+    if (read.versionCount !== undefined) setVersionCount(read.versionCount);
   }, []);
 
   // Store the highlights the browser computed on the brief's source list.
   // The API's reply is not applied: the live sources already carry them.
-  const pushHighlights = useCallback((sources: SourceReference[]): void => {
-    const highlights = highlightsOf(sources);
-    if (!Object.keys(highlights).length) return;
-    citationsCallRef.current({ type: 'highlights', highlights }).catch((e) =>
-      setError(e instanceof Error ? e.message : 'Could not save the highlights.'),
-    );
-  }, []);
+  // A brief shared with this user is read-only: its highlights are shown but
+  // not stored, because only the owner may write to it (the API refuses).
+  const pushHighlights = useCallback(
+    (sources: SourceReference[]): void => {
+      if (remote && !canEditRef.current) return;
+      const highlights = highlightsOf(sources);
+      if (!Object.keys(highlights).length) return;
+      citationsCallRef.current({ type: 'highlights', highlights }).catch((e) =>
+        setError(errorText(e, 'Could not save the highlights.')),
+      );
+    },
+    [remote],
+  );
 
   // After a section's research completes (references validated), run the LLM
   // semantic highlighter over each cited excerpt in the background — the hover
@@ -746,7 +776,7 @@ export const useBrief = ({
         deleteBriefRemote(id)
           .then(() => setHistory((prev) => prev.filter((e) => e.id !== id)))
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not delete the brief.'),
+            setError(errorText(e, 'Could not delete the brief.')),
           );
         return;
       }
@@ -906,7 +936,7 @@ export const useBrief = ({
       const run = () => {
         remoteSaveBusyRef.current = true;
         drain()
-          .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'))
+          .catch((e) => setError(errorText(e, 'Could not save the brief.')))
           .finally(() => {
             remoteSaveBusyRef.current = false;
             // A save parked after the loop's last check (or while a save
@@ -916,7 +946,7 @@ export const useBrief = ({
               return;
             }
             refreshRemoteHistory().catch((e) =>
-              setError(e instanceof Error ? e.message : 'Could not load your briefs.'),
+              setError(errorText(e, 'Could not load your briefs.')),
             );
           });
       };
@@ -945,7 +975,7 @@ export const useBrief = ({
       .then((read) => {
         if (briefIdRef.current === id) applyRead(read);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : 'Could not save the brief.'));
+      .catch((e) => setError(errorText(e, 'Could not save the brief.')));
   }, [remote, pushRemoteSave, snapshotSaved, citationsCall, applyRead]);
 
   // A new brief starts with no citation state of its own.
@@ -994,13 +1024,12 @@ export const useBrief = ({
     // loaded brief's activity row.
     const activityId = newActivityId();
     try {
-      const surveyQuery = guidance
-        ? `Research the document library to inform an evidence brief on "${topic}". Follow these author instructions closely and let them drive what you search for — focus your queries on the specific angles, sectors, regions, populations and outcomes the instructions call for, not just generic restatements of the topic: ${guidance}`
-        : `Research the document library to inform an evidence brief on "${topic}".`;
       await runDeepResearch({
         apiBaseUrl,
         dataSource,
-        query: surveyQuery,
+        // The API writes the survey prompt; the topic labels the Activity row.
+        query: topic,
+        briefSurvey: { topic, instructions: guidance || undefined },
         doneLabel: 'Document library surveyed',
         assistantModelConfig,
         rerankerModel: rerankerModelRef.current,
@@ -1051,7 +1080,7 @@ export const useBrief = ({
       setStage('outline');
     } catch (e) {
       if (!controller.signal.aborted) {
-        setError(e instanceof Error ? e.message : 'Could not generate an outline.');
+        setError(errorText(e, 'Could not generate an outline.'));
       }
     } finally {
       setOutlineLoading(false);
@@ -1217,7 +1246,7 @@ export const useBrief = ({
         updateSection(id, { status: 'done', progress: 100, revising: undefined });
         setError(
           `“${section.title}” came back at ${words} words against a target of ${target} and could not be condensed: ${
-            e instanceof Error ? e.message : 'condense failed'
+            errorText(e, 'condense failed')
           }`,
         );
       }
@@ -1240,7 +1269,13 @@ export const useBrief = ({
       context: string | null,
       signal: AbortSignal,
       // `attempt` counts re-runs of an introduction that came back with headings.
-      opts?: { mode?: SectionResearchMode; instruction?: string | null; attempt?: number },
+      // `review`: a single-section change that waits for Keep or Reject.
+      opts?: {
+        mode?: SectionResearchMode;
+        instruction?: string | null;
+        attempt?: number;
+        review?: boolean;
+      },
     ): Promise<void> => {
       const list = sectionsRef.current;
       const idx = list.findIndex((s) => s.id === id);
@@ -1349,6 +1384,7 @@ export const useBrief = ({
               question: mode === 'generate' ? section.title : undefined,
               instruction: mode === 'generate' ? context || undefined : instruction || undefined,
               note: introAuditNote(intro.headings, attempt),
+              review: !!opts?.review,
             };
             postRun = citationsCall({ type: 'run', sectionId: id, run })
               .then((read) => {
@@ -1361,8 +1397,6 @@ export const useBrief = ({
                   introHeadingWarning: intro.headings || undefined,
                   lastResearchedAt: doneAt,
                   revising: undefined,
-                  pendingRunId: isRevise ? shown?.currentRunId ?? undefined : undefined,
-                  lastChangeKind: isRevise ? mode : undefined,
                 });
                 applyRead(read);
                 const shownContent = shown?.renumbered.content || '';
@@ -1396,7 +1430,7 @@ export const useBrief = ({
                 );
                 setError(
                   `“${section.title}” was researched but could not be saved: ${
-                    e instanceof Error ? e.message : 'the citation service failed'
+                    errorText(e, 'the citation service failed')
                   }`,
                 );
               });
@@ -1540,7 +1574,7 @@ export const useBrief = ({
       let controller = abortRef.current;
       if (!controller || controller.signal.aborted) controller = new AbortController();
       abortRef.current = controller;
-      await researchOne(id, context, controller.signal);
+      await researchOne(id, context, controller.signal, { review: true });
       finishIfComplete();
     },
     [stage, researchOne, finishIfComplete],
@@ -1582,7 +1616,13 @@ export const useBrief = ({
         const read = await citationsCall({
           type: 'run',
           sectionId: id,
-          run: { mode: 'edit', content: revised, instruction: instruction.trim(), basedOn },
+          run: {
+            mode: 'edit',
+            content: revised,
+            instruction: instruction.trim(),
+            basedOn,
+            review: true,
+          },
         });
         if (controller.signal.aborted) return;
         const shown = read.sections.find((s) => s.id === id);
@@ -1593,8 +1633,6 @@ export const useBrief = ({
           introHeadingWarning: introWarningFor(sectionsRef.current, id, revised),
           lastResearchedAt: doneAt,
           revising: undefined,
-          pendingRunId: shown?.currentRunId ?? undefined,
-          lastChangeKind: 'edit',
         });
         applyRead(read);
         researchTokenRef.current[id] = doneAt;
@@ -1611,7 +1649,7 @@ export const useBrief = ({
       } catch (e) {
         if (!controller.signal.aborted) {
           updateSection(id, { status: 'done', progress: 100, revising: undefined });
-          setError(e instanceof Error ? e.message : 'Edit failed');
+          setError(errorText(e, 'Edit failed'));
         }
       }
     },
@@ -1642,32 +1680,47 @@ export const useBrief = ({
       let controller = abortRef.current;
       if (!controller || controller.signal.aborted) controller = new AbortController();
       abortRef.current = controller;
-      await researchOne(id, null, controller.signal, { mode, instruction });
+      await researchOne(id, null, controller.signal, { mode, instruction, review: true });
       finishIfComplete();
     },
     [stage, editSectionAI, researchOne, finishIfComplete],
   );
 
-  // Keep Edits: accept the revised run; it stays current.
-  const dismissChanges = useCallback(
-    (id: string) => updateSection(id, { pendingRunId: undefined, lastChangeKind: undefined }),
-    [updateSection],
-  );
-
-  // Reject Edits: the API makes the run before the revision current again
-  // (its Log row goes with it) and renumbers the brief.
-  const rejectChanges = useCallback(
-    async (id: string) => {
-      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingRunId;
+  // Keep or Reject for a section's change awaiting review. One decision per
+  // section at a time: until the API answers, the page still holds the change
+  // as awaiting review, so a second click would send the same decision again
+  // and the API would refuse it ("no longer awaiting review"). Repeat calls
+  // do nothing while one is on its way, and `reviewBusy` turns the buttons off.
+  const decideReview = useCallback(
+    async (id: string, type: 'keep' | 'reject', failure: string) => {
+      if (reviewBusyRef.current.has(id)) return;
+      const runId = sectionsRef.current.find((s) => s.id === id)?.pendingReview?.runId;
       if (!runId) return;
-      updateSection(id, { pendingRunId: undefined, lastChangeKind: undefined });
+      reviewBusyRef.current.add(id);
+      setReviewBusy(new Set(reviewBusyRef.current));
       try {
-        applyRead(await citationsCall({ type: 'reject', sectionId: id, runId }));
+        applyRead(await citationsCall({ type, sectionId: id, runId }));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not reject the edits.');
+        setError(errorText(e, failure));
+      } finally {
+        reviewBusyRef.current.delete(id);
+        setReviewBusy(new Set(reviewBusyRef.current));
       }
     },
-    [updateSection, citationsCall, applyRead],
+    [citationsCall, applyRead],
+  );
+
+  // Keep Edits: the change awaiting review stays; the API ends the review.
+  const dismissChanges = useCallback(
+    (id: string) => decideReview(id, 'keep', 'Could not keep the edits.'),
+    [decideReview],
+  );
+
+  // Reject Edits: the API puts back the section's text from before the change
+  // (the change's Log rows stay, marked rejected) and renumbers the brief.
+  const rejectChanges = useCallback(
+    (id: string) => decideReview(id, 'reject', 'Could not reject the edits.'),
+    [decideReview],
   );
 
   // A manual edit, once the editor is left, is recorded as a run of the
@@ -1699,7 +1752,7 @@ export const useBrief = ({
           0,
         );
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not save the edit.');
+        setError(errorText(e, 'Could not save the edit.'));
       }
     },
     [citationsCall, applyRead, enrichSectionHighlights],
@@ -1748,6 +1801,7 @@ export const useBrief = ({
         runs: h.runs || [],
         currentRunId: h.currentRunId ?? null,
         audit: h.audit || [],
+        pendingReview: h.pendingReview ?? null,
         lastResearchedAt: h.lastResearchedAt,
         voiceId: h.voiceId ?? null,
         guidance: h.guidance || '',
@@ -1759,6 +1813,8 @@ export const useBrief = ({
       setReferenceGroups(entry.referenceGroups || []);
       setReferenceGroupingState(entry.referenceGrouping || 'passage');
       setSourceCount(entry.sourceCount || 0);
+      setContentRevision((n) => n + 1);
+      setVersionCount(entry.versionCount ?? 0);
       // Record the brief as opened, so the autosave sends nothing until
       // something actually changes (opening never writes a brief back).
       lastSavedSigRef.current.set(
@@ -1853,7 +1909,7 @@ export const useBrief = ({
             }),
           )
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not open the brief.'),
+            setError(errorText(e, 'Could not open the brief.')),
           );
         return;
       }
@@ -1869,12 +1925,61 @@ export const useBrief = ({
           storedContentRef.current = content;
           if (op.type === 'convert') persistStored(content);
         })
-        .catch((e) => setError(e instanceof Error ? e.message : 'Could not open the brief.'));
+        .catch((e) => setError(errorText(e, 'Could not open the brief.')));
     },
     [remote, applyLoadedBrief, persistStored],
   );
 
   // Open a server brief by id (Brief Central cards and /brief/<id> URLs).
+  // The open brief's server id, for the version Log (signed-in briefs only).
+  const getServerBriefId = useCallback((): string | null => {
+    const id = briefIdRef.current;
+    return remote && id ? serverIdsRef.current.get(id) ?? null : null;
+  }, [remote]);
+
+  const requireServerId = useCallback((): string => {
+    const serverId = getServerBriefId();
+    if (!serverId) throw new Error('Versions are kept only for saved, signed-in briefs');
+    return serverId;
+  }, [getServerBriefId]);
+
+  // Restore the version of a section one of its Log rows records. The API
+  // records it as a new "Restored" run and renumbers the brief.
+  const restoreSectionEntry = useCallback(
+    async (id: string, entryId: string): Promise<void> => {
+      try {
+        const serverId = requireServerId();
+        const restored = await withBriefLock(() =>
+          restoreSectionVersionRemote(serverId, id, entryId),
+        );
+        applyRead(remoteToRead(restored));
+      } catch (e) {
+        setError(errorText(e, 'Could not restore the section.'));
+      }
+    },
+    [requireServerId, withBriefLock, applyRead],
+  );
+
+  // Restore the whole brief to a version: headings, settings and text can all
+  // change, so the brief is reloaded from what the API returns.
+  const restoreBriefVersion = useCallback(
+    async (number: number): Promise<void> => {
+      try {
+        const serverId = requireServerId();
+        const full = await withBriefLock(() => restoreBriefVersionRemote(serverId, number));
+        applyLoadedBrief(remoteToRead(full), {
+          canEdit: full.can_edit,
+          ownerName: full.owner_name,
+          saved: true,
+          dataSource: full.data_source,
+        });
+      } catch (e) {
+        setError(errorText(e, 'Could not restore the brief.'));
+      }
+    },
+    [requireServerId, withBriefLock, applyLoadedBrief],
+  );
+
   const openBriefById = useCallback(
     (id: string) => loadBrief({ id } as SavedBrief),
     [loadBrief],
@@ -1897,7 +2002,7 @@ export const useBrief = ({
             });
           })
           .catch((e) =>
-            setError(e instanceof Error ? e.message : 'Could not copy the brief.'),
+            setError(errorText(e, 'Could not copy the brief.')),
           );
         return;
       }
@@ -1949,7 +2054,7 @@ export const useBrief = ({
       citationsCall({ type: 'grouping', grouping })
         .then(applyRead)
         .catch((e) =>
-          setError(e instanceof Error ? e.message : 'Could not change the grouping.'),
+          setError(errorText(e, 'Could not change the grouping.')),
         );
     },
     [citationsCall, applyRead],
@@ -1992,10 +2097,12 @@ export const useBrief = ({
     doneCount,
     totalProgress,
     totalSources,
+    versionCount,
     totalWords,
     targetWords,
     briefVoiceId,
     canEdit,
+    contentRevision,
     ownerName,
     briefDataSource,
     remote,
@@ -2041,6 +2148,10 @@ export const useBrief = ({
     reviseSection,
     dismissChanges,
     rejectChanges,
+    isReviewBusy: (id: string) => reviewBusy.has(id),
+    restoreSectionEntry,
+    restoreBriefVersion,
+    getServerBriefId,
     commitManualEdit,
     references,
     referenceGroups,

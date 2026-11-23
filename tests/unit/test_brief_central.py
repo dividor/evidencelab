@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from ui.backend.auth.schemas import (
+    BRIEF_PROMPT_MAX_CHARS,
     BriefCreate,
     BriefShareCreate,
     BriefTemplateCreate,
@@ -108,9 +109,11 @@ class TestBriefTemplateSchemas:
         )
 
     def test_heading_prompt_capped_like_section_guidance(self):
-        BriefTemplateHeading(title="Ok", prompt="x" * 2000)
+        BriefTemplateHeading(title="Ok", prompt="x" * BRIEF_PROMPT_MAX_CHARS)
         with pytest.raises(ValidationError):
-            BriefTemplateHeading(title="Too long", prompt="x" * 2001)
+            BriefTemplateHeading(
+                title="Too long", prompt="x" * (BRIEF_PROMPT_MAX_CHARS + 1)
+            )
 
     @pytest.mark.parametrize("words", [49, 5001])
     def test_length_target_bounded(self, words):
@@ -124,7 +127,9 @@ class TestBriefTemplateSchemas:
     def test_whole_brief_prompt_capped(self):
         with pytest.raises(ValidationError):
             BriefTemplateCreate(
-                name="N", headings=[BriefTemplateHeading(title="H")], prompt="x" * 2001
+                name="N",
+                headings=[BriefTemplateHeading(title="H")],
+                prompt="x" * (BRIEF_PROMPT_MAX_CHARS + 1),
             )
 
     def test_update_tells_cleared_fields_from_omitted_ones(self):

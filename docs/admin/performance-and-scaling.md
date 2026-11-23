@@ -10,12 +10,23 @@ All of these are environment variables set in `.env`. **Every one has a default,
 |----------|---------|------------------|
 | `MAX_CONCURRENT_SEARCHES` | `8` | Searches running at once. Lower it if embedding or reranking models run inside the API process and memory is tight. |
 | `MAX_CONCURRENT_RERANKS` | `1` | **Local** reranker inferences at once. A local reranker holds a model in the API process, so running several at once multiplies memory and has stopped the API outright. Raise with care. |
-| `MAX_CONCURRENT_REMOTE_RERANKS` | `8` | **Hosted** reranker calls at once (Azure Foundry, Google Vertex, Amazon Bedrock). These are ordinary HTTP requests and cost no local memory, so they are bounded separately — by the provider's rate limit rather than by this process's memory. |
+| `MAX_CONCURRENT_REMOTE_RERANKS` | `8` | **Hosted** reranker calls at once (Azure Foundry, Google Vertex, Amazon Bedrock, a Cohere-compatible endpoint). These are ordinary HTTP requests and cost no local memory, so they are bounded separately — by the provider's rate limit rather than by this process's memory. |
 | `VERTEX_RERANK_BATCH_SIZE` | `200` | Records in one Google Vertex Ranking API request. A search that reranks more candidates than this is scored in slices of this size, one after another, inside a single remote-rerank slot; the scores are comparable across slices. A heatmapper cell can send up to 1000 documents (5000 chunks with wide search), which is why one request per search is not an option. The API accepts at most 1000 records per request. |
 
 If your model combo reranks through a hosted service, `MAX_CONCURRENT_RERANKS` does not apply to it, and leaving that value at `1` costs you nothing.
 
 A model combo's `rerank_model_page_size` in `config.json` caps how many of a search's candidates are reranked at all; the rest keep their search order behind the reranked ones. Without it every candidate is scored, so a heatmapper grid of broad queries can mean several Vertex requests per cell. See the combo settings in the README.
+
+## Request size limits
+
+These bound how much one request can ask for. The web interface stays well inside them; they stop a scripted request from exhausting memory or the model budget.
+
+| Variable | Default | What it controls |
+|----------|---------|------------------|
+| `SEARCH_MAX_LIMIT` | `10000` | The largest `limit` a search may ask for (`/search`, `/search/facet-values`). An empty-query search loads that many passages into memory. Keep it at or above `application.search.heatmap_cell_limit` in `config.json`, which the heatmapper asks for per cell (see [Search response size](#search-response-size)). |
+| `HIGHLIGHT_MAX_TEXT_CHARS` | `50000` | The longest text a highlight request may send. The app sends one passage at a time; the longest measured passage in the UNEG corpus is 42,604 characters. |
+
+AI requests are also limited by `config.json`: a request may only name a model listed under `supported_llms`, and may ask for at most as many output tokens as `config.json` sets for that model (the largest `max_tokens` among its own entry and the model combo settings that use it). A request outside those limits gets a 400 that names the limit.
 
 ## Connection pools
 
@@ -86,14 +97,9 @@ A search result is a chunk joined to its document's record. The record is sent o
 
 **Lean results for callers that never open a result.** `GET /search?lean=true` leaves out each result's chunk elements, tables, images and bounding boxes, and the document summary and classified contents from its metadata. The Heatmap sends it: a cell lists results and exports their text, but opening one happens in the Search tab. The same cell measured 82 MB (17 MB compressed) with the trimmed metadata alone, and 10 MB (1.3 MB compressed) lean.
 
-**Limits in `config.json`**, next to `page_size` under `application.search`:
+**Two limits.** `SEARCH_MAX_LIMIT` (above) is the largest `limit` the API accepts from anyone; a larger one is rejected with HTTP 422. `heatmap_cell_limit` in `config.json`, next to `page_size` under `application.search`, is how many results one Heatmap cell asks for (default `1000`, at most `SEARCH_MAX_LIMIT`). It replaces the `REACT_APP_HEATMAP_LIMIT` environment variable and, like `page_size`, is baked into the web app at build time, so rebuild the ui after changing it.
 
-| Setting | Default | What it controls |
-|---------|---------|------------------|
-| `max_limit` | `1000` | The largest `limit`, and `wide_limit`, one `/search` request may ask for. A larger one is rejected with HTTP 422, so no client can ask for a response bigger than the deployment allows. |
-| `heatmap_cell_limit` | `1000` | How many results one Heatmap cell asks for, at most `max_limit`. It replaces the `REACT_APP_HEATMAP_LIMIT` environment variable. Like `page_size`, it is baked into the web app at build time, so rebuild the ui after changing it. |
-
-With wide search on, a cell's `wide_limit` is the cell limit and the response holds up to `wide_group_size` chunks per document, so a cell that matches many documents can hold several times `heatmap_cell_limit` results; the lean shape keeps each one small. If a host has a response limit, size `max_limit` for it: about 6 KB per lean result and 50 KB per full result, before compression.
+With wide search on, a cell's `wide_limit` is the cell limit and the response holds up to `wide_group_size` chunks per document, so a cell that matches many documents can hold several times `heatmap_cell_limit` results; the lean shape keeps each one small. If a host has a response limit, size the two limits for it: about 6 KB per lean result and 50 KB per full result, before compression.
 
 ## Do not add uvicorn workers to go faster
 

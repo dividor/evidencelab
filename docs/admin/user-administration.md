@@ -85,6 +85,8 @@ The **tenant ID** controls who can sign in:
 
 Evidence Lab requests the `openid`, `email`, `profile`, and `User.Read` scopes.
 
+**How Google and Microsoft sign-in is protected.** Each sign-in is tied to the browser that started it, through a short-lived cookie that is only sent back to the sign-in callback, and uses PKCE, so a sign-in code is useless to anyone else. A sign-in has to be finished in the same browser within 10 minutes; otherwise it stops with `OAUTH_INVALID_STATE`, and the person simply signs in again. If the site sits behind a proxy or CDN, it must pass cookies through to the API and never cache `/api/` responses, as it already must for the session cookie.
+
 #### 4. Disabling Email Login (OAuth-only mode)
 
 To force all users to sign in via OAuth (Google and/or Microsoft) and remove email/password login and registration entirely:
@@ -98,6 +100,8 @@ When this is set:
 - The backend does **not** mount the `/auth/login`, `/auth/cookie-login`, or `/auth/register` endpoints — direct API calls to them return 404.
 - The login modal hides the email form and the **Register** tab.
 - Only the OAuth buttons for providers with credentials configured are shown.
+- If only one provider is configured, the sign-in screen goes straight to that provider's sign-in page instead of showing a single button. It shows the button instead after someone signs out, after a session times out, and when a trip to the provider came back without signing in, so nobody is signed straight back in or sent round in a loop.
+- The sign-in screen only ever sends the browser to the provider's own sign-in page over HTTPS (`login.microsoftonline.com` for Microsoft, `accounts.google.com` for Google). Any other address from the backend is refused with a message, so another site can never be opened in its place.
 
 The login modal also automatically hides any OAuth provider whose credentials are not configured. If both `OAUTH_GOOGLE_*` and `OAUTH_MICROSOFT_*` are unset, only the Google button would be missing — so ensure at least one OAuth provider is fully configured before enabling `DISABLE_EMAIL_LOGIN`, otherwise users will have no way to sign in.
 

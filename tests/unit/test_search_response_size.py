@@ -4,15 +4,14 @@ Before, every result repeated the whole document record as ``metadata``, so a
 Heatmap cell with 1000 results was 143 MB and Google Cloud Run (32 MiB limit
 on non-streamed responses) failed it with HTTP 500. These tests pin which keys
 a result keeps in the full and the lean shape, that a data source's metadata
-panel fields are always kept, and that ``limit`` above
-``application.search.max_limit`` is rejected with 422.
+panel fields are always kept. (``SEARCH_MAX_LIMIT``, the cap on ``limit``, is
+covered by ``test_llm_request_caps``.)
 """
 
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException, Request
 
 from pipeline.db import config as db_config
 from ui.backend.routes import search as search_routes
@@ -204,76 +203,3 @@ class TestConfigHelpers:
         )
         assert db_config.get_metadata_panel_fields("wfp") == {"title": "Document Title"}
         assert db_config.get_metadata_panel_fields("other") == {}
-
-    def test_search_max_limit_reads_config(self, monkeypatch):
-        monkeypatch.setattr(
-            db_config,
-            "load_datasources_config",
-            lambda: {"application": {"search": {"max_limit": 250}}},
-        )
-        assert db_config.get_search_max_limit() == 250
-
-    def test_search_max_limit_default_when_unset(self, monkeypatch):
-        monkeypatch.setattr(
-            db_config, "load_datasources_config", lambda: {"application": {}}
-        )
-        assert db_config.get_search_max_limit() == db_config.DEFAULT_SEARCH_MAX_LIMIT
-
-
-def _search_kwargs(**overrides):
-    request = Mock(spec=Request)
-    request.query_params = {}
-    kwargs = dict(
-        request=request,
-        q="education",
-        limit=50,
-        organization=None,
-        title=None,
-        published_year=None,
-        document_type=None,
-        country=None,
-        language=None,
-        dense_weight=None,
-        rerank=False,
-        recency_boost=False,
-        recency_weight=0.15,
-        recency_scale_days=365,
-        section_types=None,
-        keyword_boost_short_queries=True,
-        data_source="uneg",
-        min_chunk_size=0,
-        model=None,
-        rerank_model=None,
-        rerank_model_page_size=None,
-        wide_search=False,
-        wide_group_size=5,
-        wide_limit=20,
-        auto_min_score=False,
-        deduplicate=True,
-        field_boost=True,
-        field_boost_fields=None,
-        lean=False,
-    )
-    kwargs.update(overrides)
-    return kwargs
-
-
-class TestMaxLimit:
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("param", ["limit", "wide_limit"])
-    async def test_above_max_limit_is_422_before_any_search(self, monkeypatch, param):
-        monkeypatch.setattr(search_routes, "SEARCH_MAX_LIMIT", 100)
-        with patch.object(search_routes, "get_db_for_source") as get_db:
-            with pytest.raises(HTTPException) as exc_info:
-                await search_routes.search(**_search_kwargs(**{param: 101}))
-        assert exc_info.value.status_code == 422
-        assert param in exc_info.value.detail
-        assert "max_limit" in exc_info.value.detail
-        get_db.assert_not_called()
-
-    def test_at_max_limit_passes(self, monkeypatch):
-        monkeypatch.setattr(search_routes, "SEARCH_MAX_LIMIT", 100)
-        search_routes._check_search_limits(100, 100)
-
-    def test_module_limit_comes_from_config(self):
-        assert search_routes.SEARCH_MAX_LIMIT == db_config.get_search_max_limit()

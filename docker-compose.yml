@@ -89,6 +89,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      # The first start downloads the embedding model, which with no grace
+      # period had 150 s (30 checks, 5 s apart) before everything that depends
+      # on it gave up: CI's starts took 46 to 137 s on 2026-11-21, and one went
+      # over. Failed checks during this period don't count, and the server is
+      # healthy at its first passing check. Same as docker-compose.hub.yml.
+      start_period: 15m
     deploy:
       resources:
         limits:
@@ -184,7 +190,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
+      - API_SECRET_KEY=${API_SECRET_KEY:-${REACT_APP_API_KEY:-}}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - USE_EMBEDDING_SERVER=true
@@ -250,7 +256,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-evidencelab}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
       - PYTHONPATH=/app
-      - API_SECRET_KEY=${REACT_APP_API_KEY:-${API_SECRET_KEY:-}}
+      - API_SECRET_KEY=${API_SECRET_KEY:-${REACT_APP_API_KEY:-}}
       - USE_EMBEDDING_SERVER=true
       - EMBEDDING_API_URL=${EMBEDDING_API_URL:-http://embedding-server:7997}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:-}

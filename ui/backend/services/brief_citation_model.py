@@ -17,7 +17,12 @@ GROUPINGS = ("passage", "document-multiple", "document-single")
 GROUPING_PASSAGE, GROUPING_DOC_MULTIPLE, GROUPING_DOC_SINGLE = GROUPINGS
 
 
-RUN_MODES = ("generate", "edit", "update", "condense", "manual")
+RUN_MODES = ("generate", "edit", "update", "condense", "manual", "restore")
+
+
+# The run modes a browser may record; ``restore`` is written only by the API
+# (restoring an earlier version of a section).
+CLIENT_RUN_MODES = RUN_MODES[:-1]
 
 
 RUN_CURRENT = "current"
@@ -27,6 +32,10 @@ RUN_SUPERSEDED = "superseded"
 
 
 RUN_REJECTED = "rejected"
+
+
+# A Log entry whose change was rejected keeps its row, marked with this status.
+AUDIT_REJECTED = "rejected"
 
 
 SOURCES_EXACT = "exact"
@@ -61,6 +70,30 @@ UNRESOLVED_RE = re.compile(r"\[\?(\d+)\]")
 
 # Two markers side by side carrying the same number(s): `[1][1]`, `[1] [1]`.
 ADJACENT_DUPLICATE_RE = re.compile(r"\[(\d+(?:, \d+)*)\]\s*\[\1\]")
+
+
+# The heading of a reference list the agent was told not to write, once
+# hashes, emphasis, numbering and a trailing colon are dropped: "References",
+# "Cited References", "Reference List", "Sources", "Cited Sources",
+# "Works Cited", "Bibliography", "List of References", "Citations".
+REFERENCE_HEADING_RE = re.compile(
+    r"^(?:works\s+cited"
+    r"|(?:(?:cited|list of)\s+)?"
+    r"(?:references?|sources?|bibliography|citations?)"
+    r"(?:\s+(?:cited|list))?)$",
+    re.IGNORECASE,
+)
+
+
+# One entry of such a list: a `[n]` marker or a short list number first
+# (optionally after a bullet), or a bullet whose text carries a marker. A
+# four-digit year followed by a period is prose, not a list number.
+REFERENCE_ENTRY_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:[-*+\u2022]\s*)?(?:\[\d+(?:,\s*\d+)*\]|\d{1,3}[.)]\s)"
+    r"|[-*+\u2022]\s+.*\[\d+(?:,\s*\d+)*\]"
+    r")"
+)
 
 
 # What a source record contributes to the brief-wide list when first registered.
@@ -191,6 +224,67 @@ def strip_leading_title(markdown: str, title: str) -> str:
     while i < len(lines) and not lines[i].strip():
         i += 1
     return "\n".join(lines[i:])
+
+
+def _is_reference_heading(text: str) -> bool:
+    heading = _normalise_heading_line(text).rstrip(":").strip()
+    return REFERENCE_HEADING_RE.match(heading) is not None
+
+
+def _starts_reference_list(line: str) -> bool:
+    """A reference-list heading, alone or with its first entries on the line
+    ("References: [1] WFP (2023)... [2] ...")."""
+    if _is_reference_heading(line):
+        return True
+    bracket = line.find("[")
+    return (
+        bracket > 0
+        and _is_reference_heading(line[:bracket])
+        and REFERENCE_ENTRY_RE.match(line[bracket:]) is not None
+    )
+
+
+def _reference_list_start(lines: List[str]) -> Optional[int]:
+    """Index of the heading of a trailing, list-shaped reference block.
+
+    Scanning up from the end, every non-blank line must be a list entry until
+    the heading; prose anywhere after the heading, or no heading, means there
+    is nothing to strip.
+    """
+    i = len(lines) - 1
+    while i >= 0:
+        line = lines[i]
+        if not line.strip():
+            i -= 1
+            continue
+        if _starts_reference_list(line):
+            return i
+        if REFERENCE_ENTRY_RE.match(line) is None:
+            return None
+        i -= 1
+    return None
+
+
+def strip_trailing_reference_list(markdown: str) -> str:
+    """Drop a reference list the agent appended despite being told not to.
+
+    The brief compiles its own References list from the registered sources,
+    so a trailing "References" / "Cited References" / "Sources" /
+    "Bibliography" block (any heading form, followed only by list entries) is
+    removed from the body the brief numbers and displays. The body is never
+    emptied: a run that is only such a list is left as it is.
+    """
+    lines = (markdown or "").replace("\r\n", "\n").split("\n")
+    start = _reference_list_start(lines)
+    if start is None:
+        return markdown
+    body = "\n".join(lines[:start]).rstrip()
+    return body if body.strip() else markdown
+
+
+def run_body(run: Dict[str, Any]) -> str:
+    """The part of a run's original content the brief numbers and displays."""
+    return strip_trailing_reference_list(run.get("content") or "")
 
 
 def collapse_adjacent_duplicates(content: str) -> str:

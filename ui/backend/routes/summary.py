@@ -27,6 +27,7 @@ from ui.backend.utils.app_limits import (
     limiter,
 )
 from ui.backend.utils.app_state import logger
+from ui.backend.utils.llm_request_limits import check_model_config, check_requested_llm
 
 _RATE_LIMIT_SEARCH, _RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
 RATE_LIMIT_TRANSLATE = get_rate_limit_translate()
@@ -167,6 +168,14 @@ async def translate(request: Request, body: TranslateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _check_summary_model(body: AISummaryRequest) -> None:
+    """Refuse a model or token budget config.json does not allow."""
+    if body.summary_model_config is not None:
+        check_model_config(body.summary_model_config)
+    else:
+        check_requested_llm(body.summary_model, None)
+
+
 @router.post("/ai-summary/stream")
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_summary(
@@ -179,6 +188,7 @@ async def stream_summary(
     Stream an AI summary of search results using HuggingFace LLM via LangChain.
     Returns Server-Sent Events (SSE) for progressive display.
     """
+    _check_summary_model(body)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 
@@ -285,6 +295,7 @@ async def generate_summary(
     Uses the top N results (default: 20) to generate a concise summary.
     Requires HUGGINGFACE_API_KEY to be set in environment.
     """
+    _check_summary_model(body)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 

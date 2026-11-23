@@ -152,17 +152,8 @@ else
 fi
 
 step "7/7 Checking the site"
+"$scripts/check-site.sh"
 site_url="$(output site_url)"
-for attempt in $(seq 1 30); do
-    if curl -fsS -o /dev/null "$site_url/" && curl -fsS -o /dev/null "$site_url/api/health"; then
-        break
-    fi
-    if [ "$attempt" = 30 ]; then
-        echo "The site did not answer at $site_url" >&2
-        exit 1
-    fi
-    sleep 10
-done
 echo
 echo "Evidence Lab is running at $site_url"
 if [ -n "$demo_docs" ]; then

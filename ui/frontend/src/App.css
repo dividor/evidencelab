@@ -481,6 +481,65 @@ h6,
   justify-self: end;
 }
 
+/* Tablets and small laptops (641–1279px): the Dataset and Models buttons carry
+   inline min-widths sized to their longest option, so the one-line header grew
+   to about 1170px and the whole page scrolled sideways. Keep the logo and the
+   Info / account menu on the first line and give the two pickers a second line,
+   sharing it equally (long names end in an ellipsis). When a theme hides the
+   pickers the header is a single line, as before. Phones (≤640px) have their own
+   grid layout further down. */
+@media (min-width: 641px) and (max-width: 1279px) {
+  .top-bar-content {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-md);
+  }
+
+  .top-bar-left {
+    display: contents;
+  }
+
+  .top-bar-controls {
+    order: 1;
+    flex: 1 1 100%;
+  }
+
+  .top-bar-controls .dropdown-container {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* !important beats the inline min-width that sizes the button to its longest
+     option on desktop; here the button fills its half of the line instead. */
+  .top-bar-controls .dropdown-trigger {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .top-bar-controls .dropdown-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Open each menu inward so it stays on screen: the Dataset list from the
+     left edge of its button, the model details to the left of the Models list. */
+  .dropdown-menu-domain {
+    right: auto;
+    left: 0;
+    max-width: calc(100vw - 2 * var(--spacing-xl));
+  }
+
+  /* The Models list starts about halfway across, so the details panel gets at
+     most the left half of the screen (360px once that is wide enough). */
+  .model-combo-panel {
+    left: auto;
+    right: 100%;
+    width: min(360px, calc(50vw - 1.5rem));
+    min-width: 0;
+    max-width: none;
+  }
+}
+
 @keyframes dropdownFadeIn {
   from {
     opacity: 0;
@@ -641,6 +700,21 @@ h6,
   transform: translateX(-50%) translateY(0);
 }
 
+/* Tablets (641–1024px): the desktop tab padding fills the row edge to edge
+   around 750px and runs past it once a page scroll bar takes its share, which
+   scrolls the whole page sideways. Tighter padding leaves room; wrapping is the
+   last resort so the row never overflows. Phones (≤640px) have their own rules. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .nav-tabs {
+    padding: 0 var(--spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .nav-tab {
+    padding: 1.25rem;
+  }
+}
+
 /* Search Container */
 .search-container {
   background: var(--white);
@@ -709,7 +783,8 @@ h6,
 .search-input-filters {
   position: absolute;
   right: 1.25rem;
-  top: 50%;
+  /* Centre of the first line, so it stays put as the box grows. */
+  top: 32px;
   transform: translateY(-50%);
   color: var(--gray-400);
   font-size: 1.3rem;
@@ -746,11 +821,9 @@ h6,
 
 .search-container.search-container-landing .search-input {
   font-size: 1.25rem;
-  padding: 0 1.75rem;
-  padding-right: 9rem;
-  height: 64px;
-  display: flex;
-  align-items: center;
+  /* One line sits 64px tall to match the Search button: 3 + 14 + 30 + 14 + 3. */
+  line-height: 30px;
+  padding: 14px 9rem 14px 1.75rem;
 }
 
 /* Mobile: icon-only filter button, shorter placeholder */
@@ -775,6 +848,24 @@ h6,
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Tablets (641–1024px): the landing container, its content wrapper and the
+   form each add 2rem of side padding, so the search box shrank to about half the
+   screen beside the 200px button. Keep one modest gutter instead. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .search-container.search-container-landing {
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+
+  .search-container.search-container-landing .search-landing-content {
+    padding: 0;
+  }
+
+  .search-container.search-container-landing .search-form {
+    padding: 0 var(--spacing-md);
+  }
 }
 
 /* Example query chips — centered under the search input */
@@ -813,8 +904,9 @@ h6,
 /* Results page: normal top search box */
 .search-container.search-container-results .search-input {
   font-size: 1.0625rem;
-  padding: 1rem 1.25rem;
-  height: 56px;
+  /* One line sits 56px tall to match the Search button: 3 + 12 + 26 + 12 + 3. */
+  line-height: 26px;
+  padding: 12px 1.25rem;
 }
 
 .search-container.search-container-results .search-button {
@@ -1019,9 +1111,11 @@ h6,
   }
 }
 
-/* Chart toggle buttons */
+/* Chart toggle buttons. They wrap when the row is too narrow: a centred row
+   that overflows spills past both edges and the first button is cut off. */
 .chart-toggle-container {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-lg);
   justify-content: center;
@@ -1312,6 +1406,39 @@ h6,
 
 .clear-filter-button:hover {
   background: #e66a3c;
+}
+
+.table-controls-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Tablets and small laptops (641–1279px): a rule and some space separate the
+   controls from the table header, which otherwise starts straight under the
+   search box. */
+@media (min-width: 641px) and (max-width: 1279px) {
+  .table-controls {
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--gray-200);
+  }
+}
+
+/* Tablets (641–1024px): the title search gets a full row instead of being
+   squeezed beside the count and buttons, which sit on the row below (count
+   left, buttons right). */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .table-filter-input {
+    flex-basis: 100%;
+  }
+
+  .table-controls-actions {
+    flex-basis: 100%;
+  }
+
+  .table-controls-actions .table-count {
+    margin-right: auto;
+  }
 }
 
 .table-count {
@@ -2896,13 +3023,19 @@ h6,
   padding: 0 var(--spacing-xl);
   display: flex;
   gap: var(--spacing-sm);
-  align-items: center;
+  /* Top-aligned so the button stays on the first line as the box grows. */
+  align-items: flex-start;
 }
 
 .search-input {
   flex: 1;
   padding: 1rem 1.25rem;
   font-size: 1.125rem;
+  line-height: 1.5;
+  font-family: inherit;
+  /* A textarea that grows with the query (AutoGrowTextarea); it scrolls only at its max height. */
+  resize: none;
+  overflow-y: hidden;
   border: 3px solid var(--gray-300);
   border-radius: var(--radius-md);
   outline: none;
@@ -6791,6 +6924,16 @@ li.ai-fact-active::before {
     white-space: nowrap;
   }
 
+  /* No hover tooltips on phones. Each one is up to 240px wide and centred
+     under its tab, so on a narrow screen the outer tabs' tooltips reach past
+     the screen edge. Hidden with opacity/visibility they still count toward
+     the page width, so every page scrolled sideways by up to 71px. Screen
+     readers still read the text: each tab points at its tooltip with
+     aria-describedby, which works on hidden elements. */
+  .nav-tab-tooltip {
+    display: none;
+  }
+
   /* Search form — stack input + button vertically */
   .search-form {
     flex-wrap: wrap;
@@ -8481,6 +8624,33 @@ li.ai-fact-active::before {
 .heatmap-search-stop:hover {
   background: var(--brand-accent);
   color: var(--white);
+}
+
+/* Heatmap tablet (641–1024px) overrides — after the base definitions to win. Even with the
+   selects shrunk to their minimum, the Rows, Columns and Metric selects plus the
+   Download and Generate buttons are wider than the panel below about 1020px, so
+   the buttons ran past its right edge. Put the three selects on the first line,
+   sharing it equally, and the buttons on a line of their own, right-aligned. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .heatmap-controls-row:not(.heatmap-query-controls) {
+    flex-wrap: wrap;
+  }
+
+  .heatmap-controls-row:not(.heatmap-query-controls) > .heatmap-control {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .heatmap-action-buttons {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  /* The query box's 400px minimum plus the sensitivity slider overflow the
+     panel just above phone width; let the box shrink beside the slider. */
+  .heatmap-query-controls .heatmap-query-input {
+    min-width: 0;
+  }
 }
 
 /* Heatmap mobile overrides — must appear AFTER base definitions to win specificity */
@@ -12186,6 +12356,16 @@ a.admin-citation-clickable:hover {
   flex-wrap: wrap;
   gap: 0.4rem;
 }
+/* Testing (Brief): a check's result describes an earlier brief version. */
+.testing-check-changed {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--brand-warning);
+}
+.testing-check-version {
+  white-space: nowrap;
+}
+
 .testing-config-badge {
   display: inline-flex;
   align-items: center;

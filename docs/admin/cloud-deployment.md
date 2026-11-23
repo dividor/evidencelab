@@ -44,7 +44,7 @@ Every example uses the same layout. Only the names of the cloud services change.
 | embedding | Container service, 1 copy, always running | The `michaelf34/infinity` image. It must keep running, because loading the model takes several minutes. |
 | migrate | A job, run before each release starts | The same image, running `alembic upgrade head`. |
 | pipeline | A job, run when you ingest documents | The same image, running the pipeline orchestrator. |
-| Postgres 16 with pgvector | The cloud's managed Postgres | Backups, a standby copy and patching come with the service. |
+| Postgres with pgvector (17 on AWS, 16 on Azure and Google Cloud) | The cloud's managed Postgres | Backups, a standby copy and patching come with the service. |
 | Qdrant | Qdrant Cloud, or Qdrant on a small virtual machine | See below. |
 | Redis | The cloud's managed Redis | Holds the rate-limit counts that all api and mcp copies share. |
 | Documents and page images | The cloud's network file share | Mounted at `/app/data`. The pipeline writes the files and the api serves them. |
@@ -118,15 +118,16 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 
 | Part | AWS service | Default size |
 |---|---|---|
-| Network | A VPC (`10.0.0.0/16`) across two availability zones. The load balancer and a NAT gateway are in public subnets. Everything else is in private subnets. | One NAT gateway, through which the containers pull images and reach the model providers |
-| Load balancer | Application Load Balancer. With a domain, it serves HTTPS with an ACM certificate and redirects HTTP. Without one, it serves plain HTTP on its own address, for testing only. | Idle timeout of 300 seconds, for streaming chat and MCP |
+| Network | A VPC (`10.0.0.0/16`) across two availability zones. A NAT gateway is in the public subnets, and so is the load balancer unless CloudFront is in front of it. Everything else is in private subnets. An S3 gateway endpoint carries the private subnets' S3 traffic. | One NAT gateway, through which the containers pull images and reach the model providers. AWS charges for every GB the NAT gateway carries, so S3 traffic (moving data in and out, pipeline files, the web app image's layers in ECR) goes through the gateway endpoint instead, which has no charge |
+| Load balancer | Application Load Balancer. With a domain, it serves HTTPS with an ACM certificate and redirects HTTP. Without one, it serves plain HTTP on its own address, for testing only. With `cloudfront_enabled`, it is in the private subnets instead and only CloudFront can reach it (see [CloudFront and AWS WAF](#cloudfront-and-aws-waf)). | Idle timeout of 300 seconds, for streaming chat and MCP |
+| CloudFront and AWS WAF | Only with `cloudfront_enabled`: a CloudFront distribution serving the site over HTTPS, with an AWS WAF web ACL in us-east-1 | North America and Europe edge locations (`PriceClass_100`) |
 | ui | ECS service on Fargate (arm64), running the web app image that the deploy script pushes to ECR | 2 tasks, 0.25 vCPU and 0.5 GB each |
 | api | ECS service on Fargate (arm64), `astrobagel/evidencelab` | 2 tasks, 2 vCPU and 8 GB each |
 | mcp | ECS service on Fargate (arm64), `astrobagel/evidencelab` | 2 tasks, 0.5 vCPU and 2 GB each |
 | embedding | ECS service on Fargate (arm64), `michaelf34/infinity:0.0.70` | 1 task, 1 vCPU and 4 GB, always running |
 | migrate | ECS task on Fargate, run by the deploy script before the services start | 0.5 vCPU, 1 GB |
 | pipeline | ECS task on Fargate, run when you ingest documents | 4 vCPU, 16 GB |
-| Postgres | Amazon RDS for PostgreSQL 16, Multi-AZ and encrypted. RDS keeps the password in Secrets Manager. | db.t4g.medium, 50 GB storage, 7 days of backups |
+| Postgres | Amazon RDS for PostgreSQL 17 (`db_engine_version`), Multi-AZ and encrypted. RDS keeps the password in Secrets Manager. | db.t4g.medium, 50 GB storage, 7 days of backups |
 | Qdrant | Qdrant 1.18.3 on an EC2 instance in a private subnet, or your Qdrant Cloud cluster if you set `qdrant_url` | t4g.medium, 30 GB disk |
 | Redis | Amazon ElastiCache (Valkey, compatible with Redis), encrypted in transit | cache.t4g.micro |
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
@@ -134,9 +135,18 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
 | Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
-| Domain | A Route 53 record pointing at the load balancer, if you set a domain | — |
+| Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
+| Data transfer | A private S3 bucket `<name>-transfer-…` and a restore task with its own role, for moving existing data in | Uploads deleted after 30 days |
+| Domain | A Route 53 record pointing at the load balancer, or at CloudFront with `cloudfront_enabled`, if you set a domain | — |
 
 `<name>` is the deployment name you choose. Every resource is tagged `Deployment=<name>`, so the AWS console's Tag Editor can list them all.
+
+What a deploy keeps, and how it is backed up:
+
+- **Postgres** keeps its data across deploys. It starts on the default minor version of `db_engine_version` (PostgreSQL 17 unless set) and keeps that version: AWS applies minor upgrades itself in the weekly maintenance window, so a deploy never upgrades or restarts it. Changing `db_engine_version` only affects a new database; move an existing one to a new major version with an RDS upgrade in the AWS console, or recreate it and load its data back (see Moving existing data in). RDS keeps 7 days of automated backups (`db_backup_retention_days`), and removing the deployment takes a final snapshot unless `db_skip_final_snapshot` is set.
+- **Qdrant on EC2** keeps its index on the instance's own disk. The instance starts from the newest Amazon Linux image and keeps that image afterwards, so a newer Amazon Linux release never replaces it. Changing Qdrant's version or key does replace the instance, and the index goes with its disk; restore it from a backup, or run the pipeline again to rebuild it.
+- **Documents and page images** on EFS are kept across deploys.
+- **Scheduled backups:** AWS Backup backs up all three (the database, the EFS file share and Qdrant's instance) into a backup vault named after the deployment, every Sunday at 03:00 UTC, and keeps each backup for 35 days. Change this with `backup_schedule` (an AWS Backup cron expression) and `backup_retention_days`, or turn it off with `backups_enabled = false`. Restore from the AWS Backup console: a database or file share restores as a new one, and Qdrant's instance as a new instance with the index on its disk. Removing the deployment deletes the vault and its backups.
 
 ### How the AWS services find each other
 
@@ -168,7 +178,7 @@ These steps deploy a demo: 2 World Bank documents, processed with Amazon Bedrock
 |---|---|---|
 | [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | 2.32 or later (2.35.18) | Signing in with `aws login`, and the scripts' AWS calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 (on an Intel or AMD computer Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for arm64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -213,14 +223,14 @@ If your AWS account is on the Free plan, check you removed the `#` from the `qdr
 db_backup_retention_days = 1
 ```
 
-**5. Check the Bedrock models.** The demo uses the **AWS Bedrock** models in `config.json`: Titan Text Embeddings V2, Amazon Nova 2 Lite and Cohere Rerank 3.5. No model keys are needed, because the containers call Bedrock with their task role. Check your region offers the first two:
+**5. Check the Bedrock models.** The demo uses the **AWS Bedrock** models in `config.json`: Titan Text Embeddings V2, Amazon Nova 2 Lite and Amazon Rerank 1.0. No model keys are needed, because the containers call Bedrock with their task role. Check your region offers the first two:
 
 ```bash
 aws bedrock list-foundation-models --region us-east-2 \
   --query "modelSummaries[?modelId=='amazon.titan-embed-text-v2:0' || modelId=='amazon.nova-2-lite-v1:0'].modelId"
 ```
 
-Both IDs should be listed. If your region is outside the United States, or offers different models, edit the Bedrock entries in `config.json` first, as described in [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock). Cohere Rerank 3.5 is called in `us-west-2`, because us-east-2 does not offer it.
+Both IDs should be listed. If your region is outside the United States, or offers different models, edit the Bedrock entries in `config.json` first, as described in [Amazon Bedrock](pipeline-configuration.md#amazon-bedrock). Amazon Rerank 1.0 is called in `us-west-2`, because us-east-2 does not offer it.
 
 To use Azure Foundry models instead, set `AZURE_FOUNDRY_KEY` and `AZURE_FOUNDRY_ENDPOINT` and add `--provider azure_foundry` to the command in step 6. The deploy script copies the keys into Secrets Manager.
 
@@ -251,7 +261,7 @@ With `--demo`, the web app is built with the site's API key, so visitors can use
 deploy/aws/scripts/teardown.sh
 ```
 
-Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data. The script then checks that Terraform manages nothing more for the deployment, and prints `Everything Terraform created for <name> is deleted.` It also prints a command to list anything else tagged with the deployment name. AWS's tag list keeps showing deleted resources for a while, so run that command later if you want to check.
+Terraform lists what it will delete and asks you to type `yes`. The database, file share and Qdrant are deleted with all their data, and the backup vault with its backups; RDS's final snapshot is kept unless `db_skip_final_snapshot` is set. The script then checks that Terraform manages nothing more for the deployment, and prints `Everything Terraform created for <name> is deleted.` It also prints a command to list anything else tagged with the deployment name. AWS's tag list keeps showing deleted resources for a while, so run that command later if you want to check.
 
 ### Deploying your own documents
 
@@ -262,6 +272,180 @@ Terraform lists what it will delete and asks you to type `yes`. The database, fi
 ```bash
 deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source <data_subdir>
 ```
+
+Add `--num-records 3` to try a few documents first. `run-task.sh` waits for the task to finish and then shows its log.
+
+### Moving existing data in
+
+To start from another Evidence Lab installation's data (another cloud, or a Docker host), bring two files:
+
+- **A Postgres export** of its database: a plain-SQL dump (`pg_dump`, or a managed database's SQL export), optionally gzipped, such as `postgres-evidencelab.sql.gz`.
+- **An archive of the data source's folder**, the folder named after its `data_subdir` inside the data folder (`/app/data`). Make it on the old host so it holds that one folder:
+
+```bash
+tar -C <data folder> -czf wfp-data.tar.gz wfp
+```
+
+The Qdrant index does not come across: the restore empties the data source's search index, and the pipeline rebuilds it with this deployment's embedding model, without parsing, summarising or tagging again.
+
+1. Upload both files to the deployment's transfer bucket:
+
+```bash
+bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
+aws s3 cp postgres-evidencelab.sql.gz "s3://$bucket/"
+aws s3 cp wfp-data.tar.gz "s3://$bucket/"
+```
+
+2. Check what the export holds. This changes nothing:
+
+```bash
+deploy/aws/scripts/restore-data.sh inspect postgres-evidencelab.sql.gz
+```
+
+It lists the export's tables and row counts, its extensions, and the roles its ownership and privilege statements name. Those statements are left out when it loads: here every object belongs to the deployment's one database user.
+
+3. Load them. You confirm by typing the database's name:
+
+```bash
+deploy/aws/scripts/restore-data.sh restore postgres-evidencelab.sql.gz wfp-data.tar.gz wfp
+```
+
+The restore task unpacks the archive onto the file share (links the old machine wrote as its own absolute paths into the folder, such as the parsed folders' links to their original files, are made to point at the same files here; any other absolute link stops the restore), loads the export into a new database in one transaction that stops at the first error, and only then swaps it in. The previous database is kept, renamed `evidencelab_before_<time>` and closed to connections, so nothing is lost if the load fails. The script then runs the migrations, empties the data source's search index and marks its documents for indexing.
+
+4. Rebuild the search index, a few documents first:
+
+```bash
+deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source wfp \
+  --skip-download --skip-scan --skip-parse --skip-summarize --skip-tag --num-records 5
+```
+
+Then run it again without `--num-records` for the rest.
+
+Only the restore task can read the transfer bucket, and it can write only under `dumps/` (below): it runs as its own role, because a database export holds users' password hashes and sign-in tokens. The bucket refuses requests without HTTPS and deletes uploads after 30 days (`transfer_retention_days`).
+
+### Copying a deployment's data out
+
+To keep a copy of a deployment's data, or to load it into another deployment (for example a production site filled from a checked test site), dump it to the transfer bucket. This is the cloud counterpart of the Docker host's `dump_postgres.py` and `dump_qdrant.py` ([Database Maintenance](database-maintenance.md)), which need direct access to the database and Qdrant. Unlike the scheduled AWS Backup restore points, which stay in the account and are deleted with the deployment, a dump is a set of files you keep and can load anywhere:
+
+```bash
+deploy/aws/scripts/dump-data.sh wfp
+```
+
+The restore task writes, under `dumps/<UTC time>/` in the transfer bucket:
+
+| File | What it holds |
+|---|---|
+| `postgres-<database>-<time>.sql.gz` | The whole database as plain SQL, the format `restore-data.sh` loads, without ownership or privilege statements |
+| `qdrant-chunks_<source>-<time>.snapshot`, `qdrant-documents_<source>-<time>.snapshot` | Snapshots of the data source's two Qdrant collections, taken through Qdrant's API and then removed from the Qdrant server |
+| `<source>-<time>.tar` | The data source's folder on the file share (PDFs, parsed output, page images), links kept as links |
+| `manifest.json` | Each file's size and SHA-256, and the Postgres, `pg_dump` and Qdrant versions that made them |
+
+It writes one file at a time to the task's own storage, uploads it and deletes it, and changes nothing in the database, Qdrant or the file share. Then download it:
+
+```bash
+bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
+aws s3 ls "s3://$bucket/dumps/"
+aws s3 cp --recursive "s3://$bucket/dumps/<time>/" <local folder>/
+```
+
+The transfer bucket deletes its files after `transfer_retention_days` and when the deployment is removed, so copy the dump somewhere that lasts, and check each file against the manifest's SHA-256. A dump holds users' password hashes and sign-in tokens: keep it as private as the database.
+
+`restore_qdrant.py` does not take these files: it restores a Docker host's own Qdrant from `dump_qdrant.py`'s output.
+
+### Loading a dump into another deployment
+
+A dump loads whole into another AWS deployment, search index included, so nothing is indexed again. Both deployments must use the same embedding model, because the dump's search vectors come from the deployment that made it, and the same minor version of Qdrant.
+
+1. **Copy it into this deployment's transfer bucket**, under the same keys. Sign in to both accounts first: `AWS_PROFILE` is this deployment's account, and `SOURCE_PROFILE` the account the dump is in:
+
+```bash
+SOURCE_PROFILE=<other account's profile> deploy/aws/scripts/restore-data.sh copy-dump \
+  <other deployment's transfer bucket> dumps/<time>/manifest.json
+```
+
+Your machine only signs a download link for each file, which lasts as long as `SOURCE_PROFILE`'s sign-in, at most an hour. The restore task downloads each file inside AWS to its own storage, checks its size and SHA-256 against the manifest, and only then stores it; the manifest goes last. The file of links is deleted afterwards, as it is a key to the other bucket while the links last.
+
+To bring in a dump you have downloaded instead, upload its folder to `s3://<bucket>/dumps/<time>/` with `aws s3 cp --recursive`.
+
+2. **Load it.** You confirm by typing the database's name:
+
+```bash
+deploy/aws/scripts/restore-data.sh load-dump dumps/<time>/manifest.json
+```
+
+The restore task checks every file against the manifest again, and then loads the Postgres export and the folder archive, as `restore` does (the previous database is kept, renamed and closed to connections). The migrations run next. Last, Qdrant replaces each of the data source's collections with its snapshot: it downloads the snapshot through a link that lasts an hour, checks its SHA-256 before loading it, and the task prints each collection's point count. A dump made by another minor version of Qdrant is refused before anything in Qdrant changes.
+
+Users, groups and sign-in settings come with the database, as in any restore. A test site's dump gives the new site the test site's users and passwords.
+
+### Your own branding and pipeline files
+
+Two settings in `terraform.tfvars` keep a deployment's own files with its other settings, as paths relative to `deploy/aws`:
+
+| Setting | What it does |
+|---|---|
+| `customize_assets_dir` | Your branding folder (theme, logo, favicon, footer, fonts; see [Customization](customization.md)). Every web app build uses it. When it is empty, the build uses the `CUSTOMIZE_ASSETS` environment variable if set, otherwise the stock look. |
+| `pipeline_files_dir` | A folder of your own pipeline files, such as a data source's downloader script and the spreadsheet it reads. Terraform uploads them to a private S3 bucket, and the pipeline task copies them to `/app/custom` before every run, so a data source's download command in `config.json` can name `/app/custom/<file>`. A changed file is uploaded again on the next deploy. Teardown deletes the bucket with the files. |
+
+### Signing in with Microsoft or Google
+
+The template sets `OAUTH_CALLBACK_BASE_URL` to the site address followed by `/api`, so the sign-in provider sends visitors back to the site.
+
+1. Register the redirect URI with the provider: `<site address>/api/auth/microsoft/callback` for Microsoft, or `<site address>/api/auth/google/callback` for Google. `terraform output site_url` prints the site address once the first apply has run.
+2. Put the settings that are not secret in `extra_environment` in `deploy/aws/terraform.tfvars`, for example:
+
+   ```
+   user_module = "on_active"
+   extra_environment = {
+     OAUTH_MICROSOFT_CLIENT_ID  = "<application (client) ID>"
+     OAUTH_MICROSOFT_TENANT_ID  = "<directory (tenant) ID>"
+     AUTH_ALLOWED_EMAIL_DOMAINS = "example.org"
+     DISABLE_EMAIL_LOGIN        = "true"
+   }
+   ```
+
+3. Add the client secret's name to `provider_secret_names`, which takes any secret setting, not only model provider keys, and export its value before running `deploy.sh`. The script copies it into Secrets Manager, so it never passes through Terraform:
+
+   ```
+   provider_secret_names = ["OAUTH_MICROSOFT_CLIENT_SECRET"]
+   ```
+
+See [User Administration](user-administration.md) for what each sign-in setting does.
+
+### CloudFront and AWS WAF
+
+Set `cloudfront_enabled = true` to put Amazon CloudFront and an AWS WAF web ACL in front of the site:
+
+- The load balancer moves to the private subnets and has no internet address. CloudFront reaches it through a [VPC origin](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html), and its security group accepts only CloudFront's origin-facing servers, so nothing can get past the firewall by going straight to the load balancer.
+- The site is HTTPS even without a domain, on CloudFront's own `https://<id>.cloudfront.net` address. With `domain_name`, the template requests the certificate in us-east-1, where CloudFront needs it, and points the domain at CloudFront.
+- Pages, the API, MCP and A2A are never cached, and reach nginx with every header, cookie and query string. The web app's built files under `/static/` are cached.
+- Between CloudFront and the load balancer the traffic is plain HTTP inside the VPC, because no certificate can match the load balancer's internal name.
+- The api, the mcp server and nginx still see each visitor's own address, so rate limits and the audit log count visitors, not CloudFront's servers. CloudFront adds the visitor's address to `X-Forwarded-For`, and the load balancer passes that header on unchanged instead of adding CloudFront's address after it. Without CloudFront, the load balancer adds the visitor's address itself.
+
+The web ACL is in us-east-1, as CloudFront requires. Its rules run in this order:
+
+| Rule | What it does | Setting |
+|---|---|---|
+| `allowed-ip-ranges` | Blocks every address outside the ranges you list, for example an organisation's office and VPN ranges. Only made when the list is set. | `waf_allowed_ip_ranges` (default: empty, every address) |
+| `rate-limit-per-ip` | Blocks an address that sends more requests in 5 minutes than the limit, until its rate drops. Visitors behind one office or VPN address share it. | `waf_rate_limit` (default `2000`; `0` turns it off) |
+| `AWSManagedRulesAmazonIpReputationList` | AWS's list of addresses known for bots and attacks | — |
+| `AWSManagedRulesKnownBadInputsRuleSet` | Requests that match known exploits | — |
+| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. `SizeRestrictions_BODY` in it blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB, so that rule only counts. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY"]`) |
+
+Other settings:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `waf_count_only` | `false` | Every rule counts what it would block and blocks nothing. Use it for the first days of a new site: check the matches in the AWS WAF console (region us-east-1, the web ACL's sampled requests and metrics), add any rule that blocks normal use to `waf_core_rules_to_count`, then set it back to `false`. |
+| `cloudfront_origin_read_timeout` | `60` | Seconds CloudFront waits for a response to start, and between the parts of a streamed one. Chat answers send a heartbeat every 15 seconds. AI summaries send nothing between their first event and the model's first words, so a slower model needs a longer wait. Above 60 needs a CloudFront quota increase first. |
+| `cloudfront_price_class` | `PriceClass_100` | Which edge locations serve the site. `PriceClass_100` covers the United States, Canada, Mexico, Europe, Israel and Türkiye, and is the cheapest. |
+
+Before you deploy:
+
+- **The site check runs from anywhere.** The last step of `deploy.sh` (`scripts/check-site.sh`) normally fetches the site and `/api/health`. With `waf_allowed_ip_ranges` set and `waf_count_only = false`, the machine running it, such as a CI agent, may not be on the list. So it checks through AWS instead: CloudFront has finished deploying, and the load balancer reports the web app healthy.
+- **Switching an existing deployment** moves the load balancer between the public and private subnets. Expect Terraform to replace it, and the site to be unavailable meanwhile: check the plan for `forces replacement` before you apply.
+- **Costs**, at AWS's prices in November 2026: a web ACL is $5 a month, each rule or managed rule group $1 a month, and $0.60 per million requests ([AWS WAF pricing](https://aws.amazon.com/waf/pricing/)). CloudFront's pay-as-you-go pricing includes 1 TB of data and 10 million requests a month free ([CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/)), and VPC origins cost nothing extra. CloudFront's flat-rate plans do not suit this layout: the Free and Pro plans do not allow VPC origins.
+
+Terraform's own tests check these settings, but they have not yet been tried on a real deployment.
 
 ### Upgrading
 
@@ -336,7 +520,7 @@ These steps deploy a demo: 2 World Bank documents, processed with the deployment
 |---|---|---|
 | [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | 2.81 or later (2.81.0) | Signing in with `az login`, and the scripts' Azure calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -488,7 +672,7 @@ Cloud Run picks the service for each request by its host name, and nginx passes 
 
 Cloud SQL's server certificate names the instance's DNS name, so connections must use that name to be verified. Cloud SQL reports the name but does not publish it, so the template adds a private DNS zone that points it at the private address. The certificate's name ends with a dot, and both Postgres drivers the app uses (psycopg2 and asyncpg) match it only when the host does too.
 
-**Response size.** Cloud Run fails a non-streamed response above 32 MiB with HTTP 500, logged as "Response size was too large", without the api failing or restarting. The largest responses Evidence Lab sends are search results, and a Heatmap cell asks for the most at once. The api keeps them small: a result carries only the document fields readers use, the Heatmap asks for lean results, and `application.search.max_limit` in `config.json` caps what any client may ask for. See [Search response size](performance-and-scaling.md#search-response-size) before raising `max_limit` or `heatmap_cell_limit`.
+**Response size.** Cloud Run fails a non-streamed response above 32 MiB with HTTP 500, logged as "Response size was too large", without the api failing or restarting. The largest responses Evidence Lab sends are search results, and a Heatmap cell asks for the most at once. The api keeps them small: a result carries only the document fields readers use, the Heatmap asks for lean results, and `SEARCH_MAX_LIMIT` caps what any client may ask for. See [Search response size](performance-and-scaling.md#search-response-size) before raising `SEARCH_MAX_LIMIT` or `application.search.heatmap_cell_limit`.
 
 ### Deploying the Google Cloud demo
 
@@ -500,7 +684,7 @@ These steps deploy a demo: 2 World Bank documents, processed with Vertex AI mode
 |---|---|---|
 | [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) | A recent version (553.0.0) | Signing in, and the scripts' Google Cloud calls |
 | [Terraform](https://developer.hashicorp.com/terraform/install) | 1.9 or later (1.17.1) | Creating and removing the resources |
-| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (on an Apple silicon Mac Docker builds it through emulation, which is slower) |
+| [Docker Desktop](https://docs.docker.com/get-docker/) | A recent version, with buildx | Building the web app image for amd64 (any computer can: the JavaScript is built on the computer's own platform, so there's no emulation) |
 | Python 3 and curl | Any recent version | The scripts' helpers and checks |
 
 **2. Get the code** at the release you will deploy, replacing `X.Y.Z` with the version:
@@ -609,7 +793,7 @@ Each example serves the site at an address the cloud gives it. Of the three temp
 
 | Cloud | Address without a domain | Your own domain |
 |---|---|---|
-| AWS | `http://<load balancer>.<region>.elb.amazonaws.com`, over plain HTTP | Set `domain_name` and `route53_zone_id` in `terraform.tfvars`. The domain must be in a Route 53 hosted zone in the same account. The template then requests an ACM certificate, proves you own the domain with a Route 53 record, serves HTTPS on the load balancer, redirects HTTP to HTTPS, and points the domain at the load balancer. Terraform's own tests check these settings, but they have not yet been tried on a real deployment. |
+| AWS | `http://<load balancer>.<region>.elb.amazonaws.com`, over plain HTTP. With `cloudfront_enabled`, `https://<id>.cloudfront.net`. | Set `domain_name` and `route53_zone_id` in `terraform.tfvars`. The domain must be in a Route 53 hosted zone in the same account. The template then requests an ACM certificate, proves you own the domain with a Route 53 record, serves HTTPS on the load balancer, redirects HTTP to HTTPS, and points the domain at the load balancer. With `cloudfront_enabled`, the certificate is in us-east-1 and the domain points at CloudFront instead. Terraform's own tests check these settings, but they have not yet been tried on a real deployment. |
 | Azure | `https://ui.<environment domain>`, over HTTPS with a certificate Container Apps manages | Not set up by the template |
 | Google Cloud | `https://<name>-web-<project number>.<region>.run.app`, over HTTPS from Cloud Run | Not set up by the template |
 
@@ -621,14 +805,15 @@ Each template works out one site address and passes it to the containers and the
 |---|---|
 | `APP_BASE_URL` on the api and mcp | Links in account verification and password reset emails, the MCP sign-in page, and the A2A Agent Card |
 | `CORS_ALLOWED_ORIGINS` on the api | The page address browsers may call the API from |
-| `AUTH_COOKIE_SECURE` on the api | Whether sign-in cookies are sent over HTTPS only. It is on in every example except AWS without a domain. |
+| `AUTH_COOKIE_SECURE` on the api | Whether sign-in cookies are sent over HTTPS only. It is on in every example except AWS with neither a domain nor CloudFront. |
+| `OAUTH_CALLBACK_BASE_URL` on the api (AWS) | Where Google and Microsoft send visitors back after they sign in: the site address followed by `/api` |
 | `REACT_APP_SITE_URL`, built into the web app image | The site address shown in the web app, for example in the MCP and A2A instructions |
 
 So adding a domain by hand in the cloud's console is not enough: these settings would still name the old address. A domain has to be set in the template, and the deploy script run again so that it rebuilds the web app image.
 
 ### Recommendations
 
-- **Use a domain for anything beyond a test on AWS.** Without one, the site is plain HTTP, so passwords, sign-in cookies and any API key in the page cross the internet unencrypted.
+- **Use a domain or CloudFront for anything beyond a test on AWS.** With neither, the site is plain HTTP, so passwords, sign-in cookies and any API key in the page cross the internet unencrypted.
 - **Use a domain for a long-lived site on any cloud.** The Azure and Google Cloud addresses are HTTPS already, but they are long, and they change if you deploy again under another name, environment or project. Links people have saved and MCP clients set up with the old address then stop working.
 - **Use a subdomain**, such as `evidencelab.example.org`, rather than the bare domain. Azure needs only a CNAME record for a subdomain, but an A record for the bare domain.
 - **Keep the domain's DNS in the same cloud** (Route 53, Azure DNS or Cloud DNS), so Terraform can create the records itself, as the AWS template does. With DNS elsewhere, you add the records by hand and the deploy waits until they exist.

@@ -5,7 +5,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from qdrant_client import models
 
-from pipeline.db import Database, PostgresClient, make_stage, update_stages
+from pipeline.db import (
+    Database,
+    PostgresClient,
+    make_stage,
+    resolve_data_source,
+    update_stages,
+)
 from pipeline.processors.base import BaseProcessor
 from pipeline.processors.tagging.tagger_base import BaseTagger
 from pipeline.processors.tagging.tagger_section_type import SectionTypeTagger
@@ -30,10 +36,12 @@ class TaggerProcessor(BaseProcessor):
     stage_name = "tag"
 
     def __init__(
-        self, data_source: str = "uneg", config: Optional[Dict[str, Any]] = None
+        self,
+        data_source: Optional[str] = None,
+        config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
-        self.data_source = data_source
+        self.data_source = resolve_data_source(data_source)
         self.config = config or {}
         self._usage = UsageCollector()
         self._database: Optional[Database] = None

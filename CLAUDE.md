@@ -36,7 +36,7 @@ Internet → Caddy (:443) → nginx in ui (:80) ─┬─ static assets (1yr cac
 Key files: `docker-compose.prod.yml`, `Caddyfile`, `ui/frontend/Dockerfile.prod`, `ui/frontend/nginx.conf`.
 
 Notes:
-- Frontend is a multi-stage build: `node:18-alpine` builds React → `nginx:alpine` serves static files. `REACT_APP_*` env vars are **baked in at build time** — Docker rebuild required to change.
+- Frontend is a multi-stage build: `node:18-alpine` builds React → `nginx:alpine-slim` serves static files. `REACT_APP_*` env vars are **baked in at build time** — Docker rebuild required to change.
 - Qdrant runs on the host via systemd (not in Docker) — containers connect via `host.docker.internal:6333`.
 - Pipeline service is commented out in prod compose by default.
 - API binds to `127.0.0.1:8000` — never publicly exposed.
@@ -47,11 +47,14 @@ Notes:
 
 | Trigger | Docker tags |
 |---|---|
-| Push to `rc/vX.Y.Z` (every PR merged into the RC) | `rc-vX.Y.Z`, moving, for testing |
-| Push of release tag `vX.Y.Z` (release step 6 in CONTRIBUTING.md) | `X.Y.Z`, `X.Y`, `latest` (pre-release tags get no `X.Y`/`latest`) |
-| Every PR to `main` or `rc/**` | build only, both platforms, no push; `build (amd64)` and `build (arm64)` are required checks |
+| Merge to `main` (every PR) | builds once: `sha-<7 chars>` (fixed) and `main` (moves to the newest commit) |
+| Push to a `release-X.Y` patch branch | the same: `sha-<7 chars>` and `release-X.Y` |
+| Tag `vX.Y.Z-rc.N` | adds `X.Y.Z-rc.N` to that commit's image, no rebuild |
+| Tag `vX.Y.Z` (annotated; message = headline) | adds `X.Y.Z`, plus `X.Y`/`latest` when newest; publishes the GitHub release from `CHANGELOG.md` |
+| Every PR to `main` or `release-*` | build only, both platforms, no push; `build (amd64)` and `build (arm64)` are required checks |
 
-- Push credentials: GitHub environment `dockerhub` (only `rc/**` branches and `v*` tags may use it), secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` (Read & Write PAT), repo variable `DOCKERHUB_NAMESPACE=astrobagel`. The repo-level `DOCKERHUB_*` secrets are only for CI pull rate limits. A failed "Log in to Docker Hub" step means the token expired: the user creates a new one; never ask for it in chat.
+- Releases are tags on tested commits of `main` (CONTRIBUTING.md "Release Process"): no `rc/` or `release/` branches. `scripts/release/release_tags.py` decides the image names, notes and titles (tests: `tests/unit/test_release_tags.py`). A version tag needs `CHANGELOG.md`'s entry at the tagged commit, an image already published for that commit, and passing CI and Demo E2E runs for that commit (`release_tags.py check-tested`; building the image doesn't wait for them), or nothing is published. Re-tagging copies the index, so every name has the same digest.
+- Push credentials: GitHub environment `dockerhub` (only `main`, `release-*` and `v*` tags may use it), secrets `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` (Read & Write PAT), repo variable `DOCKERHUB_NAMESPACE=astrobagel`. The repo-level `DOCKERHUB_*` secrets are only for CI pull rate limits. A failed "Log in to Docker Hub" step means the token expired: the user creates a new one; never ask for it in chat.
 - **The web interface is deliberately not published.** Its build bakes in `REACT_APP_API_KEY` or the sign-in mode, `config.json` and branding, so a shared image either gets 401s from the API or exposes a key. `docker-compose.hub.yml` pulls the Python image, mounts `config.json` at `/app/config.json`, and builds the UI locally with the production build args. Don't add a UI image without runtime configuration, and never bake a key into a published image.
 - Releases before v1.6.5 were tagged before the workflow existed and have no images.
 - The supported quick start for the published image is `python3 scripts/demo/run_demo.py --mode hub` (stdlib only on the host): it writes `.env` (keeping existing secrets, since a new `POSTGRES_PASSWORD` locks out an existing database), sets `EVIDENCELAB_VERSION`, adds the demo data source, downloads and processes the documents inside the image, rebuilds the UI and waits on `/api/health`. It checks Docker before asking anything. Before the pipeline it starts Postgres, Qdrant and the embedding server and shows the embedding server's log until all are healthy (a first start spent about 6 minutes loading the model with no output, which looked like a hang), then runs `alembic upgrade head`, because the API that normally migrates has not started yet and the pipeline logged a `user_activity` traceback per document. The pipeline's output goes through `run_streaming`, which prints a still-working line after 60 s of silence (converting one document was silent for 185 s). Keep it working when changing `docker-compose.hub.yml`. That file keeps Postgres and Qdrant in named volumes on purpose: on Docker Desktop for Mac a bind-mounted Postgres data folder failed with "wrong ownership" on first start, which leaves the cluster without its database permanently.
@@ -121,7 +124,7 @@ python scripts/sync/db/sync_backup_to_remote.py \
 
 ### Git Commits
 - **NEVER use `--no-verify` when committing.** If a pre-commit hook fails, ALWAYS fix the underlying issue (lint errors, formatting, complexity, etc.) before committing again. No exceptions.
-- **NEVER commit directly to `main`, `rc/v*`, or any release branch.** All changes go on a feature branch and in via PR. No exceptions.
+- **NEVER commit directly to `main` or a `release-X.Y` patch branch.** All changes go on a feature branch and in via PR to `main`. No exceptions.
 - Use Conventional Commits format: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `perf:`, `ci:`, `build:`.
 
 ### Documentation

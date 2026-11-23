@@ -176,6 +176,11 @@ export interface BriefCitationCheck {
   created_by_user_id?: string | null;
   judge_model?: string | null;
   model_combo?: string | null;
+  // The brief version the check judged (null on checks made before versions
+  // were linked) and whether the brief has a newer version since (null when
+  // no version was recorded). Both decided by the API.
+  brief_version_number?: number | null;
+  brief_changed?: boolean | null;
   status: CheckStatus;
   summary_stats?: CheckSummaryStats | null;
   started_at?: string | null;
@@ -247,4 +252,82 @@ export interface BriefCitationCheckPassage {
 
 export interface BriefCitationCheckDetail extends BriefCitationCheck {
   passages: BriefCitationCheckPassage[];
+}
+
+// One passage the Fact Checker highlights in an open brief: where it is,
+// what the judge decided and why. `passage` is the prose as the check stored
+// it (citation markers and markdown removed); the document locates it in the
+// rendered section.
+export interface BriefFactCheckMark {
+  passage_id: number;
+  section_id: string | null;
+  section_title: string;
+  passage: string;
+  verdict: CitationVerdict;
+  verdict_label: string;
+  explanation: string;
+  problems: string[];
+  confidence?: number | null;
+  citations: string;
+  quote_not_in_source: boolean;
+}
+
+// A section with cited passages that changed since the check judged the
+// brief: not covered, with the note the document shows above it.
+export interface BriefFactCheckSection {
+  id: string;
+  title: string;
+  note: string;
+}
+
+// One verdict of the legend: its label and how many highlighted passages
+// carry it.
+export interface BriefFactCheckLegendItem {
+  verdict: CitationVerdict;
+  label: string;
+  count: number;
+}
+
+// GET /briefs/{id}/fact-check: the newest completed check while it still
+// covers part of the brief (null when there is none, so the button stays
+// hidden), the version it judged and the brief's current version, a note on
+// how they relate, the sections it no longer covers, the legend of verdict
+// colours, and the marks to paint (every judged passage, any verdict).
+export interface BriefFactCheckRead {
+  check: BriefCitationCheck | null;
+  brief_version?: number | null;
+  current_version?: number | null;
+  note?: string;
+  changed_sections?: BriefFactCheckSection[];
+  legend: BriefFactCheckLegendItem[];
+  marks: BriefFactCheckMark[];
+}
+
+// A run of a cited excerpt; highlighted when the judge quoted it.
+export interface BriefFactCheckSegment {
+  text: string;
+  highlighted: boolean;
+}
+
+// One cited source as the judge read it, for a highlighted passage's card.
+export interface BriefFactCheckEvidence {
+  citation: number | null;
+  label: string;
+  title: string;
+  page?: number | null;
+  section: string;
+  doc_id?: string | null;
+  chunk_id?: string | null;
+  pdf_url?: string | null;
+  quoted: boolean;
+  segments: BriefFactCheckSegment[];
+}
+
+// GET /briefs/{id}/fact-check/{check_id}/passages/{passage_id}: the evidence
+// behind one highlighted passage, loaded when its card opens.
+export interface BriefFactCheckEvidenceRead {
+  passage_id: number;
+  verdict: CitationVerdict;
+  verdict_label: string;
+  evidence: BriefFactCheckEvidence[];
 }

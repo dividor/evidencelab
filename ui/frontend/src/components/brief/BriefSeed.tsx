@@ -3,6 +3,7 @@ import { IconHistory, IconSparkle } from './BriefIcons';
 import { BriefLengthControl } from './BriefLengthControl';
 import { PROMPT_MAX_CHARS } from './briefTypes';
 import { UseBriefReturn } from './useBrief';
+import { AutoGrowTextarea } from '../AutoGrowTextarea';
 
 const tagClass = (tag: string): string => `brief-tag brief-tag-${tag.toLowerCase()}`;
 
@@ -83,7 +84,7 @@ export const BriefSeed: React.FC<BriefSeedProps> = ({ brief }) => {
         <label className="brief-label brief-label-spaced" htmlFor="brief-instructions">
           Instructions <span className="brief-label-hint">(optional — guides the headings)</span>
         </label>
-        <textarea
+        <AutoGrowTextarea
           id="brief-instructions"
           className="brief-textarea brief-textarea-sm"
           value={instructions}

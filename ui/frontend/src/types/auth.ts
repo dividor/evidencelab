@@ -1,3 +1,4 @@
+
 /** TypeScript types for user authentication and permissions. */
 
 export interface AuthUser {

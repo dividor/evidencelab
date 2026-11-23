@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from ui.backend.routes.users import TAB_KEYS, _merge_group_settings, _merge_tabs
+from ui.backend.services.group_settings import TAB_KEYS
+from ui.backend.services.group_settings import (
+    merge_group_settings as _merge_group_settings,
+)
+from ui.backend.services.group_settings import merge_tabs as _merge_tabs
 
 pytestmark = pytest.mark.unit
 

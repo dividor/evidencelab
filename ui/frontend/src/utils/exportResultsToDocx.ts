@@ -173,18 +173,24 @@ const withPageAnchor = (url: string, pageNum: number | undefined): string => {
   return `${trimmed}#page=${pageNum}`;
 };
 
-/** The source document's own address (its PDF, else its report page), with
- *  the cited page; null when the source gives none. */
-const sourceLink = (r: SearchResult): string | null => {
+/** True for a full web address. Document metadata comes from outside
+ *  sources, and Word opens other schemes (file:, Windows network paths)
+ *  without asking, so only http and https become links. */
+const isWebUrl = (value: unknown): value is string =>
+  typeof value === 'string' && /^https?:\/\/[^\s]/i.test(value.trim());
+
+/** The source document's own web address (its PDF, else its report page),
+ *  with the cited page; null when the source gives none. */
+export const sourceLink = (r: SearchResult): string | null => {
   const directPdf =
     r.pdf_url ||
     r.metadata?.pdf_url ||
     r.metadata?.map_pdf_url;
-  if (typeof directPdf === 'string' && directPdf.trim()) {
+  if (isWebUrl(directPdf)) {
     return withPageAnchor(directPdf.trim(), r.page_num);
   }
   const report = r.report_url;
-  if (typeof report === 'string' && report.trim()) {
+  if (isWebUrl(report)) {
     return withPageAnchor(report.trim(), r.page_num);
   }
   return null;

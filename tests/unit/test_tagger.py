@@ -697,7 +697,7 @@ class TestTaggerProcessorIntegration:
         """Test TaggerProcessor has expected attributes"""
         from pipeline.processors.tagging.tagger import TaggerProcessor
 
-        tagger = TaggerProcessor()
+        tagger = TaggerProcessor(data_source="test")
 
         assert hasattr(tagger, "_database")
         assert hasattr(tagger, "_embedding_model")

@@ -24,6 +24,26 @@ def get_rate_limit_ratings() -> str:
     return os.environ.get("RATE_LIMIT_RATINGS", "30/minute")
 
 
+def get_search_max_limit() -> int:
+    """Largest ``limit`` a search request may ask for.
+
+    An empty-query search loads that many passages into the API's memory, so
+    an unbounded value lets one request exhaust it. The web interface asks
+    for at most the heatmap's cell limit (``application.search.heatmap_cell_limit``
+    in config.json, 1000 by default); keep this at or above that.
+    """
+    return int(os.environ.get("SEARCH_MAX_LIMIT", "10000"))
+
+
+def get_highlight_max_text_chars() -> int:
+    """Longest text a highlight request may send.
+
+    The app sends one passage at a time; the longest measured passage in the
+    UNEG corpus (about 2 million chunks) is 42,604 characters.
+    """
+    return int(os.environ.get("HIGHLIGHT_MAX_TEXT_CHARS", "50000"))
+
+
 limiter = Limiter(key_func=get_remote_address)
 
 

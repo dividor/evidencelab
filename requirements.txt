@@ -6,15 +6,17 @@ selenium==4.41.0
 webdriver-manager==4.0.2
 
 # PDF processing
-PyPDF2==3.0.1
-pypdf==3.17.4
 PyMuPDF==1.28.2
 pdfplumber==0.11.9
 
 # Docling for advanced PDF parsing with dependencies
 docling==2.58.0
 docling-core==2.70.1
-docling-hierarchical-pdf==0.1.8
+# Held at 0.1.2: from 0.1.6 the add-in turns numbered paragraphs and list items
+# into headings, filing whole chapters under the wrong section and changing
+# their chunks. tests/unit/test_parser_heading_postprocessor.py fails if a
+# newer version still does.
+docling-hierarchical-pdf==0.1.2
 docling-ibm-models==3.11.0
 docling-parse==4.7.3
 pypdfium2==4.30.0
@@ -46,7 +48,7 @@ langdetect==1.0.9
 deep-translator==1.11.4
 
 # NLP and summarization
-nltk==3.10.3
+nltk==3.10.4
 numpy==2.3.5
 transformers==4.57.1
 huggingface-hub>=0.20.0
@@ -58,7 +60,7 @@ mistral-common[sentencepiece]>=1.0.0
 flask==3.1.3
 fastapi==0.135.1
 uvicorn[standard]==0.49.0
-python-multipart==0.0.22
+python-multipart==0.0.34
 slowapi==0.1.9
 mcp>=1.29.0,<2
 
@@ -66,13 +68,13 @@ mcp>=1.29.0,<2
 fastapi-users[sqlalchemy,oauth]==15.0.5
 httpx-oauth==0.16.1
 asyncpg==0.31.0
-aiosmtplib==5.1.2
+aiosmtplib==5.1.3
 
 # LLM tracing backends behind utils/tracing.py (TRACING_PROVIDER).
 # langsmith itself comes with langchain-core; OpenTelemetry is the open alternative.
-opentelemetry-api==1.44.0
-opentelemetry-sdk==1.44.0
-opentelemetry-exporter-otlp-proto-http==1.44.0
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-exporter-otlp-proto-http==1.45.2
 
 # LangChain and LLM integration
 langchain==1.3.18
@@ -88,7 +90,7 @@ langchain-google-vertexai>=3.2.4,<4.0.0
 
 # Google Cloud AI Platform (Vertex AI)
 google-cloud-aiplatform>=1.154.0
-google-cloud-discoveryengine>=0.20.5
+google-cloud-discoveryengine>=0.20.7
 
 
 # LangGraph agent framework

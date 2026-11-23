@@ -46,7 +46,7 @@ export const ASSISTANT_MAX_ITERATIONS = (config.application as any).assistant?.m
 export const SEARCH_RESULTS_PAGE_SIZE = String(config.application.search.page_size);
 
 // Results one Heatmap cell asks for (application.search.heatmap_cell_limit).
-// The API rejects a limit above application.search.max_limit.
+// Keep it at or below the API's SEARCH_MAX_LIMIT.
 export const HEATMAP_CELL_LIMIT = String(config.application.search.heatmap_cell_limit);
 
 // User feedback mode — enables document reprocessing and TOC editing controls
