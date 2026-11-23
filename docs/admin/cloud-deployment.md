@@ -69,6 +69,7 @@ The ui container writes these into its nginx configuration when it starts. If a 
 | `MCP_UPSTREAM` | ui | `http://mcp:8001` | The mcp service's address |
 | `NGINX_RESOLVER` | ui | `127.0.0.11` (Docker's DNS server) | The cloud network's DNS server |
 | `NGINX_REAL_IP_FROM` | ui | `127.0.0.1` (no proxy trusted) | The load balancer's address range, for example `10.0.0.0/16` |
+| `UI_CSP_POLICY` | ui | Scripts from the site only, plus Google Analytics | Only if the site loads outside assets; see [Outside assets and the Content-Security-Policy](third-party-services.md#outside-assets-and-the-content-security-policy) |
 
 nginx looks up the api and mcp addresses through `NGINX_RESOLVER` while it runs, so it follows a service when the platform replaces it at a new address.
 

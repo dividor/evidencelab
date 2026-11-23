@@ -83,6 +83,11 @@ ENV REACT_APP_SITE_URL=${REACT_APP_SITE_URL}
 ARG REACT_APP_CONTACT_EMAIL=
 ENV REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL}
 
+# Keep Create React App's small webpack runtime as a file instead of an inline
+# <script> in index.html, so the Content-Security-Policy can allow scripts from
+# this site only (script-src 'self'), with no inline exception.
+ENV INLINE_RUNTIME_CHUNK=false
+
 RUN npm run build
 
 # Stage 2: Production server with nginx
@@ -95,7 +100,7 @@ FROM nginx:alpine-slim AS production
 # Copy nginx config as a template; the entrypoint fills in the api and mcp
 # addresses (see render-nginx-conf.sh)
 COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
-COPY ui/frontend/nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY ui/frontend/nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf.template
 
 # Copy entrypoint and config rendering scripts, executable. (No RUN in this
 # stage: it would need emulation when building for another platform.)

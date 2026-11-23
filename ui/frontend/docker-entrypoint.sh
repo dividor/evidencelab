@@ -2,8 +2,10 @@
 # Docker entrypoint script for UI container
 
 # Render the nginx config: fill in the api and mcp addresses and the DNS
-# resolver. Stop here if that fails, rather than start with a broken config.
+# resolver, and the security headers' Content-Security-Policy. Stop here if
+# that fails, rather than start with a broken config.
 /render-nginx-conf.sh /etc/nginx/conf.d/default.conf.template /etc/nginx/conf.d/default.conf || exit 1
+/render-nginx-conf.sh /etc/nginx/snippets/security-headers.conf.template /etc/nginx/snippets/security-headers.conf || exit 1
 
 # Generate Microsoft identity association file for publisher verification.
 # Only needed for multi-tenant apps (common/organizations) where users from

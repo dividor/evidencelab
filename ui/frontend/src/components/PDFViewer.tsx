@@ -3,6 +3,7 @@ import axios from 'axios';
 import API_BASE_URL, { PDF_SEMANTIC_HIGHLIGHTS } from '../config';
 import { HighlightBox, SummaryModelConfig } from '../types/api';
 import { findAllMatches, findSemanticMatches } from '../utils/textHighlighting';
+import { loadPdfjs, pdfjsDocumentOptions } from '../utils/pdfjsLoader';
 import TocModal from './TocModal';
 
 // PDF.js types
@@ -525,24 +526,15 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   // Load PDF
   useEffect(() => {
     const initPDF = async () => {
-      if (window.pdfjsLib) {
-        await loadPDF();
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      script.async = true;
-      script.onload = async () => {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-        await loadPDF();
-      };
-      script.onerror = () => {
+      try {
+        await loadPdfjs();
+      } catch (err) {
+        console.error('Failed to load PDF.js:', err);
         setError('Failed to load PDF.js library');
         setLoading(false);
-      };
-      document.body.appendChild(script);
+        return;
+      }
+      await loadPDF();
     };
 
     initPDF();
@@ -720,11 +712,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const loadPDF = async () => {
     try {
       const url = `${API_BASE_URL}/pdf/${docId}?data_source=${dataSource}`;
-      // isEvalSupported: false stops PDF.js turning font data from the file
-      // into JavaScript (new Function). The documents come from other
-      // organisations' sites, so a crafted font must not become code in this
-      // page (CVE-2024-4367).
-      const loadingTask = window.pdfjsLib.getDocument({ url, isEvalSupported: false });
+      const loadingTask = window.pdfjsLib.getDocument(pdfjsDocumentOptions(url));
       const pdf = await loadingTask.promise;
 
       setPdfDoc(pdf);
@@ -856,9 +844,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
       // Canvas
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      if (!context) return;
-
       const outputScale = window.devicePixelRatio || 1;
       canvas.width = Math.floor(viewport.width * outputScale);
       canvas.height = Math.floor(viewport.height * outputScale);
@@ -870,9 +855,9 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
 
       // Render PDF
       const renderContext = {
-        canvasContext: context,
+        canvas,
         viewport: viewport,
-        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined
       };
 
       const renderTask = page.render(renderContext);
@@ -895,16 +880,22 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
         pointerEvents: 'auto',
         zIndex: '2' // Above canvas (canvas is z-index 1 or default)
       });
-      textLayer.style.setProperty('--scale-factor', scale.toString());
+      // PDF.js sizes the text layer and its text from these CSS variables, as
+      // its own viewer does (--scale-factor times --user-unit).
+      textLayer.style.setProperty(
+        '--total-scale-factor',
+        String(viewport.scale * (viewport.userUnit || 1))
+      );
+      textLayer.style.setProperty('--scale-round-x', '1px');
+      textLayer.style.setProperty('--scale-round-y', '1px');
       pageContainer.appendChild(textLayer);
 
       const textContent = await page.getTextContent();
-      await window.pdfjsLib.renderTextLayer({
-        textContent,
+      await new window.pdfjsLib.TextLayer({
+        textContentSource: textContent,
         container: textLayer,
         viewport,
-        textDivs: []
-      });
+      }).render();
 
       // Make text layer transparent FIRST (like test script) - this ensures text is always readable
       textLayer.style.color = 'transparent';
