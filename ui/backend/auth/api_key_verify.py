@@ -39,7 +39,13 @@ _EXEMPT_PREFIXES = (
     "/file/",
     "/pdf/",
 )
-_EXEMPT_EXACT = frozenset(("/health", "/docs", "/redoc", "/openapi.json"))
+# /config/auth-status says which ways to sign in are on and how long a session
+# lasts. The sign-in screen needs it before anyone is signed in, and a site
+# that requires sign-in builds its web app without a key, so it must not need
+# one. ActiveAuthMiddleware lets it through for the same reason.
+_EXEMPT_EXACT = frozenset(
+    ("/health", "/docs", "/redoc", "/openapi.json", "/config/auth-status")
+)
 # Document thumbnails load as <img> tags, which cannot send the key header.
 _THUMBNAIL_PATH = re.compile(r"^/document/[^/]+/thumbnail$")
 

@@ -2,6 +2,39 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.7] - 2026-11-22
+
+Evidence Lab v1.6.7 is a **sign-in** patch release. Google and Microsoft sign-in is now tied to the browser that started it and uses PKCE. When one of those providers is the only way in, the sign-in screen goes straight to its sign-in page. On a site that requires sign-in, the sign-in screen can now read its options before anyone is signed in, where it fell back to an email form, and a new person's first Google or Microsoft sign-in no longer fails. On AWS, S3 traffic goes through a gateway endpoint, which has no charge, instead of the NAT gateway. A whole dump, search index included, can be copied from one AWS deployment to another and loaded there. A version tag now names only a commit whose CI and Demo E2E runs passed.
+
+### Sign-in
+- **Straight to the only provider.** When email login is off and only Microsoft or only Google is set up, the sign-in screen goes straight to that provider's sign-in page instead of showing a single button. It shows the button instead after someone signs out, after a session times out, when a trip to the provider came back still signed out, and when the browser's Back button returns from the provider's page. The browser is only ever sent to the provider's own sign-in page over HTTPS; any other address is refused with a message. A sign-in that cannot start now shows an error instead of doing nothing, and the email form no longer flashes up before the sign-in options have loaded (#663)
+- **The sign-in screen works on sites that require sign-in.** It asks the API which ways to sign in are on before anyone is signed in. The API refused that question without a key, and a site that requires sign-in builds its web app without one, so the screen fell back to an email form with no Microsoft or Google button, even with email login off. The question is now answered without a key, and if it still fails the screen says so instead of guessing a form (#666)
+- **Nothing flashes up before the provider's page.** On a site that requires sign-in, nothing shows until the sign-in check has answered, and when the screen goes straight to the only provider it shows nothing while it goes (#666)
+- **A new person's first Google or Microsoft sign-in works.** The account was created already verified and then asked to verify its email, which failed that first sign-in with `OAUTH_USER_ALREADY_EXISTS`; the second worked. Verified accounts are no longer asked (#666)
+- Why a Google or Microsoft sign-in failed is now written to the server log: the provider's error code and description for a failed exchange, and the traceback for a failed account step. The browser still gets only the generic error (#666)
+
+### Security
+- **Google and Microsoft sign-in is tied to the browser that started it.** Starting a sign-in sets a short-lived httpOnly cookie, sent only to the sign-in callback, holding a PKCE code verifier. The signed state and the provider's sign-in address carry its S256 challenge. The callback goes on only when the state is valid, at most 10 minutes old and matches the cookie. It then sends the verifier with the code, so the provider checks it too; anything else is refused with `OAUTH_INVALID_STATE`. Sign-in always asks for the configured scopes, and the state no longer carries the visitor's IP address (#664)
+
+### Deployment & CI
+- **S3 traffic on AWS skips the NAT gateway.** A gateway endpoint for S3, which has no charge, carries the private subnets' traffic to S3 in the deployment's region: the transfer bucket, the pipeline files and the web app image's layers. Docker Hub, Bedrock and S3 in other regions still go through the NAT gateway, which AWS charges per GB (#660)
+- **Copy a whole dump between AWS deployments and load it.** `restore-data.sh copy-dump` brings a dump made by `dump-data.sh` in from another deployment's transfer bucket. The restore task downloads each file inside AWS, through a link signed in the other account, and stores it only after its size and SHA-256 match the manifest. `restore-data.sh load-dump` then checks every file, loads the database and the data source's folder, runs the migrations, and replaces the data source's Qdrant collections with the dump's snapshots. The search index comes with the dump, so nothing is re-indexed. Snapshots made by another minor version of Qdrant are refused (#662)
+- **A version tag names only a tested commit.** A `vX.Y.Z` or `vX.Y.Z-rc.N` tag now publishes nothing unless the commit's newest CI and Demo E2E runs both passed, and says which run stopped it (#658)
+- The integration tests give the embedding server up to 15 minutes to download its model before treating it as unhealthy, and print the services' logs when the job fails (#659)
+
+### Documentation
+- User Administration explains how Google and Microsoft sign-in is protected, and that a single provider's sign-in page opens directly (#663, #664)
+- Cloud deployment covers loading a dump into another deployment and the S3 gateway endpoint (#660, #662), CONTRIBUTING the tested-commit check on release tags (#658), and `SECURITY.md` the sign-in binding (#664)
+
+### Dependencies
+- Backend: aiosmtplib 5.1.3, which refuses email addresses and host names that could slip extra parameters into SMTP commands (#562)
+
+### Upgrade Notes
+- **A Google or Microsoft sign-in must finish in the same browser within 10 minutes.** One that comes back to another browser, or later, stops with `OAUTH_INVALID_STATE`; signing in again works. A proxy or CDN in front of the site must pass cookies to `/api/` and not cache it, as it already must for the session cookie (#664).
+- **`/auth/{provider}/authorize` no longer takes `scopes`.** Sign-in always asks for the configured scopes (#664).
+- **Rebuild the web interface** to go straight to a single provider's sign-in page and to read the sign-in options before sign-in (#663, #666).
+- **AWS template:** the next deploy adds the S3 gateway endpoint and changes nothing else (#660).
+
 ## [1.6.6] - 2026-11-21
 
 Evidence Lab v1.6.6 is a **security and production** release. Document changes and reprocessing now need an administrator, the key built into the web interface no longer opens MCP, A2A or a sign-in-required deployment, connecting an MCP client asks for consent, AI requests may use only the models and token budgets `config.json` allows, and text visitors submit can no longer run in the admin screens or exports. Brief gains a version history: a section's change can be reviewed and kept or rejected, and both sections and the whole brief can be compared with and restored to earlier versions. A **Fact Checker** shows a citation check's verdicts in the brief itself. Two new kinds of model provider arrive, any OpenAI-compatible embeddings endpoint and any Cohere-compatible reranker, and Amazon Rerank 1.0 becomes the AWS Bedrock combo's reranker. The AWS template gets what a production site needs: optional CloudFront and AWS WAF, weekly AWS Backup backups, moving data in and out through a transfer bucket, PostgreSQL 17, and fixes that keep the search index and the database version across deploys. Requests no longer fall back to the `uneg` data source, and the PDF heading add-in is held at the version existing libraries were parsed with. Releases are now tags on `main`.

@@ -3,14 +3,8 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { useAutoSignIn } from '../../hooks/useAutoSignIn';
-import { AuthStatus, OAuthProvider, providerName } from '../../utils/oauthSignIn';
+import { AuthStatus, OAuthProvider } from '../../utils/oauthSignIn';
 import OAuthButtons from './OAuthButtons';
-
-const DEFAULT_AUTH_STATUS: AuthStatus = {
-  email_login_disabled: false,
-  google_oauth_enabled: false,
-  microsoft_oauth_enabled: false,
-};
 
 interface LoginModalProps {
   onClose: () => void;
@@ -282,22 +276,29 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
 
 interface MainTabProps extends Omit<MainAuthFormProps, 'authStatus'> {
   authStatus: AuthStatus | null;
-  /** The provider being gone to automatically, if any. */
-  autoProvider: OAuthProvider | null;
 }
 
 /** Sign In / Register: nothing until the options are known, then the form. */
-const MainTab: React.FC<MainTabProps> = ({ authStatus, autoProvider, ...formProps }) => {
-  if (autoProvider) {
-    return (
-      <p className="auth-callout">
-        Taking you to {providerName(autoProvider)} sign-in&hellip;
-      </p>
-    );
-  }
+const MainTab: React.FC<MainTabProps> = ({ authStatus, ...formProps }) => {
   if (!authStatus) return null;
   return <MainAuthForm authStatus={authStatus} {...formProps} />;
 };
+
+/**
+ * Whether the sign-in box shows nothing at all. When it may go straight to the
+ * only provider, it stays blank until it knows the sign-in options, and while
+ * it goes, so nothing flashes up before the provider's sign-in page. An error
+ * always shows.
+ */
+function staysBlank(
+  autoSignIn: boolean,
+  authStatus: AuthStatus | null,
+  autoProvider: OAuthProvider | null,
+  error: string,
+): boolean {
+  if (!autoSignIn || error) return false;
+  return authStatus === null || autoProvider !== null;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Tabs                                                              */
@@ -337,9 +338,11 @@ const LoginTabs: React.FC<LoginTabsProps> = ({
 
 /**
  * The ways to sign in the backend offers; null until it answers, so the email
- * form never flashes up on a deployment that has turned it off.
+ * form never flashes up on a deployment that has turned it off. If the backend
+ * cannot be asked, ON_ERROR gets a message and no sign-in form is shown: a
+ * guessed form would offer a way in the deployment may not have.
  */
-function useAuthStatus(): AuthStatus | null {
+function useAuthStatus(onError: (message: string) => void): AuthStatus | null {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -352,9 +355,17 @@ function useAuthStatus(): AuthStatus | null {
           microsoft_oauth_enabled: !!res.data.microsoft_oauth_enabled,
         });
       })
-      .catch(() => { if (!cancelled) setAuthStatus(DEFAULT_AUTH_STATUS); });
+      .catch((err) => {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        const code = status ? ` (HTTP ${status})` : '';
+        onError(
+          `Could not load the sign-in options${code}. ` +
+            "Reload the page; if this keeps happening, contact the site's administrator.",
+        );
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [onError]);
   return authStatus;
 }
 
@@ -375,7 +386,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const authStatus = useAuthStatus();
+  const authStatus = useAuthStatus(setError);
 
   useEffect(() => {
     if (authStatus?.email_login_disabled && mode === 'register') {
@@ -383,7 +394,8 @@ const LoginModal: React.FC<LoginModalProps> = ({
     }
   }, [authStatus?.email_login_disabled, mode]);
 
-  const autoProvider = useAutoSignIn(authStatus, !!autoSignIn && mode === 'login', setError);
+  const autoEnabled = !!autoSignIn && mode === 'login';
+  const autoProvider = useAutoSignIn(authStatus, autoEnabled, setError);
 
   const handleClose = () => {
     clearVerificationMessage();
@@ -473,6 +485,8 @@ const LoginModal: React.FC<LoginModalProps> = ({
     }
   };
 
+  if (staysBlank(autoEnabled, authStatus, autoProvider, error)) return null;
+
   const displaySuccess = verificationMessage || success;
   const isMainTab = mode === 'login' || mode === 'register';
 
@@ -521,7 +535,6 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
           {isMainTab && (
             <MainTab
-              autoProvider={autoProvider}
               mode={mode as 'login' | 'register'}
               email={email}
               setEmail={setEmail}

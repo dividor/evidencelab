@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import logging
 import os
 import secrets
 from typing import Optional, TypeGuard
@@ -24,6 +25,29 @@ from ui.backend.auth.users import (
     fastapi_users,
     get_user_manager,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _provider_error(exc: Exception) -> str:
+    """What the provider said when a token exchange failed, for the server log.
+
+    The error code and the first line of its description; never the request,
+    which carries the client secret.
+    """
+    response = getattr(exc, "response", None)
+    if response is None:
+        return f"{type(exc).__name__}: {exc}"
+    try:
+        body = response.json()
+    except ValueError:
+        return f"HTTP {response.status_code}, body not JSON"
+    description = (body.get("error_description") or "").splitlines()
+    return (
+        f"HTTP {response.status_code} error={body.get('error')} "
+        f"codes={body.get('error_codes')} {description[0] if description else ''}"
+    )
+
 
 # Base URL for OAuth callbacks (must be reachable by the browser, not the
 # internal Docker hostname).  Falls back to localhost:8000 for local dev.
@@ -291,7 +315,12 @@ def _make_oauth_router(oauth_client, provider_name: str):
         # Exchange code for token; the provider checks the verifier too.
         try:
             token = await oauth_client.get_access_token(code, callback_url, verifier)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "OAuth %s token exchange failed: %s",
+                provider_name,
+                _provider_error(exc),
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OAUTH_EXCHANGE_ERROR",
@@ -320,6 +349,9 @@ def _make_oauth_router(oauth_client, provider_name: str):
                 is_verified_by_default=True,
             )
         except Exception:
+            logger.exception(
+                "OAuth %s sign-in could not create or link the user", provider_name
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="OAUTH_USER_ALREADY_EXISTS",
