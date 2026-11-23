@@ -411,6 +411,8 @@ The template sets `OAUTH_CALLBACK_BASE_URL` to the site address followed by `/ap
 
 See [User Administration](user-administration.md) for what each sign-in setting does.
 
+With `cloudfront_enabled`, AWS WAF's core rule set would block Microsoft's reply to the callback, because its query string is longer than the rule allows. The template counts that rule instead of blocking it (see [CloudFront and AWS WAF](#cloudfront-and-aws-waf)). If you set `waf_core_rules_to_count` yourself, keep `SizeRestrictions_QUERYSTRING` in it.
+
 ### CloudFront and AWS WAF
 
 Set `cloudfront_enabled = true` to put Amazon CloudFront and an AWS WAF web ACL in front of the site:
@@ -429,7 +431,7 @@ The web ACL is in us-east-1, as CloudFront requires. Its rules run in this order
 | `rate-limit-per-ip` | Blocks an address that sends more requests in 5 minutes than the limit, until its rate drops. Visitors behind one office or VPN address share it. | `waf_rate_limit` (default `2000`; `0` turns it off) |
 | `AWSManagedRulesAmazonIpReputationList` | AWS's list of addresses known for bots and attacks | — |
 | `AWSManagedRulesKnownBadInputsRuleSet` | Requests that match known exploits | — |
-| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. `SizeRestrictions_BODY` in it blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB, so that rule only counts. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY"]`) |
+| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. Two of its rules would block normal use, so they only count. `SizeRestrictions_BODY` blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB. `SizeRestrictions_QUERYSTRING` blocks query strings over 2,048 bytes, and Microsoft sign-in sends visitors back to `/api/auth/microsoft/callback` with a longer one, so while that rule blocks, no Microsoft sign-in can finish. A list you set replaces the default, so keep both in it. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]`) |
 
 Other settings:
 
