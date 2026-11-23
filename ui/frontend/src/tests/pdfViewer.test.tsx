@@ -29,4 +29,25 @@ describe('PDFViewer', () => {
     fireEvent.click(screen.getByText('Close'));
     expect(onClose).toHaveBeenCalled();
   });
+
+  test('opens the document with eval turned off', async () => {
+    mockedAxios.get.mockResolvedValueOnce({ data: { highlights: [] } });
+    const getDocument = jest.fn(() => ({
+      promise: Promise.reject(new Error('stop after the call')),
+    }));
+    window.pdfjsLib = {
+      getDocument,
+      renderTextLayer: jest.fn(),
+      GlobalWorkerOptions: {},
+    };
+
+    render(<PDFViewer docId="doc-1" chunkId="chunk-1" onClose={jest.fn()} />);
+
+    await screen.findByText('Failed to load PDF: stop after the call');
+    expect(getDocument).toHaveBeenCalledTimes(1);
+    expect(getDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ isEvalSupported: false })
+    );
+    expect(getDocument.mock.calls[0][0].url).toMatch(/\/pdf\/doc-1\?data_source=/);
+  });
 });

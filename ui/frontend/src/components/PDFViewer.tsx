@@ -720,7 +720,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({
   const loadPDF = async () => {
     try {
       const url = `${API_BASE_URL}/pdf/${docId}?data_source=${dataSource}`;
-      const loadingTask = window.pdfjsLib.getDocument(url);
+      // isEvalSupported: false stops PDF.js turning font data from the file
+      // into JavaScript (new Function). The documents come from other
+      // organisations' sites, so a crafted font must not become code in this
+      // page (CVE-2024-4367).
+      const loadingTask = window.pdfjsLib.getDocument({ url, isEvalSupported: false });
       const pdf = await loadingTask.promise;
 
       setPdfDoc(pdf);
