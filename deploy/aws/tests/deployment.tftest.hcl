@@ -98,8 +98,10 @@ variables {
   cloudfront_origin_read_timeout = 60
   waf_allowed_ip_ranges          = []
   waf_rate_limit                 = 2000
-  waf_core_rules_to_count        = ["SizeRestrictions_BODY"]
-  waf_count_only                 = false
+  # null takes the template's default (the variable is not nullable), so the
+  # runs check the default itself and terraform.tfvars cannot change it.
+  waf_core_rules_to_count = null
+  waf_count_only          = false
 
   pipeline_files_dir   = ""
   customize_assets_dir = ""
@@ -408,7 +410,7 @@ run "with_cloudfront_and_a_domain_the_certificate_is_in_us_east_1" {
   }
 }
 
-run "with_cloudfront_the_waf_blocks_and_counts_only_the_core_body_size_rule" {
+run "with_cloudfront_the_waf_blocks_and_counts_only_the_core_body_and_query_string_size_rules" {
   command = plan
 
   variables {
@@ -438,8 +440,15 @@ run "with_cloudfront_the_waf_blocks_and_counts_only_the_core_body_size_rule" {
   assert {
     condition = [
       for o in one(one(one([for r in aws_wafv2_web_acl.site[0].rule : r if r.name == "AWSManagedRulesCommonRuleSet"]).statement).managed_rule_group_statement).rule_action_override : o.name
-    ] == ["SizeRestrictions_BODY"]
-    error_message = "Only the core rule that blocks bodies over 8 KB should count instead of block."
+    ] == ["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]
+    error_message = "By default only the core rules that block bodies over 8 KB and query strings over 2,048 bytes (Microsoft sign-in's reply) should count instead of block."
+  }
+  assert {
+    condition = alltrue([
+      for o in one(one(one([for r in aws_wafv2_web_acl.site[0].rule : r if r.name == "AWSManagedRulesCommonRuleSet"]).statement).managed_rule_group_statement).rule_action_override :
+      length(one(o.action_to_use).count) == 1 && length(one(o.action_to_use).block) == 0
+    ])
+    error_message = "Each overridden core rule should count, not block."
   }
   assert {
     condition     = one(one(one([for r in aws_wafv2_web_acl.site[0].rule : r if r.name == "rate-limit-per-ip"]).statement).rate_based_statement).limit == 2000
