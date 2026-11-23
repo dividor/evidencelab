@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import axios from 'axios';
 import { AuthGate } from './AuthGate';
 import { AuthContext } from '../../hooks/useAuth';
-import { pauseAutoSignIn } from '../../utils/oauthSignIn';
+import { pauseAutoSignIn, pickAccountNextTime } from '../../utils/oauthSignIn';
 import type { AuthContextValue } from '../../types/auth';
 
 // babel-jest hoists these above the imports.
@@ -87,10 +87,13 @@ describe('AuthGate with Microsoft as the only way to sign in', () => {
     (window as unknown as { location: Location }).location = originalLocation;
   });
 
+  const authorizeUrl = () => (global.fetch as jest.Mock).mock.calls[0][0] as string;
+
   it('goes straight to Microsoft for someone who is not signed in', async () => {
     renderGate(signedOut());
 
     await waitFor(() => expect(assignedHref).toBe(PROVIDER_PAGE));
+    expect(authorizeUrl()).not.toContain('prompt=');
     expect(screen.queryByText('the app')).not.toBeInTheDocument();
   });
 
@@ -101,14 +104,24 @@ describe('AuthGate with Microsoft as the only way to sign in', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('shows the button after a session times out', async () => {
+  it('goes to Microsoft\'s account picker after a session times out', async () => {
+    pickAccountNextTime();
     renderGate(signedOut({ sessionExpired: true }));
 
-    expect(await screen.findByText(/Sign in with Microsoft/)).toBeInTheDocument();
-    expect(global.fetch).not.toHaveBeenCalled();
+    await waitFor(() => expect(assignedHref).toBe(PROVIDER_PAGE));
+    expect(authorizeUrl()).toContain('&prompt=select_account');
+    expect(screen.queryByText(/Sign in with Microsoft/)).not.toBeInTheDocument();
   });
 
-  it('shows the button after someone signed out or a trip came back signed out', async () => {
+  it('goes to Microsoft\'s account picker after someone signs out', async () => {
+    pickAccountNextTime();
+    renderGate(signedOut());
+
+    await waitFor(() => expect(assignedHref).toBe(PROVIDER_PAGE));
+    expect(authorizeUrl()).toContain('&prompt=select_account');
+  });
+
+  it('shows the button after a trip came back still signed out', async () => {
     pauseAutoSignIn();
     renderGate(signedOut());
 

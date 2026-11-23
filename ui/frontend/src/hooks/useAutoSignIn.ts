@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  accountPickRequested,
   AuthStatus,
   OAuthProvider,
   onlyOAuthProvider,
@@ -11,6 +12,10 @@ import {
  * When ENABLED and STATUS offers only one way to sign in, send the browser
  * straight to that provider's sign-in page instead of showing its button.
  * Returns the provider while that is under way, otherwise null.
+ *
+ * After a sign-out or a timeout in this tab (pickAccountNextTime), the trip
+ * asks the provider for its account picker, so it does not sign the person
+ * straight back in.
  *
  * It goes once per sign-in screen. If the trip cannot start, ON_ERROR gets the
  * message and the button shows. Coming back with the browser's Back button
@@ -37,8 +42,9 @@ export function useAutoSignIn(
   useEffect(() => {
     if (!going || provider === null || startedRef.current) return;
     startedRef.current = true;
+    const pickAccount = accountPickRequested();
     pauseAutoSignIn();
-    startOAuthSignIn(provider).catch((err: Error) => {
+    startOAuthSignIn(provider, { pickAccount }).catch((err: Error) => {
       setStopped(true);
       onError(err.message);
     });

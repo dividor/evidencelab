@@ -55,16 +55,44 @@ export function checkedSignInAddress(provider: OAuthProvider, address: unknown):
   return url.href;
 }
 
+// The request that clears the sign-in cookie, while one is under way.
+let signOutRequest: Promise<void> = Promise.resolve();
+
+/**
+ * Make trips to a provider wait for REQUEST, the one that clears the sign-in
+ * cookie. Leaving the page first would cancel it, and the old session would
+ * outlive the sign-out. A failed request does not hold them up.
+ */
+export function holdSignInUntilSignedOut(request: Promise<unknown>): void {
+  signOutRequest = request.then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+export interface SignInOptions {
+  /**
+   * Ask the provider to show its account picker rather than sign in, without
+   * asking, an account it already knows.
+   */
+  pickAccount?: boolean;
+}
+
 /**
  * Send the browser to PROVIDER's sign-in page. The current path and query go
  * through the signed state token so the callback brings the user back here.
  * Throws when the backend gives no sign-in address, or one that is not the
  * provider's (see checkedSignInAddress).
  */
-export async function startOAuthSignIn(provider: OAuthProvider): Promise<void> {
+export async function startOAuthSignIn(
+  provider: OAuthProvider,
+  { pickAccount = false }: SignInOptions = {},
+): Promise<void> {
+  await signOutRequest;
   const returnTo = window.location.pathname + window.location.search;
+  const prompt = pickAccount ? '&prompt=select_account' : '';
   const authorizeUrl =
-    `${API_BASE_URL}/auth/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}`;
+    `${API_BASE_URL}/auth/${provider}/authorize?return_to=${encodeURIComponent(returnTo)}${prompt}`;
   const res = await fetch(authorizeUrl, {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -78,23 +106,45 @@ export async function startOAuthSignIn(provider: OAuthProvider): Promise<void> {
   window.location.href = checkedSignInAddress(provider, data.authorization_url);
 }
 
-const AUTO_SIGN_IN_PAUSED_KEY = 'evidencelab_auto_sign_in_paused';
+/*
+ * How the sign-in screen of this browser tab goes to the only provider by
+ * itself (only on sites whose one way to sign in is Microsoft or Google; see
+ * onlyOAuthProvider). Nothing stored: it goes. "pick-account": it goes, and
+ * asks the provider for its account picker. "paused": it shows the button.
+ */
+const AUTO_SIGN_IN_KEY = 'evidencelab_auto_sign_in';
+const PAUSED = 'paused';
+const PICK_ACCOUNT = 'pick-account';
 
 /**
  * Stop the sign-in screen going to the provider by itself in this browser tab
- * until someone signs in. Set when someone signs out, so the provider does not
- * sign them straight back in, and before each automatic trip, so a trip that
- * comes back still signed out shows the button instead of going round again.
+ * until someone signs in. Set before each automatic trip, so a trip that comes
+ * back still signed out shows the button instead of going round again.
  */
 export function pauseAutoSignIn(): void {
-  window.sessionStorage.setItem(AUTO_SIGN_IN_PAUSED_KEY, '1');
+  window.sessionStorage.setItem(AUTO_SIGN_IN_KEY, PAUSED);
 }
 
-/** Let the sign-in screen go to the provider by itself again. */
+/**
+ * Make the next automatic trip from this browser tab ask the provider for its
+ * account picker. Set when someone signs out or their session times out: the
+ * provider usually still knows them and would otherwise sign them straight
+ * back in, so signing out would undo itself and an unattended tab would sign
+ * itself back in.
+ */
+export function pickAccountNextTime(): void {
+  window.sessionStorage.setItem(AUTO_SIGN_IN_KEY, PICK_ACCOUNT);
+}
+
+/** Let the sign-in screen go to the provider by itself again, without asking. */
 export function resumeAutoSignIn(): void {
-  window.sessionStorage.removeItem(AUTO_SIGN_IN_PAUSED_KEY);
+  window.sessionStorage.removeItem(AUTO_SIGN_IN_KEY);
 }
 
 export function autoSignInPaused(): boolean {
-  return window.sessionStorage.getItem(AUTO_SIGN_IN_PAUSED_KEY) !== null;
+  return window.sessionStorage.getItem(AUTO_SIGN_IN_KEY) === PAUSED;
+}
+
+export function accountPickRequested(): boolean {
+  return window.sessionStorage.getItem(AUTO_SIGN_IN_KEY) === PICK_ACCOUNT;
 }

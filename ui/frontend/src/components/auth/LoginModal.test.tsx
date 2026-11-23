@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import axios from 'axios';
+import { autoSignInPaused, pickAccountNextTime } from '../../utils/oauthSignIn';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -472,8 +473,9 @@ describe('LoginModal — only one way to sign in', () => {
     const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
     expect(calledUrl).toContain('/auth/microsoft/authorize');
     expect(calledUrl).toContain('return_to=' + encodeURIComponent('/?q=resilience'));
+    expect(calledUrl).not.toContain('prompt=');
     // A trip that comes back still signed out must show the button, not go again.
-    expect(window.sessionStorage.length).toBe(1);
+    expect(autoSignInPaused()).toBe(true);
     expect(screen.queryByText(/Sign in with Microsoft/)).not.toBeInTheDocument();
   });
 
@@ -486,6 +488,45 @@ describe('LoginModal — only one way to sign in', () => {
     expect(container).toBeEmptyDOMElement();
     expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/auth/google/authorize');
   });
+
+  it.each([
+    ['Microsoft', 'microsoft', { google_oauth_enabled: false }, MICROSOFT_PAGE],
+    ['Google', 'google', { microsoft_oauth_enabled: false }, GOOGLE_PAGE],
+  ] as const)(
+    'asks %s for its account picker after a sign-out or timeout, then pauses',
+    async (_name, provider, providers, page) => {
+      mockAuthStatusResponse({ email_login_disabled: true, ...providers });
+      mockAuthorize(true, 200, { authorization_url: page });
+      pickAccountNextTime();
+      const { container } = renderModal(undefined, { autoSignIn: true, required: true });
+
+      await waitFor(() => expect(assignedHref).toBe(page));
+      expect(container).toBeEmptyDOMElement();
+      const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+      expect(calledUrl).toContain(`/auth/${provider}/authorize`);
+      expect(calledUrl).toContain('&prompt=select_account');
+      // Coming back still signed out shows the button, not another trip.
+      expect(autoSignInPaused()).toBe(true);
+    },
+  );
+
+  it.each([
+    ['email login is on too', { google_oauth_enabled: false }],
+    ['both providers are on', { email_login_disabled: true }],
+  ])(
+    'never goes by itself or asks for the picker after a sign-out when %s',
+    async (_label, statusOverrides) => {
+      mockAuthStatusResponse(statusOverrides);
+      pickAccountNextTime();
+      renderModal(undefined, { autoSignIn: true, required: true });
+
+      fireEvent.click(await screen.findByText(/Sign in with Microsoft/));
+
+      await waitFor(() => expect(assignedHref).toBe(MICROSOFT_PAGE));
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect((global.fetch as jest.Mock).mock.calls[0][0]).not.toContain('prompt=');
+    },
+  );
 
   it('shows the button when the caller does not ask to go straight there', async () => {
     mockAuthStatusResponse({ email_login_disabled: true, google_oauth_enabled: false });
