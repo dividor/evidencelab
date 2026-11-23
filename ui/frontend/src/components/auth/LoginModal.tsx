@@ -24,6 +24,12 @@ interface LoginModalProps {
 
 type TabMode = 'login' | 'register' | 'forgot' | 'reset';
 
+/** Modes that only exist where people sign in with an email and password. */
+const PASSWORD_MODES: TabMode[] = ['register', 'forgot', 'reset'];
+
+const RESET_UNAVAILABLE =
+  'Password reset is not available: this site does not sign in with passwords.';
+
 /** Map raw error codes from fastapi-users to user-friendly messages. */
 const ERROR_MESSAGES: Record<string, string> = {
   REGISTER_USER_ALREADY_EXISTS: 'An account with this email address already exists. Try signing in instead.',
@@ -388,10 +394,12 @@ const LoginModal: React.FC<LoginModalProps> = ({
   const [loading, setLoading] = useState(false);
   const authStatus = useAuthStatus(setError);
 
+  // Without email login there is no registration and no password to reset:
+  // a reset link (or a stale mode) falls back to the ways to sign in.
   useEffect(() => {
-    if (authStatus?.email_login_disabled && mode === 'register') {
-      setMode('login');
-    }
+    if (!authStatus?.email_login_disabled || !PASSWORD_MODES.includes(mode)) return;
+    if (mode === 'reset') setError(RESET_UNAVAILABLE);
+    setMode('login');
   }, [authStatus?.email_login_disabled, mode]);
 
   const autoEnabled = !!autoSignIn && mode === 'login';
