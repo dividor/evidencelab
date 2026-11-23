@@ -168,8 +168,9 @@ body {
   line-height: 1.65;
 }
 
-/* Typography: Load Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Open+Sans:wght@400;600&display=swap');
+/* Typography: Poppins and Open Sans are bundled from @fontsource (imported in
+   index.tsx) and served from this site, not Google Fonts: the pages'
+   Content-Security-Policy allows fonts and styles from the site only. */
 
 h1,
 h2,
@@ -6624,13 +6625,46 @@ li.ai-fact-active::before {
   background: var(--primary-blue-dark);
 }
 
-/* Text layer and highlights */
-.textLayer>span {
+/* Text layer and highlights.
+   PDF.js 6 positions and sizes the text-layer spans with these rules, taken
+   from its viewer's pdf_viewer.css (written there with CSS nesting). The
+   viewer sets --total-scale-factor on each .textLayer. The layer's own
+   position, size and stacking are inline styles in PDFViewer.tsx. */
+.textLayer {
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  -webkit-text-size-adjust: none;
+  -moz-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer span,
+.textLayer br {
   color: transparent;
   position: absolute;
   white-space: pre;
   cursor: text;
   transform-origin: 0% 0%;
+}
+
+.textLayer> :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
 }
 
 .textLayer>span.phrase-highlight {

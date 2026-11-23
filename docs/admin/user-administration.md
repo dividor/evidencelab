@@ -97,10 +97,13 @@ DISABLE_EMAIL_LOGIN=true
 
 When this is set:
 
-- The backend does **not** mount the `/auth/login`, `/auth/cookie-login`, or `/auth/register` endpoints — direct API calls to them return 404.
-- The login modal hides the email form and the **Register** tab.
+- The backend does **not** mount the `/auth/login`, `/auth/cookie-login`, `/auth/register`, `/auth/forgot-password` or `/auth/reset-password` endpoints — direct API calls to them return 404. Signing out (`/auth/cookie-login/logout`) still works. There is no password reset: nobody signs in with a password, and Google and Microsoft accounts have no Evidence Lab password.
+- The login modal hides the email form and the **Register** tab. An old password reset link opens the ways to sign in, with a note that password reset is not available.
 - Only the OAuth buttons for providers with credentials configured are shown.
-- If only one provider is configured, the sign-in screen goes straight to that provider's sign-in page instead of showing a single button. It shows the button instead after someone signs out, after a session times out, and when a trip to the provider came back without signing in, so nobody is signed straight back in or sent round in a loop.
+- If only one provider is configured, the sign-in screen goes straight to that provider's sign-in page instead of showing a single button.
+  - After someone signs out, or their session times out, it goes to the provider's account picker ("Pick an account"). The provider usually still knows them and would otherwise sign them straight back in without asking.
+  - When a trip to the provider came back without signing in, it shows the button instead, so nobody is sent round in a loop.
+  - None of this applies when email login is on or both providers are configured: the sign-in screen then shows its options.
 - The sign-in screen only ever sends the browser to the provider's own sign-in page over HTTPS (`login.microsoftonline.com` for Microsoft, `accounts.google.com` for Google). Any other address from the backend is refused with a message, so another site can never be opened in its place.
 
 The login modal also automatically hides any OAuth provider whose credentials are not configured. If both `OAUTH_GOOGLE_*` and `OAUTH_MICROSOFT_*` are unset, only the Google button would be missing — so ensure at least one OAuth provider is fully configured before enabling `DISABLE_EMAIL_LOGIN`, otherwise users will have no way to sign in.

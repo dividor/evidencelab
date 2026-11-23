@@ -372,7 +372,25 @@ Application-level security headers middleware provides defence-in-depth:
 - `Strict-Transport-Security` — HSTS with `preload` directive when HTTPS is configured; warning logged when `AUTH_COOKIE_SECURE=false`
 - `Cache-Control: no-store` + `Pragma: no-cache` on sensitive endpoints (`/auth/`, `/users/`, `/groups/`, `/ratings/`, `/activity/`) — prevents browsers and proxies from caching tokens or personal data (ASVS V8.1.4)
 
-These headers are added by the API to its own responses. The web pages and static files are served by nginx (`ui/frontend/nginx.conf`), which sets its own headers from one file, `ui/frontend/nginx-security-headers.conf`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, and a `Content-Security-Policy` of `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. nginx drops server-level headers for any `location` that sets an `add_header` of its own, so every such location includes the file again; `tests/unit/test_nginx_security_headers.py` fails if one does not. The page CSP does not yet restrict `script-src`, because the PDF viewer loads pdf.js from cdnjs.
+These headers are added by the API to its own responses. The web pages and static files are served by nginx (`ui/frontend/nginx.conf`), which sets its own headers from one file, `ui/frontend/nginx-security-headers.conf`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, and a `Content-Security-Policy`. nginx drops server-level headers for any `location` that sets an `add_header` of its own, so every such location includes the file again; `tests/unit/test_nginx_security_headers.py` fails if one does not.
+
+The pages' `Content-Security-Policy` is filled in when the ui container starts (`ui/frontend/render-nginx-conf.sh`), from `UI_CSP_POLICY` or this default:
+
+```
+default-src 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline';
+img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.google-analytics.com
+https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self';
+frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+```
+
+- Scripts and workers come from the site only. Google Analytics is the exception, and the app loads it only when it is configured and the visitor accepts analytics cookies.
+- There is no inline script and no `eval`: the production build keeps Create React App's runtime as a file (`INLINE_RUNTIME_CHUNK=false`).
+- The PDF viewer loads PDF.js from the site. `scripts/copy-pdfjs.js` copies it from the `pdfjs-dist` version in `package-lock.json` into the build at `/pdfjs/<version>/`.
+- PDF.js runs without WebAssembly (`useWasm: false`, using its JavaScript image decoders), so the policy needs no `'wasm-unsafe-eval'`.
+- The app's typefaces (Poppins and Open Sans) are bundled from `@fontsource` and served from the site, not loaded from Google Fonts, so `style-src` and `font-src` need no outside address and visitors' browsers do not contact Google for them.
+- Styles allow inline, because React and the MCP consent page set style attributes.
+- `form-action` is left out: it does not fall back to `default-src`, and the MCP consent form's answer redirects to the MCP client's own address.
+- A deployment that loads other outside assets sets `UI_CSP_POLICY`. The container refuses a value with a line break or any of `| & \ " $`.
 
 Production deployments via Caddy additionally include:
 
@@ -472,6 +490,11 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
 
 ## Changelog
 
+- **2026-11-23**: Serve PDF.js from the site and restrict the pages' scripts
+  - The PDF viewer loads PDF.js 6.5.438 from the site instead of cdnjs (3.11.174); the version comes from `package-lock.json`
+  - The web pages' `Content-Security-Policy` now restricts scripts, styles, images, fonts, connections and workers, configurable per deployment with `UI_CSP_POLICY`
+  - The production build has no inline script (`INLINE_RUNTIME_CHUNK=false`)
+  - The typefaces are served from the site instead of Google Fonts
 - **2026-11-17**: Tighten API access checks and page headers
   - Document write and pipeline routes (contents and metadata edits, reprocessing, queue status, processing logs) now require a signed-in superuser instead of the API key alone; the UI shows those controls only to superusers
   - The API-key check now verifies the session cookie's token instead of accepting any cookie value

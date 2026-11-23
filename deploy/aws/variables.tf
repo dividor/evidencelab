@@ -129,9 +129,10 @@ variable "waf_rate_limit" {
 }
 
 variable "waf_core_rules_to_count" {
-  description = "Rules in AWS's core rule set (AWSManagedRulesCommonRuleSet) that count matching requests instead of blocking them. SizeRestrictions_BODY blocks request bodies over 8 KB, and Evidence Lab accepts bodies up to 2 MB (MAX_REQUEST_BODY_BYTES)."
+  description = "Rules in AWS's core rule set (AWSManagedRulesCommonRuleSet) that count matching requests instead of blocking them. SizeRestrictions_BODY blocks request bodies over 8 KB, and Evidence Lab accepts bodies up to 2 MB (MAX_REQUEST_BODY_BYTES). SizeRestrictions_QUERYSTRING blocks query strings over 2,048 bytes, and Microsoft sign-in sends visitors back to /api/auth/microsoft/callback with a longer one, so while it blocks no Microsoft sign-in can finish. A list you set replaces this one: keep both unless you have another way to let those requests through. null means the default."
   type        = list(string)
-  default     = ["SizeRestrictions_BODY"]
+  default     = ["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]
+  nullable    = false
 }
 
 variable "waf_count_only" {

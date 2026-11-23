@@ -218,6 +218,9 @@ services:
     environment:
       - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
       - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-}
+      # Content-Security-Policy on the web pages; empty = the built-in default.
+      # See docs/admin/third-party-services.md.
+      - UI_CSP_POLICY=${UI_CSP_POLICY:-}
     depends_on:
       - api
     networks:
