@@ -1,8 +1,11 @@
 import {
+  accountPickRequested,
   autoSignInPaused,
   checkedSignInAddress,
+  holdSignInUntilSignedOut,
   onlyOAuthProvider,
   pauseAutoSignIn,
+  pickAccountNextTime,
   resumeAutoSignIn,
   startOAuthSignIn,
 } from '../oauthSignIn';
@@ -41,18 +44,35 @@ describe('onlyOAuthProvider', () => {
   });
 });
 
-describe('pauseAutoSignIn / resumeAutoSignIn', () => {
+describe('pauseAutoSignIn / pickAccountNextTime / resumeAutoSignIn', () => {
   beforeEach(() => window.sessionStorage.clear());
 
-  it('is not paused in a fresh tab', () => {
+  it('goes without asking in a fresh tab', () => {
     expect(autoSignInPaused()).toBe(false);
+    expect(accountPickRequested()).toBe(false);
   });
 
   it('stays paused until resumed', () => {
     pauseAutoSignIn();
     expect(autoSignInPaused()).toBe(true);
+    expect(accountPickRequested()).toBe(false);
     resumeAutoSignIn();
     expect(autoSignInPaused()).toBe(false);
+  });
+
+  it('asks for the account picker, without pausing, until resumed', () => {
+    pickAccountNextTime();
+    expect(accountPickRequested()).toBe(true);
+    expect(autoSignInPaused()).toBe(false);
+    resumeAutoSignIn();
+    expect(accountPickRequested()).toBe(false);
+  });
+
+  it('pauses instead of asking once a trip has started', () => {
+    pickAccountNextTime();
+    pauseAutoSignIn();
+    expect(autoSignInPaused()).toBe(true);
+    expect(accountPickRequested()).toBe(false);
   });
 });
 
@@ -96,6 +116,43 @@ describe('startOAuthSignIn', () => {
     const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
     expect(calledUrl).toContain('/auth/microsoft/authorize');
     expect(calledUrl).toContain('return_to=' + encodeURIComponent('/search?q=school+meals'));
+    expect(calledUrl).not.toContain('prompt=');
+    expect(assignedHref).toBe(MICROSOFT_PAGE);
+  });
+
+  it('asks the provider for its account picker when told to', async () => {
+    mockFetch(true, 200, { authorization_url: MICROSOFT_PAGE });
+
+    await startOAuthSignIn('microsoft', { pickAccount: true });
+
+    const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/auth/microsoft/authorize?return_to=');
+    expect(calledUrl).toContain('&prompt=select_account');
+    expect(assignedHref).toBe(MICROSOFT_PAGE);
+  });
+
+  it('waits for the sign-out request before it leaves the page', async () => {
+    mockFetch(true, 200, { authorization_url: MICROSOFT_PAGE });
+    let finishSignOut: () => void = () => {};
+    holdSignInUntilSignedOut(new Promise<void>((resolve) => { finishSignOut = resolve; }));
+
+    const trip = startOAuthSignIn('microsoft', { pickAccount: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(assignedHref).toBe('');
+
+    finishSignOut();
+    await trip;
+    expect(assignedHref).toBe(MICROSOFT_PAGE);
+  });
+
+  it('still goes when the sign-out request fails', async () => {
+    mockFetch(true, 200, { authorization_url: MICROSOFT_PAGE });
+    holdSignInUntilSignedOut(Promise.reject(new Error('network down')));
+
+    await startOAuthSignIn('microsoft');
+
     expect(assignedHref).toBe(MICROSOFT_PAGE);
   });
 

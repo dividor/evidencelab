@@ -5,7 +5,7 @@ import hashlib
 import logging
 import os
 import secrets
-from typing import Optional, TypeGuard
+from typing import Literal, Optional, TypeGuard
 from urllib.parse import urlparse
 
 import jwt
@@ -264,6 +264,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
 
     Each sign-in is bound to the browser that started it and uses PKCE (see
     _OAUTH_FLOW_COOKIE). The scopes are always the client's own minimal set.
+
+    /authorize takes one optional ``prompt``, ``select_account``: the provider
+    then shows its account picker instead of signing in an account it already
+    knows without asking. The app asks for it after someone signs out or their
+    session times out. Any other value is refused.
     """
     oauth_router = APIRouter()
     callback_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
@@ -272,7 +277,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
 
     # --- /authorize --------------------------------------------------------
     @oauth_router.get("/authorize")
-    async def authorize(response: Response, return_to: Optional[str] = Query(None)):
+    async def authorize(
+        response: Response,
+        return_to: Optional[str] = Query(None),
+        prompt: Optional[Literal["select_account"]] = Query(None),
+    ):
         verifier = secrets.token_urlsafe(64)
         challenge = _pkce_challenge(verifier)
         state_data = {"challenge": challenge}
@@ -283,13 +292,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
         )
         # httpx-oauth's Microsoft client drops code_challenge arguments, so the
         # challenge goes in as extra parameters, which both clients pass on.
+        extras_params = {"code_challenge": challenge, "code_challenge_method": "S256"}
+        if prompt:
+            extras_params["prompt"] = prompt
         authorization_url = await oauth_client.get_authorization_url(
-            callback_url,
-            state,
-            extras_params={
-                "code_challenge": challenge,
-                "code_challenge_method": "S256",
-            },
+            callback_url, state, extras_params=extras_params
         )
         response.set_cookie(
             _OAUTH_FLOW_COOKIE,
