@@ -80,6 +80,8 @@ interface SectionViewProps {
   onSourceClick: (source: SourceReference) => void;
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
+  // Administrators can open a run's stored original from Section History.
+  isAdmin?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
   onRequestHighlight?: (source: SourceReference) => void;
   // Commented passages in this section, and the thread currently open.
@@ -104,9 +106,11 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
 // Citations of the section the API could not match to a source: the agent
 // cited a number it never returned, or returned a record without a chunk id.
 // They stay visible in the text as `[?n]` and are listed in the section Log.
-export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarker[] }> = ({
-  unresolved,
-}) => {
+export const UnresolvedCitationsWarning: React.FC<{
+  unresolved?: UnresolvedMarker[];
+  // Administrators are pointed at the stored original in Section History.
+  canViewOriginal?: boolean;
+}> = ({ unresolved, canViewOriginal = false }) => {
   if (!unresolved || !unresolved.length) return null;
   const markers = unresolved.map((u) => `[?${u.n}]`).join(', ');
   const noChunk = unresolved.some((u) => u.reason === 'no-chunk-id');
@@ -115,7 +119,8 @@ export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarke
       {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
       could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
       {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
-      number it never returned. Open Section History to see the original output.
+      number it never returned.
+      {canViewOriginal && ' Open Section History and choose Original to see the original output.'}
     </div>
   );
 };
@@ -537,6 +542,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   brief,
   onSourceClick,
   readOnly = false,
+  isAdmin,
   onRequestHighlight,
   marks,
   onOpenThread,
@@ -619,7 +625,9 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
-      {isDone && <UnresolvedCitationsWarning unresolved={section.unresolved} />}
+      {isDone && (
+        <UnresolvedCitationsWarning unresolved={section.unresolved} canViewOriginal={isAdmin} />
+      )}
 
       {aiPanel && (
         <AiInstructionPanel
@@ -647,6 +655,8 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
             changes.openEntry(entryId);
           }}
           runs={section.runs || []}
+          // The stored original is an administrator's diagnostic view.
+          canViewOriginal={isAdmin}
           onViewOriginal={(runId) => {
             setLogOpen(false);
             setOriginalRunId(runId);
@@ -860,6 +870,8 @@ interface BriefDocumentProps {
   activeThreadId?: string | null;
   // The Fact Checker of the open brief (remote mode only).
   factCheck?: UseBriefFactCheckReturn;
+  // Administrators can open a run's stored original from Section History.
+  isAdmin?: boolean;
 }
 
 // Floating bar fixed to the bottom of the viewport while research runs: which
@@ -1030,6 +1042,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   showComments,
   onToggleComments,
   factCheck,
+  isAdmin = false,
 }) => {
   const { sections, numbers } = brief;
   const [logOpen, setLogOpen] = useState(false);
@@ -1156,6 +1169,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           brief={brief}
           onSourceClick={handleSourceClick}
           readOnly={readOnly}
+          isAdmin={isAdmin}
           onRequestHighlight={(src) =>
             src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
           }

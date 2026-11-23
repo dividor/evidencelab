@@ -47,6 +47,8 @@ interface Props {
   // The section's runs as the API summarises them, so an entry can open the
   // stored original it describes (when the API still retains it).
   runs?: SectionRunSummary[];
+  // Administrators only: without `canViewOriginal` no row offers its original.
+  canViewOriginal?: boolean;
   onViewOriginal?: (runId: string) => void;
   onClose: () => void;
 }
@@ -57,9 +59,10 @@ const RunLink: React.FC<{
   runs: SectionRunSummary[];
   onViewOriginal?: (runId: string) => void;
 }> = ({ entry, runs, onViewOriginal }) => {
-  if (!entry.runId) return null;
+  // Only administrators are given a way to open an original.
+  if (!entry.runId || !onViewOriginal) return null;
   const run = runs.find((r) => r.id === entry.runId);
-  if (!run || !onViewOriginal) {
+  if (!run) {
     return <span className="brief-audit-original-gone">· original no longer retained</span>;
   }
   return (
@@ -83,6 +86,7 @@ export const BriefSectionAudit: React.FC<Props> = ({
   pendingRunId,
   onShowChanges,
   runs = [],
+  canViewOriginal = false,
   onViewOriginal,
   onClose,
 }) => (
@@ -121,7 +125,11 @@ export const BriefSectionAudit: React.FC<Props> = ({
                     )}
                     {pending && <span className="brief-audit-pending">· awaiting review</span>}
                     {viewable && <span className="brief-audit-view">· view changes</span>}
-                    <RunLink entry={e} runs={runs} onViewOriginal={onViewOriginal} />
+                    <RunLink
+                      entry={e}
+                      runs={runs}
+                      onViewOriginal={canViewOriginal ? onViewOriginal : undefined}
+                    />
                   </div>
                   {e.question && (
                     <div className="brief-modal-row-query">

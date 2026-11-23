@@ -26,7 +26,7 @@ from ui.backend.auth.schemas import (
     BriefRead,
     BriefRunCreate,
 )
-from ui.backend.auth.users import current_active_user
+from ui.backend.auth.users import current_active_user, current_superuser
 from ui.backend.routes.brief_central import (
     _get_owned_brief,
     _get_viewable_brief,
@@ -214,11 +214,12 @@ async def get_section_run(
     brief_id: uuid.UUID,
     section_id: str,
     run_id: str,
-    user: User = Depends(current_active_user),
+    user: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ):
     """One stored original: the agent's text and sources, its mapping to the
-    brief's source ids and its agent -> display number table."""
+    brief's source ids and its agent -> display number table. Administrators
+    only: it is a diagnostic view of the research agent's raw output."""
     brief, _ = await _get_viewable_brief(session, brief_id, user)
     try:
         return bc.run_detail(brief.content or {}, section_id, run_id)

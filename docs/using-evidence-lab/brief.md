@@ -111,7 +111,7 @@ Sections that come back short are left as they are: the target is a ceiling on l
 
 Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers run consecutively across the whole brief in reading order (the first citation in the brief is `[1]`). By default there is one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers. Two **Group by document** checkboxes above the References list change how the list is laid out, and the single-per-document option also changes the numbering itself (see [Export to Word](#5-export-to-word) below). The grouping you choose is saved with the brief.
 
-The numbering is computed and stored by the server when a section is researched, edited, moved or removed, so the saved brief, the Word export, the Activity log and the [citation check](../admin/evaluation.md#brief-citation-check) all carry exactly the numbers you see on screen. Occasionally the research agent cites a number it never returned a source for; such a citation is shown as `[?n]` (with the agent's own number), the section shows a warning, and Section History explains it, so a claim without a source is never hidden.
+The numbering is computed and stored by the server when a section is researched, edited, moved or removed, so the saved brief, the Word export, the Activity log and the [citation check](../admin/evaluation.md#brief-citation-check) all carry exactly the numbers you see on screen. Occasionally the research agent cites a number it never returned a source for; such a citation is shown as `[?n]` (with the agent's own number) and the section shows a warning, so a claim without a source is never hidden. Administrators can trace it in the run's original output (see [Section history](#section-history)).
 
 #### Section history
 
@@ -119,7 +119,7 @@ Each section's **Section History** lists every change to the section, newest fir
 
 Section History is stored with the brief on the server, so it is the same in every browser and for everyone the brief is shared with. People the brief is shared with can open it and view old versions but not restore them. Signed out, a brief lives only in your browser and has no Section History.
 
-The **Original** link on a run opens the agent's output exactly as it was returned — its text with its own numbering and its source records — together with a table showing what each of the agent's numbers became on screen and which source it points at, so any citation can be traced back to where it came from.
+Administrators also see an **Original** link on each run. It opens the agent's output exactly as it was returned — its text with its own numbering and its source records — together with a table showing what each of the agent's numbers became on screen and which source it points at, so any citation can be traced back to where it came from. Citation markers the agent wrote without returning a source are highlighted in the text and listed in the table.
 
 #### Document History
 

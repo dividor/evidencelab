@@ -123,6 +123,8 @@ export const assembleBriefForExport = (
 const BriefWorkspace: React.FC<{
   brief: ReturnType<typeof useBrief>;
   loggedIn: boolean;
+  // Administrators can open a run's stored original from Section History.
+  isAdmin: boolean;
   onBack: () => void;
   onResultClick?: (result: SearchResult) => void;
   onExportWord: () => void;
@@ -141,6 +143,7 @@ const BriefWorkspace: React.FC<{
 }> = ({
   brief,
   loggedIn,
+  isAdmin,
   onBack,
   onResultClick,
   onExportWord,
@@ -197,6 +200,7 @@ const BriefWorkspace: React.FC<{
         )}
         <BriefDocument
           brief={brief}
+          isAdmin={isAdmin}
           onResultClick={onResultClick}
           onExportWord={onExportWord}
           exportBusy={exportBusy}
@@ -529,6 +533,7 @@ export const BriefTab: React.FC<BriefTabProps> = ({
         <BriefWorkspace
           brief={brief}
           loggedIn={loggedIn}
+          isAdmin={isAdmin}
           onBack={backToCentral}
           onResultClick={onResultClick}
           onExportWord={handleExportWord}

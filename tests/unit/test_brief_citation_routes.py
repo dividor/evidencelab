@@ -258,6 +258,14 @@ class TestOtherOperations:
         await brief_citations.reject_section_run(brief.id, "a", "r2", user, session)
         assert bc.find_section(brief.content, "a")["renumbered"]["content"] == "A [1]."
 
+    def test_section_run_original_when_requested_then_requires_administrator(self):
+        import inspect
+
+        from ui.backend.auth.users import current_superuser
+
+        params = inspect.signature(brief_citations.get_section_run).parameters
+        assert params["user"].default.dependency is current_superuser
+
     @pytest.mark.asyncio
     async def test_anonymous_op_returns_content_and_read_model(self, monkeypatch):
         monkeypatch.setattr(brief_citations, "USER_MODULE_ENABLED", False)
