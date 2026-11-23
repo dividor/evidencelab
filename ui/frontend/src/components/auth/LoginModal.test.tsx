@@ -254,6 +254,32 @@ describe('LoginModal — Reset password', () => {
     expect(screen.getByText('Reset Password')).toBeInTheDocument();
   });
 
+  it.each([
+    ['Microsoft only', { email_login_disabled: true, google_oauth_enabled: false }],
+    ['both providers', { email_login_disabled: true }],
+  ])(
+    'offers the ways to sign in, not a reset form, when email login is off (%s)',
+    async (_label, statusOverrides) => {
+      mockAuthStatusResponse(statusOverrides);
+      renderModal(undefined, { resetToken: 'test-token-abc' });
+
+      expect(await screen.findByText(/Password reset is not available/)).toBeInTheDocument();
+      expect(screen.getByText(/Sign in with Microsoft/)).toBeInTheDocument();
+      expect(screen.queryByLabelText('New Password')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Email')).not.toBeInTheDocument();
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps the reset form when email login is on', async () => {
+    renderModal(undefined, { resetToken: 'test-token-abc' });
+
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.getByLabelText('New Password')).toBeInTheDocument();
+    expect(screen.queryByText(/Password reset is not available/)).not.toBeInTheDocument();
+  });
+
   it('does not show OAuth buttons or email field in reset mode', () => {
     renderModal(undefined, { resetToken: 'test-token-abc' });
     expect(screen.queryByText(/Sign in with Google/)).not.toBeInTheDocument();

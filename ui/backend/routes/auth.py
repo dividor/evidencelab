@@ -180,9 +180,11 @@ async def cookie_logout():
 
 
 # ---------------------------------------------------------------------------
-# Email/password auth — mounted only when DISABLE_EMAIL_LOGIN is not set.
-# Verify and reset-password routers remain available so OAuth users who also
-# have an email on file can still verify / reset if needed.
+# Email/password auth — mounted only when DISABLE_EMAIL_LOGIN is not set:
+# password sign-in, registration and password recovery (forgot-password,
+# reset-password). Without password sign-in a new password could never be
+# used, so a site that signs in only with Microsoft or Google offers no reset.
+# The verify router remains available.
 # ---------------------------------------------------------------------------
 
 if not DISABLE_EMAIL_LOGIN:
@@ -200,13 +202,13 @@ if not DISABLE_EMAIL_LOGIN:
         fastapi_users.get_register_router(UserRead, UserCreate),
         tags=["auth"],
     )
+    router.include_router(
+        fastapi_users.get_reset_password_router(),
+        tags=["auth"],
+    )
 
 router.include_router(
     fastapi_users.get_verify_router(UserRead),
-    tags=["auth"],
-)
-router.include_router(
-    fastapi_users.get_reset_password_router(),
     tags=["auth"],
 )
 
