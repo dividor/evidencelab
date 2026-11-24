@@ -468,7 +468,7 @@ bedrock_alarms = {
 
 | Setting | Default | What it does |
 |---|---|---|
-| `alert_emails` | `[]` | Addresses subscribed to an SNS topic named `<name>-alerts`, made in the deployment's region and in any other region an alarm watches. AWS emails each address once per topic: click **Confirm subscription**, or no alert reaches it. |
+| `alert_emails` | `[]` | Addresses subscribed to an SNS topic named `<name>-alerts`, made in the deployment's region and in any other region an alarm watches. Each address must confirm AWS's email for each topic within 48 hours, or no alert reaches it: see [Confirming the alert emails](#confirming-the-alert-emails). |
 | `bedrock_alarms` | `{}` | One CloudWatch alarm per model and level: `input_tokens_per_hour`, `output_tokens_per_hour` and `invocations_per_hour` (requests). Set at least one. `region` is where the model is called, when that isn't the deployment's region; rerank models are offered in only some regions. Needs `alert_emails`. |
 
 - **The key is the `ModelId` CloudWatch records.** A call through an inference profile is recorded under the profile's ID. List the IDs your deployment has used with `aws cloudwatch list-metrics --namespace AWS/Bedrock --region <region>`.
@@ -486,6 +486,30 @@ extra_environment = {
 ```
 
 With `alert_emails` set as well, the template watches the api and mcp logs for the line the limit writes when it is reached (`AI daily limit reached`) and emails the addresses once. The Bedrock alarms above are the ones that also cover pipeline runs, which the daily limit doesn't count.
+
+#### Confirming the alert emails
+
+AWS delivers alerts only to an address that has confirmed it wants them. Terraform subscribes each address in `alert_emails` but can't confirm it: AWS sends the confirmation link only to that mailbox, so nobody can sign a mailbox up without its owner's agreement. After a deploy that adds or changes an address, the owner of that mailbox:
+
+1. **Within 48 hours**, opens the email from AWS Notifications titled *AWS Notification - Subscription Confirmation*, for the topic `<name>-alerts`. If it isn't in the inbox, check junk and any email quarantine.
+2. Clicks **Confirm subscription** in the email, then **Confirm subscription** on the page that opens.
+3. Checks it with the AWS CLI (or AWS CloudShell) in the deployment's account. Each address should show a full subscription ARN; `PendingConfirmation` means it isn't confirmed yet:
+
+   ```bash
+   aws sns list-subscriptions-by-topic --region <region> --topic-arn "arn:aws:sns:<region>:$(aws sts get-caller-identity --query Account --output text):<name>-alerts" --query 'Subscriptions[].[Endpoint,SubscriptionArn]' --output table
+   ```
+
+4. Sends a test alert, which should arrive within a few minutes. The alarm goes back to OK by itself at its next check. With a daily AI limit set:
+
+   ```bash
+   aws cloudwatch set-alarm-state --region <region> --alarm-name "<name> AI daily limit reached" --state-value ALARM --state-reason "Test of the alert email"
+   ```
+
+   Without one, use any alarm from `aws cloudwatch describe-alarms --region <region> --alarm-name-prefix "<name> Bedrock" --query 'MetricAlarms[].AlarmName'`.
+
+- **Each region is one more email.** An alarm in another region (`region` in `bedrock_alarms`) gets a topic of its own there, and each address confirms that one too.
+- **Missed the 48 hours?** AWS deletes an unconfirmed subscription; the next deploy subscribes the address again and a new email arrives.
+- **Don't use the unsubscribe link** at the bottom of an alert email. It removes the address (after one more click on the page it opens) until the next deploy subscribes it again, which then needs confirming again. With a group mailbox, anyone in the group can do this.
 
 ### Upgrading
 
