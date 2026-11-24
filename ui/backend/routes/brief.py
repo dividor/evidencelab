@@ -27,6 +27,7 @@ from ui.backend.schemas import (
     BriefReviseResponse,
 )
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.data_source_access import settle_data_source
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
@@ -104,7 +105,11 @@ def _resolve_configured_model(data_source: str) -> Optional[str]:
     return None
 
 
-@router.post("/brief/outline", response_model=BriefOutlineResponse)
+@router.post(
+    "/brief/outline",
+    response_model=BriefOutlineResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_outline(
     request: Request,
@@ -155,7 +160,11 @@ async def generate_outline(
         raise HTTPException(status_code=500, detail="Failed to generate outline")
 
 
-@router.post("/brief/revise", response_model=BriefReviseResponse)
+@router.post(
+    "/brief/revise",
+    response_model=BriefReviseResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def revise_section(
     request: Request,

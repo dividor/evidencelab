@@ -70,3 +70,43 @@ resource "aws_cloudwatch_metric_alarm" "bedrock" {
 
   alarm_actions = [aws_sns_topic.alerts[each.value.region].arn]
 }
+
+# The daily AI limit (AI_DAILY_COST_LIMIT_USD in extra_environment): the first
+# AI request the api or the MCP server refuses each day logs a line starting
+# "AI daily limit reached". With alert_emails set, a metric filter counts that
+# line in both log groups and an alarm emails the addresses.
+locals {
+  ai_daily_limit_alarm = length(var.alert_emails) > 0 && contains(keys(var.extra_environment), "AI_DAILY_COST_LIMIT_USD")
+}
+
+resource "aws_cloudwatch_log_metric_filter" "ai_daily_limit" {
+  for_each = local.ai_daily_limit_alarm ? toset(["api", "mcp"]) : toset([])
+
+  name           = "${var.name}-${each.key}-ai-daily-limit"
+  log_group_name = aws_cloudwatch_log_group.this[each.key].name
+  pattern        = "\"AI daily limit reached\""
+
+  metric_transformation {
+    name      = "AiDailyLimitReached"
+    namespace = "EvidenceLab/${var.name}"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "ai_daily_limit" {
+  count = local.ai_daily_limit_alarm ? 1 : 0
+
+  alarm_name        = "${var.name} AI daily limit reached"
+  alarm_description = "Evidence Lab deployment ${var.name} reached its daily AI limit (AI_DAILY_COST_LIMIT_USD): AI features are paused until 00:00 UTC, search still works. Who used it: the admin Token Usage tab."
+
+  namespace           = "EvidenceLab/${var.name}"
+  metric_name         = "AiDailyLimitReached"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts[var.region].arn]
+}

@@ -16,11 +16,15 @@ from ui.backend.schemas import (
 )
 from ui.backend.services import llm_service as llm_service_module
 from ui.backend.services import translation_service
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached, require_ai_allowance
 from ui.backend.services.translation_providers import (
     TranslationConfigError,
     TranslationDisabledError,
 )
-from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+from ui.backend.services.usage_recorder import (
+    schedule_daily_spend_recording,
+    schedule_llm_usage_recording,
+)
 from ui.backend.utils.app_limits import (
     get_rate_limit_translate,
     get_rate_limits,
@@ -115,6 +119,9 @@ def _record_summary_usage(
     to — and can never fail — the summary path.
     """
     if not body.search_id:
+        # The activity row is left to the client, but the day's AI total
+        # (AI_DAILY_COST_LIMIT_USD) still counts the call.
+        schedule_daily_spend_recording(usage=usage)
         return
     schedule_llm_usage_recording(
         usage=usage,
@@ -163,6 +170,8 @@ async def translate(request: Request, body: TranslateRequest):
 
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Translation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -176,7 +185,7 @@ def _check_summary_model(body: AISummaryRequest) -> None:
         check_requested_llm(body.summary_model, None)
 
 
-@router.post("/ai-summary/stream")
+@router.post("/ai-summary/stream", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_summary(
     request: Request,
@@ -281,7 +290,11 @@ async def stream_summary(
     )
 
 
-@router.post("/ai-summary", response_model=AISummaryResponse)
+@router.post(
+    "/ai-summary",
+    response_model=AISummaryResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_summary(
     request: Request,

@@ -647,6 +647,7 @@ const STATIC_FILTER_OPTIONS: Record<string, string[]> = {
     'evaluation',
     'mcp-assistant',
     'a2a-assistant',
+    'translation',
     'pipeline',
   ],
 };

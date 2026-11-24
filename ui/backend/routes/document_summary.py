@@ -26,6 +26,7 @@ from ui.backend.auth.models import User
 from ui.backend.auth.users import current_superuser
 from ui.backend.routes.config import get_config_model_combos
 from ui.backend.services import document_summary as service
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.llm_service import summarize_usage_metadata
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
@@ -158,7 +159,7 @@ async def get_summary_sections(
     }
 
 
-@router.post("/{doc_id}/generate")
+@router.post("/{doc_id}/generate", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_document_summary(
     request: Request,
