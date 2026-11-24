@@ -24,6 +24,7 @@ class _FakeSession:
     def __init__(self, existing=None):
         self.existing = existing
         self.added = []
+        self.executed = []
         self.committed = False
 
     async def __aenter__(self):
@@ -33,6 +34,7 @@ class _FakeSession:
         return False
 
     async def execute(self, stmt):
+        self.executed.append(stmt)
         result = MagicMock()
         result.scalars.return_value.first.return_value = self.existing
         return result
@@ -290,7 +292,9 @@ class TestOwnerScoping:
 
         class _CapturingSession(_FakeSession):
             async def execute(self, stmt):
-                captured["stmt"] = str(stmt)
+                # The owner lookup is the first statement; the day's AI
+                # total is written after it.
+                captured.setdefault("stmt", str(stmt))
                 return await super().execute(stmt)
 
         session = _CapturingSession(existing=None)
@@ -311,7 +315,9 @@ class TestOwnerScoping:
 
         class _CapturingSession(_FakeSession):
             async def execute(self, stmt):
-                captured["stmt"] = str(stmt)
+                # The owner lookup is the first statement; the day's AI
+                # total is written after it.
+                captured.setdefault("stmt", str(stmt))
                 return await super().execute(stmt)
 
         session = _CapturingSession(existing=None)
@@ -393,3 +399,57 @@ class TestBackgroundScheduling:
 
         # No running event loop here — scheduling must swallow, not raise.
         schedule_llm_usage_recording(usage=_USAGE, activity_type="brief", query="q")
+
+
+# ---------------------------------------------------------------------------
+# The day's AI total (AI_DAILY_COST_LIMIT_USD)
+# ---------------------------------------------------------------------------
+
+
+def _daily_spend_writes(session):
+    from sqlalchemy.dialects import postgresql
+
+    compiled = [s.compile(dialect=postgresql.dialect()) for s in session.executed]
+    return [c.params for c in compiled if "INSERT INTO ai_daily_spend" in str(c)]
+
+
+class TestDailySpendTotal:
+    @pytest.mark.asyncio
+    async def test_record_when_cost_known_then_added_to_the_days_total(self):
+        session = _FakeSession(existing=None)
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type="brief",
+            query="q",
+            session_factory=_factory(session),
+        )
+        (write,) = _daily_spend_writes(session)
+        assert write["cost_usd"] == _USAGE_COST
+        assert session.committed is True
+
+    @pytest.mark.asyncio
+    async def test_record_when_accumulating_onto_an_old_row_then_still_added_today(
+        self,
+    ):
+        session = _FakeSession(existing=_existing_row())
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type="brief",
+            query="q",
+            search_id=uuid.uuid4(),
+            server_owned=True,
+            session_factory=_factory(session),
+        )
+        (write,) = _daily_spend_writes(session)
+        assert write["cost_usd"] == _USAGE_COST
+
+    @pytest.mark.asyncio
+    async def test_record_when_model_unpriced_then_nothing_added(self):
+        session = _FakeSession(existing=None)
+        await record_llm_usage(
+            usage={"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50},
+            activity_type="mcp-assistant",
+            query="q",
+            session_factory=_factory(session),
+        )
+        assert _daily_spend_writes(session) == []

@@ -225,6 +225,7 @@ API endpoints are protected by rate limiting (slowapi):
 - Search operations: Configurable via `RATE_LIMIT_SEARCH`
 - AI operations: Configurable via `RATE_LIMIT_AI`
 - Default operations: Configurable via `RATE_LIMIT_DEFAULT`
+- Daily AI spending: `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day. Past it, every AI request (website, admin test runs, MCP and A2A assistant, LLM translation) is refused with 429 until 00:00 UTC, while search keeps working. See `docs/admin/system-monitoring.md`.
 
 ### API Key Authentication
 

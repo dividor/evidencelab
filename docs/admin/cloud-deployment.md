@@ -477,6 +477,16 @@ bedrock_alarms = {
 - **Who used it.** The alarm says which model. The admin **Token Usage** tab shows which users, groups and pipeline documents used it.
 - **Cost.** Each alarm is a standard-resolution CloudWatch alarm on one metric ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)); email notifications are charged by Amazon SNS ([SNS pricing](https://aws.amazon.com/sns/pricing/)).
 
+**A daily AI limit.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day (see [Daily AI limit](system-monitoring.md#daily-ai-limit)). Set it with the containers' other settings:
+
+```hcl
+extra_environment = {
+  AI_DAILY_COST_LIMIT_USD = "25"
+}
+```
+
+With `alert_emails` set as well, the template watches the api and mcp logs for the line the limit writes when it is reached (`AI daily limit reached`) and emails the addresses once. The Bedrock alarms above are the ones that also cover pipeline runs, which the daily limit doesn't count.
+
 ### Upgrading
 
 1. Check out the new release of the code.

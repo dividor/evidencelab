@@ -115,8 +115,9 @@ variables {
   restore_task            = { cpu = 1024, memory = 4096 }
 
   # null takes the defaults: no alerts.
-  alert_emails   = null
-  bedrock_alarms = null
+  alert_emails      = null
+  bedrock_alarms    = null
+  extra_environment = {}
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -410,6 +411,60 @@ run "bedrock_alarms_watch_each_model_and_level_in_its_region" {
       && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].treat_missing_data == "notBreaching"
     )
     error_message = "A requests alarm should count invocations in the model's own region, and quiet hours should be normal."
+  }
+}
+
+run "the_daily_ai_limit_emails_when_it_is_reached" {
+  command = plan
+
+  variables {
+    alert_emails      = ["ops@example.org"]
+    extra_environment = { AI_DAILY_COST_LIMIT_USD = "25" }
+  }
+
+  assert {
+    condition = (
+      sort(keys(aws_cloudwatch_log_metric_filter.ai_daily_limit)) == tolist(["api", "mcp"])
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["api"].log_group_name == "/ecs/evidencelab/api"
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["mcp"].log_group_name == "/ecs/evidencelab/mcp"
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["api"].pattern == "\"AI daily limit reached\""
+    )
+    error_message = "The api and mcp logs should be watched for the line the daily AI limit writes."
+  }
+  assert {
+    condition = (
+      length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 1
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].metric_name == "AiDailyLimitReached"
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].namespace == "EvidenceLab/evidencelab"
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].threshold == 0
+    )
+    error_message = "One alarm should fire on the first such line."
+  }
+}
+
+run "without_a_daily_ai_limit_there_is_no_limit_alarm" {
+  command = plan
+
+  variables {
+    alert_emails = ["ops@example.org"]
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.ai_daily_limit) == 0 && length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 0
+    error_message = "No limit set, so nothing to watch for."
+  }
+}
+
+run "a_daily_ai_limit_without_alert_emails_has_no_alarm" {
+  command = plan
+
+  variables {
+    extra_environment = { AI_DAILY_COST_LIMIT_USD = "25" }
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 0
+    error_message = "With no one to tell, no alarm should be made; the limit itself still applies."
   }
 }
 

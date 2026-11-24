@@ -50,6 +50,7 @@ const ACTIVITY_TYPES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'evaluation', label: 'Evaluations' },
   { value: 'mcp-assistant', label: 'MCP assistant' },
   { value: 'a2a-assistant', label: 'A2A assistant' },
+  { value: 'translation', label: 'Translation' },
   { value: 'pipeline', label: 'Pipeline' },
 ];
 

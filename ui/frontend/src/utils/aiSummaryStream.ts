@@ -1,6 +1,7 @@
 import { API_KEY } from '../config';
 import { getSessionId } from '../hooks/useActivityLogging';
 import { SearchResult, SummaryModelConfig } from '../types/api';
+import { requestFailureMessage } from './assistantStream';
 
 export interface AiSummaryUsage {
   llm_model?: string;
@@ -21,6 +22,12 @@ interface AiSummaryStreamHandlers {
   onToken: (fullText: string) => void;
   onDone: (data?: AiSummaryDoneData) => void;
   onError: (message: string) => void;
+  /**
+   * The API refused the request before streaming, for example because the
+   * site's daily AI limit is reached. Its reason is written for people, so
+   * pages show it; without this handler it goes to onError.
+   */
+  onRefused?: (message: string) => void;
 }
 
 interface AiSummaryStreamOptions {
@@ -177,6 +184,12 @@ export const streamAiSummary = async ({
     }),
     signal,
   });
+
+  if (!response.ok) {
+    const message = await requestFailureMessage(response);
+    (handlers.onRefused ?? handlers.onError)(message);
+    return;
+  }
 
   try {
     const reader = getStreamReader(response);

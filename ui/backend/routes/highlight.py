@@ -19,6 +19,7 @@ from ui.backend.schemas import (
     UnifiedHighlightRequest,
     UnifiedHighlightResponse,
 )
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached, check_ai_allowance
 from ui.backend.utils.app_limits import get_highlight_max_text_chars
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
 from ui.backend.utils.highlight_helpers import (
@@ -586,6 +587,42 @@ async def _find_semantic_matches(
     )
 
 
+async def _ai_allowance_left() -> bool:
+    """False once the day's AI limit (AI_DAILY_COST_LIMIT_USD) is reached."""
+    try:
+        await check_ai_allowance()
+    except AiDailyLimitReached:
+        logger.info("Semantic highlighting skipped: the daily AI limit is reached")
+        return False
+    return True
+
+
+async def _semantic_highlight_matches(
+    query: str, clean_text: str, text: str, index_map, request, user
+) -> list:
+    """Phrases the LLM finds related to the query, located in the text.
+
+    A failure is logged and gives no semantic matches, so keyword
+    highlighting is still returned.
+    """
+    try:
+        llm_output, usage = await get_semantic_llm_output(query, clean_text, request)
+        _record_highlight_usage(usage, request, user)
+    except Exception as e:
+        logger.error("Semantic highlighting LLM error: %s", e, exc_info=True)
+        return []
+    try:
+        phrases = parse_semantic_phrases(llm_output)
+        return await find_semantic_matches(phrases, clean_text, text, index_map)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse LLM JSON: %s | Output: %s", e, llm_output)
+    except Exception as e:
+        logger.error("Error in semantic processing: %s", e)
+        logger.error("Failed to parse LLM JSON response: %s", e)
+        logger.error("LLM output: %s", llm_output)
+    return []
+
+
 @router.post("/highlight", response_model=UnifiedHighlightResponse)
 async def highlight_text(
     request: UnifiedHighlightRequest, user=Depends(_resolve_user_dep)
@@ -647,36 +684,21 @@ async def highlight_text(
                     "Found %s keyword matches for '%s'", len(keyword_matches), query
                 )
 
-        # SEMANTIC HIGHLIGHTING (LLM-based)
-        if highlight_type in ["semantic", "both"]:
-            try:
-                llm_output, usage = await get_semantic_llm_output(
-                    query, clean_text, request
+        # SEMANTIC HIGHLIGHTING (LLM-based). Once the day's AI limit is
+        # reached it is left out and keyword highlighting carries on, like
+        # the rest of search.
+        if highlight_type in ["semantic", "both"] and await _ai_allowance_left():
+            semantic_matches = await _semantic_highlight_matches(
+                query, clean_text, text, index_map, request, user
+            )
+            if semantic_matches:
+                all_matches.extend(semantic_matches)
+                types_returned.append("semantic")
+                logger.info(
+                    "Found %s LLM semantic matches for '%s'",
+                    len(semantic_matches),
+                    query,
                 )
-                _record_highlight_usage(usage, request, user)
-                try:
-                    phrases = parse_semantic_phrases(llm_output)
-                    semantic_matches = await find_semantic_matches(
-                        phrases, clean_text, text, index_map
-                    )
-                    if semantic_matches:
-                        all_matches.extend(semantic_matches)
-                        types_returned.append("semantic")
-                        logger.info(
-                            "Found %s LLM semantic matches for '%s'",
-                            len(semantic_matches),
-                            query,
-                        )
-                except json.JSONDecodeError as e:
-                    logger.error(
-                        "Failed to parse LLM JSON: %s | Output: %s", e, llm_output
-                    )
-                except Exception as e:
-                    logger.error("Error in semantic processing: %s", e)
-                    logger.error("Failed to parse LLM JSON response: %s", e)
-                    logger.error("LLM output: %s", llm_output)
-            except Exception as e:
-                logger.error("Semantic highlighting LLM error: %s", e, exc_info=True)
 
         logger.info(
             "Highlighting complete: %s total matches, types: %s",

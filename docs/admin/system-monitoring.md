@@ -137,6 +137,7 @@ browser tab. Tracked activity types:
 | `highlight` | Semantic highlighting LLM calls, accumulated per originating search | The viewing user / session |
 | `evaluation` | One row per evaluation run (AI-summary + LLM-judge calls, also visible per run in the Evaluation tab) | The admin who clicked **Run** |
 | `a2a-assistant` | Research assistant calls made through the A2A protocol server (the MCP server directs research to A2A; `mcp-assistant` is reserved for a future MCP research tool) | Anonymous; the caller's API identity is kept in the row's filters |
+| `translation` | Translations made with the deployment's LLM (`TRANSLATION_PROVIDER=llm`) | Anonymous |
 | `pipeline` | Ingestion stages (summarization, TOC classification, taxonomy tagging) — one row per document per stage | Anonymous; stage, data source, and document id are kept in the row's filters |
 
 Cost (USD) is computed server-side per call from the pricing table in
@@ -147,3 +148,35 @@ token counts with a "—" cost.
 > **Not metered:** embedding and reranker calls. Rerankers report no token
 > counts, and the embedding client does not currently expose the provider's
 > usage envelope — both are candidates for a follow-up.
+
+### Daily AI limit
+
+`AI_DAILY_COST_LIMIT_USD` is the most the site's AI features may cost in one
+UTC day, in US dollars, priced as the Token Usage tab prices them. Set it on
+the api and the MCP server (they share the day's total). Unset means no limit;
+`0` turns the AI features off.
+
+- **What stops.** Once the day's total reaches the limit, every AI request is
+  refused until 00:00 UTC with *"Today's AI allowance for this site has been
+  used. Search still works; AI features return at 00:00 UTC."* (HTTP 429 with
+  `Retry-After`). That covers search summaries, the research assistant and
+  brief sections, brief outlines and edits, document summaries, LLM
+  translation, the admin evaluation runs and brief checks, and the MCP and A2A
+  assistant. Semantic highlighting is left out and keyword highlighting carries
+  on. Search, browsing and the heatmap keep working.
+- **What counts.** The cost of every AI call the api and the MCP server make,
+  added to that UTC day's total (`ai_daily_spend`) as each call is recorded.
+  Pipeline runs are neither counted nor stopped, because stopping one midway
+  would mark its documents failed; watch them with your cloud's usage alarms.
+  Models without a price in `llm_costs.py` add nothing, and neither do
+  embedding and reranker calls.
+- **Nobody is exempt**, administrators included: raise the limit instead.
+- **It can run a little over.** A request is checked when it starts, and its
+  cost is added when it finishes, so requests already running when the limit
+  is reached, including long deep-research questions and evaluation runs,
+  carry on. Each copy of the api reads the total at most every 30 seconds.
+- **When it is reached**, the first refused request of the day logs a warning
+  starting `AI daily limit reached`, with the day's total and the limit. On AWS,
+  the template turns that line into an email to `alert_emails`.
+- A value that isn't a number of dollars stops the api and the MCP server at
+  start-up.

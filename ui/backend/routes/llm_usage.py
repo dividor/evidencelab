@@ -65,6 +65,7 @@ _VALID_ACTIVITY_TYPES = {
     "evaluation",
     "mcp-assistant",
     "a2a-assistant",
+    "translation",
     "pipeline",
 }
 

@@ -63,6 +63,7 @@ from ui.backend.schemas.testing import (
     TestExperimentUpdate,
 )
 from ui.backend.services import brief_version_store as versions
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
 from ui.backend.services.brief_fact_check import brief_changed
 from ui.backend.services.brief_sharing import user_group_ids
@@ -386,6 +387,7 @@ async def update_experiment(
     "/experiments/{experiment_id}/run",
     response_model=TestExperimentRead,
     tags=["testing"],
+    dependencies=[Depends(require_ai_allowance)],
 )
 @limiter.limit(_RL_AI)
 async def run_experiment_endpoint(
@@ -654,6 +656,7 @@ async def _get_check(
     response_model=BriefCitationCheckRead,
     status_code=201,
     tags=["testing"],
+    dependencies=[Depends(require_ai_allowance)],
 )
 @limiter.limit(_RL_AI)
 async def create_brief_check(

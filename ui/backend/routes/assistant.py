@@ -18,13 +18,17 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.services.brief_section_prompt import (
     build_section_prompt,
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
-from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+from ui.backend.services.usage_recorder import (
+    schedule_daily_spend_recording,
+    schedule_llm_usage_recording,
+)
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.llm_request_limits import check_model_config
 
@@ -192,7 +196,12 @@ def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> No
     the client).
     """
     usage = event.get("usage")
-    if not usage or not body.activity_id:
+    if not usage:
+        return
+    if not body.activity_id:
+        # No activity row to write, but the day's AI total
+        # (AI_DAILY_COST_LIMIT_USD) still counts the turn.
+        schedule_daily_spend_recording(usage=usage)
         return
     if body.usage_context == "brief":
         activity_type = "brief"
@@ -237,7 +246,7 @@ async def _stream_with_heartbeat(ait):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/assistant/chat/stream")
+@router.post("/assistant/chat/stream", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_assistant_chat(
     request: Request,
