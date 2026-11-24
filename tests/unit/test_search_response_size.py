@@ -116,6 +116,12 @@ class TestFullShape:
         assert "sys_full_summary" not in meta
         assert "sys_toc_classified" not in meta
 
+    def test_taxonomies_kept_unprefixed(self):
+        # The document's SDG and theme tags stay reachable from a search result.
+        meta = _build(ResultShape()).metadata
+        assert meta["taxonomies"] == DOC_RECORD["sys_taxonomies"]
+        assert "sys_taxonomies" not in meta
+
     def test_chunk_fields_present(self):
         result = _build(ResultShape())
         assert result.chunk_elements == CHUNK_RECORD["sys_chunk_elements"]
@@ -126,9 +132,9 @@ class TestFullShape:
         assert result.elements == CHUNK_RECORD["sys_elements"]
 
     def test_keep_keys_override_the_drop_list(self):
-        meta = _build(ResultShape(keep_keys=frozenset({"taxonomies"}))).metadata
-        assert meta["taxonomies"] == DOC_RECORD["sys_taxonomies"]
-        assert "sys_taxonomies" not in meta
+        meta = _build(ResultShape(keep_keys=frozenset({"toc"}))).metadata
+        assert meta["toc"] == DOC_RECORD["sys_toc"]
+        assert "sys_toc" not in meta
 
 
 class TestLeanShape:
@@ -149,17 +155,19 @@ class TestLeanShape:
             assert key not in meta, key
         assert "full_summary" not in meta
         assert "toc_classified" not in meta
+        assert "taxonomies" not in meta
         for key in ("title", "pdf_url", "sys_parsed_folder", "src_evaluation_category"):
             assert key in meta, key
 
     def test_lean_drops_document_texts_even_when_panel_fields(self):
         shape = ResultShape(lean=True, keep_keys=frozenset({"full_summary"}))
         assert "full_summary" not in _build(shape).metadata
+        assert "taxonomies" not in _build(shape).metadata
 
 
 class TestForSource:
     def test_panel_fields_are_kept(self):
-        panel = {"title": "Title", "taxonomies": "Taxonomies"}
+        panel = {"title": "Title", "toc": "Contents"}
         with patch(
             "ui.backend.services.result_shape.get_metadata_panel_fields",
             return_value=panel,
@@ -167,16 +175,16 @@ class TestForSource:
             shape = ResultShape.for_source("wfp")
         getter.assert_called_once_with("wfp")
         assert shape.keep_keys == frozenset(panel)
-        assert "taxonomies" in _build(shape).metadata
+        assert "toc" in _build(shape).metadata
 
     def test_extra_keep_and_lean_are_carried(self):
         with patch(
             "ui.backend.services.result_shape.get_metadata_panel_fields",
             return_value={},
         ):
-            shape = ResultShape.for_source("wfp", lean=True, keep=("taxonomies",))
+            shape = ResultShape.for_source("wfp", lean=True, keep=("toc",))
         assert shape.lean is True
-        assert shape.keep_keys == frozenset({"taxonomies"})
+        assert shape.keep_keys == frozenset({"toc"})
 
     def test_no_source_means_no_panel_fields(self):
         with patch(

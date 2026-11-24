@@ -3,12 +3,12 @@
 Every ``/search`` result joins a chunk to its document record. Sending the
 whole record on every chunk made a 1000-result response 140 MB or more, 93 %
 of it in a few keys no reader uses: the raw pipeline record (``sys_data``),
-the table of contents, the taxonomies, the raw source metadata (already
-unpacked into ``src_*`` fields) and the ``sys_*`` twins of the summary and the
-classified contents, which the normaliser also exposes unprefixed. Google
-Cloud Run refuses a non-streamed response above 32 MiB, so a Heatmap cell
-failed with HTTP 500. The :class:`ResultShape` of a request decides what each
-result keeps.
+the table of contents, the raw source metadata (already unpacked into
+``src_*`` fields) and the ``sys_*`` twins of the summary, the classified
+contents and the taxonomies, which the normaliser also exposes unprefixed.
+Google Cloud Run refuses a non-streamed response above 32 MiB, so a Heatmap
+cell failed with HTTP 500. The :class:`ResultShape` of a request decides what
+each result keeps.
 """
 
 from dataclasses import dataclass
@@ -27,14 +27,14 @@ DROPPED_METADATA_KEYS: FrozenSet[str] = frozenset(
         "sys_toc",
         "toc",
         "sys_taxonomies",
-        "taxonomies",
         "src_doc_raw_metadata",
     }
 )
 
-# Dropped as well in lean mode, for callers that never open a result.
+# Dropped as well in lean mode, for callers that never open a result: the
+# document texts and the taxonomy tags its metadata modal would show.
 LEAN_DROPPED_METADATA_KEYS: FrozenSet[str] = frozenset(
-    {"full_summary", "toc_classified"}
+    {"full_summary", "toc_classified", "taxonomies"}
 )
 
 # Chunk-level fields a lean result leaves out (set to ``None``).
@@ -47,10 +47,11 @@ LEAN_DROPPED_CHUNK_FIELDS: FrozenSet[str] = frozenset(
 class ResultShape:
     """What a caller wants on each search result.
 
-    ``lean`` drops the chunk-level element data and the long document texts
-    (summary, classified contents) for callers that render a list and never
-    open a result, such as a Heatmap cell. ``keep_keys`` are metadata keys the
-    caller reads, kept even when they are in :data:`DROPPED_METADATA_KEYS`.
+    ``lean`` drops the chunk-level element data, the long document texts
+    (summary, classified contents) and the taxonomy tags for callers that
+    render a list and never open a result, such as a Heatmap cell.
+    ``keep_keys`` are metadata keys the caller reads, kept even when they are
+    in :data:`DROPPED_METADATA_KEYS`.
     """
 
     lean: bool = False
