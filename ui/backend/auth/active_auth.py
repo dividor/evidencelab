@@ -25,7 +25,10 @@ AUTH_COOKIE_NAME = "evidencelab_auth"
 
 # Paths that do not require authentication through this middleware.
 # They are either public or enforce their own auth via fastapi-users
-# dependencies (current_active_user / current_superuser).
+# dependencies (current_active_user / current_superuser). /activity/ is not
+# here: its log and summary routes also take anonymous visitors (for sites
+# without sign-in), so on a site that requires sign-in this middleware is what
+# keeps people who aren't signed in from writing to the activity log.
 EXEMPT_PATH_PREFIXES = (
     "/health",
     "/auth/",
@@ -33,7 +36,6 @@ EXEMPT_PATH_PREFIXES = (
     "/users/",
     "/groups/",
     "/ratings/",
-    "/activity/",
     "/api-keys",
     "/docs",
     "/redoc",
