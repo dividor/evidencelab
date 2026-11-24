@@ -134,7 +134,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
 | Web app image | Amazon ECR repository `<name>/ui` | — |
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
-| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
+| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call only the Amazon Bedrock models `config.json` lists | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
 | Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
 | Data transfer | A private S3 bucket `<name>-transfer-…` and a restore task with its own role, for moving existing data in | Uploads deleted after 30 days |
@@ -449,6 +449,33 @@ Before you deploy:
 - **Costs**, at AWS's prices in November 2026: a web ACL is $5 a month, each rule or managed rule group $1 a month, and $0.60 per million requests ([AWS WAF pricing](https://aws.amazon.com/waf/pricing/)). CloudFront's pay-as-you-go pricing includes 1 TB of data and 10 million requests a month free ([CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/)), and VPC origins cost nothing extra. CloudFront's flat-rate plans do not suit this layout: the Free and Pro plans do not allow VPC origins.
 
 Terraform's own tests check these settings, but they have not yet been tried on a real deployment.
+
+### Limiting and watching AI use
+
+**Only the models in `config.json`.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. A cross-region inference profile, such as `eu.amazon.nova-2-lite-v1:0`, allows the profile and its base model in every region it routes to. To use another Bedrock model, add it to `config.json` and deploy. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
+
+**Email alerts on Bedrock use.** Set the addresses and, for each model, a level for a rolling hour:
+
+```hcl
+alert_emails = ["ops@example.org"]
+
+bedrock_alarms = {
+  "eu.amazon.nova-2-lite-v1:0"   = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+  "amazon.titan-embed-text-v2:0" = { input_tokens_per_hour = 50000000 }
+  "amazon.rerank-v1:0"           = { region = "eu-central-1", invocations_per_hour = 5000 }
+}
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `alert_emails` | `[]` | Addresses subscribed to an SNS topic named `<name>-alerts`, made in the deployment's region and in any other region an alarm watches. AWS emails each address once per topic: click **Confirm subscription**, or no alert reaches it. |
+| `bedrock_alarms` | `{}` | One CloudWatch alarm per model and level: `input_tokens_per_hour`, `output_tokens_per_hour` and `invocations_per_hour` (requests). Set at least one. `region` is where the model is called, when that isn't the deployment's region; rerank models are offered in only some regions. Needs `alert_emails`. |
+
+- **The key is the `ModelId` CloudWatch records.** A call through an inference profile is recorded under the profile's ID. List the IDs your deployment has used with `aws cloudwatch list-metrics --namespace AWS/Bedrock --region <region>`.
+- **Base the levels on normal use.** Look at each model's busiest hour over a couple of weeks (CloudWatch, `AWS/Bedrock`, the `Sum` of each metric per hour) and set the level well above it, for example three times. Pipeline runs embed and summarise whole documents, so their hours are the busiest.
+- **How fast it reacts.** CloudWatch checks each alarm every minute against the hour just past, so an email follows within minutes of a level being passed. Hours with no use count as normal.
+- **Who used it.** The alarm says which model. The admin **Token Usage** tab shows which users, groups and pipeline documents used it.
+- **Cost.** Each alarm is a standard-resolution CloudWatch alarm on one metric ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)); email notifications are charged by Amazon SNS ([SNS pricing](https://aws.amazon.com/sns/pricing/)).
 
 ### Upgrading
 
