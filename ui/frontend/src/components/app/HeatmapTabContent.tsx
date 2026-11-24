@@ -30,6 +30,7 @@ import StarRating from '../ratings/StarRating';
 import RatingModal from '../ratings/RatingModal';
 import { generateUUID } from '../../utils/uuid';
 import { canRate } from '../../utils/ratingAccess';
+import { escapeFilterValue, joinFilterValues, splitFilterValues } from '../../utils/filterValues';
 
 const getCsrfToken = (): string | null => {
   const match = document.cookie.match(/(?:^|;\s*)evidencelab_csrf=([^;]*)/);
@@ -374,10 +375,12 @@ const buildSearchParams = (options: {
       params.append(field, value);
     }
   }
+  // A cell's row and column values are single filter values: escape their
+  // commas so the API does not split e.g. "SDG16 - Peace, Justice and ...".
   if (options.rowDimension !== 'queries') {
-    params.append(options.rowDimension, options.rowValue);
+    params.append(options.rowDimension, escapeFilterValue(options.rowValue));
   }
-  params.append(options.columnDimension, options.columnValue);
+  params.append(options.columnDimension, escapeFilterValue(options.columnValue));
   params.append('dense_weight', options.searchDenseWeight.toString());
   params.append('rerank', options.rerankEnabled.toString());
   params.append('recency_boost', options.recencyBoostEnabled.toString());
@@ -1824,7 +1827,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
 
       for (const [field, values] of Object.entries(heatmapSelectedFilters)) {
         if (values && values.length > 0) {
-          params.set(field, values.join(','));
+          params.set(field, joinFilterValues(values));
         } else {
           params.delete(field);
         }
@@ -1848,7 +1851,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const allFilterFields = Object.keys(facets.filter_fields ?? {});
     const urlFilters = Object.fromEntries(
       allFilterFields
-        .map((field) => [field, (params.get(field) ?? '').split(',').map((v) => v.trim()).filter(Boolean)] as const)
+        .map((field) => [field, splitFilterValues(params.get(field))] as const)
         .filter(([, values]) => values.length > 0)
     );
     if (urlFilters.published_year && urlFilters.published_year.length > 0) {
@@ -2526,7 +2529,7 @@ export const HeatmapTabContent: React.FC<HeatmapTabContentProps> = ({
     const excludedFields = buildExcludedFilterFields(rowDimension, columnDimension);
     const filterEntries = Object.entries(heatmapSelectedFilters)
       .filter(([field]) => !excludedFields.has(field))
-      .map(([field, values]) => [field, values.length > 0 ? values.join(',') : null] as [string, string | null]);
+      .map(([field, values]) => [field, values.length > 0 ? joinFilterValues(values) : null] as [string, string | null]);
 
     filteredRowValues.forEach((rowValue, rowIndex) => {
       const rowKey = rowDimension === 'queries' ? `row-${rowIndex}` : rowValue;

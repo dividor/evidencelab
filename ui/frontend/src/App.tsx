@@ -62,6 +62,7 @@ import { AssistantTab } from './components/assistant/AssistantTab';
 import { BriefTab } from './components/brief/BriefTab';
 import { AuthGate } from './components/auth/AuthGate';
 import { DEFAULT_SECTION_TYPES, DEFAULT_FIELD_BOOST_FIELDS, buildSearchURL, getSearchStateFromURL } from './utils/searchUrl';
+import { filterValuesByField, joinFilterValues } from './utils/filterValues';
 import { streamAiSummary } from './utils/aiSummaryStream';
 import {
   highlightTextWithAPI,
@@ -1106,8 +1107,8 @@ function App() {
     setHeatmapFilters(prev => ({ ...prev, [key]: value || undefined }));
   };
 
-  const buildFilterValue = (values: string[]) =>
-    values.length > 0 ? values.join(',') : '';
+  // Commas inside a value are escaped so the API keeps it whole.
+  const buildFilterValue = (values: string[]) => joinFilterValues(values);
 
   const handleRemoveFilter = useCallback(
     (coreField: string, value: string) => {
@@ -1538,7 +1539,7 @@ function App() {
       return;
     }
     setHeatmapSelectedFilters((prev) => ({ ...prev, published_year: nextYears }));
-    setHeatmapFilters((prev) => ({ ...prev, published_year: nextYears.join(',') }));
+    setHeatmapFilters((prev) => ({ ...prev, published_year: joinFilterValues(nextYears) }));
   }, [
     activeTab,
     facets,
@@ -2267,7 +2268,7 @@ function App() {
 
       // Log search activity (fire-and-forget, works for all users)
       if (USER_MODULE) {
-        logSearch(searchId, query, filters, data.results, {
+        logSearch(searchId, query, filterValuesByField(filters), data.results, {
           timing: { search_duration_ms: searchDurationMsRef.current },
         });
         activitySearchIdRef.current = searchId;

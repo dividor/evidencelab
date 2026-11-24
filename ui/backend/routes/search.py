@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
@@ -41,9 +41,10 @@ from ui.backend.utils.filter_helpers import (
     build_needed_fields,
     collect_range_bounds,
     expand_multivalue_filters,
+    filter_match,
     normalize_language_filter,
+    parse_filter_values,
     resolve_storage_field,
-    split_filter_values,
 )
 
 RATE_LIMIT_SEARCH, RATE_LIMIT_DEFAULT, RATE_LIMIT_AI = get_rate_limits()
@@ -69,8 +70,7 @@ def _intersect_doc_id_filter(core_filters: Dict[str, Any], doc_ids: List[str]) -
     new_ids = {str(d) for d in doc_ids if d}
     existing = core_filters.get("doc_id")
     if existing is not None:
-        existing_ids = {d for d in str(existing).split(",") if d}
-        new_ids &= existing_ids
+        new_ids &= {str(d) for d in parse_filter_values(existing)}
     core_filters["doc_id"] = ",".join(sorted(new_ids)) if new_ids else _NO_MATCH_DOC_ID
 
 
@@ -85,10 +85,10 @@ def _convert_language_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     lang = core_filters.pop("language", None)
     if not lang:
         return
-    lang_code = normalize_language_filter(lang)
-    if not lang_code:
+    lang_codes = normalize_language_filter(lang)
+    if not lang_codes:
         return
-    doc_ids = pg.fetch_doc_ids_by_language(lang_code.split(","))
+    doc_ids = pg.fetch_doc_ids_by_language(lang_codes)
     _intersect_doc_id_filter(core_filters, doc_ids)
 
 
@@ -101,10 +101,10 @@ def _convert_region_to_doc_ids(core_filters: Dict[str, Any], pg) -> None:
     filter (e.g. from a language filter) so document-level filters combine
     with AND.
     """
-    region = core_filters.pop("region", None)
-    if not region:
+    region_names = parse_filter_values(core_filters.pop("region", None))
+    if not region_names:
         return
-    doc_ids = pg.fetch_doc_ids_by_region(region)
+    doc_ids = pg.fetch_doc_ids_by_region(region_names)
     _intersect_doc_id_filter(core_filters, doc_ids)
 
 
@@ -119,9 +119,8 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
     payload returns wrong/zero counts, so resolve each to its matching doc_ids
     here — the same source the facet counts come from — and AND them together.
     ``region`` is resolved the same way as in chunk search: its payload value is
-    a ``"; "``-joined string and region names contain commas, so only the
-    PostgreSQL containment lookup handles multi-region documents and
-    multi-select correctly. Qdrant-resident fields (document_type,
+    a ``"; "``-joined string, so the PostgreSQL lookup matches each document's
+    individual region names against the selected ones. Qdrant-resident fields (document_type,
     published_year, organization, country, …) are left in ``core_filters`` as
     payload filters.
     """
@@ -129,7 +128,7 @@ def _resolve_pg_filter_fields(core_filters: Dict[str, Any], pg, source: str) -> 
     if language:
         _intersect_doc_id_filter(
             core_filters,
-            doc_ids_from_pg_field(pg, "sys_language", str(language).split(",")),
+            doc_ids_from_pg_field(pg, "sys_language", parse_filter_values(language)),
         )
 
     _convert_region_to_doc_ids(core_filters, pg)
@@ -182,9 +181,7 @@ def _convert_src_fields_to_doc_ids(
         raw_key = src_field_mapping.get(core_field)
         if not raw_key:
             continue
-        values = [
-            v.strip() for v in str(core_filters.pop(core_field)).split(",") if v.strip()
-        ]
+        values = parse_filter_values(core_filters.pop(core_field))
         _intersect_doc_id_filter(
             core_filters, doc_ids_from_pg_jsonb(pg, raw_key, values)
         )
@@ -500,30 +497,20 @@ def _build_search_results(
     return filtered_results
 
 
-def _filter_match(value: Any) -> Union[qmodels.MatchAny, qmodels.MatchValue]:
-    """Qdrant match for a filter value: ``MatchAny`` when the value is a list or
-    a comma-joined multi-select (values OR within a field), else ``MatchValue``.
-    """
-    if isinstance(value, (list, tuple, set)):
-        return qmodels.MatchAny(any=[str(item) for item in value])
-    multi_values = split_filter_values(value)
-    if multi_values:
-        return qmodels.MatchAny(any=multi_values)
-    return qmodels.MatchValue(value=value)
-
-
 def _build_facet_filter(core_filters: Dict[str, Any], data_source: Optional[str]):
     """Build a Qdrant filter from core filter fields for restricting facet counts."""
     facet_conditions: List[qmodels.Condition] = []
 
     for core_field, value in core_filters.items():
-        if not value or core_field.endswith("_min") or core_field.endswith("_max"):
+        if core_field.endswith("_min") or core_field.endswith("_max"):
+            continue
+        if not parse_filter_values(value):
             continue
         storage_field = resolve_storage_field(core_field, data_source)
         if core_field == "published_year":
-            value = str(value)
+            value = [str(year) for year in parse_filter_values(value)]
         facet_conditions.append(
-            qmodels.FieldCondition(key=storage_field, match=_filter_match(value))
+            qmodels.FieldCondition(key=storage_field, match=filter_match(value))
         )
 
     for sf, bounds in collect_range_bounds(core_filters, data_source).items():
@@ -598,37 +585,14 @@ def perform_title_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Above this many comma-separated parts a title filter is matched part by part
-# only, instead of trying every contiguous run of parts.
-_MAX_TITLE_PARTS = 50
-
-
-def _title_candidates(title_filter: str) -> List[str]:
-    """Exact-title candidates encoded in a comma-joined title filter.
-
-    The UI joins multi-select filter values with commas, but display titles
-    themselves often contain commas (``"…, 2016-2021"``), so the filter cannot
-    simply be split. Every contiguous run of the comma-split parts is rejoined
-    (with and without the space after the comma) and offered as a candidate, so
-    both ``"Title A,Title B"`` and a single ``"Region, 2016-2020"`` resolve to
-    the titles the user picked.
-    """
-    parts = [part.strip() for part in title_filter.split(",") if part.strip()]
-    candidates = {title_filter.strip(), *parts}
-    if len(parts) <= _MAX_TITLE_PARTS:
-        for start in range(len(parts)):
-            for end in range(start + 2, len(parts) + 1):
-                candidates.add(", ".join(parts[start:end]))
-                candidates.add(",".join(parts[start:end]))
-    return sorted(candidate for candidate in candidates if candidate)
-
-
-def _resolve_title_doc_ids(pg, title_filter: str) -> List[str]:
-    """doc_ids for a title filter: exact display titles (one or several, as
-    picked in the UI) unioned with the partial substring match of the raw value
-    that API callers rely on."""
-    doc_ids = set(pg.fetch_doc_ids_by_exact_titles(_title_candidates(title_filter)))
-    doc_ids.update(pg.fetch_doc_ids_by_title(title_filter))
+def _resolve_title_doc_ids(pg, title_filter: Any) -> List[str]:
+    """doc_ids for a title filter: the exact display titles selected (one or
+    several; a comma inside a title arrives as ``\\,``), unioned with the
+    partial match of each title that API callers rely on."""
+    titles = parse_filter_values(title_filter)
+    doc_ids = set(pg.fetch_doc_ids_by_exact_titles(titles))
+    for title in titles:
+        doc_ids.update(pg.fetch_doc_ids_by_title(title))
     return sorted(doc_ids)
 
 
@@ -654,7 +618,7 @@ def _handle_title_filter(
             results=[],
             total=0,
             query=q,
-            filters={"title": [title_filter]},
+            filters={"title": [str(t) for t in parse_filter_values(title_filter)]},
         )
     core_filters.pop("title", None)
     _intersect_doc_id_filter(core_filters, title_doc_ids)
@@ -664,16 +628,13 @@ def _handle_title_filter(
 def _build_filters_response(
     core_filters: Dict[str, Any], title_filter: Optional[str]
 ) -> Dict[str, List[str]]:
-    filters_response: Dict[str, List[str]] = {}
-    for key, value in core_filters.items():
-        if value is None:
-            filters_response[key] = []
-        elif isinstance(value, list):
-            filters_response[key] = [str(item) for item in value]
-        else:
-            filters_response[key] = [value]
+    """The applied filters as display values: one list of values per field."""
+    filters_response: Dict[str, List[str]] = {
+        key: [str(item) for item in parse_filter_values(value)]
+        for key, value in core_filters.items()
+    }
     if title_filter:
-        filters_response["title"] = [title_filter]
+        filters_response["title"] = [str(t) for t in parse_filter_values(title_filter)]
     return filters_response
 
 
@@ -983,7 +944,7 @@ def _build_metadata_filter_condition(
     it is resolved to a doc_id constraint by ``_handle_title_filter``.
     """
     return qmodels.Filter(
-        must=[qmodels.FieldCondition(key=storage_field, match=_filter_match(value))]
+        must=[qmodels.FieldCondition(key=storage_field, match=filter_match(value))]
     )
 
 
@@ -1011,7 +972,7 @@ def _build_docsearch_filters(
     allowed_ids = set(indexed_doc_ids)
     doc_id_constraint = core_filters.pop("doc_id", None)
     if doc_id_constraint is not None:
-        requested = {i for i in str(doc_id_constraint).split(",") if i}
+        requested = {str(i) for i in parse_filter_values(doc_id_constraint)}
         allowed_ids &= requested
 
     for core_field, value in core_filters.items():
@@ -1245,7 +1206,7 @@ async def get_facets(
         )
         title_filter = core_filters.get("title")
         if title_filter and q:
-            title_doc_ids = pg.fetch_doc_ids_by_title(title_filter)
+            title_doc_ids = _resolve_title_doc_ids(pg, title_filter)
             if not title_doc_ids:
                 return Facets(
                     facets={},

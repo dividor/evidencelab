@@ -75,6 +75,16 @@ curl -H "X-API-Key: your-key-here" \
   "https://your-domain/api/search?q=food+security&data_source=uneg&limit=10"
 ```
 
+#### Example: Filter
+
+Filter parameters use the same field names as the search page's filters. To select several values, separate them with commas. A comma inside a value is written `\,` (and a backslash `\\`), so names such as `SDG16 - Peace, Justice and Strong Institutions` stay whole:
+
+```bash
+curl -G -H "X-API-Key: your-key-here" "https://your-domain/api/search" \
+  --data-urlencode "q=food security" --data-urlencode "data_source=uneg" \
+  --data-urlencode 'tag_sdg=SDG2 - Zero Hunger,SDG16 - Peace\, Justice and Strong Institutions'
+```
+
 #### Example: Get Document
 
 ```bash

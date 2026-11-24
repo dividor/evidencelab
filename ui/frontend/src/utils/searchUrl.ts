@@ -2,6 +2,7 @@ import config from '../config.json';
 import { SearchFilters } from '../types/api';
 import type { SearchSettings } from '../types/auth';
 import { SUMMARY_RESULT_LIMIT } from './summarySelection';
+import { splitFilterValues } from './filterValues';
 
 export interface SearchStateFromURL {
   query: string;
@@ -96,14 +97,9 @@ export const mergeGroupSettings = (
   return merged as SearchSettings;
 };
 
-const parseFilterParam = (params: URLSearchParams, key: string): string[] => {
-  const value = params.get(key);
-  if (!value) return [];
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-};
+// A comma inside a value arrives escaped (`\,`), so the value stays whole.
+const parseFilterParam = (params: URLSearchParams, key: string): string[] =>
+  splitFilterValues(params.get(key));
 
 const parseFloatParam = (
   params: URLSearchParams,

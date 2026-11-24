@@ -173,7 +173,7 @@ Runs the same hybrid semantic search as the MCP `search` tool. Returns raw passa
 |-----------|------|---------|-------------|
 | `data_source` | string | `null` | Collection to search |
 | `limit` | integer | `10` | Max results (1–100) |
-| `filters` | object | `null` | Field/value filter pairs |
+| `filters` | object | `null` | Field/value filter pairs. A string is one value, even with commas in it; give several values as a list |
 | `model_combo` | string | `"Azure Foundry"` | Model configuration |
 | `skill` | string | auto | Set to `"search"` to force this skill |
 

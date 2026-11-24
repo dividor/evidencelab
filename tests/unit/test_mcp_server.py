@@ -99,7 +99,7 @@ async def test_search_tool_basic(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_tool_with_filters(monkeypatch):
-    """Filters dict is forwarded to search_chunks."""
+    """Filters dict is forwarded to search_chunks, each string as one value."""
     captured_kwargs: dict = {}
 
     def fake_search_chunks(**kwargs):
@@ -137,7 +137,11 @@ async def test_search_tool_with_filters(monkeypatch):
 
     assert isinstance(result, MCPSearchResponse)
     assert result.total == 0
-    assert captured_kwargs["filters"] == filters
+    # Each string is one value, forwarded as a one-item list.
+    assert captured_kwargs["filters"] == {
+        "organization": ["UNICEF"],
+        "published_year": ["2022"],
+    }
     assert captured_kwargs["limit"] == 5
 
 

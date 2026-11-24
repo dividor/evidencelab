@@ -4,26 +4,25 @@ Covers three defects surfaced by Heatmapper:
 
 * filters on "; "-joined payload fields (country, theme, …) missed every
   multi-valued document (facet 26, filter 8);
-* a multi-select title filter arrives comma-joined although titles contain
-  commas, so it must be resolved to exact titles rather than substring-matched;
+* a multi-select title filter arrives comma-joined (a comma inside a title as
+  ``\\,``), so it must be resolved to exact titles rather than substring-matched;
 * the resolved title doc_ids must AND with other document-level constraints.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from qdrant_client.http import models as qmodels
 
 from ui.backend.routes.search import (
     _NO_MATCH_DOC_ID,
-    _filter_match,
     _handle_title_filter,
     _resolve_title_doc_ids,
-    _title_candidates,
 )
 from ui.backend.utils.filter_helpers import (
     _is_expandable_filter,
     expand_multivalue_filters,
+    filter_match,
 )
 
 pytestmark = pytest.mark.unit
@@ -133,49 +132,23 @@ class TestIsExpandableFilter:
 
 class TestFilterMatch:
     def test_plain_string_then_match_value(self):
-        match = _filter_match("Activity")
+        match = filter_match("Activity")
         assert isinstance(match, qmodels.MatchValue)
         assert match.value == "Activity"
 
     def test_comma_joined_then_match_any(self):
-        match = _filter_match("Activity, Thematic")
+        match = filter_match("Activity, Thematic")
         assert isinstance(match, qmodels.MatchAny)
         assert match.any == ["Activity", "Thematic"]
 
     def test_list_then_match_any_of_strings(self):
-        match = _filter_match(["2024", 2025])
+        match = filter_match(["2024", 2025])
         assert isinstance(match, qmodels.MatchAny)
         assert match.any == ["2024", "2025"]
 
-
-class TestTitleCandidates:
-    def test_single_title_then_only_itself(self):
-        assert _title_candidates("Evaluation of X") == ["Evaluation of X"]
-
-    def test_two_titles_then_each_and_joined(self):
-        candidates = _title_candidates("Title A,Title B")
-        assert "Title A" in candidates
-        assert "Title B" in candidates
-        assert "Title A,Title B" in candidates
-
-    def test_title_with_comma_then_reconstructed_with_space(self):
-        candidates = _title_candidates("Partnerships in East Africa, 2016-2020")
-        assert "Partnerships in East Africa, 2016-2020" in candidates
-
-    def test_two_titles_one_with_comma_then_both_reconstructed(self):
-        candidates = _title_candidates("Title A,Region Study, 2016-2020,Title C")
-        assert "Title A" in candidates
-        assert "Region Study, 2016-2020" in candidates
-        assert "Title C" in candidates
-
-    def test_blank_parts_then_dropped(self):
-        assert _title_candidates(" , ,A, ") == [", ,A,", "A"]
-
-    def test_many_parts_then_only_parts_and_whole(self):
-        parts = [f"T{i}" for i in range(60)]
-        candidates = _title_candidates(",".join(parts))
-        assert set(parts) <= set(candidates)
-        assert len(candidates) == len(parts) + 1
+    def test_blank_then_error(self):
+        with pytest.raises(ValueError):
+            filter_match(" , ")
 
 
 class TestResolveTitleDocIds:
@@ -184,7 +157,20 @@ class TestResolveTitleDocIds:
         pg.fetch_doc_ids_by_exact_titles.return_value = ["d3", "d1"]
         pg.fetch_doc_ids_by_title.return_value = ["d2", "d1"]
         assert _resolve_title_doc_ids(pg, "Title A,Title B") == ["d1", "d2", "d3"]
-        pg.fetch_doc_ids_by_title.assert_called_once_with("Title A,Title B")
+        pg.fetch_doc_ids_by_exact_titles.assert_called_once_with(["Title A", "Title B"])
+        assert pg.fetch_doc_ids_by_title.call_args_list == [
+            call("Title A"),
+            call("Title B"),
+        ]
+
+    def test_title_with_escaped_comma_then_one_exact_title(self):
+        pg = MagicMock()
+        pg.fetch_doc_ids_by_exact_titles.return_value = ["d1"]
+        pg.fetch_doc_ids_by_title.return_value = []
+        _resolve_title_doc_ids(pg, "Partnerships in East Africa\\, 2016-2020")
+        pg.fetch_doc_ids_by_exact_titles.assert_called_once_with(
+            ["Partnerships in East Africa, 2016-2020"]
+        )
 
 
 class TestHandleTitleFilter:

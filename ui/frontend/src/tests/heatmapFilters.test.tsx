@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { HeatmapTabContent } from '../components/app/HeatmapTabContent';
 import { Facets } from '../types/api';
+import { splitFilterValues } from '../utils/filterValues';
 
 // The real FiltersPanel is rendered here: these tests exercise the side
 // filters (checkboxes, "Clear filters") that feed the heatmap's cell requests.
@@ -12,6 +13,8 @@ jest.mock('../components/SearchResultsList', () => ({
 }));
 
 const GENERATE_HEATMAP = 'Generate Heatmap';
+const SDG1_LABEL = 'SDG1 - No Poverty';
+const GIRLS_EDUCATION = 'girls education';
 const TUNE_QUERY = /Tune your heatmap using a search query/;
 const GRID_QUERY_PLACEHOLDER = 'Add a search query to filter the results for your heatmap ...';
 
@@ -203,7 +206,7 @@ describe('Heatmap side filters', () => {
     try {
       const { container } = render(<HeatmapTabContent {...baseProps} />);
       await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
-      setGridQuery('girls education');
+      setGridQuery(GIRLS_EDUCATION);
 
       fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
       await waitFor(() => expect(cellTexts(container)).toEqual(['1', '1']));
@@ -235,7 +238,7 @@ describe('Heatmap side filters', () => {
     try {
       const { container } = render(<HeatmapTabContent {...baseProps} />);
       await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
-      setGridQuery('girls education');
+      setGridQuery(GIRLS_EDUCATION);
       fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
       await waitFor(() => expect(cellTexts(container)).toEqual(['1', '1']));
 
@@ -267,7 +270,7 @@ describe('Heatmap side filters', () => {
       await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
       fireEvent.change(screen.getByLabelText('Rows'), { target: { value: 'region' } });
       fireEvent.change(screen.getByLabelText('Columns'), { target: { value: 'tag_sdg' } });
-      await waitFor(() => expect(screen.getAllByText('SDG1 - No Poverty').length).toBeGreaterThan(0));
+      await waitFor(() => expect(screen.getAllByText(SDG1_LABEL).length).toBeGreaterThan(0));
 
       fireEvent.click(screen.getByRole('button', { name: 'Filter United Nations Sustainable Development Goals' }));
       // Everything starts selected; clear, then keep a single goal.
@@ -320,7 +323,7 @@ describe('Heatmap cell request failures', () => {
     try {
       const { container } = render(<HeatmapTabContent {...baseProps} />);
       await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
-      setGridQuery('girls education');
+      setGridQuery(GIRLS_EDUCATION);
       fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
       await waitFor(() => expect(cellTexts(container)).toEqual(['1', '1']));
       await waitFor(() => expect(screen.getByRole('button', { name: GENERATE_HEATMAP })).toBeEnabled());
@@ -377,6 +380,101 @@ describe('Heatmap cell request failures', () => {
       getSpy.mockRestore();
       postSpy.mockRestore();
       errorSpy.mockRestore();
+    }
+  });
+});
+
+// Regression: names with commas (SDG9, SDG16, "Congo, Dem. Rep.") were sent raw,
+// and the API split them on the comma, so their cells and filters matched nothing.
+describe('Heatmap values that contain commas', () => {
+  const SDG16 = 'SDG16 - Peace, Justice and Strong Institutions';
+  const SDG16_SENT = 'SDG16 - Peace\\, Justice and Strong Institutions';
+  const CONGO = 'Congo, Dem. Rep.';
+
+  const commaFacets = (): Facets => {
+    const facets = buildFacets();
+    return {
+      ...facets,
+      facets: {
+        ...facets.facets,
+        tag_sdg: [{ value: SDG16, count: 2 }, { value: SDG1_LABEL, count: 3 }],
+        country: [{ value: CONGO, count: 4 }, { value: 'Kenya', count: 2 }],
+      },
+    };
+  };
+
+  const mockRequests = () => ({
+    getSpy: jest.spyOn(axios, 'get').mockResolvedValue({ data: { results: [] } }),
+    postSpy: jest.spyOn(axios, 'post').mockResolvedValue({ data: {} }),
+  });
+
+  test('a column value with a comma is sent whole, escaped, in its cell requests', async () => {
+    window.history.replaceState(null, '', '/heatmap?hm_row=document_type&hm_col=tag_sdg');
+    const { getSpy, postSpy } = mockRequests();
+    try {
+      render(<HeatmapTabContent {...baseProps} facets={commaFacets()} />);
+      const generate = screen.getByRole('button', { name: GENERATE_HEATMAP });
+      await waitFor(() => expect(generate).toBeEnabled());
+      fireEvent.click(generate);
+      await waitFor(() =>
+        expect(cellRequestParams(getSpy).map((p) => p.get('tag_sdg'))).toContain(SDG16_SENT)
+      );
+      const sent = cellRequestParams(getSpy).map((p) => p.getAll('tag_sdg'));
+      expect(sent).toContainEqual([SDG16_SENT]);
+      expect(sent).toContainEqual([SDG1_LABEL]);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
+
+  test('side-panel values with commas are sent escaped and kept in the link', async () => {
+    window.history.replaceState(null, '', '/heatmap');
+    const { getSpy, postSpy } = mockRequests();
+    try {
+      render(<HeatmapTabContent {...baseProps} facets={commaFacets()} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      openCountryFilter();
+      fireEvent.click(screen.getByLabelText(/Congo, Dem\. Rep\./));
+      fireEvent.click(screen.getByLabelText(/Kenya/));
+
+      fireEvent.click(screen.getByRole('button', { name: GENERATE_HEATMAP }));
+      await waitFor(() => expect(cellRequestParams(getSpy).length).toBeGreaterThan(0));
+      for (const params of cellRequestParams(getSpy)) {
+        expect(splitFilterValues(params.get('country')).sort()).toEqual([CONGO, 'Kenya']);
+        expect(params.get('country')).toContain('Congo\\, Dem. Rep.');
+      }
+      const linkCountry = new URLSearchParams(window.location.search).get('country');
+      expect(splitFilterValues(linkCountry).sort()).toEqual([CONGO, 'Kenya']);
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
+    }
+  });
+
+  test('a shared link with an escaped value restores that selection', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      `/heatmap?country=${encodeURIComponent('Congo\\, Dem. Rep.')}`
+    );
+    const { getSpy, postSpy } = mockRequests();
+    try {
+      render(<HeatmapTabContent {...baseProps} facets={commaFacets()} />);
+      await waitFor(() => expect(screen.getByText('2024')).toBeInTheDocument());
+      openCountryFilter();
+      await waitFor(() =>
+        expect(
+          (screen.getByRole('checkbox', { name: /Congo, Dem\. Rep\./ }) as HTMLInputElement).checked
+        ).toBe(true)
+      );
+      expect((screen.getByRole('checkbox', { name: /Kenya/ }) as HTMLInputElement).checked).toBe(false);
+      // One chip for the whole name, not one per comma-separated piece.
+      expect(screen.getAllByRole('button', { name: /^Remove .* filter$/ })).toHaveLength(1);
+      expect(screen.getByRole('button', { name: `Remove ${CONGO} filter` })).toBeInTheDocument();
+    } finally {
+      getSpy.mockRestore();
+      postSpy.mockRestore();
     }
   });
 });

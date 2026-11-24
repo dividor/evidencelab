@@ -1,6 +1,6 @@
 """Helpers for building and resolving filter fields used by search routes."""
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 from qdrant_client.http import models
 
@@ -18,14 +18,83 @@ from ui.backend.utils.facet_helpers import (
 )
 from ui.backend.utils.language_codes import LANGUAGE_CODES
 
+FILTER_VALUE_SEPARATOR = ","
+FILTER_VALUE_ESCAPE = "\\"
 
-def normalize_language_filter(language: Optional[str]) -> Optional[str]:
-    """Convert full language name(s) back to codes for DB queries."""
-    if not language:
+
+def _split_escaped_values(text: str) -> List[str]:
+    """Split one filter string into its values.
+
+    Values are separated by commas. ``\\,`` is a comma inside a value and
+    ``\\\\`` a backslash; any other backslash is kept as written, so values
+    without commas or backslashes read exactly as before.
+    """
+    values: List[str] = []
+    current: List[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        following = text[index + 1] if index + 1 < len(text) else ""
+        if char == FILTER_VALUE_ESCAPE and following in (
+            FILTER_VALUE_SEPARATOR,
+            FILTER_VALUE_ESCAPE,
+        ):
+            current.append(following)
+            index += 2
+            continue
+        if char == FILTER_VALUE_SEPARATOR:
+            values.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+        index += 1
+    values.append("".join(current))
+    return values
+
+
+def parse_filter_values(value: Any) -> List[Any]:
+    """Return the values a filter selects.
+
+    A filter arrives either as a list of values or as one string listing them
+    separated by commas, with ``\\,`` for a comma inside a value and ``\\\\``
+    for a backslash (see :func:`_split_escaped_values`). This is the only place
+    a filter string is split, so names that contain commas (``SDG16 - Peace,
+    Justice and Strong Institutions``) are never cut in two. Values are
+    stripped and blanks dropped. A number or other non-string scalar is one
+    value, kept as it is.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = [str(item).strip() for item in value if item is not None]
+        return [item for item in items if item]
+    if not isinstance(value, str):
+        return [value]
+    parts = (part.strip() for part in _split_escaped_values(value))
+    return [part for part in parts if part]
+
+
+def filter_match(value: Any) -> Union[models.MatchAny, models.MatchValue]:
+    """Qdrant match for a filter: ``MatchValue`` for one value, ``MatchAny``
+    for several (values OR within a field).
+
+    Raises:
+        ValueError: If the filter selects no value.
+    """
+    values = parse_filter_values(value)
+    if not values:
+        raise ValueError(f"Filter value selects nothing: {value!r}")
+    if len(values) == 1:
+        return models.MatchValue(value=values[0])
+    return models.MatchAny(any=values)
+
+
+def normalize_language_filter(language: Any) -> Optional[List[str]]:
+    """Convert the selected language name(s) to codes for DB queries."""
+    names = parse_filter_values(language)
+    if not names:
         return None
-    parts = [v.strip() for v in language.split(",") if v.strip()]
-    mapped = [LANGUAGE_CODES.get(p, p) for p in parts]
-    return ",".join(mapped)
+    return [LANGUAGE_CODES.get(name, name) for name in names]
 
 
 def resolve_storage_field(core_field: str, data_source: Optional[str]) -> str:
@@ -37,15 +106,6 @@ def resolve_storage_field(core_field: str, data_source: Optional[str]) -> str:
     if field_mapping.get("language") == "sys_language":
         return "sys_language"
     return map_core_field_to_storage(core_field)
-
-
-def split_filter_values(value: Any) -> Optional[List[str]]:
-    """Split a comma-separated filter value into a list, or return None."""
-    if isinstance(value, str) and "," in value:
-        values = [item.strip() for item in value.split(",") if item.strip()]
-        if values:
-            return values
-    return None
 
 
 def build_core_filters_from_params(
@@ -126,14 +186,9 @@ def add_dynamic_filters(
             core_filters[name] = value
 
 
-def build_doc_id_filter(value, as_multi_values_fn) -> models.Filter:
+def build_doc_id_filter(value: Any) -> models.Filter:
     """Build a nested OR filter matching doc_id or sys_doc_id."""
-    multi_values = as_multi_values_fn(value)
-    match = (
-        models.MatchAny(any=multi_values)
-        if multi_values
-        else models.MatchValue(value=value)
-    )
+    match = filter_match(value)
     return models.Filter(
         should=[
             models.FieldCondition(key="doc_id", match=match),
@@ -166,32 +221,25 @@ NO_MATCH_DOC_ID = "00000000-0000-0000-0000-000000000000"
 def _normalize_doc_titles(value: Any) -> List[str]:
     """Coerce a ``doc_titles`` filter value into a clean list of titles.
 
-    Accepts a list of strings, or a single/comma-joined string for convenience
-    (e.g. a CSV cell). Blank entries are dropped.
+    Accepts a list of strings, or one filter string of comma-separated titles
+    (see :func:`parse_filter_values`; a comma inside a title is ``\\,``).
+    Blank entries are dropped.
 
     Raises:
         ValueError: If the value is neither a string nor a list/tuple.
     """
-    if isinstance(value, str):
-        items: List[Any] = value.split(",")
-    elif isinstance(value, (list, tuple)):
-        items = list(value)
-    else:
+    if not isinstance(value, (str, list, tuple)):
         raise ValueError("doc_titles must be a list of document titles")
-    return [str(item).strip() for item in items if str(item).strip()]
+    return parse_filter_values(value)
 
 
 def _existing_doc_id_set(value: Any) -> Optional[Set[str]]:
     """Return the set of doc_ids already present in a filter value, or None."""
     if value is None:
         return None
-    if isinstance(value, str):
-        parts = value.split(",")
-    elif isinstance(value, (list, tuple)):
-        parts = list(value)
-    else:
-        parts = []
-    return {str(part).strip() for part in parts if str(part).strip()}
+    if not isinstance(value, (str, list, tuple)):
+        return set()
+    return {str(part) for part in parse_filter_values(value)}
 
 
 # Doc-level filters resolved to a doc_id set for the harness chunk search.
@@ -218,55 +266,45 @@ def _title_doc_ids(value: Any, pg) -> Optional[Set[str]]:
 def _region_names(value: Any) -> List[str]:
     """Coerce a ``region`` filter value into a list of region names.
 
-    A bare string is treated as a single region name (region names commonly
-    contain commas, so it is never comma-split). Blank entries are dropped.
+    Region names often contain commas, so a string is read with
+    :func:`parse_filter_values`: a comma inside a name is ``\\,``. Blank entries
+    are dropped.
 
     Raises:
         ValueError: If the value is neither a string nor a list/tuple.
     """
-    if isinstance(value, str):
-        items: List[Any] = [value]
-    elif isinstance(value, (list, tuple)):
-        items = list(value)
-    else:
+    if not isinstance(value, (str, list, tuple)):
         raise ValueError("region must be a string or a list of region names")
-    return [str(item).strip() for item in items if str(item).strip()]
+    return parse_filter_values(value)
 
 
 def _region_doc_ids(value: Any, pg) -> Optional[Set[str]]:
     """Resolve a ``region`` value to the union of matching doc_ids (None if empty).
 
-    Region is a document-level field (not stamped on chunks), so each selected
-    region name is resolved to doc_ids via ``pg.fetch_doc_ids_by_region`` and the
-    per-region matches are unioned (OR within the region facet).
+    Region is a document-level field (not stamped on chunks), so the selected
+    region names are resolved to the documents listing any of them via
+    ``pg.fetch_doc_ids_by_region`` (OR within the region facet).
     """
     if value is None:
         return None
     names = _region_names(value)
     if not names:
         return None
-    doc_ids: Set[str] = set()
-    for name in names:
-        doc_ids.update(pg.fetch_doc_ids_by_region(name))
-    return doc_ids
+    return set(pg.fetch_doc_ids_by_region(names))
 
 
 def _language_names(value: Any) -> List[str]:
     """Coerce a ``language`` filter value into a list of language names/codes.
 
-    Accepts a list of strings, or a single/comma-joined string for convenience.
-    Blank entries are dropped.
+    Accepts a list of strings, or one comma-separated filter string (see
+    :func:`parse_filter_values`). Blank entries are dropped.
 
     Raises:
         ValueError: If the value is neither a string nor a list/tuple.
     """
-    if isinstance(value, str):
-        items: List[Any] = value.split(",")
-    elif isinstance(value, (list, tuple)):
-        items = list(value)
-    else:
+    if not isinstance(value, (str, list, tuple)):
         raise ValueError("language must be a string or a list of languages")
-    return [str(item).strip() for item in items if str(item).strip()]
+    return parse_filter_values(value)
 
 
 def _language_doc_ids(value: Any, pg) -> Optional[Set[str]]:
@@ -287,19 +325,15 @@ def _language_doc_ids(value: Any, pg) -> Optional[Set[str]]:
 
 
 def _src_field_values(field: str, value: Any) -> List[str]:
-    """Coerce a ``src_*`` filter value into a list of values (comma-splitting
-    bare strings, matching the search route's convention).
+    """Coerce a ``src_*`` filter value into a list of values, reading a string
+    with :func:`parse_filter_values` as the search route does.
 
     Raises:
         ValueError: If the value is neither a string nor a list/tuple.
     """
-    if isinstance(value, str):
-        items: List[Any] = value.split(",")
-    elif isinstance(value, (list, tuple)):
-        items = list(value)
-    else:
+    if not isinstance(value, (str, list, tuple)):
         raise ValueError(f"{field} must be a string or a list of values")
-    return [str(item).strip() for item in items if str(item).strip()]
+    return parse_filter_values(value)
 
 
 def _pop_src_field_constraints(
@@ -420,7 +454,7 @@ def expand_multivalue_filters(
         storage_field = resolve_storage_field(core_field, data_source)
         if storage_field not in indexed_keys:
             continue
-        selected = split_filter_values(value) or [value.strip()]
+        selected = parse_filter_values(value)
         expanded = expand_multivalue_filter(db, storage_field, selected)
         if len(expanded) > len(selected):
             core_filters[core_field] = sorted(expanded)

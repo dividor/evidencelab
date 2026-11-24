@@ -236,6 +236,45 @@ describe('TocValidatorManager', () => {
     expect(screen.queryByText('Zambia Country Programme')).not.toBeInTheDocument();
   });
 
+  test('an organization filter on a name with a comma keeps that name whole', async () => {
+    const commaOrg = 'Office of Evaluation, WFP';
+    const commaOrgTitle = 'Joint Evaluation';
+    const orgFilterLabel = 'Filter organization';
+    const openOrgFilter = () => {
+      fireEvent.click(screen.getByLabelText(orgFilterLabel));
+      return screen.getByText(orgFilterLabel).closest('.filter-popover') as HTMLElement;
+    };
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes('/toc-validator/results')) {
+        return Promise.resolve({ data: { results: {} } });
+      }
+      return Promise.resolve({
+        data: {
+          documents: [
+            ...DOCS,
+            { doc_id: 'd3', map_title: commaOrgTitle, organization: commaOrg, status: 'indexed' },
+          ],
+          total_pages: 1,
+        },
+      });
+    });
+    render(<TocValidatorManager dataSource="wfp" />);
+    await screen.findByText(commaOrgTitle);
+
+    let popover = openOrgFilter();
+    fireEvent.click(within(popover).getByRole('checkbox', { name: commaOrg }));
+    fireEvent.click(within(popover).getByRole('button', { name: /^Apply \(1\)/ }));
+
+    expect(screen.getByText(commaOrgTitle)).toBeInTheDocument();
+    expect(screen.queryByText('Yemen Emergency Response')).not.toBeInTheDocument();
+
+    // Reopening the filter shows the one whole name still ticked.
+    popover = openOrgFilter();
+    expect(within(popover).getByRole('checkbox', { name: commaOrg })).toBeChecked();
+    expect(within(popover).getByRole('checkbox', { name: 'WFP' })).not.toBeChecked();
+    expect(within(popover).getByRole('button', { name: /^Apply \(1\)/ })).toBeInTheDocument();
+  });
+
   test('opens the metadata modal from the row link', async () => {
     render(<TocValidatorManager dataSource="wfp" />);
     const row = (await screen.findByText('Zambia Country Programme')).closest('tr') as HTMLElement;

@@ -545,9 +545,9 @@ def test_resolve_pg_filter_fields_language_to_sys_language_doc_ids():
 
 
 def test_resolve_pg_filter_fields_region_to_doc_ids():
-    """region is resolved via the PostgreSQL containment lookup (like chunk
-    search) instead of an exact Qdrant payload match, so multi-region documents
-    and a multi-select of regions both count."""
+    """region is resolved via the PostgreSQL region lookup (like chunk search)
+    instead of an exact Qdrant payload match, so multi-region documents and a
+    multi-select of regions both count."""
     pg = Mock()
     pg.fetch_doc_ids_by_region.return_value = ["2", "5"]
     core_filters = {"region": "Asia and the Pacific,Eastern and Southern Africa"}
@@ -557,7 +557,7 @@ def test_resolve_pg_filter_fields_region_to_doc_ids():
     assert "region" not in core_filters
     assert set(core_filters["doc_id"].split(",")) == {"2", "5"}
     pg.fetch_doc_ids_by_region.assert_called_once_with(
-        "Asia and the Pacific,Eastern and Southern Africa"
+        ["Asia and the Pacific", "Eastern and Southern Africa"]
     )
 
 
@@ -911,9 +911,10 @@ async def test_docsearch_title_multi_select_resolves_exact_titles(mock_pg):
                     data_source="uneg",
                 )
 
-    assert result.filters == {"title": ["Title A,Title B"]}
-    candidates = mock_pg.fetch_doc_ids_by_exact_titles.call_args.args[0]
-    assert "Title A" in candidates and "Title B" in candidates
+    assert result.filters == {"title": ["Title A", "Title B"]}
+    mock_pg.fetch_doc_ids_by_exact_titles.assert_called_once_with(
+        ["Title A", "Title B"]
+    )
     combined = fake_db._scroll_calls[0]["filter"]
     assert _extract_has_id_from_filter(combined) == ["1", "3"]
     # No payload MatchText condition on map_title remains.
