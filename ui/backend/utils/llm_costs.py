@@ -34,6 +34,10 @@ LLM_COSTS_PER_1K: Mapping[str, tuple[Decimal, Decimal]] = {
     "gemini-3.8-flash": (Decimal("0.00075"), Decimal("0.00375")),
     # Amazon Bedrock (us-east-2, from the AWS Price List API, 2026-11)
     "nova-2-lite": (Decimal("0.00033"), Decimal("0.00275")),
+    # Anthropic's Haiku 4.5 on Amazon Bedrock, through the EU inference profile
+    # (eu-west-1, from the AWS Price List API, 2026-11). Worldwide routing
+    # costs $1.00 / $5.00 per 1M.
+    "haiku-4.5": (Decimal("0.00110"), Decimal("0.00550")),
     # HuggingFace-hosted open-weights — provider-dependent; left None
     # below by omitting an entry so the UI shows "—" for these models.
 }
