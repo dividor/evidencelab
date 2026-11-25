@@ -138,6 +138,25 @@ async def test_admin_lists_every_brief_with_its_owner(session):
     assert (mine[b.id].owner_name, mine[b.id].owner_email) == ("Bob", bob.email)
 
 
+async def test_lists_count_sections_and_sources_without_loading_content(session):
+    # Postgres works out the card counts (_list_columns); content is never loaded.
+    admin = await _user(session, "admin", superuser=True)
+    full = await _brief(session, admin, "Full brief")
+    full.content = {**full.content, "sourceCount": 41}
+    full.content["sections"] = full.content["sections"] * 3
+    empty = Brief(user_id=admin.id, title="Empty", query="q", content={})
+    session.add(empty)
+    await session.flush()
+
+    for listed in (
+        await brief_central.list_briefs(user=admin, session=session),
+        await brief_central.list_all_briefs(user=admin, session=session),
+    ):
+        by_id = {item.id: item for item in listed}
+        assert (by_id[full.id].section_count, by_id[full.id].source_count) == (3, 41)
+        assert (by_id[empty.id].section_count, by_id[empty.id].source_count) == (0, 0)
+
+
 async def test_admin_opens_any_brief_read_only_and_it_is_audited(session, audit):
     admin = await _user(session, "admin", superuser=True)
     alice = await _user(session, "alice")
