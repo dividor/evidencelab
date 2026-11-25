@@ -156,12 +156,18 @@ class TestOpenFixPr:
             "Allow GitHub Actions to create and approve pull requests"
             in capsys.readouterr().err
         )
+        assert ["git", "push", "origin", "--delete", "docs-fix/pr-693-3db0bba"] in (
+            cmds.commands()
+        )
 
     def test_open_when_create_fails_otherwise_then_raises(self):
         cmds = FakeCommands(status=" M docs/a.md\n", create_error="HTTP 502")
 
         with pytest.raises(RuntimeError, match="HTTP 502"):
             fp.open_fix_pr("docs", _env(DOCS_VERDICT), run=cmds)
+        assert ["git", "push", "origin", "--delete", "docs-fix/pr-693-3db0bba"] in (
+            cmds.commands()
+        )
 
 
 class TestFixBody:

@@ -210,6 +210,8 @@ def open_fix_pr(kind: str, env: dict[str, str], run: Runner = subprocess.run) ->
     try:
         url = run_cmd([*command, "--title", title, "--body-file", "-"], run, stdin=body)
     except RuntimeError as exc:
+        # No pull request, so the branch would be left behind: remove it.
+        run_cmd(["git", "push", "origin", "--delete", branch], run)
         if NOT_PERMITTED in str(exc):
             print(PERMISSION_HELP, file=sys.stderr)
             return 1
