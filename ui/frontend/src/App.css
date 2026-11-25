@@ -4836,7 +4836,7 @@ li.ai-fact-active::before {
     flex-wrap: wrap;
     row-gap: 0.25rem;
     column-gap: 1rem;
-    padding-right: 5.25rem;
+    padding-inline: 5.25rem;
   }
 
   /* Wrapped lines would end on a stray "•": space the links apart instead. */
