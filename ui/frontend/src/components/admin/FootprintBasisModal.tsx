@@ -49,14 +49,8 @@ export interface FootprintMethod {
   version: string;
 }
 
-// The table line whose badge was clicked.
-export interface BasisLine {
-  label: string;
-  unestimatedTokens: number;
-}
-
 // ---------------------------------------------------------------------------
-// Static method notes, from EcoLogits' documentation (checked 2026-11-25).
+// Links and method notes, from EcoLogits' documentation (checked 2026-11-25).
 // ---------------------------------------------------------------------------
 
 const ECOLOGITS_SITE = 'https://ecologits.ai/latest/';
@@ -67,6 +61,8 @@ const ECOLOGITS_CODE = 'https://github.com/mlco2/ecologits';
 const ML_ENERGY = 'https://ml.energy/leaderboard/';
 const WATER_PAPER = 'https://arxiv.org/abs/2304.03271';
 const METHOD_LINK_TEXT = 'EcoLogits method';
+const SMALL_TEXT: React.CSSProperties = { fontSize: '0.75rem' };
+const HEADING: React.CSSProperties = { fontSize: '0.95rem', margin: '1rem 0 0.3rem' };
 
 const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
   <a href={href} target="_blank" rel="noopener noreferrer">
@@ -74,42 +70,45 @@ const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ h
   </a>
 );
 
+const EcoLogitsLink: React.FC = () => <ExternalLink href={ECOLOGITS_SITE}>EcoLogits</ExternalLink>;
+
 const METHOD_NOTES: ReadonlyArray<{ title: string; text: string; links: [string, string][] }> = [
   {
     title: 'Energy',
     text:
-      'EcoLogits estimates the electricity a call uses from the number of tokens the model ' +
-      'generates and its active parameters (the part of the model used for each token). The ' +
-      'relation is fitted to measurements of open models served on NVIDIA H100 GPUs, from the ' +
-      'ML.ENERGY Leaderboard. It then adds the rest of the server and the data centre’s ' +
-      'overhead (its PUE).',
+      'EcoLogits works out the electricity a call uses from two things: how many output tokens ' +
+      'the model wrote, and how big the model is. Its formula comes from measurements of open ' +
+      'models running on NVIDIA H100 GPUs, published as the ML.ENERGY Leaderboard. It then adds ' +
+      'the power used by the rest of the server and by the data centre’s cooling and other ' +
+      'overhead (PUE).',
     links: [
       [METHOD_LINK_TEXT, ECOLOGITS_METHOD],
       ['ML.ENERGY Leaderboard', ML_ENERGY],
     ],
   },
   {
-    title: 'Closed models',
+    title: 'Model sizes',
     text:
-      'OpenAI, Anthropic and Google don’t publish their models’ sizes. EcoLogits estimates ' +
-      'them from leaked data, benchmarks and prices, and assumes 10–30% of a ' +
-      'mixture-of-experts model is active for each token. These size ranges, and ranges in ' +
-      'data-centre efficiency, are why the figures are ranges.',
-    links: [['How EcoLogits sizes closed models', ECOLOGITS_CLOSED_MODELS]],
+      'OpenAI, Anthropic and Google don’t publish how big their models are. EcoLogits estimates ' +
+      'their sizes from leaked information, benchmark results and prices, so each size is a ' +
+      'range. Some models use only part of themselves for each token (a "mixture of experts"); ' +
+      'for these, EcoLogits assumes 10–30% is used. These size ranges, and ranges in data-centre ' +
+      'efficiency, are why every figure is a range.',
+    links: [['How EcoLogits estimates model sizes', ECOLOGITS_CLOSED_MODELS]],
   },
   {
     title: 'Emissions',
     text:
-      'The electricity’s emissions, using the carbon intensity of the electricity mix where ' +
-      'the model runs (from Our World in Data), plus a share of the emissions from making the ' +
-      'server hardware, spread over a 3-year life.',
+      'The greenhouse gases from generating that electricity, using the carbon intensity of the ' +
+      'electricity where the model runs (data from Our World in Data). Plus a share of the ' +
+      'emissions from making the server hardware, spread over a 3-year life.',
     links: [[METHOD_LINK_TEXT, ECOLOGITS_METHOD]],
   },
   {
     title: 'Water',
     text:
-      'Water evaporated to cool the data centre (on site) and to generate its electricity ' +
-      '(off site). Water used to make the hardware is not included.',
+      'The water evaporated to cool the data centre, and the water used to generate its ' +
+      'electricity. Water used to make the hardware is not included.',
     links: [
       [METHOD_LINK_TEXT, ECOLOGITS_METHOD],
       ['Li et al. (2025)', WATER_PAPER],
@@ -118,8 +117,8 @@ const METHOD_NOTES: ReadonlyArray<{ title: string; text: string; links: [string,
   {
     title: 'Not included',
     text:
-      'Prompt tokens (EcoLogits counts only the tokens a model generates), networking, ' +
-      'storage, and training the model.',
+      'The prompt (EcoLogits counts only the tokens a model writes), networking, storage, and ' +
+      'training the model.',
     links: [],
   },
 ];
@@ -136,8 +135,8 @@ const formatRange = (r: NumberRange): string =>
 const sizeText = (m: EcoModelDetail): string => {
   if (m.architecture === 'moe') {
     return (
-      `Mixture of experts: ${formatRange(m.total_parameters_billion)} billion parameters, ` +
-      `${formatRange(m.active_parameters_billion)} billion active per token`
+      `${formatRange(m.total_parameters_billion)} billion parameters, of which ` +
+      `${formatRange(m.active_parameters_billion)} billion are used for each token`
     );
   }
   return `${formatRange(m.active_parameters_billion)} billion parameters`;
@@ -156,44 +155,63 @@ const ModelRow: React.FC<{ m: EcoModelDetail }> = ({ m }) => (
     </td>
     <td style={CELL}>
       {sizeText(m)}
-      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-        {m.size_published ? 'Published' : 'Not published: EcoLogits’ estimate'}
+      <div className="text-muted" style={SMALL_TEXT}>
+        {m.size_published ? 'Published by its maker' : 'Not published. This is EcoLogits’ estimate.'}
         {m.model_card && (
           <>
-            {' · '}
-            <ExternalLink href={m.model_card}>model card</ExternalLink>
+            {' '}
+            <ExternalLink href={m.model_card}>Model card</ExternalLink>
           </>
         )}
       </div>
     </td>
     <td style={CELL}>
       PUE {formatRange(m.pue)}
-      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-        {formatRange(m.onsite_water_l_per_kwh)} L water per kWh on site
+      <div className="text-muted" style={SMALL_TEXT}>
+        {formatRange(m.onsite_water_l_per_kwh)} litres of water per kWh to cool it
       </div>
     </td>
     <td style={CELL}>
       {m.zone}
-      <div className="text-muted" style={{ fontSize: '0.75rem' }}>
-        {m.zone_from_config ? 'Set in config.json' : 'EcoLogits’ default for this provider'}
-        {': '}
-        {formatNumber(m.grid_gwp_kgco2eq_per_kwh)} kg CO{'₂'}e and {formatNumber(m.grid_water_l_per_kwh)} L
-        water per kWh
+      <div className="text-muted" style={SMALL_TEXT}>
+        {m.zone_from_config
+          ? 'Set in config.json.'
+          : 'EcoLogits’ default for this maker, because config.json doesn’t say where it runs.'}{' '}
+        Each kWh there emits {formatNumber(m.grid_gwp_kgco2eq_per_kwh)} kg CO{'₂'}e and uses{' '}
+        {formatNumber(m.grid_water_l_per_kwh)} litres of water to generate.
       </div>
     </td>
   </tr>
 );
 
-const EcoModelTable: React.FC<{ models: EcoModelDetail[] }> = ({ models }) => (
+const modelsIntro = (count: number, assumed: boolean): React.ReactNode => {
+  if (count > 1) {
+    return (
+      <>
+        <EcoLogitsLink /> works out the footprint {count} times, as if each of these models had written the
+        same output tokens. The Energy, Emissions and Water columns show the range from the lowest of these
+        results to the highest.
+      </>
+    );
+  }
+  if (assumed) {
+    return (
+      <>
+        <EcoLogitsLink /> works out the footprint as if this model had written the same output tokens.
+      </>
+    );
+  }
+  return (
+    <>
+      <EcoLogitsLink /> works out the footprint from its own figures for this model.
+    </>
+  );
+};
+
+const EcoModelTable: React.FC<{ models: EcoModelDetail[]; assumed: boolean }> = ({ models, assumed }) => (
   <>
-    <h3 style={{ fontSize: '0.95rem', margin: '0.9rem 0 0.3rem' }}>
-      Estimated as {models.length > 1 ? `${models.length} EcoLogits models` : 'an EcoLogits model'}
-    </h3>
-    {models.length > 1 && (
-      <p style={{ margin: '0 0 0.3rem' }}>
-        Each figure is the range from the lowest of these models’ estimates to the highest.
-      </p>
-    )}
+    <h3 style={HEADING}>{models.length > 1 ? `The ${models.length} models the estimate uses` : 'The model the estimate uses'}</h3>
+    <p style={{ margin: '0 0 0.3rem' }}>{modelsIntro(models.length, assumed)}</p>
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
         <thead>
@@ -201,7 +219,7 @@ const EcoModelTable: React.FC<{ models: EcoModelDetail[] }> = ({ models }) => (
             <th style={CELL}>Model</th>
             <th style={CELL}>Size</th>
             <th style={CELL}>Data centre</th>
-            <th style={CELL}>Electricity mix</th>
+            <th style={CELL}>Where it runs</th>
           </tr>
         </thead>
         <tbody>
@@ -211,38 +229,35 @@ const EcoModelTable: React.FC<{ models: EcoModelDetail[] }> = ({ models }) => (
         </tbody>
       </table>
     </div>
+    <p className="text-muted" style={{ ...SMALL_TEXT, margin: '0.4rem 0 0' }}>
+      Parameters are the numbers a model learns; bigger models have more and use more energy for each token.
+      PUE is the electricity the whole data centre uses for each kWh its servers use: 1.1 means 10% more for
+      cooling and other overhead. The data-centre figures are EcoLogits’ figures for the model’s maker, not
+      for your cloud provider.
+    </p>
   </>
 );
 
 const AssumptionBox: React.FC<{ source: FootprintSource }> = ({ source }) => (
   <div
     className="footprint-assumption"
-    style={{ background: '#fff4e5', border: '1px solid #f0c27b', borderRadius: 6, padding: '0.6rem 0.75rem', margin: '0.75rem 0' }}
+    style={{ background: '#fff4e5', border: '1px solid #f0c27b', borderRadius: 6, padding: '0.6rem 0.75rem', margin: '0.25rem 0 0.75rem' }}
   >
-    <strong>Assumption.</strong> {source.assumption}
+    <strong>Assumption</strong>
+    <p style={{ margin: '0.25rem 0 0' }}>{source.assumption}</p>
     {source.citations.length > 0 && (
-      <ol style={{ margin: '0.4rem 0 0', paddingLeft: '1.2rem' }}>
-        {source.citations.map((c) => (
-          <li key={c.url}>
-            <ExternalLink href={c.url}>{c.label}</ExternalLink>
-          </li>
-        ))}
-      </ol>
-    )}
-  </div>
-);
-
-const LineSummary: React.FC<{ entry: BasisEntry; line: BasisLine }> = ({ entry, line }) => (
-  <p style={{ marginTop: 0 }}>
-    <strong>{line.label}:</strong> {entry.output_tokens.toLocaleString()} output tokens from {entry.model}.
-    {line.unestimatedTokens > 0 && (
       <>
-        {' '}
-        {line.unestimatedTokens.toLocaleString()} other output tokens here have no estimate: they came from
-        models with no estimate, or from before estimates began.
+        <strong style={{ display: 'block', marginTop: '0.5rem' }}>Sources</strong>
+        <ol style={{ margin: '0.2rem 0 0', paddingLeft: '1.2rem' }}>
+          {source.citations.map((c) => (
+            <li key={c.url}>
+              <ExternalLink href={c.url}>{c.label}</ExternalLink>
+            </li>
+          ))}
+        </ol>
       </>
     )}
-  </p>
+  </div>
 );
 
 const MethodNotes: React.FC = () => (
@@ -263,15 +278,13 @@ const MethodNotes: React.FC = () => (
 
 const MethodFooter: React.FC<{ method: FootprintMethod }> = ({ method }) => (
   <p className="text-muted" style={{ fontSize: '0.78rem', marginBottom: 0 }}>
-    Estimates by {method.name} {method.version}: <ExternalLink href={ECOLOGITS_SITE}>ecologits.ai</ExternalLink>
-    {' · '}
+    These estimates use <EcoLogitsLink /> version {method.version}. Paper:{' '}
     <ExternalLink href={ECOLOGITS_PAPER}>
       Rincé, S. and Banse, A. (2025). EcoLogits: Evaluating the Environmental Impacts of Generative AI. Journal
       of Open Source Software 10(111), 7471
     </ExternalLink>
-    {' · '}
-    <ExternalLink href={ECOLOGITS_CODE}>source code</ExternalLink>. See System Monitoring in the docs for how
-    Evidence Lab uses it.
+    . <ExternalLink href={ECOLOGITS_CODE}>Source code</ExternalLink>. For how Evidence Lab uses it, see System
+    Monitoring in the docs.
   </p>
 );
 
@@ -280,14 +293,12 @@ const MethodFooter: React.FC<{ method: FootprintMethod }> = ({ method }) => (
 // ---------------------------------------------------------------------------
 
 interface FootprintBasisModalProps {
-  entry: BasisEntry;
-  line: BasisLine;
   source: FootprintSource;
   method: FootprintMethod;
   onClose: () => void;
 }
 
-const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ entry, line, source, method, onClose }) => {
+const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ source, method, onClose }) => {
   const stopPropagation = useCallback((e: React.MouseEvent) => e.stopPropagation(), []);
 
   useEffect(() => {
@@ -309,7 +320,7 @@ const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ entry, line, 
       >
         <div className="modal-header">
           <h2 id="footprint-basis-title">
-            How the footprint of {source.model} is estimated
+            How we estimate the footprint of {source.model}
             {source.assumed && <span className="footprint-badge-assumed"> · Assumed</span>}
           </h2>
           <div className="modal-header-actions">
@@ -319,10 +330,11 @@ const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ entry, line, 
           </div>
         </div>
         <div className="modal-body" style={{ fontSize: '0.86rem', lineHeight: 1.5 }}>
-          <LineSummary entry={entry} line={line} />
           {source.assumed && <AssumptionBox source={source} />}
-          {source.models.length > 0 && <EcoModelTable models={source.models} />}
-          <h3 style={{ fontSize: '0.95rem', margin: '0.9rem 0 0.3rem' }}>How EcoLogits estimates a call</h3>
+          {source.models.length > 0 && <EcoModelTable models={source.models} assumed={source.assumed} />}
+          <h3 style={HEADING}>
+            How <EcoLogitsLink /> works
+          </h3>
           <MethodNotes />
           <MethodFooter method={method} />
         </div>

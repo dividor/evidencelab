@@ -62,6 +62,15 @@ class TestModelTable:
     def test_models_ecologits_covers_carry_no_assumption(self, key):
         assert FOOTPRINT_BASES[key].assumption is None
 
+    @pytest.mark.parametrize(
+        "key", ["nova-2-lite", "nova-pro", "llama-3.3-70b-instruct"]
+    )
+    def test_assumptions_say_how_the_estimate_is_made(self, key):
+        # Each names the stand-in models and says EcoLogits is run as them.
+        assumption = FOOTPRINT_BASES[key].assumption
+        assert "we run EcoLogits" in assumption
+        assert "the same output tokens" in assumption
+
 
 class TestEstimateFootprint:
     def test_covered_model_gives_positive_ranges(self, llms):
@@ -94,7 +103,7 @@ class TestEstimateFootprint:
         ],
     )
     def test_nova_spans_the_models_of_its_size_class(self, llms, key, members):
-        # Amazon publishes no size for Nova, so its range covers its class.
+        # Amazon doesn't publish Nova's size, so it is run as each chosen model.
         nova = estimate_footprint(key, 1000)
         estimates = [estimate_footprint(m, 1000) for m in members]
         for measure in ("energy_kwh", "gwp_kgco2eq", "water_l"):

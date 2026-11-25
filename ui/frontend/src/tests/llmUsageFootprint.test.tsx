@@ -21,7 +21,7 @@ const NOVA = 'nova-2-lite';
 const CLAUDE_HAIKU = 'claude-haiku-4-5';
 const ECO_HAIKU = `anthropic/${CLAUDE_HAIKU}`;
 const NOVA_ASSUMPTION =
-  'Amazon publishes no size for Nova 2 Lite. Its range spans the small models EcoLogits covers.';
+  "Amazon doesn't publish how big Nova 2 Lite is. For each call, we run EcoLogits as each of two small models.";
 const HAIKU_BASIS = {
   model: HAIKU,
   ecologits_models: [ECO_HAIKU],
@@ -233,25 +233,30 @@ describe('Basis pop-up', () => {
 
   test('an assumed model shows its assumption, citations and the models it spans', async () => {
     const dialog = await openBadge(NOVA, PRIYA);
-    expect(within(dialog).getByText(/How the footprint of nova-2-lite is estimated/)).toBeInTheDocument();
-    expect(dialog.textContent).toContain(`${PRIYA}, week of 2026-11-23: 200 output tokens from nova-2-lite.`);
+    expect(within(dialog).getByText(/How we estimate the footprint of nova-2-lite/)).toBeInTheDocument();
     expect(dialog.textContent).toContain(NOVA_ASSUMPTION);
     const paper = within(dialog).getByRole('link', { name: 'Llopis-Garcia, G. (2026)' });
     expect(paper).toHaveAttribute('href', SAEF_PAPER_URL);
     expect(paper).toHaveAttribute('target', '_blank');
-    expect(dialog.textContent).toContain('Estimated as 2 EcoLogits models');
+    expect(dialog.textContent).toContain('The 2 models the estimate uses');
+    expect(dialog.textContent).toContain(
+      'EcoLogits works out the footprint 2 times, as if each of these models had written the same output tokens.',
+    );
     expect(dialog.textContent).toContain(ECO_HAIKU);
     expect(dialog.textContent).toContain('10–35 billion parameters');
-    expect(dialog.textContent).toContain('Mixture of experts: 440 billion parameters, 44–132 billion active per token');
-    expect(dialog.textContent).toContain('Not published: EcoLogits’ estimate');
-    expect(dialog.textContent).toContain('Set in config.json: 0.384 kg CO₂e and 3.13 L');
+    expect(dialog.textContent).toContain('440 billion parameters, of which 44–132 billion are used for each token');
+    expect(dialog.textContent).toContain('Not published. This is EcoLogits’ estimate.');
+    expect(dialog.textContent).toContain(
+      'Set in config.json. Each kWh there emits 0.384 kg CO₂e and uses 3.13 litres of water to generate.',
+    );
   });
 
   test('a covered model has no assumption and shows its own figures', async () => {
     const dialog = await openBadge(HAIKU, PRIYA);
     expect(dialog.querySelector('.footprint-assumption')).toBeNull();
-    expect(dialog.textContent).toContain('Estimated as an EcoLogits model');
-    expect(dialog.textContent).toContain('EcoLogits’ default for this provider');
+    expect(dialog.textContent).toContain('The model the estimate uses');
+    expect(dialog.textContent).toContain('EcoLogits works out the footprint from its own figures for this model.');
+    expect(dialog.textContent).toContain('EcoLogits’ default for this maker');
   });
 
   test('links to EcoLogits, its method and its paper, with the version used', async () => {
@@ -268,16 +273,18 @@ describe('Basis pop-up', () => {
         'https://github.com/mlco2/ecologits',
       ]),
     );
-    expect(dialog.textContent).toContain('Estimates by EcoLogits 0.11.3');
+    expect(dialog.textContent).toContain('These estimates use EcoLogits version 0.11.3.');
+    // Every mention of EcoLogits in the pop-up's own text links to its site.
+    const ecologits = within(dialog).getAllByRole('link', { name: 'EcoLogits' });
+    expect(ecologits.length).toBeGreaterThan(1);
+    ecologits.forEach((a) => expect(a).toHaveAttribute('href', 'https://ecologits.ai/latest/'));
   });
 
-  test('a totals badge describes all lines and their unestimated tokens', async () => {
+  test('a totals badge opens the same pop-up', async () => {
     render(<LlmUsageManager />);
     const total = (await screen.findByText('Total')).closest('tr') as HTMLElement;
-    fireEvent.click(within(total).getByRole('button', { name: /haiku-4.5/ }));
-    const dialog = screen.getByRole('dialog');
-    expect(dialog.textContent).toContain('All lines shown: 300 output tokens from haiku-4.5.');
-    expect(dialog.textContent).toContain('300 other output tokens here have no estimate');
+    fireEvent.click(within(total).getByRole('button', { name: (name: string) => name.startsWith(HAIKU) }));
+    expect(within(screen.getByRole('dialog')).getByText(/How we estimate the footprint of haiku-4.5/)).toBeInTheDocument();
   });
 
   test('closes with the close button and with Escape', async () => {

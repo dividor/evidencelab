@@ -174,33 +174,40 @@ model a row's figures rest on. A badge marked **Assumed** (amber) means
 EcoLogits doesn't cover that model itself, so its figures rest on other
 models', and the note under the table says how for each one.
 
-**Click a badge** to see how that model's figures are worked out:
+**Click a badge** to see how that model's figures are worked out. The pop-up
+shows:
 
-- how many output tokens on that line came from the model, and how many of the
-  line's other output tokens have no estimate;
-- the assumption, if one was made, with links to its sources;
-- each EcoLogits model the figures rest on, with its size (and whether that
-  size is published or is EcoLogits' own estimate), the data-centre efficiency
-  EcoLogits assumes for its maker, and the electricity mix used;
-- how EcoLogits estimates a call, with links to its method, its paper and its
-  code, and the EcoLogits version used.
+- the assumption, if one was made, and links to its sources;
+- the models the estimate uses. For each one it gives the model's size, and
+  says whether its maker published that size or EcoLogits estimated it. It
+  also gives the data-centre figures EcoLogits uses for the model's maker, and
+  the electricity where the model runs;
+- how EcoLogits works, with links to its website, its method, its paper and
+  its code, and the EcoLogits version used.
 
 The assumptions are:
 
-- **Amazon Nova 2 Lite and Nova Pro.** Amazon publishes no size for Nova. The
-  SAEF dataset puts Nova Lite in its small class (A) and Nova Pro in its
-  mid-size class (B), going by how Amazon describes the models rather than by
-  their size (G. Llopis-Garcia, *Sustainable Production and Consumption* 70
-  (2026) 320–347, [doi:10.1016/j.spc.2026.11.003](https://doi.org/10.1016/j.spc.2026.11.003)).
-  Nova 2 Lite gets the range spanning four class A models that EcoLogits
-  covers: Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash.
-  Nova Pro gets the range spanning two class B models: Llama 3.1 70B and
-  Sonnet 4.6. EcoLogits covers many more models in both classes, so these are
-  a choice, not the whole class. In class B especially, some models EcoLogits
-  covers, such as Gemini 2.5 Pro, have far higher estimates.
-- **Llama 3.3 70B** is estimated as Llama 3.1 70B, which has the same design
-  and exactly the same number of parameters, the figure EcoLogits estimates
-  from.
+- **Amazon Nova 2 Lite and Nova Pro.** Amazon doesn't publish how big Nova is,
+  and EcoLogits has no figures for it, so we estimate it from similar models.
+  SAEF, a published dataset of AI emission factors, puts Nova Lite in its
+  small-model class and Nova Pro in its mid-size class, going by how Amazon
+  describes the models (G. Llopis-Garcia, *Sustainable Production and
+  Consumption* 70 (2026) 320–347,
+  [doi:10.1016/j.spc.2026.11.003](https://doi.org/10.1016/j.spc.2026.11.003)).
+  For each Nova call, we run EcoLogits several times, as if each of a few
+  models from the same class had written the same output tokens. The figure
+  shown runs from the lowest of those results to the highest.
+  - Nova 2 Lite uses four small models: Haiku 4.5, GPT-4.1 mini, Gemini 2.5
+    Flash and Gemini 3.8 Flash.
+  - Nova Pro uses two mid-size models: Llama 3.1 70B and Sonnet 4.6.
+
+  EcoLogits covers many more models in both classes, so these are a choice,
+  not the whole class. Some mid-size models it covers, such as Gemini 2.5 Pro,
+  have much higher estimates.
+- **Llama 3.3 70B.** EcoLogits has no figures for it, so we run EcoLogits as if
+  Llama 3.1 70B had written the same output tokens. The two models have the
+  same design and exactly the same number of parameters, which is mainly what
+  EcoLogits' estimate depends on.
 
 **What is not counted.**
 

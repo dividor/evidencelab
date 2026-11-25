@@ -2,12 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { SortableHeader } from '../documents/SortableHeader';
-import FootprintBasisModal, {
-  BasisEntry,
-  BasisLine,
-  FootprintMethod,
-  FootprintSource,
-} from './FootprintBasisModal';
+import FootprintBasisModal, { BasisEntry, FootprintMethod, FootprintSource } from './FootprintBasisModal';
 
 // ---------------------------------------------------------------------------
 // Types — match the /llm-usage/summary response shape from the backend.
@@ -80,17 +75,6 @@ const ACTIVITY_TYPES: ReadonlyArray<{ value: string; label: string }> = [
 ];
 
 const NULL_CELL = '—';
-// How the Basis pop-up names a table line's time bucket.
-const bucketLineLabel = (b: Bucket): string => {
-  switch (b) {
-    case 'day':
-      return 'on';
-    case 'month':
-      return 'month of';
-    case 'week':
-      return 'week of';
-  }
-};
 const BORDER_LIGHT = '1px solid #ccc';
 
 // ---------------------------------------------------------------------------
@@ -132,13 +116,10 @@ const NUMBER_CELL: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-type ShowBasis = (entry: BasisEntry, line: BasisLine) => void;
+// Opens the Basis pop-up for one model.
+type ShowBasis = (model: string) => void;
 
-const FootprintCells: React.FC<{ fields: FootprintFields; lineLabel: string; onShowBasis: ShowBasis }> = ({
-  fields,
-  lineLabel,
-  onShowBasis,
-}) => (
+const FootprintCells: React.FC<{ fields: FootprintFields; onShowBasis: ShowBasis }> = ({ fields, onShowBasis }) => (
   <>
     {FOOTPRINT_COLUMNS.map(({ measure }) => (
       <td key={measure} style={NUMBER_CELL}>
@@ -146,11 +127,7 @@ const FootprintCells: React.FC<{ fields: FootprintFields; lineLabel: string; onS
       </td>
     ))}
     <td style={{ fontSize: '0.78rem' }}>
-      <BasisBadges
-        basis={fields.footprint_basis}
-        line={{ label: lineLabel, unestimatedTokens: fields.footprint_unestimated_tokens }}
-        onShowBasis={onShowBasis}
-      />
+      <BasisBadges basis={fields.footprint_basis} onShowBasis={onShowBasis} />
     </td>
   </>
 );
@@ -178,11 +155,7 @@ const ASSUMED_BADGE: React.CSSProperties = {
 
 // One badge per estimated model; amber with "Assumed" where the estimate rests
 // on other models' figures. Click for the pop-up with its sources and method.
-const BasisBadges: React.FC<{ basis: BasisEntry[]; line: BasisLine; onShowBasis: ShowBasis }> = ({
-  basis,
-  line,
-  onShowBasis,
-}) => {
+const BasisBadges: React.FC<{ basis: BasisEntry[]; onShowBasis: ShowBasis }> = ({ basis, onShowBasis }) => {
   if (basis.length === 0) return <>{NULL_CELL}</>;
   return (
     <>
@@ -193,7 +166,7 @@ const BasisBadges: React.FC<{ basis: BasisEntry[]; line: BasisLine; onShowBasis:
           className={b.assumed ? 'footprint-badge footprint-badge-assumed' : 'footprint-badge'}
           style={b.assumed ? ASSUMED_BADGE : BADGE}
           title={`How ${b.model}'s figures are estimated`}
-          onClick={() => onShowBasis(b, line)}
+          onClick={() => onShowBasis(b.model)}
         >
           {b.model}
           {b.assumed && <strong> · Assumed</strong>}
@@ -367,9 +340,9 @@ const LlmUsageManager: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('bucket_start');
   const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [exporting, setExporting] = useState(false);
-  const [shownBasis, setShownBasis] = useState<{ entry: BasisEntry; line: BasisLine } | null>(null);
-  const showBasis = useCallback<ShowBasis>((entry, line) => setShownBasis({ entry, line }), []);
-  const hideBasis = useCallback(() => setShownBasis(null), []);
+  const [shownModel, setShownModel] = useState<string | null>(null);
+  const showBasis = useCallback<ShowBasis>((model) => setShownModel(model), []);
+  const hideBasis = useCallback(() => setShownModel(null), []);
 
   const queryParams = useMemo(() => {
     const params: Record<string, string> = {
@@ -431,7 +404,7 @@ const LlmUsageManager: React.FC = () => {
   };
 
   const rows = data?.rows ?? [];
-  const shownSource = shownBasis && data?.footprint_sources.find((src) => src.model === shownBasis.entry.model);
+  const shownSource = shownModel ? data?.footprint_sources.find((src) => src.model === shownModel) : undefined;
   const totals = data?.totals;
   const groupColLabel = groupBy === 'user' ? 'User' : 'Group';
 
@@ -535,11 +508,7 @@ const LlmUsageManager: React.FC = () => {
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                       {formatCost(r.cost_usd)}
                     </td>
-                    <FootprintCells
-                      fields={r}
-                      lineLabel={`${r.group_label}, ${bucketLineLabel(bucket)} ${r.bucket_start}`}
-                      onShowBasis={showBasis}
-                    />
+                    <FootprintCells fields={r} onShowBasis={showBasis} />
                   </tr>
                 ))
               )}
@@ -564,7 +533,7 @@ const LlmUsageManager: React.FC = () => {
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                     {formatCost(totals.cost_usd)}
                   </td>
-                  <FootprintCells fields={totals} lineLabel="All lines shown" onShowBasis={showBasis} />
+                  <FootprintCells fields={totals} onShowBasis={showBasis} />
                 </tr>
               </tfoot>
             )}
@@ -572,14 +541,8 @@ const LlmUsageManager: React.FC = () => {
           {totals && rows.length > 0 && <FootprintNote totals={totals} />}
         </div>
       )}
-      {shownBasis && shownSource && data && (
-        <FootprintBasisModal
-          entry={shownBasis.entry}
-          line={shownBasis.line}
-          source={shownSource}
-          method={data.footprint_method}
-          onClose={hideBasis}
-        />
+      {shownSource && data && (
+        <FootprintBasisModal source={shownSource} method={data.footprint_method} onClose={hideBasis} />
       )}
     </div>
   );

@@ -79,8 +79,8 @@ _SAEF_CITATIONS: Tuple[Citation, ...] = (
         "https://doi.org/10.1016/j.spc.2026.11.003",
     ),
     (
-        "SAEF dataset, whose model-to-class table puts Nova Lite in class A "
-        "and Nova Pro in class B",
+        "SAEF dataset. Its table of models puts Nova Lite in the small class "
+        "(A) and Nova Pro in the mid-size class (B)",
         "https://doi.org/10.5281/zenodo.20443585",
     ),
     (
@@ -134,28 +134,38 @@ FOOTPRINT_BASES: Mapping[str, Basis] = {
     # count (70,553,706,496, Hugging Face API, 2026-11-25) as Llama 3.1 70B.
     "llama-3.3-70b-instruct": Basis(
         (_LLAMA_31_70B,),
-        "EcoLogits has no Llama 3.3 70B. Estimated as Llama 3.1 70B, which has "
-        "the same architecture and exactly the same number of parameters.",
+        "EcoLogits has no figures for Llama 3.3 70B. For each call, we run "
+        "EcoLogits as if Llama 3.1 70B had written the same output tokens. The "
+        "two models have the same design and exactly the same number of "
+        "parameters, which is mainly what EcoLogits' estimate depends on.",
         _LLAMA_70B_CITATIONS,
     ),
     # Amazon Bedrock: Amazon publishes no size for Nova.
     "nova-2-lite": Basis(
         _SMALL_CLASS,
-        "Amazon publishes no size for Nova 2 Lite. SAEF puts Nova Lite in its "
-        "small class (A), from how Amazon describes the model, not from its "
-        "size. Its range spans four class A models that EcoLogits covers: "
-        "Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash. "
-        "EcoLogits covers many more class A models; these four were chosen.",
+        "Amazon doesn't publish how big Nova 2 Lite is, and EcoLogits has no "
+        "figures for it, so we estimate it from similar models. SAEF, a "
+        "published dataset of AI emission factors, puts Nova Lite in its "
+        "small-model class, going by how Amazon describes the model. For each "
+        "Nova 2 Lite call, we run EcoLogits four times, as if each of four "
+        "small models it covers had written the same output tokens: Haiku 4.5, "
+        "GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash. The range shown "
+        "runs from the lowest of the four results to the highest. EcoLogits "
+        "covers many more small models. We chose these four.",
         _SAEF_CITATIONS,
     ),
     "nova-pro": Basis(
         _MID_CLASS,
-        "Amazon publishes no size for Nova Pro. SAEF puts Nova Pro in its mid "
-        "class (B), from how Amazon describes the model, not from its size. "
-        "Its range spans two class B models that EcoLogits covers: Llama 3.1 "
-        "70B and Sonnet 4.6. EcoLogits covers many more class B models, some "
-        "with far higher estimates, such as Gemini 2.5 Pro; these two were "
-        "chosen.",
+        "Amazon doesn't publish how big Nova Pro is, and EcoLogits has no "
+        "figures for it, so we estimate it from similar models. SAEF, a "
+        "published dataset of AI emission factors, puts Nova Pro in its "
+        "mid-size class, going by how Amazon describes the model. For each "
+        "Nova Pro call, we run EcoLogits twice, as if each of two mid-size "
+        "models it covers had written the same output tokens: Llama 3.1 70B "
+        "and Sonnet 4.6. The range shown runs from the lower of the two "
+        "results to the higher. EcoLogits covers many more mid-size models, "
+        "and some, such as Gemini 2.5 Pro, have much higher estimates. We "
+        "chose these two.",
         _SAEF_CITATIONS,
     ),
 }

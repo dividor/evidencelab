@@ -474,7 +474,7 @@ class TestFootprintBasis:
         ]
         nova, haiku = basis
         assert nova["assumed"] is True
-        assert "Amazon publishes no size for Nova 2 Lite" in nova["assumption"]
+        assert "Amazon doesn't publish how big Nova 2 Lite is" in nova["assumption"]
         assert "anthropic/claude-haiku-4-5" in nova["ecologits_models"]
         assert haiku["assumed"] is False
         assert haiku["assumption"] is None
@@ -504,7 +504,7 @@ class TestFootprintBasis:
         )["footprint_basis"]
         text = _basis_text(basis)
         assert text.startswith(
-            "nova-2-lite: 30 output tokens, assumed (Amazon publishes"
+            "nova-2-lite: 30 output tokens, assumed (Amazon doesn't publish"
         )
         assert (
             "haiku-4.5: 10 output tokens, EcoLogits: anthropic/claude-haiku-4-5" in text
