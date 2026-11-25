@@ -485,6 +485,8 @@ extra_environment = {
 }
 ```
 
+With it set, the api and mcp containers refuse to start while config.json uses a model that has no price in `ui/backend/utils/llm_costs.py`; the error names the models.
+
 With `alert_emails` set as well, the template watches the api and mcp logs for the line the limit writes when it is reached (`AI daily limit reached`) and emails the addresses once. The Bedrock alarms above are the ones that also cover pipeline runs, which the daily limit doesn't count.
 
 #### Confirming the alert emails
