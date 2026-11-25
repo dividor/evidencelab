@@ -5884,16 +5884,23 @@ li.ai-fact-active::before {
 }
 
 .result-snippet-reference .reference-number {
-  font-size: 0.75em;
+  /* A superscript, but never under 12 px. */
+  font-size: max(0.75em, 12px);
   vertical-align: super;
   font-weight: 600;
   font-style: normal;
   margin-right: 0.2em;
 }
 
+/* Citation and footnote numbers are superscripts, but never under 12 px
+   (a bare <sup> is the browser's "smaller", 10.8 px in result text). */
+sup.reference-number {
+  font-size: max(0.75em, 12px);
+}
+
 /* Inline reference numbers within text (e.g., ". 112 ") */
 .inline-reference-number {
-  font-size: 0.75em;
+  font-size: max(0.75em, 12px);
   vertical-align: super;
   font-weight: 600;
   margin: 0 0.1em;

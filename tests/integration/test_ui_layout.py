@@ -213,13 +213,28 @@ COVERED_JS = """
 """
 
 
-# Resolves once every finite CSS animation and transition has finished, so the
-# page is measured as people see it, not half-way through a fade-in. Spinners
-# and other endless animations are left running.
+# True once no finite CSS animation or transition has run for half a second,
+# so the page is measured as people see it: not half-way through a fade-in, nor
+# through a button's change of colour when it turns on after data has loaded.
+# Spinners and other endless animations are left running. False if the page is
+# still animating after 10 seconds.
 SETTLED_JS = """
-Promise.all(document.getAnimations()
-  .filter((a) => a.effect && a.effect.getComputedTiming().iterations !== Infinity)
-  .map((a) => a.finished.catch(() => null))).then(() => true)
+async () => {
+  const running = () => document.getAnimations().filter((a) => a.effect
+    && a.effect.getComputedTiming().iterations !== Infinity && a.playState !== 'finished');
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const deadline = Date.now() + 10000;
+  while (Date.now() < deadline) {
+    const now = running();
+    if (now.length) {
+      await Promise.all(now.map((a) => a.finished.catch(() => null)));
+      continue;
+    }
+    await pause(500);
+    if (!running().length) return true;
+  }
+  return false;
+}
 """
 
 
@@ -238,12 +253,17 @@ def open_screen(browser: Browser, size: str, path: str) -> Any:
     page.goto(UI_BASE_URL + path, wait_until="networkidle", timeout=60000)
     page.wait_for_selector(".nav-tabs", state="attached", timeout=30000)
     page.evaluate("document.fonts.ready.then(() => true)")
-    page.evaluate(SETTLED_JS)
     return page
+
+
+def settle(page: Any) -> None:
+    """Wait until PAGE has stopped animating; fail if it never does."""
+    assert page.evaluate(SETTLED_JS), "the page was still animating after 10 seconds"
 
 
 def layout_problems(page: Any) -> list[str]:
     """Every measured problem on PAGE, one line each."""
+    settle(page)
     measured = page.evaluate(MEASURE_JS, [MIN_TEXT_PX, MIN_TARGET_PX])
     problems = []
     if measured["pageWidth"] > measured["width"] + 1:
@@ -277,16 +297,30 @@ def layout_problems(page: Any) -> list[str]:
         for c in page.evaluate(COVERED_JS)
     ]
     page.evaluate("window.scrollTo(0, 0)")
-    for violation in Axe().run(page).response["violations"]:
-        if violation["impact"] in FAILING_IMPACTS:
-            where = ", ".join(
-                " ".join(node["target"]) for node in violation["nodes"][:4]
-            )
-            problems.append(
-                f"axe {violation['impact']} {violation['id']}: {violation['help']} "
-                f"({len(violation['nodes'])} elements, e.g. {where})"
-            )
+    problems += [
+        axe_problem(violation)
+        for violation in Axe().run(page).response["violations"]
+        if violation["impact"] in FAILING_IMPACTS
+    ]
     return problems
+
+
+def axe_problem(violation: dict[str, Any]) -> str:
+    """One line for an axe-core VIOLATION, with the colours for a contrast failure."""
+    examples = []
+    for node in violation["nodes"][:4]:
+        where = " ".join(node["target"])
+        data = (node.get("any") or [{}])[0].get("data") or {}
+        if violation["id"] == "color-contrast" and isinstance(data, dict):
+            where += (
+                f" ({data.get('fgColor')} on {data.get('bgColor')}, "
+                f"{data.get('contrastRatio')}:1, needs {data.get('expectedContrastRatio')})"
+            )
+        examples.append(where)
+    return (
+        f"axe {violation['impact']} {violation['id']}: {violation['help']} "
+        f"({len(violation['nodes'])} elements, e.g. {'; '.join(examples)})"
+    )
 
 
 @pytest.mark.parametrize("size", list(VIEWPORTS))
