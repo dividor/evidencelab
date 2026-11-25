@@ -11134,6 +11134,39 @@ a.admin-citation-clickable:hover {
   text-decoration: underline;
 }
 
+/* A citation with no source ([?n] from the API): a red pill where a normal
+   citation's number would be. */
+.citation-unmatched {
+  display: inline-block;
+  vertical-align: super;
+  margin: 0 1px;
+  padding: 1px 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 999px;
+  cursor: help;
+  scroll-margin: 96px;
+}
+
+.citation-unmatched-flash {
+  animation: citationUnmatchedFlash 1.6s ease-out;
+}
+
+@keyframes citationUnmatchedFlash {
+  0%,
+  45% {
+    background: #fecaca;
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
 /* Footer row: references (left) + rating stars (right) */
 .chat-message-footer {
   display: flex;
