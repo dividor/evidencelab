@@ -19,6 +19,7 @@ from jinja2 import Environment, FileSystemLoader
 from langchain_core.tools import tool
 
 from pipeline.utilities.text_cleaning import clean_text
+from ui.backend.services.agent_passages import passage_for_agent
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
@@ -483,7 +484,9 @@ def _build_search_tool(tracker: SearchTracker):
         for r in results:
             idx = r.get("global_index", "?")
             title = r.get("title", "Untitled")
-            text = r.get("text", "")
+            # The agent's copy only: numbers printed in a passage (paragraph
+            # numbers, footnotes) were cited as if they were result numbers.
+            text = passage_for_agent(r.get("text", ""))
             lines.append(f"[{idx}] {title}\n{text}\n---")
 
         return f"Found {len(results)} results:\n\n" + "\n".join(lines)
