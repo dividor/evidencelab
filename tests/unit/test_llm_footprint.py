@@ -15,6 +15,7 @@ from ecologits.model_repository import models as ecologits_models
 from pipeline.db import config as db_config
 from ui.backend.utils import llm_footprint
 from ui.backend.utils.llm_footprint import (
+    EXAMPLE_OUTPUT_TOKENS,
     FOOTPRINT_BASES,
     FOOTPRINT_ROW_COLUMNS,
     Basis,
@@ -241,6 +242,34 @@ class TestDescribeSources:
         assert source["models"] == []
         assert source["citations"] == []
         assert source["assumed"] is True
+        assert source["example_estimate"] is None
+
+    @pytest.mark.parametrize("key", ["nova-2-lite", "nova-pro"])
+    def test_example_call_records_the_lowest_low_and_highest_high(self, llms, key):
+        source = describe_sources(key)
+        recorded = estimate_footprint(key, EXAMPLE_OUTPUT_TOKENS)
+        assert source["example_output_tokens"] == EXAMPLE_OUTPUT_TOKENS
+        for measure, (low, high) in (
+            ("energy_kwh", recorded.energy_kwh),
+            ("gwp_kgco2eq", recorded.gwp_kgco2eq),
+            ("water_l", recorded.water_l),
+        ):
+            per_model = [m["example_estimate"][measure] for m in source["models"]]
+            assert source["example_estimate"][measure] == {"min": low, "max": high}
+            assert low == min(r["min"] for r in per_model)
+            assert high == max(r["max"] for r in per_model)
+
+    def test_example_call_for_one_model_is_that_models_estimate(self, llms):
+        source = describe_sources("haiku-4.5")
+        (haiku,) = source["models"]
+        assert haiku["example_estimate"] == source["example_estimate"]
+
+    def test_example_call_uses_the_configured_zone(self, llms):
+        usa = describe_sources("haiku-4.5")["example_estimate"]["gwp_kgco2eq"]
+        llms({"haiku-4.5": {"electricity_mix_zone": "SWE"}})
+        swe = describe_sources("haiku-4.5")["example_estimate"]["gwp_kgco2eq"]
+        # Sweden's electricity emits about a tenth of the USA's per kWh.
+        assert swe["max"] < usa["max"]
 
     def test_method_names_the_installed_ecologits(self):
         assert footprint_method() == {

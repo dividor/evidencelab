@@ -314,12 +314,32 @@ def _parameters(architecture: Any) -> Tuple[Dict[str, float], Dict[str, float]]:
     return _range_dict(parameters), _range_dict(parameters)
 
 
-def _describe_ecologits_model(model: EcoModel, zone: Optional[str]) -> Dict[str, Any]:
+# The example call the admin screen's pop-up works the calculation through.
+# Estimates grow almost, not exactly, in proportion to output tokens, so the
+# pop-up shows one call of this size rather than a rate per token.
+EXAMPLE_OUTPUT_TOKENS = 1000
+
+
+def _footprint_dict(footprint: Footprint) -> Dict[str, Dict[str, float]]:
+    return {
+        measure: {"min": low, "max": high}
+        for measure, (low, high) in (
+            ("energy_kwh", footprint.energy_kwh),
+            ("gwp_kgco2eq", footprint.gwp_kgco2eq),
+            ("water_l", footprint.water_l),
+        )
+    }
+
+
+def _describe_ecologits_model(
+    model: EcoModel, zone: Optional[str], model_key: str
+) -> Dict[str, Any]:
     """The figures EcoLogits used for ``model``, for the admin screen.
 
     Its size and whether that size is published, the data-centre settings
-    EcoLogits assumes for the provider, and the electricity mix of the zone
-    the estimate used: config.json's zone, else the provider's default.
+    EcoLogits assumes for the provider, the electricity mix of the zone the
+    estimate used (config.json's zone, else the provider's default), and its
+    estimate for the example call.
     """
     from ecologits.electricity_mix_repository import electricity_mixes
     from ecologits.model_repository import models
@@ -335,6 +355,9 @@ def _describe_ecologits_model(model: EcoModel, zone: Optional[str]) -> Dict[str,
     if mix is None:
         raise ValueError(f"EcoLogits has no electricity mix for zone {used_zone!r}")
     active, total = _parameters(found.architecture)
+    example = _ecologits_estimate(model, EXAMPLE_OUTPUT_TOKENS, zone, model_key)
+    if example is None:
+        raise ValueError(f"EcoLogits gave no estimate for {provider}/{name}")
     return {
         "provider": provider,
         "model": name,
@@ -356,23 +379,37 @@ def _describe_ecologits_model(model: EcoModel, zone: Optional[str]) -> Dict[str,
         "zone_from_config": zone is not None,
         "grid_gwp_kgco2eq_per_kwh": mix.gwp,
         "grid_water_l_per_kwh": mix.wue,
+        "example_estimate": _footprint_dict(example),
     }
 
 
 def describe_sources(model_key: str) -> Dict[str, Any]:
     """Everything behind ``model_key``'s figures, for the admin screen's pop-up.
 
-    The assumption and its citations, and for each EcoLogits model the
-    estimate rests on, the figures EcoLogits used.
+    The assumption and its citations; for each EcoLogits model the estimate
+    rests on, the figures EcoLogits used and its estimate for an example call
+    of ``EXAMPLE_OUTPUT_TOKENS`` output tokens; and the estimate recorded for
+    that call, which spans the models' estimates.
     """
     basis = basis_for(model_key)
     if basis is None:
-        return {**describe_basis(model_key), "citations": [], "models": []}
+        return {
+            **describe_basis(model_key),
+            "citations": [],
+            "models": [],
+            "example_output_tokens": EXAMPLE_OUTPUT_TOKENS,
+            "example_estimate": None,
+        }
     zone = electricity_mix_zone(model_key)
+    example = estimate_footprint(model_key, EXAMPLE_OUTPUT_TOKENS)
+    if example is None:
+        raise ValueError(f"No footprint estimate for {model_key}")
     return {
         **describe_basis(model_key),
         "citations": [{"label": label, "url": url} for label, url in basis.citations],
-        "models": [_describe_ecologits_model(m, zone) for m in basis.models],
+        "models": [_describe_ecologits_model(m, zone, model_key) for m in basis.models],
+        "example_output_tokens": EXAMPLE_OUTPUT_TOKENS,
+        "example_estimate": _footprint_dict(example),
     }
 
 

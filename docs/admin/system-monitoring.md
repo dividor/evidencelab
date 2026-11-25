@@ -182,6 +182,11 @@ shows:
   says whether its maker published that size or EcoLogits estimated it. It
   also gives the data-centre figures EcoLogits uses for the model's maker, and
   the electricity where the model runs;
+- the calculation for an example call that writes 1,000 output tokens: each
+  model's result, then the range recorded, which runs from the lowest of their
+  low figures to the highest of their high figures. Every call is worked out
+  this way with its own number of output tokens, and each line of the table
+  adds up its calls;
 - how EcoLogits works, with links to its website, its method, its paper and
   its code, and the EcoLogits version used.
 

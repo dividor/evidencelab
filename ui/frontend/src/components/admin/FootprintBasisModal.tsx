@@ -18,6 +18,13 @@ interface NumberRange {
   max: number;
 }
 
+// An estimate in kWh, kg CO2e and litres, each as a range.
+interface EstimateRanges {
+  energy_kwh: NumberRange;
+  gwp_kgco2eq: NumberRange;
+  water_l: NumberRange;
+}
+
 // The figures EcoLogits used for one of its models.
 export interface EcoModelDetail {
   provider: string;
@@ -33,6 +40,8 @@ export interface EcoModelDetail {
   zone_from_config: boolean;
   grid_gwp_kgco2eq_per_kwh: number;
   grid_water_l_per_kwh: number;
+  // This model's estimate for the example call.
+  example_estimate: EstimateRanges;
 }
 
 // Everything behind one model's figures.
@@ -42,6 +51,9 @@ export interface FootprintSource {
   assumption: string | null;
   citations: { label: string; url: string }[];
   models: EcoModelDetail[];
+  // The example call the pop-up works through, and the estimate recorded for it.
+  example_output_tokens: number;
+  example_estimate: EstimateRanges | null;
 }
 
 export interface FootprintMethod {
@@ -189,8 +201,7 @@ const modelsIntro = (count: number, assumed: boolean): React.ReactNode => {
     return (
       <>
         <EcoLogitsLink /> works out the footprint {count} times, as if each of these models had written the
-        same output tokens. The Energy, Emissions and Water columns show the range from the lowest of these
-        results to the highest.
+        same output tokens. The calculation below shows how the results are combined.
       </>
     );
   }
@@ -235,6 +246,75 @@ const EcoModelTable: React.FC<{ models: EcoModelDetail[]; assumed: boolean }> = 
       cooling and other overhead. The data-centre figures are EcoLogits’ figures for the model’s maker, not
       for your cloud provider.
     </p>
+  </>
+);
+
+// The main table's units: Wh, g and mL, from the API's kWh, kg and litres.
+const ESTIMATE_COLUMNS: ReadonlyArray<{ label: string; pick: (e: EstimateRanges) => NumberRange }> = [
+  { label: 'Energy (Wh)', pick: (e) => e.energy_kwh },
+  { label: 'Emissions (g CO\u2082e)', pick: (e) => e.gwp_kgco2eq },
+  { label: 'Water (mL)', pick: (e) => e.water_l },
+];
+
+const formatEstimate = (n: number): string => (n * 1000).toLocaleString(undefined, { maximumSignificantDigits: 2 });
+
+const EstimateCells: React.FC<{ estimate: EstimateRanges }> = ({ estimate }) => (
+  <>
+    {ESTIMATE_COLUMNS.map(({ label, pick }) => {
+      const r = pick(estimate);
+      return (
+        <td key={label} style={{ ...CELL, textAlign: 'right', whiteSpace: 'nowrap' }}>
+          {formatEstimate(r.min)}–{formatEstimate(r.max)}
+        </td>
+      );
+    })}
+  </>
+);
+
+const calculationIntro = (count: number): string =>
+  count > 1
+    ? 'EcoLogits gives a range for each model, because their sizes and data centres are ranges. ' +
+      'We record the lowest of the low figures and the highest of the high figures.'
+    : 'EcoLogits gives a range, because the model’s size and data centre are ranges. We record that range.';
+
+const Calculation: React.FC<{ source: FootprintSource; recorded: EstimateRanges }> = ({ source, recorded }) => (
+  <>
+    <h3 style={HEADING}>
+      The calculation, for a call that writes {source.example_output_tokens.toLocaleString()} output tokens
+    </h3>
+    <p style={{ margin: '0 0 0.3rem' }}>
+      {calculationIntro(source.models.length)} Every call is worked out this way with its own number of output
+      tokens, and each line of the table adds up its calls.
+    </p>
+    <div style={{ overflowX: 'auto' }}>
+      <table className="footprint-calculation" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+        <thead>
+          <tr style={{ textAlign: 'left' }}>
+            <th style={CELL}>Model</th>
+            {ESTIMATE_COLUMNS.map(({ label }) => (
+              <th key={label} style={{ ...CELL, textAlign: 'right' }}>
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {source.models.length > 1 &&
+            source.models.map((m) => (
+              <tr key={`${m.provider}/${m.model}`}>
+                <td style={CELL}>
+                  <code>{`${m.provider}/${m.model}`}</code>
+                </td>
+                <EstimateCells estimate={m.example_estimate} />
+              </tr>
+            ))}
+          <tr style={{ fontWeight: 600, background: '#f8f9fa' }}>
+            <td style={CELL}>Recorded for {source.model}</td>
+            <EstimateCells estimate={recorded} />
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </>
 );
 
@@ -332,6 +412,7 @@ const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ source, metho
         <div className="modal-body" style={{ fontSize: '0.86rem', lineHeight: 1.5 }}>
           {source.assumed && <AssumptionBox source={source} />}
           {source.models.length > 0 && <EcoModelTable models={source.models} assumed={source.assumed} />}
+          {source.example_estimate && <Calculation source={source} recorded={source.example_estimate} />}
           <h3 style={HEADING}>
             How <EcoLogitsLink /> works
           </h3>

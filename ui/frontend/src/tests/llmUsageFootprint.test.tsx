@@ -39,6 +39,16 @@ const NOVA_BASIS = {
 
 const SAEF_PAPER_URL = 'https://doi.org/10.1016/j.spc.2026.11.003';
 
+// kWh, kg CO2e and litres, as the API gives them.
+const estimate = (energy: [number, number], gwp: [number, number], water: [number, number]) => ({
+  energy_kwh: { min: energy[0], max: energy[1] },
+  gwp_kgco2eq: { min: gwp[0], max: gwp[1] },
+  water_l: { min: water[0], max: water[1] },
+});
+const HAIKU_EXAMPLE = estimate([0.00006, 0.00016], [0.000025, 0.000065], [0.00019, 0.00063]);
+const FLASH_EXAMPLE = estimate([0.0013, 0.0022], [0.00051, 0.00085], [0.0055, 0.0092]);
+const NOVA_EXAMPLE = estimate([0.00006, 0.0022], [0.000025, 0.00085], [0.00019, 0.0092]);
+
 const ecoModel = (provider: string, model: string, overrides: Record<string, unknown> = {}) => ({
   provider,
   model,
@@ -53,6 +63,7 @@ const ecoModel = (provider: string, model: string, overrides: Record<string, unk
   zone_from_config: false,
   grid_gwp_kgco2eq_per_kwh: 0.3844,
   grid_water_l_per_kwh: 3.1321,
+  example_estimate: HAIKU_EXAMPLE,
   ...overrides,
 });
 
@@ -63,6 +74,8 @@ const HAIKU_SOURCE = {
   assumption: null,
   citations: [],
   models: [ecoModel('anthropic', CLAUDE_HAIKU)],
+  example_output_tokens: 1000,
+  example_estimate: HAIKU_EXAMPLE,
 };
 const NOVA_SOURCE = {
   model: NOVA,
@@ -78,8 +91,11 @@ const NOVA_SOURCE = {
       active_parameters_billion: { min: 44, max: 132 },
       zone: 'IRL',
       zone_from_config: true,
+      example_estimate: FLASH_EXAMPLE,
     }),
   ],
+  example_output_tokens: 1000,
+  example_estimate: NOVA_EXAMPLE,
 };
 
 const EMPTY_FOOTPRINT = {
@@ -249,6 +265,33 @@ describe('Basis pop-up', () => {
     expect(dialog.textContent).toContain(
       'Set in config.json. Each kWh there emits 0.384 kg CO₂e and uses 3.13 litres of water to generate.',
     );
+  });
+
+  test('shows the calculation after the similar models: each model, then the range recorded', async () => {
+    const dialog = await openBadge(NOVA, PRIYA);
+    const text = dialog.textContent ?? '';
+    expect(text.indexOf('The 2 models the estimate uses')).toBeLessThan(
+      text.indexOf('The calculation, for a call that writes 1,000 output tokens'),
+    );
+    expect(text).toContain('We record the lowest of the low figures and the highest of the high figures.');
+    const table = dialog.querySelector('.footprint-calculation') as HTMLElement;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('td')).map((td) => td.textContent),
+    );
+    // Wh, g and mL: the API's kWh, kg and litres x 1000.
+    expect(rows).toEqual([
+      [ECO_HAIKU, '0.06–0.16', '0.025–0.065', '0.19–0.63'],
+      ['google_genai/gemini-2.5-flash', '1.3–2.2', '0.51–0.85', '5.5–9.2'],
+      [`Recorded for ${NOVA}`, '0.06–2.2', '0.025–0.85', '0.19–9.2'],
+    ]);
+  });
+
+  test('a single model shows only the range recorded', async () => {
+    const dialog = await openBadge(HAIKU, PRIYA);
+    const table = dialog.querySelector('.footprint-calculation') as HTMLElement;
+    const rows = Array.from(table.querySelectorAll('tbody tr')).map((tr) => tr.querySelector('td')?.textContent);
+    expect(rows).toEqual([`Recorded for ${HAIKU}`]);
+    expect(dialog.textContent).toContain('EcoLogits gives a range, because the model’s size and data centre are ranges.');
   });
 
   test('a covered model has no assumption and shows its own figures', async () => {
