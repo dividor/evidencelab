@@ -63,6 +63,7 @@ from ui.backend.schemas.testing import (
     TestExperimentUpdate,
 )
 from ui.backend.services import brief_version_store as versions
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.brief_citation_model import BriefCitationError
 from ui.backend.services.brief_fact_check import brief_changed
 from ui.backend.services.brief_sharing import user_group_ids
@@ -73,6 +74,7 @@ from ui.backend.services.citation_check_runner import (
     run_check,
 )
 from ui.backend.services.citation_fidelity import researched_sections
+from ui.backend.services.llm_choice import JUDGE, user_group_choice
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -386,6 +388,7 @@ async def update_experiment(
     "/experiments/{experiment_id}/run",
     response_model=TestExperimentRead,
     tags=["testing"],
+    dependencies=[Depends(require_ai_allowance)],
 )
 @limiter.limit(_RL_AI)
 async def run_experiment_endpoint(
@@ -654,6 +657,7 @@ async def _get_check(
     response_model=BriefCitationCheckRead,
     status_code=201,
     tags=["testing"],
+    dependencies=[Depends(require_ai_allowance)],
 )
 @limiter.limit(_RL_AI)
 async def create_brief_check(
@@ -668,7 +672,10 @@ async def create_brief_check(
     combo = (body.model_combo or "").strip() or None
     if combo is not None and combo not in _model_combo_names():
         raise HTTPException(status_code=400, detail="Invalid model_combo")
-    judge_model = resolve_judge_model(combo)
+    # The judge the admin's groups choose (Group Settings > LLMs), else config.json's.
+    judge_model = await user_group_choice(session, admin, JUDGE) or resolve_judge_model(
+        combo
+    )
     if not judge_model:
         raise HTTPException(status_code=503, detail="No judge model is configured")
     # The check judges the brief's current version and pins it: a brief with

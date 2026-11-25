@@ -15,12 +15,17 @@ import logging
 import re
 from typing import List, Optional
 
+from langchain_core.callbacks import UsageMetadataCallbackHandler
 from starlette.concurrency import run_in_threadpool
 
+from ui.backend.services.ai_daily_limit import check_ai_allowance
+from ui.backend.services.llm_service import summarize_usage_metadata
 from ui.backend.services.translation_providers import (
+    LlmTranslationProvider,
     TranslationProvider,
     get_translation_provider,
 )
+from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.language_codes import LANGUAGE_NAMES
 
 logger = logging.getLogger(__name__)
@@ -155,6 +160,15 @@ async def translate_text(
     active = provider or get_translation_provider()
     target = resolve_language_code(target_language, "en")
     source = resolve_language_code(source_language, "auto")
+    usage = None
+    llm_call: Optional[LlmTranslationProvider] = None
+    if isinstance(active, LlmTranslationProvider):
+        # An LLM translation is an AI call: refused once the day's AI limit is
+        # reached, and its usage is recorded like every other AI call's.
+        await check_ai_allowance()
+        usage = UsageMetadataCallbackHandler()
+        llm_call = active.counting_usage(usage)
+        active = llm_call
     try:
         protected = _protect(text)
         translated = await run_in_threadpool(
@@ -164,3 +178,10 @@ async def translate_text(
     except Exception as exc:
         logger.error("Translation failed (%s): %s", active.name, exc)
         return text
+    finally:
+        if usage is not None and llm_call is not None:
+            schedule_llm_usage_recording(
+                usage=summarize_usage_metadata(usage, llm_call.model_key),
+                activity_type="translation",
+                query=f"Translation into {target}",
+            )

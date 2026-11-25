@@ -99,6 +99,8 @@ The MCP server implements OAuth 2.0 Authorization Server Metadata (RFC 8414) for
 | `POST /mcp/token` | Token exchange endpoint |
 | `POST /mcp/register` | Dynamic client registration (RFC 7591) |
 
+Registrations are kept in the MCP server's memory, so a restart forgets them. A registration request may be at most 16 KB, with at most 10 `redirect_uris` of at most 2,048 characters each and a `client_name` of at most 200; anything larger is refused. At most 1,000 registrations are kept: a new one replaces the oldest that never got a token.
+
 ### 3. Bearer JWT
 
 Clients can pass a JWT token in the `Authorization: Bearer <token>` header. The token is verified using the `AUTH_SECRET_KEY`. MCP accepts both an Evidence Lab sign-in token and an MCP access token; the web app accepts only sign-in tokens.

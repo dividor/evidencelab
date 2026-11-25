@@ -63,6 +63,19 @@ export interface DocumentSummaryDefaults {
 }
 
 /**
+ * A group's model choices (Group Settings > LLMs): supported_llms keys that
+ * override config.json's model for each AI job. Unset keys use config.json.
+ */
+export interface GroupLlmChoices {
+  /** The model that writes the search AI summary. */
+  summaryModel?: string;
+  /** The model that writes Briefs (outline, sections and edits). */
+  briefModel?: string;
+  /** The model that judges evaluations and the Brief citation check. */
+  judgeModel?: string;
+}
+
+/**
  * The full /users/me/effective-settings payload: search settings plus the
  * per-group feature-tab visibility/labels (merged across the user's groups by
  * the backend; see components/layout/tabConfig.ts). Kept separate from
@@ -80,7 +93,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (SearchSettings & DocumentSummaryDefaults) | null;
+  search_settings?: (SearchSettings & DocumentSummaryDefaults & GroupLlmChoices) | null;
   summary_prompt?: string | null;
 }
 

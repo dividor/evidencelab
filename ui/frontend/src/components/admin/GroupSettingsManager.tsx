@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
-import type { SearchSettings, UserGroup } from '../../types/auth';
+import type { GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
   DEFAULT_SECTION_TYPES,
@@ -17,6 +17,7 @@ import {
   docSummaryPayload,
   readDocSummaryDefaults,
 } from './DocumentSummaryGroupSection';
+import { LlmChoiceGroupSection, llmChoicePayload, readLlmChoices } from './LlmChoiceGroupSection';
 
 type TabValues = Record<TabKey, { enabled: boolean; label: string }>;
 
@@ -210,6 +211,7 @@ type SettingsTab =
   | 'ai_summary'
   | 'brief'
   | 'doc_summary'
+  | 'llms'
   | 'features'
   | 'appearance';
 
@@ -220,6 +222,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
   { key: 'ai_summary', label: 'Search AI Summary' },
   { key: 'brief', label: 'Brief' },
   { key: 'doc_summary', label: 'Document Summaries' },
+  { key: 'llms', label: 'LLMs' },
   { key: 'features', label: 'Features & Tabs' },
   { key: 'appearance', label: 'Appearance' },
 ];
@@ -275,6 +278,8 @@ const GroupSettingsManager: React.FC = () => {
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
+  // Which model each AI job uses for this group (Group Settings > LLMs).
+  const [llmChoices, setLlmChoices] = useState<GroupLlmChoices>({});
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);
@@ -313,6 +318,7 @@ const GroupSettingsManager: React.FC = () => {
       setTabsOverride(false);
       setTabValues(defaultTabValues());
       setDocSummary({});
+      setLlmChoices({});
       return;
     }
     const group = groups.find((g) => g.id === selectedGroupId);
@@ -332,6 +338,7 @@ const GroupSettingsManager: React.FC = () => {
     setOverrides(newOverrides);
     setValues(newValues);
     setDocSummary(readDocSummaryDefaults(settings));
+    setLlmChoices(readLlmChoices(settings));
 
     // Load feature-tab override (search_settings.tabs)
     const tabsCfg = (settings as any).tabs;
@@ -376,6 +383,7 @@ const GroupSettingsManager: React.FC = () => {
         }
       }
       Object.assign(payload, docSummaryPayload(docSummary));
+      Object.assign(payload, llmChoicePayload(llmChoices));
       // Feature-tab overrides: only written when this group opts in.
       if (tabsOverride) {
         payload.tabs = Object.fromEntries(
@@ -418,6 +426,7 @@ const GroupSettingsManager: React.FC = () => {
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
       setDocSummary({});
+      setLlmChoices({});
       setSuccess('Settings reset to system defaults.');
       await fetchGroups();
     } catch (err: any) {
@@ -926,6 +935,12 @@ const GroupSettingsManager: React.FC = () => {
             {activeTab === 'doc_summary' && (
               <SettingsPanel tab="doc_summary">
                 <DocumentSummaryGroupSection value={docSummary} onChange={setDocSummary} />
+              </SettingsPanel>
+            )}
+
+            {activeTab === 'llms' && (
+              <SettingsPanel tab="llms">
+                <LlmChoiceGroupSection value={llmChoices} onChange={setLlmChoices} />
               </SettingsPanel>
             )}
 

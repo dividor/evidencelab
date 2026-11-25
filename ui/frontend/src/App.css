@@ -10243,6 +10243,22 @@ li.ai-fact-active::before {
   margin: 0 0 var(--spacing-lg) 0;
 }
 
+/* Group Settings > LLMs: a note under each model dropdown. */
+.group-llm-choice-hint,
+.group-llm-choice-alert {
+  display: block;
+  margin-top: var(--spacing-xs);
+  font-size: 0.8rem;
+}
+
+.group-llm-choice-hint {
+  color: var(--brand-text-tertiary);
+}
+
+.group-llm-choice-alert {
+  color: var(--brand-error, #b91c1c);
+}
+
 .admin-group-settings-columns {
   display: flex;
   flex-wrap: wrap;

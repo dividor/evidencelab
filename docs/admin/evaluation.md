@@ -144,6 +144,8 @@ Available expectation types include (per capability):
 
 The **LLM judge** evaluates the full summary (including resolved citations/references) and is given the underlying search results, so you can write rubrics about **grounding** (e.g. *"every claim is supported by a cited Kenya document"*).
 
+**Which model judges.** A run made as a group uses the judge that group chooses in Group Settings > LLMs; any other run uses the judge chosen by the groups of the administrator who clicks **Run**. Without a group choice, the judge is the model combo's `judge_model` in `config.json`, else its summary model. A model judging its own answers tends to favour them, so set a judge that differs from the summary model (see [User Administration](user-administration.md#llms)). Each run's **Configuration** shows the judge it used.
+
 ![Experiment editor — combo, group, and expectation matrix](../images/admin/eval/experiment-editor.png)
 
 Click **Save** to store the experiment as a draft.
@@ -179,7 +181,7 @@ The **Testing (Brief)** tab checks a finished brief against its own sources. Whe
 
 ![Testing (Brief): briefs you can check](../images/admin/eval/brief-check-overview.png)
 
-The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the summarisation model of the model combo selected in the **Models** menu at the top of the page, so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
+The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the model your groups choose in Group Settings > LLMs; without one, it is the `judge_model` of the model combo selected in the **Models** menu at the top of the page (else that combo's summarisation model), so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
 A check judges one **version** of the brief: when it starts it pins the brief's current version (the one the brief's **Document History** shows; a brief saved before version history began gets its first version at that moment), and that version is kept exactly as judged, so later edits never fold into it. The **Last check** column names the version (`v4`), the check's page says *brief version 4*, and the brief's Document History names the check on that version's row. Once the brief has a newer version, the list shows a **brief changed since** badge and the check's page a warning that its results describe the earlier version; run the check again to judge the brief as it is now. Checks made before versions were linked show *brief version not recorded*. If the brief changes in the moment between clicking **Run check** and the check starting, the check fails with *The brief changed between starting the check and running it; run the check again*.
 

@@ -113,6 +113,11 @@ variables {
   transfer_retention_days = 30
   db_engine_version       = "17"
   restore_task            = { cpu = 1024, memory = 4096 }
+
+  # null takes the defaults: no alerts.
+  alert_emails      = null
+  bedrock_alarms    = null
+  extra_environment = {}
 }
 
 run "without_a_domain_serves_plain_http_on_the_load_balancer" {
@@ -278,6 +283,10 @@ run "anonymous_access_is_off_unless_asked_for" {
 run "containers_can_call_bedrock_in_their_region" {
   command = plan
 
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+  }
+
   assert {
     condition     = local.app_environment["AWS_REGION"] == "us-east-2"
     error_message = "The containers should be told the deployment's region."
@@ -286,6 +295,208 @@ run "containers_can_call_bedrock_in_their_region" {
     condition     = aws_ecs_task_definition.app["api"].task_role_arn == aws_iam_role.task.arn
     error_message = "The api should run as the task role that may call Bedrock."
   }
+  assert {
+    condition     = length(aws_iam_role_policy.bedrock) == 1 && aws_iam_role_policy.bedrock[0].role == aws_iam_role.task.id
+    error_message = "The task role should get the Bedrock policy."
+  }
+}
+
+run "only_the_bedrock_models_config_json_lists_may_be_called" {
+  command = plan
+
+  variables {
+    config_json_path = "tests/fixtures/bedrock-config.json"
+  }
+
+  assert {
+    condition = local.bedrock_resource_arns == sort([
+      "arn:aws:bedrock:*::foundation-model/amazon.nova-2-lite-v1:0",
+      "arn:aws:bedrock:*::foundation-model/amazon.rerank-v1:0",
+      "arn:aws:bedrock:*::foundation-model/amazon.titan-embed-text-v2:0",
+      "arn:aws:bedrock:*::foundation-model/mistral.mistral-large-2402-v1:0",
+      "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/eu.amazon.nova-2-lite-v1:0",
+    ])
+    error_message = "The Bedrock policy should allow exactly the config's Bedrock models: the EU profile with its base model, and the plain models, and nothing from other providers."
+  }
+  assert {
+    condition     = alltrue([for s in data.aws_iam_policy_document.bedrock[0].statement : sort(tolist(s.resources)) == local.bedrock_resource_arns])
+    error_message = "The policy should be built from that list."
+  }
+}
+
+run "a_config_without_bedrock_models_gets_no_bedrock_permission" {
+  command = plan
+
+  assert {
+    condition     = length(local.bedrock_model_ids) == 0 && length(aws_iam_role_policy.bedrock) == 0
+    error_message = "With no Bedrock model in config.json the task role should get no Bedrock permission."
+  }
+}
+
+# --- Alerts -----------------------------------------------------------------
+
+run "without_alert_emails_there_is_no_topic_and_no_alarm" {
+  command = plan
+
+  assert {
+    condition     = length(aws_sns_topic.alerts) == 0 && length(aws_sns_topic_subscription.alerts) == 0 && length(aws_cloudwatch_metric_alarm.bedrock) == 0
+    error_message = "By default no alert topic, subscription or alarm should be made."
+  }
+}
+
+run "alert_emails_are_subscribed_to_a_topic_in_the_deployment_region" {
+  command = plan
+
+  variables {
+    alert_emails = ["ops@example.org", "lead@example.org"]
+  }
+
+  assert {
+    condition     = length(aws_sns_topic.alerts) == 1 && aws_sns_topic.alerts["us-east-2"].name == "evidencelab-alerts" && aws_sns_topic.alerts["us-east-2"].region == "us-east-2"
+    error_message = "Alert addresses should get one topic, in the deployment's region."
+  }
+  assert {
+    condition = (
+      length(aws_sns_topic_subscription.alerts) == 2
+      && alltrue([for s in values(aws_sns_topic_subscription.alerts) : s.protocol == "email" && s.region == "us-east-2"])
+      && sort([for s in values(aws_sns_topic_subscription.alerts) : s.endpoint]) == tolist(["lead@example.org", "ops@example.org"])
+    )
+    error_message = "Each address should be subscribed by email."
+  }
+}
+
+run "bedrock_alarms_watch_each_model_and_level_in_its_region" {
+  command = plan
+
+  variables {
+    alert_emails = ["ops@example.org"]
+    bedrock_alarms = {
+      "eu.amazon.nova-2-lite-v1:0" = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+      "amazon.rerank-v1:0"         = { region = "eu-central-1", invocations_per_hour = 5000 }
+    }
+  }
+
+  assert {
+    condition     = sort(keys(aws_sns_topic.alerts)) == tolist(["eu-central-1", "us-east-2"])
+    error_message = "An alarm in another region should get a topic there too."
+  }
+  assert {
+    condition     = length(aws_sns_topic_subscription.alerts) == 2
+    error_message = "The address should be subscribed to the topic in each region."
+  }
+  assert {
+    condition = sort(keys(aws_cloudwatch_metric_alarm.bedrock)) == sort([
+      "eu.amazon.nova-2-lite-v1:0 input tokens",
+      "eu.amazon.nova-2-lite-v1:0 output tokens",
+      "amazon.rerank-v1:0 requests",
+    ])
+    error_message = "There should be one alarm per model and level set, and none for levels left out."
+  }
+  assert {
+    condition = (
+      aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].metric_name == "OutputTokenCount"
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].namespace == "AWS/Bedrock"
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].dimensions == tomap({ ModelId = "eu.amazon.nova-2-lite-v1:0" })
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].statistic == "Sum"
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].period == 3600
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].threshold == 300000
+      && aws_cloudwatch_metric_alarm.bedrock["eu.amazon.nova-2-lite-v1:0 output tokens"].region == "us-east-2"
+    )
+    error_message = "A token alarm should sum the model's output tokens over an hour against its level, in the deployment's region."
+  }
+  assert {
+    condition = (
+      aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].metric_name == "Invocations"
+      && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].region == "eu-central-1"
+      && aws_cloudwatch_metric_alarm.bedrock["amazon.rerank-v1:0 requests"].treat_missing_data == "notBreaching"
+    )
+    error_message = "A requests alarm should count invocations in the model's own region, and quiet hours should be normal."
+  }
+}
+
+run "the_daily_ai_limit_emails_when_it_is_reached" {
+  command = plan
+
+  variables {
+    alert_emails      = ["ops@example.org"]
+    extra_environment = { AI_DAILY_COST_LIMIT_USD = "25" }
+  }
+
+  assert {
+    condition = (
+      sort(keys(aws_cloudwatch_log_metric_filter.ai_daily_limit)) == tolist(["api", "mcp"])
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["api"].log_group_name == "/ecs/evidencelab/api"
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["mcp"].log_group_name == "/ecs/evidencelab/mcp"
+      && aws_cloudwatch_log_metric_filter.ai_daily_limit["api"].pattern == "\"AI daily limit reached\""
+    )
+    error_message = "The api and mcp logs should be watched for the line the daily AI limit writes."
+  }
+  assert {
+    condition = (
+      length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 1
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].metric_name == "AiDailyLimitReached"
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].namespace == "EvidenceLab/evidencelab"
+      && aws_cloudwatch_metric_alarm.ai_daily_limit[0].threshold == 0
+    )
+    error_message = "One alarm should fire on the first such line."
+  }
+}
+
+run "without_a_daily_ai_limit_there_is_no_limit_alarm" {
+  command = plan
+
+  variables {
+    alert_emails = ["ops@example.org"]
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_log_metric_filter.ai_daily_limit) == 0 && length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 0
+    error_message = "No limit set, so nothing to watch for."
+  }
+}
+
+run "a_daily_ai_limit_without_alert_emails_has_no_alarm" {
+  command = plan
+
+  variables {
+    extra_environment = { AI_DAILY_COST_LIMIT_USD = "25" }
+  }
+
+  assert {
+    condition     = length(aws_cloudwatch_metric_alarm.ai_daily_limit) == 0
+    error_message = "With no one to tell, no alarm should be made; the limit itself still applies."
+  }
+}
+
+run "bedrock_alarms_without_alert_emails_are_refused" {
+  command = plan
+
+  variables {
+    bedrock_alarms = { "amazon.titan-embed-text-v2:0" = { input_tokens_per_hour = 1000 } }
+  }
+
+  expect_failures = [var.bedrock_alarms]
+}
+
+run "a_bedrock_alarm_without_a_level_is_refused" {
+  command = plan
+
+  variables {
+    alert_emails   = ["ops@example.org"]
+    bedrock_alarms = { "amazon.titan-embed-text-v2:0" = { region = "eu-west-1" } }
+  }
+
+  expect_failures = [var.bedrock_alarms]
+}
+
+run "an_alert_email_that_is_not_an_address_is_refused" {
+  command = plan
+
+  variables {
+    alert_emails = ["ops-team"]
+  }
+
+  expect_failures = [var.alert_emails]
 }
 
 # --- CloudFront and AWS WAF --------------------------------------------------

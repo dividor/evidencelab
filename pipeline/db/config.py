@@ -132,8 +132,33 @@ def _load_embedding_models(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return result
 
 
+def _checked_price(model_name: str, price: Any) -> Dict[str, float]:
+    """A ``price_per_million`` entry: USD per million input and output tokens."""
+    if not isinstance(price, dict) or set(price) != {"input", "output"}:
+        raise ValueError(
+            f"supported_llms.{model_name}.price_per_million must be "
+            '{"input": <USD>, "output": <USD>} per million tokens'
+        )
+    checked: Dict[str, float] = {}
+    for side in ("input", "output"):
+        value = price[side]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise ValueError(
+                f"supported_llms.{model_name}.price_per_million.{side} must be a "
+                f"number of US dollars, 0 or more; got {value!r}"
+            )
+        checked[side] = float(value)
+    return checked
+
+
 def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-    """Build SUPPORTED_LLMS dict from supported_llms config."""
+    """Build SUPPORTED_LLMS dict from supported_llms config.
+
+    Optional per model: ``price_per_million`` (USD per million input and
+    output tokens, used instead of the built-in price table) and
+    ``supports_temperature`` (``false`` for a model that refuses a
+    temperature, which is then never sent).
+    """
     result: Dict[str, Dict[str, Any]] = {}
     for model_name, model_info in config.get("supported_llms", {}).items():
         llm_config: Dict[str, Any] = {
@@ -142,6 +167,18 @@ def _load_llms(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         }
         if "inference_provider" in model_info:
             llm_config["inference_provider"] = model_info.get("inference_provider")
+        if "price_per_million" in model_info:
+            llm_config["price_per_million"] = _checked_price(
+                model_name, model_info["price_per_million"]
+            )
+        if "supports_temperature" in model_info:
+            supports = model_info["supports_temperature"]
+            if not isinstance(supports, bool):
+                raise ValueError(
+                    f"supported_llms.{model_name}.supports_temperature must be "
+                    f"true or false; got {supports!r}"
+                )
+            llm_config["supports_temperature"] = supports
         result[model_name] = llm_config
     return result
 

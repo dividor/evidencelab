@@ -2,6 +2,38 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.8] - 2026-11-23
+
+Evidence Lab v1.6.8 is a **security** patch release. The document preview loads PDF.js 6.5.438 from the site itself instead of PDF.js 3.11.174 from cdnjs, and the web pages get a full Content-Security-Policy: scripts, styles, fonts, workers and connections may come only from the site, plus Google Analytics. On a site that requires sign-in, the activity log takes writes only from people who are signed in, and MCP client registration is limited in size and number. A site that signs in only with Google or Microsoft no longer offers password reset, and signing out of it leads to the provider's account picker instead of a sign-in button. On AWS, the WAF no longer blocks Microsoft's sign-in reply. LangChain moves to 1.5.
+
+### Sign-in
+- **Signing out leads to the account picker.** When email login is off and only Microsoft or only Google is set up, signing out, the idle timeout and an expired session now go to the provider's account picker (`prompt=select_account`) instead of showing a single button. Nobody is signed back in without choosing an account. When a trip to the provider comes back still signed out, or Back returns from its page, the button shows, as before. The trip waits for the sign-out request to finish, so the old session can't survive it. Sites with email login or both providers are unchanged. `/auth/{provider}/authorize` takes `prompt=select_account` and refuses any other `prompt` with 422 (#671)
+- **No password reset where email login is off.** With `DISABLE_EMAIL_LOGIN`, nobody signs in with a password, so `/auth/forgot-password` and `/auth/reset-password` are no longer mounted and answer 404. An old reset link opens the sign-in screen with a note that password reset is not available. Signing out and email verification are unchanged (#672)
+
+### Security
+- **PDF.js from the site, upgraded to 6.5.438.** The document preview loaded PDF.js 3.11.174 from cdnjs. It now loads the `pdfjs-dist` version in `package-lock.json` from `/pdfjs/<version>/` on the site, copied into the build after `npm run build` and served by the development server from `node_modules`. 3.11.174 is covered by GHSA-wgrm-67xf-hhpq; no published advisory covers 6.5.438 (#673, #674)
+- **A full Content-Security-Policy on the web pages.** The ui container fills in the policy when it starts, from `UI_CSP_POLICY` or a default that allows scripts and workers from the site only, plus Google Analytics. The production build has no inline script (`INLINE_RUNTIME_CHUNK=false`), and the Poppins and Open Sans typefaces are bundled and served from the site instead of Google Fonts (#674)
+- **On a site that requires sign-in, the activity log needs a signed-in session.** The sign-in middleware no longer exempts `/activity/`, whose log and summary routes also take anonymous visitors on sites without required sign-in. Those sites are unchanged (#675)
+- **MCP client registration is limited.** `POST /mcp/register` reads at most 16 KB, accepts at most 10 `redirect_uris` of at most 2,048 characters and a `client_name` of at most 200, and refuses a body that is not a JSON object, with the RFC 7591 error codes. At most 1,000 registrations are kept in memory; a new one replaces the oldest that never got a token (#675)
+
+### Deployment & CI
+- **AWS WAF no longer blocks Microsoft sign-in.** Microsoft's reply to `/api/auth/microsoft/callback` carries a query string longer than the 2,048 bytes the core rule set's `SizeRestrictions_QUERYSTRING` allows, so the WAF blocked it. `waf_core_rules_to_count` now defaults to `["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]`, and `null` gives that default instead of failing (#670)
+
+### Documentation
+- `SECURITY.md` covers the page policy, PDF.js, the activity log and MCP registration, and its exempt-path table matches the code; Third-Party Services has a new section on the page policy; User Administration describes the account picker and the missing reset routes; the MCP server page lists the registration limits; Cloud Deployment explains the WAF default (#670, #671, #672, #674, #675)
+
+### Dependencies
+- Backend: langchain 1.5.2, langchain-core 1.8.4, langgraph 1.2.24 and langgraph-prebuilt 1.1.3 (#656)
+- Frontend: pdfjs-dist 6.5.438, @fontsource/poppins 5.3.0 and @fontsource/open-sans 5.3.0 (#674)
+
+### Upgrade Notes
+- **No new migrations.**
+- **Rebuild the web interface** for PDF.js from the site, the page policy, the bundled typefaces and the account picker (#671, #674).
+- **A site that loads assets from other sites** (another analytics service, a CDN, branding hosted elsewhere) must allow them in `UI_CSP_POLICY` on the ui container, or the browser blocks them. See Third-Party Services (#674).
+- **On a site that requires sign-in**, anything that posts to `/activity/` must be signed in or send a key (#675).
+- **MCP clients** whose registration exceeds the limits get 400 or 413 (#675).
+- **AWS template:** with CloudFront on, the next apply changes the core rule set's `SizeRestrictions_QUERYSTRING` from block to count. A deployment that sets its own `waf_core_rules_to_count` should keep that rule in it (#670).
+
 ## [1.6.7] - 2026-11-22
 
 Evidence Lab v1.6.7 is a **sign-in** patch release. Google and Microsoft sign-in is now tied to the browser that started it and uses PKCE. When one of those providers is the only way in, the sign-in screen goes straight to its sign-in page. On a site that requires sign-in, the sign-in screen can now read its options before anyone is signed in, where it fell back to an email form, and a new person's first Google or Microsoft sign-in no longer fails. On AWS, S3 traffic goes through a gateway endpoint, which has no charge, instead of the NAT gateway. A whole dump, search index included, can be copied from one AWS deployment to another and loaded there. A version tag now names only a commit whose CI and Demo E2E runs passed.

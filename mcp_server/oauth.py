@@ -78,6 +78,17 @@ _RATE_LIMITS = {
     "token": 30,  # 30 token exchanges per minute per IP
 }
 
+# Dynamic client registration is open to anyone and kept in memory, so each
+# registration is kept small and their number is capped. When the store is
+# full, a new registration replaces the oldest one that never got a token
+# (the oldest of all only when every client has had one).
+MAX_REGISTRATION_BYTES = 16 * 1024
+MAX_REDIRECT_URIS = 10
+MAX_REDIRECT_URI_LENGTH = 2048
+MAX_CLIENT_NAME_LENGTH = 200
+MAX_REGISTERED_CLIENTS = 1000
+DEFAULT_CLIENT_NAME = "MCP Client"
+
 # ---------------------------------------------------------------------------
 # In-memory stores (sufficient for MCP — small number of concurrent clients)
 # ---------------------------------------------------------------------------
@@ -195,14 +206,67 @@ def get_metadata() -> dict:
 # ---------------------------------------------------------------------------
 
 
-def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
+def _registration_error(body: object) -> dict | None:
+    """The RFC 7591 error for metadata this server won't store, or None."""
+    if not isinstance(body, dict):
+        return {
+            "error": "invalid_client_metadata",
+            "error_description": "The registration request must be a JSON object",
+        }
+    uris = body.get("redirect_uris", [])
+    if (
+        not isinstance(uris, list)
+        or len(uris) > MAX_REDIRECT_URIS
+        or not all(
+            isinstance(u, str) and len(u) <= MAX_REDIRECT_URI_LENGTH for u in uris
+        )
+    ):
+        return {
+            "error": "invalid_redirect_uri",
+            "error_description": (
+                f"redirect_uris must be a list of at most {MAX_REDIRECT_URIS} "
+                f"addresses of at most {MAX_REDIRECT_URI_LENGTH} characters"
+            ),
+        }
+    name = body.get("client_name", DEFAULT_CLIENT_NAME)
+    if not isinstance(name, str) or len(name) > MAX_CLIENT_NAME_LENGTH:
+        return {
+            "error": "invalid_client_metadata",
+            "error_description": (
+                f"client_name must be text of at most {MAX_CLIENT_NAME_LENGTH} characters"
+            ),
+        }
+    return None
+
+
+def _make_room_for_client() -> None:
+    """Drop registrations until there is room for one more (see MAX_REGISTERED_CLIENTS)."""
+    while len(_clients) >= MAX_REGISTERED_CLIENTS:
+        never_used = (cid for cid, c in _clients.items() if not c.get("token_issued"))
+        dropped = next(never_used, next(iter(_clients)))
+        del _clients[dropped]
+        _audit_log(
+            "client_registration_dropped", client_id=dropped, reason="store_full"
+        )
+
+
+def register_client(body: object, client_ip: str = "") -> tuple[int, dict]:
     """Register a new OAuth client dynamically.
 
+    *body* is the parsed JSON request; anything but an object is refused.
     Returns (status_code, response_body).
     """
     rate_err = _check_rate_limit("register", client_ip)
     if rate_err:
         return 429, {"error": "too_many_requests", "error_description": rate_err}
+
+    metadata_err = _registration_error(body)
+    if metadata_err:
+        _audit_log(
+            "client_registration_refused", reason=metadata_err["error"], ip=client_ip
+        )
+        return 400, metadata_err
+    assert isinstance(body, dict)
 
     client_id = secrets.token_urlsafe(24)
     # Generate a client_secret and return it to the registrant (RFC 7591 §3.2.1).
@@ -213,20 +277,19 @@ def register_client(body: dict, client_ip: str = "") -> tuple[int, dict]:
     client_secret_hash = hashlib.sha256(client_secret.encode()).hexdigest()
 
     redirect_uris = body.get("redirect_uris", [])
-    if not redirect_uris:
-        redirect_uris = []
 
     client = {
         "client_id": client_id,
         # Hash stored; plaintext is returned once and then discarded
         "client_secret_hash": client_secret_hash,
-        "client_name": body.get("client_name", "MCP Client"),
+        "client_name": body.get("client_name", DEFAULT_CLIENT_NAME),
         "redirect_uris": redirect_uris,
         "grant_types": ["authorization_code"],
         "response_types": ["code"],
         "token_endpoint_auth_method": "none",
         "created_at": time.time(),
     }
+    _make_room_for_client()
     _clients[client_id] = client
 
     _audit_log(
@@ -587,6 +650,9 @@ def exchange_token(body: dict, client_ip: str = "") -> tuple[int, dict]:
         "client_id": pending["client_id"],
     }
     access_token = jwt.encode(payload, AUTH_SECRET, algorithm=JWT_ALGORITHM)
+    # A client that has had a token is kept when the registration store is full.
+    if pending["client_id"] in _clients:
+        _clients[pending["client_id"]]["token_issued"] = True
 
     _audit_log(
         "token_issued",

@@ -29,11 +29,13 @@ from mcp_server.consent import (
     handle_complete_post,
 )
 from mcp_server.oauth import (
+    MAX_REGISTRATION_BYTES,
     build_authorize_redirect,
     exchange_token,
     get_metadata,
     register_client,
 )
+from ui.backend.services.ai_daily_limit import validate_ai_daily_limit_setting
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,56 @@ def _get_client_ip(scope: dict) -> str:
 
     client = scope.get("client")
     return client[0] if client else "unknown"
+
+
+async def _read_body_up_to(request: Request, limit: int) -> bytes | None:
+    """The request's body, or None as soon as it is known to exceed *limit* bytes."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+def _parse_registration(raw: bytes) -> object:
+    """The registration request's JSON; None when it isn't JSON (then refused)."""
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
+async def _handle_register(scope, receive, send) -> None:
+    """Dynamic client registration (RFC 7591), reading at most MAX_REGISTRATION_BYTES."""
+    raw = await _read_body_up_to(Request(scope, receive), MAX_REGISTRATION_BYTES)
+    if raw is None:
+        status_code, result = 413, {
+            "error": "invalid_client_metadata",
+            "error_description": (
+                f"The registration request is larger than {MAX_REGISTRATION_BYTES} bytes"
+            ),
+        }
+    else:
+        status_code, result = register_client(
+            _parse_registration(raw), _get_client_ip(scope)
+        )
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status_code,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": json.dumps(result).encode()})
 
 
 class MCPApp:
@@ -232,23 +284,7 @@ class MCPApp:
 
         # Dynamic client registration (RFC 7591)
         if path == "/register" and method == "POST":
-            request = Request(scope, receive)
-            req_body = await request.body()
-            client_data = json.loads(req_body) if req_body else {}
-            client_ip = _get_client_ip(scope)
-            status_code, result = register_client(client_data, client_ip)
-            body = json.dumps(result).encode()
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": status_code,
-                    "headers": [
-                        (b"content-type", b"application/json"),
-                        (b"cache-control", b"no-store"),
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": body})
+            await _handle_register(scope, receive, send)
             return
 
         # Authorization endpoint (GET)
@@ -467,6 +503,9 @@ class MCPApp:
             return
 
         try:
+            # A malformed daily AI limit stops the server here, not at the
+            # first assistant call.
+            validate_ai_daily_limit_setting()
             self._cm = session_manager.run()
             await self._cm.__aenter__()
             self._started = True

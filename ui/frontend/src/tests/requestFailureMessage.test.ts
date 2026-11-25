@@ -25,6 +25,18 @@ describe('requestFailureMessage', () => {
     );
   });
 
+  test('shows a 429 reason as it is', async () => {
+    const message =
+      "Today's AI allowance for this site has been used. Search still works; AI features return at 00:00 UTC.";
+    const r = response(429, 'Too Many Requests', { detail: message });
+    expect(await requestFailureMessage(r)).toBe(message);
+  });
+
+  test('keeps the status for a 429 without a reason', async () => {
+    const r = response(429, 'Too Many Requests', { error: 'Rate limit exceeded: 10 per 1 minute' });
+    expect(await requestFailureMessage(r)).toBe('Request failed: 429 Too Many Requests');
+  });
+
   test('keeps the status when the body is not JSON', async () => {
     const r = {
       status: 502,
