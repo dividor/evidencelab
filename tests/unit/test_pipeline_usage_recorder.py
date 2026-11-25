@@ -112,12 +112,14 @@ class TestRecordPipelineUsage:
         assert params[6] == Decimal("0.001200")
         # Then the estimated footprint, in FOOTPRINT_ROW_COLUMNS order.
         footprint = estimate_footprint("gpt-4.1-mini", 500)
-        assert params[7:] == (
+        assert params[7:-1] == (
             *footprint.energy_kwh,
             *footprint.gwp_kgco2eq,
             *footprint.water_l,
             None,  # every output token had an estimate
         )
+        # The basis goes in as JSONB: the model's estimated output tokens.
+        assert params[-1].adapted == {"gpt-4.1-mini": 500}
         for column in FOOTPRINT_ROW_COLUMNS:
             assert column in _sql
         conn.commit.assert_called_once()
@@ -129,15 +131,17 @@ class TestRecordPipelineUsage:
         collector = UsageCollector()
         collector.add_response(_response(10, 250), "gpt-4.1-mini")
         collector.add_response(_response(10, 250), "gpt-4.1-mini")
-        collector.add_response(_response(10, 300), "nova-2-lite")
+        collector.add_response(_response(10, 300), "gemini-2.0-flash")
         entries = {e["llm_model"]: e for e in collector.entries()}
         one_call = estimate_footprint("gpt-4.1-mini", 250)
         assert entries["gpt-4.1-mini"]["energy_kwh_max"] == pytest.approx(
             2 * one_call.energy_kwh[1]
         )
         assert entries["gpt-4.1-mini"]["footprint_unestimated_tokens"] is None
-        assert entries["nova-2-lite"]["energy_kwh_max"] is None
-        assert entries["nova-2-lite"]["footprint_unestimated_tokens"] == 300
+        assert entries["gpt-4.1-mini"]["footprint_basis"] == {"gpt-4.1-mini": 500}
+        # gemini-2.0-flash has no basis, so it is counted, not estimated.
+        assert entries["gemini-2.0-flash"]["energy_kwh_max"] is None
+        assert entries["gemini-2.0-flash"]["footprint_unestimated_tokens"] == 300
 
     def test_record_resets_collector(self):
         collector = self._collector()

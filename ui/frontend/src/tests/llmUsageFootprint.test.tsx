@@ -15,6 +15,22 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const PRIYA = 'Priya Raman';
 const PIPELINE = '(pipeline)';
+const NOVA_ASSUMPTION =
+  'Amazon publishes no size for Nova 2 Lite. Its range spans the small models EcoLogits covers.';
+const HAIKU_BASIS = {
+  model: 'haiku-4.5',
+  ecologits_models: ['anthropic/claude-haiku-4-5'],
+  assumed: false,
+  assumption: null,
+  output_tokens: 300,
+};
+const NOVA_BASIS = {
+  model: 'nova-2-lite',
+  ecologits_models: ['anthropic/claude-haiku-4-5', 'google_genai/gemini-2.5-flash'],
+  assumed: true,
+  assumption: NOVA_ASSUMPTION,
+  output_tokens: 200,
+};
 
 const EMPTY_FOOTPRINT = {
   energy_kwh_min: null,
@@ -36,6 +52,7 @@ const usageRow = (overrides: Record<string, unknown>) => ({
   cost_usd: '0.001000',
   ...EMPTY_FOOTPRINT,
   footprint_unestimated_tokens: 0,
+  footprint_basis: [],
   ...overrides,
 });
 
@@ -50,6 +67,7 @@ const RESPONSE = {
       gwp_kgco2eq_max: 0.000035,
       water_l_min: 0.000076,
       water_l_max: 0.00029,
+      footprint_basis: [HAIKU_BASIS, NOVA_BASIS],
     }),
     usageRow({
       group_key: PIPELINE,
@@ -71,6 +89,7 @@ const RESPONSE = {
     water_l_min: 0.000076,
     water_l_max: 0.00029,
     footprint_unestimated_tokens: 300,
+    footprint_basis: [HAIKU_BASIS, NOVA_BASIS],
   },
   bucket: 'week',
   group_by: 'user',
@@ -95,7 +114,7 @@ describe('Token Usage footprint columns', () => {
     expect(screen.getByText('Water (mL)')).toBeInTheDocument();
     const cells = cellTexts(priya);
     // kWh, kg and L from the API shown x 1000, to two significant digits.
-    expect(cells.slice(-3)).toEqual(['0.05–0.13', '0.014–0.035', '0.076–0.29']);
+    expect(cells.slice(-4, -1)).toEqual(['0.05–0.13', '0.014–0.035', '0.076–0.29']);
   });
 
   test('shows a dash where nothing was estimated, and pipeline has its own line', async () => {
@@ -107,7 +126,7 @@ describe('Token Usage footprint columns', () => {
   test('the totals carry the footprint and the note counts unestimated tokens', async () => {
     render(<LlmUsageManager />);
     const total = (await screen.findByText('Total')).closest('tr') as HTMLElement;
-    expect(cellTexts(total).slice(-3)).toEqual(['0.05–0.13', '0.014–0.035', '0.076–0.29']);
+    expect(cellTexts(total).slice(-4, -1)).toEqual(['0.05–0.13', '0.014–0.035', '0.076–0.29']);
     const note = document.querySelector('.llm-usage-footprint-note') as HTMLElement;
     expect(note.textContent).toContain('estimates from EcoLogits');
     expect(note.textContent).toContain('300 of 800 output tokens have no estimate');
@@ -124,5 +143,26 @@ describe('Token Usage footprint columns', () => {
       );
     });
     await screen.findByText(PRIYA);
+  });
+
+  test('each row names the models its figures rest on, and flags assumptions', async () => {
+    render(<LlmUsageManager />);
+    const priya = (await screen.findByText(PRIYA)).closest('tr') as HTMLElement;
+    expect(screen.getByText('Basis')).toBeInTheDocument();
+    const badges = Array.from(priya.querySelectorAll('.footprint-badge')) as HTMLElement[];
+    expect(badges.map((b) => b.textContent)).toEqual(['haiku-4.5', 'nova-2-lite \u00b7 Assumed']);
+    // Hover text gives the source, and the assumption where one was made.
+    expect(badges[0].title).toBe('300 output tokens. EcoLogits: anthropic/claude-haiku-4-5');
+    expect(badges[1].className).toContain('footprint-badge-assumed');
+    expect(badges[1].title).toContain(`Assumed: ${NOVA_ASSUMPTION}`);
+    expect(badges[1].title).toContain('google_genai/gemini-2.5-flash');
+  });
+
+  test('the note lists every assumption made in the period', async () => {
+    render(<LlmUsageManager />);
+    await screen.findByText(PRIYA);
+    const note = document.querySelector('.llm-usage-footprint-note') as HTMLElement;
+    const items = Array.from(note.querySelectorAll('li')).map((li) => li.textContent);
+    expect(items).toEqual([`nova-2-lite (Assumed): ${NOVA_ASSUMPTION}`]);
   });
 });

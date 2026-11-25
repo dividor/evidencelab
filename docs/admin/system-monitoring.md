@@ -169,13 +169,30 @@ several models is still right. The ranges are wide because some of these are
 themselves uncertain: most providers don't publish their models' sizes, so
 EcoLogits estimates them, and it warns that such figures are less precise.
 
+**Where each figure comes from.** The **Basis** column shows a badge for each
+model a row's figures rest on. Hover over a badge for its source: the EcoLogits
+model or models used, and the number of output tokens. A badge marked
+**Assumed** (amber) means EcoLogits doesn't cover that model itself, so its
+figures rest on other models', and the note under the table says how for each
+one:
+
+- **Amazon Nova 2 Lite and Nova Pro.** Amazon publishes no size for Nova, so
+  each gets the range that spans the models of its size class that EcoLogits
+  covers: Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash for
+  Nova 2 Lite (small), and Llama 3.1 70B and Sonnet 4.6 for Nova Pro
+  (mid-size). The classes follow the grouping in Llopis-Garcia et al.,
+  *Sustainable Production and Consumption* 70 (2026). The range is wide on
+  purpose: in EcoLogits, the small models alone range from about 0.06 to
+  5.8 Wh per 1,000 output tokens.
+- **Llama 3.3 70B** is estimated as Llama 3.1 70B, which has the same design
+  and exactly the same number of parameters, the figure EcoLogits estimates
+  from.
+
 **What is not counted.**
 
-- **Models EcoLogits doesn't cover.** Amazon Nova has no published size, and
-  some older models aren't in its list (for example Gemini 2.0 Flash). Their
-  calls have no estimate, rather than a guessed one. Llama 3.3 70B is estimated
-  as Llama 3.1 70B, which has the same design and exactly the same number of
-  parameters, the figure EcoLogits estimates from.
+- **Models with no estimate.** Some models aren't in EcoLogits' list and have
+  no assumption set (for example Gemini 2.0 Flash). Their calls have no
+  estimate, rather than a guessed one.
 - **Embedding and reranking calls.** EcoLogits estimates text generation only.
 - **The prompt.** EcoLogits counts the tokens a model writes, not the ones it
   reads.

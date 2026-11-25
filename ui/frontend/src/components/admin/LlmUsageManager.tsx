@@ -21,6 +21,17 @@ interface FootprintFields {
   water_l_max: number | null;
   // Output tokens with no estimate (uncovered models, or rows from before estimates began).
   footprint_unestimated_tokens: number;
+  // What the figures rest on: each estimated model, the EcoLogits model(s)
+  // used for it, and the assumption made when those aren't the model itself.
+  footprint_basis: BasisEntry[];
+}
+
+interface BasisEntry {
+  model: string;
+  ecologits_models: string[];
+  assumed: boolean;
+  assumption: string | null;
+  output_tokens: number;
 }
 
 interface UsageRow extends FootprintFields {
@@ -116,11 +127,60 @@ const FootprintCells: React.FC<{ fields: FootprintFields }> = ({ fields }) => (
         {formatRange(fields, measure)}
       </td>
     ))}
+    <td style={{ fontSize: '0.78rem' }}>
+      <BasisBadges basis={fields.footprint_basis} />
+    </td>
   </>
 );
 
+const BADGE: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '0 6px',
+  margin: '1px 4px 1px 0',
+  borderRadius: '10px',
+  fontSize: '0.72rem',
+  lineHeight: '1.5',
+  whiteSpace: 'nowrap',
+  background: '#eef2f7',
+  color: '#2c3e50',
+  border: '1px solid #d5dde8',
+};
+const ASSUMED_BADGE: React.CSSProperties = {
+  ...BADGE,
+  background: '#fff4e5',
+  color: '#8a5300',
+  border: '1px solid #f0c27b',
+};
+
+const basisTitle = (b: BasisEntry): string => {
+  const source = `EcoLogits: ${b.ecologits_models.join(', ')}`;
+  const tokens = `${formatTokens(b.output_tokens)} output tokens.`;
+  return b.assumed ? `${tokens} Assumed: ${b.assumption} ${source}` : `${tokens} ${source}`;
+};
+
+// One badge per estimated model; amber with "Assumed" where the estimate rests
+// on other models' figures. Hover for the source.
+const BasisBadges: React.FC<{ basis: BasisEntry[] }> = ({ basis }) => {
+  if (basis.length === 0) return <>{NULL_CELL}</>;
+  return (
+    <>
+      {basis.map((b) => (
+        <span
+          key={b.model}
+          className={b.assumed ? 'footprint-badge footprint-badge-assumed' : 'footprint-badge'}
+          style={b.assumed ? ASSUMED_BADGE : BADGE}
+          title={basisTitle(b)}
+        >
+          {b.model}
+          {b.assumed && <strong> · Assumed</strong>}
+        </span>
+      ))}
+    </>
+  );
+};
+
 const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }) => (
-  <p className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
+  <div className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
     Energy, emissions and water are estimates from EcoLogits for the models it covers,
     shown as a range from low to high.
     {totals.footprint_unestimated_tokens > 0 && (
@@ -132,7 +192,18 @@ const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }
       </>
     )}{' '}
     See System Monitoring in the docs for how they are worked out and their limits.
-  </p>
+    {totals.footprint_basis.some((b) => b.assumed) && (
+      <ul style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem' }}>
+        {totals.footprint_basis
+          .filter((b) => b.assumed)
+          .map((b) => (
+            <li key={b.model}>
+              <strong>{b.model}</strong> (Assumed): {b.assumption}
+            </li>
+          ))}
+      </ul>
+    )}
+  </div>
 );
 
 const isoToday = (): string => new Date().toISOString().slice(0, 10);
@@ -405,12 +476,13 @@ const LlmUsageManager: React.FC = () => {
                     sortField={sortBy} sortDirection={order} onSort={handleSort}
                     onFilterClick={noFilterClick} hasActiveFilter={noActiveFilter} />
                 ))}
+                <th>Basis</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7 + FOOTPRINT_COLUMNS.length} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
+                  <td colSpan={8 + FOOTPRINT_COLUMNS.length} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
                     No usage in the selected range
                   </td>
                 </tr>

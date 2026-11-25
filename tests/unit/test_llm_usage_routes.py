@@ -23,6 +23,7 @@ from ui.backend.routes.llm_usage import (
     _NO_GROUP_LABEL,
     _SORT_KEYS,
     _VALID_ACTIVITY_TYPES,
+    _basis_text,
     _build_group_grouped_sql,
     _build_user_grouped_sql,
     _resolve_date_range,
@@ -196,6 +197,7 @@ class TestRowToDict:
             "cost_usd": Decimal("0.001500"),
             **{column: None for column in _FOOTPRINT_COLUMNS},
             "footprint_unestimated_tokens": 0,
+            "footprint_bases": None,
         }
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
@@ -249,6 +251,7 @@ class TestComputeTotals:
             "cost_usd": "0.000000",
             **{column: None for column in _FOOTPRINT_COLUMNS},
             "footprint_unestimated_tokens": 0,
+            "footprint_basis": [],
         }
         defaults.update(overrides)
         return defaults
@@ -446,6 +449,62 @@ class TestFootprintRollup:
         for column in _FOOTPRINT_COLUMNS:
             assert f"AS {column}" in sql
         assert "AS footprint_unestimated_tokens" in sql
+        assert "AS footprint_bases" in sql
         # Ingestion has no user or group: its rows get their own line.
         assert "'(pipeline)'" in sql
         assert "filters->>'type', '') = 'pipeline'" in sql
+
+
+class TestFootprintBasis:
+    """Every row says what its figures rest on, and flags assumptions."""
+
+    def test_row_merges_its_bases_per_model_most_tokens_first(self):
+        row = TestRowToDict()._row(
+            footprint_bases=[
+                {"haiku-4.5": 100},
+                {"nova-2-lite": 300, "haiku-4.5": 50},
+                {"nova-2-lite": 200},
+            ]
+        )
+        basis = _row_to_dict(row)["footprint_basis"]
+        assert [(b["model"], b["output_tokens"]) for b in basis] == [
+            ("nova-2-lite", 500),
+            ("haiku-4.5", 150),
+        ]
+        nova, haiku = basis
+        assert nova["assumed"] is True
+        assert "Amazon publishes no size for Nova 2 Lite" in nova["assumption"]
+        assert "anthropic/claude-haiku-4-5" in nova["ecologits_models"]
+        assert haiku["assumed"] is False
+        assert haiku["assumption"] is None
+        assert haiku["ecologits_models"] == ["anthropic/claude-haiku-4-5"]
+
+    def test_row_without_estimates_has_an_empty_basis(self):
+        assert _row_to_dict(TestRowToDict()._row())["footprint_basis"] == []
+
+    def test_totals_merge_the_rows_bases(self):
+        rows = [
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"nova-pro": 40}])),
+            _row_to_dict(
+                TestRowToDict()._row(footprint_bases=[{"nova-pro": 60, "haiku-4.5": 5}])
+            ),
+        ]
+        totals = compute_totals(rows)
+        assert [
+            (b["model"], b["output_tokens"]) for b in totals["footprint_basis"]
+        ] == [
+            ("nova-pro", 100),
+            ("haiku-4.5", 5),
+        ]
+
+    def test_export_spells_out_the_basis(self):
+        basis = _row_to_dict(
+            TestRowToDict()._row(footprint_bases=[{"nova-2-lite": 30, "haiku-4.5": 10}])
+        )["footprint_basis"]
+        text = _basis_text(basis)
+        assert text.startswith(
+            "nova-2-lite: 30 output tokens, assumed (Amazon publishes"
+        )
+        assert (
+            "haiku-4.5: 10 output tokens, EcoLogits: anthropic/claude-haiku-4-5" in text
+        )

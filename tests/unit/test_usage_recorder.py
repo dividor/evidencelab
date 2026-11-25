@@ -252,13 +252,17 @@ class TestRecordLlmUsage:
 
     @pytest.mark.asyncio
     async def test_record_adds_each_calls_footprint_from_its_own_model(self):
-        # gpt-4.1-mini is covered by EcoLogits; nova-2-lite is not, so its
-        # output tokens are counted as unestimated instead.
+        # gpt-4.1-mini is covered by EcoLogits; gemini-2.0-flash has no basis,
+        # so its output tokens are counted as unestimated instead.
         existing = _existing_row()
         session = _FakeSession(existing=existing)
         for usage in (
             _USAGE,
-            {"llm_model": "nova-2-lite", "prompt_tokens": 10, "completion_tokens": 300},
+            {
+                "llm_model": "gemini-2.0-flash",
+                "prompt_tokens": 10,
+                "completion_tokens": 300,
+            },
             _USAGE,
         ):
             await record_llm_usage(
@@ -274,6 +278,8 @@ class TestRecordLlmUsage:
         assert existing.gwp_kgco2eq_max == pytest.approx(2 * one_call.gwp_kgco2eq[1])
         assert existing.water_l_max == pytest.approx(2 * one_call.water_l[1])
         assert existing.footprint_unestimated_tokens == 300
+        # The row records what its figures rest on.
+        assert existing.footprint_basis == {"gpt-4.1-mini": 1000}
 
     @pytest.mark.asyncio
     async def test_record_when_model_unknown_then_tokens_without_cost(self):

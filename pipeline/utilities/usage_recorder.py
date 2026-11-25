@@ -110,6 +110,15 @@ class _TotalsRow:
         self._totals[name] = value
 
 
+def _db_value(column: str, value: Any) -> Any:
+    """The footprint basis is JSONB, which psycopg2 needs wrapped."""
+    if column == "footprint_basis" and value is not None:
+        from psycopg2.extras import Json
+
+        return Json(value)
+    return value
+
+
 def _connect():
     """Open a short-lived connection to the shared (user-module) database.
 
@@ -184,7 +193,10 @@ def record_pipeline_usage(
                             entry.get("prompt_tokens"),
                             entry.get("completion_tokens"),
                             cost,
-                            *(entry.get(c) for c in FOOTPRINT_ROW_COLUMNS),
+                            *(
+                                _db_value(c, entry.get(c))
+                                for c in FOOTPRINT_ROW_COLUMNS
+                            ),
                         ),
                     )
             conn.commit()

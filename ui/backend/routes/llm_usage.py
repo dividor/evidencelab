@@ -32,6 +32,7 @@ from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
 from ui.backend.auth.users import current_superuser
 from ui.backend.utils.excel_text import append_text_row
+from ui.backend.utils.llm_footprint import describe_basis
 
 logger = logging.getLogger(__name__)
 
@@ -189,11 +190,17 @@ def _footprint_sums(alias: str) -> str:
         f"ELSE COALESCE({prefix}footprint_unestimated_tokens, 0) END), 0)"
         " AS footprint_unestimated_tokens"
     )
+    # Each row's {model: output tokens}, merged per model in Python.
+    sums.append(
+        f"jsonb_agg({prefix}footprint_basis) "
+        f"FILTER (WHERE {prefix}footprint_basis IS NOT NULL) AS footprint_bases"
+    )
     return ",\n            ".join(sums)
 
 
 _FOOTPRINT_SELECT = ", ".join(
-    f"ua.{c}" for c in (*_FOOTPRINT_COLUMNS, "footprint_unestimated_tokens")
+    f"ua.{c}"
+    for c in (*_FOOTPRINT_COLUMNS, "footprint_unestimated_tokens", "footprint_basis")
 )
 
 
@@ -331,7 +338,25 @@ def _row_to_dict(row: Any) -> Dict[str, Any]:
         "cost_usd": cost_value,
         **{c: _float_or_none(getattr(row, c)) for c in _FOOTPRINT_COLUMNS},
         "footprint_unestimated_tokens": int(row.footprint_unestimated_tokens),
+        "footprint_basis": _describe_bases(_basis_tokens(row.footprint_bases or [])),
     }
+
+
+def _basis_tokens(bases: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Sum ``{model: output tokens}`` dicts per model."""
+    tokens: Dict[str, int] = {}
+    for basis in bases:
+        for model, count in (basis or {}).items():
+            tokens[model] = tokens.get(model, 0) + int(count)
+    return tokens
+
+
+def _describe_bases(tokens: Dict[str, int]) -> List[Dict[str, Any]]:
+    """Each estimated model's source and assumption, most tokens first."""
+    return [
+        {**describe_basis(model), "output_tokens": count}
+        for model, count in sorted(tokens.items(), key=lambda item: -item[1])
+    ]
 
 
 def _float_or_none(value: Any) -> Optional[float]:
@@ -357,6 +382,15 @@ def compute_totals(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         **totals_int,
         "cost_usd": format(cost_total.quantize(Decimal("0.000001")), "f"),
         **{c: _sum_or_none(r[c] for r in rows) for c in _FOOTPRINT_COLUMNS},
+        "footprint_basis": _describe_bases(
+            _basis_tokens(
+                [
+                    {b["model"]: b["output_tokens"]}
+                    for r in rows
+                    for b in r["footprint_basis"]
+                ]
+            )
+        ),
     }
 
 
@@ -465,11 +499,28 @@ _FOOTPRINT_HEADERS = (
     "Water min (L)",
     "Water max (L)",
     "Output tokens with no footprint estimate",
+    "Footprint basis",
 )
 
 
+def _basis_text(basis: List[Dict[str, Any]]) -> str:
+    """e.g. "nova-2-lite: 1200 output tokens, assumed (Amazon publishes ...)"."""
+    parts = []
+    for b in basis:
+        how = f"assumed ({b['assumption']})" if b["assumed"] else "EcoLogits"
+        sources = ", ".join(b["ecologits_models"])
+        parts.append(
+            f"{b['model']}: {b['output_tokens']} output tokens, {how}: {sources}"
+        )
+    return "; ".join(parts)
+
+
 def _footprint_cells(r: Dict[str, Any]) -> List[Any]:
-    return [*(r[c] for c in _FOOTPRINT_COLUMNS), r["footprint_unestimated_tokens"]]
+    return [
+        *(r[c] for c in _FOOTPRINT_COLUMNS),
+        r["footprint_unestimated_tokens"],
+        _basis_text(r["footprint_basis"]),
+    ]
 
 
 @router.get("/export", tags=["llm-usage"])

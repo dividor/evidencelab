@@ -13,13 +13,18 @@ from ecologits.model_repository import models as ecologits_models
 from pipeline.db import config as db_config
 from ui.backend.utils import llm_footprint
 from ui.backend.utils.llm_footprint import (
-    ECOLOGITS_MODELS,
+    FOOTPRINT_BASES,
     FOOTPRINT_ROW_COLUMNS,
+    Basis,
     add_footprint,
+    describe_basis,
     estimate_footprint,
     set_footprint,
     validate_footprint_settings,
 )
+
+# A chat model EcoLogits doesn't cover and the table has no basis for.
+UNCOVERED = "gemini-2.0-flash"
 
 
 @pytest.fixture
@@ -38,10 +43,20 @@ def _row():
 
 
 class TestModelTable:
-    @pytest.mark.parametrize("key,mapping", sorted(ECOLOGITS_MODELS.items()))
-    def test_every_mapped_model_is_in_ecologits(self, key, mapping):
-        provider, model = mapping
-        assert ecologits_models.find_model(provider=provider, model_name=model), key
+    @pytest.mark.parametrize("key,basis", sorted(FOOTPRINT_BASES.items()))
+    def test_every_basis_model_is_in_ecologits(self, key, basis):
+        for provider, model in basis.models:
+            assert ecologits_models.find_model(provider=provider, model_name=model), key
+
+    @pytest.mark.parametrize(
+        "key", ["nova-2-lite", "nova-pro", "llama-3.3-70b-instruct"]
+    )
+    def test_estimates_resting_on_other_models_say_so(self, key):
+        assert FOOTPRINT_BASES[key].assumption
+
+    @pytest.mark.parametrize("key", ["haiku-4.5", "gpt-4.1-mini", "gemini-2.5-flash"])
+    def test_models_ecologits_covers_carry_no_assumption(self, key):
+        assert FOOTPRINT_BASES[key].assumption is None
 
 
 class TestEstimateFootprint:
@@ -60,9 +75,36 @@ class TestEstimateFootprint:
         assert long.energy_kwh[0] > short.energy_kwh[0]
         assert long.energy_kwh[1] > short.energy_kwh[1]
 
-    @pytest.mark.parametrize("key", ["nova-2-lite", "nova-pro", "unknown", None, ""])
-    def test_models_ecologits_does_not_cover_are_not_estimated(self, llms, key):
+    @pytest.mark.parametrize("key", [UNCOVERED, "unknown", None, ""])
+    def test_models_with_no_basis_are_not_estimated(self, llms, key):
         assert estimate_footprint(key, 500) is None
+
+    @pytest.mark.parametrize(
+        "key,members",
+        [
+            (
+                "nova-2-lite",
+                ["haiku-4.5", "gpt-4.1-mini", "gemini-2.5-flash", "gemini-3.8-flash"],
+            ),
+            ("nova-pro", ["llama-3.3-70b-instruct", "sonnet-4.6"]),
+        ],
+    )
+    def test_nova_spans_the_models_of_its_size_class(self, llms, key, members):
+        # Amazon publishes no size for Nova, so its range covers its class.
+        nova = estimate_footprint(key, 1000)
+        estimates = [estimate_footprint(m, 1000) for m in members]
+        for measure in ("energy_kwh", "gwp_kgco2eq", "water_l"):
+            low, high = getattr(nova, measure)
+            assert low == min(getattr(e, measure)[0] for e in estimates)
+            assert high == max(getattr(e, measure)[1] for e in estimates)
+
+    def test_nova_uses_its_own_zone_for_every_class_model(self, llms):
+        llms({"nova-2-lite": {"electricity_mix_zone": "SWE"}})
+        sweden = estimate_footprint("nova-2-lite", 1000)
+        llms({"nova-2-lite": {"electricity_mix_zone": "USA"}})
+        usa = estimate_footprint("nova-2-lite", 1000)
+        assert sweden.energy_kwh == usa.energy_kwh
+        assert sweden.gwp_kgco2eq[1] < usa.gwp_kgco2eq[1]
 
     def test_no_output_token_count_is_not_estimated(self, llms):
         assert estimate_footprint("haiku-4.5", None) is None
@@ -81,12 +123,34 @@ class TestEstimateFootprint:
         assert estimate_footprint("my-gpt", 500) == estimate_footprint(
             "gpt-4.1-mini", 500
         )
+        assert describe_basis("my-gpt")["assumed"] is False
+
+    def test_config_mapping_can_state_its_assumption(self, llms):
+        llms(
+            {
+                "my-model": {
+                    "ecologits": {
+                        "provider": "openai",
+                        "model": "gpt-4.1-mini",
+                        "assumption": "Assumed to be like GPT-4.1 mini.",
+                    }
+                }
+            }
+        )
+        assert describe_basis("my-model") == {
+            "model": "my-model",
+            "ecologits_models": ["openai/gpt-4.1-mini"],
+            "assumed": True,
+            "assumption": "Assumed to be like GPT-4.1 mini.",
+        }
 
     def test_a_model_ecologits_no_longer_knows_is_logged_not_estimated(
         self, llms, monkeypatch, caplog
     ):
         monkeypatch.setattr(
-            llm_footprint, "ECOLOGITS_MODELS", {"gone": ("openai", "no-such-model")}
+            llm_footprint,
+            "FOOTPRINT_BASES",
+            {"gone": Basis((("openai", "no-such-model"),))},
         )
         with caplog.at_level(logging.ERROR, logger=llm_footprint.__name__):
             assert estimate_footprint("gone", 500) is None
@@ -102,14 +166,24 @@ class TestRowHelpers:
         assert row.energy_kwh_min == pytest.approx(2 * once[0])
         assert row.energy_kwh_max == pytest.approx(2 * once[1])
         assert row.footprint_unestimated_tokens is None
+        assert row.footprint_basis == {"haiku-4.5": 800}
 
-    def test_add_footprint_counts_tokens_it_cannot_estimate(self, llms):
+    def test_add_footprint_records_each_models_tokens_in_the_basis(self, llms):
         row = _row()
         add_footprint(row, "haiku-4.5", 400)
         add_footprint(row, "nova-2-lite", 300)
         add_footprint(row, "nova-2-lite", 200)
+        assert row.footprint_basis == {"haiku-4.5": 400, "nova-2-lite": 500}
+        assert row.footprint_unestimated_tokens is None
+
+    def test_add_footprint_counts_tokens_it_cannot_estimate(self, llms):
+        row = _row()
+        add_footprint(row, "haiku-4.5", 400)
+        add_footprint(row, UNCOVERED, 300)
+        add_footprint(row, UNCOVERED, 200)
         assert row.energy_kwh_min > 0
         assert row.footprint_unestimated_tokens == 500
+        assert row.footprint_basis == {"haiku-4.5": 400}
 
     @pytest.mark.parametrize("tokens", [0, None, -5])
     def test_add_footprint_ignores_calls_with_no_output(self, llms, tokens):
@@ -120,12 +194,13 @@ class TestRowHelpers:
     def test_set_footprint_replaces_what_was_there(self, llms):
         row = _row()
         add_footprint(row, "haiku-4.5", 5000)
-        add_footprint(row, "nova-2-lite", 100)
+        add_footprint(row, UNCOVERED, 100)
         set_footprint(row, "haiku-4.5", 400)
         expected = estimate_footprint("haiku-4.5", 400)
         assert (row.energy_kwh_min, row.energy_kwh_max) == expected.energy_kwh
         assert (row.water_l_min, row.water_l_max) == expected.water_l
         assert row.footprint_unestimated_tokens is None
+        assert row.footprint_basis == {"haiku-4.5": 400}
 
 
 class TestValidateSettings:

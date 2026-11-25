@@ -531,7 +531,7 @@ class TestApplyTokenUsage:
 
     def test_footprint_of_an_uncovered_model_counts_its_tokens(self):
         activity = _make_activity()
-        body = self._body(llm_model="nova-2-lite", completion_tokens=300)
+        body = self._body(llm_model="gemini-2.0-flash", completion_tokens=300)
         _apply_token_usage(activity, body)
         assert activity.energy_kwh_min is None
         assert activity.footprint_unestimated_tokens == 300
