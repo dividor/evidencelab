@@ -189,6 +189,9 @@ shows:
   low figures to the highest of their high figures. Every call is worked out
   this way with its own number of output tokens, and each line of the table
   adds up its calls;
+- what is counted: every AI call that writes text, including document
+  processing (document summaries, section classification and taxonomy tags),
+  but not embedding or reranking;
 - how EcoLogits works, with links to its website, its method, its paper and
   its code, and the EcoLogits version used.
 
@@ -224,7 +227,11 @@ The assumptions are:
   model, name an EcoLogits model to stand in for it, with the reason, in the
   model's `ecologits` setting in `config.json` (see
   [LLM Models](pipeline-configuration.md#llm-models-supported_llms)).
-- **Embedding and reranking calls.** EcoLogits estimates text generation only.
+- **Embedding and reranking calls.** Embedding turns document text and each
+  search query into numbers so they can be searched, when documents are
+  processed and on every search. Reranking puts search results in order.
+  Evidence Lab doesn't record these calls, and EcoLogits only estimates models
+  that write text, so they have no tokens, cost or footprint on this tab.
 - **The prompt.** EcoLogits counts the tokens a model writes, not the ones it
   reads.
 - **Usage recorded before the estimates began.** Older rows don't record how

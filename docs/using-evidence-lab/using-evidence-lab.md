@@ -16,3 +16,9 @@ Use the navigation bar at the top to switch between the main features:
 - **Monitor** — track pipeline performance and corpus statistics (admin)
 
 The guides in this section walk you through each feature in detail.
+
+### Your environmental impact
+
+When signed in, click your user icon and choose **Environmental impact**. Select **Last 30 days** or **Year to date** to see ranges for your estimated energy use, greenhouse gas emissions and water use. Both periods include today and use UTC. Year to date starts on January 1.
+
+We use [EcoLogits](https://ecologits.ai/latest/) to estimate the impact of text AI writes for your account. The figures leave out automatic document processing and the work of finding and sorting search results. The summary tells you how much AI-written text has no estimate, counted in tokens. A token is a small piece of text, like a word or part of a word. Administrators can control access to the summary in [Group Settings](../admin/user-administration.md#features--tabs).

@@ -1,4 +1,4 @@
-"""LLM usage rollup routes for the admin "Token Usage" tab.
+"""LLM usage rollup routes for admins and the signed-in user's footprint.
 
 Aggregates ``user_activity`` rows by user or by user-group, bucketed by
 day / week / month, with an optional activity-type filter and a date
@@ -15,22 +15,26 @@ Per the agreed design:
   row when grouping by group.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
-from ui.backend.auth.users import current_superuser
+from ui.backend.auth.users import current_active_user, current_superuser
+from ui.backend.services.group_settings import (
+    personal_impact_enabled,
+    user_effective_settings,
+)
+from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.excel_text import append_text_row
 from ui.backend.utils.llm_footprint import (
     describe_basis,
@@ -41,6 +45,20 @@ from ui.backend.utils.llm_footprint import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+_, _RATE_LIMIT_DEFAULT, _ = get_rate_limits()
+
+
+class PersonalImpactSummary(BaseModel):
+    from_date: date
+    to_date: date
+    energy_kwh_min: float | None
+    energy_kwh_max: float | None
+    gwp_kgco2eq_min: float | None
+    gwp_kgco2eq_max: float | None
+    water_l_min: float | None
+    water_l_max: float | None
+    completion_tokens: int
+    footprint_unestimated_tokens: int
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +197,7 @@ _FOOTPRINT_COLUMNS = (
 )
 
 
-def _footprint_sums(alias: str) -> str:
+def _footprint_sums(alias: str, *, include_basis: bool = True) -> str:
     """SUMs of the footprint columns, plus the output tokens with no estimate.
 
     A row with no estimate at all (from before 0042, or whose calls were all to
@@ -195,10 +213,11 @@ def _footprint_sums(alias: str) -> str:
         " AS footprint_unestimated_tokens"
     )
     # Each row's {model: output tokens}, merged per model in Python.
-    sums.append(
-        f"jsonb_agg({prefix}footprint_basis) "
-        f"FILTER (WHERE {prefix}footprint_basis IS NOT NULL) AS footprint_bases"
-    )
+    if include_basis:
+        sums.append(
+            f"jsonb_agg({prefix}footprint_basis) "
+            f"FILTER (WHERE {prefix}footprint_basis IS NOT NULL) AS footprint_bases"
+        )
     return ",\n            ".join(sums)
 
 
@@ -457,6 +476,47 @@ async def _fetch_usage_rows(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/me/footprint", tags=["llm-usage"])
+@limiter.limit(_RATE_LIMIT_DEFAULT)
+async def personal_impact_summary(
+    request: Request,
+    response: Response,
+    period: Literal["30-days", "year-to-date"] = "30-days",
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> PersonalImpactSummary:
+    """Summarize stored footprint estimates for the signed-in account."""
+    settings = await user_effective_settings(session, user.id)
+    if not personal_impact_enabled(settings):
+        raise HTTPException(
+            status_code=403, detail="Personal environmental impact is off."
+        )
+
+    today = datetime.now(timezone.utc).date()
+    start = (
+        today - timedelta(days=_DEFAULT_RANGE_DAYS - 1)
+        if period == "30-days"
+        else today.replace(month=1, day=1)
+    )
+    from_dt, to_dt = _resolve_date_range(start, today)
+    result = await session.execute(
+        text(
+            f"""
+            SELECT COALESCE(SUM(ua.completion_tokens), 0) AS completion_tokens,
+                   {_footprint_sums("ua", include_basis=False)}
+            FROM user_activity ua
+            WHERE ua.user_id = :user_id
+              AND ua.created_at >= :from_dt AND ua.created_at < :to_dt
+            """
+        ),
+        {"user_id": user.id, "from_dt": from_dt, "to_dt": to_dt},
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return PersonalImpactSummary(
+        from_date=start, to_date=today, **result.mappings().one()
+    )
 
 
 @router.get("/summary", tags=["llm-usage"])

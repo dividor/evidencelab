@@ -32,6 +32,7 @@ interface TopBarProps {
   onDocsClick: () => void;
   onAdminClick?: () => void;
   onLoadResearch?: (id: string) => void;
+  personalImpactEnabled?: boolean;
   navTabs?: React.ReactNode;
 }
 
@@ -62,6 +63,7 @@ export const TopBar = ({
   onDocsClick,
   onAdminClick,
   onLoadResearch,
+  personalImpactEnabled,
   navTabs,
 }: TopBarProps) => {
   const [hoveredModelCombo, setHoveredModelCombo] = useState<string | null>(null);
@@ -260,7 +262,13 @@ export const TopBar = ({
               </div>
             )}
           </div>
-          {USER_MODULE && <UserMenu onAdminClick={onAdminClick} onLoadResearch={onLoadResearch} />}
+          {USER_MODULE && (
+            <UserMenu
+              onAdminClick={onAdminClick}
+              onLoadResearch={onLoadResearch}
+              personalImpactEnabled={personalImpactEnabled}
+            />
+          )}
         </div>
       </div>
       {navTabs}
