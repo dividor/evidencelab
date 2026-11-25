@@ -149,6 +149,58 @@ token counts with a "—" cost.
 > counts, and the embedding client does not currently expose the provider's
 > usage envelope — both are candidates for a follow-up.
 
+Document ingestion (`pipeline`) has no user or group, so it gets its own
+**(pipeline)** line when grouping by user and when grouping by group.
+
+#### Environmental footprint
+
+The tab also estimates the **energy**, **greenhouse gas emissions** and
+**water** behind the AI's writing, with [EcoLogits](https://ecologits.ai), an
+open-source tool from the non-profit GenAI Impact. Each figure is shown as a
+range from low to high, in watt-hours (Wh), grams of CO₂ equivalent (g CO₂e)
+and millilitres (mL). The XLSX export has the same figures in kWh, kg CO₂e and
+litres.
+
+**How it is worked out.** As each AI call is recorded, EcoLogits estimates it
+from the number of tokens the model wrote, the model's size, the hardware such
+models typically run on, and the electricity and efficiency of the data centre.
+Each call is estimated from its own model, so a row that adds up calls to
+several models is still right. The ranges are wide because some of these are
+themselves uncertain: most providers don't publish their models' sizes, so
+EcoLogits estimates them, and it warns that such figures are less precise.
+
+**What is not counted.**
+
+- **Models EcoLogits doesn't cover.** Amazon Nova has no published size, and
+  some older models aren't in its list (for example Gemini 2.0 Flash). Their
+  calls have no estimate, rather than a guessed one. Llama 3.3 70B is estimated
+  as Llama 3.1 70B, which has the same design and exactly the same number of
+  parameters, the figure EcoLogits estimates from.
+- **Embedding and reranking calls.** EcoLogits estimates text generation only.
+- **The prompt.** EcoLogits counts the tokens a model writes, not the ones it
+  reads.
+- **Usage recorded before the estimates began.** Older rows can't be split by
+  model afterwards.
+
+The note under the table says how many of the period's output tokens have no
+estimate, so you can see how much of the AI use the figures cover.
+
+**Where the models run matters.** The same call has very different emissions on
+different grids. In EcoLogits' data, a kilowatt-hour emits about 0.035 kg CO₂e
+in Sweden, 0.26 kg in Ireland, 0.38 kg in the USA and 0.46 kg on the world
+average. EcoLogits assumes the USA for Anthropic, OpenAI and Google models
+unless told otherwise, so set `electricity_mix_zone` on each model in
+`config.json` to where yours runs (see
+[LLM Models](pipeline-configuration.md#llm-models-supported_llms)). The data
+centre's efficiency figures come from EcoLogits' figures for the model's maker,
+not from your cloud provider.
+
+**Use them for comparisons and trends.** These are estimates from a published
+method, not a measured carbon account. They are most useful for comparing
+models, periods and activities, and for seeing which uses account for most of
+the footprint. For how EcoLogits works, see its
+[methodology](https://ecologits.ai/latest/methodology/).
+
 ### Daily AI limit
 
 `AI_DAILY_COST_LIMIT_USD` is the most the site's AI features may cost in one

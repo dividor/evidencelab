@@ -23,6 +23,7 @@ from ui.backend.routes.activity import (
     _resolve_cost,
     log_activity,
 )
+from ui.backend.utils.llm_footprint import estimate_footprint
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -511,6 +512,29 @@ class TestApplyTokenUsage:
         )
         _apply_token_usage(activity, body)
         assert activity.cost_usd == Decimal("0.000400")
+
+    def test_footprint_is_estimated_from_the_reported_totals(self):
+        """Like the cost, the footprint is recomputed from the row's totals."""
+        activity = _make_activity(
+            energy_kwh_min=9.0, energy_kwh_max=9.0, footprint_unestimated_tokens=77
+        )
+        body = self._body(
+            llm_model="gpt-4.1-mini", prompt_tokens=1000, completion_tokens=500
+        )
+        _apply_token_usage(activity, body)
+        expected = estimate_footprint("gpt-4.1-mini", 500)
+        assert (activity.energy_kwh_min, activity.energy_kwh_max) == expected.energy_kwh
+        assert (activity.gwp_kgco2eq_min, activity.gwp_kgco2eq_max) == (
+            expected.gwp_kgco2eq
+        )
+        assert activity.footprint_unestimated_tokens is None
+
+    def test_footprint_of_an_uncovered_model_counts_its_tokens(self):
+        activity = _make_activity()
+        body = self._body(llm_model="nova-2-lite", completion_tokens=300)
+        _apply_token_usage(activity, body)
+        assert activity.energy_kwh_min is None
+        assert activity.footprint_unestimated_tokens == 300
 
     def test_unknown_model_keeps_client_cost(self):
         """When model has no rate, persist whatever cost the client sent."""

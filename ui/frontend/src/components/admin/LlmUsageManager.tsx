@@ -10,7 +10,20 @@ import { SortableHeader } from '../documents/SortableHeader';
 type Bucket = 'day' | 'week' | 'month';
 type GroupBy = 'user' | 'user_group';
 
-interface UsageRow {
+// Estimated footprint from EcoLogits (null where nothing was estimated), in
+// kWh, kg CO2eq and litres, each as a min and a max.
+interface FootprintFields {
+  energy_kwh_min: number | null;
+  energy_kwh_max: number | null;
+  gwp_kgco2eq_min: number | null;
+  gwp_kgco2eq_max: number | null;
+  water_l_min: number | null;
+  water_l_max: number | null;
+  // Output tokens with no estimate (uncovered models, or rows from before estimates began).
+  footprint_unestimated_tokens: number;
+}
+
+interface UsageRow extends FootprintFields {
   bucket_start: string;
   group_key: string;
   group_label: string;
@@ -24,7 +37,7 @@ interface UsageRow {
 
 interface UsageResponse {
   rows: UsageRow[];
-  totals: {
+  totals: FootprintFields & {
     request_count: number;
     prompt_tokens: number;
     completion_tokens: number;
@@ -69,6 +82,58 @@ const formatCost = (cost: string | null): string => {
   if (!Number.isFinite(n)) return NULL_CELL;
   return `$${n.toFixed(6)}`;
 };
+
+// Footprint columns: the API gives kWh, kg CO2eq and litres; the table shows
+// Wh, g and mL (x 1000), as "min–max" because EcoLogits estimates ranges.
+const FOOTPRINT_COLUMNS = [
+  { measure: 'energy_kwh', label: 'Energy (Wh)' },
+  { measure: 'gwp_kgco2eq', label: 'Emissions (g CO\u2082e)' },
+  { measure: 'water_l', label: 'Water (mL)' },
+] as const;
+type FootprintMeasure = (typeof FOOTPRINT_COLUMNS)[number]['measure'];
+
+const formatEstimate = (n: number): string =>
+  (n * 1000).toLocaleString(undefined, { maximumSignificantDigits: 2 });
+
+const formatRange = (fields: FootprintFields, measure: FootprintMeasure): string => {
+  const low = fields[`${measure}_min`];
+  const high = fields[`${measure}_max`];
+  if (low == null || high == null) return NULL_CELL;
+  return `${formatEstimate(low)}\u2013${formatEstimate(high)}`;
+};
+
+const NUMBER_CELL: React.CSSProperties = {
+  textAlign: 'right',
+  fontFamily: 'monospace',
+  fontSize: '0.82rem',
+  whiteSpace: 'nowrap',
+};
+
+const FootprintCells: React.FC<{ fields: FootprintFields }> = ({ fields }) => (
+  <>
+    {FOOTPRINT_COLUMNS.map(({ measure }) => (
+      <td key={measure} style={NUMBER_CELL}>
+        {formatRange(fields, measure)}
+      </td>
+    ))}
+  </>
+);
+
+const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }) => (
+  <p className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
+    Energy, emissions and water are estimates from EcoLogits for the models it covers,
+    shown as a range from low to high.
+    {totals.footprint_unestimated_tokens > 0 && (
+      <>
+        {' '}
+        {formatTokens(totals.footprint_unestimated_tokens)} of {formatTokens(totals.completion_tokens)}{' '}
+        output tokens have no estimate and are left out: they came from models EcoLogits
+        doesn&apos;t cover, such as Amazon Nova, or from before estimates began.
+      </>
+    )}{' '}
+    See System Monitoring in the docs for how they are worked out and their limits.
+  </p>
+);
 
 const isoToday = (): string => new Date().toISOString().slice(0, 10);
 const isoNDaysAgo = (n: number): string => {
@@ -335,12 +400,17 @@ const LlmUsageManager: React.FC = () => {
                 <SortableHeader columnKey="cost_usd" label="Cost (USD)"
                   sortField={sortBy} sortDirection={order} onSort={handleSort}
                   onFilterClick={noFilterClick} hasActiveFilter={noActiveFilter} />
+                {FOOTPRINT_COLUMNS.map(({ measure, label }) => (
+                  <SortableHeader key={measure} columnKey={`${measure}_max`} label={label}
+                    sortField={sortBy} sortDirection={order} onSort={handleSort}
+                    onFilterClick={noFilterClick} hasActiveFilter={noActiveFilter} />
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
+                  <td colSpan={7 + FOOTPRINT_COLUMNS.length} style={{ textAlign: 'center', padding: '1.5rem', color: '#888' }}>
                     No usage in the selected range
                   </td>
                 </tr>
@@ -364,6 +434,7 @@ const LlmUsageManager: React.FC = () => {
                     <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                       {formatCost(r.cost_usd)}
                     </td>
+                    <FootprintCells fields={r} />
                   </tr>
                 ))
               )}
@@ -388,10 +459,12 @@ const LlmUsageManager: React.FC = () => {
                   <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.82rem' }}>
                     {formatCost(totals.cost_usd)}
                   </td>
+                  <FootprintCells fields={totals} />
                 </tr>
               </tfoot>
             )}
           </table>
+          {totals && rows.length > 0 && <FootprintNote totals={totals} />}
         </div>
       )}
     </div>

@@ -18,6 +18,7 @@ from ui.backend.routes.llm_usage import (
     _ANONYMOUS_LABEL,
     _BUCKETS,
     _DEFAULT_RANGE_DAYS,
+    _FOOTPRINT_COLUMNS,
     _GROUP_BYS,
     _NO_GROUP_LABEL,
     _SORT_KEYS,
@@ -193,6 +194,8 @@ class TestRowToDict:
             "completion_tokens": 567,
             "total_tokens": 1801,
             "cost_usd": Decimal("0.001500"),
+            **{column: None for column in _FOOTPRINT_COLUMNS},
+            "footprint_unestimated_tokens": 0,
         }
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
@@ -206,6 +209,8 @@ class TestRowToDict:
         assert out["completion_tokens"] == 567
         assert out["total_tokens"] == 1801
         assert out["cost_usd"] == "0.001500"
+        assert all(out[c] is None for c in _FOOTPRINT_COLUMNS)
+        assert out["footprint_unestimated_tokens"] == 0
 
     def test_date_input_renders_as_iso(self):
         """Postgres date_trunc may yield a date, not a datetime, in some setups."""
@@ -242,6 +247,8 @@ class TestComputeTotals:
             "completion_tokens": 0,
             "total_tokens": 0,
             "cost_usd": "0.000000",
+            **{column: None for column in _FOOTPRINT_COLUMNS},
+            "footprint_unestimated_tokens": 0,
         }
         defaults.update(overrides)
         return defaults
@@ -366,6 +373,9 @@ def test_sort_keys_match_response_columns():
         "completion_tokens",
         "total_tokens",
         "cost_usd",
+        "energy_kwh_max",
+        "gwp_kgco2eq_max",
+        "water_l_max",
     }
     assert _SORT_KEYS == response_columns
 
@@ -377,3 +387,65 @@ def test_sort_keys_match_response_columns():
 # preserve that property; live-DB assertions belong in
 # ``tests/integration/`` against a seeded fixture so the expected
 # results are stable across runs even as new activity is logged.
+
+
+# ---------------------------------------------------------------------------
+# Estimated footprint (migration 0042) and the pipeline's own line
+# ---------------------------------------------------------------------------
+
+
+class TestFootprintRollup:
+    @staticmethod
+    def _row(**overrides):
+        row = TestComputeTotals._row()
+        row.update(overrides)
+        return row
+
+    def test_row_carries_sums_as_floats(self):
+        estimated = TestRowToDict()._row(
+            energy_kwh_min=Decimal("0.0001"),
+            energy_kwh_max=Decimal("0.0003"),
+            footprint_unestimated_tokens=40,
+        )
+        out = _row_to_dict(estimated)
+        assert (out["energy_kwh_min"], out["energy_kwh_max"]) == (0.0001, 0.0003)
+        assert isinstance(out["energy_kwh_min"], float)
+        assert out["footprint_unestimated_tokens"] == 40
+
+    def test_totals_sum_the_estimates_and_unestimated_tokens(self):
+        rows = [
+            self._row(
+                energy_kwh_min=1.0, energy_kwh_max=2.0, footprint_unestimated_tokens=5
+            ),
+            self._row(
+                energy_kwh_min=0.5, energy_kwh_max=1.0, footprint_unestimated_tokens=7
+            ),
+            self._row(),  # no estimate: left out of the sums, not counted as 0
+        ]
+        t = compute_totals(rows)
+        assert (t["energy_kwh_min"], t["energy_kwh_max"]) == (1.5, 3.0)
+        assert t["footprint_unestimated_tokens"] == 12
+        assert t["water_l_min"] is None
+
+    def test_sorting_puts_rows_with_no_estimate_last(self):
+        rows = [
+            self._row(group_label="none"),
+            self._row(group_label="small", gwp_kgco2eq_max=0.1),
+            self._row(group_label="big", gwp_kgco2eq_max=0.9),
+        ]
+        desc = [r["group_label"] for r in sort_rows(rows, "gwp_kgco2eq_max", "desc")]
+        assert desc == ["big", "small", "none"]
+
+    @pytest.mark.parametrize(
+        "builder", [_build_user_grouped_sql, _build_group_grouped_sql]
+    )
+    def test_both_groupings_sum_the_footprint_and_give_pipeline_its_own_line(
+        self, builder
+    ):
+        sql = builder("week", None)
+        for column in _FOOTPRINT_COLUMNS:
+            assert f"AS {column}" in sql
+        assert "AS footprint_unestimated_tokens" in sql
+        # Ingestion has no user or group: its rows get their own line.
+        assert "'(pipeline)'" in sql
+        assert "filters->>'type', '') = 'pipeline'" in sql

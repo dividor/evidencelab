@@ -23,6 +23,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from ui.backend.utils.llm_costs import compute_cost
+from ui.backend.utils.llm_footprint import FOOTPRINT_ROW_COLUMNS, add_footprint
 
 logger = logging.getLogger(__name__)
 
@@ -65,12 +66,14 @@ class UsageCollector:
                 return
             key = model_key or "unknown"
             with self._lock:
-                totals = self._by_model.setdefault(
-                    key, {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
-                )
+                totals = self._by_model.setdefault(key, _empty_totals())
                 totals["prompt_tokens"] += prompt
                 totals["completion_tokens"] += completion
                 totals["calls"] += 1
+                # Each call's estimated footprint, added up like the tokens:
+                # EcoLogits counts each call's start-up, so a per-document
+                # total of tokens would understate several calls.
+                add_footprint(_TotalsRow(totals), model_key, completion)
         except Exception:
             logger.warning("Failed to accumulate LLM usage", exc_info=True)
 
@@ -88,6 +91,25 @@ class UsageCollector:
             ]
 
 
+def _empty_totals() -> Dict[str, Any]:
+    totals: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+    totals.update({column: None for column in FOOTPRINT_ROW_COLUMNS})
+    return totals
+
+
+class _TotalsRow:
+    """Attribute access onto a totals dict, for ``add_footprint``."""
+
+    def __init__(self, totals: Dict[str, Any]) -> None:
+        object.__setattr__(self, "_totals", totals)
+
+    def __getattr__(self, name: str) -> Any:
+        return self._totals[name]
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        self._totals[name] = value
+
+
 def _connect():
     """Open a short-lived connection to the shared (user-module) database.
 
@@ -102,11 +124,12 @@ def _connect():
     return psycopg2.connect(build_postgres_dsn())
 
 
-_INSERT_SQL = """
+_INSERT_SQL = f"""
     INSERT INTO user_activity
         (search_id, query, filters, llm_model,
-         prompt_tokens, completion_tokens, cost_usd)
-    VALUES (%s, %s, %s, %s, %s, %s, %s)
+         prompt_tokens, completion_tokens, cost_usd,
+         {", ".join(FOOTPRINT_ROW_COLUMNS)})
+    VALUES (%s, %s, %s, %s, %s, %s, %s, {", ".join(["%s"] * len(FOOTPRINT_ROW_COLUMNS))})
 """
 
 
@@ -161,6 +184,7 @@ def record_pipeline_usage(
                             entry.get("prompt_tokens"),
                             entry.get("completion_tokens"),
                             cost,
+                            *(entry.get(c) for c in FOOTPRINT_ROW_COLUMNS),
                         ),
                     )
             conn.commit()

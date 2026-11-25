@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from pipeline.utilities.usage_recorder import UsageCollector, record_pipeline_usage
+from ui.backend.utils.llm_footprint import FOOTPRINT_ROW_COLUMNS, estimate_footprint
 
 pytestmark = pytest.mark.unit
 
@@ -31,12 +32,12 @@ class TestUsageCollector:
         collector.add_response(_response(50, 10), "gpt-4.1-mini")
         collector.add_response(_response(7, 3), "gemini-2.0-flash")
         entries = {e["llm_model"]: e for e in collector.entries()}
-        assert entries["gpt-4.1-mini"] == {
-            "llm_model": "gpt-4.1-mini",
-            "prompt_tokens": 150,
-            "completion_tokens": 30,
-            "calls": 2,
-        }
+        gpt = entries["gpt-4.1-mini"]
+        assert (gpt["prompt_tokens"], gpt["completion_tokens"], gpt["calls"]) == (
+            150,
+            30,
+            2,
+        )
         assert entries["gemini-2.0-flash"]["calls"] == 1
 
     def test_add_response_when_no_usage_metadata_then_ignored(self):
@@ -109,8 +110,34 @@ class TestRecordPipelineUsage:
         assert params[5] == 500
         # 1000 * 0.0004/1k + 500 * 0.0016/1k
         assert params[6] == Decimal("0.001200")
+        # Then the estimated footprint, in FOOTPRINT_ROW_COLUMNS order.
+        footprint = estimate_footprint("gpt-4.1-mini", 500)
+        assert params[7:] == (
+            *footprint.energy_kwh,
+            *footprint.gwp_kgco2eq,
+            *footprint.water_l,
+            None,  # every output token had an estimate
+        )
+        for column in FOOTPRINT_ROW_COLUMNS:
+            assert column in _sql
         conn.commit.assert_called_once()
         conn.close.assert_called_once()
+
+    def test_collector_estimates_each_call_not_the_document_total(self):
+        # EcoLogits counts each call's start-up, so two calls of 250 output
+        # tokens are estimated as two calls, not as one of 500.
+        collector = UsageCollector()
+        collector.add_response(_response(10, 250), "gpt-4.1-mini")
+        collector.add_response(_response(10, 250), "gpt-4.1-mini")
+        collector.add_response(_response(10, 300), "nova-2-lite")
+        entries = {e["llm_model"]: e for e in collector.entries()}
+        one_call = estimate_footprint("gpt-4.1-mini", 250)
+        assert entries["gpt-4.1-mini"]["energy_kwh_max"] == pytest.approx(
+            2 * one_call.energy_kwh[1]
+        )
+        assert entries["gpt-4.1-mini"]["footprint_unestimated_tokens"] is None
+        assert entries["nova-2-lite"]["energy_kwh_max"] is None
+        assert entries["nova-2-lite"]["footprint_unestimated_tokens"] == 300
 
     def test_record_resets_collector(self):
         collector = self._collector()
