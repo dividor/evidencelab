@@ -32,7 +32,11 @@ from ui.backend.auth.db import get_async_session
 from ui.backend.auth.models import User
 from ui.backend.auth.users import current_superuser
 from ui.backend.utils.excel_text import append_text_row
-from ui.backend.utils.llm_footprint import describe_basis
+from ui.backend.utils.llm_footprint import (
+    describe_basis,
+    describe_sources,
+    footprint_method,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -482,6 +486,12 @@ async def llm_usage_summary(
     return {
         "rows": rows,
         "totals": totals,
+        # What each model's figures rest on, once per model rather than per
+        # row: the screen's pop-up for a Basis badge shows it.
+        "footprint_sources": [
+            describe_sources(b["model"]) for b in totals["footprint_basis"]
+        ],
+        "footprint_method": footprint_method(),
         "bucket": bucket,
         "group_by": group_by,
         "from_date": from_dt.date().isoformat(),

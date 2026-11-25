@@ -32,6 +32,7 @@ from ui.backend.routes.llm_usage import (
     _validate_bucket,
     _validate_group_by,
     compute_totals,
+    llm_usage_summary,
     sort_rows,
 )
 
@@ -508,3 +509,59 @@ class TestFootprintBasis:
         assert (
             "haiku-4.5: 10 output tokens, EcoLogits: anthropic/claude-haiku-4-5" in text
         )
+
+
+@pytest.mark.unit
+class TestSummaryFootprintSources:
+    """The summary carries each shown model's sources once, for the pop-up."""
+
+    @pytest.mark.asyncio
+    async def test_summary_lists_sources_for_each_model_in_the_totals(
+        self, monkeypatch
+    ):
+        rows = [
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"nova-2-lite": 30}])),
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"haiku-4.5": 10}])),
+        ]
+
+        async def fake_rows(*_args, **_kwargs):
+            return rows
+
+        monkeypatch.setattr("ui.backend.routes.llm_usage._fetch_usage_rows", fake_rows)
+        result = await llm_usage_summary(
+            bucket="week",
+            group_by="user",
+            from_date=date(2026, 11, 1),
+            to_date=date(2026, 11, 30),
+            activity_type=None,
+            sort_by="bucket_start",
+            order="desc",
+            _admin=None,
+            session=None,
+        )
+        sources = result["footprint_sources"]
+        assert [s["model"] for s in sources] == ["nova-2-lite", "haiku-4.5"]
+        nova = sources[0]
+        assert nova["assumed"] is True
+        assert nova["citations"]
+        assert len(nova["models"]) > 1
+        assert result["footprint_method"]["name"] == "EcoLogits"
+
+    @pytest.mark.asyncio
+    async def test_summary_without_estimates_has_no_sources(self, monkeypatch):
+        async def fake_rows(*_args, **_kwargs):
+            return [_row_to_dict(TestRowToDict()._row())]
+
+        monkeypatch.setattr("ui.backend.routes.llm_usage._fetch_usage_rows", fake_rows)
+        result = await llm_usage_summary(
+            bucket="week",
+            group_by="user",
+            from_date=date(2026, 11, 1),
+            to_date=date(2026, 11, 30),
+            activity_type=None,
+            sort_by="bucket_start",
+            order="desc",
+            _admin=None,
+            session=None,
+        )
+        assert result["footprint_sources"] == []

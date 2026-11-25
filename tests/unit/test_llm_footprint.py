@@ -5,9 +5,11 @@ model repository and the estimates against its own figures.
 """
 
 import logging
+from importlib.metadata import version
 from types import SimpleNamespace
 
 import pytest
+from ecologits.electricity_mix_repository import electricity_mixes
 from ecologits.model_repository import models as ecologits_models
 
 from pipeline.db import config as db_config
@@ -18,7 +20,9 @@ from ui.backend.utils.llm_footprint import (
     Basis,
     add_footprint,
     describe_basis,
+    describe_sources,
     estimate_footprint,
+    footprint_method,
     set_footprint,
     validate_footprint_settings,
 )
@@ -155,6 +159,85 @@ class TestEstimateFootprint:
         with caplog.at_level(logging.ERROR, logger=llm_footprint.__name__):
             assert estimate_footprint("gone", 500) is None
         assert "No footprint estimate for gone" in caplog.text
+
+
+class TestDescribeSources:
+    """What the admin screen's Basis pop-up shows for each model."""
+
+    @pytest.mark.parametrize(
+        "key", sorted(k for k, b in FOOTPRINT_BASES.items() if b.assumption)
+    )
+    def test_every_assumption_cites_its_sources(self, llms, key):
+        citations = describe_sources(key)["citations"]
+        assert citations
+        for citation in citations:
+            assert citation["label"]
+            assert citation["url"].startswith("https://")
+
+    def test_nova_lists_each_class_model_it_spans(self, llms):
+        source = describe_sources("nova-2-lite")
+        assert source["assumed"] is True
+        assert [f"{m['provider']}/{m['model']}" for m in source["models"]] == (
+            source["ecologits_models"]
+        )
+        assert len(source["models"]) == len(FOOTPRINT_BASES["nova-2-lite"].models)
+
+    def test_closed_model_size_is_flagged_as_ecologits_estimate(self, llms):
+        (haiku,) = describe_sources("haiku-4.5")["models"]
+        assert haiku["size_published"] is False
+        assert haiku["model_card"] is None
+        found = ecologits_models.find_model(
+            provider="anthropic", model_name="claude-haiku-4-5"
+        )
+        assert haiku["active_parameters_billion"] == {
+            "min": float(found.architecture.parameters.min),
+            "max": float(found.architecture.parameters.max),
+        }
+
+    def test_open_model_size_is_published_with_its_model_card(self, llms):
+        (llama,) = describe_sources("llama-3.3-70b-instruct")["models"]
+        assert llama["size_published"] is True
+        assert llama["architecture"] == "dense"
+        assert llama["active_parameters_billion"] == llama["total_parameters_billion"]
+        assert llama["model_card"] == (
+            "https://huggingface.co/meta-llama/Meta-Llama-3.1-70B-Instruct"
+        )
+
+    def test_mixture_of_experts_gives_active_and_total_parameters(self, llms):
+        (sonnet,) = describe_sources("sonnet-4.6")["models"]
+        assert sonnet["architecture"] == "moe"
+        assert (
+            sonnet["active_parameters_billion"]["max"]
+            < sonnet["total_parameters_billion"]["min"]
+        )
+
+    def test_zone_is_the_providers_default_without_config(self, llms):
+        (haiku,) = describe_sources("haiku-4.5")["models"]
+        usa = electricity_mixes.find_electricity_mix(zone="USA")
+        assert haiku["zone"] == "USA"
+        assert haiku["zone_from_config"] is False
+        assert haiku["grid_gwp_kgco2eq_per_kwh"] == usa.gwp
+        assert haiku["grid_water_l_per_kwh"] == usa.wue
+
+    def test_zone_from_config_applies_to_every_class_model(self, llms):
+        llms({"nova-pro": {"electricity_mix_zone": "IRL"}})
+        irl = electricity_mixes.find_electricity_mix(zone="IRL")
+        for model in describe_sources("nova-pro")["models"]:
+            assert model["zone"] == "IRL"
+            assert model["zone_from_config"] is True
+            assert model["grid_gwp_kgco2eq_per_kwh"] == irl.gwp
+
+    def test_model_with_no_basis_has_no_sources(self, llms):
+        source = describe_sources(UNCOVERED)
+        assert source["models"] == []
+        assert source["citations"] == []
+        assert source["assumed"] is True
+
+    def test_method_names_the_installed_ecologits(self):
+        assert footprint_method() == {
+            "name": "EcoLogits",
+            "version": version("ecologits"),
+        }
 
 
 class TestRowHelpers:

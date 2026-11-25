@@ -1,7 +1,8 @@
 /**
  * The admin Token Usage tab shows each row's estimated footprint (EcoLogits)
  * as a range, "—" where nothing was estimated, and says how many output
- * tokens have no estimate.
+ * tokens have no estimate. Each Basis badge opens a pop-up with the figure's
+ * sources, assumptions and method.
  */
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -15,21 +16,70 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const PRIYA = 'Priya Raman';
 const PIPELINE = '(pipeline)';
+const HAIKU = 'haiku-4.5';
+const NOVA = 'nova-2-lite';
+const CLAUDE_HAIKU = 'claude-haiku-4-5';
+const ECO_HAIKU = `anthropic/${CLAUDE_HAIKU}`;
 const NOVA_ASSUMPTION =
   'Amazon publishes no size for Nova 2 Lite. Its range spans the small models EcoLogits covers.';
 const HAIKU_BASIS = {
-  model: 'haiku-4.5',
-  ecologits_models: ['anthropic/claude-haiku-4-5'],
+  model: HAIKU,
+  ecologits_models: [ECO_HAIKU],
   assumed: false,
   assumption: null,
   output_tokens: 300,
 };
 const NOVA_BASIS = {
-  model: 'nova-2-lite',
-  ecologits_models: ['anthropic/claude-haiku-4-5', 'google_genai/gemini-2.5-flash'],
+  model: NOVA,
+  ecologits_models: [ECO_HAIKU, 'google_genai/gemini-2.5-flash'],
   assumed: true,
   assumption: NOVA_ASSUMPTION,
   output_tokens: 200,
+};
+
+const SAEF_PAPER_URL = 'https://doi.org/10.1016/j.spc.2026.11.003';
+
+const ecoModel = (provider: string, model: string, overrides: Record<string, unknown> = {}) => ({
+  provider,
+  model,
+  architecture: 'dense',
+  active_parameters_billion: { min: 10, max: 35 },
+  total_parameters_billion: { min: 10, max: 35 },
+  size_published: false,
+  model_card: null,
+  pue: { min: 1.09, max: 1.14 },
+  onsite_water_l_per_kwh: { min: 0.13, max: 0.999 },
+  zone: 'USA',
+  zone_from_config: false,
+  grid_gwp_kgco2eq_per_kwh: 0.3844,
+  grid_water_l_per_kwh: 3.1321,
+  ...overrides,
+});
+
+const HAIKU_SOURCE = {
+  model: HAIKU,
+  ecologits_models: [ECO_HAIKU],
+  assumed: false,
+  assumption: null,
+  citations: [],
+  models: [ecoModel('anthropic', CLAUDE_HAIKU)],
+};
+const NOVA_SOURCE = {
+  model: NOVA,
+  ecologits_models: NOVA_BASIS.ecologits_models,
+  assumed: true,
+  assumption: NOVA_ASSUMPTION,
+  citations: [{ label: 'Llopis-Garcia, G. (2026)', url: SAEF_PAPER_URL }],
+  models: [
+    ecoModel('anthropic', CLAUDE_HAIKU, { zone: 'IRL', zone_from_config: true }),
+    ecoModel('google_genai', 'gemini-2.5-flash', {
+      architecture: 'moe',
+      total_parameters_billion: { min: 440, max: 440 },
+      active_parameters_billion: { min: 44, max: 132 },
+      zone: 'IRL',
+      zone_from_config: true,
+    }),
+  ],
 };
 
 const EMPTY_FOOTPRINT = {
@@ -91,6 +141,8 @@ const RESPONSE = {
     footprint_unestimated_tokens: 300,
     footprint_basis: [HAIKU_BASIS, NOVA_BASIS],
   },
+  footprint_sources: [HAIKU_SOURCE, NOVA_SOURCE],
+  footprint_method: { name: 'EcoLogits', version: '0.11.3' },
   bucket: 'week',
   group_by: 'user',
   from_date: '2026-10-26',
@@ -130,6 +182,8 @@ describe('Token Usage footprint columns', () => {
     const note = document.querySelector('.llm-usage-footprint-note') as HTMLElement;
     expect(note.textContent).toContain('estimates from EcoLogits');
     expect(note.textContent).toContain('300 of 800 output tokens have no estimate');
+    expect(note.textContent).toContain('from models with no estimate, or from before estimates began');
+    expect(note.textContent).not.toContain('Amazon Nova');
   });
 
   test('the footprint columns sort by their high estimate', async () => {
@@ -151,11 +205,9 @@ describe('Token Usage footprint columns', () => {
     expect(screen.getByText('Basis')).toBeInTheDocument();
     const badges = Array.from(priya.querySelectorAll('.footprint-badge')) as HTMLElement[];
     expect(badges.map((b) => b.textContent)).toEqual(['haiku-4.5', 'nova-2-lite \u00b7 Assumed']);
-    // Hover text gives the source, and the assumption where one was made.
-    expect(badges[0].title).toBe('300 output tokens. EcoLogits: anthropic/claude-haiku-4-5');
+    expect(badges.every((b) => b.tagName === 'BUTTON')).toBe(true);
+    expect(badges[0].className).not.toContain('footprint-badge-assumed');
     expect(badges[1].className).toContain('footprint-badge-assumed');
-    expect(badges[1].title).toContain(`Assumed: ${NOVA_ASSUMPTION}`);
-    expect(badges[1].title).toContain('google_genai/gemini-2.5-flash');
   });
 
   test('the note lists every assumption made in the period', async () => {
@@ -164,5 +216,77 @@ describe('Token Usage footprint columns', () => {
     const note = document.querySelector('.llm-usage-footprint-note') as HTMLElement;
     const items = Array.from(note.querySelectorAll('li')).map((li) => li.textContent);
     expect(items).toEqual([`nova-2-lite (Assumed): ${NOVA_ASSUMPTION}`]);
+  });
+});
+
+describe('Basis pop-up', () => {
+  beforeEach(() => {
+    mockedAxios.get.mockResolvedValue({ data: RESPONSE });
+  });
+
+  const openBadge = async (label: string, rowText: string): Promise<HTMLElement> => {
+    render(<LlmUsageManager />);
+    const row = (await screen.findByText(rowText)).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: (name: string) => name.startsWith(label) }));
+    return screen.getByRole('dialog');
+  };
+
+  test('an assumed model shows its assumption, citations and the models it spans', async () => {
+    const dialog = await openBadge(NOVA, PRIYA);
+    expect(within(dialog).getByText(/How the footprint of nova-2-lite is estimated/)).toBeInTheDocument();
+    expect(dialog.textContent).toContain(`${PRIYA}, week of 2026-11-23: 200 output tokens from nova-2-lite.`);
+    expect(dialog.textContent).toContain(NOVA_ASSUMPTION);
+    const paper = within(dialog).getByRole('link', { name: 'Llopis-Garcia, G. (2026)' });
+    expect(paper).toHaveAttribute('href', SAEF_PAPER_URL);
+    expect(paper).toHaveAttribute('target', '_blank');
+    expect(dialog.textContent).toContain('Estimated as 2 EcoLogits models');
+    expect(dialog.textContent).toContain(ECO_HAIKU);
+    expect(dialog.textContent).toContain('10–35 billion parameters');
+    expect(dialog.textContent).toContain('Mixture of experts: 440 billion parameters, 44–132 billion active per token');
+    expect(dialog.textContent).toContain('Not published: EcoLogits’ estimate');
+    expect(dialog.textContent).toContain('Set in config.json: 0.384 kg CO₂e and 3.13 L');
+  });
+
+  test('a covered model has no assumption and shows its own figures', async () => {
+    const dialog = await openBadge(HAIKU, PRIYA);
+    expect(dialog.querySelector('.footprint-assumption')).toBeNull();
+    expect(dialog.textContent).toContain('Estimated as an EcoLogits model');
+    expect(dialog.textContent).toContain('EcoLogits’ default for this provider');
+  });
+
+  test('links to EcoLogits, its method and its paper, with the version used', async () => {
+    const dialog = await openBadge(HAIKU, PRIYA);
+    const hrefs = within(dialog)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        'https://ecologits.ai/latest/',
+        'https://ecologits.ai/latest/methodology/llm_inference/',
+        'https://ecologits.ai/latest/methodology/proprietary_models/',
+        'https://doi.org/10.21105/joss.07471',
+        'https://github.com/mlco2/ecologits',
+      ]),
+    );
+    expect(dialog.textContent).toContain('Estimates by EcoLogits 0.11.3');
+  });
+
+  test('a totals badge describes all lines and their unestimated tokens', async () => {
+    render(<LlmUsageManager />);
+    const total = (await screen.findByText('Total')).closest('tr') as HTMLElement;
+    fireEvent.click(within(total).getByRole('button', { name: /haiku-4.5/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.textContent).toContain('All lines shown: 300 output tokens from haiku-4.5.');
+    expect(dialog.textContent).toContain('300 other output tokens here have no estimate');
+  });
+
+  test('closes with the close button and with Escape', async () => {
+    await openBadge(HAIKU, PRIYA);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(within(screen.getByText(PRIYA).closest('tr') as HTMLElement).getByRole('button', { name: /nova-2-lite/ }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

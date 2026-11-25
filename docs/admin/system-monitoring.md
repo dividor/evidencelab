@@ -156,7 +156,7 @@ Document ingestion (`pipeline`) has no user or group, so it gets its own
 
 The tab also estimates the **energy**, **greenhouse gas emissions** and
 **water** behind the AI's writing, with [EcoLogits](https://ecologits.ai), an
-open-source tool from the non-profit GenAI Impact. Each figure is shown as a
+open-source tool from the CodeCarbon non-profit. Each figure is shown as a
 range from low to high, in watt-hours (Wh), grams of CO₂ equivalent (g CO₂e)
 and millilitres (mL). The XLSX export has the same figures in kWh, kg CO₂e and
 litres.
@@ -170,20 +170,34 @@ themselves uncertain: most providers don't publish their models' sizes, so
 EcoLogits estimates them, and it warns that such figures are less precise.
 
 **Where each figure comes from.** The **Basis** column shows a badge for each
-model a row's figures rest on. Hover over a badge for its source: the EcoLogits
-model or models used, and the number of output tokens. A badge marked
-**Assumed** (amber) means EcoLogits doesn't cover that model itself, so its
-figures rest on other models', and the note under the table says how for each
-one:
+model a row's figures rest on. A badge marked **Assumed** (amber) means
+EcoLogits doesn't cover that model itself, so its figures rest on other
+models', and the note under the table says how for each one.
 
-- **Amazon Nova 2 Lite and Nova Pro.** Amazon publishes no size for Nova, so
-  each gets the range that spans the models of its size class that EcoLogits
-  covers: Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash for
-  Nova 2 Lite (small), and Llama 3.1 70B and Sonnet 4.6 for Nova Pro
-  (mid-size). The classes follow the grouping in Llopis-Garcia et al.,
-  *Sustainable Production and Consumption* 70 (2026). The range is wide on
-  purpose: in EcoLogits, the small models alone range from about 0.06 to
-  5.8 Wh per 1,000 output tokens.
+**Click a badge** to see how that model's figures are worked out:
+
+- how many output tokens on that line came from the model, and how many of the
+  line's other output tokens have no estimate;
+- the assumption, if one was made, with links to its sources;
+- each EcoLogits model the figures rest on, with its size (and whether that
+  size is published or is EcoLogits' own estimate), the data-centre efficiency
+  EcoLogits assumes for its maker, and the electricity mix used;
+- how EcoLogits estimates a call, with links to its method, its paper and its
+  code, and the EcoLogits version used.
+
+The assumptions are:
+
+- **Amazon Nova 2 Lite and Nova Pro.** Amazon publishes no size for Nova. The
+  SAEF dataset puts Nova Lite in its small class (A) and Nova Pro in its
+  mid-size class (B), going by how Amazon describes the models rather than by
+  their size (G. Llopis-Garcia, *Sustainable Production and Consumption* 70
+  (2026) 320–347, [doi:10.1016/j.spc.2026.11.003](https://doi.org/10.1016/j.spc.2026.11.003)).
+  Nova 2 Lite gets the range spanning four class A models that EcoLogits
+  covers: Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash.
+  Nova Pro gets the range spanning two class B models: Llama 3.1 70B and
+  Sonnet 4.6. EcoLogits covers many more models in both classes, so these are
+  a choice, not the whole class. In class B especially, some models EcoLogits
+  covers, such as Gemini 2.5 Pro, have far higher estimates.
 - **Llama 3.3 70B** is estimated as Llama 3.1 70B, which has the same design
   and exactly the same number of parameters, the figure EcoLogits estimates
   from.
@@ -216,7 +230,10 @@ not from your cloud provider.
 method, not a measured carbon account. They are most useful for comparing
 models, periods and activities, and for seeing which uses account for most of
 the footprint. For how EcoLogits works, see its
-[methodology](https://ecologits.ai/latest/methodology/).
+[methodology](https://ecologits.ai/latest/methodology/llm_inference/) and its
+paper: S. Rincé and A. Banse, *EcoLogits: Evaluating the Environmental Impacts
+of Generative AI*, Journal of Open Source Software 10(111), 7471 (2025),
+[doi:10.21105/joss.07471](https://doi.org/10.21105/joss.07471).
 
 ### Daily AI limit
 

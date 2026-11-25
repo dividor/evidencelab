@@ -15,11 +15,11 @@ shows where every figure came from and flags assumptions.
 - **Covered:** EcoLogits knows the model itself (Haiku 4.5, GPT-4.1 mini...).
 - **Alias:** Llama 3.3 70B is estimated as Llama 3.1 70B, which has the same
   architecture and exactly the same parameter count.
-- **Size class:** Amazon publishes no size for Nova. Its calls get the range
-  spanning the models of its size class that EcoLogits covers (small for Nova
-  2 Lite, mid for Nova Pro), following saef's published grouping of models
-  into classes (Llopis-Garcia et al., Sustainable Production and Consumption
-  70 (2026) 320-347). The range is wide because those models differ widely.
+- **Size class:** Amazon publishes no size for Nova. SAEF's class table
+  (Llopis-Garcia, Sustainable Production and Consumption 70 (2026) 320-347)
+  puts Nova Lite in its small class (A) and Nova Pro in its mid class (B).
+  Nova's calls get the range spanning a few of the models EcoLogits covers in
+  that class (``_SMALL_CLASS``, ``_MID_CLASS``), and the assumption says which.
 
 A model with no basis (embedding and rerank models, which EcoLogits doesn't
 cover, or an unknown model) is not estimated: the caller counts its output
@@ -45,12 +45,15 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from importlib.metadata import version
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 # (EcoLogits provider, EcoLogits model name)
 EcoModel = Tuple[str, str]
+# (what it is, link), shown with an assumption as its source.
+Citation = Tuple[str, str]
 
 
 @dataclass(frozen=True)
@@ -61,11 +64,44 @@ class Basis:
     # Why the estimate rests on other models' figures; None when EcoLogits
     # covers the model itself.
     assumption: Optional[str] = None
+    # Where the assumption's facts come from.
+    citations: Tuple[Citation, ...] = ()
 
 
 _LLAMA_31_70B: EcoModel = ("huggingface_hub", "meta-llama/Meta-Llama-3.1-70B-Instruct")
 
-# saef's size classes (see the module docstring), as the models EcoLogits covers.
+# Every link below was checked to resolve on 2026-11-25.
+_SAEF_CITATIONS: Tuple[Citation, ...] = (
+    (
+        "Llopis-Garcia, G. (2026). Accounting for purchased artificial "
+        "intelligence inference in corporate greenhouse gas inventories: a "
+        "token-based method. Sustainable Production and Consumption 70, 320-347",
+        "https://doi.org/10.1016/j.spc.2026.11.003",
+    ),
+    (
+        "SAEF dataset, whose model-to-class table puts Nova Lite in class A "
+        "and Nova Pro in class B",
+        "https://doi.org/10.5281/zenodo.20443585",
+    ),
+    (
+        "Amazon: What is Amazon Nova? (no model sizes given)",
+        "https://docs.aws.amazon.com/nova/latest/userguide/what-is-nova.html",
+    ),
+)
+_LLAMA_70B_CITATIONS: Tuple[Citation, ...] = (
+    (
+        "Hugging Face: Llama 3.3 70B Instruct",
+        "https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct",
+    ),
+    (
+        "Hugging Face: Llama 3.1 70B Instruct",
+        "https://huggingface.co/meta-llama/Llama-3.1-70B-Instruct",
+    ),
+)
+
+# Models EcoLogits covers in SAEF's classes A and B (see the module docstring).
+# Not every class member: EcoLogits covers many more, and the assumptions
+# below name the ones used.
 _SMALL_CLASS: Tuple[EcoModel, ...] = (
     ("anthropic", "claude-haiku-4-5"),
     ("openai", "gpt-4.1-mini"),
@@ -100,18 +136,27 @@ FOOTPRINT_BASES: Mapping[str, Basis] = {
         (_LLAMA_31_70B,),
         "EcoLogits has no Llama 3.3 70B. Estimated as Llama 3.1 70B, which has "
         "the same architecture and exactly the same number of parameters.",
+        _LLAMA_70B_CITATIONS,
     ),
     # Amazon Bedrock: Amazon publishes no size for Nova.
     "nova-2-lite": Basis(
         _SMALL_CLASS,
-        "Amazon publishes no size for Nova 2 Lite. Its range spans the small "
-        "models EcoLogits covers: Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash "
-        "and Gemini 3.8 Flash.",
+        "Amazon publishes no size for Nova 2 Lite. SAEF puts Nova Lite in its "
+        "small class (A), from how Amazon describes the model, not from its "
+        "size. Its range spans four class A models that EcoLogits covers: "
+        "Haiku 4.5, GPT-4.1 mini, Gemini 2.5 Flash and Gemini 3.8 Flash. "
+        "EcoLogits covers many more class A models; these four were chosen.",
+        _SAEF_CITATIONS,
     ),
     "nova-pro": Basis(
         _MID_CLASS,
-        "Amazon publishes no size for Nova Pro. Its range spans the mid-size "
-        "models EcoLogits covers: Llama 3.1 70B and Sonnet 4.6.",
+        "Amazon publishes no size for Nova Pro. SAEF puts Nova Pro in its mid "
+        "class (B), from how Amazon describes the model, not from its size. "
+        "Its range spans two class B models that EcoLogits covers: Llama 3.1 "
+        "70B and Sonnet 4.6. EcoLogits covers many more class B models, some "
+        "with far higher estimates, such as Gemini 2.5 Pro; these two were "
+        "chosen.",
+        _SAEF_CITATIONS,
     ),
 }
 
@@ -244,6 +289,86 @@ def describe_basis(model_key: str) -> Dict[str, Any]:
         "assumed": basis.assumption is not None,
         "assumption": basis.assumption,
     }
+
+
+def _range_dict(value: Any) -> Dict[str, float]:
+    low, high = _as_range(value)
+    return {"min": low, "max": high}
+
+
+def _parameters(architecture: Any) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """(active, total) parameters in billions; the same for a dense model."""
+    parameters = architecture.parameters
+    if hasattr(parameters, "active"):
+        return _range_dict(parameters.active), _range_dict(parameters.total)
+    return _range_dict(parameters), _range_dict(parameters)
+
+
+def _describe_ecologits_model(model: EcoModel, zone: Optional[str]) -> Dict[str, Any]:
+    """The figures EcoLogits used for ``model``, for the admin screen.
+
+    Its size and whether that size is published, the data-centre settings
+    EcoLogits assumes for the provider, and the electricity mix of the zone
+    the estimate used: config.json's zone, else the provider's default.
+    """
+    from ecologits.electricity_mix_repository import electricity_mixes
+    from ecologits.model_repository import models
+    from ecologits.tracers.utils import PROVIDER_CONFIG_MAP
+
+    provider, name = model
+    found = models.find_model(provider=provider, model_name=name)
+    if found is None:
+        raise ValueError(f"EcoLogits has no model {name!r} for provider {provider!r}")
+    datacenter = PROVIDER_CONFIG_MAP[provider]
+    used_zone = zone or datacenter.datacenter_location or "WOR"
+    mix = electricity_mixes.find_electricity_mix(zone=used_zone)
+    if mix is None:
+        raise ValueError(f"EcoLogits has no electricity mix for zone {used_zone!r}")
+    active, total = _parameters(found.architecture)
+    return {
+        "provider": provider,
+        "model": name,
+        "architecture": found.architecture.type.value,
+        "active_parameters_billion": active,
+        "total_parameters_billion": total,
+        # EcoLogits flags models whose architecture was never published: their
+        # size is EcoLogits' own estimate.
+        "size_published": not any(
+            w.code == "model-arch-not-released" for w in found.warnings
+        ),
+        # A Hugging Face model's name is its page on the Hub.
+        "model_card": (
+            f"https://huggingface.co/{name}" if provider == "huggingface_hub" else None
+        ),
+        "pue": _range_dict(datacenter.datacenter_pue),
+        "onsite_water_l_per_kwh": _range_dict(datacenter.datacenter_wue),
+        "zone": used_zone,
+        "zone_from_config": zone is not None,
+        "grid_gwp_kgco2eq_per_kwh": mix.gwp,
+        "grid_water_l_per_kwh": mix.wue,
+    }
+
+
+def describe_sources(model_key: str) -> Dict[str, Any]:
+    """Everything behind ``model_key``'s figures, for the admin screen's pop-up.
+
+    The assumption and its citations, and for each EcoLogits model the
+    estimate rests on, the figures EcoLogits used.
+    """
+    basis = basis_for(model_key)
+    if basis is None:
+        return {**describe_basis(model_key), "citations": [], "models": []}
+    zone = electricity_mix_zone(model_key)
+    return {
+        **describe_basis(model_key),
+        "citations": [{"label": label, "url": url} for label, url in basis.citations],
+        "models": [_describe_ecologits_model(m, zone) for m in basis.models],
+    }
+
+
+def footprint_method() -> Dict[str, str]:
+    """The tool and version the estimates come from."""
+    return {"name": "EcoLogits", "version": version("ecologits")}
 
 
 _ROW_MEASURES = ("energy_kwh", "gwp_kgco2eq", "water_l")
