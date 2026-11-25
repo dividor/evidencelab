@@ -13,7 +13,8 @@ from pipeline.db import (
     SUPPORTED_RERANK_MODELS,
     UI_MODEL_COMBOS,
 )
-from ui.backend.schemas import LLMConfig, ModelComboConfig, ModelConfig
+from ui.backend.schemas import LLMConfig, LLMDefaults, ModelComboConfig, ModelConfig
+from ui.backend.services.llm_choice import config_defaults
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 from ui.backend.utils.app_state import get_pg_for_source
 
@@ -115,10 +116,18 @@ def get_config_llms():
                 model=config.get("model", ""),
                 provider=config.get("provider", "huggingface"),
                 inference_provider=config.get("inference_provider"),
+                supports_temperature=config.get("supports_temperature", True),
             )
         )
 
     return llms_list
+
+
+@router.get("/config/llm-defaults", response_model=LLMDefaults)
+def get_config_llm_defaults():
+    """config.json's model for the search AI summary, Briefs and evaluation
+    judging, which a group uses unless Group Settings > LLMs chooses another."""
+    return LLMDefaults(**config_defaults())
 
 
 def _location_from_source(source: Optional[str]) -> str:

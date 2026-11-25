@@ -4,6 +4,7 @@ import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { SortableHeader } from '../documents/SortableHeader';
 import { createCitationRenderer, AdminReferences } from './RatingsCitations';
+import { safeHref } from '../../utils/safeHref';
 
 /** Collapse triple+ newlines to double newlines */
 const cleanNewlines = (text: string): string => text.replace(/\n{3,}/g, '\n\n');
@@ -123,8 +124,10 @@ const ChevronIcon: React.FC<{ expanded: boolean }> = ({ expanded }) => (
 const isUrl = (val: string): boolean =>
   /^https?:\/\//i.test(val) || /^www\./i.test(val);
 
-const isImageDataUrl = (val: string): boolean =>
-  /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(val);
+// Raster images only. Feedback screenshots are JPEG; an SVG data URL can
+// carry script, so it is never treated as an image here.
+export const isImageDataUrl = (val: string): boolean =>
+  /^data:image\/(png|jpeg|webp|gif);base64,/i.test(val);
 
 /** Render a value as a clickable link if it looks like a URL */
 const AutoLink: React.FC<{ value: string; style?: React.CSSProperties }> = ({ value, style }) => {
@@ -167,7 +170,7 @@ const RatedResultCard: React.FC<{ context: Record<string, any> }> = ({ context }
       <div className="admin-result-card">
         <div style={{ fontWeight: 600, marginBottom: 4 }}>
           {link ? (
-            <a href={link} target="_blank" rel="noopener noreferrer"
+            <a href={safeHref(link)} target="_blank" rel="noopener noreferrer"
               className="admin-result-title-link"
               onClick={(e) => e.stopPropagation()}>
               {title || 'Untitled'}
@@ -319,7 +322,7 @@ const ResultsSnapshotList: React.FC<{ results: any[] }> = ({ results }) => {
           <div key={i} className="admin-result-card">
             <div style={{ fontWeight: 600, marginBottom: 4 }}>
               {r.link || r.url ? (
-                <a href={r.link || r.url} target="_blank" rel="noopener noreferrer"
+                <a href={safeHref(r.link || r.url)} target="_blank" rel="noopener noreferrer"
                   className="admin-result-title-link"
                   onClick={(e) => e.stopPropagation()}>
                   {r.title || 'Untitled'}
@@ -397,25 +400,14 @@ const AiSummaryBlock: React.FC<{ summary: string; results?: any[] }> = ({ summar
   );
 };
 
-// Modern browsers (Chrome 60+, Firefox 59+) block top-frame navigation to
-// data: URLs as a phishing mitigation, so window.open(dataUrl) opens an empty
-// tab. Convert the data URL to a Blob URL — those are allowed.
-const openDataUrlInNewTab = (dataUrl: string): void => {
-  const [header, b64] = dataUrl.split(',', 2);
-  const mimeMatch = header.match(/^data:([^;]+)/);
-  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-  window.open(blobUrl, '_blank', 'noopener,noreferrer');
-  // Revoke after the new tab has had time to load the blob.
-  setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-};
-
-/** Render a base64 data URL as a thumbnail; click opens full-size in new tab. */
-const DataUrlImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
+/** Render a base64 image as a thumbnail; click shows it full size in the page.
+ *
+ * The full-size view stays inside the page as an <img>. Opening the data as a
+ * document in a new tab would let anything it contains run on this site.
+ */
+export const DataUrlImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
   const [failed, setFailed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   if (failed) {
     return (
       <span style={{ color: '#a00', fontStyle: 'italic' }}>
@@ -424,25 +416,49 @@ const DataUrlImage: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
     );
   }
   return (
-    <img
-      src={src}
-      alt={alt}
-      width={320}
-      onError={() => setFailed(true)}
-      onClick={(e) => {
-        e.stopPropagation();
-        openDataUrlInNewTab(src);
-      }}
-      style={{
-        display: INLINE_BLOCK,
-        verticalAlign: 'top',
-        maxWidth: '100%',
-        height: 'auto',
-        border: '1px solid #e0e0e0',
-        borderRadius: 4,
-        cursor: 'pointer',
-      }}
-    />
+    <>
+      {expanded && (
+        <div
+          role="dialog"
+          aria-label={`${alt} (full size)`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(false);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            cursor: 'zoom-out',
+          }}
+        >
+          <img src={src} alt={alt} style={{ maxWidth: '95vw', maxHeight: '95vh' }} />
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        width={320}
+        onError={() => setFailed(true)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded(true);
+        }}
+        style={{
+          display: INLINE_BLOCK,
+          verticalAlign: 'top',
+          maxWidth: '100%',
+          height: 'auto',
+          border: '1px solid #e0e0e0',
+          borderRadius: 4,
+          cursor: 'zoom-in',
+        }}
+      />
+    </>
   );
 };
 
@@ -958,7 +974,7 @@ const RatingTableRow: React.FC<{
           <ResponseChip status={rating.response_status} />
         </td>
         <td style={{ fontSize: '0.82rem', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={rating.url || ''}>
-          {rating.url ? <a href={rating.url} target="_blank" rel="noopener noreferrer" style={{ color: '#1a73e8' }} onClick={(e) => e.stopPropagation()}>link</a> : '-'}
+          {rating.url ? <a href={safeHref(rating.url)} target="_blank" rel="noopener noreferrer" style={{ color: '#1a73e8' }} onClick={(e) => e.stopPropagation()}>link</a> : '-'}
         </td>
       </tr>
       {isExpanded && (

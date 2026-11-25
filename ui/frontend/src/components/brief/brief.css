@@ -1633,13 +1633,18 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.brief-diff-keep:hover {
+.brief-diff-keep:hover:not(:disabled) {
   border-color: var(--brand-primary);
   color: var(--brand-primary);
 }
-.brief-diff-reject:hover {
+.brief-diff-reject:hover:not(:disabled) {
   border-color: var(--brand-error);
   color: var(--brand-error);
+}
+/* Keep and Reject while one of them is on its way to the API. */
+.brief-diff-dismiss:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* Rendered-markdown diff: blocks flow like the document itself. */
 .brief-diff {
@@ -1785,12 +1790,16 @@
   margin-top: 26px;
 }
 
+/* The row scrolls sideways only. With just overflow-x set, overflow-y becomes
+   auto too, and the tabs' -1px bottom margin leaves them 1px taller than the
+   row, which drew a stray vertical scroll bar wherever scroll bars always show. */
 .bc-tabs {
   display: flex;
   gap: 0.5rem;
   border-bottom: 1px solid var(--brand-border);
   margin: 26px 0 22px;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .bc-tab {
@@ -2576,6 +2585,19 @@
   }
 }
 
+/* Tablets (641–1024px): the five Brief Central tabs no longer fit below
+   about 770px and the row scrolled sideways. Tighter tabs fit down to about
+   700px; below that they wrap rather than scroll. Phones keep their own rules. */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .bc-tabs {
+    flex-wrap: wrap;
+  }
+
+  .bc-tab {
+    padding: 12px;
+  }
+}
+
 @media (max-width: 640px) {
   .bc-tabs {
     gap: 0;
@@ -3354,54 +3376,188 @@
   border: 1px solid var(--brand-border-light);
 }
 
-/* The stored original of a run (Log → Original) and its trace table. */
+/* The stored original of a run (Section History → original) and its trace
+   table: padded like the head, the text at a readable line length, one scroll. */
 .brief-modal-wide {
   max-width: 920px;
 }
 .brief-original {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
+  padding: 18px 22px 26px;
+}
+.brief-original .brief-section-warning {
+  margin: 0;
 }
 .brief-original-meta {
-  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+  margin: 0;
+  font-size: 12.5px;
   color: var(--brand-text-secondary);
 }
+.brief-original-meta div {
+  display: flex;
+  gap: 6px;
+}
+.brief-original-meta dt {
+  color: var(--brand-text-tertiary);
+}
+.brief-original-meta dd {
+  margin: 0;
+  color: var(--brand-text-primary);
+}
+.brief-original-part {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brief-original-part-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
 .brief-modal-section-title {
-  margin-top: 6px;
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--brand-text-secondary);
 }
-.brief-original-text {
-  max-height: 320px;
-  overflow: auto;
-  padding: 10px 12px;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  background: var(--brand-bg);
+.brief-original-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--brand-text-tertiary);
+}
+.brief-original-switch {
+  display: inline-flex;
   border: 1px solid var(--brand-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.brief-original-switch button {
+  padding: 3px 10px;
+  border: 0;
+  background: var(--brand-surface);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.brief-original-switch button + button {
+  border-left: 1px solid var(--brand-border);
+}
+.brief-original-switch button.is-active {
+  background: var(--brand-bg);
+  color: var(--brand-text-primary);
+  font-weight: 600;
+}
+.brief-original-text {
+  margin: 0;
+  padding: 18px 22px;
+  background: var(--brand-bg);
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
+  color: var(--brand-text-primary);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+.brief-original-text > :first-child {
+  margin-top: 0;
+}
+.brief-original-text > :last-child {
+  margin-bottom: 0;
+}
+.brief-original-text p,
+.brief-original-text ul,
+.brief-original-text ol {
+  max-width: 72ch;
+  margin: 0 0 0.85em;
+}
+.brief-original-text ul,
+.brief-original-text ol {
+  padding-left: 1.4em;
+}
+.brief-original-text h1,
+.brief-original-text h2,
+.brief-original-text h3,
+.brief-original-text h4 {
+  max-width: 72ch;
+  margin: 1.3em 0 0.5em;
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.3;
+}
+.brief-original-text h1 {
+  font-size: 18px;
+}
+.brief-original-text h2 {
+  font-size: 16.5px;
+}
+.brief-original-text h3,
+.brief-original-text h4 {
+  font-size: 15px;
+}
+.brief-original-raw {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.brief-trace-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--brand-border-light);
+  border-radius: 4px;
 }
 .brief-trace-table {
   width: 100%;
+  min-width: 620px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 .brief-trace-table th,
 .brief-trace-table td {
-  padding: 4px 8px;
+  padding: 8px 12px;
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid var(--brand-border);
+  border-bottom: 1px solid var(--brand-border-light);
+}
+.brief-trace-table th {
+  background: var(--brand-bg);
+  color: var(--brand-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.brief-trace-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.brief-trace-num {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.brief-trace-doc {
+  width: 100%;
 }
 .brief-trace-chunk {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  word-break: break-all;
+  font-size: 11.5px;
+  color: var(--brand-text-secondary);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .brief-original {
+    padding: 14px 14px 20px;
+  }
+  .brief-original-text {
+    padding: 14px 16px;
+    font-size: 14px;
+  }
 }
 .brief-audit-original {
   margin-left: 4px;

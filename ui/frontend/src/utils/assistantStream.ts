@@ -294,6 +294,9 @@ export const requestFailureMessage = async (response: Response): Promise<string>
   } catch {
     return `${prefix} ${response.statusText}`;
   }
+  // A 429 with a reason, such as the site's daily AI limit, is written for
+  // people: show it as it is.
+  if (response.status === 429 && typeof detail === 'string') return detail;
   if (typeof detail === 'string') return `${prefix}: ${detail}`;
   if (Array.isArray(detail)) {
     const fields = detail.map((e: { loc?: unknown[]; msg?: string }) => {

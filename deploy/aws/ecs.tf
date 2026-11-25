@@ -1,5 +1,6 @@
 # The ECS cluster, the services the containers find each other by, and the
-# ui, api, mcp and embedding services plus the migrate and pipeline tasks.
+# ui, api, mcp and embedding services plus the migrate, pipeline and restore
+# tasks.
 
 resource "aws_ecs_cluster" "main" {
   name = var.name
@@ -25,7 +26,7 @@ resource "aws_service_discovery_service" "this" {
 }
 
 resource "aws_cloudwatch_log_group" "this" {
-  for_each          = toset(["ui", "api", "mcp", "embedding", "migrate", "pipeline"])
+  for_each          = toset(["ui", "api", "mcp", "embedding", "migrate", "pipeline", "restore"])
   name              = "/ecs/${var.name}/${each.key}"
   retention_in_days = var.log_retention_days
 }
@@ -65,7 +66,10 @@ locals {
     USER_MODULE           = var.user_module
     APP_BASE_URL          = local.site_url
     CORS_ALLOWED_ORIGINS  = local.site_url
-    AUTH_COOKIE_SECURE    = local.https ? "true" : "false"
+    AUTH_COOKIE_SECURE    = local.site_https ? "true" : "false"
+    # Google and Microsoft sign-in send visitors back here; nginx forwards
+    # /api to the api. Register {this}/auth/<provider>/callback with them.
+    OAUTH_CALLBACK_BASE_URL = "${local.site_url}/api"
   })
 
   app_secrets_refs = concat(
@@ -85,25 +89,50 @@ locals {
         API_ROOT_PATH       = "/api"
         FORWARDED_ALLOW_IPS = local.vpc_cidr
       }
+      fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
     mcp = {
-      command = ["python", "-m", "mcp_server.http_server"]
-      port    = 8001
-      size    = var.mcp
-      env     = {}
+      command              = ["python", "-m", "mcp_server.http_server"]
+      port                 = 8001
+      size                 = var.mcp
+      env                  = {}
+      fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
     migrate = {
-      command = ["alembic", "upgrade", "head"]
-      port    = null
-      size    = var.migrate_task
-      env     = {}
+      command              = ["alembic", "upgrade", "head"]
+      port                 = null
+      size                 = var.migrate_task
+      env                  = {}
+      fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.task.arn
     }
-    # Always started with its own command by scripts/run-task.sh.
+    # Always started with its own command by scripts/run-task.sh. With
+    # pipeline_files_dir set, it first copies those files to /app/custom.
     pipeline = {
       command = ["python", "-m", "pipeline.orchestrator", "--help"]
       port    = null
       size    = var.pipeline_task
-      env     = {}
+      env = local.pipeline_files_enabled ? {
+        PIPELINE_FILES_BUCKET = aws_s3_bucket.pipeline_files[0].bucket
+      } : {}
+      fetch_pipeline_files = local.pipeline_files_enabled
+      task_role_arn        = aws_iam_role.task.arn
+    }
+    # Loads a Postgres export and a data archive from the transfer bucket
+    # (transfer.tf). Always started with its own command by
+    # scripts/restore-data.sh, as its own role: the only one that can read the
+    # bucket.
+    restore = {
+      command = ["python", "scripts/sync/db/restore_from_s3.py", "--help"]
+      port    = null
+      size    = var.restore_task
+      env = {
+        TRANSFER_BUCKET = aws_s3_bucket.transfer.bucket
+      }
+      fetch_pipeline_files = false
+      task_role_arn        = aws_iam_role.restore.arn
     }
   }
 }
@@ -116,7 +145,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = each.value.size.cpu
   memory                   = each.value.size.memory
   execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  task_role_arn            = each.value.task_role_arn
 
   runtime_platform {
     operating_system_family = "LINUX"
@@ -137,10 +166,12 @@ resource "aws_ecs_task_definition" "app" {
   }
 
   container_definitions = jsonencode([{
-    name        = each.key
-    image       = local.app_image
-    essential   = true
-    entryPoint  = ["sh", "-c", local.prepare_and_run, "evidencelab"]
+    name      = each.key
+    image     = local.app_image
+    essential = true
+    entryPoint = ["sh", "-c", each.value.fetch_pipeline_files ? join("\n", [
+      "set -e", local.fetch_pipeline_files, local.prepare_and_run,
+    ]) : local.prepare_and_run, "evidencelab"]
     command     = each.value.command
     environment = [for k, v in merge(local.app_environment, each.value.env) : { name = k, value = v }]
     secrets     = local.app_secrets_refs
@@ -196,6 +227,17 @@ resource "aws_ecs_task_definition" "embedding" {
   }])
 }
 
+# nginx's settings (ui/frontend/render-nginx-conf.sh). It believes the
+# X-Forwarded-For header only from the load balancer, in the VPC.
+locals {
+  ui_environment = [
+    { name = "API_UPSTREAM", value = local.api_url },
+    { name = "MCP_UPSTREAM", value = local.mcp_url },
+    { name = "NGINX_RESOLVER", value = local.vpc_dns_server },
+    { name = "NGINX_REAL_IP_FROM", value = local.vpc_cidr },
+  ]
+}
+
 resource "aws_ecs_task_definition" "ui" {
   family                   = "${var.name}-ui"
   requires_compatibilities = ["FARGATE"]
@@ -210,15 +252,10 @@ resource "aws_ecs_task_definition" "ui" {
   }
 
   container_definitions = jsonencode([{
-    name      = "ui"
-    image     = "${aws_ecr_repository.ui.repository_url}:${var.ui_image_tag}"
-    essential = true
-    environment = [
-      { name = "API_UPSTREAM", value = local.api_url },
-      { name = "MCP_UPSTREAM", value = local.mcp_url },
-      { name = "NGINX_RESOLVER", value = local.vpc_dns_server },
-      { name = "NGINX_REAL_IP_FROM", value = local.vpc_cidr },
-    ]
+    name         = "ui"
+    image        = "${aws_ecr_repository.ui.repository_url}:${var.ui_image_tag}"
+    essential    = true
+    environment  = local.ui_environment
     portMappings = [{ containerPort = 80, protocol = "tcp" }]
     logConfiguration = {
       logDriver = "awslogs"

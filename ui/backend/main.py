@@ -61,6 +61,11 @@ from ui.backend.routes.search import (
 )
 from ui.backend.routes.stats import get_stats as _get_stats
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
+from ui.backend.services.ai_daily_limit import (
+    AiDailyLimitReached,
+    ai_daily_limit_handler,
+    validate_ai_daily_limit_setting,
+)
 from ui.backend.services.search import (
     RERANK_MODEL,
     get_models,
@@ -122,6 +127,9 @@ else:
 # Auth module is loaded (True for both on_passive and on_active)
 USER_MODULE = USER_MODULE_MODE != "off"
 
+# A malformed daily AI limit stops the api here, not at the first AI request.
+validate_ai_daily_limit_setting()
+
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -130,8 +138,27 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 from ui.backend.auth import api_key_verify as _akv  # noqa: E402
 
 _akv.API_KEY = API_KEY
+_akv.BROWSER_KEY = os.environ.get("REACT_APP_API_KEY") or None
 _akv.USER_MODULE = USER_MODULE
 _akv.USER_MODULE_MODE = USER_MODULE_MODE
+if USER_MODULE:
+    from ui.backend.auth.users import AUTH_SECRET as _SESSION_SECRET  # noqa: E402
+
+    _akv.AUTH_SECRET = _SESSION_SECRET
+
+if _akv.BROWSER_KEY and USER_MODULE_MODE == "on_active":
+    logger.warning(
+        "REACT_APP_API_KEY is set but sign-in is required (on_active): the key "
+        "built into the web interface is public and is ignored as a credential. "
+        "Build the web interface with REACT_APP_API_KEY empty."
+    )
+elif _akv.BROWSER_KEY and API_KEY and _akv.BROWSER_KEY == API_KEY:
+    logger.warning(
+        "REACT_APP_API_KEY is the same as API_SECRET_KEY, so the master key is "
+        "public. MCP and A2A will not accept it: use a key created in Admin > "
+        "API Keys or sign in, or set a different REACT_APP_API_KEY and rotate "
+        "API_SECRET_KEY."
+    )
 
 
 async def verify_api_key(request: Request, api_key: str = Depends(api_key_header)):
@@ -194,6 +221,7 @@ app.openapi = _custom_openapi  # type: ignore[method-assign]
 # Add rate limiter to app
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(AiDailyLimitReached, ai_daily_limit_handler)
 app.state.highlight_cache = highlight_routes._highlight_cache
 
 
@@ -753,7 +781,12 @@ if USER_MODULE_MODE == "on_active":
     from ui.backend.auth.active_auth import ActiveAuthMiddleware  # noqa: E402
     from ui.backend.auth.users import AUTH_SECRET  # noqa: E402
 
-    app.add_middleware(ActiveAuthMiddleware, auth_secret=AUTH_SECRET, api_key=API_KEY)
+    app.add_middleware(
+        ActiveAuthMiddleware,
+        auth_secret=AUTH_SECRET,
+        api_key=API_KEY,
+        browser_key=_akv.BROWSER_KEY,
+    )
 
 
 # Models: the routes bind the canonical request/response models from

@@ -56,6 +56,12 @@ jest.mock('../config', () => ({
 
 // Must import AFTER mocking axios
 import { useAuthState, AuthContext } from '../hooks/useAuth';
+import {
+  accountPickRequested,
+  autoSignInPaused,
+  pauseAutoSignIn,
+  startOAuthSignIn,
+} from '../utils/oauthSignIn';
 import type { AuthContextValue } from '../types/auth';
 
 /* ------------------------------------------------------------------ */
@@ -81,6 +87,9 @@ const mockUser = {
   is_active: true, is_verified: true, is_superuser: false,
   created_at: null, updated_at: null,
 };
+
+/** A data endpoint, whose 401 the interceptor handles. */
+const DATA_ENDPOINT = '/api/search';
 
 /** Flush all pending promises and state updates. */
 const flushPromises = () => act(async () => {});
@@ -141,7 +150,7 @@ describe('useAuthState — 401 interceptor', () => {
     render(<AuthTestHarness />);
     await flushPromises();
     const error = {
-      config: { url: '/api/search' },
+      config: { url: DATA_ENDPOINT },
       response: { status: 500 },
     };
     await expect(responseErrorHandler(error)).rejects.toBe(error);
@@ -216,7 +225,7 @@ describe('useAuthState — 401 interceptor', () => {
     await flushPromises();
 
     const error = {
-      config: { url: '/api/search', _authRetry: true },
+      config: { url: DATA_ENDPOINT, _authRetry: true },
       response: { status: 401 },
     };
 
@@ -491,5 +500,104 @@ describe('useAuthState — login/logout session state', () => {
       undefined,
       expect.objectContaining({ timeout: expect.any(Number) }),
     );
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Tests — going straight to a single sign-in provider                */
+/* ------------------------------------------------------------------ */
+
+describe('useAuthState — automatic sign-in after signing out', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    setupInterceptorMock();
+    window.sessionStorage.clear();
+    (axios.post as jest.Mock).mockResolvedValue({ data: {} });
+  });
+
+  it('asks for the account picker on sign-out so the provider does not sign them straight back in', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    await act(async () => {
+      await latestAuth.logout();
+    });
+
+    expect(accountPickRequested()).toBe(true);
+    expect(autoSignInPaused()).toBe(false);
+  });
+
+  it('asks for the account picker when the session times out', async () => {
+    jest.useFakeTimers();
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    await act(async () => { jest.advanceTimersByTime(60 * 60 * 1000 + 100); });
+
+    expect(latestAuth.sessionExpired).toBe(true);
+    expect(accountPickRequested()).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it('asks for the account picker when a signed-in session is refused', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+    expect(latestAuth.isAuthenticated).toBe(true);
+
+    act(() => {
+      responseErrorHandler({ config: { url: DATA_ENDPOINT }, response: { status: 401 } });
+    });
+
+    expect(latestAuth.sessionExpired).toBe(true);
+    expect(accountPickRequested()).toBe(true);
+  });
+
+  it('holds a trip to the provider until the sign-out request has finished', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    let finishSignOut: (value: unknown) => void = () => {};
+    (axios.post as jest.Mock).mockImplementation(
+      () => new Promise((resolve) => { finishSignOut = resolve; }),
+    );
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({
+        authorization_url: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+      }),
+    }) as unknown as typeof fetch;
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    act(() => { latestAuth.logout(); });
+    const trip = startOAuthSignIn('microsoft', { pickAccount: true });
+    await flushPromises();
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    await act(async () => { finishSignOut({ data: {} }); });
+    await trip.catch(() => undefined);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes it once a page load finds the user signed in', async () => {
+    pauseAutoSignIn();
+    (axios.get as jest.Mock).mockResolvedValue({ data: mockUser });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('true');
+    expect(autoSignInPaused()).toBe(false);
+  });
+
+  it('stays paused when a page load finds no session', async () => {
+    pauseAutoSignIn();
+    (axios.get as jest.Mock).mockRejectedValue({ response: { status: 401 } });
+    render(<AuthTestHarness />);
+    await flushPromises();
+
+    expect(screen.getByTestId('authenticated').textContent).toBe('false');
+    expect(autoSignInPaused()).toBe(true);
   });
 });

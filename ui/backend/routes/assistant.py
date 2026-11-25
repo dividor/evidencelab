@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -18,14 +19,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.assistant_service import stream_research_response
 from ui.backend.services.brief_section_prompt import (
     build_section_prompt,
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
-from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+from ui.backend.services.llm_choice import BRIEF, user_group_choice
+from ui.backend.services.usage_recorder import (
+    schedule_daily_spend_recording,
+    schedule_llm_usage_recording,
+)
 from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.llm_request_limits import check_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +149,17 @@ def _resolve_model_config(body: AssistantChatRequest):
     )
 
 
+async def _purpose_model_key(
+    body: AssistantChatRequest, model_key: Optional[str], user, session
+) -> Optional[str]:
+    """For a Brief request (``usage_context="brief"``: section research and the
+    library survey), the group's Brief model (Group Settings > LLMs) overrides
+    the model combo's; otherwise the model the request names."""
+    if body.usage_context == "brief":
+        return await user_group_choice(session, user, BRIEF) or model_key
+    return model_key
+
+
 def _message_to_history_entry(msg) -> dict:
     """Convert a ``ConversationMessage`` row to the history-dict shape.
 
@@ -191,7 +209,12 @@ def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> No
     the client).
     """
     usage = event.get("usage")
-    if not usage or not body.activity_id:
+    if not usage:
+        return
+    if not body.activity_id:
+        # No activity row to write, but the day's AI total
+        # (AI_DAILY_COST_LIMIT_USD) still counts the turn.
+        schedule_daily_spend_recording(usage=usage)
         return
     if body.usage_context == "brief":
         activity_type = "brief"
@@ -236,7 +259,7 @@ async def _stream_with_heartbeat(ait):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/assistant/chat/stream")
+@router.post("/assistant/chat/stream", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_assistant_chat(
     request: Request,
@@ -251,7 +274,9 @@ async def stream_assistant_chat(
     in a loop, streaming progress events at each phase.
     """
     body.data_source = await settle_data_source(body.data_source, user, session)
+    check_model_config(body.assistant_model_config)
     model_key, temperature, max_tokens = _resolve_model_config(body)
+    model_key = await _purpose_model_key(body, model_key, user, session)
     research_query = _research_query(body)
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history

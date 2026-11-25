@@ -4,11 +4,16 @@ handling. Every test drives the real ``translate_text`` with a fake provider
 so the behaviour is independent of Google Translate or any other backend."""
 
 from typing import List, Tuple
+from unittest.mock import patch
 
 import pytest
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
 
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached
 from ui.backend.services.translation_providers import (
     DEFAULT_REQUEST_CHAR_LIMIT,
+    LlmTranslationProvider,
     TranslationConfigError,
     TranslationDisabledError,
     TranslationProvider,
@@ -212,3 +217,82 @@ async def test_misconfigured_provider_propagates(monkeypatch):
     with pytest.raises(TranslationConfigError):
         await translate_text("Hello", "french")
     translation_providers.reset_translation_provider()
+
+
+# ---------------------------------------------------------------------------
+# The daily AI limit and usage recording (LLM translation only)
+# ---------------------------------------------------------------------------
+
+
+class _CountingLlmProvider(LlmTranslationProvider):
+    """The real LLM provider, with its model call counted."""
+
+    def __init__(self):
+        super().__init__("nova-2-lite")
+        self.calls = 0
+
+    def translate(self, text, source, target):
+        self.calls += 1
+        return super().translate(text, source, target)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_llm_translation_when_ai_limit_reached_then_refused_without_a_call(
+    ai_limit_reached,
+):
+    provider = _CountingLlmProvider()
+    with pytest.raises(AiDailyLimitReached):
+        await translate_text("Hello", "fr", provider=provider)
+    assert provider.calls == 0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_other_translation_when_ai_limit_reached_then_still_translates(
+    ai_limit_reached,
+):
+    provider = RecordingProvider(reply="Bonjour")
+    assert await translate_text("Hello", "fr", provider=provider) == "Bonjour"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_llm_translation_records_its_token_usage(monkeypatch):
+    monkeypatch.delenv("AI_DAILY_COST_LIMIT_USD", raising=False)
+    reply = AIMessage(
+        content="Bonjour",
+        usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+        response_metadata={"model_name": "amazon.nova-2-lite-v1:0"},
+    )
+    model = GenericFakeChatModel(messages=iter([reply]))
+    recorded = []
+    monkeypatch.setattr(
+        "ui.backend.services.translation_service.schedule_llm_usage_recording",
+        lambda **kwargs: recorded.append(kwargs),
+    )
+    with patch("utils.llm_factory.get_llm", return_value=model):
+        result = await translate_text(
+            "Hello", "fr", provider=LlmTranslationProvider("nova-2-lite")
+        )
+
+    assert result == "Bonjour"
+    assert len(recorded) == 1
+    assert recorded[0]["activity_type"] == "translation"
+    assert recorded[0]["usage"] == {
+        "llm_model": "nova-2-lite",
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_other_translation_records_no_usage(monkeypatch):
+    recorded = []
+    monkeypatch.setattr(
+        "ui.backend.services.translation_service.schedule_llm_usage_recording",
+        lambda **kwargs: recorded.append(kwargs),
+    )
+    await translate_text("Hello", "fr", provider=RecordingProvider(reply="Bonjour"))
+    assert recorded == []

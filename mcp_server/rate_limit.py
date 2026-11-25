@@ -1,7 +1,13 @@
-"""Rate-limiting helpers for MCP tool calls.
+"""Rate limits for MCP tools and A2A skills, counted per caller.
 
-Wraps the existing slowapi limiter so that MCP tools can enforce
-per-IP rate limits without being wired through FastAPI route decorators.
+Each caller (a signed-in user, or an API key) gets its own allowance, taken
+from the auth context that MCP and A2A set for every request
+(``mcp_server.audit.request_auth``). Counting by caller rather than by client
+address matters behind the reverse proxy, where every request arrives from
+the proxy's address.
+
+Limits come from ``RATE_LIMIT_MCP_SEARCH`` (search and get_document) and
+``RATE_LIMIT_MCP_AI`` (the assistant), in the usual ``"10/minute"`` form.
 """
 
 from __future__ import annotations
@@ -9,24 +15,39 @@ from __future__ import annotations
 import logging
 import os
 
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from starlette.requests import Request
+from limits import parse
+from limits.storage import MemoryStorage
+from limits.strategies import MovingWindowRateLimiter
+
+from mcp_server.audit import request_auth
 
 logger = logging.getLogger(__name__)
 
 RATE_LIMIT_MCP_SEARCH = os.environ.get("RATE_LIMIT_MCP_SEARCH", "30/minute")
 RATE_LIMIT_MCP_AI = os.environ.get("RATE_LIMIT_MCP_AI", "10/minute")
 
-# Dedicated limiter for MCP endpoints so limits are tracked independently
-# from the main API rate limits.
-_mcp_limiter = Limiter(key_func=get_remote_address)
+_LIMITS = {"search": RATE_LIMIT_MCP_SEARCH, "ai": RATE_LIMIT_MCP_AI}
+_limiter = MovingWindowRateLimiter(MemoryStorage())
 
 
-def check_mcp_rate_limit(request: Request, limit_string: str) -> None:
-    """Manually check a rate limit for the given request.
+class McpRateLimitExceeded(Exception):
+    """Raised when a caller has used up its allowance for a kind of call."""
 
-    Raises ``slowapi.errors.RateLimitExceeded`` if the limit is breached.
-    The caller should convert this into an appropriate MCP error.
+
+def _caller() -> str:
+    auth = request_auth.get()
+    return str(auth.get("key_hash") or auth.get("user_id") or "unknown")
+
+
+def check_caller_rate_limit(kind: str) -> None:
+    """Count one ``kind`` call ("search" or "ai") for the current caller.
+
+    Raises McpRateLimitExceeded when the caller is over its limit.
     """
-    _mcp_limiter.check(limit_string, request)
+    limit_string = _LIMITS[kind]
+    caller = _caller()
+    if not _limiter.hit(parse(limit_string), "mcp", kind, caller):
+        logger.warning("MCP rate limit exceeded: kind=%s caller=%s", kind, caller)
+        raise McpRateLimitExceeded(
+            f"Rate limit exceeded ({limit_string} for {kind}). Try again shortly."
+        )

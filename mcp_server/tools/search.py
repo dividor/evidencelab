@@ -63,7 +63,10 @@ async def mcp_search(
     include_facets: bool = False,
 ) -> MCPSearchResponse:
     """Run search using the same code path as the API search endpoint."""
+    from mcp_server.rate_limit import check_caller_rate_limit
     from pipeline.db import resolve_data_source
+
+    check_caller_rate_limit("search")
     from ui.backend.routes.search import (
         _build_chunk_cache,
         _build_doc_cache,

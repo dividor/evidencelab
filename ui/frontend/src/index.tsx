@@ -1,5 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// The app's typefaces, served from this site (see App.css): the same weights
+// the Google Fonts link used to load, so pages look the same.
+import '@fontsource/poppins/400.css';
+import '@fontsource/poppins/600.css';
+import '@fontsource/poppins/700.css';
+import '@fontsource/open-sans/400.css';
+import '@fontsource/open-sans/600.css';
 import './index.css';
 import App from './App';
 import { installClickDiagnostics } from './utils/clickDiagnostics';

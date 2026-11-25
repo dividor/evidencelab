@@ -489,6 +489,10 @@ class _FakeResult:
     def scalar(self):
         return 0
 
+    def scalars(self):
+        # The triggering admin's groups, read for their judge choice: none.
+        return SimpleNamespace(all=lambda: [])
+
 
 class _FakeSession:
     """Minimal async-session stand-in that records summary_stats at each commit,
@@ -766,6 +770,35 @@ async def test_record_run_usage_writes_evaluation_activity_row(monkeypatch):
     assert kwargs["filters_extra"]["experiment_name"] == "My experiment"
     assert kwargs["filters_extra"]["data_source"] == "uneg"
     assert kwargs["filters_extra"]["cases"] == 4
+
+
+async def test_record_run_usage_when_experiment_names_provider_id_then_labelled_by_key(
+    monkeypatch,
+):
+    from unittest.mock import AsyncMock
+
+    from pipeline.db import config as db_config
+
+    monkeypatch.setattr(
+        db_config,
+        "SUPPORTED_LLMS",
+        {"nova-2-lite": {"model": "us.amazon.nova-2-lite-v1:0"}},
+    )
+    recorded = AsyncMock(return_value=True)
+    monkeypatch.setattr("ui.backend.services.usage_recorder.record_llm_usage", recorded)
+    dataset = TestDataset(id=uuid.uuid4(), capability="ai_summary", data_source="uneg")
+    experiment = TestExperiment(id=uuid.uuid4(), dataset_id=dataset.id, name="E")
+    run = TestRun(
+        id=uuid.uuid4(),
+        experiment_id=experiment.id,
+        run_number=1,
+        status="completed",
+        summary_stats={"total": 1, "prompt_tokens": 10, "completion_tokens": 5},
+    )
+    await test_runner._record_run_usage(
+        experiment, run, dataset, {"summary_model": "us.amazon.nova-2-lite-v1:0"}
+    )
+    assert recorded.await_args.kwargs["usage"]["llm_model"] == "nova-2-lite"
 
 
 async def test_execute_attributes_run_to_triggering_user(monkeypatch):

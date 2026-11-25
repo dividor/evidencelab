@@ -31,6 +31,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font
 
+from ui.backend.utils.excel_text import append_text_row
+
 # `[1]`, `[1, 3]` — same as CITATION_REGEX in CitedContent.tsx.
 CITATION_RE = re.compile(r"\[(\d+(?:,\s*\d+)*)\]")
 # `[?7]` — a marker the renumbering could not resolve to a source; it stays
@@ -558,9 +560,9 @@ def write_review_workbook(sheets: Dict[str, List[Dict[str, Any]]], path: Any) ->
     for name, rows in sheets.items():
         sheet = book.create_sheet(title=name[:31])
         columns = list(rows[0].keys()) if rows else []
-        sheet.append(columns)
+        append_text_row(sheet, columns)
         for row in rows:
-            sheet.append([_cell_value(row.get(column)) for column in columns])
+            append_text_row(sheet, [_cell_value(row.get(column)) for column in columns])
         sheet.freeze_panes = "A2"
         for col_idx, column in enumerate(columns, start=1):
             header = sheet.cell(row=1, column=col_idx)

@@ -170,6 +170,7 @@ services:
       - RATE_LIMIT_SEARCH=${RATE_LIMIT_SEARCH:-30/minute}
       - RATE_LIMIT_DEFAULT=${RATE_LIMIT_DEFAULT:-60/minute}
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
+      - AI_DAILY_COST_LIMIT_USD=${AI_DAILY_COST_LIMIT_USD:-}
       # User module (auth & permissions): off | on_passive | on_active
       - USER_MODULE=${USER_MODULE:-off}
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY:?Set AUTH_SECRET_KEY to a random 32+ char string (openssl rand -hex 32)}
@@ -221,6 +222,7 @@ services:
       - AUTH_SECRET_KEY=${AUTH_SECRET_KEY}
       - APP_BASE_URL=${APP_BASE_URL:-https://evidencelab.ai}
       - MCP_API_KEY=${MCP_API_KEY:-}
+      - AI_DAILY_COST_LIMIT_USD=${AI_DAILY_COST_LIMIT_USD:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -277,6 +279,9 @@ services:
       - RATE_LIMIT_AI=${RATE_LIMIT_AI:-10/minute}
       - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
       - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-}
+      # Content-Security-Policy on the web pages; empty = the built-in default.
+      # See docs/admin/third-party-services.md.
+      - UI_CSP_POLICY=${UI_CSP_POLICY:-}
     depends_on:
       - api
     networks:

@@ -1,8 +1,14 @@
 # Production Dockerfile for React frontend
 # Multi-stage build: build static assets, serve with nginx
+#
+# The built files (HTML, JavaScript, CSS) are the same on every platform, so
+# the build stage runs on the build machine's own platform ($BUILDPLATFORM).
+# Only the nginx stage is built for the image's platform, and it runs no
+# commands, so building an arm64 image on an amd64 machine (or the reverse)
+# needs no emulation.
 
 # Stage 1: Build
-FROM node:18-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -77,19 +83,29 @@ ENV REACT_APP_SITE_URL=${REACT_APP_SITE_URL}
 ARG REACT_APP_CONTACT_EMAIL=
 ENV REACT_APP_CONTACT_EMAIL=${REACT_APP_CONTACT_EMAIL}
 
+# Keep Create React App's small webpack runtime as a file instead of an inline
+# <script> in index.html, so the Content-Security-Policy can allow scripts from
+# this site only (script-src 'self'), with no inline exception.
+ENV INLINE_RUNTIME_CHUNK=false
+
 RUN npm run build
 
 # Stage 2: Production server with nginx
-FROM nginx:alpine AS production
+# alpine-slim is plain nginx without the xslt, njs, image-filter, geoip and acme
+# modules, which this config never loads. Those modules are what bring libxml2
+# and libxslt into nginx:alpine, so leaving them out keeps their advisories out
+# of the image.
+FROM nginx:alpine-slim AS production
 
 # Copy nginx config as a template; the entrypoint fills in the api and mcp
 # addresses (see render-nginx-conf.sh)
 COPY ui/frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY ui/frontend/nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf.template
 
-# Copy entrypoint and config rendering scripts
-COPY ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh
-COPY ui/frontend/render-nginx-conf.sh /render-nginx-conf.sh
-RUN chmod +x /docker-entrypoint.sh /render-nginx-conf.sh
+# Copy entrypoint and config rendering scripts, executable. (No RUN in this
+# stage: it would need emulation when building for another platform.)
+COPY --chmod=0755 ui/frontend/docker-entrypoint.sh /docker-entrypoint.sh
+COPY --chmod=0755 ui/frontend/render-nginx-conf.sh /render-nginx-conf.sh
 
 # Copy built assets from builder stage
 COPY --from=builder /app/build /usr/share/nginx/html

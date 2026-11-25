@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { BriefDiff } from './BriefDiff';
 import { formatWhen } from './BriefSectionAudit';
+import { errorText } from './briefErrors';
 import { BriefVersionItem, BriefVersionRead, BriefVersionSection } from './briefTypes';
 import { getBriefVersion, listBriefVersions } from './briefVersionsApi';
 
@@ -10,12 +11,6 @@ import { getBriefVersion, listBriefVersions } from './briefVersionsApi';
 // brief to it; the restore is itself a new version.
 
 const when = (iso: string): string => formatWhen(Date.parse(iso));
-
-const errorText = (e: unknown, fallback: string): string => {
-  const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === 'string') return detail;
-  return e instanceof Error ? e.message : fallback;
-};
 
 const Title: React.FC<{ title: string }> = ({ title }) => <>{title || 'Untitled'}</>;
 

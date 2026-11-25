@@ -1,6 +1,7 @@
 """Tests for the server-side LLM usage recorder
 (``ui.backend.services.usage_recorder``)."""
 
+import logging
 import uuid
 from decimal import Decimal
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ class _FakeSession:
     def __init__(self, existing=None):
         self.existing = existing
         self.added = []
+        self.executed = []
         self.committed = False
 
     async def __aenter__(self):
@@ -33,6 +35,7 @@ class _FakeSession:
         return False
 
     async def execute(self, stmt):
+        self.executed.append(stmt)
         result = MagicMock()
         result.scalars.return_value.first.return_value = self.existing
         return result
@@ -101,6 +104,46 @@ class TestUsagePayloadHelpers:
 
 
 class TestRecordLlmUsage:
+    @pytest.mark.asyncio
+    async def test_record_when_limit_set_and_model_unpriced_then_logs_error_and_writes(
+        self, monkeypatch, caplog
+    ):
+        from ui.backend.services.ai_daily_limit import LIMIT_ENV, UNPRICED_CALL_LOG
+
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        session = _FakeSession(existing=None)
+        with caplog.at_level(
+            logging.ERROR, logger="ui.backend.services.ai_daily_limit"
+        ):
+            recorded = await record_llm_usage(
+                usage={"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50},
+                activity_type="search",
+                query="q",
+                session_factory=_factory(session),
+            )
+        assert recorded is True
+        assert len(session.added) == 1
+        assert session.added[0].cost_usd is None
+        assert f"{UNPRICED_CALL_LOG}: the call to qwen2.5-7b-instruct" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_record_when_limit_unset_and_model_unpriced_then_no_error(
+        self, monkeypatch, caplog
+    ):
+        from ui.backend.services.ai_daily_limit import LIMIT_ENV
+
+        monkeypatch.delenv(LIMIT_ENV, raising=False)
+        with caplog.at_level(
+            logging.ERROR, logger="ui.backend.services.ai_daily_limit"
+        ):
+            await record_llm_usage(
+                usage={"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50},
+                activity_type="search",
+                query="q",
+                session_factory=_factory(_FakeSession(existing=None)),
+            )
+        assert caplog.records == []
+
     @pytest.mark.asyncio
     async def test_record_when_no_tokens_then_skips(self):
         session = _FakeSession()
@@ -290,7 +333,9 @@ class TestOwnerScoping:
 
         class _CapturingSession(_FakeSession):
             async def execute(self, stmt):
-                captured["stmt"] = str(stmt)
+                # The owner lookup is the first statement; the day's AI
+                # total is written after it.
+                captured.setdefault("stmt", str(stmt))
                 return await super().execute(stmt)
 
         session = _CapturingSession(existing=None)
@@ -311,7 +356,9 @@ class TestOwnerScoping:
 
         class _CapturingSession(_FakeSession):
             async def execute(self, stmt):
-                captured["stmt"] = str(stmt)
+                # The owner lookup is the first statement; the day's AI
+                # total is written after it.
+                captured.setdefault("stmt", str(stmt))
                 return await super().execute(stmt)
 
         session = _CapturingSession(existing=None)
@@ -393,3 +440,57 @@ class TestBackgroundScheduling:
 
         # No running event loop here — scheduling must swallow, not raise.
         schedule_llm_usage_recording(usage=_USAGE, activity_type="brief", query="q")
+
+
+# ---------------------------------------------------------------------------
+# The day's AI total (AI_DAILY_COST_LIMIT_USD)
+# ---------------------------------------------------------------------------
+
+
+def _daily_spend_writes(session):
+    from sqlalchemy.dialects import postgresql
+
+    compiled = [s.compile(dialect=postgresql.dialect()) for s in session.executed]
+    return [c.params for c in compiled if "INSERT INTO ai_daily_spend" in str(c)]
+
+
+class TestDailySpendTotal:
+    @pytest.mark.asyncio
+    async def test_record_when_cost_known_then_added_to_the_days_total(self):
+        session = _FakeSession(existing=None)
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type="brief",
+            query="q",
+            session_factory=_factory(session),
+        )
+        (write,) = _daily_spend_writes(session)
+        assert write["cost_usd"] == _USAGE_COST
+        assert session.committed is True
+
+    @pytest.mark.asyncio
+    async def test_record_when_accumulating_onto_an_old_row_then_still_added_today(
+        self,
+    ):
+        session = _FakeSession(existing=_existing_row())
+        await record_llm_usage(
+            usage=_USAGE,
+            activity_type="brief",
+            query="q",
+            search_id=uuid.uuid4(),
+            server_owned=True,
+            session_factory=_factory(session),
+        )
+        (write,) = _daily_spend_writes(session)
+        assert write["cost_usd"] == _USAGE_COST
+
+    @pytest.mark.asyncio
+    async def test_record_when_model_unpriced_then_nothing_added(self):
+        session = _FakeSession(existing=None)
+        await record_llm_usage(
+            usage={"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50},
+            activity_type="mcp-assistant",
+            query="q",
+            session_factory=_factory(session),
+        )
+        assert _daily_spend_writes(session) == []

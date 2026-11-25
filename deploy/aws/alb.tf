@@ -1,19 +1,45 @@
-# The Application Load Balancer: the only public entry point. With a domain it
-# serves HTTPS with an ACM certificate and redirects HTTP; without one it
-# serves plain HTTP on its own address, for testing.
+# The Application Load Balancer. On its own it is the public entry point: with
+# a domain it serves HTTPS with an ACM certificate and redirects HTTP; without
+# one it serves plain HTTP on its own address, for testing.
+#
+# With cloudfront_enabled it moves to the private subnets and serves plain
+# HTTP to CloudFront only, which serves the site over HTTPS (cloudfront.tf).
 
 locals {
-  https    = var.domain_name != ""
-  site_url = local.https ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+  cloudfront = var.cloudfront_enabled
+  domain     = var.domain_name != ""
+  # The load balancer serves HTTPS itself only without CloudFront.
+  alb_https = local.domain && !local.cloudfront
+  # Visitors reach the site over HTTPS with a domain or through CloudFront.
+  site_https = local.domain || local.cloudfront
+  site_url = (
+    local.domain ? "https://${var.domain_name}" :
+    local.cloudfront ? "https://${aws_cloudfront_distribution.site[0].domain_name}" :
+    "http://${aws_lb.main.dns_name}"
+  )
+  # The domain's certificate: in us-east-1 for CloudFront, otherwise in the
+  # deployment's region for the load balancer.
+  certificate = (
+    !local.domain ? null :
+    local.cloudfront ? aws_acm_certificate.cloudfront[0] : aws_acm_certificate.site[0]
+  )
 }
 
 resource "aws_lb" "main" {
   name               = var.name
   load_balancer_type = "application"
-  subnets            = aws_subnet.public[*].id
+  internal           = local.cloudfront
+  subnets            = local.cloudfront ? aws_subnet.private[*].id : aws_subnet.public[*].id
   security_groups    = [aws_security_group.alb.id]
   # Chat answers and MCP connections stream for minutes.
   idle_timeout = 300
+  # nginx takes the visitor's address from the last X-Forwarded-For entry that
+  # is not in the VPC. On its own, the load balancer adds the address that
+  # connected to it, which is the visitor. Behind CloudFront, that address is
+  # CloudFront's, and CloudFront has already added the visitor's address, so
+  # the load balancer passes the header on unchanged. Only CloudFront can
+  # reach it then, so the last entry is always the one CloudFront added.
+  xff_header_processing_mode = local.cloudfront ? "preserve" : "append"
 }
 
 resource "aws_lb_target_group" "ui" {
@@ -40,11 +66,11 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type             = local.https ? "redirect" : "forward"
-    target_group_arn = local.https ? null : aws_lb_target_group.ui.arn
+    type             = local.alb_https ? "redirect" : "forward"
+    target_group_arn = local.alb_https ? null : aws_lb_target_group.ui.arn
 
     dynamic "redirect" {
-      for_each = local.https ? [1] : []
+      for_each = local.alb_https ? [1] : []
       content {
         port        = "443"
         protocol    = "HTTPS"
@@ -55,7 +81,7 @@ resource "aws_lb_listener" "http" {
 }
 
 resource "aws_acm_certificate" "site" {
-  count             = local.https ? 1 : 0
+  count             = local.alb_https ? 1 : 0
   domain_name       = var.domain_name
   validation_method = "DNS"
 
@@ -67,22 +93,22 @@ resource "aws_acm_certificate" "site" {
 # Keyed by the domain name, which is known before apply; the record's values
 # come from the certificate once AWS has issued its validation details.
 resource "aws_route53_record" "certificate_validation" {
-  for_each = local.https ? toset([var.domain_name]) : toset([])
+  for_each = local.domain ? toset([var.domain_name]) : toset([])
   zone_id  = var.route53_zone_id
-  name     = one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_name if o.domain_name == each.key])
-  type     = one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_type if o.domain_name == each.key])
-  records  = [one([for o in aws_acm_certificate.site[0].domain_validation_options : o.resource_record_value if o.domain_name == each.key])]
+  name     = one([for o in local.certificate.domain_validation_options : o.resource_record_name if o.domain_name == each.key])
+  type     = one([for o in local.certificate.domain_validation_options : o.resource_record_type if o.domain_name == each.key])
+  records  = [one([for o in local.certificate.domain_validation_options : o.resource_record_value if o.domain_name == each.key])]
   ttl      = 300
 }
 
 resource "aws_acm_certificate_validation" "site" {
-  count                   = local.https ? 1 : 0
+  count                   = local.alb_https ? 1 : 0
   certificate_arn         = aws_acm_certificate.site[0].arn
   validation_record_fqdns = [for r in aws_route53_record.certificate_validation : r.fqdn]
 }
 
 resource "aws_lb_listener" "https" {
-  count             = local.https ? 1 : 0
+  count             = local.alb_https ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
@@ -95,15 +121,30 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+# The domain points at CloudFront when it is on, otherwise at the load balancer.
 resource "aws_route53_record" "site" {
-  count   = local.https ? 1 : 0
+  count   = local.domain ? 1 : 0
   zone_id = var.route53_zone_id
   name    = var.domain_name
   type    = "A"
 
   alias {
-    name                   = aws_lb.main.dns_name
-    zone_id                = aws_lb.main.zone_id
-    evaluate_target_health = true
+    name                   = local.cloudfront ? aws_cloudfront_distribution.site[0].domain_name : aws_lb.main.dns_name
+    zone_id                = local.cloudfront ? aws_cloudfront_distribution.site[0].hosted_zone_id : aws_lb.main.zone_id
+    evaluate_target_health = !local.cloudfront
+  }
+}
+
+# CloudFront also answers over IPv6.
+resource "aws_route53_record" "site_ipv6" {
+  count   = local.domain && local.cloudfront ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = var.domain_name
+  type    = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.site[0].domain_name
+    zone_id                = aws_cloudfront_distribution.site[0].hosted_zone_id
+    evaluate_target_health = false
   }
 }

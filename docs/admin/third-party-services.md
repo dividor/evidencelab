@@ -79,4 +79,18 @@ OTEL_SERVICE_NAME=evidence-lab
 
 Google Analytics is loaded only when `REACT_APP_GA_MEASUREMENT_ID` is set at build time **and** the visitor accepts analytics cookies in the consent banner. With the variable unset, no analytics script is loaded and no third-party request is made. Visitors can withdraw consent from the Privacy page at any time. See [Privacy](../overview/privacy.md) for what is collected.
 
-The vendor script is injected by `ui/frontend/src/utils/analytics.ts`, not by the HTML page, and the Content-Security-Policy carries no inline-script hash. To use another provider (for example self-hosted [Plausible](https://plausible.io/) or [Matomo](https://matomo.org/)), implement the two-method `AnalyticsProvider` interface in that file and return it from `createAnalyticsProvider()`; the consent banner and the Privacy-page toggle work unchanged.
+The vendor script is injected by `ui/frontend/src/utils/analytics.ts`, not by the HTML page, and the Content-Security-Policy carries no inline-script hash. To use another provider (for example self-hosted [Plausible](https://plausible.io/) or [Matomo](https://matomo.org/)), implement the two-method `AnalyticsProvider` interface in that file and return it from `createAnalyticsProvider()`; the consent banner and the Privacy-page toggle work unchanged. Add the provider's addresses to the pages' Content-Security-Policy (below).
+
+## Outside assets and the Content-Security-Policy
+
+The web pages tell browsers where they may load scripts, styles, images, fonts and data from (a Content-Security-Policy). By default, scripts, workers, styles, fonts and data come only from your own Evidence Lab site, with Google Analytics as the one exception. Images may come from any `https` address. The document viewer's PDF.js is part of the build, so it needs no outside address.
+
+If your deployment loads something from another site, for example a font service, a different analytics provider or a script in your branding, the browser blocks it until you add that site to the policy. Set `UI_CSP_POLICY` on the ui container to the full policy you want. It is read when the container starts, so no rebuild is needed. Start from the default and add the sites you need:
+
+```
+UI_CSP_POLICY=default-src 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+```
+
+For example, to use fonts from `https://fonts.example.org`, add that address to `font-src`, and to `style-src` if the font service also serves the CSS. The value must be on one line and must not contain `|`, `&`, `\`, `"` or `$`; the container stops with an error if it does. To find what a page is missing, open the browser's developer console: each blocked request is reported there.
+
+The API sets its own policy on its responses, from `CSP_POLICY`.

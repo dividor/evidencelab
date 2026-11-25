@@ -20,6 +20,10 @@ Semantics:
   one row). Cost is computed per delta from the delta's own model so
   mixed-model accumulation stays accurate; ``llm_model`` keeps the most
   recent model as a label.
+- Each call's cost is also added to its UTC day's total in ``ai_daily_spend``
+  (``ui.backend.services.ai_daily_limit``), in the same transaction. With the
+  daily limit set, a call that has no price is logged as an error, since the
+  day's total then leaves it out.
 - Recording is fire-and-forget by design (same contract as the activity
   routes' "non-critical" client logging and the MCP audit log): a
   failure to record usage must never break the user-facing call that
@@ -36,6 +40,7 @@ from sqlalchemy import select
 
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.models import UserActivity
+from ui.backend.services.ai_daily_limit import add_to_daily_spend, report_unpriced_call
 from ui.backend.utils.llm_costs import compute_cost
 
 logger = logging.getLogger(__name__)
@@ -217,6 +222,8 @@ async def record_llm_usage(
     try:
         search_uuid = _coerce_search_id(search_id) or uuid.uuid4()
         cost = cost_usd if cost_usd is not None else usage_cost(usage)
+        if cost is None:
+            report_unpriced_call(usage.get("llm_model"))
         factory = session_factory or async_session_factory
         async with factory() as session:
             row = await _find_row(
@@ -238,11 +245,57 @@ async def record_llm_usage(
                         trace_url=trace_url,
                     )
                 )
+            if cost is not None:
+                await add_to_daily_spend(session, cost)
             await session.commit()
         return True
     except Exception:  # pragma: no cover - defensive: never break the caller
         logger.warning("Failed to record LLM usage", exc_info=True)
         return False
+
+
+async def record_daily_spend(
+    *, usage: Optional[Dict[str, Any]], session_factory: Any = None
+) -> bool:
+    """Add one call's cost to the day's AI total without writing an activity row.
+
+    For calls whose activity row is left to the browser (a search summary or
+    an assistant turn sent without an id, which older pages report through
+    the activity routes), so the daily AI limit still counts them while the
+    activity row is not written twice.
+
+    Returns:
+        True when a cost was added, False when skipped or failed.
+    """
+    if usage is None or not has_usage(usage):
+        return False
+    cost = usage_cost(usage)
+    if cost is None:
+        report_unpriced_call(usage.get("llm_model"))
+        return False
+    try:
+        factory = session_factory or async_session_factory
+        async with factory() as session:
+            await add_to_daily_spend(session, cost)
+            await session.commit()
+        return True
+    except Exception:  # pragma: no cover - defensive: never break the caller
+        logger.warning("Failed to add to the day's AI total", exc_info=True)
+        return False
+
+
+def _schedule(coro: Any) -> None:
+    task = asyncio.get_running_loop().create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def schedule_daily_spend_recording(**kwargs: Any) -> None:
+    """Schedule ``record_daily_spend`` in the background; never raises."""
+    try:
+        _schedule(record_daily_spend(**kwargs))
+    except Exception:  # pragma: no cover - defensive: never break the caller
+        logger.warning("Could not schedule the day's AI total", exc_info=True)
 
 
 def schedule_llm_usage_recording(**kwargs: Any) -> None:
@@ -255,8 +308,6 @@ def schedule_llm_usage_recording(**kwargs: Any) -> None:
     the write cannot be garbage-collected mid-flight.
     """
     try:
-        task = asyncio.get_running_loop().create_task(record_llm_usage(**kwargs))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
+        _schedule(record_llm_usage(**kwargs))
     except Exception:  # pragma: no cover - defensive: never break the caller
         logger.warning("Could not schedule LLM usage recording", exc_info=True)

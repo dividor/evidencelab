@@ -89,6 +89,13 @@ async def mcp_ask_assistant(
     Returns:
         MCPAssistantResponse with the synthesized answer and sources.
     """
+    from mcp_server.rate_limit import check_caller_rate_limit
+    from ui.backend.services.ai_daily_limit import check_ai_allowance
+
+    check_caller_rate_limit("ai")
+    # Refused with a plain message once the site's daily AI limit is reached.
+    await check_ai_allowance()
+
     from ui.backend.services.assistant_service import stream_research_response
 
     answer_text = ""

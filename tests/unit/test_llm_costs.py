@@ -18,6 +18,14 @@ class TestComputeCostKnownModel:
         # total = $0.00120
         assert compute_cost("gpt-4.1-mini", 1000, 500) == Decimal("0.001200")
 
+    def test_haiku_4_5_when_priced_then_uses_eu_bedrock_rates(self):
+        """Anthropic's Haiku 4.5 is priced at Bedrock's EU profile rates."""
+        # 8500 input @ $0.00110/1k = $0.009350
+        # 613 output @ $0.00550/1k = $0.0033715
+        # total = $0.0127215, quantised to $0.012722
+        assert compute_cost("haiku-4.5", 8500, 613) == Decimal("0.012722")
+        assert has_cost_data("haiku-4.5")
+
     def test_input_only(self):
         """An LLM that produced 0 output tokens still incurs input cost."""
         assert compute_cost("gpt-4.1-mini", 1000, 0) == Decimal("0.000400")

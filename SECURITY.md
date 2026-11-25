@@ -62,11 +62,31 @@ The GitHub Actions workflow includes dedicated security jobs:
 
 | Check | Tool | Description |
 |-------|------|-------------|
-| Python Dependencies | pip-audit | Scans `requirements.txt` for known vulnerabilities |
+| Python Dependencies | pip-audit | Scans `requirements.txt`, `ui/backend/requirements.txt`, `requirements.metrics.txt` and `security-requirements.txt` for known vulnerabilities |
 | JavaScript Dependencies | npm audit | Scans `package.json` for known vulnerabilities |
 | Python SAST | Bandit | Static analysis for security issues (JSON report artifact) |
 | Dockerfile Linting | Hadolint | Checks all Dockerfiles for security best practices |
 | Secret Scanning | Gitleaks | Scans entire repository for exposed secrets |
+
+#### Which checks block a merge
+
+| Check | Blocks a merge? |
+|-------|-----------------|
+| Pre-commit hooks in `code-quality` (Bandit, Gitleaks, Hadolint, detect-secrets) | Yes |
+| Gitleaks in `security-scan` | Yes |
+| Bandit in `security-scan`, high severity, every check on | Yes |
+| Trivy on the UI image in `container-scan`, high and critical | Yes |
+| Bandit report in `security-scan`, medium and above | No: a report (`bandit-report` artifact) |
+| pip-audit, npm audit, Hadolint in `security-scan` | **Not yet: they report and the job carries on** |
+| Trivy on the API image in `container-scan` | **Not yet: `exit-code: '0'`** |
+
+The scanners marked "not yet" each report findings on the current dependencies and base images. Each becomes a hard stop in the change that clears its findings. Until then, read their output in the job logs.
+
+#### Pinned actions and scanners
+
+Every action in `.github/workflows/` is pinned to a full commit, with its version in a comment. A version tag can be moved to other code; a commit can't. Dependabot's `github-actions` updates move the pins. The scanners are pinned too: the Python ones in `security-requirements.txt`, Trivy by its `version` input, and `@cyclonedx/cyclonedx-npm` in the `npx` call.
+
+trivy-action needs particular care. In March 2026 its version tags were pushed to code that stole CI secrets ([GHSA-69fq-xp46-6x23](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23)). Pin only to the commit of an immutable release.
 
 #### `container-scan` Job
 
@@ -155,6 +175,14 @@ API endpoints validate `data_source` parameters against a whitelist loaded from 
 - Unintended database connections
 - Resource exhaustion
 
+### Untrusted Input Shown to Administrators
+
+On a site that doesn't require sign-in, anonymous visitors can write ratings (page feedback) and activity rows, and administrators read them in the admin screens and in Excel exports. Three controls keep that input from running in an administrator's browser or spreadsheet:
+
+- **Server-side refusal** (`ui/backend/auth/schemas.py`, ratings and activity payloads): a `data:` URL is accepted only as a PNG, JPEG, WebP or GIF image (an SVG can carry script), and a `javascript:` or `vbscript:` value is refused in any link field (`url`, `link`, `href`, `*_url`). Whitespace and control characters inside the scheme are ignored, as browsers ignore them. Other text is stored as typed, because it is shown as text.
+- **Links rendered safely** (`ui/frontend/src/utils/safeHref.ts`): a link that comes from stored data (document metadata, ratings, activity, the research PDF export) is made clickable only for `http`, `https`, `mailto` or a path on this site. Word exports link only to full `http(s)` addresses. Feedback screenshots open full size inside the page, never as a document in a new tab.
+- **Spreadsheet cells are text** (`ui/backend/utils/excel_text.py`): every export (ratings, activity, LLM usage, citation check) writes cells that start with `=` as text, so a comment such as `=HYPERLINK(...)` is not a formula when the file is opened.
+
 ### CORS Configuration
 
 CORS is configured securely:
@@ -197,12 +225,13 @@ API endpoints are protected by rate limiting (slowapi):
 - Search operations: Configurable via `RATE_LIMIT_SEARCH`
 - AI operations: Configurable via `RATE_LIMIT_AI`
 - Default operations: Configurable via `RATE_LIMIT_DEFAULT`
+- Daily AI spending: `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day. Past it, every AI request (website, admin test runs, MCP and A2A assistant, LLM translation) is refused with 429 until 00:00 UTC, while search keeps working. See `docs/admin/system-monitoring.md`.
 
 ### API Key Authentication
 
 - API key authentication via `X-API-Key` header
 - Timing-safe comparison using `secrets.compare_digest()`
-- OpenAPI/Swagger docs disabled in production
+- OpenAPI/Swagger docs (`/docs`, `/redoc`, `/openapi.json`) are served in every deployment and need no key
 
 ## Container Security
 
@@ -225,16 +254,19 @@ Trivy scans Docker images for:
 - Application dependency vulnerabilities
 - Misconfigurations
 
-Scans are configured for CRITICAL and HIGH severity. Results are uploaded as SARIF reports to GitHub Security for tracking.
+Scans are configured for CRITICAL and HIGH severity. Results appear in the `container-scan` job log; they are not yet uploaded to GitHub Security and do not fail the build (see [Which checks block a merge](#which-checks-block-a-merge)).
 
 ## API Security
 
 ### API Key Authentication
 
-- API key required for all endpoints except `/health`, `/auth/*`, file serving
+- API key required for all endpoints except `/health`, `/auth/*`, `/users/*`, `/groups/*`, `/ratings/*`, `/activity/*`, `/api-keys`, file serving (`/file/*`, `/pdf/*`), `/document/{id}/thumbnail` and the OpenAPI docs
+- Exempt paths are matched by whole path segment: `/docs` covers `/docs` and `/docs/...` but not `/docsearch`
 - API key validated using timing-safe comparison
+- With the user module on, a request without a key is let through only if its `evidencelab_auth` cookie is a valid session token (signature, audience and expiry are checked). A cookie that is merely present is not enough.
+- The key built into the web interface (`REACT_APP_API_KEY`) is public: anyone who loads the site can read it. The API accepts it when sign-in is off or optional, so the open demo works; it is ignored as a credential when sign-in is required (`on_active`), in both the API-key check and the middleware; and MCP and A2A never accept it, even when it is also `API_SECRET_KEY`. Give it its own value so the master key stays private. The API logs a warning at startup when the two are the same.
 - Auth routes exempt from API key — protected by their own rate-limiting and CSRF
-- Development mode allows unauthenticated access (no `API_SECRET_KEY` set)
+- With `on_passive` or `off`, the browser build carries the API key (`REACT_APP_API_KEY`), so anyone who loads the site can read it. Treat routes that rely on the key alone as public, and protect anything that changes data with a user check (see [Authorization](#authorization)).
 
 ### User Authentication Module
 
@@ -248,7 +280,7 @@ When `USER_MODULE` is set to `on_passive` or `on_active`, fastapi-users provides
 | **CSRF protection** | Double-submit cookie (`evidencelab_csrf` + `X-CSRF-Token` header); cookie cleared on logout/account deletion |
 | **Secret validation** | `AUTH_SECRET_KEY` must be 32+ chars; insecure defaults rejected |
 | **Input validation** | `display_name` max 255 chars, whitespace-stripped, blank-to-None |
-| **Password policy** | Minimum length + digit + letter (configurable via `AUTH_MIN_PASSWORD_LENGTH`) |
+| **Password policy** | Minimum length only (configurable via `AUTH_MIN_PASSWORD_LENGTH`); no character-class or breached-password check |
 | **Password history** | Prevents reuse of last N passwords; configurable via `AUTH_PASSWORD_HISTORY_COUNT` (default 5, ASVS V2.1.10) |
 | **Account lockout** | Lock after N consecutive failures for M minutes; counters reset on password reset (`AUTH_LOCKOUT_THRESHOLD`, `AUTH_LOCKOUT_DURATION_MINUTES`) |
 | **Timing-attack mitigation** | Password hash always computed even for non-existent users |
@@ -257,7 +289,7 @@ When `USER_MODULE` is set to `on_passive` or `on_active`, fastapi-users provides
 | **Permission model** | Deny-by-default; unauthenticated users see no datasources |
 | **Error handling** | Permission failures logged and return empty data (no leak) |
 | **Audit logging** | All auth events (login, failure, lockout, register, password reset) logged to `audit_log` table |
-| **OAuth** | Google and Microsoft SSO with explicit minimal scopes (`openid, email, profile`) |
+| **OAuth** | Google and Microsoft SSO with explicit minimal scopes (`openid, email, profile`); callers cannot ask for others. Each sign-in is bound to the browser that started it: `/authorize` sets an httpOnly, SameSite=Lax cookie, scoped to the callback path, holding a PKCE code verifier, and the signed state (10-minute lifetime) carries its S256 challenge. `/callback` refuses unless the state is valid and matches the cookie (constant-time comparison), then sends the verifier with the code so the provider checks it too |
 | **Email verification** | Required after registration; token sent via SMTP |
 
 ### Active Authentication Enforcement (`on_active` mode)
@@ -276,7 +308,7 @@ If none of the above yield a valid credential, the middleware returns `401 {"det
 
 #### Exempt Paths
 
-The following paths are exempt from middleware authentication because they either have their own auth mechanisms or must be publicly accessible:
+The following paths are exempt from middleware authentication because they either have their own auth mechanisms or must be publicly accessible. A prefix covers the path itself and paths beneath it, matched by whole segment, so `/docs` does not exempt `/docsearch`:
 
 | Path prefix | Reason |
 |-------------|--------|
@@ -284,11 +316,13 @@ The following paths are exempt from middleware authentication because they eithe
 | `/auth/` | Login, register, verify, password reset — has own auth flow |
 | `/config/auth-status` | Frontend feature flag (must be accessible before login) |
 | `/users/` | Protected by fastapi-users `current_active_user` dependency |
-| `/groups/` | Protected by fastapi-users `current_active_user` dependency |
-| `/ratings/` | Protected by fastapi-users `current_active_user` dependency |
-| `/activity/` | Protected by fastapi-users `current_active_user` dependency |
-| `/docs`, `/redoc`, `/openapi.json` | OpenAPI docs (disabled in production) |
+| `/groups/` | Protected by fastapi-users `current_superuser` dependency |
+| `/ratings/` | Signed-in users; anonymous visitors only when `features.anonymous_ratings` is on; the admin routes need `current_superuser` |
+| `/api-keys` | Protected by fastapi-users `current_superuser` dependency |
+| `/docs`, `/redoc`, `/openapi.json` | OpenAPI docs (served in every deployment) |
 | `OPTIONS` | CORS preflight requests |
+
+`/activity/` is not exempt. Its log and summary routes also take anonymous visitors, for sites without required sign-in, so on a site that requires sign-in this middleware is what refuses people who aren't signed in.
 
 #### Security Properties
 
@@ -316,6 +350,7 @@ The middleware provides **defense in depth** alongside existing controls:
 - Data source access controlled via whitelist validation and group-based RBAC
 - File serving restricted to specific directories and file types
 - Superusers bypass datasource filtering; regular users see only granted sources
+- Changing documents and running the pipeline require a signed-in superuser: editing a document's contents (`PUT /document/{id}/toc`), its metadata (`PATCH /documents/{id}`), reprocessing (`POST /documents/{id}/reprocess`, `POST /documents/{id}/reprocess-toc`), the queue status (`GET /queue/status`) and processing logs (`GET /document/{id}/logs`). The API key alone is not enough, and without the user module these routes always refuse. The UI shows these controls only to superusers.
 
 ### Security Headers
 
@@ -328,6 +363,26 @@ Application-level security headers middleware provides defence-in-depth:
 - `Permissions-Policy` — restricts camera, microphone, geolocation
 - `Strict-Transport-Security` — HSTS with `preload` directive when HTTPS is configured; warning logged when `AUTH_COOKIE_SECURE=false`
 - `Cache-Control: no-store` + `Pragma: no-cache` on sensitive endpoints (`/auth/`, `/users/`, `/groups/`, `/ratings/`, `/activity/`) — prevents browsers and proxies from caching tokens or personal data (ASVS V8.1.4)
+
+These headers are added by the API to its own responses. The web pages and static files are served by nginx (`ui/frontend/nginx.conf`), which sets its own headers from one file, `ui/frontend/nginx-security-headers.conf`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, and a `Content-Security-Policy`. nginx drops server-level headers for any `location` that sets an `add_header` of its own, so every such location includes the file again; `tests/unit/test_nginx_security_headers.py` fails if one does not.
+
+The pages' `Content-Security-Policy` is filled in when the ui container starts (`ui/frontend/render-nginx-conf.sh`), from `UI_CSP_POLICY` or this default:
+
+```
+default-src 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline';
+img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.google-analytics.com
+https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self';
+frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+```
+
+- Scripts and workers come from the site only. Google Analytics is the exception, and the app loads it only when it is configured and the visitor accepts analytics cookies.
+- There is no inline script and no `eval`: the production build keeps Create React App's runtime as a file (`INLINE_RUNTIME_CHUNK=false`).
+- The PDF viewer loads PDF.js from the site. `scripts/copy-pdfjs.js` copies it from the `pdfjs-dist` version in `package-lock.json` into the build at `/pdfjs/<version>/`.
+- PDF.js runs without WebAssembly (`useWasm: false`, using its JavaScript image decoders), so the policy needs no `'wasm-unsafe-eval'`.
+- The app's typefaces (Poppins and Open Sans) are bundled from `@fontsource` and served from the site, not loaded from Google Fonts, so `style-src` and `font-src` need no outside address and visitors' browsers do not contact Google for them.
+- Styles allow inline, because React and the MCP consent page set style attributes.
+- `form-action` is left out: it does not fall back to `default-src`, and the MCP consent form's answer redirects to the MCP client's own address.
+- A deployment that loads other outside assets sets `UI_CSP_POLICY`. The container refuses a value with a line break or any of `| & \ " $`.
 
 Production deployments via Caddy additionally include:
 
@@ -398,7 +453,7 @@ Before submitting a PR, ensure:
 | API key storage | SHA-256 (first 8 hex chars stored for audit; full hash for lookup) | One-way |
 | API key encryption at rest | Fernet (AES-128-CBC + HMAC-SHA256) | See note below |
 | CSRF token comparison | `secrets.compare_digest` (constant-time) | stdlib |
-| OAuth 2.0 | Standard flows via httpx-oauth | No custom crypto |
+| OAuth 2.0 | Authorization code flow with PKCE (S256) via httpx-oauth; state is a signed JWT bound to a browser cookie | No custom crypto |
 
 ### Note on Fernet (AES-128-CBC)
 
@@ -426,6 +481,39 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
 | eslint-plugin-security | JS security linting | https://github.com/eslint-community/eslint-plugin-security |
 
 ## Changelog
+
+- **2026-11-23**: Sign-in-required sites keep the activity log for signed-in people, and MCP client registration is limited
+  - The `on_active` middleware no longer exempts `/activity/`: on a site that requires sign-in, logging a search or its summary needs a valid session or key, as data routes do. Sites without required sign-in still log anonymous visitors
+  - `POST /mcp/register` reads at most 16 KB, accepts at most 10 `redirect_uris` of at most 2,048 characters and a `client_name` of at most 200, and refuses a body that is not a JSON object, with the RFC 7591 error codes. At most 1,000 registrations are kept; a new one replaces the oldest that never got a token
+- **2026-11-23**: Serve PDF.js from the site and restrict the pages' scripts
+  - The PDF viewer loads PDF.js 6.5.438 from the site instead of cdnjs (3.11.174); the version comes from `package-lock.json`
+  - The web pages' `Content-Security-Policy` now restricts scripts, styles, images, fonts, connections and workers, configurable per deployment with `UI_CSP_POLICY`
+  - The production build has no inline script (`INLINE_RUNTIME_CHUNK=false`)
+  - The typefaces are served from the site instead of Google Fonts
+- **2026-11-17**: Tighten API access checks and page headers
+  - Document write and pipeline routes (contents and metadata edits, reprocessing, queue status, processing logs) now require a signed-in superuser instead of the API key alone; the UI shows those controls only to superusers
+  - The API-key check now verifies the session cookie's token instead of accepting any cookie value
+  - Exempt paths in the API-key check and the `on_active` middleware are matched by whole path segment through one shared helper (`ui/backend/auth/request_checks.py`)
+  - `reprocess-toc` checks the data source against `config.json` before queueing
+  - nginx now sends the security headers, plus HSTS and a framing/plugin CSP, on the web pages and static files; they were missing because locations with their own `add_header` dropped the server-level ones
+  - Corrected this file where it did not match the code: CI dependency and image scans report but do not block, Trivy results are not uploaded as SARIF, the OpenAPI docs are served in every deployment, and the password policy checks length only
+- **2026-11-17**: Keep anonymous input from running in admin screens and exports
+  - Ratings and activity payloads refuse non-raster `data:` URLs and `javascript:`/`vbscript:` link values
+  - Admin screens and the research PDF export render links from stored data only for `http`, `https`, `mailto` and site paths; Word exports link only to `http(s)` addresses
+  - Feedback screenshots open full size in the page instead of a new tab
+  - Spreadsheet exports write formula-looking cells as text
+- **2026-11-17**: The web interface's public key no longer opens MCP, A2A or sign-in-required mode
+  - MCP and A2A refuse `REACT_APP_API_KEY`, even when it is also `API_SECRET_KEY` or an admin-created key; signed-in users and other keys still work
+  - With `on_active`, the API-key check and the middleware ignore that key as a credential
+  - The API accepts a `REACT_APP_API_KEY` that differs from `API_SECRET_KEY`, so the two can be separated; the demo, CI and dev compose now use separate values, and the API warns at startup when they are the same
+- **2026-11-17**: MCP sign-in asks for consent and is tied to the browser that started it
+  - `/mcp/authorize` sets a short-lived, httpOnly cookie in the starting browser; `/mcp/complete` refuses any other browser, so a link to someone else's request cannot connect their app to your account
+  - `/mcp/complete` shows which client is asking and where it will be sent; the answer is a same-origin POST with a one-time token, and denying returns `error=access_denied`
+  - MCP access tokens carry their own audience (`evidencelab:mcp`): MCP and A2A accept them, the web app does not; only a web sign-in session can answer the consent page
+- **2026-11-17**: Limit what one request can cost
+  - AI routes (AI summary, assistant, highlight, Brief outline and revise) accept only a model listed in `config.json`, and at most the output tokens `config.json` sets for it (`ui/backend/utils/llm_request_limits.py`)
+  - Search `limit` is capped by `SEARCH_MAX_LIMIT` (default 10000) and highlight text by `HIGHLIGHT_MAX_TEXT_CHARS` (default 50000)
+  - The MCP and A2A rate limits (`RATE_LIMIT_MCP_SEARCH`, `RATE_LIMIT_MCP_AI`), documented but never applied, are now enforced per caller (signed-in user or API key) rather than per client address
 
 - **2026-04-12**: Fix SQL injection via `sort_by` and taxonomy filter parameters (#264)
   - Replaced f-string interpolation of `sort_by` in `ORDER BY` clause with a whitelist dictionary lookup (hardcoded SQL fragments only)

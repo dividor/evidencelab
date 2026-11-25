@@ -1,0 +1,12 @@
+# Scanners the CI security jobs run (.github/workflows/ci.yml), pinned so a
+# new release can't change what passes. Install with:
+#   pip install -r security-requirements.txt
+
+# Known vulnerabilities in Python packages
+pip-audit==2.10.1
+
+# Security problems in Python code
+bandit==1.9.4
+
+# Python software bill of materials
+cyclonedx-bom==9.0.0

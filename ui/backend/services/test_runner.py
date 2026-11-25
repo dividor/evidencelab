@@ -47,6 +47,7 @@ from ui.backend.services.job_liveness import (
     progress_stats,
     write_while,
 )
+from ui.backend.services.llm_choice import JUDGE, group_choice
 from ui.backend.services.search_defaults import (
     SYSTEM_SEARCH_DEFAULTS,
     default_section_types,
@@ -249,6 +250,13 @@ def _combo_summary_model(combo: Any) -> Optional[str]:
     return None
 
 
+def _combo_judge_model(combo: Any) -> Optional[str]:
+    jm = combo.get("judge_model") if isinstance(combo, dict) else None
+    if isinstance(jm, dict) and jm.get("model"):
+        return jm["model"]
+    return None
+
+
 def _default_summary_model() -> Optional[str]:
     """Pick a sensible default summary model from the app's configured combos.
 
@@ -385,6 +393,8 @@ def _resolve_combo(name: Optional[str]) -> Dict[str, Optional[str]]:
     return {
         "embedding_model": combo.get("embedding_model"),
         "summary_model": _combo_summary_model(combo),
+        # The model that judges llm_judge assertions; unset, the summary model.
+        "judge_model": _combo_judge_model(combo),
         "rerank_model": combo.get("reranker_model"),
         # The UI caps the candidates it sends to the reranker per combo.
         "max_rerank_candidates": combo.get("rerank_model_page_size"),
@@ -419,13 +429,20 @@ _GROUP_SETTING_MAP = {
     "summaryTemperature": "temperature",
 }
 
+# Group Settings > LLMs: the group's models override the model combo's. Kept
+# apart from _GROUP_SETTING_MAP, whose keys are search settings with a UI default.
+_GROUP_MODEL_MAP = {
+    "summaryModel": "summary_model",
+    "judgeModel": "judge_model",
+}
+
 
 def _group_settings_to_config(settings: Any) -> Dict[str, Any]:
     """Translate a group's ``search_settings`` blob into run-config keys."""
     out: Dict[str, Any] = {}
     if not isinstance(settings, dict):
         return out
-    for camel, snake in _GROUP_SETTING_MAP.items():
+    for camel, snake in {**_GROUP_SETTING_MAP, **_GROUP_MODEL_MAP}.items():
         if settings.get(camel) is not None:
             out[snake] = settings[camel]
     sections = settings.get("sectionTypes")
@@ -463,6 +480,42 @@ async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+async def _apply_judge_choice(
+    session, config: Dict[str, Any], user_id: Any
+) -> Optional[str]:
+    """Without "run as group", the judge that the triggering admin's groups
+    choose (Group Settings > LLMs) overrides config.json's. Returns why the run
+    can't go ahead (a choice config.json no longer lists), else None."""
+    if config.get("group_id") or user_id is None:
+        return None
+    from fastapi import HTTPException
+
+    from ui.backend.services.group_settings import user_groups
+
+    try:
+        choice = group_choice(await user_groups(session, user_id), JUDGE)
+    except HTTPException as exc:
+        return str(exc.detail)
+    if choice:
+        config["judge_model"] = choice
+    return None
+
+
+def _unlisted_model_problem(config: Dict[str, Any]) -> Optional[str]:
+    """Why the run can't go ahead, if its summary or judge model (from the
+    experiment, its model combo or a group's choice) isn't in config.json."""
+    from utils.llm_factory import supported_llm_key
+
+    for key, role in (("summary_model", "summary"), ("judge_model", "judge")):
+        name = config.get(key)
+        if name and supported_llm_key(str(name)) is None:
+            return (
+                f"The {role} model '{name}' is not in config.json's supported_llms. "
+                "Choose another in Group Settings > LLMs, or in the experiment."
+            )
+    return None
+
+
 def run_config_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     """The configuration a run actually executes with, flattened for storage on
     ``test_runs.config``: the chosen combo + group, the resolved models, and
@@ -487,6 +540,7 @@ def effective_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     for key in (
         "embedding_model",
         "summary_model",
+        "judge_model",
         "rerank_model",
         "max_rerank_candidates",
         "max_tokens",
@@ -969,13 +1023,18 @@ async def _record_run_usage(
     from decimal import Decimal
 
     from ui.backend.services.usage_recorder import record_llm_usage
+    from utils.llm_factory import resolve_effective_model_key
 
     try:
         # The runner passes the stats it just wrote: the session's copy of the
         # run is not synchronised with its conditional writes.
         stats = stats if stats is not None else (run.summary_stats or {})
         usage = {
-            "llm_model": cfg.get("summary_model") or cfg.get("judge_model"),
+            # The supported_llms key, as each call's usage is labelled, even
+            # when the experiment names the model by its provider id.
+            "llm_model": resolve_effective_model_key(
+                cfg.get("summary_model") or cfg.get("judge_model")
+            ),
             "prompt_tokens": stats.get("prompt_tokens"),
             "completion_tokens": stats.get("completion_tokens"),
         }
@@ -1044,6 +1103,11 @@ async def _execute(
     # models, then overlay any "run as group" settings, so the run matches the
     # search UI / that group's configuration.
     config = await _apply_group(session, effective_config(experiment.config))
+    problem = await _apply_judge_choice(session, config, triggered_by_user_id)
+    problem = problem or _unlisted_model_problem(config)
+    if problem:
+        await _fail_run(session, experiment, run, problem)
+        return
     run.config = run_config_snapshot(config)
     try:
         runner = build_case_runner(dataset.capability, config, dataset.data_source)

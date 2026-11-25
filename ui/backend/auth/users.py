@@ -292,6 +292,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 await session.commit()
             return
 
+        # Google and Microsoft sign-ins create the account already verified:
+        # the provider vouched for the address. Asking them to verify it again
+        # raises UserAlreadyVerified, which failed their first sign-in.
+        if user.is_verified:
+            return
+
         await self.request_verify(user, request)
 
     async def on_after_request_verify(

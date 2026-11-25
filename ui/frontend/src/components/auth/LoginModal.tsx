@@ -2,19 +2,9 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { useAuth } from '../../hooks/useAuth';
+import { useAutoSignIn } from '../../hooks/useAutoSignIn';
+import { AuthStatus, OAuthProvider } from '../../utils/oauthSignIn';
 import OAuthButtons from './OAuthButtons';
-
-interface AuthStatus {
-  email_login_disabled: boolean;
-  google_oauth_enabled: boolean;
-  microsoft_oauth_enabled: boolean;
-}
-
-const DEFAULT_AUTH_STATUS: AuthStatus = {
-  email_login_disabled: false,
-  google_oauth_enabled: false,
-  microsoft_oauth_enabled: false,
-};
 
 interface LoginModalProps {
   onClose: () => void;
@@ -24,9 +14,21 @@ interface LoginModalProps {
   required?: boolean;
   /** When true, show an info banner indicating the session has expired. */
   sessionExpired?: boolean;
+  /**
+   * When true and the deployment offers only one way to sign in (one OAuth
+   * provider, email login off), go straight to that provider's sign-in page
+   * instead of showing its button.
+   */
+  autoSignIn?: boolean;
 }
 
 type TabMode = 'login' | 'register' | 'forgot' | 'reset';
+
+/** Modes that only exist where people sign in with an email and password. */
+const PASSWORD_MODES: TabMode[] = ['register', 'forgot', 'reset'];
+
+const RESET_UNAVAILABLE =
+  'Password reset is not available: this site does not sign in with passwords.';
 
 /** Map raw error codes from fastapi-users to user-friendly messages. */
 const ERROR_MESSAGES: Record<string, string> = {
@@ -166,13 +168,14 @@ interface MainAuthFormProps {
   authStatus: AuthStatus;
   onSubmit: (e: React.FormEvent) => void;
   onForgot: () => void;
+  onOAuthError: (message: string) => void;
 }
 
 const MainAuthForm: React.FC<MainAuthFormProps> = ({
   mode, email, setEmail, password, setPassword,
   firstName, setFirstName, lastName, setLastName,
   loading, displaySuccess, authStatus,
-  onSubmit, onForgot,
+  onSubmit, onForgot, onOAuthError,
 }) => {
   const showOAuth = authStatus.google_oauth_enabled || authStatus.microsoft_oauth_enabled;
   const showEmail = !authStatus.email_login_disabled;
@@ -189,6 +192,7 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
         action={mode === 'login' ? 'Sign in' : 'Sign up'}
         googleEnabled={authStatus.google_oauth_enabled}
         microsoftEnabled={authStatus.microsoft_oauth_enabled}
+        onError={onOAuthError}
       />
     )}
 
@@ -276,23 +280,76 @@ const MainAuthForm: React.FC<MainAuthFormProps> = ({
   );
 };
 
+interface MainTabProps extends Omit<MainAuthFormProps, 'authStatus'> {
+  authStatus: AuthStatus | null;
+}
+
+/** Sign In / Register: nothing until the options are known, then the form. */
+const MainTab: React.FC<MainTabProps> = ({ authStatus, ...formProps }) => {
+  if (!authStatus) return null;
+  return <MainAuthForm authStatus={authStatus} {...formProps} />;
+};
+
+/**
+ * Whether the sign-in box shows nothing at all. When it may go straight to the
+ * only provider, it stays blank until it knows the sign-in options, and while
+ * it goes, so nothing flashes up before the provider's sign-in page. An error
+ * always shows.
+ */
+function staysBlank(
+  autoSignIn: boolean,
+  authStatus: AuthStatus | null,
+  autoProvider: OAuthProvider | null,
+  error: string,
+): boolean {
+  if (!autoSignIn || error) return false;
+  return authStatus === null || autoProvider !== null;
+}
+
 /* ------------------------------------------------------------------ */
-/*  Main modal                                                        */
+/*  Tabs                                                              */
 /* ------------------------------------------------------------------ */
 
-const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, sessionExpired }) => {
-  const { login, register, verificationMessage, clearVerificationMessage } = useAuth();
-  const [mode, setMode] = useState<TabMode>(resetToken ? 'reset' : 'login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(DEFAULT_AUTH_STATUS);
+interface LoginTabsProps {
+  mode: TabMode;
+  showRegister: boolean;
+  showClose: boolean;
+  onSwitch: (next: TabMode) => void;
+  onClose: () => void;
+}
 
+const LoginTabs: React.FC<LoginTabsProps> = ({
+  mode, showRegister, showClose, onSwitch, onClose,
+}) => (
+  <div className="modal-header">
+    <div className="login-tabs">
+      <button
+        className={`login-tab ${mode === 'login' ? 'login-tab-active' : ''}`}
+        onClick={() => onSwitch('login')}
+      >
+        Sign In
+      </button>
+      {showRegister && (
+        <button
+          className={`login-tab ${mode === 'register' ? 'login-tab-active' : ''}`}
+          onClick={() => onSwitch('register')}
+        >
+          Register
+        </button>
+      )}
+    </div>
+    {showClose && <button className="modal-close" onClick={onClose}>&times;</button>}
+  </div>
+);
+
+/**
+ * The ways to sign in the backend offers; null until it answers, so the email
+ * form never flashes up on a deployment that has turned it off. If the backend
+ * cannot be asked, ON_ERROR gets a message and no sign-in form is shown: a
+ * guessed form would offer a way in the deployment may not have.
+ */
+function useAuthStatus(onError: (message: string) => void): AuthStatus | null {
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   useEffect(() => {
     let cancelled = false;
     axios.get<Partial<AuthStatus>>(`${API_BASE_URL}/config/auth-status`)
@@ -304,15 +361,49 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
           microsoft_oauth_enabled: !!res.data.microsoft_oauth_enabled,
         });
       })
-      .catch(() => { /* keep defaults on failure */ });
+      .catch((err) => {
+        if (cancelled) return;
+        const status = err?.response?.status;
+        const code = status ? ` (HTTP ${status})` : '';
+        onError(
+          `Could not load the sign-in options${code}. ` +
+            "Reload the page; if this keeps happening, contact the site's administrator.",
+        );
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [onError]);
+  return authStatus;
+}
 
+/* ------------------------------------------------------------------ */
+/*  Main modal                                                        */
+/* ------------------------------------------------------------------ */
+
+const LoginModal: React.FC<LoginModalProps> = ({
+  onClose, resetToken, required, sessionExpired, autoSignIn,
+}) => {
+  const { login, register, verificationMessage, clearVerificationMessage } = useAuth();
+  const [mode, setMode] = useState<TabMode>(resetToken ? 'reset' : 'login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const authStatus = useAuthStatus(setError);
+
+  // Without email login there is no registration and no password to reset:
+  // a reset link (or a stale mode) falls back to the ways to sign in.
   useEffect(() => {
-    if (authStatus.email_login_disabled && mode === 'register') {
-      setMode('login');
-    }
-  }, [authStatus.email_login_disabled, mode]);
+    if (!authStatus?.email_login_disabled || !PASSWORD_MODES.includes(mode)) return;
+    if (mode === 'reset') setError(RESET_UNAVAILABLE);
+    setMode('login');
+  }, [authStatus?.email_login_disabled, mode]);
+
+  const autoEnabled = !!autoSignIn && mode === 'login';
+  const autoProvider = useAutoSignIn(authStatus, autoEnabled, setError);
 
   const handleClose = () => {
     clearVerificationMessage();
@@ -402,6 +493,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
     }
   };
 
+  if (staysBlank(autoEnabled, authStatus, autoProvider, error)) return null;
+
   const displaySuccess = verificationMessage || success;
   const isMainTab = mode === 'login' || mode === 'register';
 
@@ -412,25 +505,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
           <img src="/logo.png" alt="Evidence Lab" className="login-logo" />
           <span className="login-brand-name">Evidence Lab</span>
         </div>
-        <div className="modal-header">
-          <div className="login-tabs">
-            <button
-              className={`login-tab ${mode === 'login' ? 'login-tab-active' : ''}`}
-              onClick={() => switchMode('login')}
-            >
-              Sign In
-            </button>
-            {!authStatus.email_login_disabled && (
-              <button
-                className={`login-tab ${mode === 'register' ? 'login-tab-active' : ''}`}
-                onClick={() => switchMode('register')}
-              >
-                Register
-              </button>
-            )}
-          </div>
-          {!required && <button className="modal-close" onClick={handleClose}>&times;</button>}
-        </div>
+        <LoginTabs
+          mode={mode}
+          showRegister={authStatus?.email_login_disabled === false}
+          showClose={!required}
+          onSwitch={switchMode}
+          onClose={handleClose}
+        />
 
         <div className="modal-body">
           {sessionExpired && !error && !displaySuccess && (
@@ -461,7 +542,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
           )}
 
           {isMainTab && (
-            <MainAuthForm
+            <MainTab
               mode={mode as 'login' | 'register'}
               email={email}
               setEmail={setEmail}
@@ -476,6 +557,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ onClose, resetToken, required, 
               authStatus={authStatus}
               onSubmit={mode === 'login' ? handleLogin : handleRegister}
               onForgot={() => switchMode('forgot')}
+              onOAuthError={setError}
             />
           )}
         </div>
