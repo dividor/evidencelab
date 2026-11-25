@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect } from 'react';
+import EcoLogitsLink from '../EcoLogitsLink';
 
 // ---------------------------------------------------------------------------
 // Types — match the footprint parts of the /llm-usage/summary response.
@@ -65,7 +66,6 @@ export interface FootprintMethod {
 // Links and method notes, from EcoLogits' documentation (checked 2026-11-25).
 // ---------------------------------------------------------------------------
 
-const ECOLOGITS_SITE = 'https://ecologits.ai/latest/';
 const ECOLOGITS_METHOD = 'https://ecologits.ai/latest/methodology/llm_inference/';
 const ECOLOGITS_CLOSED_MODELS = 'https://ecologits.ai/latest/methodology/proprietary_models/';
 const ECOLOGITS_PAPER = 'https://doi.org/10.21105/joss.07471';
@@ -84,17 +84,18 @@ const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ h
   </a>
 );
 
-const EcoLogitsLink: React.FC = () => <ExternalLink href={ECOLOGITS_SITE}>EcoLogits</ExternalLink>;
-
-const METHOD_NOTES: ReadonlyArray<{ title: string; text: string; links: [string, string][] }> = [
+const METHOD_NOTES: ReadonlyArray<{ title: string; text: React.ReactNode; links: [string, string][] }> = [
   {
     title: 'Energy',
-    text:
-      'EcoLogits works out the electricity a call uses from two things: how many output tokens ' +
-      'the model wrote, and how big the model is. Its formula comes from measurements of open ' +
-      'models running on NVIDIA H100 GPUs, published as the ML.ENERGY Leaderboard. It then adds ' +
-      'the power used by the rest of the server and by the data centre’s cooling and other ' +
-      'overhead (PUE).',
+    text: (
+      <>
+        <EcoLogitsLink /> works out the electricity a call uses from two things: how many output tokens
+        the model wrote, and how big the model is. Its formula comes from measurements of open
+        models running on NVIDIA H100 GPUs, published as the ML.ENERGY Leaderboard. It then adds
+        the power used by the rest of the server and by the data centre’s cooling and other
+        overhead (PUE).
+      </>
+    ),
     links: [
       [METHOD_LINK_TEXT, ECOLOGITS_METHOD],
       ['ML.ENERGY Leaderboard', ML_ENERGY],
@@ -102,12 +103,15 @@ const METHOD_NOTES: ReadonlyArray<{ title: string; text: string; links: [string,
   },
   {
     title: 'Model sizes',
-    text:
-      'OpenAI, Anthropic and Google don’t publish how big their models are. EcoLogits estimates ' +
-      'their sizes from leaked information, benchmark results and prices, so each size is a ' +
-      'range. Some models use only part of themselves for each token (a "mixture of experts"); ' +
-      'for these, EcoLogits assumes 10–30% is used. These size ranges, and ranges in data-centre ' +
-      'efficiency, are why every figure is a range.',
+    text: (
+      <>
+        OpenAI, Anthropic and Google don’t publish how big their models are. <EcoLogitsLink /> estimates
+        their sizes from leaked information, benchmark results and prices, so each size is a
+        range. Some models use only part of themselves for each token (a "mixture of experts").
+        For these, <EcoLogitsLink /> assumes 10–30% is used. These size ranges, and ranges in data-centre
+        efficiency, are why every figure is a range.
+      </>
+    ),
     links: [['How EcoLogits estimates model sizes', ECOLOGITS_CLOSED_MODELS]],
   },
   {
@@ -130,9 +134,9 @@ const METHOD_NOTES: ReadonlyArray<{ title: string; text: string; links: [string,
   },
   {
     title: 'Not included',
-    text:
-      'The prompt (EcoLogits counts only the tokens a model writes), networking, storage, and ' +
-      'training the model.',
+    text: (
+      <>The prompt (<EcoLogitsLink /> counts only the tokens a model writes), networking, storage, and training the model.</>
+    ),
     links: [],
   },
 ];
@@ -170,7 +174,9 @@ const ModelRow: React.FC<{ m: EcoModelDetail }> = ({ m }) => (
     <td style={CELL}>
       {sizeText(m)}
       <div className="text-muted" style={SMALL_TEXT}>
-        {m.size_published ? 'Published by its maker' : 'Not published. This is EcoLogits’ estimate.'}
+        {m.size_published
+          ? 'Published by its maker'
+          : <>Not published. This is <EcoLogitsLink />’ estimate.</>}
         {m.model_card && (
           <>
             {' '}
@@ -190,7 +196,7 @@ const ModelRow: React.FC<{ m: EcoModelDetail }> = ({ m }) => (
       <div className="text-muted" style={SMALL_TEXT}>
         {m.zone_from_config
           ? 'Set in config.json.'
-          : 'EcoLogits’ default for this maker, because config.json doesn’t say where it runs.'}{' '}
+          : <><EcoLogitsLink />’ default for this maker, because config.json doesn’t say where it runs.</>}{' '}
         Each kWh there emits {formatNumber(m.grid_gwp_kgco2eq_per_kwh)} kg CO{'₂'}e and uses{' '}
         {formatNumber(m.grid_water_l_per_kwh)} litres of water to generate.
       </div>
@@ -245,7 +251,7 @@ const EcoModelTable: React.FC<{ models: EcoModelDetail[]; assumed: boolean }> = 
     <p className="text-muted" style={{ ...SMALL_TEXT, margin: '0.4rem 0 0' }}>
       Parameters are the numbers a model learns; bigger models have more and use more energy for each token.
       PUE is the electricity the whole data centre uses for each kWh its servers use: 1.1 means 10% more for
-      cooling and other overhead. The data-centre figures are EcoLogits’ figures for the model’s maker, not
+      cooling and other overhead. The data-centre figures are <EcoLogitsLink />’ figures for the model’s maker, not
       for your cloud provider.
     </p>
   </>
@@ -275,9 +281,9 @@ const EstimateCells: React.FC<{ estimate: EstimateRanges }> = ({ estimate }) => 
 
 const calculationIntro = (count: number): string =>
   count > 1
-    ? 'EcoLogits gives a range for each model, because their sizes and data centres are ranges. ' +
+    ? 'gives a range for each model, because their sizes and data centres are ranges. ' +
       'We record the lowest of the low figures and the highest of the high figures.'
-    : 'EcoLogits gives a range, because the model’s size and data centre are ranges. We record that range.';
+    : 'gives a range, because the model’s size and data centre are ranges. We record that range.';
 
 const Calculation: React.FC<{ source: FootprintSource; recorded: EstimateRanges }> = ({ source, recorded }) => (
   <>
@@ -285,7 +291,7 @@ const Calculation: React.FC<{ source: FootprintSource; recorded: EstimateRanges 
       The calculation, for a call that writes {source.example_output_tokens.toLocaleString()} output tokens
     </h3>
     <p style={{ margin: '0 0 0.3rem' }}>
-      {calculationIntro(source.models.length)} Every call is worked out this way with its own number of output
+      <EcoLogitsLink /> {calculationIntro(source.models.length)} Every call is worked out this way with its own number of output
       tokens, and each line of the table adds up its calls.
     </p>
     <div style={{ overflowX: 'auto' }}>
@@ -357,7 +363,7 @@ const Coverage: React.FC = () => (
       <li style={LIST_ITEM}>
         <strong>Not counted: embedding and reranking.</strong> Embedding turns document text and each search
         query into numbers so they can be searched, when documents are processed and on every search. Reranking
-        puts search results in order. Evidence Lab doesn’t record these calls, and EcoLogits only estimates
+        puts search results in order. Evidence Lab doesn’t record these calls, and <EcoLogitsLink /> only estimates
         models that write text, so their energy, emissions and water are left out.
       </li>
     </ul>

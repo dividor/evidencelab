@@ -232,7 +232,12 @@ describe('UserMenu', () => {
       expect(dialog.getByRole('status')).toHaveTextContent('Loading');
       expect(dialog.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
       expect(await dialog.findByText('1–2')).toBeInTheDocument();
-      expect(dialog.getByText(/leave out 20 of 100 output tokens/)).toBeInTheDocument();
+      expect(dialog.getByText('Electricity')).toBeInTheDocument();
+      expect(dialog.getByText('watt-hours')).toBeInTheDocument();
+      expect(dialog.getByText(/100 tokens of AI-written text/)).toHaveTextContent(
+        'We couldn’t estimate the impact of 20 of them. A token is a small piece of text',
+      );
+      expect(dialog.getByRole('link', { name: 'EcoLogits' })).toHaveAttribute('href', 'https://ecologits.ai/latest/');
       expect(get).toHaveBeenLastCalledWith(
         '/api/llm-usage/me/footprint', expect.objectContaining({ params: { period: '30-days' } }),
       );
@@ -251,8 +256,8 @@ describe('UserMenu', () => {
     it('describes an empty period without displaying zero estimates', async () => {
       (axios.get as jest.Mock).mockResolvedValueOnce({ data: emptySummary });
       const dialog = openImpact();
-      expect(await dialog.findByText(/No text generation was recorded/)).toBeInTheDocument();
-      expect(dialog.queryByText('Energy (Wh)')).not.toBeInTheDocument();
+      expect(await dialog.findByText(/We didn’t record any AI-written text/)).toBeInTheDocument();
+      expect(dialog.queryByText('Electricity')).not.toBeInTheDocument();
     });
 
     it('reports a summary request failure', async () => {

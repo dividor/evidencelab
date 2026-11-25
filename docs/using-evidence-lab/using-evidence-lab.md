@@ -21,4 +21,4 @@ The guides in this section walk you through each feature in detail.
 
 When signed in, click your user icon and choose **Environmental impact**. Select **Last 30 days** or **Year to date** to see ranges for your estimated energy use, greenhouse gas emissions and water use. Both periods include today and use UTC. Year to date starts on January 1.
 
-EcoLogits estimates the impact of AI text generation recorded for your account. The summary leaves out search embedding, reranking and document processing. It shows when some recorded output has no estimate. Administrators can control access to the summary in [Group Settings](../admin/user-administration.md#features--tabs).
+We use [EcoLogits](https://ecologits.ai/latest/) to estimate the impact of text AI writes for your account. The figures leave out automatic document processing and the work of finding and sorting search results. The summary tells you how much AI-written text has no estimate, counted in tokens. A token is a small piece of text, like a word or part of a word. Administrators can control access to the summary in [Group Settings](../admin/user-administration.md#features--tabs).

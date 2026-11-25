@@ -4818,6 +4818,12 @@ li.ai-fact-active::before {
   overflow-wrap: anywhere;
 }
 
+.personal-impact-metrics small {
+  display: block;
+  font-weight: 400;
+  color: var(--gray-600);
+}
+
 .app-footer {
   display: flex;
   justify-content: center;

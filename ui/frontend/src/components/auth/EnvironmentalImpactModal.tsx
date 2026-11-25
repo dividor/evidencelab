@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
-import { FOOTPRINT_COLUMNS, FootprintRanges, formatFootprintRange } from '../../utils/footprintDisplay';
+import { FootprintMeasure, FootprintRanges, formatFootprintRange } from '../../utils/footprintDisplay';
+import EcoLogitsLink from '../EcoLogitsLink';
 
 const PERIODS = [
   { value: '30-days', label: 'Last 30 days' },
@@ -9,6 +10,12 @@ const PERIODS = [
 ] as const;
 
 type Period = (typeof PERIODS)[number]['value'];
+
+const METRICS: ReadonlyArray<{ measure: FootprintMeasure; label: string; unit: string }> = [
+  { measure: 'energy_kwh', label: 'Electricity', unit: 'watt-hours' },
+  { measure: 'gwp_kgco2eq', label: 'Greenhouse gas emissions', unit: 'grams of CO₂ equivalent' },
+  { measure: 'water_l', label: 'Water use', unit: 'millilitres' },
+];
 
 interface ImpactSummary extends FootprintRanges {
   from_date: string;
@@ -45,21 +52,28 @@ const ImpactResults: React.FC<{ period: Period }> = ({ period }) => {
         {dateFormatter.format(new Date(summary.from_date))} – {dateFormatter.format(new Date(summary.to_date))} (UTC)
       </p>
       {summary.completion_tokens === 0 ? (
-        <p>No text generation was recorded for your account in this period.</p>
+        <p>We didn’t record any AI-written text for your account in this period.</p>
       ) : (
         <dl className="personal-impact-metrics">
-          {FOOTPRINT_COLUMNS.map(({ measure, label }) => (
-            <div key={measure}>
-              <dt>{label}</dt>
-              <dd>{formatFootprintRange(summary, measure) ?? 'No estimate'}</dd>
-            </div>
-          ))}
+          {METRICS.map(({ measure, label, unit }) => {
+            const range = formatFootprintRange(summary, measure);
+            return (
+              <div key={measure}>
+                <dt>{label}</dt>
+                <dd>
+                  <span>{range ?? 'No estimate'}</span>
+                  {range !== null && <small>{unit}</small>}
+                </dd>
+              </div>
+            );
+          })}
         </dl>
       )}
       {summary.footprint_unestimated_tokens > 0 && (
         <p className="text-muted">
-          The estimates leave out {summary.footprint_unestimated_tokens.toLocaleString()} of{' '}
-          {summary.completion_tokens.toLocaleString()} output tokens (pieces of text the model generated).
+          We recorded {summary.completion_tokens.toLocaleString()} tokens of AI-written text for your account.
+          We couldn’t estimate the impact of {summary.footprint_unestimated_tokens.toLocaleString()} of them.
+          A token is a small piece of text, like a word or part of a word.
         </p>
       )}
     </div>
@@ -101,8 +115,9 @@ const EnvironmentalImpactModal: React.FC<{ onClose: () => void }> = ({ onClose }
         </div>
         <ImpactResults key={period} period={period} />
         <p className="text-muted personal-impact-coverage">
-          EcoLogits estimates the impact of AI text generation recorded for your account.
-          The figures exclude document processing, embedding for search and reranking search results.
+          We use <EcoLogitsLink /> to estimate the impact of text AI writes for you.
+          Some models and older activity don’t have estimates.
+          The figures leave out automatic document processing and the work of finding and sorting search results.
         </p>
       </div>
     </dialog>

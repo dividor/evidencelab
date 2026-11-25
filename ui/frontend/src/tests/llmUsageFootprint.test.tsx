@@ -197,6 +197,7 @@ describe('Token Usage footprint columns', () => {
     expect(cellTexts(total).slice(-4, -1)).toEqual(['0.05–0.13', '0.014–0.035', '0.076–0.29']);
     const note = document.querySelector('.llm-usage-footprint-note') as HTMLElement;
     expect(note.textContent).toContain('estimates from EcoLogits');
+    expect(within(note).getByRole('link', { name: 'EcoLogits' })).toHaveAttribute('href', 'https://ecologits.ai/latest/');
     expect(note.textContent).toContain('300 of 800 output tokens have no estimate');
     expect(note.textContent).toContain('from models with no estimate, or from before estimates began');
     expect(note.textContent).not.toContain('Amazon Nova');
@@ -331,6 +332,9 @@ describe('Basis pop-up', () => {
     const ecologits = within(dialog).getAllByRole('link', { name: 'EcoLogits' });
     expect(ecologits.length).toBeGreaterThan(1);
     ecologits.forEach((a) => expect(a).toHaveAttribute('href', 'https://ecologits.ai/latest/'));
+    expect(dialog.textContent?.match(/EcoLogits/g)).toHaveLength(
+      within(dialog).getAllByRole('link', { name: /EcoLogits/ }).length,
+    );
   });
 
   test('a totals badge opens the same pop-up', async () => {

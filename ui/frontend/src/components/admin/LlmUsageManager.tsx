@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { FOOTPRINT_COLUMNS, FootprintRanges, formatFootprintRange } from '../../utils/footprintDisplay';
+import EcoLogitsLink from '../EcoLogitsLink';
 import { SortableHeader } from '../documents/SortableHeader';
 import FootprintBasisModal, { BasisEntry, FootprintMethod, FootprintSource } from './FootprintBasisModal';
 
@@ -154,7 +155,7 @@ const BasisBadges: React.FC<{ basis: BasisEntry[]; onShowBasis: ShowBasis }> = (
 
 const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }) => (
   <div className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
-    Energy, emissions and water are estimates from EcoLogits for the models it covers,
+    Energy, emissions and water are estimates from <EcoLogitsLink /> for the models it covers,
     shown as a range from low to high.
     {totals.footprint_unestimated_tokens > 0 && (
       <>
