@@ -15,6 +15,11 @@ usage is recorded. Pipeline runs record their usage separately and are
 neither counted nor stopped, because stopping one midway would mark its
 documents failed; Bedrock usage alarms cover them on AWS.
 
+A call is priced by the model name it was made with, so every model name
+config.json can send AI calls to must have a price: with a limit set, the api
+and the MCP/A2A server refuse to start while one has none, because its calls
+would add nothing to the day's total and the limit would never stop them.
+
 The total is read at most every :data:`CACHE_SECONDS` per process, and a
 call's cost is recorded when the call finishes, so calls already running or
 started within that window can take the day somewhat past the limit.
@@ -29,18 +34,30 @@ import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from pipeline.db import config as db_config
 from ui.backend.auth.models import AiDailySpend
+from ui.backend.utils.llm_costs import has_cost_data
 
 logger = logging.getLogger(__name__)
 
 LIMIT_ENV = "AI_DAILY_COST_LIMIT_USD"
+
+# Where a model's price goes, named in the start-up error.
+PRICES_FILE = "ui/backend/utils/llm_costs.py"
+
+# The model combo stages that name a chat model.
+_COMBO_STAGES = (
+    "summarization_model",
+    "semantic_highlighting_model",
+    "assistant_model",
+)
 
 LIMIT_MESSAGE = (
     "Today's AI allowance for this site has been used. Search still works; "
@@ -85,18 +102,71 @@ def daily_limit() -> Optional[Decimal]:
     return value
 
 
-def validate_ai_daily_limit_setting() -> None:
-    """Refuse to start with a malformed limit, and log the one in force.
+def _stage_model(settings: Any) -> Optional[str]:
+    """The model a combo stage names: ``{"model": ...}`` or a bare name."""
+    model = settings.get("model") if isinstance(settings, dict) else settings
+    return str(model) if model else None
 
-    Called when the api and the MCP/A2A server start, so a typo fails the
-    deploy instead of the first AI request.
+
+def configured_llm_names() -> Dict[str, List[str]]:
+    """Every model name config.json can send AI calls to, with where it is set.
+
+    The ``supported_llms`` keys, and the model each ``ui_model_combos`` stage
+    names, which is the name the web interface sends and the call is priced by.
+    """
+    places: Dict[str, List[str]] = {}
+    for key in db_config.SUPPORTED_LLMS:
+        places.setdefault(key, []).append("supported_llms")
+    for combo_name, combo in db_config.UI_MODEL_COMBOS.items():
+        for stage in _COMBO_STAGES:
+            model = _stage_model(combo.get(stage))
+            if model:
+                places.setdefault(model, []).append(
+                    f"ui_model_combos.{combo_name}.{stage}"
+                )
+    return places
+
+
+def unpriced_llm_names() -> Dict[str, List[str]]:
+    """The model names in config.json that ``llm_costs.py`` has no price for."""
+    return {
+        name: where
+        for name, where in configured_llm_names().items()
+        if not has_cost_data(name)
+    }
+
+
+def _unpriced_message(unpriced: Dict[str, List[str]]) -> str:
+    listed = "; ".join(
+        f"{name} ({', '.join(where)})" for name, where in sorted(unpriced.items())
+    )
+    return (
+        f"{LIMIT_ENV} is set, but config.json uses models that have no price, so "
+        f"the limit would not count their use: {listed}. Add a price for each to "
+        f"LLM_COSTS_PER_1K in {PRICES_FILE} under its supported_llms key, or "
+        "remove it from config.json. A model combo must name its models by their "
+        "supported_llms key."
+    )
+
+
+def validate_ai_daily_limit_setting() -> None:
+    """Refuse to start with a limit that is malformed or cannot be counted.
+
+    Called when the api and the MCP/A2A server start, so a typo, or a model
+    whose use the limit would not count, fails the deploy instead of being
+    found later. Does nothing when no limit is set.
 
     Raises:
-        ValueError: when the setting is not a number of dollars, 0 or more.
+        ValueError: when the setting is not a number of dollars, 0 or more, or
+            when a limit is set and a model in config.json has no price.
     """
     limit = daily_limit()
-    if limit is not None:
-        logger.info("%s: %s US dollars a day", LIMIT_ENV, limit)
+    if limit is None:
+        return
+    unpriced = unpriced_llm_names()
+    if unpriced:
+        raise ValueError(_unpriced_message(unpriced))
+    logger.info("%s: %s US dollars a day", LIMIT_ENV, limit)
 
 
 def utc_today(now: Optional[datetime] = None) -> date:

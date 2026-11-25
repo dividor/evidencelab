@@ -18,10 +18,12 @@ from ui.backend.services.ai_daily_limit import (
     LIMIT_ENV,
     LIMIT_MESSAGE,
     LIMIT_REACHED_LOG,
+    PRICES_FILE,
     AiDailyLimitReached,
     add_to_daily_spend,
     ai_daily_limit_handler,
     check_ai_allowance,
+    configured_llm_names,
     daily_limit,
     require_ai_allowance,
     seconds_until_utc_midnight,
@@ -92,6 +94,46 @@ def _sql(stmt) -> str:
     return str(stmt.compile(dialect=postgresql.dialect()))
 
 
+_NOVA_ID = "us.amazon.nova-2-lite-v1:0"
+
+
+def _use_config(monkeypatch, supported_llms, combos=None):
+    """Run the real start-up check against these config.json model sections."""
+    monkeypatch.setattr(limit_mod.db_config, "SUPPORTED_LLMS", supported_llms)
+    monkeypatch.setattr(limit_mod.db_config, "UI_MODEL_COMBOS", combos or {})
+
+
+@pytest.fixture
+def priced_config(monkeypatch):
+    """A config.json whose models all have a price in llm_costs.py."""
+    _use_config(
+        monkeypatch,
+        {
+            "nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"},
+            "gpt-4.1-mini": {"model": "gpt-4.1-mini", "provider": "azure_foundry"},
+        },
+        {
+            "AWS Bedrock": {
+                "summarization_model": {"model": "nova-2-lite"},
+                "semantic_highlighting_model": {"model": "nova-2-lite"},
+                "assistant_model": {"model": "nova-2-lite"},
+            }
+        },
+    )
+
+
+@pytest.fixture
+def unpriced_config(monkeypatch):
+    """A config.json listing one model llm_costs.py has no price for."""
+    _use_config(
+        monkeypatch,
+        {
+            "nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"},
+            "mystery-llm": {"model": "org/Mystery-LLM", "provider": "huggingface"},
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # The setting
 # ---------------------------------------------------------------------------
@@ -119,9 +161,13 @@ class TestDailyLimitSetting:
         with pytest.raises(ValueError, match=LIMIT_ENV):
             daily_limit()
 
-    def test_validate_when_set_then_starts(self, monkeypatch):
+    def test_validate_when_set_and_every_model_priced_then_starts(
+        self, monkeypatch, priced_config, caplog
+    ):
         monkeypatch.setenv(LIMIT_ENV, "25")
-        validate_ai_daily_limit_setting()
+        with caplog.at_level(logging.INFO, logger=limit_mod.__name__):
+            validate_ai_daily_limit_setting()
+        assert f"{LIMIT_ENV}: 25 US dollars a day" in caplog.text
 
     def test_validate_when_unset_then_starts(self):
         validate_ai_daily_limit_setting()
@@ -130,6 +176,75 @@ class TestDailyLimitSetting:
         monkeypatch.setenv(LIMIT_ENV, "lots")
         with pytest.raises(ValueError, match=LIMIT_ENV):
             validate_ai_daily_limit_setting()
+
+
+# ---------------------------------------------------------------------------
+# A model the limit cannot price stops start-up
+# ---------------------------------------------------------------------------
+
+
+class TestUnpricedModels:
+    def test_validate_when_set_and_model_unpriced_then_refuses_naming_it(
+        self, monkeypatch, unpriced_config
+    ):
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        with pytest.raises(ValueError) as refused:
+            validate_ai_daily_limit_setting()
+        message = str(refused.value)
+        assert LIMIT_ENV in message
+        assert "mystery-llm (supported_llms)" in message
+        assert PRICES_FILE in message
+        assert "nova-2-lite" not in message
+
+    def test_validate_when_unset_and_model_unpriced_then_starts(self, unpriced_config):
+        validate_ai_daily_limit_setting()
+
+    def test_validate_when_zero_and_model_unpriced_then_refuses(
+        self, monkeypatch, unpriced_config
+    ):
+        monkeypatch.setenv(LIMIT_ENV, "0")
+        with pytest.raises(ValueError, match="mystery-llm"):
+            validate_ai_daily_limit_setting()
+
+    def test_validate_when_combo_names_model_by_provider_id_then_refuses(
+        self, monkeypatch
+    ):
+        _use_config(
+            monkeypatch,
+            {"nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"}},
+            {"AWS Bedrock": {"assistant_model": {"model": _NOVA_ID}}},
+        )
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        with pytest.raises(ValueError) as refused:
+            validate_ai_daily_limit_setting()
+        assert f"{_NOVA_ID} (ui_model_combos.AWS Bedrock.assistant_model)" in str(
+            refused.value
+        )
+
+    def test_configured_llm_names_when_keys_and_combo_stages_then_lists_where_set(
+        self, monkeypatch
+    ):
+        _use_config(
+            monkeypatch,
+            {"nova-2-lite": {"model": _NOVA_ID}, "gpt-4.1-mini": {}},
+            {
+                "Mixed": {
+                    "summarization_model": {"model": "nova-2-lite"},
+                    "semantic_highlighting_model": "gpt-4.1-mini",
+                    "reranker_model": "not-a-chat-model",
+                }
+            },
+        )
+        assert configured_llm_names() == {
+            "nova-2-lite": [
+                "supported_llms",
+                "ui_model_combos.Mixed.summarization_model",
+            ],
+            "gpt-4.1-mini": [
+                "supported_llms",
+                "ui_model_combos.Mixed.semantic_highlighting_model",
+            ],
+        }
 
 
 class TestSecondsUntilMidnight:
@@ -472,3 +587,22 @@ class TestMcpStartup:
         await MCPApp()({"type": "lifespan"}, receive, send)
         assert sent[0]["type"] == "lifespan.startup.failed"
         assert LIMIT_ENV in sent[0]["message"]
+
+    @pytest.mark.asyncio
+    async def test_mcp_startup_when_limit_set_and_model_unpriced_then_fails(
+        self, monkeypatch, unpriced_config
+    ):
+        from mcp_server.http_server import MCPApp
+
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        sent = []
+
+        async def receive():
+            return {"type": "lifespan.startup"}
+
+        async def send(message):
+            sent.append(message)
+
+        await MCPApp()({"type": "lifespan"}, receive, send)
+        assert sent[0]["type"] == "lifespan.startup.failed"
+        assert "mystery-llm (supported_llms)" in sent[0]["message"]

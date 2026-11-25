@@ -6,7 +6,10 @@ The cost table maps a model identifier (the ``supported_llms`` key from
 
 Adding a new model is a one-line change here. Unlisted models cause
 ``compute_cost`` to return ``None`` so the admin UI renders an em-dash
-rather than fabricating a cost value.
+rather than fabricating a cost value. With ``AI_DAILY_COST_LIMIT_USD`` set,
+the api and the MCP/A2A server refuse to start while config.json uses a model
+listed nowhere here (``ui.backend.services.ai_daily_limit``), because the
+limit could not count its use.
 
 Prices reflect public list pricing as of 2026-05 and may drift; treat
 them as best-effort. The DB stores the computed cost as ``NUMERIC(12, 6)``

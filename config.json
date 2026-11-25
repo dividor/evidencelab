@@ -337,7 +337,7 @@
         "chunk_tokens_ratio": 0.5
       },
       "reranker_model": "amazon-rerank-1.0-bedrock",
-      "rerank_model_page_size": 10
+      "rerank_model_page_size": 50
     }
   },
   "datasources": {
