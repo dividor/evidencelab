@@ -37,6 +37,7 @@ from ui.backend.services.citation_fidelity import (
     source_section,
     split_sentences,
     strip_citation_markers,
+    strip_inline_markdown,
     verify_quotes,
     write_review_workbook,
 )
@@ -90,6 +91,32 @@ class TestMarkdownParsing:
         assert strip_citation_markers("Rose by 10 points [1, 2]. Also [3] here.") == (
             "Rose by 10 points. Also here."
         )
+
+    def test_strip_inline_markdown_when_bold_spans_sentences_then_plain_prose(self):
+        # The splitter does not cut at "foods.**", so the passage holds both
+        # sentences and the bold markers; the reader sees neither marker.
+        assert strip_inline_markdown(
+            "**Education shows impacts on foods.** In Bangladesh, knowledge rose."
+        ) == ("Education shows impacts on foods. In Bangladesh, knowledge rose.")
+
+    def test_strip_inline_markdown_when_emphasis_code_and_links_then_text_only(self):
+        assert strip_inline_markdown(
+            "- Item *one* with `code`, a [link](http://x), ~~gone~~ and a_b."
+        ) == ("Item one with code, a link, gone and a_b.")
+
+    def test_strip_inline_markdown_when_bold_cut_by_the_splitter_then_stray_markers_go(
+        self,
+    ):
+        assert (
+            strip_inline_markdown("**Bold that opened here.")
+            == "Bold that opened here."
+        )
+        assert strip_inline_markdown("and closes here.**") == "and closes here."
+
+    def test_strip_inline_markdown_when_heading_or_quote_then_marker_dropped(self):
+        assert strip_inline_markdown("### Heading [1]") == "Heading [1]"
+        assert strip_inline_markdown("> quoted _italics_ here") == "quoted italics here"
+        assert strip_inline_markdown("Rate was 5 * 3.") == "Rate was 5 * 3."
 
     def test_parse_section_breadcrumb_when_leading_marker_line_then_split(self):
         section, body = parse_section_breadcrumb("-- A > B --\n\nBody text.")

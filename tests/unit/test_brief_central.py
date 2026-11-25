@@ -17,7 +17,7 @@ from ui.backend.auth.schemas import (
     VoiceProfileCreate,
     VoiceProfileUpdate,
 )
-from ui.backend.routes.brief_central import _to_list_item
+from ui.backend.routes.brief_central import _list_columns, _to_list_item
 from ui.backend.routes.brief_library import (
     _copy_name,
     _headings_json,
@@ -187,14 +187,18 @@ class _FakeUser:
         self.email = email
 
 
-class _FakeBrief:
-    def __init__(self, content):
+class _FakeListRow:
+    """A ``_list_columns()`` result row."""
+
+    def __init__(self, section_count, source_count):
         self.id = uuid.uuid4()
+        self.user_id = uuid.uuid4()
         self.title = "T"
         self.query = "Q"
         self.data_source = "wfp"
         self.voice_profile_id = None
-        self.content = content
+        self.section_count = section_count
+        self.source_count = source_count
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
 
@@ -208,18 +212,23 @@ class TestRouteHelpers:
     def test_owner_name_falls_back_to_email(self):
         assert owner_name(_FakeUser(None, "p@x.org")) == "p@x.org"
 
-    def test_to_list_item_counts_sections_and_sources(self):
-        brief = _FakeBrief({"sections": [{}, {}, {}], "sourceCount": 41})
-        item = _to_list_item(brief, "Owner", 2)
-        assert item.section_count == 3
-        assert item.source_count == 41
-        assert item.owner_name == "Owner"
-        assert item.share_count == 2
+    def test_to_list_item_takes_the_counts_postgres_computed(self):
+        # Lists never load a brief's content: the counts come from the query
+        # (see _list_columns; tests/integration/test_brief_admin_db.py).
+        row = _FakeListRow(section_count=3, source_count=41)
+        item = _to_list_item(row, "Owner", 2, "o@x.org")
+        assert (item.section_count, item.source_count) == (3, 41)
+        assert (item.owner_name, item.owner_email, item.share_count) == (
+            "Owner",
+            "o@x.org",
+            2,
+        )
+        assert (item.id, item.title, item.query) == (row.id, "T", "Q")
 
-    def test_to_list_item_handles_empty_content(self):
-        item = _to_list_item(_FakeBrief({}), None, 0)
-        assert item.section_count == 0
-        assert item.source_count == 0
+    def test_list_columns_never_include_the_content(self):
+        names = {getattr(col, "key", None) for col in _list_columns()}
+        assert "content" not in names
+        assert {"section_count", "source_count", "id", "title"} <= names
 
 
 class _FakeTemplate:

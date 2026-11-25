@@ -49,13 +49,6 @@ SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # left out of the check and counted, so the summary can say so.
 REFERENCE_LINE_RE = re.compile(r"^\s*\[\??\d+(?:,\s*\d+)*\]\s")
 
-# Inline markdown the judge and the review table should not see: heading,
-# list and quote prefixes, bold/italic markers and code ticks.
-_MD_LINE_PREFIX_RE = re.compile(r"^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)")
-_MD_STRONG_RE = re.compile(r"\*\*|__")
-_MD_EMPHASIS_RE = re.compile(r"(?<![\w*])[*_](?=\S)|(?<=\S)[*_](?![\w*])")
-_MD_CODE_RE = re.compile(r"`+")
-
 # A leading "-- h1 > h2 -- " line is the chunk's heading breadcrumb.
 SECTION_BREADCRUMB_RE = re.compile(r"^\s*--\s*(.+?)\s*--\s*$")
 
@@ -101,13 +94,40 @@ def strip_citation_markers(text: str) -> str:
     return re.sub(r"[ \t]{2,}", " ", stripped).strip()
 
 
+# Inline markdown a brief sentence may carry; the renderer shows none of it.
+# Paired emphasis first (bold, then single markers at word boundaries so an
+# underscore inside a word survives), then code, strikethrough and links.
+_MD_PAIRS = (
+    (re.compile(r"\*\*(.+?)\*\*"), r"\1"),
+    (re.compile(r"__(.+?)__"), r"\1"),
+    (re.compile(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)"), r"\1"),
+    (re.compile(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)"), r"\1"),
+    (re.compile(r"`([^`]+)`"), r"\1"),
+    (re.compile(r"~~(.+?)~~"), r"\1"),
+    (re.compile(r"!?\[([^\]]*)\]\([^)]*\)"), r"\1"),
+)
+# A heading, blockquote or list marker at the start of the line.
+_MD_BLOCK_START = re.compile(r"^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)")
+# Emphasis left unpaired: bold that opened in an earlier sentence (the
+# splitter cuts at the full stop inside it) leaves "**" at an end.
+_MD_STRAY = re.compile(r"\*\*|__|^[*_]+(?=\S)|(?<=\S)[*_]+$")
+
+
+def strip_inline_markdown(text: str) -> str:
+    """The sentence as it reads once rendered: emphasis, code, strikethrough,
+    link and heading or list markers removed, whitespace collapsed."""
+    out = _MD_BLOCK_START.sub("", text)
+    for pattern, repl in _MD_PAIRS:
+        out = pattern.sub(repl, out)
+    out = _MD_STRAY.sub("", out.strip())
+    out = re.sub(r"[ \t]+([.,;:!?])", r"\1", out)
+    return re.sub(r"\s{2,}", " ", out).strip()
+
+
 def plain_text(markdown: str) -> str:
-    """One sentence of section markdown as prose: heading, list and quote
-    prefixes, bold/italic markers and code ticks removed."""
-    text = _MD_LINE_PREFIX_RE.sub("", markdown)
-    text = _MD_STRONG_RE.sub("", text)
-    text = _MD_EMPHASIS_RE.sub("", text)
-    return _MD_CODE_RE.sub("", text).strip()
+    """One sentence of section markdown as the reader sees it: the judge and
+    the review table get the same prose as the Fact Checker marks."""
+    return strip_inline_markdown(markdown)
 
 
 def _lines(markdown: str) -> List[str]:
