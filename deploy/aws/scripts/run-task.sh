@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Run the migrate or pipeline task once, wait for it to finish, show its log
-# and exit with its exit code.
+# Run the migrate, pipeline or restore task once, wait for it to finish, show
+# its log and exit with its exit code.
 #
 # Usage:
 #   deploy/aws/scripts/run-task.sh migrate
 #   deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source <name>
+#   deploy/aws/scripts/run-task.sh restore python scripts/sync/db/restore_from_s3.py inspect ...
 #
 # Words after the task name replace the task's command. Needs the aws CLI and
 # terraform; set TERRAFORM to run terraform some other way and AWS_PROFILE to
 # pick the AWS account.
 set -euo pipefail
 
-if [ "$#" -lt 1 ] || { [ "$1" != migrate ] && [ "$1" != pipeline ]; }; then
-    echo "usage: run-task.sh migrate|pipeline [command ...]" >&2
+if [ "$#" -lt 1 ] || { [ "$1" != migrate ] && [ "$1" != pipeline ] && [ "$1" != restore ]; }; then
+    echo "usage: run-task.sh migrate|pipeline|restore [command ...]" >&2
     exit 2
 fi
 task="$1"

@@ -27,9 +27,12 @@ from ui.backend.schemas import (
     BriefReviseResponse,
 )
 from ui.backend.services import llm_service as llm_service_module
+from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.data_source_access import settle_data_source
+from ui.backend.services.llm_choice import BRIEF, user_group_choice
 from ui.backend.services.usage_recorder import schedule_llm_usage_recording
 from ui.backend.utils.app_limits import get_rate_limits, limiter
+from ui.backend.utils.llm_request_limits import check_requested_llm
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,21 @@ def _get_llm_service():
     )
 
 
+async def _brief_model_key(
+    requested: Optional[str], data_source: str, user, session
+) -> Optional[str]:
+    """The model for a Brief call: the user's group choice (Group Settings >
+    LLMs), which overrides the selected model combo, else the model the browser
+    sent (the selected combo's), else config.json's chat/deep-research model.
+    """
+    chosen = await user_group_choice(session, user, BRIEF)
+    if chosen:
+        return chosen
+    requested = (requested or "").strip() or None
+    check_requested_llm(requested, None)
+    return requested or _resolve_configured_model(data_source)
+
+
 def _resolve_configured_model(data_source: str) -> Optional[str]:
     """Resolve the configured chat / deep-research LLM from config.json.
 
@@ -103,7 +121,11 @@ def _resolve_configured_model(data_source: str) -> Optional[str]:
     return None
 
 
-@router.post("/brief/outline", response_model=BriefOutlineResponse)
+@router.post(
+    "/brief/outline",
+    response_model=BriefOutlineResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_outline(
     request: Request,
@@ -120,12 +142,11 @@ async def generate_outline(
     body.data_source = await settle_data_source(body.data_source, user, session)
     _validate_data_source(body.data_source)
 
-    # Use the model the frontend sent (the selected combo), falling back to the
-    # configured chat/deep-research model from config.json — never a hard-coded
-    # default — so the outline works even before the UI's combo fetch resolves.
-    model_key = (body.model or "").strip() or _resolve_configured_model(
-        body.data_source
-    )
+    # The group's Brief model, else the model the frontend sent (the selected
+    # combo), else the configured chat/deep-research model from config.json —
+    # never a hard-coded default — so the outline works even before the UI's
+    # combo fetch resolves.
+    model_key = await _brief_model_key(body.model, body.data_source, user, session)
     if not model_key:
         raise HTTPException(
             status_code=503, detail="No chat/deep-research model is configured"
@@ -153,7 +174,11 @@ async def generate_outline(
         raise HTTPException(status_code=500, detail="Failed to generate outline")
 
 
-@router.post("/brief/revise", response_model=BriefReviseResponse)
+@router.post(
+    "/brief/revise",
+    response_model=BriefReviseResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def revise_section(
     request: Request,
@@ -177,9 +202,7 @@ async def revise_section(
     body.data_source = await settle_data_source(body.data_source, user, session)
     _validate_data_source(body.data_source)
 
-    model_key = (body.model or "").strip() or _resolve_configured_model(
-        body.data_source
-    )
+    model_key = await _brief_model_key(body.model, body.data_source, user, session)
     if not model_key:
         raise HTTPException(
             status_code=503, detail="No chat/deep-research model is configured"

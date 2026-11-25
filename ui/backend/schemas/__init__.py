@@ -161,6 +161,17 @@ class LLMConfig(BaseModel):
     model: str
     provider: str
     inference_provider: Optional[str] = None
+    # False for a model that refuses a temperature (it is called without one).
+    supports_temperature: bool = True
+
+
+class LLMDefaults(BaseModel):
+    """config.json's model for each AI job (in the default model combo): what a
+    group gets when Group Settings > LLMs leaves the job on "Default"."""
+
+    summary: Optional[str] = None
+    brief: Optional[str] = None
+    judge: Optional[str] = None
 
 
 class ModelComboConfig(BaseModel):

@@ -175,7 +175,9 @@ def get_llm(
             f"or set LLM_PROVIDER environment variable."
         )
     provider = provider.lower()
-    temperature = _resolve_temperature(temperature)
+    temperature = (
+        _resolve_temperature(temperature) if _supports_temperature(model_key) else None
+    )
     max_tokens = _resolve_max_tokens(max_tokens, default_max_tokens)
 
     inference_provider = _resolve_inference_provider(
@@ -238,6 +240,18 @@ def _resolve_temperature(temperature: Optional[float]) -> float:
     return float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
 
+def _supports_temperature(model_key: Optional[str]) -> bool:
+    """False for a ``supported_llms`` entry marked ``"supports_temperature":
+    false``: that model refuses a temperature, so none is sent. Models config.json
+    doesn't list, and entries without the flag, take one."""
+    from pipeline.db import config as db_config
+
+    key = supported_llm_key(model_key) if model_key else None
+    if key is None:
+        return True
+    return bool(db_config.SUPPORTED_LLMS[key].get("supports_temperature", True))
+
+
 def _resolve_max_tokens(max_tokens: Optional[int], default_max_tokens: int) -> int:
     if max_tokens is not None:
         return max_tokens
@@ -250,20 +264,51 @@ def _normalize_model_key(value: Any) -> Optional[str]:
     return None
 
 
-def resolve_effective_model_key(model: Optional[str]) -> Optional[str]:
-    """Return the model key a ``get_llm(model=...)`` call actually uses.
+def default_model_name() -> Optional[str]:
+    """The model a ``get_llm()`` call that names none uses.
 
-    Mirrors ``get_llm``'s own default resolution (explicit arg, then the
-    ``LLM_MODEL`` env var, then the configured default) so token-usage
-    recording can label calls with the real model even when the caller
-    passed ``model=None`` — without this, such usage rows carry no model
-    and can never be costed.
+    The ``LLM_MODEL`` env var, then the ``llm`` model in config.json's
+    ``application`` section (as ``get_llm`` reads them); None when neither
+    is set.
     """
-    if model:
-        return model
     return os.getenv("LLM_MODEL") or _normalize_model_key(
         _load_llm_config().get("model")
     )
+
+
+def supported_llm_key(name: str) -> Optional[str]:
+    """The ``supported_llms`` key that *name* stands for, or None.
+
+    *name* may be the key itself or the provider's model id from an entry
+    (``us.amazon.nova-2-lite-v1:0`` for ``nova-2-lite``). A key wins over a
+    model id, and of several entries with the same model id the first wins,
+    the same order ``get_llm`` resolves them in.
+    """
+    from pipeline.db import config as db_config
+
+    if name in db_config.SUPPORTED_LLMS:
+        return name
+    for key, entry in db_config.SUPPORTED_LLMS.items():
+        if entry.get("model") == name:
+            return key
+    return None
+
+
+def resolve_effective_model_key(model: Optional[str]) -> Optional[str]:
+    """Return the ``supported_llms`` key of the model a ``get_llm(model=...)``
+    call uses.
+
+    Usage is priced by this key (``ui.backend.utils.llm_costs``), so a call
+    is labelled with it however the caller named the model: by key, by the
+    provider's model id, or not at all (the default model, see
+    :func:`default_model_name`). A name config.json does not list is
+    returned as given, since that is the model ``get_llm`` then calls; it has
+    no price. None when no model is named and no default is set.
+    """
+    name = model or default_model_name()
+    if not name:
+        return None
+    return supported_llm_key(name) or name
 
 
 def _normalize_default_max_tokens(value: Any) -> int:
@@ -285,7 +330,7 @@ def _resolve_inference_provider(
 def _build_cache_key(
     provider: str,
     model: Optional[str],
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str],
 ) -> str:
@@ -297,7 +342,7 @@ def _build_cache_key(
 def _create_llm_for_provider(
     provider: str,
     model: Optional[str],
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str],
 ) -> BaseChatModel:
@@ -327,7 +372,7 @@ def _create_llm_for_provider(
 
 def _create_huggingface_llm(
     model: str,
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
@@ -347,7 +392,7 @@ def _create_huggingface_llm(
 def _create_huggingface_endpoint_llm(
     model: str,
     api_key: str,
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
@@ -375,7 +420,7 @@ def _create_huggingface_endpoint_llm(
 
 
 def _create_azure_foundry_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Azure Foundry LLM instance."""
     from langchain_openai import ChatOpenAI
@@ -407,7 +452,7 @@ def _create_azure_foundry_llm(
 
 
 def _create_aws_bedrock_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create an Amazon Bedrock chat model (Converse API).
 
@@ -428,7 +473,7 @@ def _create_aws_bedrock_llm(
 
 
 def _create_openai_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI LLM instance."""
     from langchain_openai import ChatOpenAI
@@ -449,7 +494,7 @@ def _create_openai_llm(
 
 
 def _create_anthropic_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Anthropic LLM instance."""
     from langchain_anthropic import ChatAnthropic
@@ -470,7 +515,7 @@ def _create_anthropic_llm(
 
 
 def _create_google_vertex_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Google Vertex AI LLM instance."""
     from langchain_google_vertexai import ChatVertexAI
@@ -517,7 +562,7 @@ def _create_google_vertex_llm(
 
 
 def _create_openai_compatible_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI-compatible LLM instance (Groq, Together, etc.)."""
     from langchain_openai import ChatOpenAI

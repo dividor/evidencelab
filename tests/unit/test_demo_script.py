@@ -409,7 +409,7 @@ class TestEnvSetting:
 class TestResolveHubVersion:
     def test_resolve_when_flag_given_then_flag_wins(self, monkeypatch):
         monkeypatch.setenv("EVIDENCELAB_VERSION", "1.6.4")
-        assert demo.resolve_hub_version("rc-v1.6.5") == "rc-v1.6.5"
+        assert demo.resolve_hub_version("1.6.6-rc.1") == "1.6.6-rc.1"
 
     def test_resolve_when_only_env_file_then_uses_it(self, tmp_path, monkeypatch):
         env_path = tmp_path / ".env"
@@ -483,7 +483,8 @@ class TestSetupKeepsExistingSecrets:
         assert len(values[self.DB_VAR]) == 32
         assert len(values[self.WEB_VAR]) == 64
         assert len(values["AUTH_SECRET_KEY"]) == 64
-        assert values["REACT_APP_API_KEY"] == values[self.WEB_VAR]
+        assert len(values["REACT_APP_API_KEY"]) == 64
+        assert values["REACT_APP_API_KEY"] != values[self.WEB_VAR]
         assert values["KEY_ENCRYPTION_KEY"]
 
     def test_setup_when_ci_env_pins_value_then_env_beats_file(

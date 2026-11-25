@@ -18,13 +18,15 @@ const CHANGE_NOUN: Record<SectionAuditKind, string> = {
 
 // The buttons over a section whose single-section Generate, Edit or Update
 // awaits review: show or hide the tracked changes, keep them or reject them.
+// `busy` while a Keep or Reject is on its way: both are off until it answers.
 export const ReviewBar: React.FC<{
   kind: SectionAuditKind;
   showingChanges: boolean;
+  busy?: boolean;
   onToggle: () => void;
   onKeep: () => void;
   onReject: () => void;
-}> = ({ kind, showingChanges, onToggle, onKeep, onReject }) => (
+}> = ({ kind, showingChanges, busy = false, onToggle, onKeep, onReject }) => (
   <div className="brief-diff-head brief-review-bar">
     <span className="brief-diff-actions">
       <button
@@ -38,10 +40,10 @@ export const ReviewBar: React.FC<{
       >
         {showingChanges ? 'Hide Changes' : 'Show Changes'}
       </button>
-      <button className="brief-diff-dismiss brief-diff-keep" onClick={onKeep}>
+      <button className="brief-diff-dismiss brief-diff-keep" onClick={onKeep} disabled={busy}>
         Keep Edits
       </button>
-      <button className="brief-diff-dismiss brief-diff-reject" onClick={onReject}>
+      <button className="brief-diff-dismiss brief-diff-reject" onClick={onReject} disabled={busy}>
         Reject Edits
       </button>
     </span>

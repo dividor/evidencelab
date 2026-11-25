@@ -12,6 +12,7 @@ from ui.backend.auth.active_auth import ActiveAuthMiddleware
 TEST_SECRET = "test-secret-key-for-active-auth-testing"  # pragma: allowlist secret
 TEST_API_KEY = "test-key-abc"  # pragma: allowlist secret  # noqa: S105
 COOKIE_NAME = "evidencelab_auth"
+ACTIVITY_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _make_jwt(
@@ -77,6 +78,14 @@ def _create_app(api_key: str | None = TEST_API_KEY) -> FastAPI:
     async def activity():
         return {"activity": []}
 
+    @app.post("/activity/")
+    async def log_activity():
+        return {"logged": True}
+
+    @app.patch("/activity/{search_id}/summary")
+    async def activity_summary(search_id: str):
+        return {"search_id": search_id}
+
     @app.get("/pdf/doc-123")
     async def pdf():
         return {"pdf": True}
@@ -118,10 +127,6 @@ class TestExemptPaths:
         client = TestClient(_create_app())
         assert client.get("/ratings/").status_code == 200
 
-    def test_activity_routes(self):
-        client = TestClient(_create_app())
-        assert client.get("/activity/").status_code == 200
-
     def test_options_request(self):
         client = TestClient(_create_app())
         resp = client.options("/search")
@@ -143,6 +148,37 @@ class TestUnauthenticatedDenied:
         resp = client.get(path)
         assert resp.status_code == 401
         assert resp.json()["detail"] == "Authentication required"
+
+
+# --- Activity log ---
+
+
+class TestActivityLog:
+    """The activity routes take anonymous visitors on sites without sign-in, so
+    on a site that requires sign-in the middleware must keep them out."""
+
+    @pytest.mark.parametrize(
+        "method, path",
+        [
+            ("get", "/activity/"),
+            ("post", "/activity/"),
+            ("patch", f"/activity/{ACTIVITY_ID}/summary"),
+        ],
+    )
+    def test_activity_when_not_signed_in_then_refused(self, method, path):
+        client = TestClient(_create_app())
+        resp = client.request(method.upper(), path, json={"search_id": ACTIVITY_ID})
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Authentication required"
+
+    @pytest.mark.parametrize(
+        "method, path",
+        [("post", "/activity/"), ("patch", f"/activity/{ACTIVITY_ID}/summary")],
+    )
+    def test_activity_when_signed_in_then_passes(self, method, path):
+        client = TestClient(_create_app(), cookies={COOKIE_NAME: _make_jwt()})
+        resp = client.request(method.upper(), path, json={"search_id": ACTIVITY_ID})
+        assert resp.status_code == 200
 
 
 # --- Cookie auth ---

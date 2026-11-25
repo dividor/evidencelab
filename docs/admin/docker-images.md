@@ -17,7 +17,9 @@ The database, vector store and embedding model use their own upstream images: Po
 | `X.Y.Z` | An exact release. Use this in production. |
 | `X.Y` | The newest patch of a minor release. |
 | `latest` | The newest release. |
-| `rc-vX.Y.Z` | The release candidate in progress. It changes as work is merged and is for testing only. |
+| `X.Y.Z-rc.N` | A release candidate, for testing before release. The release is the same image. |
+| `main` | The newest development version. It changes with every change merged and is for testing only. |
+| `sha-<commit>` | The image of one commit of the source code (the first 7 characters of its git commit). It never changes. |
 
 Images are published from v1.6.5 onward. Earlier releases have no published image; build them from source with `docker-compose.prod.yml`.
 
@@ -82,8 +84,10 @@ The first start builds the web interface and downloads the embedding model, whic
 
 The API accepts a request only if it carries an API key or comes from a signed-in user.
 
-- **Sign-in off (the default).** The browser sends `REACT_APP_API_KEY` with every request. Set it to the same value as `API_SECRET_KEY`. Anyone who can open the page can read this key, so use this only on your own machine or a private network.
-- **Sign-in on.** Set `USER_MODULE` and `REACT_APP_USER_MODULE` to `on_passive` or `on_active`, and leave the key empty with `REACT_APP_API_KEY=`. Signed-in users reach the API with a session cookie, and no key is exposed. See [User Administration](user-administration.md).
+- **Sign-in off (the default), or sign-in optional (`on_passive`) with open browsing.** The browser sends `REACT_APP_API_KEY` with every request, so anyone who can open the page can read it. Give it its own value, different from `API_SECRET_KEY` (for example `openssl rand -hex 32`). The API accepts it, so the web interface works for everyone. MCP and A2A refuse it, so the public key cannot drive them; use a key created in **Admin → API Keys**, or sign in. When sign-in is required, the API also ignores it.
+- **Sign-in required (`on_active`).** Set `USER_MODULE` and `REACT_APP_USER_MODULE` to `on_active`, and leave the key empty with `REACT_APP_API_KEY=`. Signed-in users reach the API with a session cookie, and no key is exposed. See [User Administration](user-administration.md).
+
+If `REACT_APP_API_KEY` is the same as `API_SECRET_KEY`, the master key is public: the API logs a warning at startup, and MCP and A2A will not accept that key. Set a different `REACT_APP_API_KEY`, rebuild the web interface, and change `API_SECRET_KEY`.
 
 Rebuild the web interface after changing either setting:
 

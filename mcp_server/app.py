@@ -318,6 +318,7 @@ async def get_document(
     The metadata dict contains all available fields for the document,
     which vary by data source and document.
     """
+    from mcp_server.rate_limit import check_caller_rate_limit
     from mcp_server.tools.document import mcp_get_document
 
     t0 = time.monotonic()
@@ -327,6 +328,9 @@ async def get_document(
     result = None
 
     try:
+        # Counted here, not in mcp_get_document: the assistant also calls
+        # that to build citations and must not use up the caller's allowance.
+        check_caller_rate_limit("search")
         result = await mcp_get_document(doc_id=doc_id, data_source=data_source)
         return result
     except Exception as exc:

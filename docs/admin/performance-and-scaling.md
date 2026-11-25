@@ -17,6 +17,17 @@ If your model combo reranks through a hosted service, `MAX_CONCURRENT_RERANKS` d
 
 A model combo's `rerank_model_page_size` in `config.json` caps how many of a search's candidates are reranked at all; the rest keep their search order behind the reranked ones. Without it every candidate is scored, so a heatmapper grid of broad queries can mean several Vertex requests per cell. See the combo settings in the README.
 
+## Request size limits
+
+These bound how much one request can ask for. The web interface stays well inside them; they stop a scripted request from exhausting memory or the model budget.
+
+| Variable | Default | What it controls |
+|----------|---------|------------------|
+| `SEARCH_MAX_LIMIT` | `10000` | The largest `limit` a search may ask for (`/search`, `/search/facet-values`). An empty-query search loads that many passages into memory. Keep it at or above `REACT_APP_HEATMAP_LIMIT`, which the heatmapper uses per cell. |
+| `HIGHLIGHT_MAX_TEXT_CHARS` | `50000` | The longest text a highlight request may send. The app sends one passage at a time; the longest measured passage in the UNEG corpus is 42,604 characters. |
+
+AI requests are also limited by `config.json`: a request may only name a model listed under `supported_llms`, and may ask for at most as many output tokens as `config.json` sets for that model (the largest `max_tokens` among its own entry and the model combo settings that use it). A request outside those limits gets a 400 that names the limit.
+
 ## Connection pools
 
 | Variable | Default | What it controls |

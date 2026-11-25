@@ -22,11 +22,12 @@ provider means implementing :meth:`TranslationProvider.translate` only.
 
 from __future__ import annotations
 
+import copy
 import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Mapping, Optional
+from typing import Any, Mapping, Optional
 
 import requests
 from jinja2 import Environment, FileSystemLoader
@@ -146,8 +147,23 @@ class LlmTranslationProvider(TranslationProvider):
 
     def __init__(self, model_key: Optional[str] = None) -> None:
         self._model_key = model_key or None
+        self._usage: Optional[Any] = None
         env = Environment(loader=FileSystemLoader(str(_PROMPTS_DIR)), autoescape=True)
         self._system_template = env.get_template("translate_system.j2")
+
+    @property
+    def model_key(self) -> Optional[str]:
+        """The ``supported_llms`` key the calls use, for pricing their usage."""
+        from utils.llm_factory import resolve_effective_model_key
+
+        return resolve_effective_model_key(self._model_key)
+
+    def counting_usage(self, usage: Any) -> "LlmTranslationProvider":
+        """A copy for one request whose LLM calls add their token usage to
+        ``usage`` (a LangChain ``UsageMetadataCallbackHandler``)."""
+        call = copy.copy(self)
+        call._usage = usage
+        return call
 
     def translate(self, text: str, source: str, target: str) -> str:
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -159,6 +175,8 @@ class LlmTranslationProvider(TranslationProvider):
             temperature=0.0,
             max_tokens=_LLM_TRANSLATION_MAX_TOKENS,
         )
+        if self._usage is not None:
+            llm = llm.with_config(callbacks=[self._usage])
         system_prompt = self._system_template.render(
             source=None if source == "auto" else LANGUAGE_NAMES.get(source, source),
             target=LANGUAGE_NAMES.get(target, target),

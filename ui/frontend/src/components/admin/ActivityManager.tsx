@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { SortableHeader } from '../documents/SortableHeader';
+import { safeHref } from '../../utils/safeHref';
 
 /** Collapse triple+ newlines to double newlines */
 const cleanNewlines = (text: string): string => text.replace(/\n{3,}/g, '\n\n');
@@ -131,7 +132,7 @@ const buildCitationBadge = (num: number, results: any[], i: number, j: number) =
     const pageSuffix = r.page_num ? ', p.' + String(r.page_num) : '';
     const tip = (r.title || 'Untitled') + pageSuffix;
     return (
-      <a key={`c${i}-${j}`} href={r.link} target="_blank" rel="noopener noreferrer"
+      <a key={`c${i}-${j}`} href={safeHref(r.link)} target="_blank" rel="noopener noreferrer"
         className="admin-citation-badge admin-citation-clickable" title={tip}
         onClick={(e) => e.stopPropagation()}>{num}</a>
     );
@@ -209,7 +210,7 @@ const AdminReferences: React.FC<{ summary: string; results: any[] }> = ({ summar
             <React.Fragment key={num}>
               {i > 0 && ' '}
               {result.link ? (
-                <a href={result.link} target="_blank" rel="noopener noreferrer"
+                <a href={safeHref(result.link)} target="_blank" rel="noopener noreferrer"
                   className="admin-ref-link" onClick={(e) => e.stopPropagation()}>
                   <span className="admin-citation-badge admin-citation-clickable">{num}</span>
                   {result.page_num ? ` p.${result.page_num}` : ''}
@@ -248,7 +249,7 @@ const ResultsSnapshotList: React.FC<{ results: any[] }> = ({ results }) => {
           <div key={i} className="admin-result-card">
             <div style={{ fontWeight: 600, marginBottom: 4 }}>
               {r.link || r.url ? (
-                <a href={r.link || r.url} target="_blank" rel="noopener noreferrer"
+                <a href={safeHref(r.link || r.url)} target="_blank" rel="noopener noreferrer"
                   className="admin-result-title-link"
                   onClick={(e) => e.stopPropagation()}>
                   {r.title || 'Untitled'}
@@ -646,6 +647,7 @@ const STATIC_FILTER_OPTIONS: Record<string, string[]> = {
     'evaluation',
     'mcp-assistant',
     'a2a-assistant',
+    'translation',
     'pipeline',
   ],
 };

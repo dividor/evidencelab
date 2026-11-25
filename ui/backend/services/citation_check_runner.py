@@ -364,11 +364,20 @@ async def judge_passage(
 
 
 def resolve_judge_model(model_combo: Optional[str]) -> Optional[str]:
-    """The combo's summarisation model, else the app default (same rule as
-    experiments)."""
+    """config.json's judge for a model combo: its ``judge_model``, else its
+    summarisation model, else the default combo's, else the app default (same
+    rule as experiments). A group's choice (Group Settings > LLMs) is applied
+    by the caller and overrides this."""
+    from ui.backend.services.llm_choice import JUDGE, combo_default, default_combo
     from ui.backend.services.test_runner import _default_summary_model, _resolve_combo
 
-    return _resolve_combo(model_combo).get("summary_model") or _default_summary_model()
+    combo = _resolve_combo(model_combo)
+    return (
+        combo.get("judge_model")
+        or combo.get("summary_model")
+        or combo_default(JUDGE, default_combo())
+        or _default_summary_model()
+    )
 
 
 async def _record_check_usage(check: BriefCitationCheck) -> None:

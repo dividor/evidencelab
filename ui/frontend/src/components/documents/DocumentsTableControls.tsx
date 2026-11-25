@@ -45,7 +45,7 @@ export const DocumentsTableControls: React.FC<DocumentsTableControlsProps> = ({
           Clear Category Filter: {selectedCategory}
         </button>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="table-controls-actions">
         <span className="table-count">
           Showing {startIndex.toLocaleString()}-{endIndex.toLocaleString()} of {totalCount.toLocaleString()} documents
           {selectedCategory && ` (filtered by ${chartView})`}

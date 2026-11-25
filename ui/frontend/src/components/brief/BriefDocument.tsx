@@ -430,6 +430,7 @@ const SectionDoneBody: React.FC<{
           <ReviewBar
             kind={review.kind}
             showingChanges
+            busy={brief.isReviewBusy(section.id)}
             onToggle={onToggleChanges}
             onKeep={() => void brief.dismissChanges(section.id)}
             onReject={() => void brief.rejectChanges(section.id)}
@@ -442,6 +443,7 @@ const SectionDoneBody: React.FC<{
             <ReviewBar
               kind={review.kind}
               showingChanges={false}
+              busy={brief.isReviewBusy(section.id)}
               onToggle={onToggleChanges}
               onKeep={() => void brief.dismissChanges(section.id)}
               onReject={() => void brief.rejectChanges(section.id)}

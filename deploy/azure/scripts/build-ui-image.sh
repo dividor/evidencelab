@@ -11,8 +11,9 @@
 # so visitors can use the site without signing in, and anyone can read that
 # key from the page.
 #
-# Container Apps runs amd64 images. On an Apple silicon (arm64) computer
-# Docker builds through emulation, which is slower.
+# Container Apps runs amd64 images. Any computer can build one without
+# emulation: ui/frontend/Dockerfile.prod builds the JavaScript on the build
+# machine's own platform.
 #
 # Needs docker (with buildx), the az CLI and terraform. Set TERRAFORM to run
 # terraform some other way. CUSTOMIZE_ASSETS points at branding assets

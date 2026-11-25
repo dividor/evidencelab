@@ -259,6 +259,33 @@ async def test_ask_assistant_basic(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ask_assistant_when_ai_limit_reached_then_refused_before_research(
+    monkeypatch, ai_limit_reached
+):
+    """The site's daily AI limit stops the MCP and A2A assistant too."""
+    from ui.backend.services.ai_daily_limit import LIMIT_MESSAGE, AiDailyLimitReached
+
+    started = []
+
+    async def fake_stream(**kwargs):
+        started.append(kwargs)
+        yield {"type": "token", "token": "never"}
+
+    assistant_svc_mod = ModuleType("ui.backend.services.assistant_service")
+    assistant_svc_mod.stream_research_response = fake_stream
+    monkeypatch.setitem(
+        sys.modules, "ui.backend.services.assistant_service", assistant_svc_mod
+    )
+
+    from mcp_server.tools.assistant import mcp_ask_assistant
+
+    with pytest.raises(AiDailyLimitReached, match="AI allowance"):
+        await mcp_ask_assistant(query="q")
+    assert started == []
+    assert LIMIT_MESSAGE.startswith("Today's AI allowance")
+
+
+@pytest.mark.asyncio
 async def test_ask_assistant_when_combo_has_cap_then_search_settings_sent(monkeypatch):
     """The combo's reranker cap and embedding model reach the assistant."""
     seen = {}

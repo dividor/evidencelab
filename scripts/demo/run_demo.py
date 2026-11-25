@@ -121,14 +121,14 @@ PROVIDER_COMBOS = [
         "name": "AWS Bedrock",
         "description": (
             "Embedding: Titan Text Embeddings V2, LLM: Amazon Nova 2 Lite, "
-            "Reranker: Cohere Rerank 3.5"
+            "Reranker: Amazon Rerank 1.0"
         ),
         "embedding_model": "aws_titan_v2",
         "dense_models": ["aws_titan_v2"],
         "summarize_dense": "aws_titan_v2",
         "llm_model_id": "nova-2-lite",
         "llm_provider": "aws_bedrock",
-        "reranker": "cohere-rerank-3.5-bedrock",
+        "reranker": "amazon-rerank-1.0-bedrock",
         "required_env": list(_AWS_ENV),
         "env_prompts": dict(zip(_AWS_ENV, _AWS_ENV_PROMPTS)),
     },
@@ -309,8 +309,11 @@ def interactive_setup(ci_mode=False, provider=None):
     env_vars["AUTH_SECRET_KEY"] = _gen_or_env(
         "AUTH_SECRET_KEY", lambda: secrets.token_hex(32)
     )
+    # The web interface's key is built into the page, so anyone who opens it
+    # can read it. Keep it separate from API_SECRET_KEY: the API accepts both,
+    # while MCP and A2A refuse the public one.
     env_vars["REACT_APP_API_KEY"] = _gen_or_env(
-        "REACT_APP_API_KEY", lambda: env_vars["API_SECRET_KEY"]
+        "REACT_APP_API_KEY", lambda: secrets.token_hex(32)
     )
     env_vars["KEY_ENCRYPTION_KEY"] = _gen_or_env(
         "KEY_ENCRYPTION_KEY", _generate_fernet_key
@@ -1044,7 +1047,7 @@ def main():
         "--version",
         help=(
             "With --mode hub: the published image tag to run, for example "
-            "1.6.5 or rc-v1.6.5 (default: EVIDENCELAB_VERSION, else latest)"
+            "1.6.5, 1.6.6-rc.1 or main (default: EVIDENCELAB_VERSION, else latest)"
         ),
     )
     parser.add_argument(

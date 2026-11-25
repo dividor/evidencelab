@@ -194,10 +194,10 @@ services:
         customize: ${CUSTOMIZE_ASSETS:-./customize}
         config: ${CONFIG_SRC:-.}
       args:
-        # With sign-in off the browser sends this key on every API call, so
-        # anyone who can open the page can read it. Set it to API_SECRET_KEY
-        # only on a private network; on a shared server turn sign-in on and
-        # leave it empty. Required (may be empty) so the choice is deliberate.
+        # The browser sends this key on every API call, so anyone who can open
+        # the page can read it. Give it its own value, not API_SECRET_KEY: the
+        # API accepts it, MCP and A2A refuse it. Leave it empty when sign-in is
+        # required. Required (may be empty) so the choice is deliberate.
         - REACT_APP_API_KEY=${REACT_APP_API_KEY?Set REACT_APP_API_KEY in .env (see docs/admin/docker-images.md)}
         - REACT_APP_USER_MODULE=${REACT_APP_USER_MODULE:-off}
         - REACT_APP_API_BASE_URL=/api
@@ -218,6 +218,9 @@ services:
     environment:
       - OAUTH_MICROSOFT_CLIENT_ID=${OAUTH_MICROSOFT_CLIENT_ID:-}
       - OAUTH_MICROSOFT_TENANT_ID=${OAUTH_MICROSOFT_TENANT_ID:-}
+      # Content-Security-Policy on the web pages; empty = the built-in default.
+      # See docs/admin/third-party-services.md.
+      - UI_CSP_POLICY=${UI_CSP_POLICY:-}
     depends_on:
       - api
     networks:

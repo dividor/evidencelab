@@ -108,3 +108,48 @@ describe('TopBar dropdown dismissal', () => {
     expect(onAboutClick).toHaveBeenCalledTimes(1);
   });
 });
+
+// The tablet header CSS (App.css, 641–1279px) turns .top-bar-left into
+// display: contents and reorders its children inside .top-bar-content, so it
+// relies on this nesting and on the inline min-widths it overrides.
+describe('TopBar layout contract for the tablet header', () => {
+  it('nests the brand and pickers in .top-bar-left beside .top-bar-right', () => {
+    const { container } = render(
+      <TopBar
+        {...baseProps}
+        availableDomains={['WFP', 'UN Humanitarian Evaluation Reports']}
+        availableModelCombos={['default', 'Google Vertex']}
+      />,
+    );
+
+    const content = container.querySelector('.top-bar-content') as HTMLElement;
+    const [left, right] = Array.from(content.children) as HTMLElement[];
+    expect(content.children).toHaveLength(2);
+    expect(left).toHaveClass('top-bar-left');
+    expect(right).toHaveClass('top-bar-right');
+
+    const [brand, controls] = Array.from(left.children) as HTMLElement[];
+    expect(brand).toHaveClass('top-bar-brand');
+    expect(controls).toHaveClass('top-bar-controls');
+    expect(right).toContainElement(screen.getByText('Info'));
+
+    const triggers = Array.from(
+      controls.querySelectorAll(':scope > .dropdown-container > .dropdown-trigger'),
+    ) as HTMLElement[];
+    expect(triggers).toHaveLength(2);
+    expect(triggers[0]).toHaveClass('dropdown-trigger-domain');
+    // Sized to the longest option on desktop; tablets override these.
+    expect(triggers[0].style.minWidth).toMatch(/^calc\(\d+ch \+ 1\.5rem\)$/);
+    expect(triggers[1].style.minWidth).toMatch(/^calc\(\d+ch \+ 3\.5rem\)$/);
+    triggers.forEach((trigger) => {
+      expect(trigger.querySelector('.dropdown-value')).not.toBeNull();
+    });
+  });
+
+  it('opens the Dataset list as .dropdown-menu-domain inside its picker', () => {
+    const { container } = render(<TopBar {...baseProps} domainDropdownOpen />);
+    const menu = container.querySelector('.top-bar-controls .dropdown-menu-domain');
+    expect(menu).not.toBeNull();
+    expect(menu).toHaveTextContent('WFP');
+  });
+});

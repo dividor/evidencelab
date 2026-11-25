@@ -9,12 +9,29 @@ from types import SimpleNamespace
 
 import pytest
 
+from pipeline.db import config as db_config
 from ui.backend.services.llm_service import summarize_usage_metadata
+from ui.backend.services.usage_recorder import usage_cost
+from utils import llm_factory
+
+_NOVA_ID = "us.amazon.nova-2-lite-v1:0"
 
 
 def _handler(usage_metadata):
     """Build a fake handler exposing the ``usage_metadata`` attribute."""
     return SimpleNamespace(usage_metadata=usage_metadata)
+
+
+@pytest.fixture
+def nova_config(monkeypatch):
+    """config.json lists Nova 2 Lite under its key; no default model is set."""
+    monkeypatch.setattr(
+        db_config,
+        "SUPPORTED_LLMS",
+        {"nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"}},
+    )
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.setattr(llm_factory, "_load_llm_config", lambda: {})
 
 
 @pytest.mark.unit
@@ -52,11 +69,32 @@ class TestSummarizeUsageMetadata:
         out = summarize_usage_metadata(handler, model_key="gemini-2.5-flash")
         assert out == {"llm_model": "gemini-2.5-flash"}
 
-    def test_missing_model_key_returns_only_tokens(self):
-        """No model_key → still surface tokens if the provider reported them."""
+    def test_missing_model_key_when_no_default_model_returns_only_tokens(
+        self, nova_config
+    ):
+        """No model_key and no default model → still surface the tokens."""
         handler = _handler({"some-model": {"input_tokens": 10, "output_tokens": 5}})
         out = summarize_usage_metadata(handler, model_key=None)
         assert out == {"prompt_tokens": 10, "completion_tokens": 5}
+
+    def test_summarize_when_named_by_provider_id_then_labelled_and_priced_by_key(
+        self, nova_config
+    ):
+        """A request naming the provider's model id is priced as its key."""
+        handler = _handler({_NOVA_ID: {"input_tokens": 1000, "output_tokens": 1000}})
+        out = summarize_usage_metadata(handler, model_key=_NOVA_ID)
+        assert out["llm_model"] == "nova-2-lite"
+        assert str(usage_cost(out)) == "0.003080"
+
+    def test_summarize_when_no_model_and_default_set_then_labelled_by_its_key(
+        self, nova_config, monkeypatch
+    ):
+        """A request naming no model runs on the default one, and says so."""
+        monkeypatch.setenv("LLM_MODEL", _NOVA_ID)
+        handler = _handler({_NOVA_ID: {"input_tokens": 1000, "output_tokens": 1000}})
+        out = summarize_usage_metadata(handler, model_key=None)
+        assert out["llm_model"] == "nova-2-lite"
+        assert str(usage_cost(out)) == "0.003080"
 
     def test_handler_with_no_usage_metadata_attribute(self):
         """Defensive: an object lacking the attribute returns an empty payload."""

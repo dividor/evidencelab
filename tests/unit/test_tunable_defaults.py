@@ -31,6 +31,8 @@ TUNABLES = {
     "AUTH_DB_POOL_SIZE": "ui/backend/auth/db.py",
     "AUTH_DB_MAX_OVERFLOW": "ui/backend/auth/db.py",
     "PRELOAD_RERANK_MODEL": "ui/backend/main.py",
+    "SEARCH_MAX_LIMIT": "ui/backend/utils/app_limits.py",
+    "HIGHLIGHT_MAX_TEXT_CHARS": "ui/backend/utils/app_limits.py",
 }
 
 COMPOSE_FILES = ["docker-compose.yml", "docker-compose.prod.yml"]

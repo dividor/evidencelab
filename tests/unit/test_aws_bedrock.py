@@ -118,10 +118,35 @@ class TestBedrockRerank:
                 {"results": [{"index": 5, "relevance_score": 0.5}]}, 2
             )
 
-    def test_rerank_when_model_is_not_cohere_then_raises(self):
-        with pytest.raises(ValueError, match="Cohere Rerank"):
+    def test_rerank_when_amazon_model_then_sends_no_api_version(self):
+        fake = FakeBedrock(
+            lambda body: {
+                "results": [
+                    {"index": 1, "relevance_score": 0.8},
+                    {"index": 0, "relevance_score": 0.2},
+                ]
+            }
+        )
+
+        scores = bedrock.rerank_with_aws_bedrock(
+            "school meals",
+            ["office budget", "school feeding evaluation"],
+            "amazon.rerank-v1:0",
+            client=fake,
+        )
+
+        assert scores == [0.2, 0.8]
+        assert fake.requests[0]["model"] == "amazon.rerank-v1:0"
+        assert fake.requests[0]["body"] == {
+            "query": "school meals",
+            "documents": ["office budget", "school feeding evaluation"],
+            "top_n": 2,
+        }
+
+    def test_rerank_when_model_is_neither_cohere_nor_amazon_then_raises(self):
+        with pytest.raises(ValueError, match="Amazon Rerank"):
             bedrock.rerank_with_aws_bedrock(
-                "q", ["d"], "amazon.rerank-v1:0", client=FakeBedrock(dict)
+                "q", ["d"], "mistral.rerank-v1:0", client=FakeBedrock(dict)
             )
 
     def test_rerank_when_no_documents_then_returns_empty_without_calling(self):
@@ -186,6 +211,27 @@ class TestWiring:
         assert calls[0]["model_id"] == "cohere.rerank-v3-5:0"
         assert calls[0]["region"] == "us-west-2"
 
+    def test_search_reranker_when_amazon_rerank_then_calls_it_in_its_region(
+        self, monkeypatch
+    ):
+        from ui.backend.services import search_models
+
+        calls = []
+        monkeypatch.setattr(
+            search_models,
+            "rerank_with_aws_bedrock",
+            lambda **kw: calls.append(kw) or [0.7],
+        )
+        config = SUPPORTED_RERANK_MODELS["amazon-rerank-1.0-bedrock"]
+
+        scores = search_models._compute_rerank_scores(
+            "q", ["d"], None, config, "amazon-rerank-1.0-bedrock", None, None
+        )
+
+        assert scores == [0.7]
+        assert calls[0]["model_id"] == "amazon.rerank-v1:0"
+        assert calls[0]["region"] == "us-west-2"
+
     def test_llm_factory_when_provider_aws_bedrock_then_builds_converse_model(
         self, monkeypatch
     ):
@@ -217,6 +263,20 @@ class TestWiring:
             SUPPORTED_RERANK_MODELS[combo["reranker_model"]]["provider"]
             == "aws_bedrock"
         )
+
+    def test_config_when_loaded_then_aws_bedrock_combo_reranks_with_amazon_rerank(
+        self,
+    ):
+        # Amazon's own model needs no AWS Marketplace agreement, so the combo
+        # works in a new account without accepting third-party terms.
+        with open("config.json") as f:
+            config = json.load(f)
+        reranker = SUPPORTED_RERANK_MODELS[
+            config["ui_model_combos"]["AWS Bedrock"]["reranker_model"]
+        ]
+
+        assert reranker["model_id"].startswith(bedrock.AMAZON_RERANK)
+        assert reranker["region"] == "us-west-2"
 
     def test_costs_when_nova_2_lite_then_uses_bedrock_prices(self):
         from ui.backend.utils.llm_costs import compute_cost

@@ -19,12 +19,18 @@ from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.optional_user import resolve_optional_user
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
 from ui.backend.services import translation_service
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached
 from ui.backend.services.translation_providers import (
     TranslationConfigError,
     TranslationDisabledError,
 )
 from ui.backend.utils.app_limits import get_rate_limits
-from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
+from ui.backend.utils.app_state import (
+    get_db_for_source,
+    get_pg_for_source,
+    logger,
+    validate_data_source,
+)
 from ui.backend.utils.document_utils import normalize_document_payload
 from ui.backend.utils.documents_sys_merge import merge_sys_data_for_doc
 
@@ -35,6 +41,24 @@ router = APIRouter()
 
 def _is_superuser(user: Any) -> bool:
     return bool(user) and bool(getattr(user, "is_superuser", False))
+
+
+async def require_document_admin(user: Any = Depends(resolve_optional_user)) -> Any:
+    """Allow only a signed-in administrator to change documents or run the pipeline.
+
+    These routes edit or delete indexed data and expose server logs, so the
+    API key alone is not enough: it is shipped to every browser when sign-in
+    is on_passive or off. Without the user module there is no administrator,
+    so the routes always refuse.
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign-in required")
+    if not _is_superuser(user):
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user
+
+
+_ADMIN_ONLY = [Depends(require_document_admin)]
 
 
 def _hidden_or_missing(doc: Optional[Dict[str, Any]]) -> HTTPException:
@@ -339,6 +363,8 @@ async def get_documents(
 
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise _translation_unavailable(exc)
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Error getting documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -442,7 +468,7 @@ def _thumbnail_path_sync(doc_id: str, data_source: Optional[str]) -> Path:
     return full_path
 
 
-@router.get("/document/{doc_id}/logs")
+@router.get("/document/{doc_id}/logs", dependencies=_ADMIN_ONLY)
 def get_document_logs(
     doc_id: str,
     data_source: Optional[str] = Query(
@@ -490,7 +516,7 @@ def get_document_logs(
         return {"logs": "", "error": f"Error getting logs: {str(e)}"}
 
 
-@router.put("/document/{doc_id}/toc")
+@router.put("/document/{doc_id}/toc", dependencies=_ADMIN_ONLY)
 def update_document_toc(
     doc_id: str,
     toc_update: TocUpdate,
@@ -520,7 +546,7 @@ def update_document_toc(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.patch("/documents/{doc_id}")
+@router.patch("/documents/{doc_id}", dependencies=_ADMIN_ONLY)
 def update_document_metadata(
     doc_id: str,
     update: DocumentMetadataUpdate,
@@ -614,6 +640,8 @@ async def get_document_chunks(
         raise
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise _translation_unavailable(exc)
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Chunks fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -677,7 +705,7 @@ def _document_chunks_sync(
     return formatted_chunks, needs_translation
 
 
-@router.post("/documents/{doc_id}/reprocess-toc")
+@router.post("/documents/{doc_id}/reprocess-toc", dependencies=_ADMIN_ONLY)
 async def reprocess_document_toc(
     doc_id: str,
     data_source: Optional[str] = Query(
@@ -689,8 +717,8 @@ async def reprocess_document_toc(
     NOTE: This does NOT change the document status - it only updates
     toc_classified and chunk section_type tags.
     """
+    resolved_source = validate_data_source(data_source)
     try:
-        resolved_source = data_source if isinstance(data_source, str) else None
         task_module = sys.modules.get("pipeline.utilities.tasks", pipeline_tasks)
         # Enqueue the background task
         task = task_module.reprocess_document_toc.delay(
@@ -711,7 +739,7 @@ async def reprocess_document_toc(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/queue/status")
+@router.get("/queue/status", dependencies=_ADMIN_ONLY)
 async def get_queue_status():
     """
     Get the status of the Celery queue (active, reserved, scheduled).
@@ -740,7 +768,7 @@ async def get_queue_status():
         return {"error": str(e), "active": {}, "reserved": {}, "scheduled": {}}
 
 
-@router.post("/documents/{doc_id}/reprocess")
+@router.post("/documents/{doc_id}/reprocess", dependencies=_ADMIN_ONLY)
 def reprocess_document(
     doc_id: str,
     data_source: Optional[str] = Query(
