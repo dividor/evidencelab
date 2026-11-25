@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
+from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -268,28 +269,69 @@ async def _to_brief_read(
     )
 
 
+def _list_columns() -> tuple:
+    """The columns a brief list shows, never ``content``.
+
+    ``content`` holds every section's text and sources and runs to megabytes
+    per brief (39 briefs held 31 MB, the largest 3.4 MB, measured 2026-11-25).
+    Loading it to show a list kept Brief Central waiting and held up the API's
+    other requests while it was decoded. Postgres counts the sections and
+    reads ``sourceCount`` instead.
+    """
+    sections = Brief.content["sections"]
+    return (
+        Brief.id,
+        Brief.user_id,
+        Brief.title,
+        Brief.query,
+        Brief.data_source,
+        Brief.voice_profile_id,
+        Brief.created_at,
+        Brief.updated_at,
+        func.coalesce(
+            func.jsonb_array_length(
+                case((func.jsonb_typeof(sections) == "array", sections))
+            ),
+            0,
+        ).label("section_count"),
+        func.coalesce(Brief.content["sourceCount"].as_integer(), 0).label(
+            "source_count"
+        ),
+    )
+
+
+async def _owners_by_id(
+    session: AsyncSession, user_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, User]:
+    """The listed briefs' owners, in one query."""
+    if not user_ids:
+        return {}
+    rows = await session.execute(select(User).where(User.id.in_(user_ids)))
+    # unique(): User eager-loads collections (oauth accounts), which
+    # SQLAlchemy requires be de-duplicated before iterating.
+    return {u.id: u for u in rows.scalars().unique().all()}
+
+
 def _to_list_item(
-    brief: Brief,
+    row: Row,
     owner_name: str | None,
     share_count: int,
     owner_email: str | None = None,
 ) -> BriefListItem:
-    """Compact card model for list views."""
-    content = brief.content or {}
-    sections = content.get("sections") or []
+    """Compact card model for list views, from a ``_list_columns()`` row."""
     return BriefListItem(
-        id=brief.id,
-        title=brief.title,
-        query=brief.query,
-        data_source=brief.data_source,
-        voice_profile_id=brief.voice_profile_id,
-        section_count=len(sections),
-        source_count=content.get("sourceCount") or 0,
+        id=row.id,
+        title=row.title,
+        query=row.query,
+        data_source=row.data_source,
+        voice_profile_id=row.voice_profile_id,
+        section_count=row.section_count,
+        source_count=row.source_count,
         owner_name=owner_name,
         owner_email=owner_email,
         share_count=share_count,
-        created_at=brief.created_at,
-        updated_at=brief.updated_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -333,9 +375,11 @@ async def list_briefs(
 ):
     """List the current user's briefs (compact, newest first)."""
     result = await session.execute(
-        select(Brief).where(Brief.user_id == user.id).order_by(Brief.updated_at.desc())
+        select(*_list_columns())
+        .where(Brief.user_id == user.id)
+        .order_by(Brief.updated_at.desc())
     )
-    briefs = result.scalars().all()
+    briefs = result.all()
     counts = await session.execute(
         select(BriefShare.brief_id, func.count(BriefShare.id))
         .where(BriefShare.brief_id.in_([b.id for b in briefs]))
@@ -353,15 +397,17 @@ async def list_shared_briefs(
     """List briefs shared with the current user (directly or via a group)."""
     group_ids = await user_group_ids(session, user.id)
     result = await session.execute(
-        select(Brief)
+        select(*_list_columns())
         .join(BriefShare, BriefShare.brief_id == Brief.id)
         .where(shared_with(BriefShare, user.id, group_ids), Brief.user_id != user.id)
         .order_by(Brief.updated_at.desc())
         .distinct()
     )
+    briefs = result.all()
+    owners = await _owners_by_id(session, {b.user_id for b in briefs})
     items = []
-    for brief in result.scalars().all():
-        owner = await session.get(User, brief.user_id)
+    for brief in briefs:
+        owner = owners.get(brief.user_id)
         items.append(_to_list_item(brief, owner_name(owner) if owner else None, 0))
     return items
 
@@ -372,14 +418,11 @@ async def list_all_briefs(
     session: AsyncSession = Depends(get_async_session),
 ):
     """Every brief in the system, newest first, with its owner (admin only)."""
-    result = await session.execute(select(Brief).order_by(Brief.updated_at.desc()))
-    briefs = result.scalars().all()
-    owner_rows = await session.execute(
-        select(User).where(User.id.in_({b.user_id for b in briefs}))
+    result = await session.execute(
+        select(*_list_columns()).order_by(Brief.updated_at.desc())
     )
-    # unique(): User eager-loads collections (oauth accounts), which
-    # SQLAlchemy requires be de-duplicated before iterating.
-    owners = {u.id: u for u in owner_rows.scalars().unique().all()}
+    briefs = result.all()
+    owners = await _owners_by_id(session, {b.user_id for b in briefs})
     counts = await session.execute(
         select(BriefShare.brief_id, func.count(BriefShare.id))
         .where(BriefShare.brief_id.in_([b.id for b in briefs]))

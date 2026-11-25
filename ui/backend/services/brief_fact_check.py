@@ -48,6 +48,7 @@ from ui.backend.services.citation_fidelity import (
     extract_cited_passages,
     locate_quote,
     researched_sections,
+    strip_inline_markdown,
 )
 
 # How a verdict reads in the document.
@@ -194,7 +195,10 @@ def _citations(passage: CitedPassage) -> str:
 
 def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
     """The passages to highlight: every judged passage of a covered section,
-    whatever its verdict, with the judge's reasoning."""
+    whatever its verdict, with the judge's reasoning. The passage is given
+    as it reads on screen: the check stores the sentence with its markdown
+    (a bold claim keeps its ``**``), while the document searches rendered
+    text, which has none of it."""
     marks: List[Dict[str, Any]] = []
     for section_id, pairs in cov.covered.items():
         for passage, row in pairs:
@@ -203,7 +207,7 @@ def fact_check_marks(cov: Coverage) -> List[Dict[str, Any]]:
                     "passage_id": row.passage_id,
                     "section_id": section_id,
                     "section_title": passage.section_title,
-                    "passage": row.passage,
+                    "passage": strip_inline_markdown(row.passage),
                     "verdict": row.verdict,
                     "verdict_label": VERDICT_LABELS.get(row.verdict, row.verdict),
                     "explanation": row.explanation,

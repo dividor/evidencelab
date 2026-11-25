@@ -197,6 +197,21 @@
     "nova-2-lite": {
       "model": "us.amazon.nova-2-lite-v1:0",
       "provider": "aws_bedrock"
+    },
+    "nova-pro": {
+      "model": "us.amazon.nova-pro-v1:0",
+      "provider": "aws_bedrock",
+      "price_per_million": {"input": 0.8, "output": 3.2}
+    },
+    "haiku-4.5": {
+      "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "provider": "aws_bedrock",
+      "price_per_million": {"input": 1.1, "output": 5.5}
+    },
+    "sonnet-4.6": {
+      "model": "us.anthropic.claude-sonnet-4-6",
+      "provider": "aws_bedrock",
+      "price_per_million": {"input": 3.3, "output": 16.5}
     }
   },
   "supported_rerank_models": {
@@ -336,8 +351,11 @@
         "chunk_overlap": 800,
         "chunk_tokens_ratio": 0.5
       },
+      "judge_model": {
+        "model": "haiku-4.5"
+      },
       "reranker_model": "amazon-rerank-1.0-bedrock",
-      "rerank_model_page_size": 10
+      "rerank_model_page_size": 50
     }
   },
   "datasources": {

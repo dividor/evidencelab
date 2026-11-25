@@ -19,6 +19,7 @@ import {
 import { filterBriefs } from './briefSearch';
 import { BriefListItem, BriefTemplate, VoiceProfile } from './briefTypes';
 import { CentralTab, UseBriefCentralReturn } from './useBriefCentral';
+import { WanderingSpinner } from '../WanderingSpinner';
 
 /**
  * Brief Central — the Brief tab's landing page. Four tabs: the user's briefs,
@@ -238,7 +239,7 @@ const CentralTabBody: React.FC<{
   onOpenBrief: (id: string) => void;
   grid: (tab: CentralTab) => React.ReactNode;
 }> = ({ central, onOpenBrief, grid }) => {
-  if (central.loading) return <div className="bc-empty">Loading…</div>;
+  if (central.loading) return <WanderingSpinner />;
   if (central.tab === 'all') return <AllBriefsPanel central={central} onOpenBrief={onOpenBrief} />;
   if (central.tab === 'shared') return <SharedBriefsPanel central={central} onOpenBrief={onOpenBrief} />;
   return <div className="bc-grid">{grid(central.tab)}</div>;

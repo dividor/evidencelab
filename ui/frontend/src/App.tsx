@@ -1711,6 +1711,7 @@ function App() {
 
     setAiSummaryLoading(true);
     summaryStartMsRef.current = performance.now();
+    aiSummaryRefusedRef.current = false;
     setAiSummary('');
     setAiSummaryBuffer('');
     setAiPrompt('');
@@ -1753,6 +1754,13 @@ function App() {
         onError: (message: string) => {
           console.error('AI summary streaming error:', message);
           setAiSummary(AI_SUMMARY_ERROR);
+          setAiSummaryLoading(false);
+        },
+        onRefused: (message: string) => {
+          // The API's reason, such as the site's daily AI limit, is shown
+          // as it is; it is not a summary, so it is never logged as one.
+          aiSummaryRefusedRef.current = true;
+          setAiSummary(message);
           setAiSummaryLoading(false);
         },
       },
@@ -2368,6 +2376,8 @@ function App() {
   const activitySearchIdRef = useRef<string>('');
   const searchDurationMsRef = useRef<number>(0);
   const summaryStartMsRef = useRef<number>(0);
+  // True when the API refused the current AI summary (see launchSummaryStream).
+  const aiSummaryRefusedRef = useRef(false);
   const prevAiSummaryLoadingRef = useRef(false);
   useEffect(() => {
     // Detect transition from loading → done and log the completed summary
@@ -2377,6 +2387,7 @@ function App() {
       USER_MODULE &&
       aiSummary &&
       aiSummary !== AI_SUMMARY_ERROR &&
+      !aiSummaryRefusedRef.current &&
       !isDrilldown &&
       activitySearchIdRef.current
     ) {

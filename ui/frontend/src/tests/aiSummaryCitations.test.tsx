@@ -7,6 +7,7 @@
 import React from 'react';
 import { render } from '@testing-library/react';
 import { AiSummaryWithCitations } from '../components/AiSummaryWithCitations';
+import { AiSummaryReferences } from '../components/AiSummaryReferences';
 import { SearchResult } from '../types/api';
 
 const makeResults = (n: number): SearchResult[] =>
@@ -41,5 +42,72 @@ describe('AiSummaryWithCitations — hallucinated citations', () => {
     // while the surrounding prose is preserved.
     expect(container.textContent).toContain('Enforcement is inconsistent');
     expect(container.textContent).not.toContain('2');
+  });
+});
+
+describe('AiSummaryWithCitations — citation numbering', () => {
+  test('inline citations count up 1, 2, 3… top to bottom', () => {
+    // Regression: models cite results out of order (Nova 2 Lite first cited
+    // results 1, 3, 15, 20, 11 for "Outcomes of Home-Grown School Feeding").
+    // Numbering by result position showed 1, 3, 7, 8, 6 on screen.
+    const summary = [
+      '## Education',
+      'Attendance rose [1]. Retention held [3].',
+      '## Health',
+      '- Anaemia fell [15].',
+      '- Diets improved [20].',
+      '## Economy',
+      'Farmers sold more [11]. Enrolment again [1].',
+    ].join('\n');
+    const { container } = render(
+      <AiSummaryWithCitations
+        summaryText={summary}
+        searchResults={makeResults(20)}
+        onResultClick={() => undefined}
+      />,
+    );
+
+    const shown = Array.from(container.querySelectorAll('.ai-summary-citation')).map(
+      (badge) => badge.textContent,
+    );
+    expect(shown).toEqual(['1', '2', '3', '4', '5', '1']);
+  });
+
+  test('References list only what the visible summary cites, with the same numbers', () => {
+    // Nova 2 Lite ends with a "Summary" section citing nearly every source,
+    // which the screen hides. The References must not list those extra
+    // sources, and inline [n] must point at the same document as reference n.
+    const summary = [
+      '## Findings',
+      'Attendance rose [4]. Costs grew [2].',
+      '## Summary',
+      'Overall positive [1, 2, 3, 4, 5, 6].',
+    ].join('\n');
+    const results = makeResults(6);
+    const { container } = render(
+      <>
+        <AiSummaryWithCitations
+          summaryText={summary}
+          searchResults={results}
+          onResultClick={() => undefined}
+        />
+        <AiSummaryReferences summaryText={summary} results={results} onResultClick={() => undefined} />
+      </>,
+    );
+
+    // Inline badges carry the cited document in their title; reference links
+    // reuse the badge class without one.
+    const inline = Array.from(container.querySelectorAll('.ai-summary-citation[title]')).map(
+      (badge) => `${badge.textContent} ${badge.getAttribute('title')}`,
+    );
+    expect(inline).toEqual(['1 Doc 4 (Unknown)', '2 Doc 2 (Unknown)']);
+    const groups = Array.from(container.querySelectorAll('.ai-summary-ref-group')).map(
+      (group) => group.textContent,
+    );
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toContain('Doc 4');
+    expect(groups[0]).toContain('1');
+    expect(groups[1]).toContain('Doc 2');
+    expect(groups[1]).toContain('2');
   });
 });

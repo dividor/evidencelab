@@ -188,3 +188,15 @@ describe('Shared with me', () => {
     expect(buttons('all')).toEqual(['Open Brief', 'Copy']);
   });
 });
+
+describe('while Brief Central loads', () => {
+  test('it shows the multicoloured worm spinner, not plain text', () => {
+    render(
+      <BriefCentral central={fakeCentral('mine', { loading: true })} onOpenBrief={jest.fn()} onCreateBrief={jest.fn()} />,
+    );
+    const spinner = screen.getByRole('status', { name: 'Loading' });
+    expect(spinner).toHaveClass('search-loading-wandering');
+    expect(spinner.querySelectorAll('.search-loading-snake-dot')).toHaveLength(5);
+    expect(screen.queryByText('Loading…')).toBeNull();
+  });
+});

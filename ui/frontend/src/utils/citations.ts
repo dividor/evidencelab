@@ -24,21 +24,25 @@ export const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
 export const parseCitationNumbers = (rawNumbers: string): number[] =>
   rawNumbers.split(',').map((item) => parseInt(item.trim(), 10));
 
-/** The unique citation numbers referenced anywhere in the summary, sorted
- *  ascending. This ascending order *is* the canonical citation order used for
- *  renumbering — keep it identical across every consumer. */
+/** The unique citation numbers referenced anywhere in the summary, in the
+ *  order they first appear (reading order). This order *is* the canonical
+ *  citation order used for renumbering, so the summary reads [1], [2], [3]…
+ *  top to bottom whatever order the model cited its sources in. Models do not
+ *  cite in result order: Nova 2 Lite's first citations were [1], [3], [15],
+ *  [20], [11]… for one query. Keep this identical across every consumer. */
 export const extractCitedNumbers = (summaryText: string): number[] => {
+  // A Set keeps insertion order, so this is first-appearance order.
   const cited = new Set<number>();
   const re = new RegExp(CITATION_REGEX.source, 'g');
   let match;
   while ((match = re.exec(summaryText)) !== null) {
     parseCitationNumbers(match[1]).forEach((num) => cited.add(num));
   }
-  return Array.from(cited).sort((a, b) => a - b);
+  return Array.from(cited);
 };
 
-/** The cited numbers that actually resolve to a search result, sorted
- *  ascending. A `[N]` marker only backs a real reference when `N` is within
+/** The cited numbers that actually resolve to a search result, in reading
+ *  order. A `[N]` marker only backs a real reference when `N` is within
  *  `1..results.length`; anything outside that range — most commonly a
  *  model-hallucinated number such as `[19]` when only 12 results exist — is
  *  dropped here so no surface (on-screen summary, References list, or export)
@@ -52,7 +56,7 @@ export const extractValidCitedNumbers = (
   );
 
 /** Map each *valid* original citation number to its sequential display number
- *  (`1..k`, in citation order). This is the renumbering the on-screen summary
+ *  (`1..k`, in reading order). This is the renumbering the on-screen summary
  *  applies to inline `[N]` markers, and the docx/HTML exports must apply the
  *  same map so their inline markers agree with the screen. Numbers with no
  *  backing result are excluded (see {@link extractValidCitedNumbers}), so a

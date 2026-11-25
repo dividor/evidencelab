@@ -19,6 +19,7 @@ from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.auth.optional_user import resolve_optional_user
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
 from ui.backend.services import translation_service
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached
 from ui.backend.services.translation_providers import (
     TranslationConfigError,
     TranslationDisabledError,
@@ -364,6 +365,8 @@ async def get_documents(
 
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise _translation_unavailable(exc)
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Error getting documents: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -639,6 +642,8 @@ async def get_document_chunks(
         raise
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise _translation_unavailable(exc)
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Chunks fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

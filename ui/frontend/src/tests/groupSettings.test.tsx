@@ -59,6 +59,7 @@ describe('GroupSettingsManager', () => {
       SEARCH_AI_SUMMARY,
       'Brief',
       DOC_SUMMARIES,
+      'LLMs',
       'Features & Tabs',
       'Appearance',
     ]);
