@@ -4,7 +4,7 @@ All notable changes to Evidence Lab will be documented in this file.
 
 ## [1.6.9] - 2026-11-24
 
-Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, and Brief Central loads without fetching every brief's content.
+Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to.
 
 ### AI spending and models
 - **A daily AI cost limit for the whole site.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day, priced as the admin Token Usage tab prices them; unset means no limit and `0` turns the AI features off. Once the day's total reaches it, every AI request (search summaries, the research assistant, Brief, document summaries, evaluation runs, LLM translation, the MCP and A2A assistant) is refused with a 429 and `Retry-After` until 00:00 UTC; search, browsing and the heatmap keep working. Spend is added up per UTC day in a new `ai_daily_spend` table (#679)
@@ -17,6 +17,7 @@ Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of mod
 - **AI summary citations count up in reading order.** The summary renumbered the model's `[n]` markers by result position, so they read 1, 2, 3… only when the model cited its sources in result order; Nova 2 Lite doesn't. Citations are now numbered in the order they first appear, in the summary, its References list, the Word export and the research HTML export, which had its own copy of the old numbering. Models that cite in result order see the same numbers as before (#686)
 - **The References list matches the summary on screen.** The screen hides a trailing Summary or Conclusion section the model adds despite the prompt, but the References list was built from the full text, so it listed sources the visible text never cites, and an inline `[n]` could point at a different document than reference `n` (#686)
 - **Brief Central loads faster and shows the loading animation.** Its lists loaded every brief's full content to show a card; they now read only the card's columns, with Postgres counting the sections and sources. On a copy of a real deployment (39 briefs, 31 MB of content) the admin list went from 0.22–0.87 s to 0.24 s. While loading it shows the multicoloured spinner from search instead of "Loading…" (#687)
+- **A brief's citations with no source are easy to find.** When a section's research agent cites a number it was never given, the API shows it as `[?n]`. The text now draws each one as a red `?n` badge, and the section's warning is a short red header with a chip per number: clicking a chip scrolls to that citation and flashes it, then steps through its other uses, and a link opens the run's original output. On one ten-section brief, 18 of 20 such numbers were paragraph numbers printed in the section's own source passages, which the model cited as if they were source numbers; no source was dropped (#689)
 - **The Fact Checker highlights passages whose sentence carries markdown,** such as a bold claim, which it skipped before (#622)
 
 ### Deployment
@@ -27,7 +28,7 @@ Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of mod
 
 ### Upgrade Notes
 - **One new migration**, `0041_add_ai_daily_spend`, for the daily AI limit. The api runs it at start-up (#679).
-- **Rebuild the web interface** for the LLMs tab, the citation numbering and Brief Central (#685, #686, #687).
+- **Rebuild the web interface** for the LLMs tab, the citation numbering, Brief Central and the citation badges (#685, #686, #687, #689).
 - **With `AI_DAILY_COST_LIMIT_USD` set,** every model `config.json` can send calls to needs a price in `ui/backend/utils/llm_costs.py`, or the api and MCP server refuse to start and name the models to add (#682).
 - **AWS template:** the next apply limits the task role to `config.json`'s Bedrock models. Add any other model a deployment calls to `config.json` first (#678).
 
