@@ -286,6 +286,16 @@ describe('Basis pop-up', () => {
     ]);
   });
 
+  test('says what is counted, and that embedding and reranking are not', async () => {
+    const dialog = await openBadge(HAIKU, PRIYA);
+    const coverage = dialog.querySelector('.footprint-coverage') as HTMLElement;
+    expect(coverage.textContent).toContain('document processing (document summaries, section classification and taxonomy tags)');
+    expect(coverage.textContent).toContain('Not counted: embedding and reranking.');
+    expect(coverage.textContent).toContain('Evidence Lab doesn’t record these calls');
+    const text = dialog.textContent ?? '';
+    expect(text.indexOf('What is counted')).toBeGreaterThan(text.indexOf('The calculation, for a call'));
+  });
+
   test('a single model shows only the range recorded', async () => {
     const dialog = await openBadge(HAIKU, PRIYA);
     const table = dialog.querySelector('.footprint-calculation') as HTMLElement;

@@ -75,6 +75,8 @@ const WATER_PAPER = 'https://arxiv.org/abs/2304.03271';
 const METHOD_LINK_TEXT = 'EcoLogits method';
 const SMALL_TEXT: React.CSSProperties = { fontSize: '0.75rem' };
 const HEADING: React.CSSProperties = { fontSize: '0.95rem', margin: '1rem 0 0.3rem' };
+const LIST: React.CSSProperties = { paddingLeft: '1.2rem', margin: '0.25rem 0 0.75rem' };
+const LIST_ITEM: React.CSSProperties = { marginBottom: '0.4rem' };
 
 const ExternalLink: React.FC<{ href: string; children: React.ReactNode }> = ({ href, children }) => (
   <a href={href} target="_blank" rel="noopener noreferrer">
@@ -340,10 +342,32 @@ const AssumptionBox: React.FC<{ source: FootprintSource }> = ({ source }) => (
   </div>
 );
 
+// What the tab's footprint covers, checked against where usage is recorded
+// (ui/backend/services/usage_recorder.py, routes/activity.py and
+// pipeline/utilities/usage_recorder.py). No embedding or rerank client records usage.
+const Coverage: React.FC = () => (
+  <>
+    <h3 style={HEADING}>What is counted</h3>
+    <ul className="footprint-coverage" style={LIST}>
+      <li style={LIST_ITEM}>
+        <strong>Counted.</strong> Every AI call that writes text: search summaries, highlighting, the research
+        assistant, Brief, evaluations, translation, and document processing (document summaries, section
+        classification and taxonomy tags).
+      </li>
+      <li style={LIST_ITEM}>
+        <strong>Not counted: embedding and reranking.</strong> Embedding turns document text and each search
+        query into numbers so they can be searched, when documents are processed and on every search. Reranking
+        puts search results in order. Evidence Lab doesn’t record these calls, and EcoLogits only estimates
+        models that write text, so their energy, emissions and water are left out.
+      </li>
+    </ul>
+  </>
+);
+
 const MethodNotes: React.FC = () => (
-  <ul style={{ paddingLeft: '1.2rem', margin: '0.25rem 0 0.75rem' }}>
+  <ul style={LIST}>
     {METHOD_NOTES.map((note) => (
-      <li key={note.title} style={{ marginBottom: '0.4rem' }}>
+      <li key={note.title} style={LIST_ITEM}>
         <strong>{note.title}.</strong> {note.text}
         {note.links.map(([text, href], i) => (
           <React.Fragment key={href}>
@@ -413,6 +437,7 @@ const FootprintBasisModal: React.FC<FootprintBasisModalProps> = ({ source, metho
           {source.assumed && <AssumptionBox source={source} />}
           {source.models.length > 0 && <EcoModelTable models={source.models} assumed={source.assumed} />}
           {source.example_estimate && <Calculation source={source} recorded={source.example_estimate} />}
+          <Coverage />
           <h3 style={HEADING}>
             How <EcoLogitsLink /> works
           </h3>
