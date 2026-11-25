@@ -1670,6 +1670,17 @@ h6,
   color: var(--primary-blue);
 }
 
+/* A sorted column shows its direction by lightness, not only by hue: the
+   button at full strength, the unused triangle much lighter. */
+.sort-icon-button.sorted {
+  opacity: 1;
+}
+
+.sort-icon-button.sorted .chevron-up:not(.active),
+.sort-icon-button.sorted .chevron-down:not(.active) {
+  color: var(--gray-300);
+}
+
 .filter-icon {
   display: inline-block;
   transform: rotate(90deg);
@@ -4822,7 +4833,13 @@ li.ai-fact-active::before {
   .app-footer {
     flex-wrap: wrap;
     row-gap: 0.25rem;
+    column-gap: 1rem;
     padding-right: 5.25rem;
+  }
+
+  /* Wrapped lines would end on a stray "•": space the links apart instead. */
+  .app-footer-divider {
+    display: none;
   }
 
   .app-footer a,

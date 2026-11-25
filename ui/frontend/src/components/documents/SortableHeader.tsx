@@ -40,7 +40,7 @@ export const SortableHeader: React.FC<SortableHeaderProps> = ({
         <div className="header-icons">
           <button
             onClick={() => onSort(columnKey)}
-            className="sort-icon-button"
+            className={`sort-icon-button ${isSortedAsc || isSortedDesc ? 'sorted' : ''}`}
             aria-label={`Sort by ${label.toLowerCase()}`}
           >
             <svg className="sort-icon" width="10" height="14" viewBox="0 0 10 14" aria-hidden="true">
