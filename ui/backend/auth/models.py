@@ -14,6 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     Numeric,
@@ -750,6 +751,22 @@ class UserActivity(Base):
     cost_usd: Mapped[Decimal | None] = mapped_column(
         Numeric(precision=12, scale=6), nullable=True
     )
+    # Estimated environmental footprint of the row's LLM calls, from EcoLogits
+    # (ui/backend/utils/llm_footprint.py), as min and max. Output tokens of
+    # calls with no estimate (embedding/rerank or unknown models) are counted
+    # in footprint_unestimated_tokens. Rows from before migration 0042 have none.
+    energy_kwh_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    energy_kwh_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gwp_kgco2eq_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gwp_kgco2eq_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    water_l_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    water_l_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    footprint_unestimated_tokens: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    # What the estimate rests on: each estimated model's output tokens, so the
+    # admin screen can show each figure's source and flag assumptions.
+    footprint_basis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     has_ratings: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )

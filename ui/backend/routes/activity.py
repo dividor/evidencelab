@@ -23,6 +23,7 @@ from ui.backend.auth.schemas import (
 from ui.backend.auth.users import current_superuser, optional_current_user
 from ui.backend.utils.excel_text import append_text_row
 from ui.backend.utils.llm_costs import compute_cost
+from ui.backend.utils.llm_footprint import set_footprint
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +271,7 @@ async def log_activity(
             completion_tokens=body.completion_tokens,
             cost_usd=cost,
         )
+        set_footprint(activity, body.llm_model, body.completion_tokens)
         session.add(activity)
     await session.commit()
     await session.refresh(activity)
@@ -342,11 +344,12 @@ def _merge_filters_update(activity: UserActivity, body) -> None:
 
 
 def _apply_token_usage(activity: UserActivity, body) -> None:
-    """Persist optional LLM usage and cost fields from *body*.
+    """Persist optional LLM usage, cost and footprint fields from *body*.
 
     Server recomputes ``cost_usd`` from the token counts when a rate is
     configured (see ``_resolve_cost``) so a tampered client value can't
-    poison the admin spend view.
+    poison the admin spend view. The estimated footprint is recomputed from
+    the same totals and model.
     """
     if body.llm_model is not None:
         activity.llm_model = body.llm_model
@@ -366,6 +369,7 @@ def _apply_token_usage(activity: UserActivity, body) -> None:
             activity.prompt_tokens,
             activity.completion_tokens,
         )
+        set_footprint(activity, activity.llm_model, activity.completion_tokens)
 
 
 # ---------------------------------------------------------------------------

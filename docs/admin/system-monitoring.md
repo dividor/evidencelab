@@ -118,9 +118,9 @@ The export includes: Date, User Email, User Name, Query, Results count, Search/S
 
 > **Privacy note:** Activity logging works for both authenticated and anonymous users (anonymous users are tracked by session ID). All activity data is automatically anonymized when a user deletes their account.
 
-### LLM Token Usage (Admin)
+### LLM Usage (Admin)
 
-The **Admin Panel → Token Usage** tab rolls up LLM token consumption and cost
+The **Admin Panel → LLM Usage** tab rolls up LLM token consumption and cost
 from the activity log, bucketed by day / week / month and grouped by user or
 user group, with an optional activity-type filter and XLSX export.
 
@@ -149,10 +149,114 @@ token counts with a "—" cost.
 > counts, and the embedding client does not currently expose the provider's
 > usage envelope — both are candidates for a follow-up.
 
+Document ingestion (`pipeline`) has no user or group, so it gets its own
+**(pipeline)** line when grouping by user and when grouping by group.
+
+#### Environmental footprint
+
+The tab also estimates the **energy**, **greenhouse gas emissions** and
+**water** behind the AI's writing, with [EcoLogits](https://ecologits.ai), an
+open-source tool from the CodeCarbon non-profit. Each figure is shown as a
+range from low to high, in watt-hours (Wh), grams of CO₂ equivalent (g CO₂e)
+and millilitres (mL). The XLSX export has the same figures in kWh, kg CO₂e and
+litres.
+
+**How it is worked out.** Each AI call is estimated when it is recorded. EcoLogits
+works out the call's footprint from four things: how many output tokens the
+model wrote, how big the model is, the hardware such models usually run on,
+and the data centre's efficiency and electricity. Each call uses its own
+model, so a line that adds up calls to several models is still right.
+
+The figures are ranges because some of these inputs are uncertain. Most model
+makers don't publish how big their models are. EcoLogits estimates their size
+as a range, and warns that these figures are less precise.
+
+**Where each figure comes from.** The **Basis** column shows a badge for each
+model a row's figures rest on. A badge marked **Assumed** (amber) means
+EcoLogits doesn't cover that model itself, so its figures rest on other
+models', and the note under the table says how for each one.
+
+**Click a badge** to see how that model's figures are worked out. The pop-up
+shows:
+
+- the assumption, if one was made, and links to its sources;
+- the models the estimate uses. For each one it gives the model's size, and
+  says whether its maker published that size or EcoLogits estimated it. It
+  also gives the data-centre figures EcoLogits uses for the model's maker, and
+  the electricity where the model runs;
+- the calculation for an example call that writes 1,000 output tokens: each
+  model's result, then the range recorded, which runs from the lowest of their
+  low figures to the highest of their high figures. Every call is worked out
+  this way with its own number of output tokens, and each line of the table
+  adds up its calls;
+- how EcoLogits works, with links to its website, its method, its paper and
+  its code, and the EcoLogits version used.
+
+The assumptions are:
+
+- **Amazon Nova 2 Lite and Nova Pro.** Amazon doesn't publish how big Nova is,
+  and EcoLogits has no figures for it, so we estimate it from similar models.
+  SAEF, a published dataset of AI emission factors, puts Nova Lite in its
+  small-model class and Nova Pro in its mid-size class, going by how Amazon
+  describes the models (G. Llopis-Garcia, *Sustainable Production and
+  Consumption* 70 (2026) 320–347,
+  [doi:10.1016/j.spc.2026.11.003](https://doi.org/10.1016/j.spc.2026.11.003)).
+  For each Nova call, we run EcoLogits several times, as if each of a few
+  models from the same class had written the same output tokens. The figure
+  shown runs from the lowest of those results to the highest.
+  - Nova 2 Lite uses four small models: Haiku 4.5, GPT-4.1 mini, Gemini 2.5
+    Flash and Gemini 3.8 Flash.
+  - Nova Pro uses two mid-size models: Llama 3.1 70B and Sonnet 4.6.
+
+  EcoLogits covers many more models in both classes, so these are a choice,
+  not the whole class. Some mid-size models it covers, such as Gemini 2.5 Pro,
+  have much higher estimates.
+- **Llama 3.3 70B.** EcoLogits has no figures for it, so we run EcoLogits as if
+  Llama 3.1 70B had written the same output tokens. The two models have the
+  same design and exactly the same number of parameters, which is mainly what
+  EcoLogits' estimate depends on.
+
+**What is not counted.**
+
+- **Models with no estimate.** Some models aren't in EcoLogits' list and have
+  no stand-in set, for example Qwen3-Next 80B, the stock Hugging Face model.
+  Their calls get no estimate rather than a guessed one. To estimate such a
+  model, name an EcoLogits model to stand in for it, with the reason, in the
+  model's `ecologits` setting in `config.json` (see
+  [LLM Models](pipeline-configuration.md#llm-models-supported_llms)).
+- **Embedding and reranking calls.** EcoLogits estimates text generation only.
+- **The prompt.** EcoLogits counts the tokens a model writes, not the ones it
+  reads.
+- **Usage recorded before the estimates began.** Older rows don't record how
+  many output tokens each model wrote, so they can't be estimated afterwards.
+  They show "—".
+
+The note under the table says how many of the period's output tokens have no
+estimate, so you can see how much of the AI use the figures cover.
+
+**Where the models run matters.** The same call has very different emissions on
+different grids. In EcoLogits' data, a kilowatt-hour emits about 0.035 kg CO₂e
+in Sweden, 0.26 kg in Ireland, 0.38 kg in the USA and 0.46 kg on the world
+average. EcoLogits assumes the USA for Anthropic, OpenAI and Google models
+unless told otherwise, so set `electricity_mix_zone` on each model in
+`config.json` to where yours runs (see
+[LLM Models](pipeline-configuration.md#llm-models-supported_llms)). The data
+centre's efficiency figures come from EcoLogits' figures for the model's maker,
+not from your cloud provider.
+
+**Use them for comparisons and trends.** These are estimates from a published
+method, not a measured carbon account. They are most useful for comparing
+models, periods and activities, and for seeing which uses account for most of
+the footprint. For how EcoLogits works, see its
+[methodology](https://ecologits.ai/latest/methodology/llm_inference/) and its
+paper: S. Rincé and A. Banse, *EcoLogits: Evaluating the Environmental Impacts
+of Generative AI*, Journal of Open Source Software 10(111), 7471 (2025),
+[doi:10.21105/joss.07471](https://doi.org/10.21105/joss.07471).
+
 ### Daily AI limit
 
 `AI_DAILY_COST_LIMIT_USD` is the most the site's AI features may cost in one
-UTC day, in US dollars, priced as the Token Usage tab prices them. Set it on
+UTC day, in US dollars, priced as the LLM Usage tab prices them. Set it on
 the api and the MCP server (they share the day's total). Unset means no limit;
 `0` turns the AI features off.
 
