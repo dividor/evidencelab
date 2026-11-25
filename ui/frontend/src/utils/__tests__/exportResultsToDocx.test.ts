@@ -136,8 +136,8 @@ describe('resolveResultLink', () => {
 });
 
 describe('extractCitedNumbers', () => {
-  test('returns sorted unique numbers', () => {
-    expect(extractCitedNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([1, 2, 3]);
+  test('returns unique numbers in reading order', () => {
+    expect(extractCitedNumbers('a [3] b [1] c [3] d [2,1]')).toEqual([3, 1, 2]);
   });
   test('handles multi-citation brackets with whitespace', () => {
     expect(extractCitedNumbers('See [1, 4, 7].')).toEqual([1, 4, 7]);
@@ -148,10 +148,10 @@ describe('extractCitedNumbers', () => {
 });
 
 describe('buildGroupedReferences', () => {
-  test('groups by document title and renumbers in citation order', () => {
-    // Mirrors AiSummaryReferences: citations are processed in *sorted
-    // numeric* order, then renumbered into that order. So a summary that
-    // mentions [2] first but also cites [1] and [3] still walks 1→2→3.
+  test('groups by document title and renumbers in reading order', () => {
+    // Mirrors AiSummaryReferences: citations are renumbered in the order the
+    // summary first cites them, so a summary that cites [2], then [1], then
+    // [3] reads [1], [2], [3] inline and its References list follows suit.
     const results = [
       makeResult({ title: 'Doc A', organization: 'OrgA', year: '2020', page_num: 4 }),
       makeResult({ title: 'Doc B', organization: 'OrgB', year: '2021', page_num: 1 }),
@@ -159,13 +159,13 @@ describe('buildGroupedReferences', () => {
     ];
     const groups = buildGroupedReferences('first [2], then [1] and [3]', results);
     expect(groups).toHaveLength(2);
-    // Doc A is the first group encountered (citation [1] → results[0])
-    expect(groups[0].title).toBe('Doc A');
-    expect(groups[0].refs.map((r) => r.sequential)).toEqual([1, 3]);
-    expect(groups[0].refs.map((r) => r.result.page_num)).toEqual([4, 9]);
-    expect(groups[1].title).toBe('Doc B');
-    expect(groups[1].refs.map((r) => r.sequential)).toEqual([2]);
-    expect(groups[1].refs[0].result.page_num).toBe(1);
+    // Doc B is the first group encountered (citation [2] → results[1])
+    expect(groups[0].title).toBe('Doc B');
+    expect(groups[0].refs.map((r) => r.sequential)).toEqual([1]);
+    expect(groups[0].refs[0].result.page_num).toBe(1);
+    expect(groups[1].title).toBe('Doc A');
+    expect(groups[1].refs.map((r) => r.sequential)).toEqual([2, 3]);
+    expect(groups[1].refs.map((r) => r.result.page_num)).toEqual([4, 9]);
   });
   test('skips out-of-range citation numbers', () => {
     const results = [makeResult({ title: 'Only Doc' })];

@@ -63,8 +63,11 @@ const extractSubHeadings = (summary: string): string[] => {
   return subHeadings;
 };
 
-/** Strip trailing Conclusion / Summary sections the LLM sometimes adds despite prompt instructions. */
-const stripTrailingBoilerplate = (text: string): string => {
+/** Strip trailing Conclusion / Summary sections the LLM sometimes adds despite
+ *  prompt instructions. The result is the text shown on screen, so anything
+ *  numbered or listed alongside it (the References list) must use it too:
+ *  Nova 2 Lite's closing summary cited almost every source. */
+export const stripTrailingBoilerplate = (text: string): string => {
   const lines = text.split('\n');
   let cutIndex = -1;
   for (let i = lines.length - 1; i >= 0; i--) {

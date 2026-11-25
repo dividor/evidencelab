@@ -1,5 +1,9 @@
 import { DrilldownNode, SearchResult } from '../types/api';
-import { buildGroupedReferences, DocumentGroup } from './citations';
+import {
+  buildCitationSequenceMap,
+  buildGroupedReferences,
+  DocumentGroup,
+} from './citations';
 import { safeHref } from './safeHref';
 
 /** Escape HTML special characters */
@@ -26,27 +30,19 @@ const resolveSourceUrl = (result: SearchResult): string =>
   result.metadata?.src_doc_raw_metadata?.pdf_url ||
   '';
 
-/** Build a map from original citation number to { url, sequential } */
-const buildCitationLinks = (
+/** Build a map from original citation number to { url, sequential }. The
+ *  sequential numbers come from the shared citation map, so the export's
+ *  inline markers match its References list and the on-screen summary. */
+export const buildCitationLinks = (
   summary: string,
   results: SearchResult[]
 ): Map<number, { url: string; seq: number }> => {
-  const cited = new Set<number>();
-  const regex = /\[(\d+(?:,\s*\d+)*)\]/g;
-  let match;
-  while ((match = regex.exec(summary)) !== null) {
-    match[1].split(',').forEach((n) => {
-      const num = parseInt(n.trim(), 10);
-      if (num >= 1 && num <= results.length) cited.add(num);
-    });
-  }
-  const sorted = Array.from(cited).sort((a, b) => a - b);
   const map = new Map<number, { url: string; seq: number }>();
-  sorted.forEach((origNum, idx) => {
+  buildCitationSequenceMap(summary, results).forEach((seq, origNum) => {
     const r = results[origNum - 1];
     let url = resolveSourceUrl(r);
     if (url && r.page_num) url += `#page=${r.page_num}`;
-    map.set(origNum, { url, seq: idx + 1 });
+    map.set(origNum, { url, seq });
   });
   return map;
 };
