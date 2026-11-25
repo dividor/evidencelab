@@ -696,6 +696,10 @@
 }
 .brief-doc-section-title {
   flex: 1;
+  /* An input won't shrink below its natural width (about 20 characters in the
+     heading font) unless told to: on a phone that pushed the row, and the
+     page, wider than the screen. */
+  min-width: 0;
   border: none;
   border-bottom: 1px solid transparent;
   background: none;
