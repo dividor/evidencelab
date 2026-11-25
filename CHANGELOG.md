@@ -2,6 +2,36 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.9] - 2026-11-24
+
+Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to.
+
+### AI spending and models
+- **A daily AI cost limit for the whole site.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day, priced as the admin Token Usage tab prices them; unset means no limit and `0` turns the AI features off. Once the day's total reaches it, every AI request (search summaries, the research assistant, Brief, document summaries, evaluation runs, LLM translation, the MCP and A2A assistant) is refused with a 429 and `Retry-After` until 00:00 UTC; search, browsing and the heatmap keep working. Spend is added up per UTC day in a new `ai_daily_spend` table (#679)
+- **The limit counts every call.** A model the price table doesn't list was priced as nothing, so its calls never counted. With the limit set, the api and MCP/A2A server now check at start-up that every model `config.json` can send calls to has a price, and stop with an error naming each one that doesn't (#682). A call that names its model by the provider's id, or names none and runs on the default model, is now priced by its `supported_llms` key (#683)
+- **Haiku 4.5 on Amazon Bedrock has a price** (EU inference profile rates), so it can be used and counted (#684)
+- **Choose each AI job's model per group.** Admin > Group Settings has an LLMs tab to pick, per group, the model for the search AI summary, Brief, and the evaluation judge (LLM-judge checks and the Brief citation check). "Default from config" keeps `config.json`'s choice. A model `config.json` no longer lists makes that group's requests fail with a 409 naming the group and model, and the tab flags it. Model combos can set `judge_model` (#685)
+- **The AWS Bedrock combo reranks every hit.** It reranked only the first 10 of a search's 50 hits, so hits 11 to 20 reached the AI summary in the search's own order. `rerank_model_page_size` is now 50, at the same Bedrock price (#681)
+
+### Search and Brief
+- **AI summary citations count up in reading order.** The summary renumbered the model's `[n]` markers by result position, so they read 1, 2, 3… only when the model cited its sources in result order; Nova 2 Lite doesn't. Citations are now numbered in the order they first appear, in the summary, its References list, the Word export and the research HTML export, which had its own copy of the old numbering. Models that cite in result order see the same numbers as before (#686)
+- **The References list matches the summary on screen.** The screen hides a trailing Summary or Conclusion section the model adds despite the prompt, but the References list was built from the full text, so it listed sources the visible text never cites, and an inline `[n]` could point at a different document than reference `n` (#686)
+- **Brief Central loads faster and shows the loading animation.** Its lists loaded every brief's full content to show a card; they now read only the card's columns, with Postgres counting the sections and sources. On a copy of a real deployment (39 briefs, 31 MB of content) the admin list went from 0.22–0.87 s to 0.24 s. While loading it shows the multicoloured spinner from search instead of "Loading…" (#687)
+- **A brief's citations with no source are easy to find.** When a section's research agent cites a number it was never given, the API shows it as `[?n]`. The text now draws each one as a red `?n` badge, and the section's warning is a short red header with a chip per number: clicking a chip scrolls to that citation and flashes it, then steps through its other uses, and a link opens the run's original output. On one ten-section brief, 18 of 20 such numbers were paragraph numbers printed in the section's own source passages, which the model cited as if they were source numbers; no source was dropped (#689)
+- **The Fact Checker highlights passages whose sentence carries markdown,** such as a bold claim, which it skipped before (#622)
+
+### Deployment
+- **AWS: only `config.json`'s Bedrock models, and email alerts on their use.** The task role (api, mcp, pipeline, migrate) may call only the Bedrock models `config.json` offers (`supported_llms`, `supported_embedding_models`, `supported_rerank_models`), with cross-region inference profiles allowed in every region they route to. New settings `alert_emails` and `bedrock_alarms` send an email when a model's hourly input tokens, output tokens or invocations pass a level (#678)
+
+### Documentation
+- Cloud Deployment covers limiting and watching AI use on AWS, including how to confirm the alert emails, check them and send a test alert (#678, #679, #680); System Monitoring covers the daily AI limit (#679, #685); User Administration covers the LLMs tab and Pipeline Configuration covers `judge_model` and how to add another Bedrock chat model (#684, #685)
+
+### Upgrade Notes
+- **One new migration**, `0041_add_ai_daily_spend`, for the daily AI limit. The api runs it at start-up (#679).
+- **Rebuild the web interface** for the LLMs tab, the citation numbering, Brief Central and the citation badges (#685, #686, #687, #689).
+- **With `AI_DAILY_COST_LIMIT_USD` set,** every model `config.json` can send calls to needs a price in `ui/backend/utils/llm_costs.py`, or the api and MCP server refuse to start and name the models to add (#682).
+- **AWS template:** the next apply limits the task role to `config.json`'s Bedrock models. Add any other model a deployment calls to `config.json` first (#678).
+
 ## [1.6.8] - 2026-11-23
 
 Evidence Lab v1.6.8 is a **security** patch release. The document preview loads PDF.js 6.5.438 from the site itself instead of PDF.js 3.11.174 from cdnjs, and the web pages get a full Content-Security-Policy: scripts, styles, fonts, workers and connections may come only from the site, plus Google Analytics. On a site that requires sign-in, the activity log takes writes only from people who are signed in, and MCP client registration is limited in size and number. A site that signs in only with Google or Microsoft no longer offers password reset, and signing out of it leads to the provider's account picker instead of a sign-in button. On AWS, the WAF no longer blocks Microsoft's sign-in reply. LangChain moves to 1.5.
