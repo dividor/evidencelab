@@ -4,7 +4,7 @@ All notable changes to Evidence Lab will be documented in this file.
 
 ## [1.6.9] - 2026-11-24
 
-Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to.
+Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to. Hugging Face models work again, through Hugging Face's router.
 
 ### AI spending and models
 - **A daily AI cost limit for the whole site.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day, priced as the admin Token Usage tab prices them; unset means no limit and `0` turns the AI features off. Once the day's total reaches it, every AI request (search summaries, the research assistant, Brief, document summaries, evaluation runs, LLM translation, the MCP and A2A assistant) is refused with a 429 and `Retry-After` until 00:00 UTC; search, browsing and the heatmap keep working. Spend is added up per UTC day in a new `ai_daily_spend` table (#679)
@@ -23,6 +23,9 @@ Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of mod
 ### Deployment
 - **AWS: only `config.json`'s Bedrock models, and email alerts on their use.** The task role (api, mcp, pipeline, migrate) may call only the Bedrock models `config.json` offers (`supported_llms`, `supported_embedding_models`, `supported_rerank_models`), with cross-region inference profiles allowed in every region they route to. New settings `alert_emails` and `bedrock_alarms` send an email when a model's hourly input tokens, output tokens or invocations pass a level (#678)
 
+### Hugging Face
+- **Hugging Face models work again.** Hugging Face's model API now returns an empty provider list for every model, and `huggingface_hub`'s client (0.36.2 here, 2.4.0 too) needs that list, so every call to a Hugging Face model with a named provider failed with "Model … is not supported by provider …". Evidence Lab now calls Hugging Face's router through its OpenAI-compatible API, with the model as `<model>:<provider>`, and streamed calls report their token usage. Kimi K2 (`moonshotai/Kimi-K2-Instruct-0905`) is no longer served by any provider, so the Huggingface model combo, the demo and the two data sources that summarised with it now use Llama 3.3 70B via groq (#HFPR)
+
 ### Documentation
 - Cloud Deployment covers limiting and watching AI use on AWS, including how to confirm the alert emails, check them and send a test alert (#678, #679, #680); System Monitoring covers the daily AI limit (#679, #685); User Administration covers the LLMs tab and Pipeline Configuration covers `judge_model` and how to add another Bedrock chat model (#684, #685)
 
@@ -31,6 +34,7 @@ Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of mod
 - **Rebuild the web interface** for the LLMs tab, the citation numbering, Brief Central and the citation badges (#685, #686, #687, #689).
 - **With `AI_DAILY_COST_LIMIT_USD` set,** every model `config.json` can send calls to needs a price in `ui/backend/utils/llm_costs.py`, or the api and MCP server refuse to start and name the models to add (#682).
 - **AWS template:** the next apply limits the task role to `config.json`'s Bedrock models. Add any other model a deployment calls to `config.json` first (#678).
+- **Hugging Face:** the stock `config.json`'s `kimi-k2-instruct` model is now `llama-3.3-70b-instruct` (`meta-llama/Llama-3.3-70B-Instruct` via `groq`). A deployment with its own `config.json` that uses Kimi K2 must change its model too, and a group that chose `kimi-k2-instruct` in Group Settings > LLMs must choose again (#HFPR).
 
 ## [1.6.8] - 2026-11-23
 
