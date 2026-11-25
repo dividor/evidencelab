@@ -118,9 +118,9 @@ The export includes: Date, User Email, User Name, Query, Results count, Search/S
 
 > **Privacy note:** Activity logging works for both authenticated and anonymous users (anonymous users are tracked by session ID). All activity data is automatically anonymized when a user deletes their account.
 
-### LLM Token Usage (Admin)
+### LLM Usage (Admin)
 
-The **Admin Panel → Token Usage** tab rolls up LLM token consumption and cost
+The **Admin Panel → LLM Usage** tab rolls up LLM token consumption and cost
 from the activity log, bucketed by day / week / month and grouped by user or
 user group, with an optional activity-type filter and XLSX export.
 
@@ -161,13 +161,15 @@ range from low to high, in watt-hours (Wh), grams of CO₂ equivalent (g CO₂e)
 and millilitres (mL). The XLSX export has the same figures in kWh, kg CO₂e and
 litres.
 
-**How it is worked out.** As each AI call is recorded, EcoLogits estimates it
-from the number of tokens the model wrote, the model's size, the hardware such
-models typically run on, and the electricity and efficiency of the data centre.
-Each call is estimated from its own model, so a row that adds up calls to
-several models is still right. The ranges are wide because some of these are
-themselves uncertain: most providers don't publish their models' sizes, so
-EcoLogits estimates them, and it warns that such figures are less precise.
+**How it is worked out.** Each AI call is estimated when it is recorded. EcoLogits
+works out the call's footprint from four things: how many output tokens the
+model wrote, how big the model is, the hardware such models usually run on,
+and the data centre's efficiency and electricity. Each call uses its own
+model, so a line that adds up calls to several models is still right.
+
+The figures are ranges because some of these inputs are uncertain. Most model
+makers don't publish how big their models are. EcoLogits estimates their size
+as a range, and warns that these figures are less precise.
 
 **Where each figure comes from.** The **Basis** column shows a badge for each
 model a row's figures rest on. A badge marked **Assumed** (amber) means
@@ -217,13 +219,17 @@ The assumptions are:
 **What is not counted.**
 
 - **Models with no estimate.** Some models aren't in EcoLogits' list and have
-  no assumption set (for example Gemini 2.0 Flash). Their calls have no
-  estimate, rather than a guessed one.
+  no stand-in set, for example Qwen3-Next 80B, the stock Hugging Face model.
+  Their calls get no estimate rather than a guessed one. To estimate such a
+  model, name an EcoLogits model to stand in for it, with the reason, in the
+  model's `ecologits` setting in `config.json` (see
+  [LLM Models](pipeline-configuration.md#llm-models-supported_llms)).
 - **Embedding and reranking calls.** EcoLogits estimates text generation only.
 - **The prompt.** EcoLogits counts the tokens a model writes, not the ones it
   reads.
-- **Usage recorded before the estimates began.** Older rows can't be split by
-  model afterwards.
+- **Usage recorded before the estimates began.** Older rows don't record how
+  many output tokens each model wrote, so they can't be estimated afterwards.
+  They show "—".
 
 The note under the table says how many of the period's output tokens have no
 estimate, so you can see how much of the AI use the figures cover.
@@ -250,7 +256,7 @@ of Generative AI*, Journal of Open Source Software 10(111), 7471 (2025),
 ### Daily AI limit
 
 `AI_DAILY_COST_LIMIT_USD` is the most the site's AI features may cost in one
-UTC day, in US dollars, priced as the Token Usage tab prices them. Set it on
+UTC day, in US dollars, priced as the LLM Usage tab prices them. Set it on
 the api and the MCP server (they share the day's total). Unset means no limit;
 `0` turns the AI features off.
 
