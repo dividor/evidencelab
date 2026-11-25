@@ -19,6 +19,7 @@ from ui.backend.services.ai_daily_limit import (
     LIMIT_MESSAGE,
     LIMIT_REACHED_LOG,
     PRICES_FILE,
+    UNPRICED_CALL_LOG,
     AiDailyLimitReached,
     add_to_daily_spend,
     ai_daily_limit_handler,
@@ -30,6 +31,7 @@ from ui.backend.services.ai_daily_limit import (
     spent_on,
     validate_ai_daily_limit_setting,
 )
+from utils import llm_factory
 
 pytestmark = pytest.mark.unit
 
@@ -82,6 +84,9 @@ class _Clock:
 @pytest.fixture(autouse=True)
 def _fresh_state(monkeypatch):
     monkeypatch.delenv(LIMIT_ENV, raising=False)
+    # No default model unless a test sets one (LLM_MODEL or config.json).
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    monkeypatch.setattr(llm_factory, "_load_llm_config", lambda: {})
     monkeypatch.setattr(
         limit_mod,
         "_cache",
@@ -206,20 +211,64 @@ class TestUnpricedModels:
         with pytest.raises(ValueError, match="mystery-llm"):
             validate_ai_daily_limit_setting()
 
-    def test_validate_when_combo_names_model_by_provider_id_then_refuses(
+    def test_validate_when_combo_names_priced_model_by_provider_id_then_starts(
         self, monkeypatch
     ):
+        # Its calls are labelled and priced as nova-2-lite.
         _use_config(
             monkeypatch,
             {"nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"}},
             {"AWS Bedrock": {"assistant_model": {"model": _NOVA_ID}}},
         )
         monkeypatch.setenv(LIMIT_ENV, "25")
+        validate_ai_daily_limit_setting()
+
+    def test_validate_when_combo_names_unpriced_model_by_provider_id_then_names_key(
+        self, monkeypatch, unpriced_config
+    ):
+        monkeypatch.setattr(
+            limit_mod.db_config,
+            "UI_MODEL_COMBOS",
+            {"HF": {"assistant_model": {"model": "org/Mystery-LLM"}}},
+        )
+        monkeypatch.setenv(LIMIT_ENV, "25")
         with pytest.raises(ValueError) as refused:
             validate_ai_daily_limit_setting()
-        assert f"{_NOVA_ID} (ui_model_combos.AWS Bedrock.assistant_model)" in str(
-            refused.value
+        assert (
+            "mystery-llm (supported_llms, ui_model_combos.HF.assistant_model)"
+            in str(refused.value)
         )
+
+    def test_validate_when_llm_model_unlisted_then_refuses_naming_it(
+        self, monkeypatch, priced_config
+    ):
+        monkeypatch.setenv("LLM_MODEL", "Org/Raw-Model")
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        with pytest.raises(ValueError) as refused:
+            validate_ai_daily_limit_setting()
+        assert "Org/Raw-Model (LLM_MODEL)" in str(refused.value)
+
+    def test_validate_when_config_default_is_a_priced_provider_id_then_starts(
+        self, monkeypatch, priced_config
+    ):
+        monkeypatch.setattr(
+            llm_factory, "_load_llm_config", lambda: {"model": _NOVA_ID}
+        )
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        validate_ai_daily_limit_setting()
+        assert configured_llm_names()["nova-2-lite"][-1] == (
+            "default model in config.json's application section"
+        )
+
+    def test_validate_when_config_default_unpriced_then_refuses_naming_it(
+        self, monkeypatch, priced_config
+    ):
+        monkeypatch.setattr(
+            llm_factory, "_load_llm_config", lambda: {"model": "Org/Raw-Model"}
+        )
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        with pytest.raises(ValueError, match="Org/Raw-Model .default model"):
+            validate_ai_daily_limit_setting()
 
     def test_configured_llm_names_when_keys_and_combo_stages_then_lists_where_set(
         self, monkeypatch
@@ -509,6 +558,67 @@ class TestCallsWithoutAnActivityId:
         usage = {"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50}
         assert not await record_daily_spend(usage=usage, session_factory=factory)
         assert factory.opened == 0
+
+    @pytest.mark.asyncio
+    async def test_record_daily_spend_when_limit_set_and_unpriced_then_logs_error(
+        self, monkeypatch, caplog
+    ):
+        from ui.backend.services.usage_recorder import record_daily_spend
+
+        monkeypatch.setenv(LIMIT_ENV, "25")
+        usage = {"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50}
+        with caplog.at_level(logging.ERROR, logger=limit_mod.__name__):
+            assert not await record_daily_spend(usage=usage, session_factory=_Factory())
+        (record,) = caplog.records
+        assert record.levelno == logging.ERROR
+        assert record.getMessage().startswith(UNPRICED_CALL_LOG)
+        assert "qwen2.5-7b-instruct" in record.getMessage()
+
+    @pytest.mark.asyncio
+    async def test_record_daily_spend_when_limit_unset_and_unpriced_then_no_error(
+        self, caplog
+    ):
+        from ui.backend.services.usage_recorder import record_daily_spend
+
+        usage = {"llm_model": "qwen2.5-7b-instruct", "prompt_tokens": 50}
+        with caplog.at_level(logging.ERROR, logger=limit_mod.__name__):
+            await record_daily_spend(usage=usage, session_factory=_Factory())
+        assert caplog.records == []
+
+    @pytest.mark.asyncio
+    async def test_summary_when_model_named_by_provider_id_then_its_price_is_added(
+        self, monkeypatch
+    ):
+        """The real summary stream, then the day's total, as the route runs them."""
+        from types import SimpleNamespace
+
+        import ui.backend.services.llm_service as llm_service
+        from ui.backend.services.usage_recorder import record_daily_spend
+
+        class _Handler:
+            usage_metadata = {_NOVA_ID: {"input_tokens": 1000, "output_tokens": 500}}
+
+        class _Llm:
+            async def astream(self, _messages, config=None):
+                yield SimpleNamespace(content="answer")
+
+        _use_config(monkeypatch, {"nova-2-lite": {"model": _NOVA_ID}})
+        monkeypatch.setattr(llm_service, "UsageMetadataCallbackHandler", _Handler)
+        monkeypatch.setattr(llm_service, "get_llm", lambda **_kwargs: _Llm())
+        usage = {}
+        async for item in llm_service.stream_ai_summary(
+            "q", [{"text": "a"}], model_key=_NOVA_ID
+        ):
+            if isinstance(item, dict):
+                usage = item
+        assert usage["llm_model"] == "nova-2-lite"
+
+        factory = _Factory()
+        assert await record_daily_spend(usage=usage, session_factory=factory)
+        (stmt,) = factory.session.statements
+        assert stmt.compile(dialect=postgresql.dialect()).params["cost_usd"] == (
+            _USAGE_COST
+        )
 
     def test_search_summary_without_search_id_then_counted_in_the_day(
         self, monkeypatch

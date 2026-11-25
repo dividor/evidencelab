@@ -911,11 +911,16 @@ async def _record_run_usage(
     from decimal import Decimal
 
     from ui.backend.services.usage_recorder import record_llm_usage
+    from utils.llm_factory import resolve_effective_model_key
 
     try:
         stats = run.summary_stats or {}
         usage = {
-            "llm_model": cfg.get("summary_model") or cfg.get("judge_model"),
+            # The supported_llms key, as each call's usage is labelled, even
+            # when the experiment names the model by its provider id.
+            "llm_model": resolve_effective_model_key(
+                cfg.get("summary_model") or cfg.get("judge_model")
+            ),
             "prompt_tokens": stats.get("prompt_tokens"),
             "completion_tokens": stats.get("completion_tokens"),
         }

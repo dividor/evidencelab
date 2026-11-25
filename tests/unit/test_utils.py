@@ -167,3 +167,95 @@ def test_get_llm_when_model_id_matches_supported_llm_then_its_provider_is_used(
     )
 
     assert llm.llm.provider == "featherless-ai"
+
+
+# ---------------------------------------------------------------------------
+# The supported_llms key a call's usage is labelled and priced by
+# ---------------------------------------------------------------------------
+
+_NOVA_ID = "us.amazon.nova-2-lite-v1:0"
+
+
+def _use_llms(monkeypatch, supported_llms, default_model=None):
+    """config.json's supported_llms, and its application default model."""
+    from pipeline.db import config as db_config
+
+    monkeypatch.setattr(db_config, "SUPPORTED_LLMS", supported_llms)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    llm_config = {"model": default_model} if default_model else {}
+    monkeypatch.setattr(llm_factory, "_load_llm_config", lambda: llm_config)
+
+
+_NOVA = {"nova-2-lite": {"model": _NOVA_ID, "provider": "aws_bedrock"}}
+
+
+def test_supported_llm_key_when_key_then_key(monkeypatch):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.supported_llm_key("nova-2-lite") == "nova-2-lite"
+
+
+def test_supported_llm_key_when_provider_model_id_then_its_key(monkeypatch):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.supported_llm_key(_NOVA_ID) == "nova-2-lite"
+
+
+def test_supported_llm_key_when_unlisted_then_none(monkeypatch):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.supported_llm_key("mystery-llm") is None
+
+
+def test_supported_llm_key_when_a_key_and_another_entrys_id_then_key_wins(
+    monkeypatch,
+):
+    _use_llms(
+        monkeypatch,
+        {"alias": {"model": "gpt-4.1-mini"}, "gpt-4.1-mini": {"model": "gpt-4.1"}},
+    )
+    assert llm_factory.supported_llm_key("gpt-4.1-mini") == "gpt-4.1-mini"
+
+
+def test_supported_llm_key_when_entries_share_an_id_then_first_wins(monkeypatch):
+    _use_llms(
+        monkeypatch, {"first": {"model": _NOVA_ID}, "second": {"model": _NOVA_ID}}
+    )
+    assert llm_factory.supported_llm_key(_NOVA_ID) == "first"
+
+
+def test_resolve_effective_model_key_when_provider_id_then_its_key(monkeypatch):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.resolve_effective_model_key(_NOVA_ID) == "nova-2-lite"
+
+
+def test_resolve_effective_model_key_when_unlisted_then_name_as_given(monkeypatch):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.resolve_effective_model_key("Org/Raw") == "Org/Raw"
+
+
+def test_resolve_effective_model_key_when_none_and_llm_model_id_then_its_key(
+    monkeypatch,
+):
+    _use_llms(monkeypatch, _NOVA)
+    monkeypatch.setenv("LLM_MODEL", _NOVA_ID)
+    assert llm_factory.resolve_effective_model_key(None) == "nova-2-lite"
+
+
+def test_resolve_effective_model_key_when_none_and_config_default_then_its_key(
+    monkeypatch,
+):
+    _use_llms(monkeypatch, _NOVA, default_model=_NOVA_ID)
+    assert llm_factory.resolve_effective_model_key(None) == "nova-2-lite"
+
+
+def test_resolve_effective_model_key_when_none_and_no_default_then_none(
+    monkeypatch,
+):
+    _use_llms(monkeypatch, _NOVA)
+    assert llm_factory.resolve_effective_model_key(None) is None
+
+
+def test_default_model_name_when_llm_model_and_config_default_then_env_wins(
+    monkeypatch,
+):
+    _use_llms(monkeypatch, _NOVA, default_model="gpt-4.1-mini")
+    monkeypatch.setenv("LLM_MODEL", "nova-2-lite")
+    assert llm_factory.default_model_name() == "nova-2-lite"

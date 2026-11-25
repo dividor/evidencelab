@@ -21,7 +21,9 @@ Semantics:
   mixed-model accumulation stays accurate; ``llm_model`` keeps the most
   recent model as a label.
 - Each call's cost is also added to its UTC day's total in ``ai_daily_spend``
-  (``ui.backend.services.ai_daily_limit``), in the same transaction.
+  (``ui.backend.services.ai_daily_limit``), in the same transaction. With the
+  daily limit set, a call that has no price is logged as an error, since the
+  day's total then leaves it out.
 - Recording is fire-and-forget by design (same contract as the activity
   routes' "non-critical" client logging and the MCP audit log): a
   failure to record usage must never break the user-facing call that
@@ -38,7 +40,7 @@ from sqlalchemy import select
 
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.models import UserActivity
-from ui.backend.services.ai_daily_limit import add_to_daily_spend
+from ui.backend.services.ai_daily_limit import add_to_daily_spend, report_unpriced_call
 from ui.backend.utils.llm_costs import compute_cost
 
 logger = logging.getLogger(__name__)
@@ -220,6 +222,8 @@ async def record_llm_usage(
     try:
         search_uuid = _coerce_search_id(search_id) or uuid.uuid4()
         cost = cost_usd if cost_usd is not None else usage_cost(usage)
+        if cost is None:
+            report_unpriced_call(usage.get("llm_model"))
         factory = session_factory or async_session_factory
         async with factory() as session:
             row = await _find_row(
@@ -267,6 +271,7 @@ async def record_daily_spend(
         return False
     cost = usage_cost(usage)
     if cost is None:
+        report_unpriced_call(usage.get("llm_model"))
         return False
     try:
         factory = session_factory or async_session_factory

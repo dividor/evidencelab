@@ -250,20 +250,51 @@ def _normalize_model_key(value: Any) -> Optional[str]:
     return None
 
 
-def resolve_effective_model_key(model: Optional[str]) -> Optional[str]:
-    """Return the model key a ``get_llm(model=...)`` call actually uses.
+def default_model_name() -> Optional[str]:
+    """The model a ``get_llm()`` call that names none uses.
 
-    Mirrors ``get_llm``'s own default resolution (explicit arg, then the
-    ``LLM_MODEL`` env var, then the configured default) so token-usage
-    recording can label calls with the real model even when the caller
-    passed ``model=None`` — without this, such usage rows carry no model
-    and can never be costed.
+    The ``LLM_MODEL`` env var, then the ``llm`` model in config.json's
+    ``application`` section (as ``get_llm`` reads them); None when neither
+    is set.
     """
-    if model:
-        return model
     return os.getenv("LLM_MODEL") or _normalize_model_key(
         _load_llm_config().get("model")
     )
+
+
+def supported_llm_key(name: str) -> Optional[str]:
+    """The ``supported_llms`` key that *name* stands for, or None.
+
+    *name* may be the key itself or the provider's model id from an entry
+    (``us.amazon.nova-2-lite-v1:0`` for ``nova-2-lite``). A key wins over a
+    model id, and of several entries with the same model id the first wins,
+    the same order ``get_llm`` resolves them in.
+    """
+    from pipeline.db import config as db_config
+
+    if name in db_config.SUPPORTED_LLMS:
+        return name
+    for key, entry in db_config.SUPPORTED_LLMS.items():
+        if entry.get("model") == name:
+            return key
+    return None
+
+
+def resolve_effective_model_key(model: Optional[str]) -> Optional[str]:
+    """Return the ``supported_llms`` key of the model a ``get_llm(model=...)``
+    call uses.
+
+    Usage is priced by this key (``ui.backend.utils.llm_costs``), so a call
+    is labelled with it however the caller named the model: by key, by the
+    provider's model id, or not at all (the default model, see
+    :func:`default_model_name`). A name config.json does not list is
+    returned as given, since that is the model ``get_llm`` then calls; it has
+    no price. None when no model is named and no default is set.
+    """
+    name = model or default_model_name()
+    if not name:
+        return None
+    return supported_llm_key(name) or name
 
 
 def _normalize_default_max_tokens(value: Any) -> int:
