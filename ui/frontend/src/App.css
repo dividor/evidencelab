@@ -4151,8 +4151,8 @@ h6,
   display: block;
   width: 100%;
   text-align: center;
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
+  /* Full strength: at 70% opacity on the summary's yellow it was 2.7:1. */
+  transition: color 0.2s ease;
 }
 
 .ai-key-facts-header {
@@ -4310,7 +4310,7 @@ li.ai-fact-active::before {
 }
 
 .ai-summary-expand-button:hover {
-  opacity: 1;
+  color: var(--brand-primary-dark);
 }
 
 /* Generating AI summary color sweep animation */
@@ -4384,7 +4384,7 @@ li.ai-fact-active::before {
   margin-top: var(--spacing-sm);
   padding-top: var(--spacing-sm);
   border-top: 1px solid var(--gray-200);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .ai-disclaimer {
@@ -4398,8 +4398,9 @@ li.ai-fact-active::before {
   color: var(--gray-500);
   cursor: pointer;
   text-decoration: underline;
-  padding: 0;
-  font-size: 0.6875rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  min-height: 24px;
 }
 
 .view-prompt-link:hover {
