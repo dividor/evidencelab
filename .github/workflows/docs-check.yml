@@ -64,6 +64,61 @@ jobs:
             --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"required":["needs_docs","covered","reason","missing","notes"],"properties":{"needs_docs":{"type":"boolean"},"covered":{"type":"boolean"},"reason":{"type":"string"},"missing":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["what","where"],"properties":{"what":{"type":"string"},"where":{"type":"string"}}}},"notes":{"type":"array","items":{"type":"string"}}}}'
 
+      # TEMPORARY, to be removed before merging: when the check fails, show why
+      # the model call failed without the action's full output. Prints the
+      # GitHub token's claims (not secret), the token exchange's status and
+      # error, and the status of a one-word model call. Tokens are masked.
+      - name: Diagnose the model sign-in (temporary)
+        if: always() && steps.check.outcome == 'failure'
+        env:
+          RULE: ${{ vars.AI_REVIEW_FEDERATION_RULE_ID }}
+          ORG: ${{ vars.AI_REVIEW_ORGANIZATION_ID }}
+          ACCOUNT: ${{ vars.AI_REVIEW_SERVICE_ACCOUNT_ID }}
+          WORKSPACE: ${{ vars.AI_REVIEW_WORKSPACE_ID }}
+        run: |
+          python3 - <<'EOF'
+          import base64, json, os, urllib.error, urllib.request
+
+          def call(url, body=None, headers=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(url, data=data, headers=headers or {})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as resp:
+                      return resp.status, json.loads(resp.read() or b"{}")
+              except urllib.error.HTTPError as err:
+                  return err.code, json.loads(err.read() or b"{}")
+
+          oidc_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=https://api.anthropic.com"
+          _, oidc = call(oidc_url, headers={"Authorization": "bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]})
+          jwt = oidc["value"]
+          print(f"::add-mask::{jwt}")
+          payload = jwt.split(".")[1]
+          claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+          print("GitHub token claims:", json.dumps({k: claims.get(k) for k in ("sub", "aud", "iss", "event_name", "ref", "environment", "repository")}))
+
+          status, body = call("https://api.anthropic.com/v1/oauth/token", {
+              "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+              "assertion": jwt,
+              "federation_rule_id": os.environ["RULE"],
+              "organization_id": os.environ["ORG"],
+              "service_account_id": os.environ["ACCOUNT"],
+              "workspace_id": os.environ["WORKSPACE"],
+          }, {"content-type": "application/json"})
+          token = body.get("access_token")
+          if token:
+              print(f"::add-mask::{token}")
+          print("Token exchange:", status, json.dumps({k: ("<redacted>" if k.endswith("token") else v) for k, v in body.items()}))
+          if not token:
+              raise SystemExit(0)
+
+          status, body = call("https://api.anthropic.com/v1/messages", {
+              "model": "claude-opus-5-5", "max_tokens": 16,
+              "messages": [{"role": "user", "content": "Reply with the word OK."}],
+          }, {"content-type": "application/json", "authorization": "Bearer " + token,
+              "anthropic-version": "2023-06-01"})
+          print("Model call:", status, json.dumps(body.get("error") or {"stop_reason": body.get("stop_reason")}))
+          EOF
+
       - name: Post the verdict and fail when docs are missing
         if: always() && steps.check.outcome != 'skipped'
         env:
