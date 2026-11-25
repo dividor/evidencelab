@@ -88,6 +88,24 @@ describe('buildCitationSequenceMap', () => {
     }
     expect(readingOrder).toEqual([1, 2, 3, 4, 5, 6, 7, 1, 8]);
   });
+  test('leaves numbering unchanged for models that cite in result order', () => {
+    // Models that cite their sources in result order (as the summary prompt's
+    // [1], [2], [3] example invites) must see exactly the numbers they saw
+    // before reading-order numbering: gaps closed, order kept.
+    const map = buildCitationSequenceMap(
+      'a [1] b [2] c [2, 4] d [7] e [4] f [9]',
+      makeResults(9),
+    );
+    expect([...map.entries()]).toEqual([
+      [1, 1],
+      [2, 2],
+      [4, 3],
+      [7, 4],
+      [9, 5],
+    ]);
+    const groups = buildGroupedReferences('a [1] b [2] c [2, 4] d [7]', makeResults(9));
+    expect(groups.map((g) => g.title)).toEqual(['Doc 1', 'Doc 2', 'Doc 4', 'Doc 7']);
+  });
   test('numbers a multi-citation marker in the order it is written', () => {
     const map = buildCitationSequenceMap('both [5, 2]', makeResults(5));
     expect(map.get(5)).toBe(1);
