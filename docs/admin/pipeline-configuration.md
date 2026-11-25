@@ -119,7 +119,7 @@ To use a model, list its key in the data source's `dense_models` before the firs
 |-------|------|-------------|
 | `model` | string | Full model identifier (e.g., `"gpt-4.1-mini"`, `"gemini-3.8-flash"`) |
 | `provider` | string | `"huggingface"`, `"azure_foundry"`, `"google_vertex"` or `"aws_bedrock"` |
-| `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"groq"`, `"together"`). Evidence Lab calls the router's OpenAI-compatible API with the model as `<model>:<provider>`. If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
+| `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"deepinfra"`, `"groq"`). Evidence Lab calls the router's OpenAI-compatible API with the model as `<model>:<provider>`. If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
 | `price_per_million` | object | Optional. US dollars per million tokens, `{"input": 0.8, "output": 3.2}`. Used to price the model's calls instead of Evidence Lab's built-in table (`ui/backend/utils/llm_costs.py`), so you can set the prices of your region or contract. |
 | `supports_temperature` | bool | Optional. `false` for a model that refuses a temperature (on Bedrock, Claude Sonnet 5.5 answers "`temperature` is deprecated for this model"): it is then called without one, and the **Response variability** setting doesn't apply to it. Default: `true`. |

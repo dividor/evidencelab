@@ -87,11 +87,13 @@ PROVIDER_COMBOS = [
     },
     {
         "name": "Huggingface",
-        "description": "Embedding: e5_large (local), LLM: Llama 3.3 70B (groq), Reranker: Jina",
+        "description": (
+            "Embedding: e5_large (local), LLM: Qwen3-Next 80B (deepinfra), Reranker: Jina"
+        ),
         "embedding_model": "e5_large",
         "dense_models": ["e5_large"],
         "summarize_dense": "e5_large",
-        "llm_model_id": "meta-llama/Llama-3.3-70B-Instruct",
+        "llm_model_id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
         "llm_provider": "huggingface",
         "reranker": "jinaai/jina-reranker-v2-base-multilingual",
         "required_env": ["HUGGINGFACE_API_KEY"],

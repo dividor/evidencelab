@@ -150,7 +150,7 @@ class TestEnsureDemoDatasource:
         assert ds["pipeline"]["index"]["dense_models"] == ["e5_large"]
         assert (
             ds["pipeline"]["summarize"]["llm_model"]["model"]
-            == "meta-llama/Llama-3.3-70B-Instruct"
+            == "Qwen/Qwen3-Next-80B-A3B-Instruct"
         )
         assert ds["pipeline"]["summarize"]["llm_model"]["provider"] == "huggingface"
 
