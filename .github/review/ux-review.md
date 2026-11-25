@@ -3,7 +3,10 @@
 Check that a change to the web app (`ui/frontend/src/`) looks right and works
 well on a phone and on a desktop: nothing runs off the edge, text is
 readable, controls are easy to use, and the screen follows good practice and
-this repository's UI rules.
+this repository's UI rules. The measured checks in
+`tests/integration/test_ui_layout.py` already fail the build on overflow, text
+under 12 px, serious accessibility violations, small or covered controls; this
+review is for what rules can't measure.
 
 The same review runs in two places:
 

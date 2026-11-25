@@ -147,6 +147,7 @@ python scripts/sync/db/sync_backup_to_remote.py \
 ### UI Style
 - **Never use side moustaches (left/side accent bars) on highlighted or active items** — e.g. `border-left` or inset box-shadow stripes on nav rows, list items, or cards. Indicate the active state with a background tint and/or type weight instead.
 - **Review every UI change on a phone and a desktop before opening the PR.** Follow `.github/review/ux-review.md`: open each changed screen at 390×844 and 1440×900, take screenshots, and fix what it finds. CI also runs the review on PRs that change `ui/frontend/src/` and comments its findings.
+- **`tests/integration/test_ui_layout.py` measures the main screens at 390×844 and 1440×900 and fails the build** on sideways overflow or content cut off at the left edge, visible text under 12 px, axe-core serious or critical violations (contrast below WCAG AA, controls without names), controls under 24×24 px (WCAG 2.2 AA 2.5.8), and controls another element covers. Fix what it finds; never exempt an element or loosen a threshold. To run it against your own dev server: `UI_BASE_URL=http://localhost:3000 pytest --noconftest tests/integration/test_ui_layout.py` (the integration conftest otherwise insists on CI's Docker addresses).
 
 ### Code Quality
 - **NEVER use `noqa`, `type: ignore`, or similar suppressions to bypass pre-commit hooks or linters.** Fix the actual issue instead. Only use suppressions if explicitly requested by the user.

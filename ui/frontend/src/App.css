@@ -20,8 +20,10 @@
      ============================================ */
 
   /* Primary Brand Colors */
-  --brand-primary: #5B8FA8;
-  --brand-primary-dark: #4A7490;
+  /* Dark enough for WCAG AA (4.5:1): text in it on the light backgrounds, and
+     white text on it, are readable. #5B8FA8 was 3.4:1. */
+  --brand-primary: #4B778D;
+  --brand-primary-dark: #3F637B;
   --brand-primary-light: #7AA8BE;
 
   /* Accent Colors */
@@ -34,8 +36,9 @@
 
   /* Neutrals */
   --brand-text-primary: #2C3E50;
-  --brand-text-secondary: #6B7876;
-  --brand-text-tertiary: #8C9A97;
+  /* Both meet WCAG AA (4.5:1) on --brand-background and --brand-surface. */
+  --brand-text-secondary: #5C6766;
+  --brand-text-tertiary: #667471;
   --brand-border: #D1D9D7;
   --brand-border-light: #E8ECEB;
   --brand-background: #fafbfc;
@@ -795,8 +798,12 @@ h6,
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.375rem;
   padding: 0;
+  /* Easy to tap: the icon alone shows on phones. */
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
@@ -1609,7 +1616,7 @@ h6,
 
 .header-label-subtitle {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-style: italic;
   font-weight: 400;
   color: var(--gray-400);
@@ -1637,6 +1644,8 @@ h6,
   justify-content: center;
   font-weight: 400;
   opacity: 0.5;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 .filter-icon-button svg {
@@ -1644,20 +1653,16 @@ h6,
   height: 12px;
 }
 
-.sort-icon-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  line-height: 0.5;
+/* Two triangles, drawn rather than typed, so they keep their shape and gap. */
+.sort-icon {
+  display: block;
 }
 
 .chevron-up,
 .chevron-down {
-  display: block;
+  fill: currentColor;
   color: var(--gray-400);
   transition: color 0.15s;
-  font-weight: 400;
-  font-size: 9px;
 }
 
 .chevron-up.active,
@@ -4809,6 +4814,22 @@ li.ai-fact-active::before {
   color: var(--gray-400);
 }
 
+/* On narrow screens the footer's links wrap onto more lines, each link whole,
+   clear of the corner where the feedback button floats (48 px, 24 px from the
+   corner), so it never covers a link. */
+@media (max-width: 768px) {
+  .app-footer {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+    padding-right: 5.25rem;
+  }
+
+  .app-footer a,
+  .app-footer-link {
+    white-space: nowrap;
+  }
+}
+
 .prompt-text {
   background: var(--gray-50);
   padding: var(--spacing-md);
@@ -4955,7 +4976,7 @@ li.ai-fact-active::before {
 }
 
 .docs-nav-folder-arrow {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   width: 1rem;
   text-align: center;
   color: var(--gray-400);
@@ -6915,7 +6936,7 @@ li.ai-fact-active::before {
   }
 
   .dropdown-label {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 
   .dataset-total {
@@ -8063,7 +8084,7 @@ li.ai-fact-active::before {
 
 .heatmap-query-tuning-chevron {
   display: inline-block;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   transition: transform 0.2s ease;
 }
 
@@ -11360,7 +11381,7 @@ a.admin-citation-clickable:hover {
 }
 
 .chat-input-hint {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--brand-text-tertiary);
 }
 
@@ -11395,7 +11416,7 @@ a.admin-citation-clickable:hover {
   align-items: center;
   gap: 0.25rem;
   color: var(--brand-text-tertiary);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   cursor: pointer;
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
@@ -12311,11 +12332,11 @@ a.admin-citation-clickable:hover {
 }
 /* Emphasise the latest run. */
 .testing-run--latest {
-  border-color: var(--brand-primary, #5b8fa8);
+  border-color: var(--brand-primary, #4b778d);
   box-shadow: 0 1px 5px rgba(91, 143, 168, 0.2);
 }
 .testing-run--latest .testing-run-header {
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
 }
 .testing-run-header {
   display: flex;
@@ -12485,7 +12506,7 @@ a.admin-citation-clickable:hover {
 }
 .testing-run-progress-pct {
   font-weight: 600;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
 }
 .testing-run-progress-track {
   height: 6px;
@@ -12496,7 +12517,7 @@ a.admin-citation-clickable:hover {
 .testing-run-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--brand-primary, #5b8fa8);
+  background: var(--brand-primary, #4b778d);
   transition: width 0.3s ease;
 }
 /* Compact "k/N cases" shown in the run header while it is running. */
@@ -12521,7 +12542,7 @@ a.admin-citation-clickable:hover {
   line-height: 1.5;
   background: var(--color-surface, #fff);
   border: 1px solid var(--color-border, #d0d7de);
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
   border-radius: 4px;
   padding: 0.6rem 0.75rem;
 }
@@ -12633,7 +12654,7 @@ a.admin-citation-clickable:hover {
   line-height: 1.45;
   background: var(--color-surface-alt, #f6f8fa);
   border: 1px solid var(--color-border, #d0d7de);
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
   border-radius: 4px;
   padding: 0.45rem 0.6rem;
 }
@@ -12645,7 +12666,7 @@ a.admin-citation-clickable:hover {
   padding: 0;
   font: inherit;
   font-size: 0.8rem;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -12913,7 +12934,7 @@ a.admin-citation-clickable:hover {
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--brand-primary, #5b8fa8);
+  border-color: var(--brand-primary, #4b778d);
   box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.15);
 }
 
@@ -13233,7 +13254,7 @@ button.doc-link:hover {
   background: none;
   padding: 0;
   font: inherit;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
   cursor: pointer;
   text-decoration: underline;
   /* Inside a column-flex label the button would stretch to full width and

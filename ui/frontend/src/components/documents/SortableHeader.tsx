@@ -43,10 +43,10 @@ export const SortableHeader: React.FC<SortableHeaderProps> = ({
             className="sort-icon-button"
             aria-label={`Sort by ${label.toLowerCase()}`}
           >
-            <span className="sort-icon-stack">
-              <span className={`chevron-up ${isSortedAsc ? 'active' : ''}`}>▲</span>
-              <span className={`chevron-down ${isSortedDesc ? 'active' : ''}`}>▼</span>
-            </span>
+            <svg className="sort-icon" width="10" height="14" viewBox="0 0 10 14" aria-hidden="true">
+              <path className={`chevron-up ${isSortedAsc ? 'active' : ''}`} d="M5 0 10 6H0Z" />
+              <path className={`chevron-down ${isSortedDesc ? 'active' : ''}`} d="M0 8h10l-5 6Z" />
+            </svg>
           </button>
           {filterable && (
             <button
