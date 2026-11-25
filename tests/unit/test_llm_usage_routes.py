@@ -18,10 +18,12 @@ from ui.backend.routes.llm_usage import (
     _ANONYMOUS_LABEL,
     _BUCKETS,
     _DEFAULT_RANGE_DAYS,
+    _FOOTPRINT_COLUMNS,
     _GROUP_BYS,
     _NO_GROUP_LABEL,
     _SORT_KEYS,
     _VALID_ACTIVITY_TYPES,
+    _basis_text,
     _build_group_grouped_sql,
     _build_user_grouped_sql,
     _resolve_date_range,
@@ -30,6 +32,7 @@ from ui.backend.routes.llm_usage import (
     _validate_bucket,
     _validate_group_by,
     compute_totals,
+    llm_usage_summary,
     sort_rows,
 )
 
@@ -193,6 +196,9 @@ class TestRowToDict:
             "completion_tokens": 567,
             "total_tokens": 1801,
             "cost_usd": Decimal("0.001500"),
+            **{column: None for column in _FOOTPRINT_COLUMNS},
+            "footprint_unestimated_tokens": 0,
+            "footprint_bases": None,
         }
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
@@ -206,6 +212,8 @@ class TestRowToDict:
         assert out["completion_tokens"] == 567
         assert out["total_tokens"] == 1801
         assert out["cost_usd"] == "0.001500"
+        assert all(out[c] is None for c in _FOOTPRINT_COLUMNS)
+        assert out["footprint_unestimated_tokens"] == 0
 
     def test_date_input_renders_as_iso(self):
         """Postgres date_trunc may yield a date, not a datetime, in some setups."""
@@ -242,6 +250,9 @@ class TestComputeTotals:
             "completion_tokens": 0,
             "total_tokens": 0,
             "cost_usd": "0.000000",
+            **{column: None for column in _FOOTPRINT_COLUMNS},
+            "footprint_unestimated_tokens": 0,
+            "footprint_basis": [],
         }
         defaults.update(overrides)
         return defaults
@@ -366,6 +377,9 @@ def test_sort_keys_match_response_columns():
         "completion_tokens",
         "total_tokens",
         "cost_usd",
+        "energy_kwh_max",
+        "gwp_kgco2eq_max",
+        "water_l_max",
     }
     assert _SORT_KEYS == response_columns
 
@@ -377,3 +391,177 @@ def test_sort_keys_match_response_columns():
 # preserve that property; live-DB assertions belong in
 # ``tests/integration/`` against a seeded fixture so the expected
 # results are stable across runs even as new activity is logged.
+
+
+# ---------------------------------------------------------------------------
+# Estimated footprint (migration 0042) and the pipeline's own line
+# ---------------------------------------------------------------------------
+
+
+class TestFootprintRollup:
+    @staticmethod
+    def _row(**overrides):
+        row = TestComputeTotals._row()
+        row.update(overrides)
+        return row
+
+    def test_row_carries_sums_as_floats(self):
+        estimated = TestRowToDict()._row(
+            energy_kwh_min=Decimal("0.0001"),
+            energy_kwh_max=Decimal("0.0003"),
+            footprint_unestimated_tokens=40,
+        )
+        out = _row_to_dict(estimated)
+        assert (out["energy_kwh_min"], out["energy_kwh_max"]) == (0.0001, 0.0003)
+        assert isinstance(out["energy_kwh_min"], float)
+        assert out["footprint_unestimated_tokens"] == 40
+
+    def test_totals_sum_the_estimates_and_unestimated_tokens(self):
+        rows = [
+            self._row(
+                energy_kwh_min=1.0, energy_kwh_max=2.0, footprint_unestimated_tokens=5
+            ),
+            self._row(
+                energy_kwh_min=0.5, energy_kwh_max=1.0, footprint_unestimated_tokens=7
+            ),
+            self._row(),  # no estimate: left out of the sums, not counted as 0
+        ]
+        t = compute_totals(rows)
+        assert (t["energy_kwh_min"], t["energy_kwh_max"]) == (1.5, 3.0)
+        assert t["footprint_unestimated_tokens"] == 12
+        assert t["water_l_min"] is None
+
+    def test_sorting_puts_rows_with_no_estimate_last(self):
+        rows = [
+            self._row(group_label="none"),
+            self._row(group_label="small", gwp_kgco2eq_max=0.1),
+            self._row(group_label="big", gwp_kgco2eq_max=0.9),
+        ]
+        desc = [r["group_label"] for r in sort_rows(rows, "gwp_kgco2eq_max", "desc")]
+        assert desc == ["big", "small", "none"]
+
+    @pytest.mark.parametrize(
+        "builder", [_build_user_grouped_sql, _build_group_grouped_sql]
+    )
+    def test_both_groupings_sum_the_footprint_and_give_pipeline_its_own_line(
+        self, builder
+    ):
+        sql = builder("week", None)
+        for column in _FOOTPRINT_COLUMNS:
+            assert f"AS {column}" in sql
+        assert "AS footprint_unestimated_tokens" in sql
+        assert "AS footprint_bases" in sql
+        # Ingestion has no user or group: its rows get their own line.
+        assert "'(pipeline)'" in sql
+        assert "filters->>'type', '') = 'pipeline'" in sql
+
+
+class TestFootprintBasis:
+    """Every row says what its figures rest on, and flags assumptions."""
+
+    def test_row_merges_its_bases_per_model_most_tokens_first(self):
+        row = TestRowToDict()._row(
+            footprint_bases=[
+                {"haiku-4.5": 100},
+                {"nova-2-lite": 300, "haiku-4.5": 50},
+                {"nova-2-lite": 200},
+            ]
+        )
+        basis = _row_to_dict(row)["footprint_basis"]
+        assert [(b["model"], b["output_tokens"]) for b in basis] == [
+            ("nova-2-lite", 500),
+            ("haiku-4.5", 150),
+        ]
+        nova, haiku = basis
+        assert nova["assumed"] is True
+        assert "Amazon doesn't publish how big Nova 2 Lite is" in nova["assumption"]
+        assert "anthropic/claude-haiku-4-5" in nova["ecologits_models"]
+        assert haiku["assumed"] is False
+        assert haiku["assumption"] is None
+        assert haiku["ecologits_models"] == ["anthropic/claude-haiku-4-5"]
+
+    def test_row_without_estimates_has_an_empty_basis(self):
+        assert _row_to_dict(TestRowToDict()._row())["footprint_basis"] == []
+
+    def test_totals_merge_the_rows_bases(self):
+        rows = [
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"nova-pro": 40}])),
+            _row_to_dict(
+                TestRowToDict()._row(footprint_bases=[{"nova-pro": 60, "haiku-4.5": 5}])
+            ),
+        ]
+        totals = compute_totals(rows)
+        assert [
+            (b["model"], b["output_tokens"]) for b in totals["footprint_basis"]
+        ] == [
+            ("nova-pro", 100),
+            ("haiku-4.5", 5),
+        ]
+
+    def test_export_spells_out_the_basis(self):
+        basis = _row_to_dict(
+            TestRowToDict()._row(footprint_bases=[{"nova-2-lite": 30, "haiku-4.5": 10}])
+        )["footprint_basis"]
+        text = _basis_text(basis)
+        assert text.startswith(
+            "nova-2-lite: 30 output tokens, assumed (Amazon doesn't publish"
+        )
+        assert (
+            "haiku-4.5: 10 output tokens, EcoLogits: anthropic/claude-haiku-4-5" in text
+        )
+
+
+@pytest.mark.unit
+class TestSummaryFootprintSources:
+    """The summary carries each shown model's sources once, for the pop-up."""
+
+    @pytest.mark.asyncio
+    async def test_summary_lists_sources_for_each_model_in_the_totals(
+        self, monkeypatch
+    ):
+        rows = [
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"nova-2-lite": 30}])),
+            _row_to_dict(TestRowToDict()._row(footprint_bases=[{"haiku-4.5": 10}])),
+        ]
+
+        async def fake_rows(*_args, **_kwargs):
+            return rows
+
+        monkeypatch.setattr("ui.backend.routes.llm_usage._fetch_usage_rows", fake_rows)
+        result = await llm_usage_summary(
+            bucket="week",
+            group_by="user",
+            from_date=date(2026, 11, 1),
+            to_date=date(2026, 11, 30),
+            activity_type=None,
+            sort_by="bucket_start",
+            order="desc",
+            _admin=None,
+            session=None,
+        )
+        sources = result["footprint_sources"]
+        assert [s["model"] for s in sources] == ["nova-2-lite", "haiku-4.5"]
+        nova = sources[0]
+        assert nova["assumed"] is True
+        assert nova["citations"]
+        assert len(nova["models"]) > 1
+        assert result["footprint_method"]["name"] == "EcoLogits"
+
+    @pytest.mark.asyncio
+    async def test_summary_without_estimates_has_no_sources(self, monkeypatch):
+        async def fake_rows(*_args, **_kwargs):
+            return [_row_to_dict(TestRowToDict()._row())]
+
+        monkeypatch.setattr("ui.backend.routes.llm_usage._fetch_usage_rows", fake_rows)
+        result = await llm_usage_summary(
+            bucket="week",
+            group_by="user",
+            from_date=date(2026, 11, 1),
+            to_date=date(2026, 11, 30),
+            activity_type=None,
+            sort_by="bucket_start",
+            order="desc",
+            _admin=None,
+            session=None,
+        )
+        assert result["footprint_sources"] == []
