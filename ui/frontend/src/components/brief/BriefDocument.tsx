@@ -101,21 +101,63 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
   return target ? `Target: about ${target} words` : 'No length target';
 };
 
+const UNMATCHED_FLASH_MS = 1600;
+
 // Citations of the section the API could not match to a source: the agent
 // cited a number it never returned, or returned a record without a chunk id.
-// They stay visible in the text as `[?n]` and are listed in the section Log.
-export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarker[] }> = ({
-  unresolved,
-}) => {
+// The text shows each as a red `?n` badge (UnmatchedCitation); this header
+// names them, and clicking one scrolls to it in the section, stepping through
+// its uses on each click.
+export const UnresolvedCitationsWarning: React.FC<{
+  unresolved?: UnresolvedMarker[];
+  // The section has a log (Section History) holding the run's original output.
+  canOpenLog?: boolean;
+  onOpenLog?: () => void;
+}> = ({ unresolved, canOpenLog, onOpenLog }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const visits = useRef<Map<number, number>>(new Map());
   if (!unresolved || !unresolved.length) return null;
-  const markers = unresolved.map((u) => `[?${u.n}]`).join(', ');
   const noChunk = unresolved.some((u) => u.reason === 'no-chunk-id');
+  const jumpTo = (n: number) => {
+    const section = ref.current?.closest('.brief-doc-section');
+    const marks = Array.from(
+      section?.querySelectorAll<HTMLElement>(`.citation-unmatched[data-unmatched="${n}"]`) ?? [],
+    );
+    if (!marks.length) return;
+    const visit = visits.current.get(n) ?? 0;
+    const mark = marks[visit % marks.length];
+    visits.current.set(n, visit + 1);
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    mark.classList.add('citation-unmatched-flash');
+    window.setTimeout(() => mark.classList.remove('citation-unmatched-flash'), UNMATCHED_FLASH_MS);
+  };
   return (
-    <div className="brief-section-warning" role="status">
-      {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
-      could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
-      {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
-      number it never returned. Open Section History to see the original output.
+    <div className="brief-unmatched-warning" role="status" ref={ref}>
+      <span className="brief-unmatched-title">
+        {unresolved.length === 1 ? '1 citation has' : `${unresolved.length} citations have`} no source
+      </span>
+      {unresolved.map((u) => (
+        <button
+          key={u.n}
+          type="button"
+          className="citation-unmatched citation-unmatched-chip"
+          onClick={() => jumpTo(u.n)}
+          title={`Show where [?${u.n}] is cited`}
+        >
+          ?{u.n}
+        </button>
+      ))}
+      <span className="brief-unmatched-detail">
+        The research agent cited {unresolved.length === 1 ? 'a number' : 'numbers'} it was never
+        given{noChunk ? ', or a source with no chunk id' : ''}.{' '}
+        {canOpenLog && onOpenLog ? (
+          <button type="button" className="brief-unmatched-log" onClick={onOpenLog}>
+            See its original output
+          </button>
+        ) : (
+          'Section History has its original output.'
+        )}
+      </span>
     </div>
   );
 };
@@ -621,7 +663,13 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
-      {isDone && <UnresolvedCitationsWarning unresolved={section.unresolved} />}
+      {isDone && (
+        <UnresolvedCitationsWarning
+          unresolved={section.unresolved}
+          canOpenLog={showLog}
+          onOpenLog={() => setLogOpen(true)}
+        />
+      )}
 
       {aiPanel && (
         <AiInstructionPanel
