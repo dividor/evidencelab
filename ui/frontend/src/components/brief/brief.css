@@ -696,6 +696,10 @@
 }
 .brief-doc-section-title {
   flex: 1;
+  /* An input won't shrink below its natural width (about 20 characters in the
+     heading font) unless told to: on a phone that pushed the row, and the
+     page, wider than the screen. */
+  min-width: 0;
   border: none;
   border-bottom: 1px solid transparent;
   background: none;
@@ -901,11 +905,20 @@
 
 .brief-doc-content {
   font-size: 15.5px;
+  /* Long addresses and words in AI-written text break instead of widening the page. */
+  overflow-wrap: anywhere;
   color: var(--brand-text-primary);
   line-height: 1.72;
 }
 .brief-doc-content p {
   margin: 0 0 14px;
+}
+/* Lists in the text: room for their numbers and bullets inside the column
+   (as in AI summaries), not hanging past its edge. */
+.brief-doc-content ul,
+.brief-doc-content ol {
+  margin: 0 0 14px;
+  padding-left: 1.5em;
 }
 .brief-doc-content sup {
   color: var(--brand-primary);
@@ -972,7 +985,7 @@
   cursor: pointer;
   padding: 10px 14px;
   font-family: var(--font-heading);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   line-height: 1;
@@ -1214,7 +1227,7 @@
   border-bottom: 1px solid var(--brand-border-light);
 }
 .brief-history-selected-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1286,7 +1299,7 @@
 }
 .brief-history-item-meta {
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--brand-text-tertiary);
 }
 .brief-history-del {
@@ -1384,7 +1397,7 @@
   margin-bottom: 10px;
 }
 .brief-toc-head-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2498,7 +2511,8 @@
 @media (max-width: 1024px) {
   /* Comment rail stacks under the document rather than squeezing it. */
   .brief-builder:has(.brief-comments-rail) {
-    grid-template-columns: 1fr;
+    /* minmax(0, ...): a long word can't widen the column past the screen. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .brief-modal-overlay {
@@ -2516,13 +2530,20 @@
   }
 
   .brief-builder {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .brief-rail {
     position: static;
     max-height: none;
     order: 2;
+  }
+
+  /* Stacked under the brief, the history fits its rows (up to the same 360 px)
+     instead of keeping a fixed block of empty space. */
+  .brief-history-list {
+    height: auto;
+    max-height: 360px;
   }
 
   /* Contents stays above the document on small screens for quick navigation. */
@@ -2729,6 +2750,8 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* The whole label ticks the box: at least 24 px tall to tap (WCAG 2.5.8). */
+  min-height: 24px;
   font-size: 13px;
   color: var(--brand-text-secondary);
   cursor: pointer;

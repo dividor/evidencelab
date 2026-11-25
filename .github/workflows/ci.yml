@@ -309,6 +309,16 @@ jobs:
     runs-on: ubuntu-latest
     needs: [tests, ui-tests]
     environment: ENV1
+    outputs:
+      ux_verdict: ${{ steps.ux.outputs.structured_output }}
+    # The UX review at the end of this job comments on the pull request and
+    # reports its own "UX review" check, and signs in to the model with the
+    # job's OIDC token (id-token); the rest of the job only reads.
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+      id-token: write
     env:
       API_BASE_URL: ${{ vars.API_BASE_URL }}
       UI_BASE_URL: ${{ vars.UI_BASE_URL }}
@@ -335,7 +345,11 @@ jobs:
       KEY_ENCRYPTION_KEY: ${{ secrets.KEY_ENCRYPTION_KEY }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
     steps:
+      # Two commits deep, so the UX review can see this pull request's change
+      # (`git diff HEAD^1 HEAD` on the pull request merged into its base).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       - name: Free disk space
         run: |
@@ -454,6 +468,103 @@ jobs:
         run: |
           docker compose exec -T pipeline /bin/bash -lc "API_BASE_URL=http://api:8000 UI_BASE_URL=http://ui:3000 pytest tests/integration/test_translation_integration.py -v -s"
 
+      # UX review of pull requests that change the web app, on the stack the
+      # tests above ran against. A model follows .github/review/ux-review.md,
+      # opening the changed screens at phone and desktop size in a headless
+      # Chrome through Playwright MCP. scripts/ci/review_comment.py posts its
+      # findings on the pull request and reports them as a separate "UX review"
+      # check; none of these steps can fail this job.
+      - name: Find web app changes
+        id: ui-changes
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet HEAD^1 HEAD -- ui/frontend/src; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js for the UX review
+        if: steps.ui-changes.outputs.changed == 'true'
+        continue-on-error: true
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Install the UX review's browser tool
+        id: ux-tool
+        if: steps.ui-changes.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          google-chrome --version
+          npm ci --prefix .github/review/ux --ignore-scripts --no-audit --no-fund
+
+      # A realistic saved brief (scripts/ci/saved_brief.py), built through the API
+      # as the Brief tab builds one, for the review to open.
+      - name: Build a saved brief for the UX review
+        if: steps.ui-changes.outputs.changed == 'true' && steps.ux-tool.outcome == 'success'
+        continue-on-error: true
+        run: |
+          docker compose exec -T pipeline /bin/bash -lc "python -m scripts.ci.saved_brief --api-url http://api:8000 --out ux-review/saved-brief.json"
+        working-directory: ${{ github.workspace }}
+
+      - name: UX review
+        id: ux
+        if: steps.ui-changes.outputs.changed == 'true' && steps.ux-tool.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 30
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          # Workload identity federation: the job's GitHub OIDC token is
+          # exchanged for a short-lived token, so no API key is stored.
+          anthropic_federation_rule_id: ${{ vars.AI_REVIEW_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.AI_REVIEW_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.AI_REVIEW_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.AI_REVIEW_WORKSPACE_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Run the UX review in .github/review/ux-review.md on this pull request,
+            following it exactly. The change is `git diff HEAD^1 HEAD`: the checkout is
+            the pull request merged into its base. The web app is running at
+            http://localhost:3000 with the integration tests' data; use the playwright
+            tools to open it, resize the window, and take screenshots. Give every
+            screenshot a file name of the form <screen>-<state>-<width>.png.
+            If the change touches the Brief, review a saved brief as well. The file
+            ux-review/saved-brief.json holds one. On http://localhost:3000, run
+            localStorage.setItem('evidencelab_brief_history_v1', JSON.stringify([<the
+            file's JSON>])) with the evaluate tool, reload, open the Brief tab, choose
+            "Load a saved brief" and then "School meals: what the evaluations show".
+            Read only; change nothing. Answer with the structured output.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 120
+            --mcp-config .github/review/ux/mcp.json
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*),mcp__playwright"
+            --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","screens","findings"],"properties":{"verdict":{"type":"string","enum":["looks good","needs changes","could not review"]},"summary":{"type":"string"},"screens":{"type":"array","items":{"type":"string"}},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","where","what","fix"],"properties":{"severity":{"type":"string","enum":["must fix","should fix","nit"]},"where":{"type":"string"},"what":{"type":"string"},"fix":{"type":"string"}}}}}}'
+
+      - name: Keep the UX review's screenshots
+        if: always() && steps.ui-changes.outputs.changed == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ux-review-screenshots
+          path: ux-review-screenshots/
+          if-no-files-found: warn
+
+      - name: Post the UX review
+        if: always() && steps.ui-changes.outputs.changed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT: ${{ steps.ux.outputs.structured_output }}
+          REVIEW_OUTCOME: ${{ steps.ux.outcome }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/ci/review_comment.py ux
+
       # When a step above fails, print what the services said, so the cause is
       # in the job's log: each container's state, and the last lines of the
       # services the tests depend on (the embedding server's start included).
@@ -463,6 +574,71 @@ jobs:
           docker compose ps -a
           docker compose logs --no-color --timestamps --tail=200 embedding-server api pipeline mcp
         working-directory: ${{ github.workspace }}
+
+  ux-fix:
+    # After a UX review with findings, the model fixes them on the pull
+    # request's branch and scripts/ci/fix_pr.py opens the fix as a pull request
+    # into that branch, for its author to review and merge. Its own job, so the
+    # job that runs the pull request's code never holds write access.
+    needs: integration-tests
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      needs.integration-tests.outputs.ux_verdict != '' &&
+      toJSON(fromJSON(needs.integration-tests.outputs.ux_verdict).findings) != '[]' &&
+      !startsWith(github.head_ref, 'docs-fix/') &&
+      !startsWith(github.head_ref, 'ux-fix/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # contents and pull-requests: the fix branch and its pull request.
+    # id-token: signing in to the model.
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Fix the UX review's findings
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          anthropic_federation_rule_id: ${{ vars.AI_REVIEW_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.AI_REVIEW_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.AI_REVIEW_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.AI_REVIEW_WORKSPACE_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            The UX review (.github/review/ux-review.md) of this pull request found
+            these problems in the web app:
+
+            ${{ needs.integration-tests.outputs.ux_verdict }}
+
+            Fix each finding, with the smallest change that does it, in the component
+            or CSS file it names where it names one. The pull request's change is
+            `git diff origin/${{ github.base_ref }}...HEAD`. Follow the UI rules in
+            CLAUDE.md and .github/review/ux-review.md: use the app's existing colour
+            variables and components, keep text at 12 px or more and controls at 24 px
+            or more, and change nothing the findings don't ask for. Change only files
+            under ui/frontend/src/, and don't commit.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "NotebookEdit,WebFetch,WebSearch"
+
+      - name: Open the fix pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT: ${{ needs.integration-tests.outputs.ux_verdict }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/ci/fix_pr.py ux
 
   terraform:
     # Checks the cloud deployment templates: formatting, validity, and the

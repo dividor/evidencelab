@@ -71,8 +71,13 @@ export const SearchBox = ({
                   className="search-input"
                 />
                 {onShowFilters && (
-                  <button type="button" className="search-input-filters" onClick={onShowFilters}>
-                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <button
+                    type="button"
+                    className="search-input-filters"
+                    onClick={onShowFilters}
+                    aria-label="Filters"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                       <path d="M1 3h14M4 8h8M6 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                     </svg>
                     <span className="search-input-filters-label">Filters</span>

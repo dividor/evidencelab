@@ -1,0 +1,145 @@
+name: Docs check
+
+# Checks that a pull request which changes something users or administrators
+# see also updates the online docs in docs/. The rules are in
+# .github/review/docs-check.md, the same checklist contributors follow before
+# opening a pull request. The model's answer is a fixed JSON verdict; this
+# workflow posts it as one comment on the pull request and fails the check when
+# docs are missing. Then docs-fix has the model write the missing docs and
+# opens them as a pull request into the reviewed pull request's branch, for its
+# author to review and merge (scripts/ci/fix_pr.py).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  docs-check:
+    # Fork pull requests and Dependabot get no repository secrets, so the check
+    # can't run there; drafts are checked once they are ready for review.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      verdict: ${{ steps.check.outputs.structured_output }}
+    # pull-requests: the verdict comment. id-token: signing in to the model
+    # with the job's OIDC token (workload identity federation).
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      # The pull request merged into its base: HEAD^1 is the base, so
+      # `git diff HEAD^1 HEAD` is exactly this pull request's change.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - name: Check the docs
+        id: check
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          # Workload identity federation: the job's GitHub OIDC token is
+          # exchanged for a short-lived token, so no API key is stored.
+          anthropic_federation_rule_id: ${{ vars.AI_REVIEW_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.AI_REVIEW_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.AI_REVIEW_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.AI_REVIEW_WORKSPACE_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Run the docs check in .github/review/docs-check.md on this pull request,
+            following it exactly. The change is `git diff HEAD^1 HEAD`: the checkout is
+            the pull request merged into its base, so the files on disk are the state
+            after the change. Read only; change nothing. Answer with the structured output.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
+            --json-schema '{"type":"object","additionalProperties":false,"required":["needs_docs","covered","reason","missing","notes"],"properties":{"needs_docs":{"type":"boolean"},"covered":{"type":"boolean"},"reason":{"type":"string"},"missing":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["what","where"],"properties":{"what":{"type":"string"},"where":{"type":"string"}}}},"notes":{"type":"array","items":{"type":"string"}}}}'
+
+      - name: Post the verdict and fail when docs are missing
+        if: always() && steps.check.outcome != 'skipped'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT: ${{ steps.check.outputs.structured_output }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/ci/review_comment.py docs
+
+  docs-fix:
+    # Only after a verdict that docs are missing, and never on a fix pull
+    # request itself.
+    needs: docs-check
+    if: >-
+      always() &&
+      needs.docs-check.outputs.verdict != '' &&
+      fromJSON(needs.docs-check.outputs.verdict).needs_docs &&
+      !fromJSON(needs.docs-check.outputs.verdict).covered &&
+      !startsWith(github.head_ref, 'docs-fix/') &&
+      !startsWith(github.head_ref, 'ux-fix/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # contents and pull-requests: the fix branch and its pull request.
+    # id-token: signing in to the model.
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      # The pull request's own branch, with its base, so the model can read the
+      # change and the fix goes on top of it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Write the missing docs
+        uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
+        with:
+          anthropic_federation_rule_id: ${{ vars.AI_REVIEW_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.AI_REVIEW_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.AI_REVIEW_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.AI_REVIEW_WORKSPACE_ID }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            The docs check (.github/review/docs-check.md) found that this pull request
+            changes things users or administrators see without documenting them. Its
+            verdict:
+
+            ${{ needs.docs-check.outputs.verdict }}
+
+            Write exactly what it lists as missing, in the pages it names. The pull
+            request's change is `git diff origin/${{ github.base_ref }}...HEAD`; read
+            the code so the docs describe what it really does. Follow the
+            Documentation rules in CLAUDE.md: links relative to the markdown file, and
+            a new page goes in docs/docs.json. Match the style of the page you add to.
+            Change only files under docs/, and don't commit.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 60
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(git diff:*),Bash(git log:*),Bash(git show:*)"
+            --disallowedTools "NotebookEdit,WebFetch,WebSearch"
+
+      - name: Open the fix pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERDICT: ${{ needs.docs-check.outputs.verdict }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 scripts/ci/fix_pr.py docs
