@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "node",
+      "args": [
+        "${GITHUB_WORKSPACE}/.github/review/ux/node_modules/@playwright/mcp/cli.js",
+        "--headless",
+        "--browser",
+        "chrome",
+        "--isolated",
+        "--allowed-origins",
+        "http://localhost:3000",
+        "--viewport-size",
+        "1440x900",
+        "--image-responses",
+        "allow",
+        "--output-dir",
+        "${GITHUB_WORKSPACE}/ux-review-screenshots"
+      ]
+    }
+  }
+}
