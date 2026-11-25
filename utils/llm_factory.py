@@ -370,6 +370,11 @@ def _create_llm_for_provider(
     )
 
 
+# Hugging Face's router speaks the OpenAI chat API and routes ``<model>:<provider>``
+# itself (``<model>`` alone lets it choose a provider).
+HF_ROUTER_BASE_URL = "https://router.huggingface.co/v1"
+
+
 def _create_huggingface_llm(
     model: str,
     temperature: Optional[float],
@@ -384,39 +389,48 @@ def _create_huggingface_llm(
             "https://huggingface.co/settings/tokens"
         )
 
-    return _create_huggingface_endpoint_llm(
+    return _create_huggingface_router_llm(
         model, api_key, temperature, max_tokens, inference_provider
     )
 
 
-def _create_huggingface_endpoint_llm(
+def _create_huggingface_router_llm(
     model: str,
     api_key: str,
     temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
-    """Create a Hugging Face chat model routed through the inference router.
+    """Create a Hugging Face chat model called through the router's OpenAI API.
 
-    ``inference_provider`` pins the router to one provider (e.g. "deepinfra").
-    Without it the router chooses a provider itself, and that choice changes
-    whenever Hugging Face's provider list for the model changes.
+    ``inference_provider`` pins the router to one provider (e.g. "groq"); a
+    provider that stops serving the model fails the call rather than moving
+    on. Without it the router chooses a provider itself.
+
+    huggingface_hub's own client is not used: it looks the provider up in the
+    model API's ``inferenceProviderMapping``, which since 2026-11-24 comes back
+    empty for every model (huggingface_hub 0.36.2 and 2.4.0 alike), so every
+    call failed with "Model ... is not supported by provider ...". The router
+    itself still serves those models.
     """
-    from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+    from langchain_openai import ChatOpenAI
 
-    llm_endpoint = HuggingFaceEndpoint(  # type: ignore[call-arg]
-        repo_id=model,
-        huggingfacehub_api_token=api_key,
-        provider=inference_provider,
-        temperature=temperature,
-        max_new_tokens=max_tokens,
-        timeout=240,
-    )
+    routed_model = f"{model}:{inference_provider}" if inference_provider else model
+    settings: Dict[str, Any] = {
+        "model": routed_model,
+        "api_key": SecretStr(api_key),
+        "base_url": HF_ROUTER_BASE_URL,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "timeout": 240,
+        # Streamed calls (search summaries) report their token usage too.
+        "stream_usage": True,
+    }
     if inference_provider:
         logger.info(
             "Using Hugging Face provider=%s for model=%s", inference_provider, model
         )
-    return ChatHuggingFace(llm=llm_endpoint)
+    return ChatOpenAI(**settings)
 
 
 def _create_azure_foundry_llm(
