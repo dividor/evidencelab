@@ -36,9 +36,10 @@
 
   /* Neutrals */
   --brand-text-primary: #2C3E50;
-  /* Both meet WCAG AA (4.5:1) on --brand-background and --brand-surface. */
+  /* Both meet WCAG AA (4.5:1) on --brand-background, --brand-surface and the
+     light blue tints of active items (down to #e8f0f5). */
   --brand-text-secondary: #5C6766;
-  --brand-text-tertiary: #667471;
+  --brand-text-tertiary: #616E6B;
   --brand-border: #D1D9D7;
   --brand-border-light: #E8ECEB;
   --brand-background: #fafbfc;
@@ -4010,7 +4011,8 @@ h6,
 .ai-summary-citation {
   color: var(--primary-blue);
   text-decoration: none;
-  font-size: 0.85em;
+  /* A citation number, but never under 12 px. */
+  font-size: max(0.85em, 12px);
   font-weight: 600;
   cursor: pointer;
 }
@@ -11187,7 +11189,7 @@ a.admin-citation-clickable:hover {
   vertical-align: super;
   margin: 0 1px;
   padding: 1px 5px;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.1;
   color: #b91c1c;

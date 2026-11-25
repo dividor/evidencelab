@@ -29,9 +29,17 @@ import pytest
 from axe_playwright_python.sync_playwright import Axe
 from playwright.sync_api import Browser, sync_playwright
 
+from scripts.ci.saved_brief import (
+    BRIEF_TITLE,
+    api_poster,
+    build_saved_brief,
+    local_storage_script,
+)
+
 pytestmark = pytest.mark.integration
 
 UI_BASE_URL = os.getenv("UI_BASE_URL", "http://localhost:3000").rstrip("/")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 
 # The smallest text and controls allowed, in CSS pixels.
 MIN_TEXT_PX = 12
@@ -65,7 +73,13 @@ SCREENS = {
     "heatmapper": "/heatmap",
     "documents": "/documents",
     "help": "/info",
+    # A brief kept by the browser (scripts/ci/saved_brief.py), opened from the
+    # Brief tab's list of saved briefs.
+    "saved-brief": "/brief",
 }
+
+# Text the saved brief shows once it has loaded.
+SAVED_BRIEF_LOADED = "Cost and sustainability"
 
 # Measures the page as the browser lays it out. Returns sideways overflow, small
 # text and small targets, each a list of {element, measured value} records.
@@ -139,14 +153,25 @@ MEASURE_JS = """
     '[role=button]', '[role=link]', '[role=tab]', '[role=checkbox]', '[role=radio]',
     '[role=switch]', '[role=menuitem]', '[role=option]',
   ].join(',');
+  // WCAG 2.5.8's inline exception: a link in a sentence, sized by the line.
+  const block = (el) => {
+    let e = el.parentElement;
+    while (e && getComputedStyle(e).display.startsWith('inline')) e = e.parentElement;
+    return e;
+  };
+  const inSentence = (el) => el.tagName === 'A' && getComputedStyle(el).display === 'inline'
+    && (block(el)?.textContent || '').trim().length > (el.textContent || '').trim().length;
+  // The target of a checkbox or radio is its label too: clicking it ticks the box.
+  const targetBox = (el) => {
+    const label = el.closest('label') || (el.labels && el.labels[0]);
+    return label && shown(label) ? label.getBoundingClientRect() : el.getBoundingClientRect();
+  };
   const targets = [...document.querySelectorAll(selector)]
     .filter((el) => shown(el) && !el.disabled && el.getAttribute('aria-disabled') !== 'true')
-    .map((el) => ({el, box: el.getBoundingClientRect()}));
+    .map((el) => ({el, box: targetBox(el)}));
   const centre = (box) => [box.left + box.width / 2, box.top + box.height / 2];
   const distanceToBox = ([x, y], box) => Math.hypot(
     Math.max(box.left - x, 0, x - box.right), Math.max(box.top - y, 0, y - box.bottom));
-  const inSentence = (el) => el.tagName === 'A' && getComputedStyle(el).display === 'inline'
-    && (el.parentElement?.textContent || '').trim().length > (el.textContent || '').trim().length;
   const undersized = targets.filter(({el, box}) =>
     (box.width < minTarget || box.height < minTarget) && !inSentence(el));
   const smallTargets = [];
@@ -246,9 +271,21 @@ def browser() -> Iterator[Browser]:
         launched.close()
 
 
-def open_screen(browser: Browser, size: str, path: str) -> Any:
-    """A page showing PATH at SIZE, once it has loaded and its fonts are in."""
+@pytest.fixture(scope="module")
+def saved_brief_script() -> str:
+    """JavaScript that puts the saved brief, built through the API, in the browser."""
+    poster = api_poster(API_BASE_URL, os.environ["API_SECRET_KEY"])
+    return local_storage_script(build_saved_brief(poster))
+
+
+def open_screen(
+    browser: Browser, size: str, path: str, init_script: str | None = None
+) -> Any:
+    """A page showing PATH at SIZE, once it has loaded and its fonts are in.
+    INIT_SCRIPT runs before the app's own scripts, on every load."""
     context = browser.new_context(**VIEWPORTS[size])
+    if init_script:
+        context.add_init_script(init_script)
     page = context.new_page()
     page.goto(UI_BASE_URL + path, wait_until="networkidle", timeout=60000)
     page.wait_for_selector(".nav-tabs", state="attached", timeout=30000)
@@ -326,12 +363,21 @@ def axe_problem(violation: dict[str, Any]) -> str:
 @pytest.mark.parametrize("size", list(VIEWPORTS))
 @pytest.mark.parametrize("screen", list(SCREENS))
 def test_ui_layout_when_screen_opened_then_fits_and_is_readable(
-    browser: Browser, screen: str, size: str
+    browser: Browser, screen: str, size: str, request: pytest.FixtureRequest
 ) -> None:
-    page = open_screen(browser, size, SCREENS[screen])
+    init_script = (
+        request.getfixturevalue("saved_brief_script")
+        if screen == "saved-brief"
+        else None
+    )
+    page = open_screen(browser, size, SCREENS[screen], init_script)
     try:
         if screen == "search-results":
             page.wait_for_selector(".result-card", timeout=30000)
+        if screen == "saved-brief":
+            page.get_by_text("Load a saved brief").click()
+            page.get_by_text(BRIEF_TITLE).first.click()
+            page.get_by_text(SAVED_BRIEF_LOADED).first.wait_for(timeout=30000)
         problems = layout_problems(page)
     finally:
         page.context.close()

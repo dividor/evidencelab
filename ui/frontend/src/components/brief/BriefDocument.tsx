@@ -627,6 +627,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         {num && <span className="brief-doc-section-num">{num}</span>}
         <input
           className="brief-doc-section-title"
+          aria-label="Heading"
           value={section.title}
           onChange={(e) => brief.editTitle(section.id, e.target.value)}
           onBlur={brief.commitEdits}
