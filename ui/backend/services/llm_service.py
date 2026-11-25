@@ -17,7 +17,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 # Add utils to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from utils.llm_factory import get_llm, message_text  # noqa: E402
+from utils.llm_factory import (  # noqa: E402
+    get_llm,
+    message_text,
+    resolve_effective_model_key,
+)
 from utils.tracing import get_trace_recorder  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -31,12 +35,15 @@ def summarize_usage_metadata(
 
     The handler accumulates per-model usage as a nested dict; we sum
     across whichever models the LLM reported (typically just one) so a
-    single PATCH call carries the totals plus the configured ``model_key``
-    (the user-facing key from ``supported_llms``).
+    single PATCH call carries the totals plus the ``supported_llms`` key of
+    the model the call used. That key is what the usage is priced by, so
+    ``model_key`` is resolved to it whether the caller named the model by
+    key, by the provider's model id, or not at all (the default model).
     """
     payload: Dict[str, Any] = {}
-    if model_key:
-        payload["llm_model"] = model_key
+    llm_key = resolve_effective_model_key(model_key)
+    if llm_key:
+        payload["llm_model"] = llm_key
     try:
         per_model = handler.usage_metadata or {}
     except Exception:  # pragma: no cover - handler API surface

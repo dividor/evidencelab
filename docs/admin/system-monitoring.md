@@ -168,7 +168,10 @@ the api and the MCP server (they share the day's total). Unset means no limit;
   added to that UTC day's total (`ai_daily_spend`) as each call is recorded.
   Pipeline runs are neither counted nor stopped, because stopping one midway
   would mark its documents failed; watch them with your cloud's usage alarms.
-  Embedding and reranker calls add nothing.
+  Embedding and reranker calls add nothing. A call is priced by the model's
+  `supported_llms` key, whether the request names the model by that key, by
+  the provider's model id (such as `us.amazon.nova-2-lite-v1:0`) or not at
+  all, which means the default model.
 - **Nobody is exempt**, administrators included: raise the limit instead.
 - **It can run a little over.** A request is checked when it starts, and its
   cost is added when it finishes, so requests already running when the limit
@@ -178,10 +181,14 @@ the api and the MCP server (they share the day's total). Unset means no limit;
   starting `AI daily limit reached`, with the day's total and the limit. On AWS,
   the template turns that line into an email to `alert_emails`.
 - **It stops start-up when it can't be counted.** A value that isn't a number
-  of dollars stops the api and the MCP server at start-up. So does a model in
-  config.json (in `supported_llms` or a model combo) that has no price in
-  `ui/backend/utils/llm_costs.py`, because the limit could not count its use.
-  The error names each such model: add its price to that file under its
-  `supported_llms` key, or remove it from config.json. The Hugging Face models
-  in the stock config.json have no price. Model combos must name models by
-  their `supported_llms` key.
+  of dollars stops the api and the MCP server at start-up. So does a model
+  that has no price in `ui/backend/utils/llm_costs.py`, because the limit
+  could not count its use: one in `supported_llms`, one a model combo names,
+  or the default model (`LLM_MODEL`, or the `llm` model in config.json's
+  `application` section). The error names each such model and where it is
+  set: add its price to that file under its `supported_llms` key, or stop
+  using it there. The Hugging Face models in the stock config.json have no
+  price.
+- **A call that still has no price is logged.** While the limit is set, any AI
+  call the api or the MCP server can't price logs an error starting
+  `AI call not counted towards the daily AI limit`, naming the model.

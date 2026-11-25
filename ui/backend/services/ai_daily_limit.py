@@ -15,10 +15,13 @@ usage is recorded. Pipeline runs record their usage separately and are
 neither counted nor stopped, because stopping one midway would mark its
 documents failed; Bedrock usage alarms cover them on AWS.
 
-A call is priced by the model name it was made with, so every model name
-config.json can send AI calls to must have a price: with a limit set, the api
-and the MCP/A2A server refuse to start while one has none, because its calls
-would add nothing to the day's total and the limit would never stop them.
+A call is priced by the ``supported_llms`` key of the model it used, however
+the request named that model (by key, by the provider's model id, or not at
+all, which means the default model). With a limit set, the api and the
+MCP/A2A server refuse to start while a model config.json can send AI calls
+to has no price, because its calls would add nothing to the day's total and
+the limit would never stop them. A call that still cannot be priced is logged
+as an error (:data:`UNPRICED_CALL_LOG`).
 
 The total is read at most every :data:`CACHE_SECONDS` per process, and a
 call's cost is recorded when the call finishes, so calls already running or
@@ -44,6 +47,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from pipeline.db import config as db_config
 from ui.backend.auth.models import AiDailySpend
 from ui.backend.utils.llm_costs import has_cost_data
+from utils.llm_factory import default_model_name, supported_llm_key
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,12 @@ LIMIT_ENV = "AI_DAILY_COST_LIMIT_USD"
 
 # Where a model's price goes, named in the start-up error.
 PRICES_FILE = "ui/backend/utils/llm_costs.py"
+
+# Starts the error logged for each AI call the limit could not price.
+UNPRICED_CALL_LOG = "AI call not counted towards the daily AI limit"
+
+# Where config.json's default model is set (``utils.llm_factory``).
+_DEFAULT_MODEL_PLACE = "default model in config.json's application section"
 
 # The model combo stages that name a chat model.
 _COMBO_STAGES = (
@@ -108,27 +118,37 @@ def _stage_model(settings: Any) -> Optional[str]:
     return str(model) if model else None
 
 
-def configured_llm_names() -> Dict[str, List[str]]:
-    """Every model name config.json can send AI calls to, with where it is set.
-
-    The ``supported_llms`` keys, and the model each ``ui_model_combos`` stage
-    names, which is the name the web interface sends and the call is priced by.
-    """
-    places: Dict[str, List[str]] = {}
-    for key in db_config.SUPPORTED_LLMS:
-        places.setdefault(key, []).append("supported_llms")
+def _named_models() -> List[tuple[str, str]]:
+    """(model name, where it is set) for every model AI calls can be sent to."""
+    named = [(key, "supported_llms") for key in db_config.SUPPORTED_LLMS]
     for combo_name, combo in db_config.UI_MODEL_COMBOS.items():
         for stage in _COMBO_STAGES:
             model = _stage_model(combo.get(stage))
             if model:
-                places.setdefault(model, []).append(
-                    f"ui_model_combos.{combo_name}.{stage}"
-                )
+                named.append((model, f"ui_model_combos.{combo_name}.{stage}"))
+    default = default_model_name()
+    if default:
+        place = "LLM_MODEL" if os.environ.get("LLM_MODEL") else _DEFAULT_MODEL_PLACE
+        named.append((default, place))
+    return named
+
+
+def configured_llm_names() -> Dict[str, List[str]]:
+    """Every model AI calls can be sent to, by the key its use is priced under.
+
+    The ``supported_llms`` keys, the model each ``ui_model_combos`` stage names
+    (the name the web interface sends) and the default model, each resolved to
+    its ``supported_llms`` key as usage is labelled; a name config.json does
+    not list stays as it is. Each maps to the places it is set.
+    """
+    places: Dict[str, List[str]] = {}
+    for name, place in _named_models():
+        places.setdefault(supported_llm_key(name) or name, []).append(place)
     return places
 
 
 def unpriced_llm_names() -> Dict[str, List[str]]:
-    """The model names in config.json that ``llm_costs.py`` has no price for."""
+    """The models in :func:`configured_llm_names` with no price in ``llm_costs.py``."""
     return {
         name: where
         for name, where in configured_llm_names().items()
@@ -143,9 +163,26 @@ def _unpriced_message(unpriced: Dict[str, List[str]]) -> str:
     return (
         f"{LIMIT_ENV} is set, but config.json uses models that have no price, so "
         f"the limit would not count their use: {listed}. Add a price for each to "
-        f"LLM_COSTS_PER_1K in {PRICES_FILE} under its supported_llms key, or "
-        "remove it from config.json. A model combo must name its models by their "
-        "supported_llms key."
+        f"LLM_COSTS_PER_1K in {PRICES_FILE} under its supported_llms key, or stop "
+        "using it where listed."
+    )
+
+
+def report_unpriced_call(model: Optional[str]) -> None:
+    """Log an error for an AI call that used tokens but has no price.
+
+    Only with a limit set: the call is then missing from the day's total. With
+    no limit, an unpriced model is expected (the Token Usage tab shows "—").
+    """
+    if daily_limit() is None:
+        return
+    logger.error(
+        "%s: the call to %s has no price in %s, so the day's total (%s) "
+        "does not include it",
+        UNPRICED_CALL_LOG,
+        model or "an unnamed model",
+        PRICES_FILE,
+        LIMIT_ENV,
     )
 
 
