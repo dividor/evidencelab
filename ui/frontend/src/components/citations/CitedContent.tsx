@@ -11,6 +11,25 @@ import { SourceReference } from '../../types/api';
 import { CitationExcerpt } from './CitationExcerpt';
 
 const CITATION_REGEX = /\[(\d+(?:,\s*\d+)*)\]/g;
+// A citation the API could not match to a source is written `[?n]` (n = the
+// agent's own number; see ui/backend/services/brief_citations.py).
+const UNMATCHED_REGEX = /\[\?(\d+)\]/;
+const CITATION_OR_UNMATCHED_REGEX = new RegExp(
+  `${CITATION_REGEX.source}|${UNMATCHED_REGEX.source}`,
+  'g',
+);
+
+/** A citation with no source, drawn as a red `?n` badge. The section's
+ *  warning finds these by `data-unmatched` to jump to them. */
+export const UnmatchedCitation: React.FC<{ n: number }> = ({ n }) => (
+  <span
+    className="citation-unmatched"
+    data-unmatched={n}
+    title={`No source for [${n}]: the research agent cited a number it was never given.`}
+  >
+    ?{n}
+  </span>
+);
 
 const parseCitationNumbers = (raw: string): number[] =>
   raw
@@ -269,6 +288,22 @@ const InlineCitation: React.FC<{
   );
 };
 
+/** Group a marker's consecutive citations by document. */
+function groupByDocument(nums: number[], sourceByIndex: Map<number, SourceReference>): number[][] {
+  const groups: number[][] = [];
+  for (const n of nums) {
+    const docId = sourceByIndex.get(n)?.docId;
+    const prev = groups.length > 0 ? groups[groups.length - 1] : null;
+    const prevDocId = prev && sourceByIndex.get(prev[0])?.docId;
+    if (prev && docId && docId === prevDocId) {
+      prev.push(n);
+    } else {
+      groups.push([n]);
+    }
+  }
+  return groups;
+}
+
 /** Split a text string on citation patterns and return mixed text + badges. */
 function replaceCitations(
   text: string,
@@ -277,26 +312,19 @@ function replaceCitations(
   onRequestHighlight?: (source: SourceReference) => void,
 ): React.ReactNode {
   const parts: React.ReactNode[] = [];
-  const re = new RegExp(CITATION_REGEX.source, 'g');
+  const re = new RegExp(CITATION_OR_UNMATCHED_REGEX.source, 'g');
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = re.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
-    const claim = sentenceAround(text, match.index);
-    const nums = parseCitationNumbers(match[1]);
-    // Group consecutive citations by document.
-    const groups: number[][] = [];
-    for (const n of nums) {
-      const docId = sourceByIndex.get(n)?.docId;
-      const prev = groups.length > 0 ? groups[groups.length - 1] : null;
-      const prevDocId = prev && sourceByIndex.get(prev[0])?.docId;
-      if (prev && docId && docId === prevDocId) {
-        prev.push(n);
-      } else {
-        groups.push([n]);
-      }
+    lastIndex = re.lastIndex;
+    if (match[2] !== undefined) {
+      parts.push(<UnmatchedCitation key={`unmatched-${match.index}`} n={parseInt(match[2], 10)} />);
+      continue;
     }
+    const claim = sentenceAround(text, match.index);
+    const groups = groupByDocument(parseCitationNumbers(match[1]), sourceByIndex);
     parts.push(
       <span key={`cite-${match.index}`} className="citation-group">
         {groups.map((group, gi) => (
@@ -320,7 +348,6 @@ function replaceCitations(
         ))}
       </span>,
     );
-    lastIndex = re.lastIndex;
   }
 
   if (lastIndex < text.length) parts.push(text.slice(lastIndex));

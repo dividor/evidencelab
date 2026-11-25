@@ -1,11 +1,12 @@
 // Paints the Fact Checker's passages into a rendered section.
 //
-// The citation check stores each judged passage as plain prose (citation
-// markers and markdown removed), while the section on screen is markdown
-// rendered to DOM with citation badges inline. The rendered output is
-// searched with the badges skipped (see briefTextRange) and each located
-// passage is wrapped in a mark that carries its verdict, so the reader sees
-// the judge's flags in place and can hover them for the explanation.
+// The API gives each judged passage as plain prose (citation markers and
+// inline markdown removed: a bold claim arrives without its `**`), while the
+// section on screen is markdown rendered to DOM with citation badges
+// inline. The rendered output is searched with the badges skipped (see
+// briefTextRange) and each located passage is wrapped in a mark that carries
+// its verdict, so the reader sees the judge's flags in place and can hover
+// them for the explanation.
 
 import type { BriefFactCheckMark } from '../../types/testing';
 import { rangeForText, unwrapAll, wrapRange } from './briefTextRange';

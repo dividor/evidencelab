@@ -42,6 +42,7 @@ from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.models import UserActivity
 from ui.backend.services.ai_daily_limit import add_to_daily_spend, report_unpriced_call
 from ui.backend.utils.llm_costs import compute_cost
+from ui.backend.utils.llm_footprint import add_footprint
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ def _accumulate_usage(
     cost: Optional[Decimal],
     trace_url: Optional[str] = None,
 ) -> None:
-    """Add a usage delta (tokens + its own cost + trace link) onto an existing row."""
+    """Add a usage delta (tokens, its own cost and footprint, trace link) onto a row."""
     prompt = _clean_tokens(usage.get("prompt_tokens"))
     completion = _clean_tokens(usage.get("completion_tokens"))
     if prompt:
@@ -102,6 +103,9 @@ def _accumulate_usage(
         row.llm_model = str(usage["llm_model"])[:128]
     if cost is not None:
         row.cost_usd = (row.cost_usd or Decimal(0)) + cost
+    # Estimated from this call's own model, like its cost, since one row can
+    # add up calls to several models.
+    add_footprint(row, usage.get("llm_model"), completion)
     if trace_url:
         row.trace_url = trace_url
 

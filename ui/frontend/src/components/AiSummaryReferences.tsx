@@ -1,6 +1,7 @@
 import React from 'react';
 import { SearchResult } from '../types/api';
 import { buildGroupedReferences } from '../utils/citations';
+import { stripTrailingBoilerplate } from './AiSummaryWithCitations';
 
 interface AiSummaryReferencesProps {
   summaryText: string;
@@ -13,7 +14,9 @@ export const AiSummaryReferences: React.FC<AiSummaryReferencesProps> = ({
   results,
   onResultClick,
 }) => {
-  const groups = buildGroupedReferences(summaryText, results);
+  // Number and list only what the summary on screen cites: a hidden trailing
+  // summary section must not add references or shift the numbers.
+  const groups = buildGroupedReferences(stripTrailingBoilerplate(summaryText), results);
 
   if (groups.length === 0) {
     return null;

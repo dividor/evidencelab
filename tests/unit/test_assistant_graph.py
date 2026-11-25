@@ -497,6 +497,25 @@ class TestBuildSearchTool:
         assert "[1] Doc 1" in result
         assert "Content about food" in result
 
+    def test_agent_reads_passages_without_numbers_it_could_cite(self):
+        # Paragraph numbers, footnote markers and a report's own references
+        # were cited as result numbers; the agent's copy drops them while the
+        # source kept for readers (and highlighting) keeps the original text.
+        _mock_search_fn.reset_mock()
+        _mock_search_fn.side_effect = None
+        original = "-- Findings --  143. At the school level [^94] costs rose [12]."
+        _mock_search_fn.return_value = [
+            _make_scored_point("c1", "d1", "Doc 1", original, 0.9),
+        ]
+
+        tracker = SearchTracker()
+        result = _build_search_tool(tracker).invoke("school meals")
+
+        assert "[1] Doc 1\n-- Findings --  At the school level costs rose." in result
+        for stray in ("143.", "[^94]", "[12]"):
+            assert stray not in result
+        assert tracker.all_results[0]["text"] == original
+
     def test_tool_uses_global_numbering(self):
         """Second search call should continue numbering from first."""
         _mock_search_fn.reset_mock()
