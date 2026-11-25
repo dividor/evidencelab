@@ -18,6 +18,12 @@ from ui.backend.auth.models import UserGroup, UserGroupMember
 
 # Main feature tabs that a group can show/hide and relabel.
 TAB_KEYS = ("search", "assistant", "brief", "heatmap")
+PERSONAL_IMPACT_SETTING = "personalEnvironmentalImpact"
+
+
+def personal_impact_enabled(settings: dict) -> bool:
+    """Personal impact is available unless a group explicitly turns it off."""
+    return settings.get(PERSONAL_IMPACT_SETTING) is not False
 
 
 def merge_tabs(tab_configs: Sequence[dict]) -> dict:

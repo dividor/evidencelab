@@ -4765,6 +4765,59 @@ li.ai-fact-active::before {
   overflow-y: auto;
 }
 
+.personal-impact-modal {
+  width: min(480px, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  color: var(--text-primary);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.personal-impact-modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.personal-impact-modal .login-tab-active {
+  font-weight: 600;
+}
+
+.personal-impact-dates,
+.personal-impact-coverage {
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+}
+
+.personal-impact-group-setting select {
+  max-width: 20rem;
+}
+
+.personal-impact-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.personal-impact-metrics > div {
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+}
+
+.personal-impact-metrics dt {
+  font-size: 0.8125rem;
+}
+
+.personal-impact-metrics dd {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .app-footer {
   display: flex;
   justify-content: center;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import axios from 'axios';
 import UserMenu from './UserMenu';
 import { AuthContext } from '../../hooks/useAuth';
@@ -161,6 +161,105 @@ describe('UserMenu', () => {
     fireEvent.click(screen.getByText('A'));
     fireEvent.click(screen.getByText('Sign Out'));
     expect(logout).toHaveBeenCalled();
+  });
+
+  describe('Environmental impact', () => {
+    const label = 'Environmental impact';
+    const signedIn = () => mockAuthValue({
+      isAuthenticated: true,
+      user: {
+        id: '1',
+        email: ALICE_EMAIL,
+        first_name: 'Alice',
+        last_name: 'Baker',
+        display_name: ALICE_NAME,
+        is_active: true,
+        is_verified: true,
+        is_superuser: false,
+        created_at: null,
+        updated_at: null,
+      },
+    });
+    const emptySummary = {
+      from_date: '2026-05-01',
+      to_date: '2026-05-30',
+      completion_tokens: 0,
+      footprint_unestimated_tokens: 0,
+      energy_kwh_min: null,
+      energy_kwh_max: null,
+      gwp_kgco2eq_min: null,
+      gwp_kgco2eq_max: null,
+      water_l_min: null,
+      water_l_max: null,
+    };
+    const openImpact = () => {
+      renderWithAuth(signedIn(), { personalImpactEnabled: true });
+      fireEvent.click(screen.getByText('AB'));
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      return within(screen.getByRole('dialog', { name: label }));
+    };
+
+    beforeAll(() => {
+      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+        configurable: true,
+        value(this: HTMLDialogElement) { this.setAttribute('open', ''); },
+      });
+    });
+
+    it('does not show the menu item for an account with access off', () => {
+      renderWithAuth(signedIn(), { personalImpactEnabled: false });
+      fireEvent.click(screen.getByText('AB'));
+      expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    });
+
+    it('shows the past 30 days first and loads the year to date when selected', async () => {
+      const get = axios.get as jest.Mock;
+      get.mockResolvedValueOnce({ data: {
+        ...emptySummary,
+        completion_tokens: 100,
+        energy_kwh_min: 0.001,
+        energy_kwh_max: 0.002,
+        footprint_unestimated_tokens: 20,
+      } }).mockResolvedValueOnce({ data: {
+        ...emptySummary,
+        from_date: '2026-01-01',
+        completion_tokens: 200,
+        energy_kwh_min: 0.003,
+        energy_kwh_max: 0.004,
+      } });
+
+      const dialog = openImpact();
+      expect(dialog.getByRole('status')).toHaveTextContent('Loading');
+      expect(dialog.getByRole('button', { name: 'Last 30 days' })).toHaveAttribute('aria-pressed', 'true');
+      expect(await dialog.findByText('1–2')).toBeInTheDocument();
+      expect(dialog.getByText(/leave out 20 of 100 output tokens/)).toBeInTheDocument();
+      expect(get).toHaveBeenLastCalledWith(
+        '/api/llm-usage/me/footprint', expect.objectContaining({ params: { period: '30-days' } }),
+      );
+
+      fireEvent.click(dialog.getByRole('button', { name: 'Year to date' }));
+      expect(await dialog.findByText('3–4')).toBeInTheDocument();
+      expect(dialog.getByText(/Jan 1, 2026/)).toBeInTheDocument();
+      expect(dialog.queryByText('1–2')).not.toBeInTheDocument();
+      expect(get).toHaveBeenLastCalledWith(
+        '/api/llm-usage/me/footprint', expect.objectContaining({ params: { period: 'year-to-date' } }),
+      );
+      fireEvent.click(dialog.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog', { name: label })).not.toBeInTheDocument();
+    });
+
+    it('describes an empty period without displaying zero estimates', async () => {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: emptySummary });
+      const dialog = openImpact();
+      expect(await dialog.findByText(/No text generation was recorded/)).toBeInTheDocument();
+      expect(dialog.queryByText('Energy (Wh)')).not.toBeInTheDocument();
+    });
+
+    it('reports a summary request failure', async () => {
+      (axios.get as jest.Mock).mockRejectedValueOnce(new Error('Request failed'));
+      const dialog = openImpact();
+      expect(await dialog.findByRole('alert')).toHaveTextContent('Couldn’t load your environmental impact');
+    });
   });
 
   describe('menu item clicks survive the trigger losing focus', () => {
