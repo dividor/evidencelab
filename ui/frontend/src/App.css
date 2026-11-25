@@ -11245,7 +11245,7 @@ a.admin-citation-clickable:hover {
    citation's number would be. */
 .citation-unmatched {
   display: inline-block;
-  vertical-align: super;
+  vertical-align: baseline;
   margin: 0 1px;
   padding: 1px 5px;
   font-size: 0.75rem;

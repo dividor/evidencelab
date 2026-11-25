@@ -1,7 +1,7 @@
 /**
  * Citations a brief's API could not match to a source come back as `[?n]`
  * (the research agent cited a number it was never given). The section text
- * shows each as a red `?n` badge, and the section's warning names them as
+ * shows each as a red number badge, and the section's warning names them as
  * chips that jump to where they are cited.
  */
 import React from 'react';
@@ -40,13 +40,13 @@ const renderSection = (onOpenLog?: () => void) =>
   );
 
 describe('a citation with no source in the text', () => {
-  test('is a red ?n badge, not the literal [?n]', () => {
+  test('shows the citation number in a red badge', () => {
     const { container } = render(
       <CitedMarkdown content="Teachers were trained [7][?143]." sources={[source]} />,
     );
     const badge = container.querySelector('.citation-unmatched[data-unmatched="143"]');
     expect(badge).not.toBeNull();
-    expect(badge!.textContent).toBe('?143');
+    expect(badge!.textContent).toBe('143');
     expect(badge!.getAttribute('title')).toMatch(/never given/);
     expect(container.textContent).not.toContain('[?143]');
     // The matched citation beside it still renders as a normal citation.
@@ -66,8 +66,11 @@ describe('the unmatched-citation warning', () => {
   test('names each unmatched number as a chip', () => {
     renderSection();
     expect(screen.getByText('2 citations have no source')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '?143' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '?163' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '143' })).toHaveAttribute(
+      'title',
+      'Show where citation 143 has no source',
+    );
+    expect(screen.getByRole('button', { name: '163' })).toBeInTheDocument();
   });
 
   test('a chip jumps to its citation, then to its next use on each click', () => {
@@ -75,12 +78,12 @@ describe('the unmatched-citation warning', () => {
     const uses = container.querySelectorAll('section > :not([role="status"]) .citation-unmatched[data-unmatched="143"]');
     expect(uses).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: '?143' }));
+    fireEvent.click(screen.getByRole('button', { name: '143' }));
     expect(scrolled).toEqual([uses[0]]);
     expect(uses[0]).toHaveClass('citation-unmatched-flash');
 
-    fireEvent.click(screen.getByRole('button', { name: '?143' }));
-    fireEvent.click(screen.getByRole('button', { name: '?143' }));
+    fireEvent.click(screen.getByRole('button', { name: '143' }));
+    fireEvent.click(screen.getByRole('button', { name: '143' }));
     expect(scrolled).toEqual([uses[0], uses[1], uses[0]]);
   });
 

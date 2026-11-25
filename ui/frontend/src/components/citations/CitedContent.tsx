@@ -19,7 +19,7 @@ const CITATION_OR_UNMATCHED_REGEX = new RegExp(
   'g',
 );
 
-/** A citation with no source, drawn as a red `?n` badge. The section's
+/** A citation with no source, drawn as a red number badge. The section's
  *  warning finds these by `data-unmatched` to jump to them. */
 export const UnmatchedCitation: React.FC<{ n: number }> = ({ n }) => (
   <span
@@ -27,7 +27,7 @@ export const UnmatchedCitation: React.FC<{ n: number }> = ({ n }) => (
     data-unmatched={n}
     title={`No source for [${n}]: the research agent cited a number it was never given.`}
   >
-    ?{n}
+    {n}
   </span>
 );
 

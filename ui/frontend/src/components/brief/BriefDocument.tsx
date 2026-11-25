@@ -105,7 +105,7 @@ const UNMATCHED_FLASH_MS = 1600;
 
 // Citations of the section the API could not match to a source: the agent
 // cited a number it never returned, or returned a record without a chunk id.
-// The text shows each as a red `?n` badge (UnmatchedCitation); this header
+// The text shows each as a red number badge (UnmatchedCitation); this header
 // names them, and clicking one scrolls to it in the section, stepping through
 // its uses on each click.
 export const UnresolvedCitationsWarning: React.FC<{
@@ -142,9 +142,9 @@ export const UnresolvedCitationsWarning: React.FC<{
           type="button"
           className="citation-unmatched citation-unmatched-chip"
           onClick={() => jumpTo(u.n)}
-          title={`Show where [?${u.n}] is cited`}
+          title={`Show where citation ${u.n} has no source`}
         >
-          ?{u.n}
+          {u.n}
         </button>
       ))}
       <span className="brief-unmatched-detail">
