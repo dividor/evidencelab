@@ -183,6 +183,28 @@ class TestAuthorize:
 
         assert first != second
 
+    def test_authorize_when_account_choice_asked_for_then_passes_it_on(
+        self, client, provider
+    ):
+        response = client.get(
+            "/auth/microsoft/authorize", params={"prompt": "select_account"}
+        )
+
+        assert response.status_code == 200
+        extras = provider.authorize_calls[0][3]
+        assert extras["prompt"] == "select_account"
+        assert extras["code_challenge_method"] == "S256"
+
+    @pytest.mark.parametrize("prompt", ["none", "login", "consent", ""])
+    def test_authorize_when_other_prompt_asked_for_then_refuses(
+        self, client, provider, prompt
+    ):
+        response = client.get("/auth/microsoft/authorize", params={"prompt": prompt})
+
+        assert response.status_code == 422
+        assert provider.authorize_calls == []
+        assert _OAUTH_FLOW_COOKIE not in response.cookies
+
 
 class TestCallback:
     def test_callback_when_same_browser_then_signs_in_with_the_verifier(
@@ -289,43 +311,65 @@ class TestCallback:
         assert provider.token_calls == []
 
 
+REAL_PROVIDERS = [
+    (
+        MicrosoftGraphOAuth2(
+            "client-id",
+            "client-secret",
+            tenant="common",
+            scopes=["openid", "email", "profile", "User.Read"],
+        ),
+        "login.microsoftonline.com",
+    ),
+    (
+        GoogleOAuth2(
+            "client-id",
+            "client-secret",
+            scopes=["openid", "email", "profile"],
+        ),
+        "accounts.google.com",
+    ),
+]
+
+
+def _real_authorize(provider_client, params=None):
+    """Ask a router on a real httpx-oauth client for a sign-in address."""
+    app = FastAPI()
+    app.include_router(
+        _make_oauth_router(provider_client, "microsoft"), prefix="/auth/microsoft"
+    )
+    with TestClient(app, base_url="https://testserver") as test_client:
+        response = test_client.get("/auth/microsoft/authorize", params=params)
+        verifier = test_client.cookies.get(_OAUTH_FLOW_COOKIE)
+    return urlparse(response.json()["authorization_url"]), verifier
+
+
 class TestRealProviderAddresses:
     """The real httpx-oauth clients put the PKCE challenge in the sign-in address."""
 
-    @pytest.mark.parametrize(
-        "provider_client, host",
-        [
-            (
-                MicrosoftGraphOAuth2(
-                    "client-id",
-                    "client-secret",
-                    tenant="common",
-                    scopes=["openid", "email", "profile", "User.Read"],
-                ),
-                "login.microsoftonline.com",
-            ),
-            (
-                GoogleOAuth2(
-                    "client-id",
-                    "client-secret",
-                    scopes=["openid", "email", "profile"],
-                ),
-                "accounts.google.com",
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("provider_client, host", REAL_PROVIDERS)
+    def test_authorize_when_account_choice_asked_for_then_address_asks_for_it(
+        self, provider_client, host
+    ):
+        url, _ = _real_authorize(provider_client, {"prompt": "select_account"})
+
+        assert url.hostname == host
+        assert parse_qs(url.query)["prompt"] == ["select_account"]
+
+    @pytest.mark.parametrize("provider_client, host", REAL_PROVIDERS)
+    def test_authorize_when_nothing_asked_for_then_address_has_no_prompt(
+        self, provider_client, host
+    ):
+        url, _ = _real_authorize(provider_client)
+
+        assert url.hostname == host
+        assert "prompt" not in parse_qs(url.query)
+
+    @pytest.mark.parametrize("provider_client, host", REAL_PROVIDERS)
     def test_authorize_when_real_client_then_address_has_s256_challenge(
         self, provider_client, host
     ):
-        app = FastAPI()
-        app.include_router(
-            _make_oauth_router(provider_client, "microsoft"), prefix="/auth/microsoft"
-        )
-        with TestClient(app, base_url="https://testserver") as test_client:
-            response = test_client.get("/auth/microsoft/authorize")
-            verifier = test_client.cookies.get(_OAUTH_FLOW_COOKIE)
-
-        url = urlparse(response.json()["authorization_url"])
+        url, verifier = _real_authorize(provider_client)
         query = parse_qs(url.query)
         assert url.scheme == "https" and url.hostname == host
         assert query["code_challenge"] == [_pkce_challenge(verifier)]

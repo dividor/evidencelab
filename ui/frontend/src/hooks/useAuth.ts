@@ -2,7 +2,11 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import axios from 'axios';
 import API_BASE_URL, { API_KEY, USER_MODULE } from '../config';
 import type { AuthContextValue, AuthState, AuthUser, LoginCredentials, RegisterData } from '../types/auth';
-import { pauseAutoSignIn, resumeAutoSignIn } from '../utils/oauthSignIn';
+import {
+  holdSignInUntilSignedOut,
+  pickAccountNextTime,
+  resumeAutoSignIn,
+} from '../utils/oauthSignIn';
 
 /**
  * Auth uses httpOnly cookies (set by the backend) — the browser sends the
@@ -140,6 +144,7 @@ export function useAuthState(): AuthContextValue {
           // (not on initial visit before first login)
           if (stateRef.current.isAuthenticated) {
             setSessionExpired(true);
+            pickAccountNextTime();
           }
           setState({
             user: null,
@@ -185,11 +190,15 @@ export function useAuthState(): AuthContextValue {
         isLoading: false,
         isAuthenticated: false,
       });
+      // The only sign-in provider would sign them straight back in.
+      pickAccountNextTime();
       // Clear the server-side cookie (best-effort — may already be expired)
+      const request = axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
+        timeout: 10000,
+      });
+      holdSignInUntilSignedOut(request);
       try {
-        await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
-          timeout: 10000,
-        });
+        await request;
       } catch {
         // Ignore — cookie may have already expired or the network may be down
       }
@@ -395,9 +404,9 @@ export function useAuthState(): AuthContextValue {
     // doing nothing at all.
     setState({ user: null, token: null, isLoading: false, isAuthenticated: false });
     setSessionExpired(false);
-    // Show the sign-in button rather than going straight back to a single
-    // sign-in provider, which would sign them in again at once.
-    pauseAutoSignIn();
+    // Where one provider is the only way in, the sign-in screen goes to its
+    // account picker: going to it plainly would sign them in again at once.
+    pickAccountNextTime();
 
     // Reject any pending 401 retries — user chose to log out
     if (authPromiseRef.current) {
@@ -405,13 +414,16 @@ export function useAuthState(): AuthContextValue {
       authPromiseRef.current = null;
     }
 
+    // Best-effort: ask the backend to clear the httpOnly auth cookie. The
+    // endpoint requires no authentication, so this also clears stale or
+    // invalid cookies. Time-boxed so a dead connection can't hang the call.
+    // The trip to the provider waits for it: leaving the page would cancel it.
+    const request = axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
+      timeout: 10000,
+    });
+    holdSignInUntilSignedOut(request);
     try {
-      // Best-effort: ask the backend to clear the httpOnly auth cookie. The
-      // endpoint requires no authentication, so this also clears stale or
-      // invalid cookies. Time-boxed so a dead connection can't hang the call.
-      await axios.post(`${API_BASE_URL}/auth/cookie-login/logout`, undefined, {
-        timeout: 10000,
-      });
+      await request;
     } catch {
       // Network failure or timeout — the client is already signed out; the
       // cookie (if any) lapses on its own at token expiry.

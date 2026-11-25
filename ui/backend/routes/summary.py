@@ -16,11 +16,16 @@ from ui.backend.schemas import (
 )
 from ui.backend.services import llm_service as llm_service_module
 from ui.backend.services import translation_service
+from ui.backend.services.ai_daily_limit import AiDailyLimitReached, require_ai_allowance
+from ui.backend.services.llm_choice import SUMMARY, user_group_choice
 from ui.backend.services.translation_providers import (
     TranslationConfigError,
     TranslationDisabledError,
 )
-from ui.backend.services.usage_recorder import schedule_llm_usage_recording
+from ui.backend.services.usage_recorder import (
+    schedule_daily_spend_recording,
+    schedule_llm_usage_recording,
+)
 from ui.backend.utils.app_limits import (
     get_rate_limit_translate,
     get_rate_limits,
@@ -115,6 +120,9 @@ def _record_summary_usage(
     to — and can never fail — the summary path.
     """
     if not body.search_id:
+        # The activity row is left to the client, but the day's AI total
+        # (AI_DAILY_COST_LIMIT_USD) still counts the call.
+        schedule_daily_spend_recording(usage=usage)
         return
     schedule_llm_usage_recording(
         usage=usage,
@@ -163,6 +171,8 @@ async def translate(request: Request, body: TranslateRequest):
 
     except (TranslationDisabledError, TranslationConfigError) as exc:
         raise HTTPException(status_code=501, detail=str(exc))
+    except AiDailyLimitReached:
+        raise
     except Exception as e:
         logger.error(f"Translation error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -176,7 +186,23 @@ def _check_summary_model(body: AISummaryRequest) -> None:
         check_requested_llm(body.summary_model, None)
 
 
-@router.post("/ai-summary/stream")
+async def _summary_model_key(body: AISummaryRequest, user, session) -> Optional[str]:
+    """The model for this summary: the user's group choice (Group Settings >
+    LLMs), which overrides the request's model combo, else the request's model.
+
+    The request's token budget was already checked against the request's model
+    (``_check_summary_model``) and applies to the chosen model as it is: an
+    administrator chose that model, so its budget isn't checked again against
+    the limits config.json sets for its other uses.
+    """
+    summary_config = body.summary_model_config
+    chosen = await user_group_choice(session, user, SUMMARY) if _USER_MODULE else None
+    if chosen:
+        return chosen
+    return summary_config.model if summary_config else body.summary_model
+
+
+@router.post("/ai-summary/stream", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_summary(
     request: Request,
@@ -189,6 +215,7 @@ async def stream_summary(
     Returns Server-Sent Events (SSE) for progressive display.
     """
     _check_summary_model(body)
+    model_key = await _summary_model_key(body, user, session)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 
@@ -214,7 +241,6 @@ async def stream_summary(
             full_summary = ""
             stream_metadata = {}
             summary_config = body.summary_model_config
-            model_key = summary_config.model if summary_config else body.summary_model
             temperature = _resolve_temperature(body)
             max_tokens = summary_config.max_tokens if summary_config else None
             logger.info(
@@ -281,7 +307,11 @@ async def stream_summary(
     )
 
 
-@router.post("/ai-summary", response_model=AISummaryResponse)
+@router.post(
+    "/ai-summary",
+    response_model=AISummaryResponse,
+    dependencies=[Depends(require_ai_allowance)],
+)
 @limiter.limit(RATE_LIMIT_AI)
 async def generate_summary(
     request: Request,
@@ -296,6 +326,7 @@ async def generate_summary(
     Requires HUGGINGFACE_API_KEY to be set in environment.
     """
     _check_summary_model(body)
+    model_key = await _summary_model_key(body, user, session)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 
@@ -306,7 +337,6 @@ async def generate_summary(
 
         # Generate summary using LLM
         summary_config = body.summary_model_config
-        model_key = summary_config.model if summary_config else body.summary_model
         temperature = _resolve_temperature(body)
         max_tokens = summary_config.max_tokens if summary_config else None
         logger.info(

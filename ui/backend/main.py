@@ -61,6 +61,11 @@ from ui.backend.routes.search import (
 )
 from ui.backend.routes.stats import get_stats as _get_stats
 from ui.backend.schemas import DocumentMetadataUpdate, TocUpdate
+from ui.backend.services.ai_daily_limit import (
+    AiDailyLimitReached,
+    ai_daily_limit_handler,
+    validate_ai_daily_limit_setting,
+)
 from ui.backend.services.search import (
     RERANK_MODEL,
     get_models,
@@ -121,6 +126,9 @@ else:
     USER_MODULE_MODE = "off"
 # Auth module is loaded (True for both on_passive and on_active)
 USER_MODULE = USER_MODULE_MODE != "off"
+
+# A malformed daily AI limit stops the api here, not at the first AI request.
+validate_ai_daily_limit_setting()
 
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")
@@ -213,6 +221,7 @@ app.openapi = _custom_openapi  # type: ignore[method-assign]
 # Add rate limiter to app
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_exception_handler(AiDailyLimitReached, ai_daily_limit_handler)
 app.state.highlight_cache = highlight_routes._highlight_cache
 
 

@@ -72,6 +72,25 @@ async def test_semantic_highlighting_with_mocked_llm():
 
 
 @pytest.mark.asyncio
+async def test_highlighting_when_ai_limit_reached_then_keyword_only_without_llm(
+    ai_limit_reached,
+):
+    mock_llm = AsyncMock()
+    with patch("utils.llm_factory.get_llm", return_value=mock_llm) as get_llm:
+        request = main_module.UnifiedHighlightRequest(
+            query="Ministry of Health",
+            text=SAMPLE_TEXT,
+            highlight_type="both",
+        )
+        data = (await main_module.highlight_text(request)).model_dump()
+
+    get_llm.assert_not_called()
+    mock_llm.ainvoke.assert_not_called()
+    assert data["types_returned"] == ["keyword"]
+    assert data["total"] >= 1
+
+
+@pytest.mark.asyncio
 async def test_both_highlighting_types():
     mock_llm = AsyncMock()
     mock_llm.ainvoke = AsyncMock(

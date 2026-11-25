@@ -11,11 +11,12 @@ import LoginModal from './LoginModal';
  * If the session expired (401 or inactivity timeout), the modal shows an
  * informational banner so the user understands why they need to sign in again.
  *
- * When the deployment offers only one way to sign in, the modal goes straight
- * to that provider's sign-in page — but not after a session times out (an
- * unattended tab would otherwise be signed back in over and over), nor after
- * someone signs out or a trip to the provider came back still signed out in
- * this tab (see pauseAutoSignIn). The button shows in those cases.
+ * When the deployment offers only one way to sign in (Microsoft or Google), the
+ * modal goes straight to that provider's sign-in page. After someone signs out
+ * or their session times out, it asks the provider for its account picker, so
+ * they are not signed straight back in (see pickAccountNextTime). After a trip
+ * to the provider came back still signed out in this tab, it shows the button
+ * instead (see pauseAutoSignIn).
  *
  * Where sign-in is required, nothing is shown until the session check has
  * answered, so the app never flashes up before the sign-in page.
@@ -67,7 +68,7 @@ export const AuthGate: React.FC<{ children: React.ReactNode }> = ({ children }) 
         onClose={() => {}}
         required
         sessionExpired={sessionExpired}
-        autoSignIn={!sessionExpired && !autoSignInPaused()}
+        autoSignIn={!autoSignInPaused()}
       />
     );
   }

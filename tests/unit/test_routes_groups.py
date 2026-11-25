@@ -241,6 +241,45 @@ class TestUpdateGroup:
         session.commit.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_update_when_llm_choice_not_in_config_then_422_and_not_saved(
+        self, monkeypatch
+    ):
+        """Group Settings > LLMs may only choose a model config.json lists."""
+        from pipeline.db import config as db_config
+
+        monkeypatch.setattr(
+            db_config, "SUPPORTED_LLMS", {"nova-pro": {"model": "m", "provider": "p"}}
+        )
+        admin = _make_admin()
+        group = _make_group(name="Analysts")
+        session = _make_session()
+
+        async def mock_execute(stmt):
+            return _scalars_result([group])
+
+        session.execute = mock_execute
+        body = GroupUpdate(search_settings={"summaryModel": "gpt-9"})
+
+        with pytest.raises(HTTPException) as exc:
+            await update_group(
+                group_id=group.id, body=body, admin=admin, session=session
+            )
+        assert exc.value.status_code == 422
+        session.commit.assert_not_called()
+
+        calls = 0
+
+        async def execute_then_read(stmt):
+            nonlocal calls
+            calls += 1
+            return _scalars_result([group] if calls == 1 else [])
+
+        session.execute = execute_then_read
+        ok = GroupUpdate(search_settings={"summaryModel": "nova-pro"})
+        await update_group(group_id=group.id, body=ok, admin=admin, session=session)
+        assert group.search_settings == {"summaryModel": "nova-pro"}
+
+    @pytest.mark.asyncio
     async def test_updates_description(self):
         """Should update the group description."""
         admin = _make_admin()

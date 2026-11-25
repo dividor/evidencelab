@@ -69,6 +69,7 @@ The ui container writes these into its nginx configuration when it starts. If a 
 | `MCP_UPSTREAM` | ui | `http://mcp:8001` | The mcp service's address |
 | `NGINX_RESOLVER` | ui | `127.0.0.11` (Docker's DNS server) | The cloud network's DNS server |
 | `NGINX_REAL_IP_FROM` | ui | `127.0.0.1` (no proxy trusted) | The load balancer's address range, for example `10.0.0.0/16` |
+| `UI_CSP_POLICY` | ui | Scripts from the site only, plus Google Analytics | Only if the site loads outside assets; see [Outside assets and the Content-Security-Policy](third-party-services.md#outside-assets-and-the-content-security-policy) |
 
 nginx looks up the api and mcp addresses through `NGINX_RESOLVER` while it runs, so it follows a service when the platform replaces it at a new address.
 
@@ -133,7 +134,7 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
 | Web app image | Amazon ECR repository `<name>/ui` | — |
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
-| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call Amazon Bedrock models | — |
+| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call only the Amazon Bedrock models `config.json` lists | — |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
 | Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
 | Data transfer | A private S3 bucket `<name>-transfer-…` and a restore task with its own role, for moving existing data in | Uploads deleted after 30 days |
@@ -411,6 +412,8 @@ The template sets `OAUTH_CALLBACK_BASE_URL` to the site address followed by `/ap
 
 See [User Administration](user-administration.md) for what each sign-in setting does.
 
+With `cloudfront_enabled`, AWS WAF's core rule set would block Microsoft's reply to the callback, because its query string is longer than the rule allows. The template counts that rule instead of blocking it (see [CloudFront and AWS WAF](#cloudfront-and-aws-waf)). If you set `waf_core_rules_to_count` yourself, keep `SizeRestrictions_QUERYSTRING` in it.
+
 ### CloudFront and AWS WAF
 
 Set `cloudfront_enabled = true` to put Amazon CloudFront and an AWS WAF web ACL in front of the site:
@@ -429,7 +432,7 @@ The web ACL is in us-east-1, as CloudFront requires. Its rules run in this order
 | `rate-limit-per-ip` | Blocks an address that sends more requests in 5 minutes than the limit, until its rate drops. Visitors behind one office or VPN address share it. | `waf_rate_limit` (default `2000`; `0` turns it off) |
 | `AWSManagedRulesAmazonIpReputationList` | AWS's list of addresses known for bots and attacks | — |
 | `AWSManagedRulesKnownBadInputsRuleSet` | Requests that match known exploits | — |
-| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. `SizeRestrictions_BODY` in it blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB, so that rule only counts. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY"]`) |
+| `AWSManagedRulesCommonRuleSet` | AWS's core rule set. Two of its rules would block normal use, so they only count. `SizeRestrictions_BODY` blocks request bodies over 8 KB, and Evidence Lab accepts up to 2 MB. `SizeRestrictions_QUERYSTRING` blocks query strings over 2,048 bytes, and Microsoft sign-in sends visitors back to `/api/auth/microsoft/callback` with a longer one, so while that rule blocks, no Microsoft sign-in can finish. A list you set replaces the default, so keep both in it. | `waf_core_rules_to_count` (default `["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]`) |
 
 Other settings:
 
@@ -446,6 +449,69 @@ Before you deploy:
 - **Costs**, at AWS's prices in November 2026: a web ACL is $5 a month, each rule or managed rule group $1 a month, and $0.60 per million requests ([AWS WAF pricing](https://aws.amazon.com/waf/pricing/)). CloudFront's pay-as-you-go pricing includes 1 TB of data and 10 million requests a month free ([CloudFront pricing](https://aws.amazon.com/cloudfront/pricing/)), and VPC origins cost nothing extra. CloudFront's flat-rate plans do not suit this layout: the Free and Pro plans do not allow VPC origins.
 
 Terraform's own tests check these settings, but they have not yet been tried on a real deployment.
+
+### Limiting and watching AI use
+
+**Only the models in `config.json`.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. A cross-region inference profile, such as `eu.amazon.nova-2-lite-v1:0`, allows the profile and its base model in every region it routes to. To use another Bedrock model, add it to `config.json` and deploy. Every model in `supported_llms` can be chosen per group in Group Settings > LLMs, so the role may call each of them: list only the models you're willing to pay for, and give each its own entry in `bedrock_alarms`. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
+
+**Email alerts on Bedrock use.** Set the addresses and, for each model, a level for a rolling hour:
+
+```hcl
+alert_emails = ["ops@example.org"]
+
+bedrock_alarms = {
+  "eu.amazon.nova-2-lite-v1:0"   = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+  "amazon.titan-embed-text-v2:0" = { input_tokens_per_hour = 50000000 }
+  "amazon.rerank-v1:0"           = { region = "eu-central-1", invocations_per_hour = 5000 }
+}
+```
+
+| Setting | Default | What it does |
+|---|---|---|
+| `alert_emails` | `[]` | Addresses subscribed to an SNS topic named `<name>-alerts`, made in the deployment's region and in any other region an alarm watches. Each address must confirm AWS's email for each topic within 48 hours, or no alert reaches it: see [Confirming the alert emails](#confirming-the-alert-emails). |
+| `bedrock_alarms` | `{}` | One CloudWatch alarm per model and level: `input_tokens_per_hour`, `output_tokens_per_hour` and `invocations_per_hour` (requests). Set at least one. `region` is where the model is called, when that isn't the deployment's region; rerank models are offered in only some regions. Needs `alert_emails`. |
+
+- **The key is the `ModelId` CloudWatch records.** A call through an inference profile is recorded under the profile's ID. List the IDs your deployment has used with `aws cloudwatch list-metrics --namespace AWS/Bedrock --region <region>`.
+- **Base the levels on normal use.** Look at each model's busiest hour over a couple of weeks (CloudWatch, `AWS/Bedrock`, the `Sum` of each metric per hour) and set the level well above it, for example three times. Pipeline runs embed and summarise whole documents, so their hours are the busiest.
+- **How fast it reacts.** CloudWatch checks each alarm every minute against the hour just past, so an email follows within minutes of a level being passed. Hours with no use count as normal.
+- **Who used it.** The alarm says which model. The admin **Token Usage** tab shows which users, groups and pipeline documents used it.
+- **Cost.** Each alarm is a standard-resolution CloudWatch alarm on one metric ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)); email notifications are charged by Amazon SNS ([SNS pricing](https://aws.amazon.com/sns/pricing/)).
+
+**A daily AI limit.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day (see [Daily AI limit](system-monitoring.md#daily-ai-limit)). Set it with the containers' other settings:
+
+```hcl
+extra_environment = {
+  AI_DAILY_COST_LIMIT_USD = "25"
+}
+```
+
+With it set, the api and mcp containers refuse to start while config.json uses a model that has no price in `ui/backend/utils/llm_costs.py`; the error names the models.
+
+With `alert_emails` set as well, the template watches the api and mcp logs for the line the limit writes when it is reached (`AI daily limit reached`) and emails the addresses once. The Bedrock alarms above are the ones that also cover pipeline runs, which the daily limit doesn't count.
+
+#### Confirming the alert emails
+
+AWS delivers alerts only to an address that has confirmed it wants them. Terraform subscribes each address in `alert_emails` but can't confirm it: AWS sends the confirmation link only to that mailbox, so nobody can sign a mailbox up without its owner's agreement. After a deploy that adds or changes an address, the owner of that mailbox:
+
+1. **Within 48 hours**, opens the email from AWS Notifications titled *AWS Notification - Subscription Confirmation*, for the topic `<name>-alerts`. If it isn't in the inbox, check junk and any email quarantine.
+2. Clicks **Confirm subscription** in the email, then **Confirm subscription** on the page that opens.
+3. Checks it with the AWS CLI (or AWS CloudShell) in the deployment's account. Each address should show a full subscription ARN; `PendingConfirmation` means it isn't confirmed yet:
+
+   ```bash
+   aws sns list-subscriptions-by-topic --region <region> --topic-arn "arn:aws:sns:<region>:$(aws sts get-caller-identity --query Account --output text):<name>-alerts" --query 'Subscriptions[].[Endpoint,SubscriptionArn]' --output table
+   ```
+
+4. Sends a test alert, which should arrive within a few minutes. The alarm goes back to OK by itself at its next check. With a daily AI limit set:
+
+   ```bash
+   aws cloudwatch set-alarm-state --region <region> --alarm-name "<name> AI daily limit reached" --state-value ALARM --state-reason "Test of the alert email"
+   ```
+
+   Without one, use any alarm from `aws cloudwatch describe-alarms --region <region> --alarm-name-prefix "<name> Bedrock" --query 'MetricAlarms[].AlarmName'`.
+
+- **Each region is one more email.** An alarm in another region (`region` in `bedrock_alarms`) gets a topic of its own there, and each address confirms that one too.
+- **Missed the 48 hours?** AWS deletes an unconfirmed subscription; the next deploy subscribes the address again and a new email arrives.
+- **Don't use the unsubscribe link** at the bottom of an alert email. It removes the address (after one more click on the page it opens) until the next deploy subscribes it again, which then needs confirming again. With a group mailbox, anyone in the group can do this.
 
 ### Upgrading
 

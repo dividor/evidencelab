@@ -198,6 +198,12 @@ class SearchSettings(BaseModel):
     fieldBoost: Optional[bool] = None
     fieldBoostFields: Optional[dict[str, float]] = None
     greetingMessage: Optional[str] = None
+    # Group Settings > LLMs: supported_llms keys that override config.json's
+    # model for the search AI summary, Briefs and evaluation judging
+    # (ui.backend.services.llm_choice).
+    summaryModel: Optional[str] = None
+    briefModel: Optional[str] = None
+    judgeModel: Optional[str] = None
 
 
 class GroupUpdate(BaseModel):

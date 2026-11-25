@@ -129,9 +129,10 @@ variable "waf_rate_limit" {
 }
 
 variable "waf_core_rules_to_count" {
-  description = "Rules in AWS's core rule set (AWSManagedRulesCommonRuleSet) that count matching requests instead of blocking them. SizeRestrictions_BODY blocks request bodies over 8 KB, and Evidence Lab accepts bodies up to 2 MB (MAX_REQUEST_BODY_BYTES)."
+  description = "Rules in AWS's core rule set (AWSManagedRulesCommonRuleSet) that count matching requests instead of blocking them. SizeRestrictions_BODY blocks request bodies over 8 KB, and Evidence Lab accepts bodies up to 2 MB (MAX_REQUEST_BODY_BYTES). SizeRestrictions_QUERYSTRING blocks query strings over 2,048 bytes, and Microsoft sign-in sends visitors back to /api/auth/microsoft/callback with a longer one, so while it blocks no Microsoft sign-in can finish. A list you set replaces this one: keep both unless you have another way to let those requests through. null means the default."
   type        = list(string)
-  default     = ["SizeRestrictions_BODY"]
+  default     = ["SizeRestrictions_BODY", "SizeRestrictions_QUERYSTRING"]
+  nullable    = false
 }
 
 variable "waf_count_only" {
@@ -337,4 +338,50 @@ variable "log_retention_days" {
   description = "Days to keep container logs."
   type        = number
   default     = 30
+}
+
+variable "alert_emails" {
+  description = "Addresses that get the deployment's alerts by email, such as bedrock_alarms. They are subscribed to an SNS topic named <name>-alerts in each region an alarm watches, and each address must click \"Confirm subscription\" in AWS's first email from each one. Empty sends no alerts."
+  type        = list(string)
+  default     = []
+  nullable    = false
+
+  validation {
+    condition     = alltrue([for e in var.alert_emails : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", e))])
+    error_message = "Every alert_emails entry must be an email address."
+  }
+}
+
+variable "bedrock_alarms" {
+  description = "Email alerts on Amazon Bedrock use, keyed by the model's ModelId as CloudWatch shows it (aws cloudwatch list-metrics --namespace AWS/Bedrock; an inference profile shows as its own ID, such as eu.amazon.nova-2-lite-v1:0). Each sets one or more levels for a rolling hour: input_tokens_per_hour, output_tokens_per_hour, invocations_per_hour. region is where the model is called, if not the deployment's region (rerank models are offered in only some). Base the levels on the busiest hour of normal use. Needs alert_emails. Empty sets no alarms."
+  type = map(object({
+    region                 = optional(string)
+    input_tokens_per_hour  = optional(number)
+    output_tokens_per_hour = optional(number)
+    invocations_per_hour   = optional(number)
+  }))
+  default  = {}
+  nullable = false
+
+  validation {
+    condition = alltrue([
+      for a in values(var.bedrock_alarms) :
+      anytrue([a.input_tokens_per_hour != null, a.output_tokens_per_hour != null, a.invocations_per_hour != null])
+    ])
+    error_message = "Every bedrock_alarms entry must set at least one of input_tokens_per_hour, output_tokens_per_hour and invocations_per_hour."
+  }
+
+  validation {
+    condition = alltrue(flatten([
+      for a in values(var.bedrock_alarms) : [
+        for v in [a.input_tokens_per_hour, a.output_tokens_per_hour, a.invocations_per_hour] : v == null ? true : v > 0
+      ]
+    ]))
+    error_message = "bedrock_alarms levels must be greater than 0."
+  }
+
+  validation {
+    condition     = length(var.bedrock_alarms) == 0 || length(var.alert_emails) > 0
+    error_message = "bedrock_alarms needs at least one address in alert_emails, or no one would hear of them."
+  }
 }

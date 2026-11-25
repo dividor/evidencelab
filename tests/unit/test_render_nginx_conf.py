@@ -18,7 +18,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "ui" / "frontend" / "render-nginx-conf.sh"
 TEMPLATE = REPO_ROOT / "ui" / "frontend" / "nginx.conf"
-SETTINGS = ("API_UPSTREAM", "MCP_UPSTREAM", "NGINX_RESOLVER", "NGINX_REAL_IP_FROM")
+SETTINGS = (
+    "API_UPSTREAM",
+    "MCP_UPSTREAM",
+    "NGINX_RESOLVER",
+    "NGINX_REAL_IP_FROM",
+    "UI_CSP_POLICY",
+)
 
 pytestmark = pytest.mark.unit
 
@@ -103,3 +109,90 @@ class TestRenderNginxConf:
 
         assert result.returncode == 2
         assert "usage:" in result.stderr
+
+
+SNIPPET = REPO_ROOT / "ui" / "frontend" / "nginx-security-headers.conf"
+
+
+def _csp_line(text):
+    lines = [line for line in text.splitlines() if "Content-Security-Policy" in line]
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+class TestRenderContentSecurityPolicy:
+    """The headers snippet's Content-Security-Policy is filled in at start.
+
+    It comes from ``UI_CSP_POLICY``, or a default that allows scripts and
+    workers from the site itself only (plus Google Analytics), now that the
+    PDF viewer loads PDF.js from the site instead of a CDN.
+    """
+
+    def test_snippet_when_read_then_has_placeholder_not_a_policy(self):
+        assert (
+            'add_header Content-Security-Policy "__UI_CSP_POLICY__" always;'
+            in SNIPPET.read_text()
+        )
+
+    def test_render_when_no_policy_set_then_default_restricts_scripts_to_site(
+        self, tmp_path
+    ):
+        result, output = _render(tmp_path, template=SNIPPET)
+
+        assert result.returncode == 0, result.stderr
+        line = _csp_line(output.read_text())
+        assert "__UI_CSP_POLICY__" not in line
+        directives = {
+            part.split()[0]: part.split()[1:]
+            for part in line.split('"')[1].split(";")
+            if part.strip()
+        }
+        assert directives["default-src"] == ["'self'"]
+        assert directives["script-src"] == ["'self'", "https://*.googletagmanager.com"]
+        assert directives["worker-src"] == ["'self'"]
+        assert directives["object-src"] == ["'none'"]
+        assert directives["frame-ancestors"] == ["'none'"]
+        assert directives["base-uri"] == ["'self'"]
+        assert "cdnjs.cloudflare.com" not in line
+        assert "'unsafe-eval'" not in line
+        assert "'wasm-unsafe-eval'" not in line
+        # The MCP consent form's answer redirects to the client's own address.
+        assert "form-action" not in directives
+
+    def test_render_when_policy_set_then_uses_it(self, tmp_path):
+        policy = "default-src 'self'; img-src 'self' https://cdn.example.org"
+
+        result, output = _render(tmp_path, template=SNIPPET, UI_CSP_POLICY=policy)
+
+        assert result.returncode == 0, result.stderr
+        assert (
+            _csp_line(output.read_text())
+            == f'add_header Content-Security-Policy "{policy}" always;'
+        )
+
+    def test_render_when_policy_empty_then_uses_default(self, tmp_path):
+        result, output = _render(tmp_path, template=SNIPPET, UI_CSP_POLICY="")
+
+        assert result.returncode == 0, result.stderr
+        assert "script-src 'self'" in _csp_line(output.read_text())
+
+    @pytest.mark.parametrize(
+        "policy",
+        [
+            'default-src "self"',
+            "default-src 'self' $host",
+            "default-src 'self' | x",
+            "default-src 'self' & x",
+            "default-src 'self' \\ x",
+            "default-src 'self';\nscript-src *",
+            "default-src 'self';\rscript-src *",
+        ],
+    )
+    def test_render_when_policy_unsafe_then_fails_without_writing(
+        self, tmp_path, policy
+    ):
+        result, output = _render(tmp_path, template=SNIPPET, UI_CSP_POLICY=policy)
+
+        assert result.returncode == 1
+        assert "invalid UI_CSP_POLICY" in result.stderr
+        assert not output.exists()

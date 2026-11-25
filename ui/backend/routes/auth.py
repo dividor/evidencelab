@@ -5,7 +5,7 @@ import hashlib
 import logging
 import os
 import secrets
-from typing import Optional, TypeGuard
+from typing import Literal, Optional, TypeGuard
 from urllib.parse import urlparse
 
 import jwt
@@ -180,9 +180,11 @@ async def cookie_logout():
 
 
 # ---------------------------------------------------------------------------
-# Email/password auth — mounted only when DISABLE_EMAIL_LOGIN is not set.
-# Verify and reset-password routers remain available so OAuth users who also
-# have an email on file can still verify / reset if needed.
+# Email/password auth — mounted only when DISABLE_EMAIL_LOGIN is not set:
+# password sign-in, registration and password recovery (forgot-password,
+# reset-password). Without password sign-in a new password could never be
+# used, so a site that signs in only with Microsoft or Google offers no reset.
+# The verify router remains available.
 # ---------------------------------------------------------------------------
 
 if not DISABLE_EMAIL_LOGIN:
@@ -200,13 +202,13 @@ if not DISABLE_EMAIL_LOGIN:
         fastapi_users.get_register_router(UserRead, UserCreate),
         tags=["auth"],
     )
+    router.include_router(
+        fastapi_users.get_reset_password_router(),
+        tags=["auth"],
+    )
 
 router.include_router(
     fastapi_users.get_verify_router(UserRead),
-    tags=["auth"],
-)
-router.include_router(
-    fastapi_users.get_reset_password_router(),
     tags=["auth"],
 )
 
@@ -264,6 +266,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
 
     Each sign-in is bound to the browser that started it and uses PKCE (see
     _OAUTH_FLOW_COOKIE). The scopes are always the client's own minimal set.
+
+    /authorize takes one optional ``prompt``, ``select_account``: the provider
+    then shows its account picker instead of signing in an account it already
+    knows without asking. The app asks for it after someone signs out or their
+    session times out. Any other value is refused.
     """
     oauth_router = APIRouter()
     callback_url = f"{_OAUTH_CALLBACK_BASE}/auth/{provider_name}/callback"
@@ -272,7 +279,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
 
     # --- /authorize --------------------------------------------------------
     @oauth_router.get("/authorize")
-    async def authorize(response: Response, return_to: Optional[str] = Query(None)):
+    async def authorize(
+        response: Response,
+        return_to: Optional[str] = Query(None),
+        prompt: Optional[Literal["select_account"]] = Query(None),
+    ):
         verifier = secrets.token_urlsafe(64)
         challenge = _pkce_challenge(verifier)
         state_data = {"challenge": challenge}
@@ -283,13 +294,11 @@ def _make_oauth_router(oauth_client, provider_name: str):
         )
         # httpx-oauth's Microsoft client drops code_challenge arguments, so the
         # challenge goes in as extra parameters, which both clients pass on.
+        extras_params = {"code_challenge": challenge, "code_challenge_method": "S256"}
+        if prompt:
+            extras_params["prompt"] = prompt
         authorization_url = await oauth_client.get_authorization_url(
-            callback_url,
-            state,
-            extras_params={
-                "code_challenge": challenge,
-                "code_challenge_method": "S256",
-            },
+            callback_url, state, extras_params=extras_params
         )
         response.set_cookie(
             _OAUTH_FLOW_COOKIE,

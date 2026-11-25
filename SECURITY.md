@@ -177,7 +177,7 @@ API endpoints validate `data_source` parameters against a whitelist loaded from 
 
 ### Untrusted Input Shown to Administrators
 
-Anonymous visitors can write ratings (page feedback) and activity rows, and administrators read them in the admin screens and in Excel exports. Three controls keep that input from running in an administrator's browser or spreadsheet:
+On a site that doesn't require sign-in, anonymous visitors can write ratings (page feedback) and activity rows, and administrators read them in the admin screens and in Excel exports. Three controls keep that input from running in an administrator's browser or spreadsheet:
 
 - **Server-side refusal** (`ui/backend/auth/schemas.py`, ratings and activity payloads): a `data:` URL is accepted only as a PNG, JPEG, WebP or GIF image (an SVG can carry script), and a `javascript:` or `vbscript:` value is refused in any link field (`url`, `link`, `href`, `*_url`). Whitespace and control characters inside the scheme are ignored, as browsers ignore them. Other text is stored as typed, because it is shown as text.
 - **Links rendered safely** (`ui/frontend/src/utils/safeHref.ts`): a link that comes from stored data (document metadata, ratings, activity, the research PDF export) is made clickable only for `http`, `https`, `mailto` or a path on this site. Word exports link only to full `http(s)` addresses. Feedback screenshots open full size inside the page, never as a document in a new tab.
@@ -225,6 +225,7 @@ API endpoints are protected by rate limiting (slowapi):
 - Search operations: Configurable via `RATE_LIMIT_SEARCH`
 - AI operations: Configurable via `RATE_LIMIT_AI`
 - Default operations: Configurable via `RATE_LIMIT_DEFAULT`
+- Daily AI spending: `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day. Past it, every AI request (website, admin test runs, MCP and A2A assistant, LLM translation) is refused with 429 until 00:00 UTC, while search keeps working. See `docs/admin/system-monitoring.md`.
 
 ### API Key Authentication
 
@@ -315,12 +316,13 @@ The following paths are exempt from middleware authentication because they eithe
 | `/auth/` | Login, register, verify, password reset — has own auth flow |
 | `/config/auth-status` | Frontend feature flag (must be accessible before login) |
 | `/users/` | Protected by fastapi-users `current_active_user` dependency |
-| `/groups/` | Protected by fastapi-users `current_active_user` dependency |
-| `/ratings/` | Protected by fastapi-users `current_active_user` dependency |
-| `/activity/` | Protected by fastapi-users `current_active_user` dependency |
+| `/groups/` | Protected by fastapi-users `current_superuser` dependency |
+| `/ratings/` | Signed-in users; anonymous visitors only when `features.anonymous_ratings` is on; the admin routes need `current_superuser` |
 | `/api-keys` | Protected by fastapi-users `current_superuser` dependency |
 | `/docs`, `/redoc`, `/openapi.json` | OpenAPI docs (served in every deployment) |
 | `OPTIONS` | CORS preflight requests |
+
+`/activity/` is not exempt. Its log and summary routes also take anonymous visitors, for sites without required sign-in, so on a site that requires sign-in this middleware is what refuses people who aren't signed in.
 
 #### Security Properties
 
@@ -362,7 +364,25 @@ Application-level security headers middleware provides defence-in-depth:
 - `Strict-Transport-Security` — HSTS with `preload` directive when HTTPS is configured; warning logged when `AUTH_COOKIE_SECURE=false`
 - `Cache-Control: no-store` + `Pragma: no-cache` on sensitive endpoints (`/auth/`, `/users/`, `/groups/`, `/ratings/`, `/activity/`) — prevents browsers and proxies from caching tokens or personal data (ASVS V8.1.4)
 
-These headers are added by the API to its own responses. The web pages and static files are served by nginx (`ui/frontend/nginx.conf`), which sets its own headers from one file, `ui/frontend/nginx-security-headers.conf`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, and a `Content-Security-Policy` of `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`. nginx drops server-level headers for any `location` that sets an `add_header` of its own, so every such location includes the file again; `tests/unit/test_nginx_security_headers.py` fails if one does not. The page CSP does not yet restrict `script-src`, because the PDF viewer loads pdf.js from cdnjs.
+These headers are added by the API to its own responses. The web pages and static files are served by nginx (`ui/frontend/nginx.conf`), which sets its own headers from one file, `ui/frontend/nginx-security-headers.conf`: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`, and a `Content-Security-Policy`. nginx drops server-level headers for any `location` that sets an `add_header` of its own, so every such location includes the file again; `tests/unit/test_nginx_security_headers.py` fails if one does not.
+
+The pages' `Content-Security-Policy` is filled in when the ui container starts (`ui/frontend/render-nginx-conf.sh`), from `UI_CSP_POLICY` or this default:
+
+```
+default-src 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline';
+img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://*.google-analytics.com
+https://*.analytics.google.com https://*.googletagmanager.com; worker-src 'self';
+frame-ancestors 'none'; object-src 'none'; base-uri 'self'
+```
+
+- Scripts and workers come from the site only. Google Analytics is the exception, and the app loads it only when it is configured and the visitor accepts analytics cookies.
+- There is no inline script and no `eval`: the production build keeps Create React App's runtime as a file (`INLINE_RUNTIME_CHUNK=false`).
+- The PDF viewer loads PDF.js from the site. `scripts/copy-pdfjs.js` copies it from the `pdfjs-dist` version in `package-lock.json` into the build at `/pdfjs/<version>/`.
+- PDF.js runs without WebAssembly (`useWasm: false`, using its JavaScript image decoders), so the policy needs no `'wasm-unsafe-eval'`.
+- The app's typefaces (Poppins and Open Sans) are bundled from `@fontsource` and served from the site, not loaded from Google Fonts, so `style-src` and `font-src` need no outside address and visitors' browsers do not contact Google for them.
+- Styles allow inline, because React and the MCP consent page set style attributes.
+- `form-action` is left out: it does not fall back to `default-src`, and the MCP consent form's answer redirects to the MCP client's own address.
+- A deployment that loads other outside assets sets `UI_CSP_POLICY`. The container refuses a value with a line break or any of `| & \ " $`.
 
 Production deployments via Caddy additionally include:
 
@@ -462,6 +482,14 @@ MD4, MD5 (for security purposes), RC4, single DES, 3DES, SHA-1 (for security pur
 
 ## Changelog
 
+- **2026-11-23**: Sign-in-required sites keep the activity log for signed-in people, and MCP client registration is limited
+  - The `on_active` middleware no longer exempts `/activity/`: on a site that requires sign-in, logging a search or its summary needs a valid session or key, as data routes do. Sites without required sign-in still log anonymous visitors
+  - `POST /mcp/register` reads at most 16 KB, accepts at most 10 `redirect_uris` of at most 2,048 characters and a `client_name` of at most 200, and refuses a body that is not a JSON object, with the RFC 7591 error codes. At most 1,000 registrations are kept; a new one replaces the oldest that never got a token
+- **2026-11-23**: Serve PDF.js from the site and restrict the pages' scripts
+  - The PDF viewer loads PDF.js 6.5.438 from the site instead of cdnjs (3.11.174); the version comes from `package-lock.json`
+  - The web pages' `Content-Security-Policy` now restricts scripts, styles, images, fonts, connections and workers, configurable per deployment with `UI_CSP_POLICY`
+  - The production build has no inline script (`INLINE_RUNTIME_CHUNK=false`)
+  - The typefaces are served from the site instead of Google Fonts
 - **2026-11-17**: Tighten API access checks and page headers
   - Document write and pipeline routes (contents and metadata edits, reprocessing, queue status, processing logs) now require a signed-in superuser instead of the API key alone; the UI shows those controls only to superusers
   - The API-key check now verifies the session cookie's token instead of accepting any cookie value

@@ -1,0 +1,17 @@
+{
+  "application": {},
+  "datasources": {},
+  "supported_llms": {
+    "nova-2-lite": { "model": "eu.amazon.nova-2-lite-v1:0", "provider": "aws_bedrock" },
+    "mistral-large": { "model": "mistral.mistral-large-2402-v1:0", "provider": "aws_bedrock" },
+    "gpt-4.1-mini": { "model": "gpt-4.1-mini", "provider": "openai" }
+  },
+  "supported_embedding_models": {
+    "aws_titan_v2": { "model_id": "amazon.titan-embed-text-v2:0", "source": "aws_bedrock" },
+    "google_gemini": { "model_id": "gemini-embedding-001", "source": "google_vertex" }
+  },
+  "supported_rerank_models": {
+    "amazon-rerank-1.0-bedrock": { "model_id": "amazon.rerank-v1:0", "provider": "aws_bedrock", "region": "eu-central-1" },
+    "jina-reranker": { "model_id": "jinaai/jina-reranker-v2-base-multilingual", "provider": "huggingface" }
+  }
+}

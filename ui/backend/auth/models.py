@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for user authentication and permissions."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi_users.db import (
@@ -12,6 +12,7 @@ from fastapi_users_db_sqlalchemy.generics import GUID
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -688,6 +689,34 @@ class ApiKey(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class AiDailySpend(Base):
+    """AI cost per UTC day, added to as each call's usage is recorded.
+
+    ``AI_DAILY_COST_LIMIT_USD`` is checked against this total
+    (``ui.backend.services.ai_daily_limit``). It is kept apart from
+    ``user_activity`` because usage accumulates onto activity rows created on
+    earlier days (a brief's sections, a long conversation), so summing those
+    rows by date would miss part of a day's spend. Pipeline runs record their
+    usage elsewhere and are not added here.
+    """
+
+    __tablename__ = "ai_daily_spend"
+    __table_args__ = (UniqueConstraint("day", name="uq_ai_daily_spend_day"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    cost_usd: Mapped[Decimal] = mapped_column(
+        Numeric(precision=14, scale=6), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )
 
 

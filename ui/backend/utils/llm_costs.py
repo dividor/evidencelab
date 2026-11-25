@@ -4,9 +4,17 @@ The cost table maps a model identifier (the ``supported_llms`` key from
 ``config.json``, e.g. ``gpt-4.1-mini``) to public list prices in USD per
 1,000 tokens, split by input and output.
 
+A ``supported_llms`` entry in config.json may carry its own
+``price_per_million`` (USD per million input and output tokens), which is
+used instead of this table: a deployment sets the prices of its own region or
+contract without a code change.
+
 Adding a new model is a one-line change here. Unlisted models cause
 ``compute_cost`` to return ``None`` so the admin UI renders an em-dash
-rather than fabricating a cost value.
+rather than fabricating a cost value. With ``AI_DAILY_COST_LIMIT_USD`` set,
+the api and the MCP/A2A server refuse to start while config.json uses a model
+with no price here or in config.json (``ui.backend.services.ai_daily_limit``),
+because the limit could not count its use.
 
 Prices reflect public list pricing as of 2026-05 and may drift; treat
 them as best-effort. The DB stores the computed cost as ``NUMERIC(12, 6)``
@@ -31,6 +39,10 @@ LLM_COSTS_PER_1K: Mapping[str, tuple[Decimal, Decimal]] = {
     "gemini-3.8-flash": (Decimal("0.00075"), Decimal("0.00375")),
     # Amazon Bedrock (us-east-2, from the AWS Price List API, 2026-11)
     "nova-2-lite": (Decimal("0.00033"), Decimal("0.00275")),
+    # Anthropic's Haiku 4.5 on Amazon Bedrock, through the EU inference profile
+    # (eu-west-1, from the AWS Price List API, 2026-11). Worldwide routing
+    # costs $1.00 / $5.00 per 1M.
+    "haiku-4.5": (Decimal("0.00110"), Decimal("0.00550")),
     # HuggingFace-hosted open-weights — provider-dependent; left None
     # below by omitting an entry so the UI shows "—" for these models.
 }
@@ -50,7 +62,7 @@ def compute_cost(
     """
     if not model_key:
         return None
-    rates = LLM_COSTS_PER_1K.get(model_key)
+    rates = rates_per_1k(model_key)
     if rates is None:
         return None
     if prompt_tokens is None and completion_tokens is None:
@@ -62,6 +74,22 @@ def compute_cost(
     return cost.quantize(Decimal("0.000001"))
 
 
+def rates_per_1k(model_key: str) -> Optional[tuple[Decimal, Decimal]]:
+    """(input, output) USD per 1,000 tokens for ``model_key``: its
+    ``price_per_million`` in config.json if set, else this module's table,
+    else ``None``."""
+    from pipeline.db import config as db_config
+
+    price = (db_config.SUPPORTED_LLMS.get(model_key) or {}).get("price_per_million")
+    if price:
+        thousand = Decimal(1000)
+        return (
+            Decimal(str(price["input"])) / thousand,
+            Decimal(str(price["output"])) / thousand,
+        )
+    return LLM_COSTS_PER_1K.get(model_key)
+
+
 def has_cost_data(model_key: Optional[str]) -> bool:
-    """Return True if a cost lookup exists for ``model_key``."""
-    return bool(model_key) and model_key in LLM_COSTS_PER_1K
+    """Return True if a price exists for ``model_key`` (config.json or table)."""
+    return bool(model_key) and rates_per_1k(str(model_key)) is not None
