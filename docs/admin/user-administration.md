@@ -222,11 +222,11 @@ The panel has two sections:
 
 ### Group Settings
 
-The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, but can still override them in the UI.
+The **Group Settings** tab lets you configure default search behavior for each group. Users inherit these defaults when they log in, and can still override most of them in the UI; the models chosen on the **LLMs** tab they can't.
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -293,6 +293,26 @@ Defaults for document summaries that administrators regenerate on the Documents 
 | **Summary mode** | The data source's mode (shown beside the option), Map reduce or Single prompt. Default: the data source's `summarize.mode`. |
 | **Sections** | **Use the data source's sections** lists each data source's sections; untick it to choose them for the group. Default: the data source's `summarize.section_types`, or every section type. |
 | **Summary prompt** | What the summary must contain, shown ready to edit; **Reset to default** returns to the built-in prompt (`prompts/summary_instructions.j2`). |
+
+#### LLMs
+
+Which model does each AI job for the group's members. Each list offers the models in `config.json`'s `supported_llms`. The first option, **Default from config**, names the model `config.json` gives that job, and the group uses it.
+
+| Setting | What the model does | Default from config |
+|---------|---------------------|---------------------|
+| **Search AI summary** | Writes the AI summary above search results. | The model combo's `summarization_model`. |
+| **Brief** | Writes a Brief's outline, its sections and edits. | The model combo's `assistant_model`, else its `summarization_model`. |
+| **Evaluation judge** | Scores the LLM-judge checks of [evaluation](evaluation.md) runs, and the Brief citation check. | The model combo's `judge_model`, else its `summarization_model`. |
+
+- **A choice here overrides `config.json`**, including the model combo a member picks. Members can't change it.
+- **A member of several groups** gets the choice of the first of their groups, by name, that makes one. This is the same rule as every other group setting.
+- **Evaluation runs** use the judge of the group they run as. A run that isn't run as a group uses the judge chosen by the groups of the administrator who clicked **Run**. A model a group chooses for the search AI summary is also the summary model of runs made as that group.
+- **A model marked "ignores Response variability"** refuses a temperature, so it is called without one (`"supports_temperature": false` in `config.json`, see [Pipeline Configuration](pipeline-configuration.md#llm-models-supported_llms)).
+- **If `config.json` stops offering a chosen model**, the tab shows the choice in red, and that job's requests from the group fail with a message naming the group and the model until you choose another. A group can only save models that `config.json` lists.
+
+Judging an answer with the model that wrote it tends to favour that model's own style. Choose a judge that differs from the summary and Brief models.
+
+With a [daily AI limit](system-monitoring.md#daily-ai-limit) set, every model a group can choose needs a price. See [Pipeline Configuration](pipeline-configuration.md#llm-models-supported_llms).
 
 ### User Self-Service
 

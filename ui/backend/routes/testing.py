@@ -74,6 +74,7 @@ from ui.backend.services.citation_check_runner import (
     run_check,
 )
 from ui.backend.services.citation_fidelity import researched_sections
+from ui.backend.services.llm_choice import JUDGE, user_group_choice
 from ui.backend.services.test_runner import run_experiment
 from ui.backend.utils.app_limits import get_rate_limits, limiter
 
@@ -671,7 +672,10 @@ async def create_brief_check(
     combo = (body.model_combo or "").strip() or None
     if combo is not None and combo not in _model_combo_names():
         raise HTTPException(status_code=400, detail="Invalid model_combo")
-    judge_model = resolve_judge_model(combo)
+    # The judge the admin's groups choose (Group Settings > LLMs), else config.json's.
+    judge_model = await user_group_choice(session, admin, JUDGE) or resolve_judge_model(
+        combo
+    )
     if not judge_model:
         raise HTTPException(status_code=503, detail="No judge model is configured")
     # The check judges the brief's current version and pins it: a brief with

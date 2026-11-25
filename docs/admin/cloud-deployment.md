@@ -452,7 +452,7 @@ Terraform's own tests check these settings, but they have not yet been tried on 
 
 ### Limiting and watching AI use
 
-**Only the models in `config.json`.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. A cross-region inference profile, such as `eu.amazon.nova-2-lite-v1:0`, allows the profile and its base model in every region it routes to. To use another Bedrock model, add it to `config.json` and deploy. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
+**Only the models in `config.json`.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. A cross-region inference profile, such as `eu.amazon.nova-2-lite-v1:0`, allows the profile and its base model in every region it routes to. To use another Bedrock model, add it to `config.json` and deploy. Every model in `supported_llms` can be chosen per group in Group Settings > LLMs, so the role may call each of them: list only the models you're willing to pay for, and give each its own entry in `bedrock_alarms`. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
 
 **Email alerts on Bedrock use.** Set the addresses and, for each model, a level for a rolling hour:
 

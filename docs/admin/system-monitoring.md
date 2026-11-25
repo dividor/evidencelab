@@ -182,12 +182,16 @@ the api and the MCP server (they share the day's total). Unset means no limit;
   the template turns that line into an email to `alert_emails`.
 - **It stops start-up when it can't be counted.** A value that isn't a number
   of dollars stops the api and the MCP server at start-up. So does a model
-  that has no price in `ui/backend/utils/llm_costs.py`, because the limit
-  could not count its use: one in `supported_llms`, one a model combo names,
-  or the default model (`LLM_MODEL`, or the `llm` model in config.json's
-  `application` section). The error names each such model and where it is
-  set: add its price to that file under its `supported_llms` key, or stop
-  using it there. The Hugging Face models in the stock config.json have no
+  that has no price, because the limit could not count its use: one in
+  `supported_llms` (which includes every model a group can choose in Group
+  Settings > LLMs), one a model combo names (its judge too), or the default
+  model (`LLM_MODEL`, or the `llm` model in config.json's `application`
+  section). The error names each such model and where it is set: give it a
+  `price_per_million` in its `supported_llms` entry (see [Pipeline
+  Configuration](pipeline-configuration.md#llm-models-supported_llms)), add
+  its price to `ui/backend/utils/llm_costs.py` under its `supported_llms` key,
+  or stop using it there. A `price_per_million` in config.json takes
+  precedence over that file, so a deployment can price its own region. The Hugging Face models in the stock config.json have no
   price.
 - **A call that still has no price is logged.** While the limit is set, any AI
   call the api or the MCP server can't price logs an error starting

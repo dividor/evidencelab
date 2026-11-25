@@ -121,6 +121,9 @@ class FakeSession:
             rows = self._version_rows(text)
         elif "FROM users" in text or "FROM user_group_members" in text:
             rows = self.users if "FROM users" in text else []
+        elif "FROM user_groups JOIN user_group_members" in text:
+            # The admin's groups, read for their judge choice: none here.
+            rows = []
         else:
             raise AssertionError(f"unexpected query: {text[:80]}")
         result = SimpleNamespace(

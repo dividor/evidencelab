@@ -17,6 +17,7 @@ from ui.backend.schemas import (
 from ui.backend.services import llm_service as llm_service_module
 from ui.backend.services import translation_service
 from ui.backend.services.ai_daily_limit import AiDailyLimitReached, require_ai_allowance
+from ui.backend.services.llm_choice import SUMMARY, user_group_choice
 from ui.backend.services.translation_providers import (
     TranslationConfigError,
     TranslationDisabledError,
@@ -185,6 +186,22 @@ def _check_summary_model(body: AISummaryRequest) -> None:
         check_requested_llm(body.summary_model, None)
 
 
+async def _summary_model_key(body: AISummaryRequest, user, session) -> Optional[str]:
+    """The model for this summary: the user's group choice (Group Settings >
+    LLMs), which overrides the request's model combo, else the request's model.
+
+    The request's token budget was already checked against the request's model
+    (``_check_summary_model``) and applies to the chosen model as it is: an
+    administrator chose that model, so its budget isn't checked again against
+    the limits config.json sets for its other uses.
+    """
+    summary_config = body.summary_model_config
+    chosen = await user_group_choice(session, user, SUMMARY) if _USER_MODULE else None
+    if chosen:
+        return chosen
+    return summary_config.model if summary_config else body.summary_model
+
+
 @router.post("/ai-summary/stream", dependencies=[Depends(require_ai_allowance)])
 @limiter.limit(RATE_LIMIT_AI)
 async def stream_summary(
@@ -198,6 +215,7 @@ async def stream_summary(
     Returns Server-Sent Events (SSE) for progressive display.
     """
     _check_summary_model(body)
+    model_key = await _summary_model_key(body, user, session)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 
@@ -223,7 +241,6 @@ async def stream_summary(
             full_summary = ""
             stream_metadata = {}
             summary_config = body.summary_model_config
-            model_key = summary_config.model if summary_config else body.summary_model
             temperature = _resolve_temperature(body)
             max_tokens = summary_config.max_tokens if summary_config else None
             logger.info(
@@ -309,6 +326,7 @@ async def generate_summary(
     Requires HUGGINGFACE_API_KEY to be set in environment.
     """
     _check_summary_model(body)
+    model_key = await _summary_model_key(body, user, session)
     # Resolve group-level summary prompt override (if user is logged in)
     system_prompt_override = await _resolve_summary_prompt(user, session)
 
@@ -319,7 +337,6 @@ async def generate_summary(
 
         # Generate summary using LLM
         summary_config = body.summary_model_config
-        model_key = summary_config.model if summary_config else body.summary_model
         temperature = _resolve_temperature(body)
         max_tokens = summary_config.max_tokens if summary_config else None
         logger.info(

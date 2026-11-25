@@ -67,6 +67,7 @@ _COMBO_STAGES = (
     "summarization_model",
     "semantic_highlighting_model",
     "assistant_model",
+    "judge_model",
 )
 
 LIMIT_MESSAGE = (
@@ -162,9 +163,10 @@ def _unpriced_message(unpriced: Dict[str, List[str]]) -> str:
     )
     return (
         f"{LIMIT_ENV} is set, but config.json uses models that have no price, so "
-        f"the limit would not count their use: {listed}. Add a price for each to "
-        f"LLM_COSTS_PER_1K in {PRICES_FILE} under its supported_llms key, or stop "
-        "using it where listed."
+        f"the limit would not count their use: {listed}. Give each a "
+        '"price_per_million": {"input": <USD>, "output": <USD>} in its '
+        f"supported_llms entry, or add it to LLM_COSTS_PER_1K in {PRICES_FILE} "
+        "under its supported_llms key, or stop using it where listed."
     )
 
 
@@ -177,7 +179,7 @@ def report_unpriced_call(model: Optional[str]) -> None:
     if daily_limit() is None:
         return
     logger.error(
-        "%s: the call to %s has no price in %s, so the day's total (%s) "
+        "%s: the call to %s has no price in config.json or %s, so the day's total (%s) "
         "does not include it",
         UNPRICED_CALL_LOG,
         model or "an unnamed model",

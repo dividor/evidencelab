@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,7 @@ from ui.backend.services.brief_section_prompt import (
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
+from ui.backend.services.llm_choice import BRIEF, user_group_choice
 from ui.backend.services.usage_recorder import (
     schedule_daily_spend_recording,
     schedule_llm_usage_recording,
@@ -147,6 +149,17 @@ def _resolve_model_config(body: AssistantChatRequest):
     )
 
 
+async def _purpose_model_key(
+    body: AssistantChatRequest, model_key: Optional[str], user, session
+) -> Optional[str]:
+    """For a Brief request (``usage_context="brief"``: section research and the
+    library survey), the group's Brief model (Group Settings > LLMs) overrides
+    the model combo's; otherwise the model the request names."""
+    if body.usage_context == "brief":
+        return await user_group_choice(session, user, BRIEF) or model_key
+    return model_key
+
+
 def _message_to_history_entry(msg) -> dict:
     """Convert a ``ConversationMessage`` row to the history-dict shape.
 
@@ -263,6 +276,7 @@ async def stream_assistant_chat(
     body.data_source = await settle_data_source(body.data_source, user, session)
     check_model_config(body.assistant_model_config)
     model_key, temperature, max_tokens = _resolve_model_config(body)
+    model_key = await _purpose_model_key(body, model_key, user, session)
     research_query = _research_query(body)
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history

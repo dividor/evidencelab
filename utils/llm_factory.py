@@ -175,7 +175,9 @@ def get_llm(
             f"or set LLM_PROVIDER environment variable."
         )
     provider = provider.lower()
-    temperature = _resolve_temperature(temperature)
+    temperature = (
+        _resolve_temperature(temperature) if _supports_temperature(model_key) else None
+    )
     max_tokens = _resolve_max_tokens(max_tokens, default_max_tokens)
 
     inference_provider = _resolve_inference_provider(
@@ -236,6 +238,18 @@ def _resolve_temperature(temperature: Optional[float]) -> float:
     if temperature is not None:
         return temperature
     return float(os.getenv("LLM_TEMPERATURE", "0.7"))
+
+
+def _supports_temperature(model_key: Optional[str]) -> bool:
+    """False for a ``supported_llms`` entry marked ``"supports_temperature":
+    false``: that model refuses a temperature, so none is sent. Models config.json
+    doesn't list, and entries without the flag, take one."""
+    from pipeline.db import config as db_config
+
+    key = supported_llm_key(model_key) if model_key else None
+    if key is None:
+        return True
+    return bool(db_config.SUPPORTED_LLMS[key].get("supports_temperature", True))
 
 
 def _resolve_max_tokens(max_tokens: Optional[int], default_max_tokens: int) -> int:
@@ -316,7 +330,7 @@ def _resolve_inference_provider(
 def _build_cache_key(
     provider: str,
     model: Optional[str],
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str],
 ) -> str:
@@ -328,7 +342,7 @@ def _build_cache_key(
 def _create_llm_for_provider(
     provider: str,
     model: Optional[str],
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str],
 ) -> BaseChatModel:
@@ -358,7 +372,7 @@ def _create_llm_for_provider(
 
 def _create_huggingface_llm(
     model: str,
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
@@ -378,7 +392,7 @@ def _create_huggingface_llm(
 def _create_huggingface_endpoint_llm(
     model: str,
     api_key: str,
-    temperature: float,
+    temperature: Optional[float],
     max_tokens: int,
     inference_provider: Optional[str] = None,
 ) -> BaseChatModel:
@@ -406,7 +420,7 @@ def _create_huggingface_endpoint_llm(
 
 
 def _create_azure_foundry_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Azure Foundry LLM instance."""
     from langchain_openai import ChatOpenAI
@@ -438,7 +452,7 @@ def _create_azure_foundry_llm(
 
 
 def _create_aws_bedrock_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create an Amazon Bedrock chat model (Converse API).
 
@@ -459,7 +473,7 @@ def _create_aws_bedrock_llm(
 
 
 def _create_openai_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI LLM instance."""
     from langchain_openai import ChatOpenAI
@@ -480,7 +494,7 @@ def _create_openai_llm(
 
 
 def _create_anthropic_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Anthropic LLM instance."""
     from langchain_anthropic import ChatAnthropic
@@ -501,7 +515,7 @@ def _create_anthropic_llm(
 
 
 def _create_google_vertex_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create Google Vertex AI LLM instance."""
     from langchain_google_vertexai import ChatVertexAI
@@ -548,7 +562,7 @@ def _create_google_vertex_llm(
 
 
 def _create_openai_compatible_llm(
-    model: str, temperature: float, max_tokens: int
+    model: str, temperature: Optional[float], max_tokens: int
 ) -> BaseChatModel:
     """Create OpenAI-compatible LLM instance (Groq, Together, etc.)."""
     from langchain_openai import ChatOpenAI

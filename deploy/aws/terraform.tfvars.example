@@ -34,6 +34,8 @@ cloudfront_enabled = false
 # alert_emails = ["ops@example.org"]
 # bedrock_alarms = {
 #   "us.amazon.nova-2-lite-v1:0" = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+#   # A model a group can choose (Group Settings > LLMs) needs its own alarm.
+#   "us.anthropic.claude-haiku-4-5-20251001-v1:0" = { input_tokens_per_hour = 1000000, output_tokens_per_hour = 150000 }
 #   "amazon.rerank-v1:0"         = { region = "us-west-2", invocations_per_hour = 5000 }
 # }
 
