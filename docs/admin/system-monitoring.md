@@ -168,8 +168,7 @@ the api and the MCP server (they share the day's total). Unset means no limit;
   added to that UTC day's total (`ai_daily_spend`) as each call is recorded.
   Pipeline runs are neither counted nor stopped, because stopping one midway
   would mark its documents failed; watch them with your cloud's usage alarms.
-  Models without a price in `llm_costs.py` add nothing, and neither do
-  embedding and reranker calls.
+  Embedding and reranker calls add nothing.
 - **Nobody is exempt**, administrators included: raise the limit instead.
 - **It can run a little over.** A request is checked when it starts, and its
   cost is added when it finishes, so requests already running when the limit
@@ -178,5 +177,11 @@ the api and the MCP server (they share the day's total). Unset means no limit;
 - **When it is reached**, the first refused request of the day logs a warning
   starting `AI daily limit reached`, with the day's total and the limit. On AWS,
   the template turns that line into an email to `alert_emails`.
-- A value that isn't a number of dollars stops the api and the MCP server at
-  start-up.
+- **It stops start-up when it can't be counted.** A value that isn't a number
+  of dollars stops the api and the MCP server at start-up. So does a model in
+  config.json (in `supported_llms` or a model combo) that has no price in
+  `ui/backend/utils/llm_costs.py`, because the limit could not count its use.
+  The error names each such model: add its price to that file under its
+  `supported_llms` key, or remove it from config.json. The Hugging Face models
+  in the stock config.json have no price. Model combos must name models by
+  their `supported_llms` key.
