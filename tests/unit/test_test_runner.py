@@ -6,6 +6,7 @@ without touching the live search/LLM services.
 """
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -482,6 +483,10 @@ async def test_build_result_row_compacts_output_and_sets_keys():
 class _FakeResult:
     def scalar(self):
         return 0
+
+    def scalars(self):
+        # The triggering admin's groups, read for their judge choice: none.
+        return SimpleNamespace(all=lambda: [])
 
 
 class _FakeSession:

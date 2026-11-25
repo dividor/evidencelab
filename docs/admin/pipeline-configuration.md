@@ -121,6 +121,18 @@ To use a model, list its key in the data source's `dense_models` before the firs
 | `provider` | string | `"huggingface"`, `"azure_foundry"`, `"google_vertex"` or `"aws_bedrock"` |
 | `inference_provider` | string | Hugging Face only: the provider the router must use (e.g., `"novita"`, `"together"`). If the provider stops serving the model, calls fail with an error rather than moving to another provider. Leave it out to let Hugging Face choose. |
 | `max_tokens` | int | Maximum output tokens |
+| `price_per_million` | object | Optional. US dollars per million tokens, `{"input": 0.8, "output": 3.2}`. Used to price the model's calls instead of Evidence Lab's built-in table (`ui/backend/utils/llm_costs.py`), so you can set the prices of your region or contract. |
+| `supports_temperature` | bool | Optional. `false` for a model that refuses a temperature (on Bedrock, Claude Sonnet 5.5 answers "`temperature` is deprecated for this model"): it is then called without one, and the **Response variability** setting doesn't apply to it. Default: `true`. |
+
+Every model a group can choose in Group Settings > LLMs, and every model a combo names, needs a price when the [daily AI limit](system-monitoring.md#daily-ai-limit) is set: a `price_per_million`, or an entry in the built-in table.
+
+```json
+"nova-pro": {
+  "model": "us.amazon.nova-pro-v1:0",
+  "provider": "aws_bedrock",
+  "price_per_million": {"input": 0.8, "output": 3.2}
+}
+```
 
 #### Rerank Models (`supported_rerank_models`)
 
@@ -167,7 +179,10 @@ The stock `config.json` includes Bedrock models and an **AWS Bedrock** model com
 | Key | Kind | Bedrock model |
 |---|---|---|
 | `aws_titan_v2` | Embedding | Amazon Titan Text Embeddings V2 (`amazon.titan-embed-text-v2:0`), 1024 dimensions |
-| `nova-2-lite` | LLM | Amazon Nova 2 Lite, through the US inference profile `us.amazon.nova-2-lite-v1:0` |
+| `nova-2-lite` | LLM | Amazon Nova 2 Lite, through the US inference profile `us.amazon.nova-2-lite-v1:0`; the **AWS Bedrock** combo's summary, highlighting and assistant model |
+| `nova-pro` | LLM | Amazon Nova Pro, `us.amazon.nova-pro-v1:0` |
+| `haiku-4.5` | LLM | Claude Haiku 4.5, `us.anthropic.claude-haiku-4-5-20251001-v1:0`; the **AWS Bedrock** combo's evaluation judge (`judge_model`) |
+| `sonnet-4.6` | LLM | Claude Sonnet 4.6, `us.anthropic.claude-sonnet-4-6` |
 | `amazon-rerank-1.0-bedrock` | Reranker | Amazon Rerank 1.0 (`amazon.rerank-v1:0`), called in `us-west-2`; the **AWS Bedrock** combo's reranker |
 | `cohere-rerank-3.5-bedrock` | Reranker | Cohere Rerank 3.5 (`cohere.rerank-v3-5:0`), called in `us-west-2` |
 
@@ -176,7 +191,7 @@ Evidence Lab calls Bedrock with the standard AWS credentials: `AWS_REGION` plus 
 Model availability differs by region. Check what your region offers with `aws bedrock list-foundation-models --region <region>`, then adjust the entries:
 
 - **Embedding:** Titan Text Embeddings V2 is offered in most regions. Embedding models cannot be changed after a data source is indexed.
-- **LLM:** Nova 2 Lite is called through an inference profile whose prefix matches your region's geography: `us.` in the United States, `eu.` in Europe, `apac.` in Asia Pacific. Other Bedrock chat models work the same way: add them to `supported_llms` with `"provider": "aws_bedrock"` and their model or inference profile ID. Evidence Lab has a price for Anthropic's Haiku 4.5, through Bedrock's EU inference profile, under the key `haiku-4.5`; a model with no price in `ui/backend/utils/llm_costs.py` shows no cost, and the daily AI limit cannot count it. Anthropic models need the account's one-time Anthropic use-case form, in the Bedrock console, before the first call.
+- **LLM:** Nova 2 Lite is called through an inference profile whose prefix matches your region's geography: `us.` in the United States, `eu.` in Europe, `apac.` in Asia Pacific. Other Bedrock chat models work the same way: add them to `supported_llms` with `"provider": "aws_bedrock"` and their model or inference profile ID, and give each a `price_per_million` for your region (the stock entries carry Ohio, `us-east-2`, list prices from November 2026). A model with no price shows no cost, and the daily AI limit can't count it. Anthropic models need the account's one-time Anthropic use-case form, in the Bedrock console, before the first call; until then Bedrock refuses them with "Model use case details have not been submitted for this account".
 - **Reranker:** rerank models are offered in only a few regions, so set `region` to one near you. Amazon Rerank 1.0 is offered in `us-west-2`, `ca-central-1`, `eu-central-1` and `ap-northeast-1`; Cohere Rerank 3.5 in those and `us-east-1` ([AWS's list](https://docs.aws.amazon.com/bedrock/latest/userguide/rerank-supported.html)). Amazon Rerank is Amazon's own model. Cohere Rerank is sold through AWS Marketplace, so your account must accept Cohere's terms before the first call; to use it instead, name `cohere-rerank-3.5-bedrock` as the combo's `reranker_model`.
 
 ---
@@ -236,9 +251,13 @@ same place.
 | `sparse_model` | string | Sparse model name (typically `"bm25"`) |
 | `summarization_model` | object | LLM settings for AI summaries (model, max_tokens, temperature) |
 | `semantic_highlighting_model` | object | LLM settings for semantic phrase highlighting |
+| `assistant_model` | object | Optional. LLM settings for the research assistant and Briefs; without it they use `summarization_model` |
+| `judge_model` | object | Optional. `{"model": "<supported_llms key>"}`: the model that judges evaluation runs and the Brief citation check. Without it the summary model judges itself, which tends to favour its own answers, so set a different model. |
 | `reranker_model` | string | Key from `supported_rerank_models` |
 
 > **Validation:** At startup, Evidence Lab validates that every model reference in your combos exists in the corresponding registry. Invalid references prevent the application from starting.
+
+A group can override the combo's summary, Brief and judge models in Group Settings > LLMs (see [User Administration](user-administration.md#llms)).
 
 ---
 
