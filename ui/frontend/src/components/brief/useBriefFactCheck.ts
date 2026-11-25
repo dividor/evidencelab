@@ -10,6 +10,10 @@
 // judge's quotes sit. This hook fetches that answer again whenever the
 // brief's content changes on the server, and the evidence of a passage the
 // first time its card opens.
+//
+// The brief's owner and administrators can accept a passage's citation (or
+// withdraw that): the API records it and answers with the Fact Checker as it
+// now stands, which replaces what this hook holds.
 
 import { RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
@@ -20,7 +24,12 @@ import type {
   BriefFactCheckRead,
   BriefFactCheckSection,
 } from '../../types/testing';
-import { getBriefFactCheck, getBriefFactCheckEvidence } from './briefFactCheckApi';
+import {
+  acceptBriefFactCheckPassage,
+  getBriefFactCheck,
+  getBriefFactCheckEvidence,
+  withdrawBriefFactCheckAcceptance,
+} from './briefFactCheckApi';
 import {
   allPainted,
   clearFactMarks,
@@ -41,6 +50,17 @@ export type FactEvidenceState =
   | { status: 'loading' }
   | { status: 'ready'; blocks: BriefFactCheckEvidence[] }
   | { status: 'failed' };
+
+// Accepting the citation of the hovered passage, for those who may.
+export interface FactAcceptanceControls {
+  // The longest comment the API takes.
+  commentMaxLength: number;
+  // Record the acceptance (or its withdrawal); rejects when the API refuses.
+  accept: (passageId: number, comment: string) => Promise<void>;
+  withdraw: (passageId: number) => Promise<void>;
+  // Keep the card open on its passage while the comment is being written.
+  setPinned: (pinned: boolean) => void;
+}
 
 export interface UseBriefFactCheckReturn {
   // A completed check still covers part of the brief as it is now.
@@ -67,6 +87,8 @@ export interface UseBriefFactCheckReturn {
   // being read (its excerpts scroll and its sources open).
   onCardEnter: () => void;
   onCardLeave: () => void;
+  // Null when this user may not accept citations of the brief.
+  acceptance: FactAcceptanceControls | null;
 }
 
 // How long the card stays after the pointer leaves the passage, so it can
@@ -104,6 +126,8 @@ export const useBriefFactCheck = (
   // Evidence by passage id, for the check that applies; dropped with it.
   const [evidence, setEvidence] = useState<Map<number, FactEvidenceState>>(new Map());
   const closeTimer = useRef<number | null>(null);
+  // The card is pinned to its passage while an acceptance comment is open.
+  const pinned = useRef(false);
 
   useEffect(() => {
     if (!briefId) {
@@ -133,6 +157,7 @@ export const useBriefFactCheck = (
   useEffect(() => {
     setActive(false);
     setHover(null);
+    pinned.current = false;
   }, [briefId]);
   const available = !!result?.check;
   useEffect(() => {
@@ -172,6 +197,7 @@ export const useBriefFactCheck = (
   }, []);
   const closeSoon = useCallback(() => {
     cancelClose();
+    if (pinned.current) return;
     closeTimer.current = window.setTimeout(() => {
       closeTimer.current = null;
       setHover(null);
@@ -198,6 +224,7 @@ export const useBriefFactCheck = (
 
   const onPointerOver = useCallback(
     (target: EventTarget | null) => {
+      if (pinned.current) return;
       const el = factMarkAt(target);
       const mark = el ? byId.get(el.getAttribute(FACT_ID_ATTR) || '') : undefined;
       if (!el || !mark) {
@@ -217,6 +244,32 @@ export const useBriefFactCheck = (
     [byId, cancelClose, closeSoon],
   );
 
+  // The API's answer after an acceptance changed: it replaces the marks and
+  // the legend, and the open card shows its passage as it now stands.
+  const applyAnswer = useCallback((read: BriefFactCheckRead) => {
+    setResult(read);
+    setHover((prev) => {
+      const mark = prev && read.marks.find((m) => m.passage_id === prev.mark.passage_id);
+      return prev && mark ? { ...prev, mark } : null;
+    });
+  }, []);
+  const canAccept = !!result?.can_accept;
+  const commentMaxLength = result?.comment_max_length ?? 0;
+  const acceptance = useMemo<FactAcceptanceControls | null>(() => {
+    if (!briefId || !checkId || !canAccept) return null;
+    return {
+      commentMaxLength,
+      accept: async (passageId, comment) =>
+        applyAnswer(await acceptBriefFactCheckPassage(briefId, checkId, passageId, comment)),
+      withdraw: async (passageId) =>
+        applyAnswer(await withdrawBriefFactCheckAcceptance(briefId, checkId, passageId)),
+      setPinned: (value) => {
+        pinned.current = value;
+        if (value) cancelClose();
+      },
+    };
+  }, [briefId, checkId, canAccept, commentMaxLength, applyAnswer, cancelClose]);
+
   return {
     available,
     active,
@@ -231,6 +284,7 @@ export const useBriefFactCheck = (
     onPointerLeave: closeSoon,
     onCardEnter: cancelClose,
     onCardLeave: closeSoon,
+    acceptance,
   };
 };
 

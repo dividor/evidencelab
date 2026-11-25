@@ -273,3 +273,11 @@ When an administrator has run a [citation check](../admin/evaluation.md#brief-ci
 Click **Fact Checker** to highlight, in place, every cited passage the check judged, each in the colour of its verdict: green for **Supported**, amber for **Partially supported**, red for **Unsupported** and grey for **Cannot assess**. A legend under the brief's title explains the colours and counts the passages carrying each verdict; click the button again to hide the highlights. The highlights are a reading aid: nothing in the brief changes.
 
 Hover a highlighted passage for its card: the verdict as a badge with the judge's confidence and the citation numbers it judged the passage against, the judge's reason, and then the evidence: each cited excerpt as the judge read it, with the parts the judge quoted highlighted. The card stays while the pointer is on it, so a long excerpt can be scrolled and **Open source** opens the excerpt in the document preview. The judge reads only the stored excerpts, not the whole document, so treat a highlight as a prompt to re-read the source, not as a final verdict.
+
+#### Accepting a citation yourself
+
+The judge can be wrong, and a flag is a prompt to read the source, not a ruling. Once you have checked a passage against its source and are satisfied, the brief's owner or an administrator can record that on the passage's card: click **Accept citation**, write an optional comment (what you checked, or why the citation holds) and click **Save**. The card stays open while you write.
+
+An accepted passage is highlighted in blue from then on, whatever the judge's verdict was, and the legend counts it under **Human accepted** instead of under its verdict. Its card says who accepted it, when and with what comment, above the judge's verdict and reason, which are kept. **Withdraw acceptance** on the card undoes it and gives the passage its verdict's colour back.
+
+People the brief is shared with see accepted passages and their comments but cannot accept or withdraw. An acceptance belongs to the check that judged the passage: a new citation check of the brief starts without any. Administrators see every acceptance, with its comment, in the [check's result table](../admin/evaluation.md#brief-citation-check).

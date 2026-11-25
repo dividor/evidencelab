@@ -342,6 +342,56 @@ class TestCreateCheck:
         assert not any(type(r).__name__ == "BriefVersion" for r in session.added)
 
 
+def _passage(pid, accepted_at=None, by=None, comment=None):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        passage_id=pid,
+        brief_section="Findings",
+        passage="A fact.",
+        citations="1",
+        documents="Doc",
+        sources=[],
+        dangling_citations="",
+        verdict="unsupported",
+        flagged=True,
+        confidence=0.9,
+        problems=[],
+        explanation="No.",
+        supporting_quotes=[],
+        quotes_verified="0/0",
+        quote_not_in_source=False,
+        prompt_tokens=None,
+        completion_tokens=None,
+        error_message=None,
+        human_accepted_at=accepted_at,
+        human_accepted_by_name=by,
+        human_acceptance_comment=comment,
+    )
+
+
+class TestCheckDetail:
+    @pytest.mark.asyncio
+    async def test_get_when_a_passage_was_accepted_then_the_row_and_count_say_so(
+        self,
+    ):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(brief)
+        check.passages = [_passage(1, NOW, "Ada Reviewer", "Read it."), _passage(2)]
+        session = FakeSession([brief], [], [check])
+        out = await routes.get_brief_check(
+            _request(), check.id, admin=me, session=session
+        )
+        assert out.human_accepted == 1
+        accepted, plain = out.passages
+        assert accepted.human_accepted_at == NOW
+        assert accepted.human_accepted_by_name == "Ada Reviewer"
+        assert accepted.human_acceptance_comment == "Read it."
+        # The judge's verdict stands beside the acceptance.
+        assert accepted.verdict == "unsupported" and accepted.flagged is True
+        assert plain.human_accepted_at is None and plain.human_accepted_by_name is None
+
+
 class TestCheckAccess:
     @pytest.mark.asyncio
     async def test_get_when_brief_belongs_to_someone_else_then_404(self):

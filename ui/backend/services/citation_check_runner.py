@@ -271,6 +271,10 @@ _SHEET_COLUMNS = (
     "quote_not_in_source",
     "dangling_citations",
     "error_message",
+    "human_accepted",
+    "human_accepted_by",
+    "human_accepted_at",
+    "human_acceptance_comment",
 )
 
 
@@ -280,6 +284,15 @@ def _sheet_row(record: Dict[str, Any]) -> Dict[str, Any]:
     row["supporting_quotes"] = "\n".join(
         f"[{q.get('citation')}] {q.get('quote')} ({q.get('status')})"
         for q in record.get("supporting_quotes") or []
+    )
+    # A person's acceptance of the citation, beside the judge's verdict.
+    accepted_at = record.get("human_accepted_at")
+    row["human_accepted"] = accepted_at is not None
+    row["human_accepted_by"] = record.get("human_accepted_by_name")
+    row["human_accepted_at"] = (
+        accepted_at.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        if accepted_at is not None
+        else None
     )
     return row
 

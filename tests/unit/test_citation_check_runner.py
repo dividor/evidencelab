@@ -2,6 +2,7 @@
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
 
@@ -235,6 +236,44 @@ class TestSummary:
         assert [r[0] for r in flagged[1:]] == [2, 1]
         all_rows = list(book["All judgements"].iter_rows(values_only=True))
         assert len(all_rows) == 4 and "[1] q (near)" in all_rows[1]
+
+    def test_build_workbook_when_a_passage_was_accepted_then_columns_say_so(self):
+        base = {
+            "brief_section": "A",
+            "passage": "p",
+            "verdict": "unsupported",
+            "flagged": True,
+            "confidence": 0.5,
+            "problems": [],
+            "supporting_quotes": [],
+        }
+        passages = [
+            {
+                **base,
+                "passage_id": 1,
+                "human_accepted_at": datetime(2026, 11, 5, 9, 30, tzinfo=timezone.utc),
+                "human_accepted_by_name": "Ada Reviewer",
+                "human_acceptance_comment": "Read the source.",
+            },
+            {**base, "passage_id": 2},
+        ]
+        book = load_workbook(BytesIO(runner.build_review_workbook(passages, [])))
+        rows = list(book["All judgements"].iter_rows(values_only=True))
+        header = rows[0]
+        accepted, plain = (dict(zip(header, row)) for row in rows[1:])
+        assert header[-4:] == (
+            "human_accepted",
+            "human_accepted_by",
+            "human_accepted_at",
+            "human_acceptance_comment",
+        )
+        assert accepted["human_accepted"] is True
+        assert accepted["human_accepted_by"] == "Ada Reviewer"
+        assert accepted["human_accepted_at"] == "2026-11-05 09:30 UTC"
+        assert accepted["human_acceptance_comment"] == "Read the source."
+        assert plain["human_accepted"] is False and plain["human_accepted_by"] is None
+        # The judge's verdict is untouched: both rows stay on the Flagged sheet.
+        assert book["Flagged"].max_row == 3
 
 
 class FakeSession:

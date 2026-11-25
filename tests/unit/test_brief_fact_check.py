@@ -59,8 +59,27 @@ def _row(pid, passage, verdict, **over):
         quote_not_in_source=False,
         sources=[],
         supporting_quotes=[],
+        human_accepted_at=None,
+        human_accepted_by_user_id=None,
+        human_accepted_by_name=None,
+        human_acceptance_comment=None,
     )
     return SimpleNamespace(**{**fields, **over})
+
+
+ACCEPTED_AT = datetime(2026, 11, 5, 9, 30, tzinfo=timezone.utc)
+
+
+def _accepted_row(pid, passage, verdict, comment="Checked against the report."):
+    return _row(
+        pid,
+        passage,
+        verdict,
+        human_accepted_at=ACCEPTED_AT,
+        human_accepted_by_user_id=uuid.uuid4(),
+        human_accepted_by_name="Ada Reviewer",
+        human_acceptance_comment=comment,
+    )
 
 
 def _check(brief_id, rows, status="completed", age=0, version=None, stats=None):
@@ -92,8 +111,10 @@ def _version(brief_id, content, number=1):
     )
 
 
-def _user(superuser=False):
-    return SimpleNamespace(id=uuid.uuid4(), is_superuser=superuser, email="j@x")
+def _user(superuser=False, full_name=None):
+    return SimpleNamespace(
+        id=uuid.uuid4(), is_superuser=superuser, email="j@x", full_name=full_name
+    )
 
 
 def _brief(owner_id, content=None):
@@ -120,6 +141,11 @@ def _request():
 
 
 MATCHING_ROWS = [_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
+
+
+def _fresh_rows():
+    """Rows a test may change (an acceptance is written onto the row)."""
+    return [_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +223,10 @@ class FakeSession:
         self.briefs, self.checks = list(briefs), list(checks)
         self.shares, self.versions = list(shares), list(versions)
         self.refreshed = []
+        self.commits = 0
+
+    async def commit(self):
+        self.commits += 1
 
     async def execute(self, statement):
         text = str(statement)
@@ -407,6 +437,11 @@ class TestFactCheckMarks:
             "confidence": 0.9,
             "citations": "1",
             "quote_not_in_source": False,
+            "highlight": "unsupported",
+            "highlight_label": "Unsupported",
+            "accepted": False,
+            "accepted_label": "",
+            "accepted_comment": "",
         }
         assert [(m["passage"], m["verdict_label"]) for m in marks] == [
             (FACT, "Unsupported"),
@@ -434,8 +469,108 @@ class TestFactCheckMarks:
             },
             {"verdict": "unsupported", "label": "Unsupported", "count": 1},
             {"verdict": "cannot_assess", "label": "Cannot assess", "count": 0},
+            {"verdict": "accepted", "label": "Human accepted", "count": 0},
         ]
-        assert [item["count"] for item in svc.legend([])] == [0, 0, 0, 0]
+        assert [item["count"] for item in svc.legend([])] == [0, 0, 0, 0, 0]
+
+    def test_an_accepted_passage_keeps_its_verdict_and_is_painted_as_accepted(self):
+        rows = [_accepted_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
+        cov = svc.coverage(_content(), svc.judged_passages(_content(), rows))
+        marks = svc.fact_check_marks(cov)
+        assert marks[0]["verdict"] == "unsupported"
+        assert marks[0]["highlight"] == "accepted" and marks[0]["accepted"] is True
+        assert marks[0]["highlight_label"] == "Human accepted"
+        assert marks[0]["accepted_label"] == (
+            "Accepted by Ada Reviewer on 5 November 2026"
+        )
+        assert marks[0]["accepted_comment"] == "Checked against the report."
+        assert marks[1]["highlight"] == "supported"
+
+    def test_legend_counts_an_accepted_passage_once_as_accepted(self):
+        rows = [_accepted_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
+        cov = svc.coverage(_content(), svc.judged_passages(_content(), rows))
+        counts = {
+            item["verdict"]: item["count"]
+            for item in svc.legend(svc.fact_check_marks(cov))
+        }
+        assert counts == {
+            "supported": 1,
+            "partially_supported": 0,
+            "unsupported": 0,
+            "cannot_assess": 0,
+            "accepted": 1,
+        }
+
+    def test_an_acceptance_without_a_comment_or_a_surviving_name(self):
+        row = _accepted_row(1, FACT, "unsupported", comment=None)
+        row.human_accepted_by_name = None
+        assert svc.accepted_label(row) == (
+            "Accepted by a deleted account on 5 November 2026"
+        )
+        assert svc.accepted_count([row, _row(2, OTHER, "supported")]) == 1
+
+
+class TestAcceptance:
+    def test_the_owner_and_administrators_may_accept_and_a_viewer_may_not(self):
+        owner, admin, viewer = _user(), _user(superuser=True), _user()
+        brief = _brief(owner.id)
+        assert svc.may_accept(brief, owner) and svc.may_accept(brief, admin)
+        assert not svc.may_accept(brief, viewer)
+
+    def test_a_blank_comment_is_stored_as_none_and_others_trimmed(self):
+        assert svc.clean_comment("   ") is None and svc.clean_comment(None) is None
+        assert svc.clean_comment("  fine \n") == "fine"
+
+    @pytest.mark.asyncio
+    async def test_accepting_records_who_when_and_the_comment(self):
+        me = _user(full_name="Ada Reviewer")
+        brief = _brief(me.id)
+        check = _check(brief.id, [_row(1, FACT, "unsupported")])
+        session = FakeSession(briefs=[brief], checks=[check])
+        done = await svc.accept_passage(session, brief, check.id, 1, me, " Read it. ")
+        row = check.passages[0]
+        assert done is True and session.commits == 1
+        assert row.verdict == "unsupported"
+        assert row.human_accepted_by_user_id == me.id
+        assert row.human_accepted_by_name == "Ada Reviewer"
+        assert row.human_acceptance_comment == "Read it."
+        assert abs(row.human_accepted_at - datetime.now(timezone.utc)) < timedelta(
+            seconds=5
+        )
+
+    @pytest.mark.asyncio
+    async def test_someone_without_a_name_is_recorded_by_email(self):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(brief.id, [_row(1, FACT, "unsupported")])
+        session = FakeSession(briefs=[brief], checks=[check])
+        await svc.accept_passage(session, brief, check.id, 1, me, None)
+        assert check.passages[0].human_accepted_by_name == "j@x"
+        assert check.passages[0].human_acceptance_comment is None
+
+    @pytest.mark.asyncio
+    async def test_withdrawing_clears_the_acceptance_and_keeps_the_verdict(self):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(brief.id, [_accepted_row(1, FACT, "unsupported")])
+        session = FakeSession(briefs=[brief], checks=[check])
+        assert await svc.withdraw_acceptance(session, brief, check.id, 1) is True
+        row = check.passages[0]
+        assert not svc.is_accepted(row) and row.verdict == "unsupported"
+        assert row.human_accepted_by_user_id is None
+        assert row.human_accepted_by_name is None
+        assert row.human_acceptance_comment is None
+        assert session.commits == 1
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_passage_is_not_accepted_or_withdrawn(self):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(brief.id, [_row(1, FACT, "unsupported")])
+        session = FakeSession(briefs=[brief], checks=[check])
+        assert not await svc.accept_passage(session, brief, check.id, 9, me, None)
+        assert not await svc.withdraw_acceptance(session, brief, check.id, 9)
+        assert session.commits == 0
 
 
 EXCERPT = (
@@ -623,7 +758,9 @@ class TestRoute:
             ("Partially supported", 0),
             ("Unsupported", 1),
             ("Cannot assess", 0),
+            ("Human accepted", 0),
         ]
+        assert out.can_accept is True
         assert out.note.startswith(
             "Checked at version 1; the brief is now at version 2."
         )
@@ -665,7 +802,7 @@ class TestRoute:
         )
         assert out.check is None
         assert out.marks == [] and out.changed_sections == [] and out.note == ""
-        assert [i.count for i in out.legend] == [0, 0, 0, 0]
+        assert [i.count for i in out.legend] == [0, 0, 0, 0, 0]
 
     @pytest.mark.asyncio
     async def test_a_check_that_does_not_match_its_version_is_a_bad_request(self):
@@ -689,7 +826,7 @@ class TestRoute:
         out = await routes.get_brief_fact_check(
             brief.id, _request(), user=viewer, session=session
         )
-        assert out.check is not None
+        assert out.check is not None and out.can_accept is False
 
     @pytest.mark.asyncio
     async def test_someone_without_access_gets_404(self):
@@ -701,3 +838,137 @@ class TestRoute:
                 brief.id, _request(), user=stranger, session=session
             )
         assert exc.value.status_code == 404
+
+
+class TestAcceptanceRoutes:
+    @pytest.mark.asyncio
+    async def test_the_owner_accepts_and_gets_the_answer_as_it_now_stands(self):
+        me = _user(full_name="Ada Reviewer")
+        brief = _brief(me.id)
+        check = _check(
+            brief.id, [_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")]
+        )
+        session = FakeSession(briefs=[brief], checks=[check])
+        out = await routes.accept_brief_fact_check_passage(
+            brief.id,
+            check.id,
+            1,
+            routes.BriefFactCheckAcceptance(comment="Read the source."),
+            _request(),
+            user=me,
+            session=session,
+        )
+        assert [(m.verdict, m.highlight) for m in out.marks] == [
+            ("unsupported", "accepted"),
+            ("supported", "supported"),
+        ]
+        assert out.marks[0].accepted_comment == "Read the source."
+        assert out.marks[0].accepted_label.startswith("Accepted by Ada Reviewer on ")
+        assert {i.verdict: i.count for i in out.legend}["accepted"] == 1
+
+    @pytest.mark.asyncio
+    async def test_withdrawing_gives_the_passage_its_verdict_colour_back(self):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(
+            brief.id,
+            [_accepted_row(1, FACT, "unsupported"), _row(2, OTHER, "supported")],
+        )
+        session = FakeSession(briefs=[brief], checks=[check])
+        out = await routes.withdraw_brief_fact_check_acceptance(
+            brief.id, check.id, 1, _request(), user=me, session=session
+        )
+        assert out.marks[0].highlight == "unsupported"
+        assert out.marks[0].accepted is False and out.marks[0].accepted_label == ""
+
+    @pytest.mark.asyncio
+    async def test_an_administrator_may_accept_on_another_users_brief(self):
+        admin = _user(superuser=True)
+        brief = _brief(uuid.uuid4())
+        check = _check(brief.id, _fresh_rows())
+        session = FakeSession(briefs=[brief], checks=[check])
+        out = await routes.accept_brief_fact_check_passage(
+            brief.id,
+            check.id,
+            1,
+            routes.BriefFactCheckAcceptance(),
+            _request(),
+            user=admin,
+            session=session,
+        )
+        assert out.can_accept is True and out.marks[0].accepted is True
+
+    @pytest.mark.asyncio
+    async def test_a_viewer_the_brief_was_shared_with_is_refused(self):
+        viewer = _user()
+        brief = _brief(uuid.uuid4())
+        check = _check(brief.id, _fresh_rows())
+        session = FakeSession(briefs=[brief], checks=[check], shares=[uuid.uuid4()])
+        for call in (
+            routes.accept_brief_fact_check_passage(
+                brief.id,
+                check.id,
+                1,
+                routes.BriefFactCheckAcceptance(),
+                _request(),
+                user=viewer,
+                session=session,
+            ),
+            routes.withdraw_brief_fact_check_acceptance(
+                brief.id, check.id, 1, _request(), user=viewer, session=session
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await call
+            assert exc.value.status_code == 403
+        assert session.commits == 0 and not svc.is_accepted(check.passages[0])
+
+    @pytest.mark.asyncio
+    async def test_someone_without_access_gets_404(self):
+        stranger = _user()
+        brief = _brief(uuid.uuid4())
+        check = _check(brief.id, _fresh_rows())
+        session = FakeSession(briefs=[brief], checks=[check])
+        with pytest.raises(HTTPException) as exc:
+            await routes.accept_brief_fact_check_passage(
+                brief.id,
+                check.id,
+                1,
+                routes.BriefFactCheckAcceptance(),
+                _request(),
+                user=stranger,
+                session=session,
+            )
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_an_unknown_passage_is_404(self):
+        me = _user()
+        brief = _brief(me.id)
+        check = _check(brief.id, _fresh_rows())
+        session = FakeSession(briefs=[brief], checks=[check])
+        with pytest.raises(HTTPException) as exc:
+            await routes.accept_brief_fact_check_passage(
+                brief.id,
+                check.id,
+                9,
+                routes.BriefFactCheckAcceptance(),
+                _request(),
+                user=me,
+                session=session,
+            )
+        assert exc.value.status_code == 404
+        with pytest.raises(HTTPException) as exc:
+            await routes.withdraw_brief_fact_check_acceptance(
+                brief.id, check.id, 9, _request(), user=me, session=session
+            )
+        assert exc.value.status_code == 404
+
+    def test_a_comment_longer_than_the_limit_is_rejected(self):
+        from pydantic import ValidationError
+
+        from ui.backend.schemas.testing import ACCEPTANCE_COMMENT_MAX
+
+        routes.BriefFactCheckAcceptance(comment="x" * ACCEPTANCE_COMMENT_MAX)
+        with pytest.raises(ValidationError):
+            routes.BriefFactCheckAcceptance(comment="x" * (ACCEPTANCE_COMMENT_MAX + 1))

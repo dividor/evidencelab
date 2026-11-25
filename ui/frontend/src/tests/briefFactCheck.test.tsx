@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // USER_MODULE on + an authenticated user => Brief Central, server briefs.
 jest.mock('../config', () => ({
@@ -14,13 +14,15 @@ jest.mock('../components/brief/briefCitationsApi', () =>
 jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
 const mockGet = jest.fn();
+const mockPut = jest.fn();
+const mockDelete = jest.fn();
 jest.mock('axios', () => ({
   __esModule: true,
   default: {
     get: (...args: unknown[]) => mockGet(...args),
     post: jest.fn().mockResolvedValue({ data: {} }),
-    put: jest.fn().mockResolvedValue({ data: {} }),
-    delete: jest.fn().mockResolvedValue({ data: {} }),
+    put: (...args: unknown[]) => mockPut(...args),
+    delete: (...args: unknown[]) => mockDelete(...args),
     isAxiosError: () => false,
   },
 }));
@@ -42,6 +44,16 @@ const BRIEF_URL = '/api/briefs/b1';
 const FACT_CHECK_URL = '/api/briefs/b1/fact-check';
 const EVIDENCE_URL = '/api/briefs/b1/fact-check/chk1/passages/1';
 const QUOTED = 'attendance did not change';
+const ACCEPTANCE_URL = `${EVIDENCE_URL}/acceptance`;
+const ACCEPTED_BY = 'Accepted by Ada Reviewer on 5 November 2026';
+const COMMENT = 'Table 4 of the source shows the rise.';
+const CARD = { name: 'Citation check verdict' };
+const COMMENT_LABEL = 'Comment (optional)';
+const ACCEPT = { name: 'Accept citation' };
+const SECOND_MARK = '[data-fact-id="2"]';
+const LEGEND = { name: 'Fact Checker legend' };
+const UNSUPPORTED_MARK = '.brief-fact-mark.brief-fact-mark-unsupported';
+const ACCEPTED_MARK = '.brief-fact-mark.brief-fact-mark-accepted';
 
 const source = { index: 1, chunkId: 'c1', docId: 'd1', title: 'Doc One', text: 'passage', score: 0, page: 3 };
 
@@ -89,17 +101,20 @@ const withCheck: BriefFactCheckRead = {
     { verdict: 'partially_supported', label: 'Partially supported', count: 0 },
     { verdict: 'unsupported', label: 'Unsupported', count: 1 },
     { verdict: 'cannot_assess', label: 'Cannot assess', count: 0 },
+    { verdict: 'accepted', label: 'Human accepted', count: 0 },
   ],
   marks: [
     {
       passage_id: 1, section_id: 's1', section_title: 'Findings', passage: PASSAGE,
       verdict: 'unsupported', verdict_label: 'Unsupported', explanation: WHY,
       problems: ['Contradicted by the source'], confidence: 0.9, citations: '1', quote_not_in_source: false,
+      highlight: 'unsupported', highlight_label: 'Unsupported', accepted: false, accepted_label: '', accepted_comment: '',
     },
     {
       passage_id: 2, section_id: 's1', section_title: 'Findings', passage: 'Costs rose.',
       verdict: 'supported', verdict_label: 'Supported', explanation: 'Stated in the excerpt.',
       problems: [], confidence: 0.95, citations: '1', quote_not_in_source: false,
+      highlight: 'supported', highlight_label: 'Supported', accepted: false, accepted_label: '', accepted_comment: '',
     },
   ],
 };
@@ -122,6 +137,35 @@ const evidence: BriefFactCheckEvidenceRead = {
 };
 
 const noCheck: BriefFactCheckRead = { check: null, legend: [], marks: [] };
+
+// The same check for someone who may accept citations, and the API's answer
+// once the first passage was accepted.
+const acceptable: BriefFactCheckRead = { ...withCheck, can_accept: true, comment_max_length: 2000 };
+const accepted: BriefFactCheckRead = {
+  ...acceptable,
+  legend: acceptable.legend.map((item) => {
+    if (item.verdict === 'unsupported') return { ...item, count: 0 };
+    if (item.verdict === 'accepted') return { ...item, count: 1 };
+    return item;
+  }),
+  marks: [
+    {
+      ...acceptable.marks[0],
+      highlight: 'accepted', highlight_label: 'Human accepted', accepted: true,
+      accepted_label: ACCEPTED_BY, accepted_comment: COMMENT,
+    },
+    acceptable.marks[1],
+  ],
+};
+
+// Switch the highlights on and open the card of the mark matching `selector`.
+const openCard = async (selector: string): Promise<HTMLElement> => {
+  fireEvent.click(await screen.findByRole('button', { name: FACT_CHECKER }));
+  return waitFor(() => {
+    fireEvent.mouseOver(document.querySelector(selector) as HTMLElement);
+    return screen.getByRole('note', CARD);
+  });
+};
 
 const answer = (factCheck: BriefFactCheckRead) => (url: string) => {
   if (url === '/api/briefs/') return Promise.resolve({ data: [listItem] });
@@ -155,12 +199,12 @@ describe('Fact Checker on an open brief', () => {
     expect(button).toHaveAttribute('title', expect.stringContaining(NOTE));
     expect(document.querySelector('.brief-fact-mark')).toBeNull();
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
-    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
+    expect(screen.queryByRole('list', LEGEND)).toBeNull();
 
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'true');
     // The legend explains the colours, with the API's counts.
-    const legend = screen.getByRole('list', { name: 'Fact Checker legend' });
+    const legend = screen.getByRole('list', LEGEND);
     expect(legend).toHaveTextContent('Supported 1');
     expect(legend).toHaveTextContent('Unsupported 1');
     expect(legend).toHaveTextContent('Cannot assess 0');
@@ -174,7 +218,7 @@ describe('Fact Checker on an open brief', () => {
       Array.from(document.querySelectorAll(`[data-fact-id="${id}"]`)).map((m) => m.textContent).join('');
     expect(markText('1')).toBe('School meals raised attendance .');
     expect(markText('2')).toBe('Costs rose .');
-    expect(document.querySelector('[data-fact-id="2"]')).toHaveClass('brief-fact-mark-supported');
+    expect(document.querySelector(SECOND_MARK)).toHaveClass('brief-fact-mark-supported');
     expect(document.querySelectorAll('.brief-fact-mark:not([data-fact-id="1"]):not([data-fact-id="2"])').length).toBe(0);
 
     // Source enrichment re-renders the sections meanwhile and the painter
@@ -183,7 +227,7 @@ describe('Fact Checker on an open brief', () => {
     // mark class as well).
     const card = await waitFor(() => {
       fireEvent.mouseOver(document.querySelector('.brief-fact-mark.brief-fact-mark-unsupported') as HTMLElement);
-      return screen.getByRole('note', { name: 'Citation check verdict' });
+      return screen.getByRole('note', CARD);
     });
     expect(card).toHaveTextContent('Unsupported');
     expect(card).toHaveTextContent('90% confidence');
@@ -201,15 +245,107 @@ describe('Fact Checker on an open brief', () => {
     fireEvent.mouseLeave(document.querySelector('.brief-doc-content') as HTMLElement);
     fireEvent.mouseEnter(card);
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(screen.getByRole('note', { name: 'Citation check verdict' })).toBe(card);
+    expect(screen.getByRole('note', CARD)).toBe(card);
     fireEvent.mouseLeave(card);
-    await waitFor(() => expect(screen.queryByRole('note', { name: 'Citation check verdict' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('note', CARD)).toBeNull());
 
     // Pressing again hides the highlights, the legend and the note.
     fireEvent.click(button);
     await waitFor(() => expect(document.querySelector('.brief-fact-mark')).toBeNull());
     expect(screen.queryByText(SECTION_NOTE)).toBeNull();
-    expect(screen.queryByRole('list', { name: 'Fact Checker legend' })).toBeNull();
+    expect(screen.queryByRole('list', LEGEND)).toBeNull();
+  });
+
+  test('accepting a citation: the button opens an optional comment and Save, the card stays open meanwhile, and the passage turns to the accepted colour', async () => {
+    mockGet.mockImplementation(answer(acceptable));
+    mockPut.mockResolvedValue({ data: accepted });
+    await openBrief();
+    const card = await openCard(UNSUPPORTED_MARK);
+    expect(within(card).queryByLabelText(COMMENT_LABEL)).toBeNull();
+
+    fireEvent.click(within(card).getByRole('button', ACCEPT));
+    const comment = within(card).getByLabelText(COMMENT_LABEL);
+    expect(comment).toHaveAttribute('maxlength', '2000');
+    // While the comment is open the card stays on its passage, wherever the
+    // pointer goes.
+    fireEvent.mouseLeave(card);
+    await waitFor(() => fireEvent.mouseOver(document.querySelector(SECOND_MARK) as HTMLElement));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByRole('note', CARD)).toBe(card);
+    expect(card).toHaveTextContent(WHY);
+
+    fireEvent.change(comment, { target: { value: COMMENT } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockPut).toHaveBeenCalledWith(ACCEPTANCE_URL, { comment: COMMENT }));
+
+    // The API's answer is what is shown: the passage in the accepted colour,
+    // who accepted it and why above the judge's verdict, the legend recounted.
+    await waitFor(() => expect(document.querySelector(ACCEPTED_MARK)).not.toBeNull());
+    expect(document.querySelector(UNSUPPORTED_MARK)).toBeNull();
+    expect(card).toHaveTextContent(ACCEPTED_BY);
+    expect(card).toHaveTextContent(COMMENT);
+    expect(card).toHaveTextContent('Human accepted');
+    expect(card).toHaveTextContent('Unsupported');
+    expect(card).toHaveTextContent(WHY);
+    expect(within(card).queryByRole('button', ACCEPT)).toBeNull();
+    const legend = screen.getByRole('list', LEGEND);
+    expect(legend).toHaveTextContent('Human accepted 1');
+    expect(legend).toHaveTextContent('Unsupported 0');
+  });
+
+  test('cancelling the comment saves nothing and lets the card close again', async () => {
+    mockGet.mockImplementation(answer(acceptable));
+    await openBrief();
+    const card = await openCard(UNSUPPORTED_MARK);
+    fireEvent.click(within(card).getByRole('button', ACCEPT));
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel' }));
+    expect(within(card).getByRole('button', ACCEPT)).toBeInTheDocument();
+    expect(mockPut).not.toHaveBeenCalled();
+    fireEvent.mouseLeave(card);
+    await waitFor(() => expect(screen.queryByRole('note', CARD)).toBeNull());
+  });
+
+  test('a refused acceptance is reported in the card and the comment is kept', async () => {
+    mockGet.mockImplementation(answer(acceptable));
+    mockPut.mockRejectedValue({ response: { data: { detail: 'Only the owner can accept a citation' } } });
+    await openBrief();
+    const card = await openCard(UNSUPPORTED_MARK);
+    fireEvent.click(within(card).getByRole('button', ACCEPT));
+    fireEvent.change(within(card).getByLabelText(COMMENT_LABEL), { target: { value: COMMENT } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+    expect(await within(card).findByText('Only the owner can accept a citation')).toBeInTheDocument();
+    expect(within(card).getByLabelText(COMMENT_LABEL)).toHaveValue(COMMENT);
+    expect(document.querySelector(ACCEPTED_MARK)).toBeNull();
+  });
+
+  test('withdrawing an acceptance gives the passage its verdict\'s colour back', async () => {
+    mockGet.mockImplementation(answer(accepted));
+    mockDelete.mockResolvedValue({ data: acceptable });
+    await openBrief();
+    const card = await openCard(ACCEPTED_MARK);
+    expect(card).toHaveTextContent(ACCEPTED_BY);
+    fireEvent.click(within(card).getByRole('button', { name: 'Withdraw acceptance' }));
+    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(ACCEPTANCE_URL));
+    await waitFor(() => expect(document.querySelector(UNSUPPORTED_MARK)).not.toBeNull());
+    expect(document.querySelector(ACCEPTED_MARK)).toBeNull();
+    expect(card).not.toHaveTextContent(ACCEPTED_BY);
+    expect(within(card).getByRole('button', ACCEPT)).toBeInTheDocument();
+  });
+
+  test('someone who may not accept sees an acceptance but no way to make or withdraw one', async () => {
+    mockGet.mockImplementation(answer({ ...accepted, can_accept: false }));
+    await openBrief();
+    const card = await openCard(ACCEPTED_MARK);
+    expect(card).toHaveTextContent(ACCEPTED_BY);
+    expect(card).toHaveTextContent(COMMENT);
+    expect(within(card).queryByRole('button', { name: 'Withdraw acceptance' })).toBeNull();
+    fireEvent.mouseLeave(card);
+    await waitFor(() => expect(screen.queryByRole('note', CARD)).toBeNull());
+    const other = await waitFor(() => {
+      fireEvent.mouseOver(document.querySelector(SECOND_MARK) as HTMLElement);
+      return screen.getByRole('note', CARD);
+    });
+    expect(within(other).queryByRole('button', ACCEPT)).toBeNull();
   });
 
   test('without a check that matches the brief as it is now, there is no button', async () => {

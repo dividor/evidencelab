@@ -208,6 +208,8 @@ A flagged passage, with the problems the judge found:
 
 Once a check has completed, everyone who can open the brief sees a **Fact Checker** button beside **Export to Word** that highlights every judged passage in place in the colour of its verdict, with the verdict, the judge's reason and the cited excerpts (the quoted parts marked) on hover (see [the Brief guide](../using-evidence-lab/brief.md#11-fact-checker)). The highlights follow the version the check judged: a section whose cited passages still read as the judge saw them keeps them, a section changed since is marked as not covered, and the button goes away only when no judged section is left unchanged.
 
+The brief's owner or an administrator can overrule the judge on a passage from that card with **Accept citation** and an optional comment (see [Accepting a citation yourself](../using-evidence-lab/brief.md#accepting-a-citation-yourself)). The result table records it in two columns: **Human accepted** (who and when; empty when nobody did) and **Acceptance comment**. The judge's verdict is kept, so the verdict counts and the flagged share do not change; the **Human accepted** tile counts the accepted passages, **Not accepted only** hides them so the table shows what is still to review, and the Excel download carries the same information in its last four columns.
+
 > The judge sees only the stored excerpts, not the whole document. A passage can be flagged because the brief cites the wrong passage of the right document. Treat flags as a review list, not a final verdict.
 
 ---

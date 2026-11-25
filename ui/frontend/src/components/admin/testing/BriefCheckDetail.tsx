@@ -62,6 +62,8 @@ const COLUMNS: Array<{ key: string; label: string }> = [
   { key: 'verdict', label: 'Verdict' },
   { key: 'confidence', label: 'Confidence' },
   { key: 'quotes_verified', label: 'Quotes verified' },
+  { key: 'human_accepted', label: 'Human accepted' },
+  { key: 'acceptance_comment', label: 'Acceptance comment' },
 ];
 
 const isActive = (status?: string): boolean => status === 'pending' || status === 'running';
@@ -100,6 +102,7 @@ const Summary: React.FC<{ detail: CheckDetailType }> = ({ detail }) => {
       help: SUMMARY_HELP.flagged,
     },
     { label: 'Quote not in source', value: stats.quote_not_in_source ?? 0, help: SUMMARY_HELP.quote_not_in_source },
+    { label: 'Human accepted', value: detail.human_accepted ?? 0, help: SUMMARY_HELP.human_accepted },
     { label: 'Duration', value: formatElapsed(stats.duration_ms), help: SUMMARY_HELP.duration },
     { label: 'Tokens', value: formatTokens(stats.total_tokens), help: SUMMARY_HELP.tokens },
     { label: 'Cost', value: formatCostUsd(stats.cost_usd), help: SUMMARY_HELP.cost },
@@ -160,6 +163,14 @@ const Filters: React.FC<{
           onChange={(e) => onChange({ ...filters, quoteNotInSource: e.target.checked })}
         />
         Quote not in source
+      </label>
+      <label className="testing-inline-check">
+        <input
+          type="checkbox"
+          checked={filters.notAcceptedOnly}
+          onChange={(e) => onChange({ ...filters, notAcceptedOnly: e.target.checked })}
+        />
+        Not accepted only
       </label>
       <select
         className="testing-filter-select"
@@ -335,6 +346,18 @@ const PassageRow: React.FC<{ passage: BriefCitationCheckPassage; onOpen?: OpenSo
             <span className="testing-config-badge testing-badge-warn">quote not in source</span>
           )}
         </td>
+        <td>
+          {passage.human_accepted_at && (
+            <>
+              <span className="testing-status testing-status-accepted">Accepted</span>
+              <div className="text-muted">
+                {passage.human_accepted_by_name || 'A deleted account'} ·{' '}
+                {formatTimestamp(passage.human_accepted_at)}
+              </div>
+            </>
+          )}
+        </td>
+        <td className="testing-check-comment">{passage.human_acceptance_comment}</td>
       </tr>
       {open && (
         <tr className="testing-check-detail-row">

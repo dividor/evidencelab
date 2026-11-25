@@ -4,8 +4,9 @@
 // inline markdown removed: a bold claim arrives without its `**`), while the
 // section on screen is markdown rendered to DOM with citation badges
 // inline. The rendered output is searched with the badges skipped (see
-// briefTextRange) and each located passage is wrapped in a mark that carries
-// its verdict, so the reader sees the judge's flags in place and can hover
+// briefTextRange) and each located passage is wrapped in a mark in the colour
+// the API chose for it (its verdict, or "accepted" once a person accepted
+// the citation), so the reader sees the judge's flags in place and can hover
 // them for the explanation.
 
 import type { BriefFactCheckMark } from '../../types/testing';
@@ -45,7 +46,7 @@ export const paintFactMarks = (root: HTMLElement, marks: BriefFactCheckMark[]): 
       range,
       () => {
         const span = document.createElement('span');
-        span.className = `${FACT_MARK_CLASS} ${FACT_MARK_CLASS}-${mark.verdict}`;
+        span.className = `${FACT_MARK_CLASS} ${FACT_MARK_CLASS}-${mark.highlight}`;
         span.setAttribute(FACT_ID_ATTR, String(mark.passage_id));
         return span;
       },
@@ -56,7 +57,8 @@ export const paintFactMarks = (root: HTMLElement, marks: BriefFactCheckMark[]): 
       return;
     }
     // One label for the passage, on its first span, for assistive technology.
-    spans[0].setAttribute('aria-label', `${mark.verdict_label}: ${mark.explanation}`);
+    const accepted = mark.accepted ? `${mark.accepted_label}. ` : '';
+    spans[0].setAttribute('aria-label', `${accepted}${mark.verdict_label}: ${mark.explanation}`);
   });
   return missing;
 };

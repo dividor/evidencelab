@@ -248,11 +248,22 @@ export interface BriefCitationCheckPassage {
   prompt_tokens?: number | null;
   completion_tokens?: number | null;
   error_message?: string | null;
+  // A person's acceptance of the citation, made in the Fact Checker: when,
+  // by whom and their comment. All empty for a passage nobody accepted.
+  human_accepted_at?: string | null;
+  human_accepted_by_name?: string | null;
+  human_acceptance_comment?: string | null;
 }
 
 export interface BriefCitationCheckDetail extends BriefCitationCheck {
   passages: BriefCitationCheckPassage[];
+  // How many of the passages a person accepted.
+  human_accepted?: number;
 }
+
+// The colour a judged passage is painted in: its verdict, or `accepted`
+// once a person accepted its citation.
+export type FactHighlight = CitationVerdict | 'accepted';
 
 // One passage the Fact Checker highlights in an open brief: where it is,
 // what the judge decided and why. `passage` is the prose as the check stored
@@ -270,6 +281,13 @@ export interface BriefFactCheckMark {
   confidence?: number | null;
   citations: string;
   quote_not_in_source: boolean;
+  // The colour to paint and what it means, as the API decided it.
+  highlight: FactHighlight;
+  highlight_label: string;
+  // A person accepted the citation: who and when, and what they wrote.
+  accepted: boolean;
+  accepted_label: string;
+  accepted_comment: string;
 }
 
 // A section with cited passages that changed since the check judged the
@@ -280,10 +298,10 @@ export interface BriefFactCheckSection {
   note: string;
 }
 
-// One verdict of the legend: its label and how many highlighted passages
-// carry it.
+// One colour of the legend (a verdict, or the passages a person accepted):
+// its label and how many highlighted passages are painted in it.
 export interface BriefFactCheckLegendItem {
-  verdict: CitationVerdict;
+  verdict: FactHighlight;
   label: string;
   count: number;
 }
@@ -301,6 +319,10 @@ export interface BriefFactCheckRead {
   changed_sections?: BriefFactCheckSection[];
   legend: BriefFactCheckLegendItem[];
   marks: BriefFactCheckMark[];
+  // This user may accept a citation or withdraw an acceptance (the brief's
+  // owner and administrators), and how long a comment may be.
+  can_accept?: boolean;
+  comment_max_length?: number;
 }
 
 // A run of a cited excerpt; highlighted when the judge quoted it.

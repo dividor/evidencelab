@@ -33,6 +33,11 @@ const mark = (over: Partial<BriefFactCheckMark> = {}): BriefFactCheckMark => ({
   confidence: 0.9,
   citations: '1',
   quote_not_in_source: false,
+  highlight: 'unsupported',
+  highlight_label: 'Unsupported',
+  accepted: false,
+  accepted_label: '',
+  accepted_comment: '',
   ...over,
 });
 
@@ -80,7 +85,7 @@ describe('paintFactMarks', () => {
 
   it('names the verdict on the mark so it can be read without the pointer', () => {
     const el = render(CITED);
-    paintFactMarks(el, [mark({ verdict: 'partially_supported', verdict_label: 'Partially supported' })]);
+    paintFactMarks(el, [mark({ verdict: 'partially_supported', verdict_label: 'Partially supported', highlight: 'partially_supported' })]);
     const painted = el.querySelector(`.${FACT_MARK_CLASS}`);
     expect(painted?.className).toContain(`${FACT_MARK_CLASS}-partially_supported`);
     expect(painted?.getAttribute('aria-label')).toBe(
@@ -148,5 +153,26 @@ describe('rangeForText', () => {
     const el = render('<p>Some prose.</p>');
     expect(rangeForText(el, '   ')).toBeNull();
     expect(rangeForText(el, 'missing')).toBeNull();
+  });
+});
+
+describe('a passage a person accepted', () => {
+  test('is painted in the accepted colour, not its verdict\'s, and says who accepted it', () => {
+    const root = render('<p>School meals raised attendance <span class="citation-group">1</span>.</p>');
+    const missing = paintFactMarks(root, [
+      mark({
+        highlight: 'accepted',
+        highlight_label: 'Human accepted',
+        accepted: true,
+        accepted_label: 'Accepted by Ada Reviewer on 5 November 2026',
+      }),
+    ]);
+    expect(missing).toEqual([]);
+    const span = root.querySelector(`[${FACT_ID_ATTR}="1"]`) as HTMLElement;
+    expect(span).toHaveClass(`${FACT_MARK_CLASS}-accepted`);
+    expect(span).not.toHaveClass(`${FACT_MARK_CLASS}-unsupported`);
+    expect(span.getAttribute('aria-label')).toBe(
+      'Accepted by Ada Reviewer on 5 November 2026. Unsupported: The excerpt reports no change in attendance.',
+    );
   });
 });
