@@ -28,8 +28,26 @@ def test_planner_explains_when_to_continue_or_stop(prompts):
     planner = prompts.get_template("assistant_research_planner.j2")
     normal = planner.render()
     assert '"queries"' in normal
-    assert "Give an empty list" in normal
+    assert "give an empty list when the evidence addresses the inquiry" in normal
     assert "concrete gap, contradiction or limitation" in normal
+
+
+@pytest.mark.parametrize("stage", [{}, {"organize": True}, {"contextualize": True}])
+def test_geography_guidance_is_shared_and_editable_in_all_planning_stages(
+    prompts, stage
+):
+    planner = prompts.get_template("assistant_research_planner.j2")
+    default = planner.render(**stage)
+    assert (
+        "Keep any country, region or geographic comparison the user requests" in default
+    )
+    assert "A location mentioned in a result or earlier assistant answer" in default
+    assert "Explain that evidence gap." in default
+    edited = planner.render(
+        instructions="Compare delivery settings by country.", **stage
+    )
+    assert "Compare delivery settings by country." in edited
+    assert "A location mentioned in a result" not in edited
 
 
 def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):
@@ -54,11 +72,15 @@ def test_custom_instructions_replace_editable_defaults_and_keep_workflow_rules(p
     )
     assert "Look for implementation barriers first." in planner
     assert "Keep named outcomes separate" in planner
-    assert 'Return only a JSON object with "queries"' in planner
+    assert 'return a JSON object with "queries"' in planner
     assert "concrete gap" not in planner
     writer = prompts.get_template("assistant_system.j2").render(
         instructions="Group findings by evaluation context."
     )
     assert "Group findings by evaluation context." in writer
     assert "Synthesize across relevant passages" not in writer
+    assert "Use country examples" not in writer
     assert "Cite each factual sentence" in writer
+    assert (
+        "Use country examples" in prompts.get_template("assistant_system.j2").render()
+    )

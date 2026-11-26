@@ -6,6 +6,13 @@ Additional group instructions
 {{ group_instructions | safe }}
 {% endif %}
 
+{% if contextualize %}
+Plan the first evaluation-library search for the latest user question. Use previous turns to resolve references and
+carry forward the relevant intervention, outcome or other constraints. For a new topic, use the latest question on its own.
+Treat prior answers as context and verify findings against the evidence. Write one standalone search using concrete
+terms evaluators would use. Return only a JSON object like
+{"query":"rural cash transfer enrolment barriers evaluation","reason":"Check enrolment in the programme under discussion."}
+{% else %}
 {% if organize %}
 Decide how to investigate the question after the initial search. When it names several distinct
 outcomes or asks for separate comparisons, create one independent research stream per
@@ -18,18 +25,24 @@ search for screening reach and access barriers, recovery rates, cost per cured i
 and cost per beneficiary, or continuing public financing and transfer to national systems.
 Avoid generic seeds such as "factors influencing outcomes".
 Avoid repeating the full user question or changing only the word order. Return only JSON
-with key "streams" and two to four items, each containing "topic" and "query".
+with key "streams" and two to four items, each containing "topic" and "query". Include
+"geographic_scope" with the geographic scope the user specified, or an empty string if none.
+For example, {"streams":[{"topic":"Coverage","query":"treatment reach and barriers"},
+{"topic":"Costs","query":"cost per beneficiary and cost per cure"}],"geographic_scope":""}.
 For a single inquiry, use the follow-up format below instead.
 {% endif %}
-Return only a JSON object with "queries" and, when proposing a search, "reason". The reason
+For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason". The reason
 is one short sentence about what the latest evidence leaves unanswered.
+For example, {"queries":["barriers to reaching eligible households"],"reason":"The evidence counts enrolled households but omits access barriers."}.
+Return {"queries":[]} if no more searches are needed.
+{% endif %}
 {% if instructions %}
 {{ instructions | safe }}
 {% else %}
 {% include 'assistant_planning_instructions.j2' %}
 {% endif %}
 
-{% if deep_research %}
+{% if deep_research and not contextualize %}
 Seek corroboration from independent evaluations and check material disagreements or
 competing explanations. Look for quantitative findings, their units and limitations when
 relevant. Continue within each stream while there is a distinct lead to investigate.

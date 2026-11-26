@@ -378,10 +378,16 @@ async def test_planner_skips_a_reworded_search_when_it_has_another_option():
 
 
 @pytest.mark.parametrize(("deep", "per_stream"), [(False, 2), (True, 4)])
+@pytest.mark.parametrize("geographic_scope", ["", "Cambodia"])
 @pytest.mark.asyncio
 async def test_broad_question_researches_each_stream_from_its_own_results_and_joins(
-    deep, per_stream
+    deep, per_stream, geographic_scope
 ):
+    question = (
+        QUESTION
+        if not geographic_scope
+        else f"In {geographic_scope}, {QUESTION.lower()}"
+    )
     topics = {
         "Coverage": "community screening reach and service access",
         "Effectiveness": "recovery rates and reported treatment outcomes",
@@ -395,16 +401,19 @@ async def test_broad_question_researches_each_stream_from_its_own_results_and_jo
         if "Initial evidence:" in prompt:
             return json.dumps(
                 {
+                    "geographic_scope": geographic_scope,
                     "streams": [
                         {"topic": label, "query": q} for label, q in topics.items()
-                    ]
+                    ],
                 }
             )
         if "Investigate only this stream:" in prompt:
             label = next(
                 t for t in topics if f"Investigate only this stream: {t}\n" in prompt
             )
-            assert QUESTION not in prompt
+            assert question not in prompt
+            scope = geographic_scope or "None specified"
+            assert f"Geographic scope requested by the user: {scope}" in prompt
             assert f"Question: {topics[label]}" in prompt
             for other in topics:
                 assert (f"finding marker for {other}" in prompt) is (other == label)
@@ -419,7 +428,7 @@ async def test_broad_question_researches_each_stream_from_its_own_results_and_jo
                     + "The evidence describes delivery in one location. " * 8,
                 }
             )
-        assert QUESTION in prompt
+        assert question in prompt
         assert "Research streams and their evidence labels" in prompt
         for label, rounds in planned.items():
             assert f"- {label}:" in prompt and rounds == per_stream - 1
@@ -428,7 +437,7 @@ async def test_broad_question_researches_each_stream_from_its_own_results_and_jo
 
     def retrieve(**kwargs):
         query = kwargs["query"]
-        if query == QUESTION:
+        if query == question:
             return [point(1, "Initial evidence only")]
         label = next(
             label
@@ -438,7 +447,7 @@ async def test_broad_question_researches_each_stream_from_its_own_results_and_jo
         index = (list(topics).index(label) + 1) * 10 + planned[label]
         return [point(index, f"finding marker for {label}, round {planned[label]}")]
 
-    events, search, _ = await run_research(model, retrieve, deep=deep)
+    events, search, _ = await run_research(model, retrieve, deep=deep, query=question)
     assert search.call_count == 1 + 4 * per_stream
     assert events[-1]["type"] == "done"
     assert len([e for e in events if e["type"] == "token"]) == 1

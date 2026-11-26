@@ -1,0 +1,34 @@
+{% if stage == 'contextualize' -%}
+Latest user question: {{ question | safe }}
+{%- elif stage == 'organize' -%}
+Question: {{ question | safe }}
+{% if first_search != question -%}
+Search already run: {{ first_search | safe }}
+{% endif %}
+Initial evidence:
+{{ evidence | safe }}
+{%- elif stage == 'follow_up' -%}
+Question: {{ question | safe }}
+{% if topic -%}
+Investigate only this stream: {{ topic | safe }}
+Geographic scope requested by the user: {{ (geographic_scope or 'None specified') | safe }}
+{% endif -%}
+Searches remaining: {{ remaining }}
+Searches already run:
+{{ searches | safe }}
+
+New evidence from the latest search:
+{{ recent | safe }}
+
+Earlier evidence for this inquiry:
+{{ evidence | safe }}
+{%- elif stage == 'answer' -%}
+Question: {{ question | safe }}
+
+{{ streams | safe }}Retrieved evidence:
+{{ evidence | safe }}
+{%- elif stage == 'retry_plan' -%}
+The previous reply did not match the search plan format. Return only a JSON object matching the system instructions.
+{%- elif stage == 'retry_citations' -%}
+These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite the full answer. Cite only labels in the retrieved evidence. Remove any claim whose evidence cannot be cited.
+{%- endif %}

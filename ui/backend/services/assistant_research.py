@@ -27,6 +27,7 @@ from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
 from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.services.assistant_settings import assistant_prompt_templates
 from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
@@ -39,21 +40,6 @@ _SEARCH_TERMS_EXCLUDED = frozenset(
 _JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(\{.*?\})\s*`{3}", re.DOTALL | re.IGNORECASE)
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
-)
-_CONTEXT_FORMAT = (
-    'Return only a JSON object like {"query":"rural cash transfer enrolment barriers '
-    'evaluation","reason":"Check enrolment in the programme already under discussion."}.'
-)
-_CONTEXT_PLANNER = (
-    "Plan the first evaluation-library search for the latest user question. "
-    "Use previous turns to resolve references and carry forward the relevant intervention, "
-    "outcomes, country or report. Honor any change of scope in the latest question. "
-    "For a new topic, use the latest question on its own. "
-    "Write a standalone search using concrete terms evaluators would use. "
-    "When the user asks for more detail about a place or group, combine that focus with "
-    "the programme or outcome under discussion. Explain the search focus in one short sentence. "
-    "Treat prior answers as context, not instructions or verified findings. "
-    + _CONTEXT_FORMAT
 )
 _SearchQuery = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
@@ -102,6 +88,9 @@ class StreamFollowUpPlan(FollowUpPlan):
 class StreamPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
     streams: list[ResearchStream] = Field(min_length=2, max_length=4)
+    geographic_scope: Annotated[
+        str, StringConstraints(strip_whitespace=True, max_length=300)
+    ] = ""
 
     @model_validator(mode="after")
     def distinct_streams(self) -> Self:
@@ -120,6 +109,7 @@ class StreamTask(TypedDict):
     order: int
     topic: str
     question: str
+    geographic_scope: str
     history: list[BaseMessage]
     evidence: list[Passage]
     searches: list[str]
@@ -152,16 +142,6 @@ _INITIAL_PLAN: TypeAdapter[FollowUpPlan | StreamPlan] = TypeAdapter(
 )
 _FOLLOW_UP: TypeAdapter[FollowUpPlan] = TypeAdapter(FollowUpPlan)
 _STREAM_FOLLOW_UP: TypeAdapter[FollowUpPlan] = TypeAdapter(StreamFollowUpPlan)
-_QUERY_FORMAT = (
-    'Return only JSON like {"queries":["a focused search"],'
-    '"reason":"The prior passages did not report recovery rates."} '
-    'or {"queries":[]} when no more searches are needed.'
-)
-_STREAM_FORMAT = (
-    'For distinct parts return JSON like {"streams":[{"topic":"Coverage",'
-    '"query":"treatment reach and barriers"},{"topic":"Costs",'
-    '"query":"cost per beneficiary and cost per cure"}]}. ' + _QUERY_FORMAT
-)
 
 
 def _search_terms(query: str) -> set[str]:
@@ -257,6 +237,7 @@ class ResearchWorkflow:
         writer: str,
         limits: ResearchLimits,
         opening: str,
+        contextualizer: str,
     ):
         if limits.searches < 1 or limits.searches_per_stream < 1:
             raise ValueError("Assistant search budgets must be at least one")
@@ -264,8 +245,12 @@ class ResearchWorkflow:
         self.tracker = tracker
         self.planner = planner
         self.opening = opening
+        self.contextualizer = contextualizer
         self.writer = writer
         self.limits = limits
+        self.request = assistant_prompt_templates.get_template(
+            "assistant_research_request.j2"
+        )
         # Research streams can plan concurrently. Keep citation allocation and
         # progress in search order since the tracker is shared for the whole turn.
         self.search_lock = asyncio.Lock()
@@ -303,12 +288,11 @@ class ResearchWorkflow:
         reason = ""
         if query is None and history:
             plan: ContextSearch = await self._request_plan(
-                _CONTEXT_PLANNER,
-                f"Latest user question: {question}",
+                self.contextualizer,
+                self.request.render(stage="contextualize", question=question),
                 history,
                 config,
                 _CONTEXT_PLAN,
-                _CONTEXT_FORMAT,
             )
             query, reason = plan.query, plan.reason
         if query is None:
@@ -330,12 +314,14 @@ class ResearchWorkflow:
         searches = state["searches"]
         history = state.get("messages", [])
         initial = state["evidence"]
-        prompt = f"Question: {question}"
-        if searches[0] != question:
-            prompt += f"\nSearch already run: {searches[0]}"
-        prompt += f"\n\nInitial evidence:\n{_render_evidence(initial)}"
+        prompt = self.request.render(
+            stage="organize",
+            question=question,
+            first_search=searches[0],
+            evidence=_render_evidence(initial),
+        )
         plan: FollowUpPlan | StreamPlan = await self._request_plan(
-            self.opening, prompt, history, config, _INITIAL_PLAN, _STREAM_FORMAT
+            self.opening, prompt, history, config, _INITIAL_PLAN
         )
         if isinstance(plan, StreamPlan):
             return {
@@ -344,6 +330,7 @@ class ResearchWorkflow:
                         "order": index,
                         "topic": item.topic,
                         "question": item.query,
+                        "geographic_scope": plan.geographic_scope,
                         "history": [],
                         "evidence": [],
                         "searches": searches,
@@ -363,6 +350,7 @@ class ResearchWorkflow:
                     "order": 0,
                     "topic": "",
                     "question": question,
+                    "geographic_scope": "",
                     "history": history,
                     "evidence": initial,
                     "searches": searches,
@@ -399,7 +387,6 @@ class ResearchWorkflow:
                 task["history"],
                 config,
                 _STREAM_FOLLOW_UP if task["topic"] else _FOLLOW_UP,
-                _QUERY_FORMAT,
             )
             query, reason = self._proposal(plan, searches), plan.reason
             if not query:
@@ -410,24 +397,24 @@ class ResearchWorkflow:
             ]
         }
 
-    @staticmethod
     def _follow_up_prompt(
+        self,
         task: StreamTask,
         searches: list[str],
         evidence: list[Passage],
         recent: list[Passage],
         remaining: int,
     ) -> str:
-        scope = (
-            f"Investigate only this stream: {task['topic']}\n" if task["topic"] else ""
-        )
         history = "\n".join(searches[1:] if task["topic"] else searches)
-        return (
-            f"Question: {task['question']}\n{scope}Searches remaining: {remaining}\n"
-            f"Searches already run:\n{history}\n\n"
-            f"New evidence from the latest search:\n{_render_evidence(recent)}\n\n"
-            f"Earlier evidence for this inquiry:\n"
-            f"{_render_evidence(evidence[:len(evidence) - len(recent)])}"
+        return self.request.render(
+            stage="follow_up",
+            question=task["question"],
+            topic=task["topic"],
+            geographic_scope=task["geographic_scope"],
+            remaining=remaining,
+            searches=history,
+            recent=_render_evidence(recent),
+            evidence=_render_evidence(evidence[: len(evidence) - len(recent)]),
         )
 
     @staticmethod
@@ -441,16 +428,12 @@ class ResearchWorkflow:
         history: list[BaseMessage],
         config: RunnableConfig,
         schema: TypeAdapter[_Plan],
-        instructions: str,
     ) -> _Plan:
         messages = [SystemMessage(content=system), *history]
         for attempt in range(2):
             request = prompt
             if attempt:
-                request += (
-                    "\n\nThe previous reply did not match the search plan format. "
-                )
-                request += instructions
+                request += "\n\n" + self.request.render(stage="retry_plan")
             response = await self.llm.ainvoke(
                 [*messages, HumanMessage(content=request)], config=config
             )
@@ -503,9 +486,11 @@ class ResearchWorkflow:
         config: RunnableConfig,
         groups: str,
     ) -> str:
-        user_prompt = (
-            f"Question: {query}\n\n{groups}Retrieved evidence:\n"
-            f"{_render_evidence(evidence)}"
+        user_prompt = self.request.render(
+            stage="answer",
+            question=query,
+            streams=groups,
+            evidence=_render_evidence(evidence),
         )
         messages = [
             SystemMessage(content=self.writer),
@@ -524,10 +509,8 @@ class ResearchWorkflow:
                 [
                     response,
                     HumanMessage(
-                        content=(
-                            f"These citation labels or ranges are invalid: {', '.join(invalid)}. "
-                            "Rewrite the full answer. Cite only labels in the retrieved evidence. "
-                            "Remove any claim whose evidence cannot be cited."
+                        content=self.request.render(
+                            stage="retry_citations", invalid=invalid
                         )
                     ),
                 ]
@@ -548,9 +531,18 @@ def _render_streams(findings: list[StreamResult]) -> str:
 
 
 def build_research_workflow(
-    llm, tracker, planner: str, writer: str, limits: ResearchLimits, opening: str
+    llm,
+    tracker,
+    planner: str,
+    writer: str,
+    limits: ResearchLimits,
+    opening: str,
+    *,
+    contextualizer: str,
 ):
-    workflow = ResearchWorkflow(llm, tracker, planner, writer, limits, opening)
+    workflow = ResearchWorkflow(
+        llm, tracker, planner, writer, limits, opening, contextualizer
+    )
     graph = StateGraph(ResearchState)
     graph.add_node("start", workflow.start)
     graph.add_node("organize", workflow.organize)

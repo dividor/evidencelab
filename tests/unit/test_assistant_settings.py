@@ -162,6 +162,7 @@ def test_workflow_uses_group_prompts_and_limits_for_both_modes(
     assert limits.searches == budget == searches
     assert limits.searches_per_stream == per_stream
     assert "Check inclusion by age." in planner and "Check inclusion by age." in opening
+    assert "Check inclusion by age." in build.call_args.kwargs["contextualizer"]
     assert "State uncertainty." in writer and "Old summary prompt" not in writer
 
 

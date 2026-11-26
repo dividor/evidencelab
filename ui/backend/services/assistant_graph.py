@@ -401,6 +401,11 @@ def build_research_agent(
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )
+    contextualizer = template.render(
+        contextualize=True,
+        group_instructions=settings.planningPrompt,
+        instructions=settings.planningInstructions,
+    )
     writer = assistant_prompt_templates.get_template("assistant_system.j2").render(
         data_source=data_source,
         target_words=target_words,
@@ -417,5 +422,7 @@ def build_research_agent(
         searches=max_queries,
         searches_per_stream=per_stream or default_per_stream,
     )
-    agent = build_research_workflow(llm, tracker, planner, writer, limits, opening)
+    agent = build_research_workflow(
+        llm, tracker, planner, writer, limits, opening, contextualizer=contextualizer
+    )
     return agent, tracker, max_queries
