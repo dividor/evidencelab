@@ -877,6 +877,13 @@ h6,
   }
 }
 
+/* In short tablet-width windows, Search can sit level with the Feedback tab. */
+@media (min-width: 641px) and (max-width: 1024px) and (max-height: 500px) {
+  .search-container.search-container-landing .search-form {
+    padding-right: var(--spacing-xl);
+  }
+}
+
 /* Example query chips — centered under the search input */
 .search-examples {
   display: flex;
@@ -4908,7 +4915,7 @@ li.ai-fact-active::before {
 
 .feedback-side-tab {
   position: fixed;
-  top: 50%;
+  top: 75%;
   right: 0;
   z-index: 9000;
   transform: translateY(-50%);

@@ -95,6 +95,14 @@ class TestUxVerdict:
                 "looks good",
             ),
             (
+                "admin",
+                [
+                    "Administration / Users, 390×844 (scrolled to footer)",
+                    "Administration / Users, 1440×900 (tab focused)",
+                ],
+                "looks good",
+            ),
+            (
                 "admin-smoke",
                 [
                     "Administration / Activity, 390×844",

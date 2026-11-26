@@ -382,3 +382,27 @@ def test_ui_layout_when_screen_opened_then_fits_and_is_readable(
     finally:
         page.context.close()
     assert not problems, f"{screen} at {size} size:\n- " + "\n- ".join(problems)
+
+
+@pytest.mark.parametrize("width,height", [(907, 600), (844, 390)])
+def test_feedback_tab_when_search_is_compact_then_leaves_the_search_button_clear(
+    browser: Browser, width: int, height: int
+) -> None:
+    page = browser.new_page(viewport={"width": width, "height": height})
+    try:
+        page.goto(UI_BASE_URL + "/search", wait_until="networkidle", timeout=60000)
+        page.evaluate("document.fonts.ready.then(() => true)")
+        search = page.locator("button.search-button:visible").first.bounding_box()
+        feedback = page.get_by_role(
+            "button", name="Feedback", exact=True
+        ).bounding_box()
+        assert search and feedback, "Search and Feedback must both be visible"
+        assert (
+            search["x"] + search["width"] <= feedback["x"]
+            or search["y"] + search["height"] <= feedback["y"]
+        ), f"Feedback overlaps Search at {width}×{height}"
+        assert feedback["y"] + feedback["height"] / 2 == pytest.approx(
+            height * 0.75, abs=1
+        )
+    finally:
+        page.context.close()
