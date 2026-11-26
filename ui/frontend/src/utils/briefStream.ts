@@ -197,6 +197,7 @@ const PHASE_PROGRESS: Record<string, number> = {
   searching: 30,
   reading: 45,
   synthesizing: 65,
+  checking_citations: 85,
   reflecting: 80,
 };
 
@@ -275,6 +276,8 @@ export const runDeepResearch = async ({
           handlers.onActivity({ tag: 'SCAN', text: 'Planning document-library searches' });
         } else if (phase === 'synthesizing') {
           handlers.onActivity({ tag: 'DRAFT', text: 'Synthesising findings' });
+        } else if (phase === 'checking_citations') {
+          handlers.onActivity({ tag: 'DRAFT', text: 'Checking citations' });
         }
       },
       onPlan: (queries) => {
@@ -298,6 +301,10 @@ export const runDeepResearch = async ({
         handlers.onSources(sources);
       },
       onDone: (data) => {
+        if (data.sectionWritten === false) {
+          handlers.onError('Research did not produce a verified section.');
+          return;
+        }
         handlers.onProgress(100);
         handlers.onActivity({ tag: 'DONE', text: doneLabel });
         handlers.onDone({ content: latestContent, sources: latestSources, runId: data.runId });

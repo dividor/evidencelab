@@ -1,4 +1,5 @@
 import React from 'react';
+import { capitalizeFollowUp } from './queryDisplay';
 import { SearchToolCall } from '../../types/api';
 
 interface AgentStatusProps {
@@ -11,15 +12,13 @@ const PHASE_CONFIG: Record<string, string> = {
   planning: 'Planning research approach',
   searching: 'Searching documents',
   synthesizing: 'Synthesizing answer',
+  checking_citations: 'Checking citations',
   reflecting: 'Reflecting on completeness',
 };
 
 export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, toolCalls }) => {
-  const hasSearchDetail = phase === 'searching' && (
-    (toolCalls && toolCalls.length > 0) || (searchQueries && searchQueries.length > 0)
-  );
-  // Show searching label for both searching and synthesizing (queries stay visible)
-  const showSearchingLabel = phase === 'searching' || phase === 'synthesizing';
+  const writingOrChecking = phase === 'synthesizing' || phase === 'checking_citations';
+  const showSearchingLabel = phase === 'searching' || writingOrChecking;
   const hasAnyQueries =
     (toolCalls && toolCalls.length > 0) || (searchQueries && searchQueries.length > 0);
 
@@ -51,7 +50,10 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
             <div className="agent-status-detail">
               {toolCalls && toolCalls.map((tc, i) => (
                 <div key={`tc-${i}`} className="agent-status-query">
-                  <span className="agent-status-query-text">{tc.query}</span>
+                  <span className="agent-status-query-text">
+                    {tc.stream && <><strong>{tc.stream}</strong>{' · '}</>}
+                    {i > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query}
+                  </span>
                   <span className="agent-status-query-count">{tc.resultCount} results</span>
                 </div>
               ))}
@@ -59,7 +61,9 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
                 .filter((q) => !toolCalls?.some((tc) => tc.query === q))
                 .map((q, i) => (
                   <div key={`sq-${i}`} className="agent-status-query agent-status-query-pending">
-                    <span className="agent-status-query-text">{q}</span>
+                    <span className="agent-status-query-text">
+                      {toolCalls?.length ? capitalizeFollowUp(q) : q}
+                    </span>
                     <span className="agent-status-query-count agent-status-pending-dots">
                       <span className="dot">.</span><span className="dot">.</span><span className="dot">.</span>
                     </span>
@@ -67,10 +71,9 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
                 ))}
             </div>
           )}
-          {/* Synthesizing row appended below queries */}
-          {phase === 'synthesizing' && (
+          {writingOrChecking && (
             <div className="agent-status-indicator agent-status-synthesizing">
-              <span className="agent-status-label">{PHASE_CONFIG.synthesizing}</span>
+              <span className="agent-status-label">{PHASE_CONFIG[phase]}</span>
               <span className="agent-status-dots">
                 <span className="dot">.</span>
                 <span className="dot">.</span>

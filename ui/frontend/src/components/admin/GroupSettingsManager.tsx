@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
-import type { GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
+import type { SummaryModelConfig } from '../../types/api';
+import type { AssistantGroupSettings, GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
   DEFAULT_SECTION_TYPES,
@@ -10,7 +11,8 @@ import {
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
 import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
-import { BriefLengthControl } from '../brief/BriefLengthControl';
+import { AssistantGroupSection } from './AssistantGroupSection';
+import { BriefGroupSection } from './BriefGroupSection';
 import {
   DocSummaryGroupValue,
   DocumentSummaryGroupSection,
@@ -226,6 +228,7 @@ type SettingsTab =
   | 'search'
   | 'content'
   | 'ai_summary'
+  | 'assistant'
   | 'brief'
   | 'doc_summary'
   | 'llms'
@@ -237,6 +240,7 @@ const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
   { key: 'search', label: 'Search Settings' },
   { key: 'content', label: 'Content Settings' },
   { key: 'ai_summary', label: 'Search AI Summary' },
+  { key: 'assistant', label: 'Assistant' },
   { key: 'brief', label: 'Brief' },
   { key: 'doc_summary', label: 'Document Summaries' },
   { key: 'llms', label: 'LLMs' },
@@ -266,13 +270,17 @@ const SettingsTabs: React.FC<{ active: SettingsTab; onSelect: (tab: SettingsTab)
 );
 
 /** The settings of one tab. */
-const SettingsPanel: React.FC<{ tab: SettingsTab; children: React.ReactNode }> = ({ tab, children }) => (
+const SettingsPanel: React.FC<{
+  tab: SettingsTab;
+  children: React.ReactNode;
+  active?: boolean;
+}> = ({ tab, children, active = true }) => active ? (
   <div className="filter-section group-settings-panel" role="tabpanel" aria-labelledby={`group-settings-tab-${tab}`}>
     <div className="filter-section-content">{children}</div>
   </div>
-);
+) : null;
 
-const GroupSettingsManager: React.FC = () => {
+const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig | null }> = ({ assistantModelConfig }) => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -301,6 +309,9 @@ const GroupSettingsManager: React.FC = () => {
   // Summary prompt override (top-level group field, not part of search_settings)
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);
+  const [assistant, setAssistant] = useState<AssistantGroupSettings>({});
+  const [briefSectionPrompt, setBriefSectionPrompt] = useState<string>();
+  const [briefCitationCheck, setBriefCitationCheck] = useState<boolean>();
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -333,6 +344,8 @@ const GroupSettingsManager: React.FC = () => {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setAssistant({});
+      setBriefSectionPrompt(undefined);
       setTabsOverride(false);
       setTabValues(defaultTabValues());
       setPersonalImpact(undefined);
@@ -382,6 +395,9 @@ const GroupSettingsManager: React.FC = () => {
 
     // Load summary prompt override
     setSummaryPromptValue(group.summary_prompt || '');
+    setAssistant(settings.assistant || {});
+    setBriefSectionPrompt(settings.briefSectionPrompt);
+    setBriefCitationCheck(settings.briefCitationCheck);
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -404,6 +420,9 @@ const GroupSettingsManager: React.FC = () => {
       }
       Object.assign(payload, docSummaryPayload(docSummary));
       Object.assign(payload, llmChoicePayload(llmChoices));
+      if (Object.values(assistant).some((value) => value !== undefined)) payload.assistant = assistant;
+      if (briefSectionPrompt?.trim()) payload.briefSectionPrompt = briefSectionPrompt;
+      if (briefCitationCheck !== undefined) payload.briefCitationCheck = briefCitationCheck;
       if (personalImpact !== undefined) {
         payload.personalEnvironmentalImpact = personalImpact;
       }
@@ -417,7 +436,7 @@ const GroupSettingsManager: React.FC = () => {
         );
       }
       const patchBody: Record<string, unknown> = {
-        search_settings: Object.keys(payload).length > 0 ? payload : {},
+        search_settings: payload,
       };
       // Include summary prompt: empty string clears the override on the server.
       // If the prompt matches the built-in default, treat it as "no override".
@@ -448,7 +467,9 @@ const GroupSettingsManager: React.FC = () => {
       setOverrides(new Set());
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
+      setAssistant({});
       setDocSummary({});
+      setBriefSectionPrompt(undefined);
       setLlmChoices({});
       setPersonalImpact(undefined);
       setSuccess('Settings reset to system defaults.');
@@ -938,25 +959,17 @@ const GroupSettingsManager: React.FC = () => {
               </div>
             </div>
 
-            {/* Brief Settings */}
-            {activeTab === 'brief' && (
-            <SettingsPanel tab="brief">
-              <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
-                <span>Default section length</span>
-                <span
-                  className="rerank-tooltip"
-                  title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
-                >
-                  ⓘ
-                </span>
-              </label>
-              <BriefLengthControl
-                id="group-brief-target-words"
-                value={values.briefTargetWords}
-                onChange={(v) => update('briefTargetWords', v)}
-              />
+            <SettingsPanel tab="assistant" active={activeTab === 'assistant'}>
+              <AssistantGroupSection value={assistant} onChange={setAssistant}
+                assistantModelConfig={assistantModelConfig} summaryPrompt={summaryPromptValue} />
             </SettingsPanel>
-            )}
+
+            <SettingsPanel tab="brief" active={activeTab === 'brief'}>
+              <BriefGroupSection targetWords={values.briefTargetWords}
+                onTargetWordsChange={value => update('briefTargetWords', value)}
+                sectionPrompt={briefSectionPrompt} onSectionPromptChange={setBriefSectionPrompt}
+                citationCheck={briefCitationCheck} onCitationCheckChange={setBriefCitationCheck} />
+            </SettingsPanel>
 
             {/* Document summaries (Documents screen) */}
             {activeTab === 'doc_summary' && (

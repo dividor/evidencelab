@@ -43,6 +43,7 @@ let priorityInFlight = 0;
 // Bounded: a slow (or stuck) hover request must not stall the whole backfill,
 // so workers yield for at most this long before carrying on regardless.
 const PRIORITY_YIELD_MS = 15000;
+const EXCERPT_HIGHLIGHT_TIMEOUT_MS = 15000;
 const waitForPriority = async (): Promise<void> => {
   const until = Date.now() + PRIORITY_YIELD_MS;
   while (priorityInFlight > 0 && Date.now() < until) {
@@ -159,6 +160,7 @@ export const highlightSectionSources = async ({
 export const highlightOneSource = async (args: {
   source: SourceReference;
   content: string;
+  claim?: string;
   threshold: number;
   modelConfig?: SummaryModelConfig | null;
   // Called as each claim resolves, so an open card shows its first highlight
@@ -168,6 +170,7 @@ export const highlightOneSource = async (args: {
   // Registered as priority work: background workers pause until this returns.
   priorityInFlight += 1;
   try {
+    const focused = args.claim ? normalizeClaimText(args.claim) : '';
     return await enrichSource(
       args.source,
       args.content,
@@ -175,6 +178,7 @@ export const highlightOneSource = async (args: {
       args.modelConfig,
       undefined,
       args.onProgress,
+      focused,
     );
   } finally {
     priorityInFlight = Math.max(0, priorityInFlight - 1);
@@ -193,10 +197,16 @@ const enrichSource = async (
   modelConfig: SummaryModelConfig | null | undefined,
   isStale?: () => boolean,
   onProgress?: (partial: SourceReference) => void,
+  focused?: string,
 ): Promise<SourceReference> => {
-  const claims = extractClaimsForCitation(content, source.index as number);
+  const claims = focused
+    ? [{ key: focused, prose: focused }]
+    : extractClaimsForCitation(content, source.index as number);
   const { body } = parseSectionBreadcrumb(source.text || '');
+  const previous = source.claimMatches ?? [];
   const entries: NonNullable<SourceReference['claimMatches']> = [];
+  const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(), EXCERPT_HIGHLIGHT_TIMEOUT_MS);
   try {
     // The claims are independent, so ask for them together: a source cited from
     // five sentences took five sequential LLM calls (~a minute) before the card
@@ -209,13 +219,13 @@ const enrichSource = async (
           // null: brief citation highlighting is not tied to the results-tab
           // search — detach from the search usage context.
           const matches = (
-            await findSemanticMatches(body, prose, threshold, modelConfig, null)
+            await findSemanticMatches(body, prose, threshold, modelConfig, null, controller.signal)
           ).filter((m) => m.end - m.start >= MIN_MATCH_CHARS);
           if (!matches.length) return null;
           const entry = { claim: key, matches };
           // Publish immediately: the open card gains this span now rather
           // than when the slowest claim of the source finishes.
-          onProgress?.({ ...source, claimMatches: [...entries, entry] });
+          onProgress?.({ ...source, claimMatches: [...previous, ...entries, entry] });
           entries.push(entry);
           return entry;
         } catch {
@@ -227,8 +237,12 @@ const enrichSource = async (
     void results;
   } catch {
     // Highlighting is an enhancement — keep whatever matched before the error.
+  } finally {
+    clearTimeout(deadline);
   }
   // Always record the attempt (an empty list means "tried, nothing matched"),
   // so resuming an interrupted run only retries sources never attempted.
-  return { ...source, claimMatches: entries };
+  return entries.length ? { ...source, claimMatches: [...previous, ...entries] } : (
+    focused ? source : { ...source, claimMatches: [] }
+  );
 };

@@ -4937,14 +4937,12 @@ li.ai-fact-active::before {
   color: var(--gray-400);
 }
 
-/* On narrow screens the footer's links wrap onto more lines, each link whole.
-   Leave space on the right for the Feedback tab as the footer scrolls past it. */
+/* On narrow screens the footer's links wrap onto more lines, each link whole. */
 @media (max-width: 768px) {
   .app-footer {
     flex-wrap: wrap;
     row-gap: 0.25rem;
     column-gap: 1rem;
-    padding-inline: 5.25rem;
   }
 
   /* Wrapped lines would end on a stray "•": space the links apart instead. */
@@ -4984,6 +4982,19 @@ li.ai-fact-active::before {
 .feedback-side-tab:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: -4px;
+}
+
+@media (max-width: 768px) {
+  .feedback-side-tab {
+    position: static;
+    align-self: flex-end;
+    min-height: 44px;
+    margin: 0.5rem 1rem 1rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--radius-md);
+    transform: none;
+    writing-mode: horizontal-tb;
+  }
 }
 
 .prompt-text {
@@ -11546,6 +11557,12 @@ a.admin-citation-clickable:hover {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.chat-input-error {
+  margin: 0 0 0.5rem;
+  color: var(--brand-error, #b91c1c);
+  font-size: 0.875rem;
+}
+
 .chat-input-wrapper:focus-within {
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.15);
@@ -11877,6 +11894,33 @@ a.admin-citation-clickable:hover {
 }
 
 /* Expandable query rows */
+.tool-call-stream {
+  color: var(--brand-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.tool-call-reason {
+  color: var(--brand-text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  max-width: 70ch;
+  margin-bottom: 0.35rem;
+}
+
+/* Line the reason up with the query text, after the expand icon and gap. */
+.tool-call-reason--indented {
+  padding-left: 1.6rem;
+}
+
+.tool-call-reason-label {
+  font-weight: 600;
+}
+
 .tool-call-query-row {
   margin-bottom: 0.125rem;
 }
@@ -13593,4 +13637,47 @@ button.doc-link:hover {
 
 .table-scroll-chevron-right {
   right: 8px;
+}
+
+.group-prompt-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.group-assistant-settings :is(input, select),
+.group-prompt-input {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+
+fieldset.group-assistant-options {
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.group-assistant-options label,
+.group-assistant-mode {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options label {
+  align-content: space-between;
 }

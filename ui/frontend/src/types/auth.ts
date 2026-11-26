@@ -73,6 +73,25 @@ export interface GroupLlmChoices {
   briefModel?: string;
   /** The model that judges evaluations and the Brief citation check. */
   judgeModel?: string;
+  /** The model that checks citations before Assistant and Brief results are shown. */
+  citationCheckModel?: string;
+}
+
+/** Overrides for conversations in the Assistant tab. */
+export interface AssistantGroupSettings {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  planningPrompt?: string;
+  answerPrompt?: string;
+  planningInstructions?: string;
+  answerInstructions?: string;
+  searches?: number;
+  searchesPerStream?: number;
+  deepSearches?: number;
+  deepSearchesPerStream?: number;
+  deepResearchByDefault?: boolean;
+  citationCheck?: boolean;
 }
 
 /**
@@ -84,6 +103,7 @@ export interface GroupLlmChoices {
 export interface EffectiveSettings extends SearchSettings, DocumentSummaryDefaults {
   tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
   personalEnvironmentalImpact?: boolean;
+  assistantDeepResearchByDefault?: boolean;
 }
 
 export interface UserGroup {
@@ -94,7 +114,11 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (EffectiveSettings & GroupLlmChoices) | null;
+  search_settings?: (EffectiveSettings & GroupLlmChoices & {
+    assistant?: AssistantGroupSettings;
+    briefSectionPrompt?: string;
+    briefCitationCheck?: boolean;
+  }) | null;
   summary_prompt?: string | null;
 }
 

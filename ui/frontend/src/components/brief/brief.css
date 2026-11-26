@@ -1397,6 +1397,14 @@
 .brief-doc-progress {
   margin-top: 14px;
 }
+.brief-regeneration-result,
+.brief-research-failure {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
 .brief-doc-progress-row {
   display: flex;
   justify-content: space-between;
@@ -1555,6 +1563,11 @@
 }
 .brief-toc-dot-done {
   background: #2e9e5b;
+}
+.brief-toc-failed {
+  flex: none;
+  color: var(--brand-error);
+  font-weight: 700;
 }
 .brief-toc-actions {
   flex: none;

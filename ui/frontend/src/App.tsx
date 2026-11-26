@@ -3082,6 +3082,7 @@ function App() {
         searchTab={searchTab}
         assistantTab={
           <AssistantTab
+            defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             rerankerModel={rerankModel}
@@ -3150,6 +3151,7 @@ function App() {
         dataSource={dataSource}
         dataSourceConfig={currentDataSourceConfig}
         modelCombo={selectedModelCombo}
+        assistantModelConfig={assistantModelConfig}
         onResultClick={handleResultClick}
       />
 

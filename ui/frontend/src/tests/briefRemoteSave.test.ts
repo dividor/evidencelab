@@ -122,6 +122,7 @@ describe('saving a researched section to the server', () => {
     const hook = renderRemoteBrief();
     startBrief(hook);
     await waitFor(() => expect(mockCreateBrief).toHaveBeenCalledTimes(1));
+    expect(hook.result.current.currentBriefId).toBeNull();
 
     // The run waits for the row to exist: creation completes while the
     // research is still being recorded, never the other way round.
@@ -129,6 +130,7 @@ describe('saving a researched section to the server', () => {
     await researchFirstSection(hook);
 
     await waitFor(() => expect(lastRecordedRun()).toEqual({ briefId: 'srv-1', text: SECTION_TEXT }));
+    expect(hook.result.current.currentBriefId).toBe('srv-1');
   });
 
   test('a section finished while the saved-brief list refreshes is still saved', async () => {

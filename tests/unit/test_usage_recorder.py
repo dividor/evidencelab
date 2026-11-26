@@ -99,6 +99,18 @@ class TestUsagePayloadHelpers:
     def test_usage_cost_unknown_model_is_none(self):
         assert usage_cost({"llm_model": "mystery", "prompt_tokens": 10}) is None
 
+    def test_usage_cost_prices_writer_and_checker_tokens_separately(self):
+        writer = {"llm_model": "gpt-4.1-mini", "prompt_tokens": 1000}
+        checker = {"llm_model": "nova-2-lite", "completion_tokens": 2000}
+        root = {
+            "llm_model": "gpt-4.1-mini",
+            "prompt_tokens": 1000,
+            "completion_tokens": 2000,
+        }
+        assert usage_cost({**root, "model_usage": [writer, checker]}) == (
+            usage_cost(writer) + usage_cost(checker)
+        )
+
 
 # ---------------------------------------------------------------------------
 # record_llm_usage

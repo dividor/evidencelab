@@ -26,12 +26,14 @@ logger = logging.getLogger(__name__)
 SUMMARY = "summary"
 BRIEF = "brief"
 JUDGE = "judge"
+CITATION_CHECK = "citation_check"
 
 # The search_settings key each job's group choice is stored under.
 JOB_SETTING: Dict[str, str] = {
     SUMMARY: "summaryModel",
     BRIEF: "briefModel",
     JUDGE: "judgeModel",
+    CITATION_CHECK: "citationCheckModel",
 }
 
 # What each job is called in messages.
@@ -39,6 +41,7 @@ JOB_LABEL: Dict[str, str] = {
     SUMMARY: "the search AI summary",
     BRIEF: "Briefs",
     JUDGE: "evaluation judging",
+    CITATION_CHECK: "automatic citation checking",
 }
 
 
@@ -129,6 +132,13 @@ def combo_default(job: str, combo: Optional[Dict[str, Any]]) -> Optional[str]:
         return _stage_model(combo, "assistant_model") or summary
     if job == JUDGE:
         return _stage_model(combo, "judge_model") or summary
+    if job == CITATION_CHECK:
+        assistant = db_config.get_application_config().get("assistant", {})
+        return (
+            _stage_model(assistant, "citation_check_model")
+            or _stage_model(combo, "assistant_model")
+            or summary
+        )
     raise ValueError(f"Unknown AI job {job!r}")
 
 

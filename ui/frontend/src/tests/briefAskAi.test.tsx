@@ -27,6 +27,7 @@ const makeBrief = (overrides: Partial<UseBriefReturn> = {}) =>
     canEdit: true,
     remote: true,
     stage: 'done',
+    researching: (overrides.sections ?? [section]).some((s) => s.status === 'researching'),
     openRegen: jest.fn(),
     reviseSection: jest.fn(),
     updateAll: jest.fn(),

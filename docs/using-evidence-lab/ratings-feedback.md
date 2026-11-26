@@ -56,7 +56,7 @@ If you've already rated something, the modal shows your previous score and comme
 
 ### Feedback about a page
 
-Open the **Feedback** tab about three-quarters of the way down the right edge of the screen to report a problem or comment on the page. Choose a star rating, write a comment, and select **Submit**.
+Select **Feedback** to report a problem or comment on the page. The tab is on the right edge of the screen. On narrow screens, the button is below the page content. Choose a star rating, write a comment, and select **Submit**.
 
 ### What Gets Captured
 

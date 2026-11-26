@@ -1,7 +1,8 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useId } from 'react';
 
 interface ChatInputProps {
   value: string;
+  error?: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onStop?: () => void;
@@ -13,6 +14,7 @@ interface ChatInputProps {
 
 export const ChatInput: React.FC<ChatInputProps> = ({
   value,
+  error,
   onChange,
   onSubmit,
   onStop,
@@ -22,6 +24,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   footerLeft,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const errorId = useId();
 
   // Auto-resize textarea (also triggers when becoming visible after display:none)
   const resizeTextarea = useCallback(() => {
@@ -62,6 +65,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   return (
     <div className="chat-input-container">
+      {error && <p className="chat-input-error" id={errorId} role="alert">{error}</p>}
       <div className="chat-input-wrapper">
         <textarea
           ref={textareaRef}
@@ -70,6 +74,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          aria-describedby={error ? errorId : undefined}
           disabled={disabled}
           rows={3}
         />

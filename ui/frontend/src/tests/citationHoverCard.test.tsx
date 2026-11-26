@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { CitedMarkdown } from '../components/citations/CitedContent';
 import { SourceReference } from '../types/api';
 
@@ -44,6 +44,7 @@ describe('inline citation hover card', () => {
     const excerpt = document.querySelector('.citation-hover-excerpt');
     expect(excerpt).not.toBeNull();
     expect(excerpt!.querySelector('.formatted-text-block')).not.toBeNull();
+    expect(screen.queryByText('Highlighting relevant text …')).toBeNull();
   });
 
   test('marks the span supporting the hovered claim and tidies the chunk', () => {
@@ -59,5 +60,20 @@ describe('inline citation hover card', () => {
     // Footnote markers and PDF double-spacing are cleaned up for reading.
     expect(excerpt.textContent).not.toContain('[^56]');
     expect(excerpt.textContent).not.toMatch(/ {2,}/);
+  });
+
+  test('shows a spinner only while an actual highlight request is pending', async () => {
+    let complete = () => { throw new Error('Highlight request did not start'); };
+    const request = jest.fn(() => new Promise<void>(resolve => { complete = resolve; }));
+    const { container } = render(
+      <CitedMarkdown content="A key finding [1]." sources={[source]} onRequestHighlight={request} />,
+    );
+    fireEvent.mouseOver(container.querySelector('.ai-summary-citation') as HTMLElement);
+    expect(screen.getByText('Highlighting relevant text …')).toBeVisible();
+    expect(request).toHaveBeenCalledTimes(1);
+
+    await act(async () => complete());
+    expect(screen.queryByText('Highlighting relevant text …')).toBeNull();
+    expect(screen.getByText('Doc One')).toBeVisible();
   });
 });

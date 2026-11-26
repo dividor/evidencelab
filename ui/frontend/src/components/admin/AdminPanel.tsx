@@ -10,7 +10,7 @@ import McpAuditLog from './McpAuditLog';
 import RatingsManager from './RatingsManager';
 import TestingManager from './TestingManager';
 import BriefTestingManager from './BriefTestingManager';
-import type { SearchResult } from '../../types/api';
+import type { SearchResult, SummaryModelConfig } from '../../types/api';
 import TocValidatorManager from './TocValidatorManager';
 import UserManager from './UserManager';
 
@@ -21,6 +21,7 @@ interface AdminPanelProps {
   // The model combo selected at the top of the page; the brief citation check
   // judges with its summarisation model.
   modelCombo?: string | null;
+  assistantModelConfig?: SummaryModelConfig | null;
   // Opens a cited document in the app's own preview (as search results do).
   onResultClick?: (result: SearchResult) => void;
 }
@@ -59,6 +60,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   dataSource = '',
   dataSourceConfig,
   modelCombo = null,
+  assistantModelConfig,
   onResultClick,
 }) => {
   const { user } = useAuth();
@@ -142,7 +144,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       <div className="admin-tab-content">
         {tab === TAB_USERS && <UserManager />}
         {tab === TAB_GROUPS && <GroupManager />}
-        {tab === TAB_GROUP_SETTINGS && <GroupSettingsManager />}
+        {tab === TAB_GROUP_SETTINGS && <GroupSettingsManager assistantModelConfig={assistantModelConfig} />}
         {tab === TAB_RATINGS && <RatingsManager />}
         {tab === TAB_ACTIVITY && <ActivityManager />}
         {tab === TAB_LLM_USAGE && <LlmUsageManager />}
