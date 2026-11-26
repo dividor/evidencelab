@@ -2,8 +2,8 @@
 """
 smoke_test.py - Post-demo smoke tests for Evidence Lab services.
 
-Checks that the UI, API, MCP server, A2A server, and search all respond
-correctly after a demo run. Exits non-zero on any failure.
+Checks the UI, API, MCP, A2A, search, and Brief generation after a demo run.
+Exits non-zero on any failure.
 
 Usage:
     python scripts/demo/smoke_test.py
@@ -12,6 +12,7 @@ Usage:
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -70,6 +71,64 @@ def check(label, passed, detail=""):
         _failures.append(label)
 
 
+def check_brief_generation(combo, auth):
+    """Write a real section with the demo's selected models and corpus."""
+    heading = "Warning signs of fraud in public procurement"
+    payload = {
+        "query": heading,
+        "data_source": DEMO_DATA_SOURCE,
+        "deep_research": True,
+        "target_words": 150,
+        "usage_context": "brief",
+        "assistant_model_config": combo.get("assistant_model")
+        or combo.get("summarization_model"),
+        "search_settings": {"embedding_model": combo.get("embedding_model")},
+        "reranker_model": combo.get("reranker_model"),
+        "brief_section": {
+            "topic": "Detecting fraud in World Bank procurement",
+            "outline": [{"title": heading}, {"title": "Investigation and response"}],
+            "current": 0,
+            "focus": "Describe warning signs documented in investigation reports.",
+        },
+    }
+    request = urllib.request.Request(
+        f"{API_URL}/assistant/chat/stream",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", **auth},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(
+            request, timeout=A2A_REQUEST_TIMEOUT_SECONDS
+        ) as resp:
+            events = [
+                json.loads(line[6:]) for line in resp if line.startswith(b"data: ")
+            ]
+    except (OSError, ValueError) as exc:
+        check("Brief section stream completed", False, str(exc))
+        return
+
+    draft = "".join(event["token"] for event in events if event["type"] == "token")
+    citations = {
+        source["index"]
+        for event in events
+        if event["type"] == "sources"
+        for source in event["sources"]
+        if source.get("chunkId")
+    }
+    markers = {int(number) for number in re.findall(r"\[(\d+)\]", draft)}
+    check(
+        "Brief section generation produced a cited draft",
+        bool(draft.strip())
+        and any(event.get("section_written") is True for event in events)
+        and not any(event["type"] == "error" for event in events),
+        f"events={[event['type'] for event in events]}",
+    )
+    check(
+        "Brief citations point to real sources", bool(markers) and markers == citations
+    )
+
+
 def main():
     auth = {"X-API-Key": API_KEY} if API_KEY else {}
 
@@ -82,7 +141,7 @@ def main():
     # ------------------------------------------------------------------
     # 1. API health
     # ------------------------------------------------------------------
-    print("[1/5] API health...")
+    print("[1/6] API health...")
     status, body = _get(f"{API_URL}/health", headers=auth)
     check("API /health returns 200", status == 200, f"status={status}")
     print()
@@ -90,7 +149,7 @@ def main():
     # ------------------------------------------------------------------
     # 2. UI serves
     # ------------------------------------------------------------------
-    print("[2/5] UI...")
+    print("[2/6] UI...")
     status, _ = _get(UI_URL)
     check("UI serves HTTP 200", status == 200, f"status={status}")
     print()
@@ -98,7 +157,7 @@ def main():
     # ------------------------------------------------------------------
     # 3. MCP server health
     # ------------------------------------------------------------------
-    print("[3/5] MCP server...")
+    print("[3/6] MCP server...")
     status, body = _get(f"{MCP_URL}/health")
     check("MCP /health returns 200", status == 200, f"status={status}")
     print()
@@ -106,7 +165,7 @@ def main():
     # ------------------------------------------------------------------
     # 4. Search returns results
     # ------------------------------------------------------------------
-    print("[4/5] Search API...")
+    print("[4/6] Search API...")
     # Search the way the UI does: with the embedding model of the combo the
     # UI starts on for this data source (the flagged default, else the first).
     status, body = _get(
@@ -139,7 +198,7 @@ def main():
     # ------------------------------------------------------------------
     # 5. A2A research task
     # ------------------------------------------------------------------
-    print("[5/5] A2A research task...")
+    print("[5/6] A2A research task...")
     task_id = f"smoke-{int(time.time())}"
     status, body = _post_json(
         f"{MCP_URL}/a2a",
@@ -178,6 +237,10 @@ def main():
             state == "completed",
             f"state={state!r}",
         )
+    print()
+
+    print("[6/6] Brief generation...")
+    check_brief_generation(starting, auth)
     print()
 
     # ------------------------------------------------------------------

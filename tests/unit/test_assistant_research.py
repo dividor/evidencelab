@@ -692,6 +692,119 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
 
 
 @pytest.mark.asyncio
+async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
+    findings = [
+        "The programme operated in three districts",
+        "The evaluation surveyed forty school leaders",
+        "Teachers adapted lesson plans for returning students",
+        "School attendance was tracked monthly",
+        "Attendance data informed the allocation of teaching assistants",
+    ]
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(*((finding, 1, finding) for finding in findings[:4])),
+            _brief_draft((findings[4], 1, findings[4])),
+        ],
+        [[point(1, ". ".join(findings) + ".")]],
+        initial_query="School reintegration evaluation",
+        brief_section_prompt="Describe the programme evaluation.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Evaluation"}], current=0),
+        target_words=350,
+    )
+
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert all(finding in answer for finding in findings)
+    assert "24 words, leaving up to 326 words" in (
+        llm.ainvoke.await_args_list[-2].args[0][-1].content
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three():
+    opening = "Evidence on school reintegration"
+    first = "School reintegration barriers documented by evaluations"
+    best = "Language support for students returning from migration"
+    finding = "Schools provided language support to returning students"
+    events, search, _ = await run_research(
+        [
+            json.dumps({"queries": [first]}),
+            json.dumps(
+                {
+                    "queries": [
+                        first,
+                        best,
+                        "Access to school counselling",
+                        "Training materials for teachers",
+                    ],
+                    "reason": "Find specific help offered to returning students.",
+                }
+            ),
+            '{"queries":[]}',
+            _brief_draft((finding, 3, finding)),
+        ],
+        [
+            [point(1, "Returnees faced barriers to school.")],
+            [point(2, "School records showed gaps after migration.")],
+            [point(3, finding + ".")],
+        ],
+        deep=True,
+        initial_query=opening,
+        brief_section_prompt="Describe the support offered.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Support"}], current=0),
+    )
+
+    assert [call.kwargs["query"] for call in search.call_args_list] == [
+        opening,
+        first,
+        best,
+    ]
+    assert events[-1]["section_written"] is True
+    assert next(e["token"] for e in events if e["type"] == "token") == finding + " [1]."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("invalid_draft", "issue"),
+    [
+        (
+            "Teachers reported vocabulary barriers [1].",
+            "one valid JSON object per line",
+        ),
+        (
+            json.dumps({"paragraph": 1, "text": "An entire paragraph. " * 35}),
+            "exceeded 550 characters",
+        ),
+    ],
+)
+async def test_brief_describes_the_format_error_and_retries(invalid_draft, issue):
+    finding = "Teachers reported limited vocabulary as a barrier to classroom learning"
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            invalid_draft,
+            _brief_draft((finding, 1, finding)),
+        ],
+        [[point(1, finding + ".")]],
+        initial_query="Language barriers in the classroom",
+        brief_section_prompt="Report what teachers observed.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Language barriers"}], current=0
+        ),
+    )
+
+    first_request = llm.ainvoke.await_args_list[1].args[0][-1].content
+    retry_request = llm.ainvoke.await_args_list[2].args[0][-1].content
+    assert "Return only the finished prose" not in first_request
+    assert (
+        "Cite each factual sentence before its final punctuation" not in first_request
+    )
+    assert issue in retry_request
+    assert events[-1]["section_written"] is True
+    assert next(e["token"] for e in events if e["type"] == "token") == finding + " [1]."
+
+
+@pytest.mark.asyncio
 async def test_brief_excludes_a_midterm_finding_misattributed_to_endline():
     source = point(1, "Students reported improved hygiene at midterm.")
     source.payload["map_title"] = "Mid-Term Evaluation of school meals in Laos"

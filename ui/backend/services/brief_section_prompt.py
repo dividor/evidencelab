@@ -34,12 +34,6 @@ _BRIEF_PROMPT_MAX_LENGTH = 12000
 _NUMBERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=\d{1,3}[.)][ \t]+)")
 _LETTERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=[a-z][.)][ \t]+)")
 
-_FINAL_ANSWER_RULE = (
-    "Your final answer must be the finished section text itself — never a "
-    "description of what you are about to do, a promise to research, or "
-    "narration of your process."
-)
-
 
 class BriefSectionScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -313,7 +307,6 @@ def _generate_prompt(scope: str, parent: str, guidance: str, focus: str) -> str:
         "Search the document library for evidence relevant to this specific "
         "section and cite a source for every claim."
     )
-    parts.append(_FINAL_ANSWER_RULE)
     if guidance:
         parts.append(f"Overall brief guidance: {guidance}")
     if focus:

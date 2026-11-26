@@ -427,6 +427,7 @@ def build_research_agent(
         ),
         instructions=settings.answerInstructions,
         brief_section_prompt=brief_section_prompt,
+        structured_brief=brief_section is not None and brief_section.mode == "generate",
         deep_research=deep_research,
     )
     limits = ResearchLimits(

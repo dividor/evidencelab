@@ -102,7 +102,7 @@ class ContextDisposition(BaseModel):
 
 class FollowUpPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    queries: list[_SearchQuery] = Field(max_length=3)
+    queries: list[_SearchQuery]
     reason: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
 
 

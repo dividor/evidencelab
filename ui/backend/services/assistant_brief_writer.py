@@ -45,6 +45,14 @@ _DEPENDENT_LEAD = re.compile(
     r"^(?:For example|For instance|Similarly|Likewise),\s*", re.I
 )
 _FINDING_WORD = re.compile(r"\b\w{3,}\b")
+_DRAFT_FORMAT_ISSUE = (
+    "Return only one valid JSON object per line, with no prose outside it. "
+    "Each finding needs paragraph, text, citation and quote fields."
+)
+_FINDING_LENGTH_ISSUE = (
+    "A finding's text exceeded 550 characters. Put each supported sentence "
+    "in its own record, with the citation and exact quote for that sentence."
+)
 
 
 def _prepare_finding(
@@ -80,15 +88,21 @@ def _read_draft_lines(raw: str) -> tuple[dict[int, list[BriefFinding]], str, lis
             continue
         try:
             part = _BRIEF_LINE.validate_json(line)
-        except ValidationError:
-            issues.append(
-                "Write each finding as one valid JSON object on its own line."
-            )
+        except ValidationError as error:
+            if any(
+                item["loc"][-1:] == ("text",) and item["type"] == "string_too_long"
+                for item in error.errors(include_input=False)
+            ):
+                issues.append(_FINDING_LENGTH_ISSUE)
+            else:
+                issues.append(_DRAFT_FORMAT_ISSUE)
             continue
         if isinstance(part, BriefFinding):
             paragraphs.setdefault(part.paragraph, []).append(part)
         else:
             limit = part.limit.strip()
+    if raw.strip() and not (paragraphs or limit or issues):
+        issues.append(_DRAFT_FORMAT_ISSUE)
     return paragraphs, limit, issues
 
 
@@ -156,7 +170,8 @@ def _combine_findings(drafts: list[str], target: int | None) -> tuple[str, int]:
             paragraphs.append(" ".join(sentences))
     if paragraphs and limit and len(limit.split()) <= remaining:
         paragraphs.append(limit)
-    return "\n\n".join(paragraphs), len(seen)
+    text = "\n\n".join(paragraphs)
+    return text, len(strip_citation_markers(text).split())
 
 
 def _similar_findings(
@@ -215,9 +230,8 @@ async def write_grounded_brief(
     issues: list[str] = []
     drafts: list[str] = []
     accepted = ""
-    minimum = 1
-    if target_words:
-        minimum = 2 if target_words <= 150 else 4
+    written_words = 0
+    minimum_words = target_words * 0.85 if target_words else 1
     for _ in range(2):
         messages = [
             SystemMessage(content=system),
@@ -228,6 +242,8 @@ async def write_grounded_brief(
                     evidence=passages,
                     issues=issues,
                     accepted=accepted,
+                    target_words=target_words,
+                    written_words=written_words,
                 )
             ),
         ]
@@ -253,8 +269,8 @@ async def write_grounded_brief(
             issues.extend(checked.issues)
         if text:
             drafts.append(text)
-            accepted, count = _combine_findings(drafts, target_words)
-            if count >= minimum:
+            accepted, written_words = _combine_findings(drafts, target_words)
+            if written_words >= minimum_words:
                 break
         if not issues:
             issues.append(

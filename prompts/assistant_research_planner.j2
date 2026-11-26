@@ -30,8 +30,8 @@ For example, {"streams":[{"topic":"Reliability","query":"reported failures and o
 {"topic":"Costs","query":"maintenance costs and cost per use"}],"geographic_scope":""}.
 For a single inquiry, use the follow-up format below instead.
 {% endif %}
-For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason". The reason
-is one short sentence about what the latest evidence leaves unanswered.
+For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason".
+Put only the best next search in "queries". The reason is one short sentence about what the latest evidence leaves unanswered.
 For example, {"queries":["recorded reasons for missed deliveries"],"reason":"The records show the delays but omit their causes."}.
 Return {"queries":[]} if no more searches are needed.
 {% endif %}

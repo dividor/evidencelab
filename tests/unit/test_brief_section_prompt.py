@@ -198,12 +198,9 @@ class TestBuildSectionPrompt:
         assert prompt.startswith(
             'Write the "Background" section of an evidence brief. '
             "Search the document library for evidence relevant to this specific "
-            "section and cite a source for every claim. "
-            "Your final answer must be the finished section text itself — never "
-            "a description of what you are about to do, a promise to research, "
-            "or narration of your process."
+            "section and cite a source for every claim."
         )
-        assert "finished prose for the assigned section “Background”" in prompt
+        assert "The assigned section is “Background”." in prompt
         assert (
             "Leave out standalone labels, repeated titles, and side topics." in prompt
         )
@@ -264,7 +261,7 @@ class TestBuildSectionPrompt:
         prompt = _prompt(0, voice_instructions="Plain, short sentences.")
         assert (
             "Voice & tone profile — write the section in this style: "
-            "Plain, short sentences.\n\nReturn only the finished prose"
+            "Plain, short sentences.\n\nThe assigned section is"
         ) in prompt
 
 
