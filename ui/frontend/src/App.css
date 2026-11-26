@@ -4934,6 +4934,19 @@ li.ai-fact-active::before {
   outline-offset: -4px;
 }
 
+@media (max-width: 768px) {
+  .feedback-side-tab {
+    position: static;
+    align-self: flex-end;
+    min-height: 44px;
+    margin: 0.5rem 1rem 1rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--radius-md);
+    transform: none;
+    writing-mode: horizontal-tb;
+  }
+}
+
 .prompt-text {
   background: var(--gray-50);
   padding: var(--spacing-md);
