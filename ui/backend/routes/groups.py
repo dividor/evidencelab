@@ -28,6 +28,10 @@ from ui.backend.services.assistant_settings import (
     assistant_site_defaults,
     validate_assistant_settings,
 )
+from ui.backend.services.brief_section_prompt import (
+    brief_section_prompt_default,
+    validate_brief_section_prompt,
+)
 from ui.backend.services.group_settings import PERSONAL_IMPACT_SETTING
 from ui.backend.services.llm_choice import validate_group_model_choices
 
@@ -109,6 +113,13 @@ def get_assistant_defaults():
     return assistant_site_defaults()
 
 
+@router.get(
+    "/brief-defaults", dependencies=[Depends(current_superuser)], tags=["groups"]
+)
+def get_brief_defaults() -> dict[str, str]:
+    return {"sectionPrompt": brief_section_prompt_default()}
+
+
 @router.get("/datasource-keys", tags=["groups"])
 async def list_datasource_keys(
     admin: User = Depends(current_superuser),
@@ -164,6 +175,7 @@ async def update_group(
             )
         validate_group_model_choices(body.search_settings)
         validate_assistant_settings(body.search_settings)
+        validate_brief_section_prompt(body.search_settings)
         group.search_settings = body.search_settings if body.search_settings else None
         flag_modified(group, "search_settings")
     if body.summary_prompt is not None:

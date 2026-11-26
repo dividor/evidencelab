@@ -111,7 +111,10 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (EffectiveSettings & GroupLlmChoices & { assistant?: AssistantGroupSettings }) | null;
+  search_settings?: (EffectiveSettings & GroupLlmChoices & {
+    assistant?: AssistantGroupSettings;
+    briefSectionPrompt?: string;
+  }) | null;
   summary_prompt?: string | null;
 }
 

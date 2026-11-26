@@ -383,6 +383,7 @@ def build_research_agent(
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
     assistant_settings: Optional[AssistantSettings] = None,
+    brief_section_prompt: Optional[str] = None,
 ) -> tuple:
     """Build the same evidence workflow with the selected research budget."""
     default_searches, default_per_stream = assistant_search_defaults(deep_research)
@@ -418,6 +419,7 @@ def build_research_agent(
             else None
         ),
         instructions=settings.answerInstructions,
+        brief_section_prompt=brief_section_prompt,
         deep_research=deep_research,
     )
     limits = ResearchLimits(
@@ -425,6 +427,13 @@ def build_research_agent(
         searches_per_stream=per_stream or default_per_stream,
     )
     agent = build_research_workflow(
-        llm, tracker, planner, writer, limits, opening, contextualizer=contextualizer
+        llm,
+        tracker,
+        planner,
+        writer,
+        limits,
+        opening,
+        contextualizer=contextualizer,
+        brief_section=brief_section_prompt is not None,
     )
     return agent, tracker, max_queries

@@ -827,6 +827,10 @@ class TestStreamAssistantChatBriefSection:
 
         query = mock_stream.call_args[1]["query"]
         assert query == build_section_prompt(body.brief_section)
+        assert (
+            "finished section in clear prose"
+            in mock_stream.call_args.kwargs["brief_section_prompt"]
+        )
         assert 'You are revising the "Findings" section' in query
         assert "Voice & tone profile" in query
         assert (
@@ -861,6 +865,7 @@ class TestStreamAssistantChatBriefSection:
         assert query.startswith("Research the document library")
         assert query.endswith(instructions)
         assert mock_stream.call_args.kwargs["initial_search_query"] == "School meals"
+        assert mock_stream.call_args.kwargs["brief_section_prompt"] is None
         # The Activity row is labelled with the topic, not the prompt.
         assert mock_usage.call_args[1]["query"] == "School meals"
 

@@ -169,6 +169,7 @@ async def stream_research_response(
     assistant_settings: Optional[AssistantSettings] = None,
     initial_search_query: Optional[str] = None,
     citation_order: bool = True,
+    brief_section_prompt: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream progress and the final cited answer for either research mode."""
     from ui.backend.utils.app_state import validate_data_source
@@ -199,6 +200,7 @@ async def stream_research_response(
             target_words=target_words,
             introduces_sub_sections=introduces_sub_sections,
             assistant_settings=assistant_settings,
+            brief_section_prompt=brief_section_prompt,
         )
         yield {"type": "phase", "phase": "planning"}
         numbered_sources: Optional[list[dict]] = None

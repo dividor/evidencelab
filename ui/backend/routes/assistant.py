@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.ai_daily_limit import require_ai_allowance
@@ -27,6 +28,8 @@ from ui.backend.services.assistant_settings import (
 )
 from ui.backend.services.brief_section_prompt import (
     brief_search_query,
+    brief_section_prompt_default,
+    brief_section_prompt_for_groups,
     build_section_prompt,
     build_survey_prompt,
 )
@@ -134,6 +137,17 @@ async def _assistant_answer_prompt(
     if settings.answerInstructions or settings.answerPrompt:
         return settings.answerPrompt
     return await _resolve_group_prompt(user, session)
+
+
+async def _brief_section_instructions(body, user, session) -> str | None:
+    if body.brief_section is None:
+        return None
+    user_id = getattr(user, "id", None)
+    if _USER_MODULE and user_id is not None and session is not None:
+        prompt = brief_section_prompt_for_groups(await user_groups(session, user_id))
+        if prompt:
+            return prompt
+    return await run_in_threadpool(brief_section_prompt_default)
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +342,7 @@ async def stream_assistant_chat(
             for message in body.conversation_history
         ]
     group_prompt = await _assistant_answer_prompt(settings, user, session)
+    brief_section_prompt = await _brief_section_instructions(body, user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -355,6 +370,7 @@ async def stream_assistant_chat(
                 deep_research=body.deep_research,
                 target_words=body.target_words,
                 introduces_sub_sections=body.introduces_sub_sections,
+                brief_section_prompt=brief_section_prompt,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

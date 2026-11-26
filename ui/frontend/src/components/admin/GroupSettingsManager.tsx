@@ -11,8 +11,8 @@ import {
 } from '../../utils/searchUrl';
 import { DEFAULT_TAB_LABELS, TAB_KEYS, TabKey } from '../layout/tabConfig';
 import { AiSummaryControls, GroupByDocumentControl, WideSearchControls } from '../filters/SearchSettingsPanel';
-import { BriefLengthControl } from '../brief/BriefLengthControl';
 import { AssistantGroupSection } from './AssistantGroupSection';
+import { BriefGroupSection } from './BriefGroupSection';
 import {
   DocSummaryGroupValue,
   DocumentSummaryGroupSection,
@@ -310,6 +310,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
   const [summaryPromptValue, setSummaryPromptValue] = useState('');
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [assistant, setAssistant] = useState<AssistantGroupSettings>({});
+  const [briefSectionPrompt, setBriefSectionPrompt] = useState<string>();
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -343,6 +344,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
       setValues({ ...SYSTEM_DEFAULTS });
       setSummaryPromptValue('');
       setAssistant({});
+      setBriefSectionPrompt(undefined);
       setTabsOverride(false);
       setTabValues(defaultTabValues());
       setPersonalImpact(undefined);
@@ -393,6 +395,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
     // Load summary prompt override
     setSummaryPromptValue(group.summary_prompt || '');
     setAssistant(settings.assistant || {});
+    setBriefSectionPrompt(settings.briefSectionPrompt);
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -416,6 +419,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
       Object.assign(payload, docSummaryPayload(docSummary));
       Object.assign(payload, llmChoicePayload(llmChoices));
       if (Object.values(assistant).some((value) => value !== undefined)) payload.assistant = assistant;
+      if (briefSectionPrompt?.trim()) payload.briefSectionPrompt = briefSectionPrompt;
       if (personalImpact !== undefined) {
         payload.personalEnvironmentalImpact = personalImpact;
       }
@@ -462,6 +466,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
       setSummaryPromptValue('');
       setAssistant({});
       setDocSummary({});
+      setBriefSectionPrompt(undefined);
       setLlmChoices({});
       setPersonalImpact(undefined);
       setSuccess('Settings reset to system defaults.');
@@ -956,25 +961,11 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
                 assistantModelConfig={assistantModelConfig} summaryPrompt={summaryPromptValue} />
             </SettingsPanel>
 
-            {/* Brief Settings */}
-            {activeTab === 'brief' && (
-            <SettingsPanel tab="brief">
-              <label className="rerank-checkbox-label" htmlFor="group-brief-target-words">
-                <span>Default section length</span>
-                <span
-                  className="rerank-tooltip"
-                  title="The section length target new briefs start with, in words per section. Authors can change it per brief and per section. Sections that overshoot the target by more than the configured tolerance are condensed automatically."
-                >
-                  ⓘ
-                </span>
-              </label>
-              <BriefLengthControl
-                id="group-brief-target-words"
-                value={values.briefTargetWords}
-                onChange={(v) => update('briefTargetWords', v)}
-              />
+            <SettingsPanel tab="brief" active={activeTab === 'brief'}>
+              <BriefGroupSection targetWords={values.briefTargetWords}
+                onTargetWordsChange={value => update('briefTargetWords', value)}
+                sectionPrompt={briefSectionPrompt} onSectionPromptChange={setBriefSectionPrompt} />
             </SettingsPanel>
-            )}
 
             {/* Document summaries (Documents screen) */}
             {activeTab === 'doc_summary' && (

@@ -12,7 +12,8 @@ Use previous turns only to interpret the request. If a substantive question coul
 Return one JSON object. For document research, write a standalone search and its focus. For example,
 {"query":"rural cash transfer enrolment barriers evaluation","reason":"Check enrolment in the programme under discussion."}
 For an ambiguous research request, return {"action":"clarify"}.
-For a request clearly unrelated to the selected dataset or to document research, return {"action":"decline"}.
+For a request clearly unrelated to the selected dataset or to document research, return {"action":"decline","next_step":"ask"}.
+Choose "rephrase" when the user might have a report or finding in mind, "focus" to suggest an evidence topic, or "ask" to invite a new question.
 {% else %}
 {% if organize %}
 Decide how to investigate the question after the initial search. When it names several distinct

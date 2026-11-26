@@ -20,6 +20,7 @@ from ui.backend.auth.models import UserGroup, UserGroupMember
 TAB_KEYS = ("search", "assistant", "brief", "heatmap")
 PERSONAL_IMPACT_SETTING = "personalEnvironmentalImpact"
 ASSISTANT_SETTINGS_KEY = "assistant"
+BRIEF_SECTION_PROMPT_KEY = "briefSectionPrompt"
 
 
 def personal_impact_enabled(settings: dict) -> bool:
@@ -82,7 +83,7 @@ def merge_group_settings(groups: Sequence) -> dict:
                 if isinstance(value, dict):
                     tab_configs.append(value)
                 continue
-            if key != ASSISTANT_SETTINGS_KEY:
+            if key not in (ASSISTANT_SETTINGS_KEY, BRIEF_SECTION_PROMPT_KEY):
                 merged.setdefault(key, value)
     if tab_configs:
         merged["tabs"] = merge_tabs(tab_configs)

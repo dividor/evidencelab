@@ -1,5 +1,6 @@
 """Unit tests for the Brief section research prompt the API writes."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -15,10 +16,14 @@ from ui.backend.auth.schemas import (
     BriefSurveyPrompt,
 )
 from ui.backend.services.brief_section_prompt import (
+    brief_section_prompt_default,
+    brief_section_prompt_for_groups,
     build_section_prompt,
     build_survey_prompt,
     outline_context,
+    validate_brief_section_prompt,
 )
+from ui.backend.services.group_settings import merge_group_settings
 
 OUTLINE = [
     {"title": "Context and scope", "level": 1},
@@ -32,6 +37,60 @@ OUTLINE = [
     {"title": "Cost efficiency", "level": 2},
     {"title": "Outcomes", "level": 2},
 ]
+
+
+def test_brief_prompt_is_editable_and_resolved_for_research_only():
+    settings = {
+        "briefSectionPrompt": "  Explain the method.  ",
+        "briefTargetWords": 300,
+    }
+    validate_brief_section_prompt(settings)
+    groups = [SimpleNamespace(search_settings=settings)]
+    assert brief_section_prompt_for_groups(groups) == "Explain the method."
+    assert merge_group_settings(groups) == {"briefTargetWords": 300}
+    settings["briefSectionPrompt"] = " "
+    validate_brief_section_prompt(settings)
+    assert brief_section_prompt_for_groups(groups) is None
+    assert "finished section in clear prose" in brief_section_prompt_default()
+
+
+@pytest.mark.parametrize("value", [False, "x" * 12001])
+def test_invalid_brief_prompt_is_rejected(value):
+    with pytest.raises(HTTPException) as error:
+        validate_brief_section_prompt({"briefSectionPrompt": value})
+    assert error.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_brief_override_is_resolved_only_for_a_researched_section():
+    from ui.backend.routes import assistant
+
+    group = SimpleNamespace(
+        search_settings={"briefSectionPrompt": "Explain the method."}
+    )
+    user = SimpleNamespace(id="test-user")
+    session = object()
+    section = AssistantChatRequest(
+        query="Write the findings",
+        usage_context="brief",
+        brief_section=BriefSectionPrompt(outline=OUTLINE, current=1),
+    )
+    get_groups = AsyncMock(return_value=[group])
+    with (
+        patch.object(assistant, "_USER_MODULE", True),
+        patch.object(assistant, "user_groups", get_groups),
+    ):
+        assert (
+            await assistant._brief_section_instructions(section, user, session)
+            == "Explain the method."
+        )
+        assert (
+            await assistant._brief_section_instructions(
+                AssistantChatRequest(query="What works?"), user, session
+            )
+            is None
+        )
+    get_groups.assert_awaited_once_with(session, user.id)
 
 
 def _prompt(current=0, outline=None, **parts) -> str:

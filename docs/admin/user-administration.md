@@ -293,6 +293,8 @@ Click **Save Settings** to apply the settings to the group.
 |---------|-------------|
 | **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
 
+Use **Section prompt** to guide the writing of researched Brief sections. The section still uses its target length and the rest of the Brief outline. Select **Reset to Default** to restore the site prompt, then **Save Settings**.
+
 #### Document Summaries
 
 ![Group Settings, Document Summaries tab](../images/admin/group-settings-document-summaries.png)

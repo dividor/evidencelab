@@ -34,6 +34,7 @@ async def run_research(
     query=QUESTION,
     initial_query=None,
     supported=True,
+    brief_section_prompt=None,
 ):
     llm = MagicMock()
     replies = None if callable(responses) else iter(responses)
@@ -71,6 +72,7 @@ async def run_research(
                 deep_research=deep,
                 conversation_messages=history,
                 initial_search_query=initial_query,
+                brief_section_prompt=brief_section_prompt,
             )
         ]
     return events, search, llm
@@ -177,7 +179,7 @@ async def test_explicit_first_search_is_kept_even_with_conversation_history():
         (
             "Tell me more about Santa Claus",
             "decline",
-            "I can only answer questions supported by the selected dataset.",
+            "I can only answer questions supported by the documents in my library.",
         ),
         (
             "What about that one?",
@@ -205,7 +207,7 @@ async def test_out_of_scope_or_ambiguous_follow_up_uses_a_fixed_dataset_message(
     search.assert_not_called()
     llm.ainvoke.assert_awaited_once()
     assert [event["type"] for event in events] == ["phase", "token", "done"]
-    assert events[1]["token"] == message
+    assert events[1]["token"].startswith(message)
 
 
 @pytest.mark.asyncio
@@ -217,9 +219,48 @@ async def test_the_old_free_form_reply_is_never_shown():
         query="Tell me more about Santa Claus",
     )
     search.assert_not_called()
-    assert next(event["token"] for event in events if event["type"] == "token") == (
-        "I can only answer questions supported by the selected dataset."
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert answer.startswith(
+        "I can only answer questions supported by the documents in my library."
     )
+
+
+@pytest.mark.asyncio
+async def test_repeated_refusal_changes_its_next_step_without_answering_the_question():
+    reply = "I can only answer questions supported by the documents in my library. "
+    history = [
+        {
+            "role": "assistant",
+            "content": reply + "What would you like to find in those documents?",
+        }
+    ]
+    events, search, _ = await run_research(
+        ['{"action":"decline","next_step":"ask"}'],
+        [],
+        history=history,
+        query="But why not Santa?",
+    )
+    search.assert_not_called()
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert answer.startswith(reply)
+    assert answer != history[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_researched_brief_removes_subheading_markup_and_keeps_the_citation():
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            "## Main findings ##\n\nAccess\n------\n\nSchool sites had better access [1].",
+        ],
+        [[point(1, "School sites had better access.")]],
+        brief_section_prompt="Explain the evaluation findings in plain language.",
+        initial_query="Programme access in schools",
+    )
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert "Main findings" in answer and "Access" in answer
+    assert "##" not in answer and "------" not in answer
+    assert "School sites had better access [1]." in answer
 
 
 @pytest.mark.parametrize(

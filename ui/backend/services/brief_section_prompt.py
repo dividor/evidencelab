@@ -11,21 +11,62 @@ import re
 from textwrap import shorten
 from typing import List, Optional
 
+from fastapi import HTTPException
+
 from ui.backend.auth.schemas import (
     BriefOutlineSection,
     BriefSectionPrompt,
     BriefSurveyPrompt,
 )
+from ui.backend.services.assistant_settings import assistant_prompt_templates
+from ui.backend.services.group_settings import BRIEF_SECTION_PROMPT_KEY
 
 # Characters of a written section quoted in the outline as what it covers.
 _GIST_CHARS = 180
 _SEARCH_QUERY_CHARS = 350
+_BRIEF_PROMPT_MAX_LENGTH = 12000
 
 _FINAL_ANSWER_RULE = (
     "Your final answer must be the finished section text itself — never a "
     "description of what you are about to do, a promise to research, or "
     "narration of your process."
 )
+
+
+def brief_section_prompt_default() -> str:
+    """The editable writing instructions shown in Group Settings → Brief."""
+    return (
+        assistant_prompt_templates.get_template("brief_section_instructions.j2")
+        .render()
+        .strip()
+    )
+
+
+def validate_brief_section_prompt(settings: dict) -> None:
+    """Normalize an override in the same settings record as the section length."""
+    if BRIEF_SECTION_PROMPT_KEY not in settings:
+        return
+    prompt = settings[BRIEF_SECTION_PROMPT_KEY]
+    if not isinstance(prompt, str) or len(prompt.strip()) > _BRIEF_PROMPT_MAX_LENGTH:
+        raise HTTPException(
+            status_code=422, detail="Enter a Brief prompt of up to 12,000 characters."
+        )
+    if prompt.strip():
+        settings[BRIEF_SECTION_PROMPT_KEY] = prompt.strip()
+    else:
+        del settings[BRIEF_SECTION_PROMPT_KEY]
+
+
+def brief_section_prompt_for_groups(groups) -> str | None:
+    """Read the first Brief override in the existing group order."""
+    return next(
+        (
+            prompt
+            for group in groups
+            if (prompt := (group.search_settings or {}).get(BRIEF_SECTION_PROMPT_KEY))
+        ),
+        None,
+    )
 
 
 def _gist(markdown: str, max_chars: int = _GIST_CHARS) -> str:

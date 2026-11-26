@@ -4,6 +4,7 @@ import API_BASE_URL from '../../config';
 import type { SummaryModelConfig } from '../../types/api';
 import type { AssistantGroupSettings } from '../../types/auth';
 import type { OfferedLlm } from './LlmChoiceGroupSection';
+import { GroupPromptEditor } from './GroupPromptEditor';
 
 interface Props {
   value: AssistantGroupSettings;
@@ -37,25 +38,11 @@ const PromptEditor: React.FC<{
 }> = ({ setting: { key, legacy, label, help }, value, defaultPrompt, inheritedInstructions, onChange }) => {
   const withInstructions = (instructions?: string) => [instructions?.trim(), defaultPrompt].filter(Boolean).join('\n\n');
   const inherited = withInstructions(inheritedInstructions);
-  const displayed = value[key] ?? withInstructions(value[legacy] ?? inheritedInstructions);
-  const customized = value[key] !== undefined || value[legacy] !== undefined;
-  const reset = () => onChange({ ...value, [key]: undefined, [legacy]: undefined });
+  const displayed = value[key] ?? (value[legacy] === undefined ? undefined : withInstructions(value[legacy]));
   return (
-    <div className="search-settings-group">
-      <label className="search-settings-label" htmlFor={`group-assistant-${key}`}>{label}</label>
-      <span className="group-llm-choice-hint" id={`group-assistant-${key}-help`}>{help}</span>
-      <textarea id={`group-assistant-${key}`} aria-describedby={`group-assistant-${key}-help`}
-        rows={10} maxLength={12000} value={displayed} disabled={!defaultPrompt}
-        onChange={event => onChange({
-          ...value, [legacy]: undefined, [key]: event.target.value === inherited ? undefined : event.target.value,
-        })}
-        onBlur={() => { if (customized && !displayed.trim()) reset(); }} />
-      <div className="doc-summary-prompt-footer">
-        <span className="group-llm-choice-hint">{customized ? 'Custom prompt' : 'Default prompt'}</span>
-        <button type="button" className="btn-sm" onClick={reset} disabled={!customized}
-          aria-label={`Reset ${label.toLowerCase()} to default`}>Reset to Default</button>
-      </div>
-    </div>
+    <GroupPromptEditor id={`group-assistant-${key}`} label={label} help={help}
+      value={displayed} defaultPrompt={inherited} disabled={!defaultPrompt}
+      onChange={next => onChange({ ...value, [legacy]: undefined, [key]: next })} />
   );
 };
 

@@ -56,13 +56,32 @@ def test_contextualizer_supports_clarification_and_refusal_without_free_text(pro
     assert "Clarify ambiguous research requests" in default
     assert "if it could be covered by the selected dataset" in default
     assert '{"action":"clarify"}' in default
-    assert '{"action":"decline"}' in default
+    assert '{"action":"decline","next_step":"ask"}' in default
     edited = planner.render(
         contextualize=True, instructions="Research every follow-up."
     )
     assert "Research every follow-up." in edited
     assert "Clarify ambiguous research requests" not in edited
-    assert '{"action":"decline"}' in edited
+    assert '{"action":"decline","next_step":"ask"}' in edited
+
+
+def test_brief_section_prompt_preserves_length_and_introduction_rules(prompts):
+    writer = prompts.get_template("assistant_system.j2")
+    settings = {"brief_section_prompt": "Use plain English.", "target_words": 350}
+    result = writer.render(**settings)
+    assert "Use plain English." in result
+    assert "approximately 350 words" in result
+    assert (
+        "Use the outline supplied in the request to avoid repeating other sections"
+        in result
+    )
+    assert "Do not add a title, headings, or new subsections" in result
+    assert "Use only as many headings" not in result
+
+    intro = writer.render(**settings, intro_sub_sections=["Financing", "Coverage"])
+    assert "without reproducing their findings" in intro
+    assert "- Financing" in intro and "- Coverage" in intro
+    assert "Keep the introduction to at most about 350 words." in intro
 
 
 def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):

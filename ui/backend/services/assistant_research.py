@@ -43,9 +43,12 @@ _JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(\{.*?\})\s*`{3}", re.DOTALL | re.IGN
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
 )
-_OUT_OF_SCOPE = "I can only answer questions supported by the selected dataset."
 _CLARIFY = "What would you like me to look up in the selected dataset?"
 _NO_DATASET_EVIDENCE = "NO_DATASET_EVIDENCE"
+_LibraryNextStep = Literal["ask", "rephrase", "focus"]
+_LIBRARY_NEXT_STEPS: tuple[_LibraryNextStep, ...] = ("ask", "rephrase", "focus")
+_MARKDOWN_ATX = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
+_MARKDOWN_SETEXT = re.compile(r"(?m)^(\S[^\r\n]*)\r?\n {0,3}(?:=+|-+)[ \t]*$")
 _SearchQuery = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
 ]
@@ -79,6 +82,7 @@ class ContextSearch(BaseModel):
 class ContextDisposition(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal["decline", "clarify"]
+    next_step: _LibraryNextStep = "ask"
 
 
 class GroundingVerdict(BaseModel):
@@ -254,6 +258,7 @@ class ResearchWorkflow:
         limits: ResearchLimits,
         opening: str,
         contextualizer: str,
+        brief_section: bool,
     ):
         if limits.searches < 1 or limits.searches_per_stream < 1:
             raise ValueError("Assistant search budgets must be at least one")
@@ -262,6 +267,7 @@ class ResearchWorkflow:
         self.planner = planner
         self.opening = opening
         self.contextualizer = contextualizer
+        self.brief_section = brief_section
         self.writer = writer
         self.limits = limits
         self.request = assistant_prompt_templates.get_template(
@@ -314,7 +320,11 @@ class ResearchWorkflow:
                 _CONTEXT_PLAN,
             )
             if isinstance(plan, ContextDisposition):
-                answer = _CLARIFY if plan.action == "clarify" else _OUT_OF_SCOPE
+                answer = (
+                    _CLARIFY
+                    if plan.action == "clarify"
+                    else _library_refusal(plan.next_step, history)
+                )
                 get_stream_writer()({"type": "token", "token": answer})
                 return {"answer": answer}
             query, reason = plan.query, plan.reason
@@ -551,6 +561,8 @@ class ResearchWorkflow:
             answer = message_text(response).strip()
             if answer == _NO_DATASET_EVIDENCE or not answer:
                 return _NO_EVIDENCE
+            if self.brief_section:
+                answer = _brief_prose(answer)
             invalid = _invalid_citations(answer, evidence)
             if not invalid:
                 return answer if cited_numbers_in_order(answer) else _NO_EVIDENCE
@@ -565,6 +577,27 @@ class ResearchWorkflow:
                 ]
             )
         return _NO_EVIDENCE
+
+
+def _library_refusal(next_step: _LibraryNextStep, history: list[BaseMessage]) -> str:
+    """Offer a useful way forward without repeating the previous reply or adding facts."""
+    previous = next(
+        (message_text(msg) for msg in reversed(history) if isinstance(msg, AIMessage)),
+        "",
+    )
+    template = assistant_prompt_templates.get_template("assistant_library_refusal.j2")
+    steps = (next_step, *[step for step in _LIBRARY_NEXT_STEPS if step != next_step])
+    return next(
+        reply
+        for step in steps
+        if (reply := template.render(next_step=step).strip()) != previous
+    )
+
+
+def _brief_prose(answer: str) -> str:
+    """Keep model-generated heading text and citations as ordinary prose."""
+    prose = _MARKDOWN_ATX.sub(r"\1", answer)
+    return _MARKDOWN_SETEXT.sub(r"\1\n", prose).strip()
 
 
 def _render_streams(findings: list[StreamResult]) -> str:
@@ -588,9 +621,10 @@ def build_research_workflow(
     opening: str,
     *,
     contextualizer: str,
+    brief_section: bool = False,
 ):
     workflow = ResearchWorkflow(
-        llm, tracker, planner, writer, limits, opening, contextualizer
+        llm, tracker, planner, writer, limits, opening, contextualizer, brief_section
     )
     graph = StateGraph(ResearchState)
     graph.add_node("start", workflow.start)
