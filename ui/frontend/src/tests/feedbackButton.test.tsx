@@ -109,8 +109,11 @@ describe('FeedbackButton', () => {
     const close = screen.getByRole('button', { name: 'Close' });
     const cancel = screen.getByRole('button', { name: /^cancel$/i });
 
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+
     // From the last enabled control (Submit is disabled), Tab wraps to the first.
-    cancel.focus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(close).toHaveFocus();
 

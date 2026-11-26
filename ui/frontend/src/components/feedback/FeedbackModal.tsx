@@ -39,11 +39,11 @@ const trapTab = (e: KeyboardEvent, panel: HTMLElement) => {
   const first = items[0];
   const last = items[items.length - 1];
   const active = document.activeElement;
-  const outside = !panel.contains(active);
-  if (e.shiftKey && (active === first || outside)) {
+  const startingFromPanelOrPage = active === panel || !panel.contains(active);
+  if (e.shiftKey && (active === first || startingFromPanelOrPage)) {
     e.preventDefault();
     last.focus();
-  } else if (!e.shiftKey && (active === last || outside)) {
+  } else if (!e.shiftKey && (active === last || startingFromPanelOrPage)) {
     e.preventDefault();
     first.focus();
   }
