@@ -85,4 +85,45 @@ describe('FeedbackButton', () => {
     expect(body.comment).toBe('Worked well');
     expect(typeof body.url).toBe('string');
   });
+
+  test('Escape closes the dialog and returns focus to the Feedback tab', async () => {
+    render(<FeedbackButton />);
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: /send feedback/i });
+    expect(dialog).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.querySelector('.rating-modal-overlay')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  test('Tab keeps focus inside the open dialog', async () => {
+    render(<FeedbackButton />);
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole('dialog', { name: /send feedback/i });
+
+    const close = screen.getByRole('button', { name: 'Close' });
+    const cancel = screen.getByRole('button', { name: /^cancel$/i });
+
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    // From the last enabled control (Submit is disabled), Tab wraps to the first.
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(close).toHaveFocus();
+
+    // Shift+Tab from the first control wraps to the last.
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(cancel).toHaveFocus();
+
+    // Focus that has escaped to the page is pulled back into the dialog.
+    trigger.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  });
 });
