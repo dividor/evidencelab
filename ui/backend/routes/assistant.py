@@ -300,7 +300,6 @@ async def stream_assistant_chat(
                 model_key=model_key,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                max_iterations=3,
                 conversation_messages=conversation_messages,
                 reranker_model=body.reranker_model,
                 search_settings=search_kwargs,

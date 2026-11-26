@@ -1,25 +1,17 @@
-"""
-LangGraph research assistant using deepagents.
+"""Search, citation tracking and workflow setup for the Research Assistant."""
 
-Uses LangChain's deepagents create_agent for a focused research loop:
-  - Custom search tool for Qdrant document database
-  - Autonomous multi-round search and synthesis
-"""
-
-import asyncio
 import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
-from deepagents import create_deep_agent
-from deepagents.graph import create_agent
-from deepagents.middleware.subagents import SubAgent
 from jinja2 import Environment, FileSystemLoader
-from langchain_core.tools import tool
 
 from pipeline.utilities.text_cleaning import clean_text
-from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.services.assistant_research import (
+    ResearchLimits,
+    build_research_workflow,
+)
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
@@ -88,8 +80,6 @@ def _spread_across_documents(points: List[Any], limit: int) -> List[Any]:
 class SearchTracker:
     """Track search calls and accumulate results for source extraction."""
 
-    MAX_SEARCHES = 4  # Hard limit — after this, searches return a stop message
-
     # Results handed to the model per tool search. In wide mode the search
 
     # returns documents x per-document chunks; it is spread back to this many.
@@ -108,7 +98,7 @@ class SearchTracker:
         self.search_settings = search_settings or {}
         self.per_query: List[Dict[str, Any]] = []
         self.all_results: List[Dict[str, Any]] = []
-        self._seen_ids: set = set()
+        self._source_indices: Dict[str, int] = {}
         self._emitted_query_count: int = 0
         self._global_result_count: int = 0
         # Sources carried over from earlier turns in this conversation, in
@@ -118,31 +108,17 @@ class SearchTracker:
         self.prior_sources: List[Dict[str, Any]] = list(prior_sources or [])
         for s in self.prior_sources:
             cid = s.get("chunkId")
-            if cid:
-                self._seen_ids.add(cid)
             idx = s.get("index")
-            if isinstance(idx, int) and idx > self._global_result_count:
-                self._global_result_count = idx
+            if isinstance(idx, int) and idx > 0:
+                self._global_result_count = max(self._global_result_count, idx)
+                if cid:
+                    self._source_indices[str(cid)] = idx
         # Field boost state — lazily initialised on first search
         self._field_boost_fields = self.search_settings.get("field_boost_fields")
         self._field_boost_enabled = bool(
             self.search_settings.get("field_boost_enabled") and self._field_boost_fields
         )
         self._known_values: Optional[Dict[str, List[str]]] = None
-        # Real-time event queue for streaming search progress
-        self._event_queue: Optional[asyncio.Queue] = None
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
-
-    def set_event_queue(
-        self, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop
-    ) -> None:
-        """Attach an asyncio Queue for real-time search progress events.
-
-        Since the search tool runs synchronously (possibly in a thread),
-        events are pushed via ``loop.call_soon_threadsafe``.
-        """
-        self._event_queue = queue
-        self._event_loop = loop
 
     def _build_search_kwargs(self) -> Dict[str, Any]:
         """Build kwargs for search_chunks from search settings."""
@@ -322,88 +298,42 @@ class SearchTracker:
             r["report_url"] = meta.get("map_report_url")
 
     def search(self, query: str) -> List[Dict[str, Any]]:
-        """Execute search, track results, return formatted dicts.
-
-        Each result is assigned a global index that persists across
-        multiple search calls so the LLM can cite results unambiguously.
-        Enforces a hard search limit to prevent slow runaway loops.
-        """
-        if len(self.per_query) >= self.MAX_SEARCHES:
-            logger.warning(
-                "Search limit reached (%d). Refusing query: %s",
-                self.MAX_SEARCHES,
-                query,
-            )
-            return []
-
-        try:
-            extra_kwargs = self._build_search_kwargs()
-            raw = search_chunks(
-                query=query,
-                limit=self.RESULTS_PER_SEARCH,
-                data_source=self.data_source,
-                rerank=bool(self.reranker_model),
-                rerank_model=self.reranker_model,
-                **extra_kwargs,
-            )
-            if extra_kwargs.get("wide_search"):
-                raw = _spread_across_documents(raw, self.RESULTS_PER_SEARCH)
-            raw = self._apply_field_boost(raw, query)
-            formatted = [_format_search_result(r) for r in raw]
-            self._enrich_from_postgres(formatted, self.data_source)
-            self._enrich_doc_links(formatted, self.data_source)
-        except Exception as exc:
-            logger.error("Search failed for query %r: %s", query, exc)
-            formatted = []
-
-        # Build result cards (title + snippet) for UI display
-        result_cards = []
-        for r in formatted[:10]:
-            text = r.get("text", "")
-            result_cards.append(
-                {
-                    "title": r.get("title", "Untitled"),
-                    "text": text,
-                }
-            )
+        """Search the configured collection and keep stable result numbers."""
+        kwargs = self._build_search_kwargs()
+        points = search_chunks(
+            query=query,
+            limit=self.RESULTS_PER_SEARCH,
+            data_source=self.data_source,
+            rerank=bool(self.reranker_model),
+            rerank_model=self.reranker_model,
+            **kwargs,
+        )
+        if kwargs.get("wide_search"):
+            points = _spread_across_documents(points, self.RESULTS_PER_SEARCH)
+        formatted = [
+            _format_search_result(r) for r in self._apply_field_boost(points, query)
+        ]
+        self._enrich_from_postgres(formatted, self.data_source)
+        self._enrich_doc_links(formatted, self.data_source)
 
         self.per_query.append(
             {
                 "query": query,
                 "result_count": len(formatted),
-                "results": result_cards,
+                "results": [
+                    {"title": r["title"], "text": r["text"]} for r in formatted[:10]
+                ],
             }
         )
-
         for r in formatted:
-            cid = r.get("chunk_id", "")
-            if cid not in self._seen_ids:
+            chunk_id = str(r["chunk_id"])
+            if chunk_id not in self._source_indices:
                 self._global_result_count += 1
+                self._source_indices[chunk_id] = self._global_result_count
                 r["global_index"] = self._global_result_count
                 self.all_results.append(r)
-                self._seen_ids.add(cid)
-
-        # Push real-time search event (thread-safe for deep mode)
-        if self._event_queue is not None and self._event_loop is not None:
-            event = {
-                "type": "search_status",
-                "queries": [
-                    {
-                        "query": query,
-                        "result_count": len(formatted),
-                        "results": result_cards,
-                    }
-                ],
-                "total_results": len(self.all_results),
-            }
-            self._emitted_query_count = len(self.per_query)
-            try:
-                self._event_loop.call_soon_threadsafe(
-                    self._event_queue.put_nowait, event
-                )
-            except Exception as exc:
-                logger.warning("Failed to push search event to queue: %s", exc)
-
+            else:
+                r["global_index"] = self._source_indices[chunk_id]
         return formatted
 
     def get_new_queries(self) -> List[Dict[str, Any]]:
@@ -453,78 +383,6 @@ class SearchTracker:
         return sorted(combined, key=lambda x: x.get("index") or 0)
 
 
-def _build_search_tool(tracker: SearchTracker):
-    """Create a search tool that uses the given tracker."""
-
-    @tool
-    def search_documents(query: str) -> str:
-        """Search the document database for information relevant to the query.
-
-        Use this tool to find evidence, facts, and insights from indexed
-        documents. Each result includes a document title, text excerpt, and
-        relevance score. Call this tool multiple times with different queries
-        to gather comprehensive evidence before writing your response.
-
-        Args:
-            query: The search query — be specific and focused for best results.
-        """
-        if len(tracker.per_query) >= tracker.MAX_SEARCHES:
-            return (
-                "SEARCH LIMIT REACHED. You have already searched "
-                f"{len(tracker.per_query)} times. Stop searching and "
-                "write your answer now using the results you already have."
-            )
-
-        results = tracker.search(query)
-
-        if not results:
-            return "No results found for this query."
-
-        lines = []
-        for r in results:
-            idx = r.get("global_index", "?")
-            title = r.get("title", "Untitled")
-            # The agent's copy only: numbers printed in a passage (paragraph
-            # numbers, footnotes) were cited as if they were result numbers.
-            text = passage_for_agent(r.get("text", ""))
-            lines.append(f"[{idx}] {title}\n{text}\n---")
-
-        return f"Found {len(results)} results:\n\n" + "\n".join(lines)
-
-    return search_documents
-
-
-def _load_system_prompt(
-    data_source: Optional[str] = None,
-    prior_sources: Optional[List[Dict[str, Any]]] = None,
-) -> str:
-    """Load and render the assistant system prompt.
-
-    When ``prior_sources`` is non-empty, the template emits a block
-    listing the citation numbers already used in earlier turns of the
-    conversation so the model re-uses them instead of restarting from
-    ``[1]``.
-    """
-    template = _jinja_env.get_template("assistant_system.j2")
-    return template.render(
-        data_source=data_source,
-        prior_sources=prior_sources or [],
-        next_index=_next_citation_index(prior_sources),
-    )
-
-
-def _next_citation_index(prior_sources: Optional[List[Dict[str, Any]]]) -> int:
-    """Compute the citation index a new search result would receive."""
-    if not prior_sources:
-        return 1
-    int_indices: List[int] = []
-    for s in prior_sources:
-        idx = s.get("index")
-        if isinstance(idx, int):
-            int_indices.append(idx)
-    return (max(int_indices) + 1) if int_indices else 1
-
-
 def build_research_agent(
     llm,
     data_source: Optional[str] = None,
@@ -532,177 +390,30 @@ def build_research_agent(
     search_settings: Optional[Dict[str, Any]] = None,
     system_prompt_override: Optional[str] = None,
     prior_sources: Optional[List[Dict[str, Any]]] = None,
-) -> tuple:
-    """
-    Build a deep research agent.
-
-    Args:
-        llm: LangChain chat model instance
-        data_source: Optional data source to restrict search
-        reranker_model: Optional reranker model key from UI model combo
-        search_settings: Optional search parameters (dense_weight, boosts, etc.)
-        system_prompt_override: Optional group prompt to append to base prompt
-        prior_sources: Sources cited in earlier turns of this conversation
-            (SSE/persistence shape, keyed by camelCase). Seeds the search
-            tracker so global citation indices remain stable across turns.
-
-    Returns:
-        Tuple of (compiled_agent, search_tracker)
-    """
-    cfg = _get_assistant_config()
-    max_queries = cfg.get("max_queries", 4)
-
-    tracker = SearchTracker(
-        data_source=data_source,
-        reranker_model=reranker_model,
-        search_settings=search_settings,
-        prior_sources=prior_sources,
-    )
-    tracker.MAX_SEARCHES = max_queries
-    search_tool = _build_search_tool(tracker)
-    system_prompt = _load_system_prompt(data_source, prior_sources=prior_sources)
-
-    if system_prompt_override:
-        system_prompt = (
-            system_prompt
-            + "\n\n## Additional Instructions\n\n"
-            + system_prompt_override
-        )
-        logger.info(
-            "Appended group prompt override (%d chars) to system prompt",
-            len(system_prompt_override),
-        )
-
-    agent = create_agent(
-        model=llm,
-        tools=[search_tool],
-        system_prompt=system_prompt,
-    )
-
-    logger.info(
-        "Built research agent for data_source=%s (max_queries=%d)",
-        data_source,
-        max_queries,
-    )
-    return agent, tracker
-
-
-def _load_deep_research_prompt(
-    data_source: Optional[str] = None,
-    prior_sources: Optional[List[Dict[str, Any]]] = None,
-    target_words: Optional[int] = None,
-    introduces_sub_sections: Optional[List[str]] = None,
-) -> str:
-    """Load and render the deep research coordinator prompt.
-
-    ``target_words`` swaps the prompt's default length rule ("at least 3-4
-    paragraphs") for a firm target of about that many words.
-    ``introduces_sub_sections`` (Brief) replaces the structure and heading
-    rules with introduction rules: no headings, and none of the detail that
-    belongs to those sub-sections.
-    """
-    template = _jinja_env.get_template("assistant_deep_research_coordinator.j2")
-    return template.render(
-        data_source=data_source,
-        prior_sources=prior_sources or [],
-        next_index=_next_citation_index(prior_sources),
-        target_words=target_words,
-        intro_sub_sections=introduces_sub_sections or [],
-    )
-
-
-def _load_researcher_prompt(
-    data_source: Optional[str] = None,
-    max_queries: int = 10,
-    prior_sources: Optional[List[Dict[str, Any]]] = None,
-) -> str:
-    """Load and render the deep research researcher sub-agent prompt."""
-    template = _jinja_env.get_template("assistant_deep_research_researcher.j2")
-    return template.render(
-        data_source=data_source,
-        max_queries=max_queries,
-        prior_sources=prior_sources or [],
-        next_index=_next_citation_index(prior_sources),
-    )
-
-
-def build_deep_research_agent(
-    llm,
-    data_source: Optional[str] = None,
-    reranker_model: Optional[str] = None,
-    search_settings: Optional[Dict[str, Any]] = None,
-    system_prompt_override: Optional[str] = None,
-    prior_sources: Optional[List[Dict[str, Any]]] = None,
+    *,
+    deep_research: bool = False,
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
 ) -> tuple:
-    """Build a deep research agent with sub-agent delegation.
-
-    Uses create_deep_agent with a researcher sub-agent that has access
-    to the search_documents tool.  The coordinator plans and synthesizes
-    while the researcher executes searches.
-
-    Returns:
-        Tuple of (compiled_agent, search_tracker)
-    """
+    """Build the same evidence workflow with the selected research budget."""
     cfg = _get_assistant_config()
-    deep_cfg = cfg.get("deep_research", {})
-    max_queries = deep_cfg.get("max_queries", 10)
-
-    tracker = SearchTracker(
+    max_queries = (
+        cfg.get("deep_research", {}).get("max_queries", 10)
+        if deep_research
+        else cfg.get("max_queries", 4)
+    )
+    tracker = SearchTracker(data_source, reranker_model, search_settings, prior_sources)
+    planner = _jinja_env.get_template("assistant_research_planner.j2").render(
+        deep_research=deep_research,
+    )
+    writer = _jinja_env.get_template("assistant_system.j2").render(
         data_source=data_source,
-        reranker_model=reranker_model,
-        search_settings=search_settings,
-        prior_sources=prior_sources,
-    )
-    tracker.MAX_SEARCHES = max_queries
-
-    search_tool = _build_search_tool(tracker)
-
-    coordinator_prompt = _load_deep_research_prompt(
-        data_source,
-        prior_sources=prior_sources,
         target_words=target_words,
-        introduces_sub_sections=introduces_sub_sections,
+        intro_sub_sections=introduces_sub_sections,
+        group_instructions=system_prompt_override,
+        deep_research=deep_research,
     )
-    researcher_prompt = _load_researcher_prompt(
-        data_source, max_queries=max_queries, prior_sources=prior_sources
+    agent = build_research_workflow(
+        llm, tracker, planner, writer, ResearchLimits(searches=max_queries)
     )
-
-    if system_prompt_override:
-        coordinator_prompt = (
-            coordinator_prompt
-            + "\n\n## Additional Instructions\n\n"
-            + system_prompt_override
-        )
-        logger.info(
-            "Appended group prompt override (%d chars) to deep "
-            "research coordinator prompt",
-            len(system_prompt_override),
-        )
-
-    researcher_subagent: SubAgent = {
-        "name": "researcher",
-        "description": (
-            "Conducts thorough searches of the document database "
-            "using multiple diverse queries. Give it a broad research "
-            "brief and it will search from many angles, returning "
-            "comprehensive findings with citation numbers."
-        ),
-        "system_prompt": researcher_prompt,
-        "tools": [search_tool],
-    }
-
-    agent = create_deep_agent(
-        model=llm,
-        tools=[],
-        system_prompt=coordinator_prompt,
-        subagents=[researcher_subagent],
-    )
-
-    logger.info(
-        "Built deep research agent for data_source=%s (max_queries=%d)",
-        data_source,
-        max_queries,
-    )
-    return agent, tracker
+    return agent, tracker, max_queries

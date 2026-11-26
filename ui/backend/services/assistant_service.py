@@ -1,28 +1,20 @@
 """
 Research Assistant service.
 
-High-level service wrapping the deepagents research agent, providing
-SSE streaming and conversation persistence.
+Streams research progress and sends conversation sources and model usage to callers.
 """
 
-import asyncio
 import logging
 import math
-import sys
 import uuid as uuid_mod
-from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
-from ui.backend.services.assistant_graph import (
-    _get_assistant_config,
-    build_deep_research_agent,
-    build_research_agent,
-)
+from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.llm_service import summarize_usage_metadata
-from utils.llm_factory import message_text
+from utils.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +47,6 @@ def max_tokens_for_target(
 
 def _get_llm(model_key=None, temperature=None, max_tokens=None):
     """Get LLM instance via the factory."""
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
-    from utils.llm_factory import get_llm
-
     return get_llm(
         model=model_key,
         temperature=temperature,
@@ -83,7 +72,6 @@ def _trace_callbacks() -> List[Any]:
 
 
 def _build_conversation_messages(
-    query: str,
     conversation_messages: Optional[List[Dict[str, Any]]] = None,
 ) -> List:
     """Build LangChain message objects from conversation history."""
@@ -96,7 +84,6 @@ def _build_conversation_messages(
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
-    messages.append(HumanMessage(content=query))
     return messages
 
 
@@ -158,200 +145,13 @@ def _build_done_event(
     return done_event
 
 
-def _extract_search_queries(msg) -> List[str]:
-    """Extract search_documents queries from an AI message's tool calls."""
-    queries: List[str] = []
-    if hasattr(msg, "tool_calls") and msg.tool_calls:
-        for tc in msg.tool_calls:
-            if tc.get("name") == "search_documents":
-                query = tc.get("args", {}).get("query", "")
-                if query:
-                    queries.append(query)
-    return queries
-
-
-def _extract_task_delegations(msg) -> List[str]:
-    """Extract sub-agent task delegations from an AI message's tool calls."""
-    tasks: List[str] = []
-    if hasattr(msg, "tool_calls") and msg.tool_calls:
-        for tc in msg.tool_calls:
-            if tc.get("name") == "task":
-                args = tc.get("args", {})
-                # deepagents task tool uses "description" param, not "task"
-                desc = args.get("description", "") or args.get("task", "") or str(args)
-                tasks.append(desc)
-    return tasks
-
-
-def _has_any_tool_calls(msg) -> bool:
-    """Check if an AI message has any tool calls (search, write_todos, etc)."""
-    return bool(getattr(msg, "tool_calls", None))
-
-
-# Vertex / Gemini populates these keys on AIMessage.response_metadata; OpenAI
-# and Anthropic never do. Used to gate Gemini-specific message handling so
-# other providers retain their existing behavior.
-_GEMINI_METADATA_MARKERS = ("safety_ratings", "is_blocked", "prompt_feedback")
-
-
-def _is_gemini_message(msg: Any) -> bool:
-    """Detect a LangChain AIMessage produced by a Vertex / Gemini model."""
-    rmeta = getattr(msg, "response_metadata", None)
-    if not isinstance(rmeta, dict):
-        return False
-    return any(key in rmeta for key in _GEMINI_METADATA_MARKERS)
-
-
-def _extract_finish_diagnostics(msg: Any) -> Dict[str, Any]:
-    """Pull finish reason / safety / usage from an AIMessage's response metadata.
-
-    LangChain stores Gemini's per-response metadata on
-    ``AIMessage.response_metadata`` and token usage on ``AIMessage.usage_metadata``.
-    When Vertex returns 200 OK with an empty candidate (safety filter, recitation,
-    MAX_TOKENS at zero output, etc.) the only signal lives here — no exception
-    is raised — so we capture it explicitly for diagnosis.
-    """
-    diag: Dict[str, Any] = {}
-    rmeta = getattr(msg, "response_metadata", None) or {}
-    if isinstance(rmeta, dict):
-        for key in (
-            "finish_reason",
-            "stop_reason",
-            "is_blocked",
-            "block_reason",
-            "safety_ratings",
-            "prompt_feedback",
-        ):
-            if key in rmeta and rmeta[key] not in (None, [], {}):
-                diag[key] = rmeta[key]
-    umeta = getattr(msg, "usage_metadata", None)
-    if isinstance(umeta, dict) and umeta:
-        diag["usage"] = {
-            k: umeta.get(k)
-            for k in ("input_tokens", "output_tokens", "total_tokens")
-            if k in umeta
-        }
-    return diag
-
-
-def _summarize_message(msg: Any) -> Dict[str, Any]:
-    """Build a compact per-message diagnostic record for logging."""
-    tc_names: List[str] = []
-    if hasattr(msg, "tool_calls") and msg.tool_calls:
-        tc_names = [tc.get("name", "?") for tc in msg.tool_calls]
-    content = getattr(msg, "content", "") or ""
-    summary: Dict[str, Any] = {
-        "type": type(msg).__name__,
-        "tool_calls": tc_names,
-        "content_len": len(content) if isinstance(content, str) else -1,
-    }
-    diag = _extract_finish_diagnostics(msg)
-    if diag:
-        summary["finish"] = diag
-    return summary
-
-
-def _process_agent_output(node_output: Dict) -> Dict[str, Any]:
-    """Process output from the model node.
-
-    For OpenAI / Anthropic, a message with tool calls is never the final
-    answer — the model first emits tool calls, then later emits a separate
-    text-only message. We skip tool-call messages for those providers.
-
-    Gemini (Vertex) is different: it routinely emits the final synthesis
-    text alongside a closing ``write_todos`` tool call in the same message,
-    and then returns an empty message on the next iteration. If we skipped
-    that message we'd lose the answer entirely (this was the cause of the
-    blank-screen / content_len=0 bug). For Gemini we therefore pick up
-    content even when tool calls are present.
-    """
-    result: Dict[str, Any] = {
-        "tool_queries": [],
-        "task_delegations": [],
-        "response_text": "",
-    }
-    messages = node_output.get("messages", [])
-    for msg in messages:
-        search_queries = _extract_search_queries(msg)
-        if search_queries:
-            result["tool_queries"].extend(search_queries)
-            continue
-        task_delegations = _extract_task_delegations(msg)
-        if task_delegations:
-            result["task_delegations"].extend(task_delegations)
-            continue
-        has_content = hasattr(msg, "content") and msg.content
-        if _has_any_tool_calls(msg):
-            # Gemini-only carve-out: the synthesis often rides along with
-            # a write_todos tool call in the same message.
-            if _is_gemini_message(msg) and has_content:
-                result["response_text"] = message_text(msg)
-        elif has_content:
-            result["response_text"] = message_text(msg)
-    logger.info(
-        "[deepres] model-step: msgs=%d summary=%s queries=%d tasks=%d response_text_len=%d",
-        len(messages),
-        [_summarize_message(m) for m in messages],
-        len(result["tool_queries"]),
-        len(result["task_delegations"]),
-        len(result["response_text"]),
-    )
-    return result
-
-
-def _is_duplicate_or_subset(new_text: str, prev_text: str) -> bool:
-    """Check if new_text is identical or a subset of prev_text (normalized)."""
-    if not new_text or not prev_text:
-        return False
-    norm_new = " ".join(new_text.split())
-    norm_prev = " ".join(prev_text.split())
-    return norm_new == norm_prev or norm_new in norm_prev
-
-
-async def _yield_sources_and_done(
-    tracker: Any,
-    run_id: uuid_mod.UUID,
-    usage_handler: Optional[UsageMetadataCallbackHandler] = None,
-    model_key: Optional[str] = None,
-) -> AsyncGenerator[Dict[str, Any], None]:
-    """Yield final sources (if any) followed by the done event."""
-    sources = tracker.get_sources()
-    if sources:
-        yield {"type": "sources", "sources": sources}
-    yield _build_done_event(run_id, usage_handler=usage_handler, model_key=model_key)
-
-
-async def _handle_stream_error(
-    exc: Exception,
-    tracker: Any,
-    run_id: uuid_mod.UUID,
-    usage_handler: Optional[UsageMetadataCallbackHandler] = None,
-    model_key: Optional[str] = None,
-) -> AsyncGenerator[Dict[str, Any], None]:
-    """Yield error or graceful completion events for a stream exception."""
-    is_recursion = "recursion" in str(exc).lower()
-    if is_recursion:
-        logger.warning("Agent hit recursion limit: %s", exc)
-    else:
-        logger.error("Research stream error: %s", exc, exc_info=True)
-
-    if is_recursion and tracker and tracker.all_results:
-        async for event in _yield_sources_and_done(
-            tracker, run_id, usage_handler=usage_handler, model_key=model_key
-        ):
-            yield event
-    else:
-        yield {"type": "error", "error": str(exc)}
-
-
 async def stream_research_response(
     query: str,
     data_source: Optional[str] = None,
     model_key: Optional[str] = None,
     temperature: Optional[float] = None,
     max_tokens: Optional[int] = None,
-    max_iterations: int = 3,
-    conversation_messages: Optional[List[Dict[str, str]]] = None,
+    conversation_messages: Optional[List[Dict[str, Any]]] = None,
     reranker_model: Optional[str] = None,
     search_settings: Optional[Dict[str, Any]] = None,
     system_prompt_override: Optional[str] = None,
@@ -359,281 +159,48 @@ async def stream_research_response(
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
-    """
-    Stream a research response via SSE events.
-
-    ``target_words`` (deep research only) asks the coordinator for an answer
-    of about that length and raises the token ceiling to fit it.
-    ``introduces_sub_sections`` (deep research only, Brief) makes the answer a
-    short introduction to those sub-sections: no headings, none of their detail.
-
-    Runs the deepagents research agent and yields structured events
-    as the agent searches, plans, and synthesizes its response.
-
-    Uses a buffer-and-emit-last strategy for token events: the latest
-    synthesis text is buffered and only yielded when a non-token event
-    arrives or the stream ends.  This prevents duplicate or intermediate
-    synthesis text from reaching the client.
-
-    In deep research mode, the search tool pushes real-time search
-    progress events to a shared asyncio Queue so the client sees each
-    search query as it happens (instead of waiting for the whole
-    sub-agent to finish).
-    """
-    # Before the agent starts: its search tool catches errors, so a bad source
-    # would otherwise produce an answer written from no evidence.
+    """Stream progress and the final cited answer for either research mode."""
     from ui.backend.utils.app_state import validate_data_source
 
     data_source = validate_data_source(data_source)
     run_id = uuid_mod.uuid4()
-    tracker = None
-    usage_handler = UsageMetadataCallbackHandler()
-    logger.info(
-        "[deepres] stream start: run_id=%s deep=%s model=%s data_source=%s "
-        "target_words=%s intro_for=%d",
-        run_id,
-        deep_research,
-        model_key,
-        data_source,
-        target_words,
-        len(introduces_sub_sections or []),
-    )
-
+    usage = UsageMetadataCallbackHandler()
     try:
         llm = _get_llm(
-            model_key=model_key,
-            temperature=temperature,
-            max_tokens=max_tokens_for_target(max_tokens, target_words),
+            model_key, temperature, max_tokens_for_target(max_tokens, target_words)
         )
-        prior_sources = _extract_prior_sources(conversation_messages)
-        if deep_research:
-            agent, tracker = build_deep_research_agent(
-                llm,
-                data_source,
-                reranker_model,
-                search_settings,
-                system_prompt_override=system_prompt_override,
-                prior_sources=prior_sources,
-                target_words=target_words,
-                introduces_sub_sections=introduces_sub_sections,
-            )
-        else:
-            agent, tracker = build_research_agent(
-                llm,
-                data_source,
-                reranker_model,
-                search_settings,
-                system_prompt_override=system_prompt_override,
-                prior_sources=prior_sources,
-            )
-        messages = _build_conversation_messages(query, conversation_messages)
-        if prior_sources:
-            logger.info(
-                "[deepres] prior_sources: count=%d max_index=%d",
-                len(prior_sources),
-                max((s.get("index") or 0) for s in prior_sources),
-            )
-        cfg = _get_assistant_config()
-        if deep_research:
-            deep_cfg = cfg.get("deep_research", {})
-            recursion_limit = deep_cfg.get("recursion_limit", 100)
-        else:
-            recursion_limit = cfg.get("recursion_limit", 12)
-
+        graph, tracker, search_budget = build_research_agent(
+            llm,
+            data_source,
+            reranker_model,
+            search_settings,
+            system_prompt_override,
+            _extract_prior_sources(conversation_messages),
+            deep_research=deep_research,
+            target_words=target_words,
+            introduces_sub_sections=introduces_sub_sections,
+        )
         yield {"type": "phase", "phase": "planning"}
-
-        if deep_research:
-            async for event in _stream_deep_research(
-                agent, tracker, messages, run_id, recursion_limit, usage_handler
-            ):
-                yield event
-        else:
-            async for event in _stream_normal_research(
-                agent, tracker, messages, run_id, recursion_limit, usage_handler
-            ):
-                yield event
-
-        async for event in _yield_sources_and_done(
-            tracker, run_id, usage_handler=usage_handler, model_key=model_key
+        async for event in graph.astream(
+            {
+                "query": query,
+                "messages": _build_conversation_messages(conversation_messages),
+            },
+            config={
+                "run_id": run_id,
+                "recursion_limit": 2 * search_budget + 3,
+                "callbacks": [usage, *_trace_callbacks()],
+            },
+            stream_mode="custom",
         ):
             yield event
-
-    except Exception as exc:
-        async for event in _handle_stream_error(
-            exc, tracker, run_id, usage_handler=usage_handler, model_key=model_key
-        ):
-            yield event
-
-
-async def _stream_normal_research(
-    agent: Any,
-    tracker: Any,
-    messages: List,
-    run_id: uuid_mod.UUID,
-    recursion_limit: int,
-    usage_handler: UsageMetadataCallbackHandler,
-) -> AsyncGenerator[Dict[str, Any], None]:
-    """Stream events from a normal (non-deep) research agent."""
-    token_buffer = ""
-    async for step_output in agent.astream(
-        {"messages": messages},
-        config={
-            "run_id": str(run_id),
-            "recursion_limit": recursion_limit,
-            "callbacks": [usage_handler, *_trace_callbacks()],
-        },
-        stream_mode="updates",
-    ):
-        for event in _events_from_step(step_output, tracker):
-            if event.get("type") == "token":
-                new_text = event["token"]
-                if not _is_duplicate_or_subset(new_text, token_buffer):
-                    token_buffer = new_text
-            else:
-                if token_buffer:
-                    yield {"type": "token", "token": token_buffer}
-                    token_buffer = ""
-                yield event
-
-    if token_buffer:
-        yield {"type": "token", "token": token_buffer}
-
-
-_SENTINEL = object()
-
-
-async def _stream_deep_research(
-    agent: Any,
-    tracker: Any,
-    messages: List,
-    run_id: uuid_mod.UUID,
-    recursion_limit: int,
-    usage_handler: UsageMetadataCallbackHandler,
-) -> AsyncGenerator[Dict[str, Any], None]:
-    """Stream deep research events with real-time search progress.
-
-    The sub-agent's searches happen inside a single "tools" node, so
-    the normal ``astream`` loop blocks until the sub-agent finishes.
-    To surface search progress in real time, the tracker pushes events
-    to a shared asyncio Queue.  We run the agent stream in a background
-    task and consume from the queue, yielding events as they arrive.
-    """
-    event_queue: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_running_loop()
-    tracker.set_event_queue(event_queue, loop)
-
-    agent_error: Optional[Exception] = None
-
-    async def _run_agent() -> None:
-        nonlocal agent_error
-        try:
-            async for step_output in agent.astream(
-                {"messages": messages},
-                config={
-                    "run_id": str(run_id),
-                    "recursion_limit": recursion_limit,
-                    "callbacks": [usage_handler, *_trace_callbacks()],
-                },
-                stream_mode="updates",
-            ):
-                for event in _events_from_step(step_output, tracker):
-                    await event_queue.put(event)
-        except Exception as exc:
-            agent_error = exc
-        finally:
-            await event_queue.put(_SENTINEL)
-
-    agent_task = asyncio.create_task(_run_agent())
-
-    token_buffer = ""
-    token_event_count = 0
-    try:
-        while True:
-            event = await event_queue.get()
-            if event is _SENTINEL:
-                break
-            etype = event.get("type")
-            if etype == "token":
-                new_text = event["token"]
-                token_event_count += 1
-                if not _is_duplicate_or_subset(new_text, token_buffer):
-                    token_buffer = new_text
-            else:
-                if token_buffer:
-                    yield {"type": "token", "token": token_buffer}
-                    token_buffer = ""
-                yield event
-    finally:
-        await agent_task
-
-    if token_buffer:
-        yield {"type": "token", "token": token_buffer}
-
-    logger.info(
-        "[deepres] stream end: run_id=%s token_events=%d final_buffer_len=%d "
-        "sources=%d agent_error=%s",
-        run_id,
-        token_event_count,
-        len(token_buffer),
-        len(tracker.all_results) if tracker is not None else 0,
-        ("%s: %s" % (type(agent_error).__name__, agent_error) if agent_error else None),
-    )
-
-    if agent_error is not None:
-        raise agent_error
-
-
-def _events_from_step(
-    step_output: Dict[str, Any],
-    tracker: Any,
-) -> List[Dict[str, Any]]:
-    """Generate SSE events from a single graph step output.
-
-    The deepagents framework uses "model" as the LLM node name and "tools"
-    for tool execution.  Middleware nodes (e.g. "TodoListMiddleware.before_model")
-    are ignored.
-    """
-    events: List[Dict[str, Any]] = []
-
-    for node_name, node_output in step_output.items():
-        if node_name == "model":
-            agent_result = _process_agent_output(node_output)
-            if agent_result["tool_queries"]:
-                events.append({"type": "phase", "phase": "searching"})
-                events.append(
-                    {
-                        "type": "plan",
-                        "queries": agent_result["tool_queries"],
-                    }
-                )
-            elif agent_result["task_delegations"]:
-                # Deep research coordinator delegated to sub-agent(s)
-                events.append({"type": "phase", "phase": "searching"})
-            elif agent_result["response_text"]:
-                events.append(
-                    {
-                        "type": "token",
-                        "token": agent_result["response_text"],
-                    }
-                )
-
-        elif node_name == "tools":
-            # Only emit NEW search queries (not previously emitted ones)
-            new_queries = tracker.get_new_queries()
-            if new_queries:
-                events.append(
-                    {
-                        "type": "search_status",
-                        "queries": new_queries,
-                        "total_results": len(tracker.all_results),
-                    }
-                )
-            # When searches are done, transition to synthesizing phase
-            # so the user sees "Synthesizing answer..." while the LLM works
-            if tracker.all_results:
-                events.append({"type": "phase", "phase": "synthesizing"})
-
-        else:
-            logger.debug("Skipping middleware node: %s", node_name)
-
-    return events
+        sources = tracker.get_sources()
+        if sources:
+            yield {"type": "sources", "sources": sources}
+        yield _build_done_event(run_id, usage_handler=usage, model_key=model_key)
+    except Exception:
+        logger.exception("Assistant research failed (run_id=%s)", run_id)
+        yield {
+            "type": "error",
+            "error": "The Assistant could not complete this request.",
+        }
