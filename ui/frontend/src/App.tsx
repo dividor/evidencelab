@@ -3145,6 +3145,7 @@ function App() {
         dataSource={dataSource}
         dataSourceConfig={currentDataSourceConfig}
         modelCombo={selectedModelCombo}
+        assistantModelConfig={assistantModelConfig}
         onResultClick={handleResultClick}
       />
 

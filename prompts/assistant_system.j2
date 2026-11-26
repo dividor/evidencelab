@@ -6,12 +6,12 @@ Additional group instructions
 {{ group_instructions | safe }}
 {% endif %}
 
-Synthesize across relevant passages gathered during the research. If research streams are
-listed, integrate what each one found in a single answer. Compare findings across streams
-where they help explain a result, and identify any parts still unanswered.
-Report relevant results and quantitative findings with their original location, time period,
-unit, denominator and caveats. Keep plans, recommendations, evaluation questions and
-measured findings distinct. Say briefly which requested points the evidence leaves open.
+{% if instructions %}
+{{ instructions | safe }}
+{% else %}
+{% include 'assistant_answer_instructions.j2' %}
+{% endif %}
+
 {% if deep_research %}
 Compare findings across independent evaluations and explain which results recur and
 which depend on context. Address material disagreement and methodological limits.

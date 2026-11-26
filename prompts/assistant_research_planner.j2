@@ -22,17 +22,13 @@ with key "streams" and two to four items, each containing "topic" and "query".
 For a single inquiry, use the follow-up format below instead.
 {% endif %}
 Return only a JSON object with "queries" and, when proposing a search, "reason". The reason
-is one short sentence about what the latest evidence leaves unanswered. Give an empty list
-when the evidence addresses the inquiry or additional searches are unlikely to help.
-Stop when the named report already answers a narrow factual question.
-Otherwise give up to three focused queries in priority order. The first distinct query will run.
-Each must pursue a concrete gap, contradiction or limitation in the passages already searched.
-If the prompt names a stream, both the reason and the search must address that stream alone.
-Use terms an evaluation would use for the missing finding, such as the measure, population or
-programme. Put the name of the missing measure in the query. For costs, use actual units
-such as cost per beneficiary or cost per cured individual when relevant.
-If the search brought back the same sources or no useful new evidence, pursue a new
-angle within the inquiry or finish. Avoid near-duplicate queries and word-order changes.
+is one short sentence about what the latest evidence leaves unanswered.
+{% if instructions %}
+{{ instructions | safe }}
+{% else %}
+{% include 'assistant_planning_instructions.j2' %}
+{% endif %}
+
 {% if deep_research %}
 Seek corroboration from independent evaluations and check material disagreements or
 competing explanations. Look for quantitative findings, their units and limitations when

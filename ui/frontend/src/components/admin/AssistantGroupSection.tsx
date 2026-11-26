@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
+import type { SummaryModelConfig } from '../../types/api';
 import type { AssistantGroupSettings } from '../../types/auth';
 import type { OfferedLlm } from './LlmChoiceGroupSection';
 
 interface Props {
   value: AssistantGroupSettings;
   onChange: (next: AssistantGroupSettings) => void;
+  assistantModelConfig?: SummaryModelConfig | null;
+  summaryPrompt: string;
 }
 
 const LIMITS = [
@@ -16,22 +19,62 @@ const LIMITS = [
   { key: 'deepSearchesPerStream', label: 'Deep Research searches per stream', max: 6 },
 ] as const;
 const PROMPTS = [
-  { key: 'planningPrompt', label: 'Planning prompt', help: 'Add instructions for splitting questions and choosing follow-up searches.' },
-  { key: 'answerPrompt', label: 'Answer prompt', help: 'Add instructions for the final cited answer. Leave blank to keep the group’s AI Summary instructions.' },
+  { key: 'planningInstructions', legacy: 'planningPrompt', label: 'Planning prompt', help: 'Tell the Assistant how to choose follow-up searches.' },
+  { key: 'answerInstructions', legacy: 'answerPrompt', label: 'Answer prompt', help: 'Tell the Assistant how to write the final cited answer.' },
 ] as const;
 
 const readNumber = (input: HTMLInputElement) =>
   input.value === '' ? undefined : input.valueAsNumber;
 
-export const AssistantGroupSection: React.FC<Props> = ({ value, onChange }) => {
+const numberDefault = (value?: number) => value === undefined ? '' : `${value} (default)`;
+
+const PromptEditor: React.FC<{
+  setting: typeof PROMPTS[number];
+  value: AssistantGroupSettings;
+  defaultPrompt: string;
+  inheritedInstructions?: string;
+  onChange: Props['onChange'];
+}> = ({ setting: { key, legacy, label, help }, value, defaultPrompt, inheritedInstructions, onChange }) => {
+  const withInstructions = (instructions?: string) => [instructions?.trim(), defaultPrompt].filter(Boolean).join('\n\n');
+  const inherited = withInstructions(inheritedInstructions);
+  const displayed = value[key] ?? withInstructions(value[legacy] ?? inheritedInstructions);
+  const customized = value[key] !== undefined || value[legacy] !== undefined;
+  const reset = () => onChange({ ...value, [key]: undefined, [legacy]: undefined });
+  return (
+    <div className="search-settings-group">
+      <label className="search-settings-label" htmlFor={`group-assistant-${key}`}>{label}</label>
+      <span className="group-llm-choice-hint" id={`group-assistant-${key}-help`}>{help}</span>
+      <textarea id={`group-assistant-${key}`} aria-describedby={`group-assistant-${key}-help`}
+        rows={10} maxLength={12000} value={displayed} disabled={!defaultPrompt}
+        onChange={event => onChange({
+          ...value, [legacy]: undefined, [key]: event.target.value === inherited ? undefined : event.target.value,
+        })}
+        onBlur={() => { if (customized && !displayed.trim()) reset(); }} />
+      <div className="doc-summary-prompt-footer">
+        <span className="group-llm-choice-hint">{customized ? 'Custom prompt' : 'Default prompt'}</span>
+        <button type="button" className="btn-sm" onClick={reset} disabled={!customized}
+          aria-label={`Reset ${label.toLowerCase()} to default`}>Reset to Default</button>
+      </div>
+    </div>
+  );
+};
+
+export const AssistantGroupSection: React.FC<Props> = ({
+  value, onChange, assistantModelConfig, summaryPrompt,
+}) => {
   const [models, setModels] = useState<OfferedLlm[]>([]);
+  const [defaults, setDefaults] = useState<AssistantGroupSettings>({});
   const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    axios.get<OfferedLlm[]>(`${API_BASE_URL}/config/llms`)
-      .then(response => {
-        if (!cancelled) setModels(response.data);
+    Promise.all([
+      axios.get<OfferedLlm[]>(`${API_BASE_URL}/config/llms`),
+      axios.get<AssistantGroupSettings>(`${API_BASE_URL}/groups/assistant-defaults`),
+    ]).then(([offeredModels, siteDefaults]) => {
+        if (cancelled) return;
+        setModels(offeredModels.data);
+        setDefaults(siteDefaults.data);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -50,23 +93,23 @@ export const AssistantGroupSection: React.FC<Props> = ({ value, onChange }) => {
         <label className="search-settings-label" htmlFor="group-assistant-model">Model</label>
         <select id="group-assistant-model" value={chosen}
           onChange={event => onChange({ ...value, model: event.target.value || undefined })}>
-          <option value="">Use the selected model combination</option>
+          <option value="">{assistantModelConfig ? `${assistantModelConfig.model} (default)` : 'Use the selected model combination'}</option>
           {models.map(model => <option key={model.name} value={model.name}>{model.name}{model.supports_temperature ? '' : ' (ignores Response variability)'}</option>)}
           {chosen && !models.some(model => model.name === chosen) && (
             <option value={chosen}>{chosen}</option>
           )}
         </select>
-        {loadError && <span role="alert">Could not load the available Assistant models.</span>}
+        {loadError && <span role="alert">Could not load the Assistant defaults and models.</span>}
       </div>
       <div className="group-assistant-options">
         <label htmlFor="group-assistant-temperature">Response variability
           <input id="group-assistant-temperature" type="number" min={0} max={1} step={0.05}
-            placeholder="Model default" value={value.temperature ?? ''}
+            placeholder={numberDefault(assistantModelConfig?.temperature)} value={value.temperature ?? ''}
             onChange={event => onChange({ ...value, temperature: readNumber(event.currentTarget) })} />
         </label>
         <label htmlFor="group-assistant-tokens">Maximum output tokens
           <input id="group-assistant-tokens" type="number" min={1}
-            placeholder="Model default" value={value.maxTokens ?? ''}
+            placeholder={numberDefault(assistantModelConfig?.max_tokens)} value={value.maxTokens ?? ''}
             onChange={event => onChange({ ...value, maxTokens: readNumber(event.currentTarget) })} />
         </label>
         <div className="group-assistant-mode">
@@ -75,7 +118,7 @@ export const AssistantGroupSection: React.FC<Props> = ({ value, onChange }) => {
             const mode = event.target.value;
             onChange({ ...value, deepResearchByDefault: mode ? mode === 'deep' : undefined });
           }}>
-            <option value="">Use site default</option>
+            <option value="">{defaults.deepResearchByDefault ? 'Deep Research' : 'Assistant'} (default)</option>
             <option value="standard">Assistant</option>
             <option value="deep">Deep Research</option>
           </select>
@@ -86,19 +129,15 @@ export const AssistantGroupSection: React.FC<Props> = ({ value, onChange }) => {
         {LIMITS.map(({ key, label, max }) => (
           <label key={key} htmlFor={`group-assistant-${key}`}>{label}
             <input id={`group-assistant-${key}`} type="number" min={1} max={max}
-              placeholder="Site default" value={value[key] ?? ''}
+              placeholder={numberDefault(defaults[key])} value={value[key] ?? ''}
               onChange={event => onChange({ ...value, [key]: readNumber(event.currentTarget) })} />
           </label>
         ))}
       </fieldset>
-      {PROMPTS.map(({ key, label, help }) => (
-        <div className="search-settings-group" key={key}>
-          <label className="search-settings-label" htmlFor={`group-assistant-${key}`}>{label}</label>
-          <span className="group-llm-choice-hint" id={`group-assistant-${key}-help`}>{help}</span>
-          <textarea id={`group-assistant-${key}`} aria-describedby={`group-assistant-${key}-help`}
-            rows={5} maxLength={12000} value={value[key] || ''}
-            onChange={event => onChange({ ...value, [key]: event.target.value || undefined })} />
-        </div>
+      {PROMPTS.map(setting => (
+        <PromptEditor key={setting.key} setting={setting} value={value} onChange={onChange}
+          defaultPrompt={defaults[setting.key] ?? ''}
+          inheritedInstructions={setting.key === 'answerInstructions' ? summaryPrompt : undefined} />
       ))}
     </div>
   );

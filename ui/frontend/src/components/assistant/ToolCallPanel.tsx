@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SearchToolCall } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
+import { capitalizeFollowUp } from './queryDisplay';
 
 interface ToolCallPanelProps {
   toolCalls: SearchToolCall[];
@@ -67,7 +68,9 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
         {hasResults && (
           <span className="tool-call-expand-icon">{open ? '\u25BC' : '\u25B6'}</span>
         )}
-        <span className="tool-call-code-query">{tc.query}</span>
+        <span className="tool-call-code-query">
+          {index > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query}
+        </span>
         <span className="tool-call-code-result">{tc.resultCount} results</span>
       </div>
       {tc.reason && <div className="tool-call-reason">{tc.reason}</div>}

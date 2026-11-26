@@ -283,7 +283,7 @@ Choose **Assistant** in **Group Settings** to set defaults for the group's Assis
 - **Model**, **Response variability** and **Maximum output tokens** control the model used for planning and writing. Blank values use the selected model combination.
 - **Starting research mode** controls whether Deep Research starts selected. Users can switch modes for a conversation.
 - The search limits apply separately to a focused question and to each stream of a broad question. A broad question also starts with one search for the original question.
-- **Planning prompt** adds instructions for splitting questions and choosing follow-up searches. **Answer prompt** adds instructions for writing the final cited answer. A blank answer prompt keeps the current group AI Summary instructions for the Assistant.
+- **Planning prompt** controls how the Assistant chooses follow-up searches. **Answer prompt** guides the final cited answer. The editors show the current defaults, including the group's Search AI Summary instructions in the default answer prompt. Use **Reset to Default** to restore either prompt.
 
 Click **Save Settings** to apply the settings to the group.
 

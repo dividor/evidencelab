@@ -1,4 +1,5 @@
 import React from 'react';
+import { capitalizeFollowUp } from './queryDisplay';
 import { SearchToolCall } from '../../types/api';
 
 interface AgentStatusProps {
@@ -53,7 +54,7 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
                 <div key={`tc-${i}`} className="agent-status-query">
                   <span className="agent-status-query-text">
                     {tc.stream && <><strong>{tc.stream}</strong>{' · '}</>}
-                    {tc.query}
+                    {i > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query}
                   </span>
                   <span className="agent-status-query-count">{tc.resultCount} results</span>
                 </div>
@@ -62,7 +63,9 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
                 .filter((q) => !toolCalls?.some((tc) => tc.query === q))
                 .map((q, i) => (
                   <div key={`sq-${i}`} className="agent-status-query agent-status-query-pending">
-                    <span className="agent-status-query-text">{q}</span>
+                    <span className="agent-status-query-text">
+                      {toolCalls?.length ? capitalizeFollowUp(q) : q}
+                    </span>
                     <span className="agent-status-query-count agent-status-pending-dots">
                       <span className="dot">.</span><span className="dot">.</span><span className="dot">.</span>
                     </span>

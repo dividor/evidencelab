@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { TextDecoder, TextEncoder } from 'util';
 import { ToolCallPanel } from '../components/assistant/ToolCallPanel';
+import { AgentStatus } from '../components/assistant/AgentStatus';
 import { streamAssistantChat } from '../utils/assistantStream';
 
 jest.mock('../config', () => ({ __esModule: true, default: '/api', API_KEY: undefined }));
@@ -37,7 +38,9 @@ test('carries the stream and evidence gap from search progress into the search d
     render(<ToolCallPanel toolCalls={calls} defaultExpanded />);
     expect(screen.getByText(packet.queries[0].stream)).toBeVisible();
     expect(screen.getByText(packet.queries[0].reason)).toBeVisible();
-    expect(screen.getByText(packet.queries[0].query)).toBeVisible();
+    expect(screen.getByText('Cost per cured individual in acute malnutrition treatment')).toBeVisible();
+    render(<AgentStatus phase="searching" toolCalls={calls} searchQueries={['recovery rate by cohort']} />);
+    expect(screen.getByText('Recovery rate by cohort')).toBeVisible();
   } finally {
     global.fetch = originalFetch;
     global.TextDecoder = previousDecoder;

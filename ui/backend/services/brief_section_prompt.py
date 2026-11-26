@@ -8,6 +8,7 @@ the limit it has when stored, and the prompt is written here.
 """
 
 import re
+from textwrap import shorten
 from typing import List, Optional
 
 from ui.backend.auth.schemas import (
@@ -18,6 +19,7 @@ from ui.backend.auth.schemas import (
 
 # Characters of a written section quoted in the outline as what it covers.
 _GIST_CHARS = 180
+_SEARCH_QUERY_CHARS = 350
 
 _FINAL_ANSWER_RULE = (
     "Your final answer must be the finished section text itself — never a "
@@ -46,6 +48,27 @@ def _parent_title(outline: List[BriefOutlineSection], current: int) -> str:
         if section.level == 1:
             return section.title.strip()
     return ""
+
+
+def brief_search_query(brief: BriefSectionPrompt | BriefSurveyPrompt) -> str:
+    """Use the topic and headings for retrieval, leaving writing instructions in the prompt."""
+    parts: tuple[str | None, ...]
+    if isinstance(brief, BriefSectionPrompt):
+        parts = (
+            brief.outline[brief.current].title,
+            _parent_title(brief.outline, brief.current),
+            brief.topic,
+        )
+    else:
+        parts = (brief.topic,)
+    terms = dict.fromkeys(
+        " ".join(part.split()) for part in parts if part and part.strip()
+    )
+    query = " ".join(terms)
+    return (
+        shorten(query, width=_SEARCH_QUERY_CHARS, placeholder="")
+        or query[:_SEARCH_QUERY_CHARS]
+    )
 
 
 def _sub_section_titles(outline: List[BriefOutlineSection], current: int) -> List[str]:

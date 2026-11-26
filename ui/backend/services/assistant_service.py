@@ -12,6 +12,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
+from ui.backend.services.assistant_citations import (
+    evidence_numbers,
+    number_answer_citations,
+    remap_citations,
+)
 from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.llm_service import summarize_usage_metadata
@@ -77,15 +82,16 @@ def _build_conversation_messages(
 ) -> List:
     """Build LangChain message objects from conversation history."""
     messages: List = []
-    if conversation_messages:
-        for msg in conversation_messages[-6:]:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "user":
-                messages.append(HumanMessage(content=content))
-            elif role == "assistant":
-                messages.append(AIMessage(content=content))
-    return messages
+    numbers: dict[int, int] = {}
+    for msg in conversation_messages or []:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            messages.append(HumanMessage(content=remap_citations(content, numbers)))
+        elif role == "assistant":
+            numbers = evidence_numbers(msg)
+            messages.append(AIMessage(content=remap_citations(content, numbers)))
+    return messages[-6:]
 
 
 def _extract_prior_sources(
@@ -93,10 +99,8 @@ def _extract_prior_sources(
 ) -> List[Dict[str, Any]]:
     """Collect every cited source from prior assistant turns, deduped by index.
 
-    Sources are stored per-message in the SSE/persistence shape and carry
-    a stable ``index`` (the global citation number). Merging by index keeps
-    one entry per citation across the whole thread so a follow-up turn can
-    re-use those numbers without renumbering.
+    Saved sources carry an evidence index for follow-up turns. Older answers
+    already used the global number as their display index.
     """
     if not conversation_messages:
         return []
@@ -105,9 +109,9 @@ def _extract_prior_sources(
         if msg.get("role") != "assistant":
             continue
         for src in msg.get("sources") or []:
-            idx = src.get("index")
+            idx = src.get("evidenceIndex", src.get("index"))
             if isinstance(idx, int):
-                by_idx[idx] = src
+                by_idx[idx] = {**src, "index": idx}
     return [by_idx[k] for k in sorted(by_idx.keys())]
 
 
@@ -160,6 +164,8 @@ async def stream_research_response(
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
     assistant_settings: Optional[AssistantSettings] = None,
+    initial_search_query: Optional[str] = None,
+    citation_order: bool = True,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream progress and the final cited answer for either research mode."""
     from ui.backend.utils.app_state import validate_data_source
@@ -168,6 +174,14 @@ async def stream_research_response(
     run_id = uuid_mod.uuid4()
     usage = UsageMetadataCallbackHandler()
     try:
+        latest_answer = next(
+            (
+                msg
+                for msg in reversed(conversation_messages or [])
+                if msg.get("role") == "assistant"
+            ),
+            {},
+        )
         llm = _get_llm(
             model_key, temperature, max_tokens_for_target(max_tokens, target_words)
         )
@@ -184,9 +198,13 @@ async def stream_research_response(
             assistant_settings=assistant_settings,
         )
         yield {"type": "phase", "phase": "planning"}
+        numbered_sources: Optional[list[dict]] = None
         async for event in graph.astream(
             {
-                "query": query,
+                "query": remap_citations(query, evidence_numbers(latest_answer)),
+                "initial_search_query": (
+                    query if initial_search_query is None else initial_search_query
+                ),
                 "messages": _build_conversation_messages(conversation_messages),
             },
             config={
@@ -196,8 +214,15 @@ async def stream_research_response(
             },
             stream_mode="custom",
         ):
+            if citation_order and event["type"] == "token":
+                answer, numbered_sources = number_answer_citations(
+                    event["token"], tracker.get_sources()
+                )
+                event = {**event, "token": answer}
             yield event
-        sources = tracker.get_sources()
+        sources = (
+            numbered_sources if numbered_sources is not None else tracker.get_sources()
+        )
         if sources:
             yield {"type": "sources", "sources": sources}
         yield _build_done_event(run_id, usage_handler=usage, model_key=model_key)

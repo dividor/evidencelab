@@ -112,7 +112,10 @@ async def test_follow_up_is_based_on_results_and_writer_keeps_both_search_batche
     assert "[13] Report 13" not in writer
     assert "[^12]" not in writer
     sources = next(e for e in events if e["type"] == "sources")["sources"]
-    assert [s["index"] for s in sources] == list(range(1, 22))
+    assert [(s["index"], s["chunkId"]) for s in sources] == [
+        (1, "chunk-1"),
+        (2, "chunk-21"),
+    ]
 
 
 @pytest.mark.parametrize(("deep", "budget"), [(False, 4), (True, 10)])
@@ -162,9 +165,46 @@ async def test_citation_revision_keeps_original_number_on_follow_up():
         history=history,
     )
     assert [e["token"] for e in events if e["type"] == "token"] == [
-        "Evidence from the first turn [7]."
+        "Evidence from the first turn [1]."
     ]
     assert "invalid: 99" in llm.ainvoke.await_args.args[0][-1].content
+
+
+@pytest.mark.asyncio
+async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping():
+    prior_sources = [
+        {
+            "index": 1,
+            "evidenceIndex": 7,
+            "chunkId": "chunk-7",
+            "docId": "report-7",
+            "title": "Earlier report",
+            "text": "Evidence from the first turn.",
+        }
+    ]
+    events, search, llm = await run_research(
+        ['{"queries":[]}', "New evidence [9, 7]. Earlier evidence [7]."],
+        [[point(8, "New result."), point(9, "Other new result.")]],
+        history=[
+            {
+                "role": "assistant",
+                "content": "Earlier evidence [1].",
+                "sources": prior_sources,
+            }
+        ],
+        query="What does [1] say about coverage?",
+    )
+    assert search.call_args.kwargs["query"] == "What does [1] say about coverage?"
+    messages = llm.ainvoke.await_args.args[0]
+    assert "Earlier evidence [7]." == messages[-2].content
+    assert "Question: What does [7] say about coverage?" in messages[-1].content
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        "New evidence [1, 2]. Earlier evidence [2]."
+    )
+    assert [
+        (source["index"], source["evidenceIndex"], source["chunkId"])
+        for source in next(e["sources"] for e in events if e["type"] == "sources")
+    ] == [(1, 9, "chunk-9"), (2, 7, "chunk-7")]
 
 
 @pytest.mark.asyncio

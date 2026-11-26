@@ -82,6 +82,8 @@ export interface AssistantGroupSettings {
   maxTokens?: number;
   planningPrompt?: string;
   answerPrompt?: string;
+  planningInstructions?: string;
+  answerInstructions?: string;
   searches?: number;
   searchesPerStream?: number;
   deepSearches?: number;

@@ -118,6 +118,7 @@ class StreamResult(TypedDict):
 
 class ResearchState(TypedDict, total=False):
     query: str
+    initial_search_query: str
     messages: list[BaseMessage]
     evidence: list[Passage]
     tasks: list[StreamTask]
@@ -274,7 +275,7 @@ class ResearchWorkflow:
         return results
 
     async def start(self, state: ResearchState) -> ResearchState:
-        results = await self._search(state["query"])
+        results = await self._search(state["initial_search_query"])
         evidence = _admit_passages(results, [], self.limits.initial_passages)
         prior = _prior_passages(
             self.tracker.prior_sources,
@@ -288,6 +289,7 @@ class ResearchWorkflow:
         self, state: ResearchState, config: RunnableConfig
     ) -> ResearchState:
         question = state["query"]
+        initial_query = state["initial_search_query"]
         history = state.get("messages", [])
         initial = state["evidence"]
         prompt = (
@@ -305,7 +307,7 @@ class ResearchWorkflow:
                         "question": item.query,
                         "history": [],
                         "evidence": [],
-                        "searches": [question],
+                        "searches": [initial_query],
                         "next_query": item.query,
                         "reason": "",
                         "budget": self.limits.searches_per_stream,
@@ -313,7 +315,7 @@ class ResearchWorkflow:
                     for index, item in enumerate(plan.streams)
                 ]
             }
-        query = self._proposal(plan, [question])
+        query = self._proposal(plan, [initial_query])
         if not query or self.limits.searches == 1:
             return {"tasks": []}
         return {
@@ -324,7 +326,7 @@ class ResearchWorkflow:
                     "question": question,
                     "history": history,
                     "evidence": initial,
-                    "searches": [question],
+                    "searches": [initial_query],
                     "next_query": query,
                     "reason": plan.reason,
                     "budget": self.limits.searches - 1,

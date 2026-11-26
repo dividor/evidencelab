@@ -4887,15 +4887,12 @@ li.ai-fact-active::before {
   color: var(--gray-400);
 }
 
-/* On narrow screens the footer's links wrap onto more lines, each link whole,
-   clear of the corner where the feedback button floats (48 px, 24 px from the
-   corner), so it never covers a link. */
+/* On narrow screens the footer's links wrap onto more lines, each link whole. */
 @media (max-width: 768px) {
   .app-footer {
     flex-wrap: wrap;
     row-gap: 0.25rem;
     column-gap: 1rem;
-    padding-right: 5.25rem;
   }
 
   /* Wrapped lines would end on a stray "•": space the links apart instead. */
@@ -4907,6 +4904,34 @@ li.ai-fact-active::before {
   .app-footer-link {
     white-space: nowrap;
   }
+}
+
+.feedback-side-tab {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 9000;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  padding: 0.875rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--brand-accent, #475569);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feedback-side-tab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.feedback-side-tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
 }
 
 .prompt-text {

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import { GROUP_SETTINGS_UPDATED_EVENT } from '../../hooks/useGroupDefaults';
+import type { SummaryModelConfig } from '../../types/api';
 import type { AssistantGroupSettings, GroupLlmChoices, SearchSettings, UserGroup } from '../../types/auth';
 import {
   DEFAULT_FIELD_BOOST_FIELDS,
@@ -279,7 +280,7 @@ const SettingsPanel: React.FC<{
   </div>
 ) : null;
 
-const GroupSettingsManager: React.FC = () => {
+const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig | null }> = ({ assistantModelConfig }) => {
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -951,7 +952,8 @@ const GroupSettingsManager: React.FC = () => {
             </div>
 
             <SettingsPanel tab="assistant" active={activeTab === 'assistant'}>
-              <AssistantGroupSection value={assistant} onChange={setAssistant} />
+              <AssistantGroupSection value={assistant} onChange={setAssistant}
+                assistantModelConfig={assistantModelConfig} summaryPrompt={summaryPromptValue} />
             </SettingsPanel>
 
             {/* Brief Settings */}

@@ -20,15 +20,29 @@ test('loads and saves Assistant overrides independently of the AI Summary prompt
   mocked.get.mockImplementation(async url => (
     url.endsWith('/config/llms')
       ? { data: [{ name: 'nova-2-lite', supports_temperature: true }] }
-      : { data: [group] }
+      : url.endsWith('/groups/assistant-defaults')
+        ? { data: { searches: 4, planningInstructions: 'Find gaps in the evidence.', answerInstructions: 'Synthesize the evidence.', deepResearchByDefault: false } }
+        : { data: [group] }
   ));
   mocked.patch.mockResolvedValue({ data: group });
 
-  render(<GroupSettingsManager />);
+  render(<GroupSettingsManager assistantModelConfig={{
+    model: 'nova-2-lite', temperature: 0, max_tokens: 4000, chunk_overlap: 0, chunk_tokens_ratio: 1,
+  }} />);
   fireEvent.click(await screen.findByRole('tab', { name: 'Assistant', exact: true }));
-  expect(screen.getByLabelText('Answer prompt')).toHaveValue('Saved Assistant instructions.');
   expect(screen.getByLabelText('Assistant searches per stream')).toHaveValue(2);
   await screen.findByRole('option', { name: 'nova-2-lite' });
+  const planning = screen.getByLabelText('Planning prompt');
+  const answer = screen.getByLabelText('Answer prompt');
+  expect(planning).toHaveValue('Find gaps in the evidence.');
+  expect(answer).toHaveValue('Saved Assistant instructions.\n\nSynthesize the evidence.');
+  fireEvent.click(screen.getByRole('button', { name: 'Reset answer prompt to default' }));
+  expect(answer).toHaveValue(`${summary_prompt}\n\nSynthesize the evidence.`);
+  expect(screen.getByRole('button', { name: 'Reset answer prompt to default' })).toBeDisabled();
+  expect(screen.getByLabelText('Response variability')).toHaveAttribute('placeholder', '0 (default)');
+  expect(screen.getByLabelText('Maximum output tokens')).toHaveAttribute('placeholder', '4000 (default)');
+  expect(screen.getByLabelText('Assistant searches for a focused question')).toHaveAttribute('placeholder', '4 (default)');
+  expect(screen.getByRole('option', { name: 'nova-2-lite (default)' })).toHaveValue('');
   const controls = {
     Model: 'nova-2-lite',
     'Response variability': '0.2',
@@ -49,7 +63,7 @@ test('loads and saves Assistant overrides independently of the AI Summary prompt
       rerank: true,
       assistant: {
         model: 'nova-2-lite', temperature: 0.2, maxTokens: 2500, deepResearchByDefault: true,
-        planningPrompt: 'Verify the reported coverage.', answerPrompt: 'Separate findings by country.',
+        planningInstructions: 'Verify the reported coverage.', answerInstructions: 'Separate findings by country.',
         searchesPerStream: 2, deepSearchesPerStream: 5,
       },
     },

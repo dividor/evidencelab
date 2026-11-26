@@ -26,6 +26,7 @@ from ui.backend.services.assistant_settings import (
     assistant_settings_for_groups,
 )
 from ui.backend.services.brief_section_prompt import (
+    brief_search_query,
     build_section_prompt,
     build_survey_prompt,
 )
@@ -127,6 +128,14 @@ async def _assistant_settings(body, user, session) -> AssistantSettings:
     return assistant_settings_for_groups(await user_groups(session, user_id))
 
 
+async def _assistant_answer_prompt(
+    settings: AssistantSettings, user, session
+) -> str | None:
+    if settings.answerInstructions or settings.answerPrompt:
+        return settings.answerPrompt
+    return await _resolve_group_prompt(user, session)
+
+
 # ---------------------------------------------------------------------------
 # SSE heartbeat helper
 # ---------------------------------------------------------------------------
@@ -147,13 +156,17 @@ async def _anext_or_stop(ait):
 # ---------------------------------------------------------------------------
 
 
-def _research_query(body: AssistantChatRequest) -> str:
-    """The prompt to research. The Brief sends parts and the API writes it."""
+def _research_input(body: AssistantChatRequest) -> tuple[str, str | None]:
+    """Return the writing prompt and an optional separate first search."""
     if body.brief_section:
-        return build_section_prompt(body.brief_section)
+        return build_section_prompt(body.brief_section), brief_search_query(
+            body.brief_section
+        )
     if body.brief_survey:
-        return build_survey_prompt(body.brief_survey)
-    return body.query
+        return build_survey_prompt(body.brief_survey), brief_search_query(
+            body.brief_survey
+        )
+    return body.query, None
 
 
 def _resolve_model_config(body: AssistantChatRequest):
@@ -304,12 +317,12 @@ async def stream_assistant_chat(
     model_key, temperature, max_tokens = await _generation_options(
         body, settings, user, session
     )
-    research_query = _research_query(body)
+    research_query, initial_search_query = _research_input(body)
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history
     if not conversation_messages and body.conversation_history:
         conversation_messages = body.conversation_history
-    group_prompt = settings.answerPrompt or await _resolve_group_prompt(user, session)
+    group_prompt = await _assistant_answer_prompt(settings, user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -323,6 +336,7 @@ async def stream_assistant_chat(
             )
             ait = stream_research_response(
                 query=research_query,
+                initial_search_query=initial_search_query,
                 data_source=body.data_source,
                 model_key=model_key,
                 temperature=temperature,
@@ -332,6 +346,7 @@ async def stream_assistant_chat(
                 search_settings=search_kwargs,
                 system_prompt_override=group_prompt,
                 assistant_settings=settings,
+                citation_order=body.usage_context != "brief",
                 deep_research=body.deep_research,
                 target_words=body.target_words,
                 introduces_sub_sections=body.introduces_sub_sections,

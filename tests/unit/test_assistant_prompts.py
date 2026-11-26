@@ -46,3 +46,19 @@ def test_opening_asks_for_each_named_outcome_as_a_stream(prompts):
     assert "Keep named outcomes separate" in opening
     assert '"streams"' in opening
     assert "coverage, effectiveness, cost-efficiency and sustainability" in opening
+
+
+def test_custom_instructions_replace_editable_defaults_and_keep_workflow_rules(prompts):
+    planner = prompts.get_template("assistant_research_planner.j2").render(
+        organize=True, instructions="Look for implementation barriers first."
+    )
+    assert "Look for implementation barriers first." in planner
+    assert "Keep named outcomes separate" in planner
+    assert 'Return only a JSON object with "queries"' in planner
+    assert "concrete gap" not in planner
+    writer = prompts.get_template("assistant_system.j2").render(
+        instructions="Group findings by evaluation context."
+    )
+    assert "Group findings by evaluation context." in writer
+    assert "Synthesize across relevant passages" not in writer
+    assert "Cite each factual sentence" in writer

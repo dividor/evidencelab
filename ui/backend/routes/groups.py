@@ -23,7 +23,11 @@ from ui.backend.auth.schemas import (
     GroupUpdate,
 )
 from ui.backend.auth.users import current_superuser
-from ui.backend.services.assistant_settings import validate_assistant_settings
+from ui.backend.services.assistant_settings import (
+    AssistantSettings,
+    assistant_site_defaults,
+    validate_assistant_settings,
+)
 from ui.backend.services.group_settings import PERSONAL_IMPACT_SETTING
 from ui.backend.services.llm_choice import validate_group_model_choices
 
@@ -91,6 +95,18 @@ async def create_group(
 
 
 # NOTE: concrete paths MUST come before the catch-all /{group_id} routes.
+
+
+@router.get(
+    "/assistant-defaults",
+    response_model=AssistantSettings,
+    response_model_exclude_none=True,
+    dependencies=[Depends(current_superuser)],
+    tags=["groups"],
+)
+def get_assistant_defaults():
+    """Show the site's default research settings to group administrators."""
+    return assistant_site_defaults()
 
 
 @router.get("/datasource-keys", tags=["groups"])

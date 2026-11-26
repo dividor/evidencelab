@@ -12,6 +12,7 @@ from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.assistant_settings import (
     AssistantSettings,
     assistant_settings_for_groups,
+    assistant_site_defaults,
     validate_assistant_settings,
 )
 from ui.backend.services.group_settings import merge_group_settings
@@ -53,6 +54,24 @@ def test_admin_can_save_a_complete_assistant_override(models):
     assert payload["assistant"]["planningPrompt"] == "Compare independently."
     assert payload["assistant"]["deepResearchByDefault"] is False
     assert payload["rerank"] is False
+
+
+def test_site_defaults_show_the_configured_search_budgets_and_builtin_prompts(
+    monkeypatch,
+):
+    from pipeline.db import config
+
+    monkeypatch.setattr(
+        config,
+        "get_application_config",
+        lambda: {"assistant": {"max_queries": 3, "deep_research": {"max_queries": 8}}},
+    )
+    defaults = assistant_site_defaults()
+    assert defaults.search_limits(False) == (3, 2)
+    assert defaults.search_limits(True) == (8, 4)
+    assert defaults.deepResearchByDefault is False
+    assert "concrete gap" in (defaults.planningInstructions or "")
+    assert "Synthesize across relevant passages" in (defaults.answerInstructions or "")
 
 
 @pytest.mark.parametrize(

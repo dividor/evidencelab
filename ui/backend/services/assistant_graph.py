@@ -1,36 +1,22 @@
 """Search, citation tracking and workflow setup for the Research Assistant."""
 
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
-
-from jinja2 import Environment, FileSystemLoader
 
 from pipeline.utilities.text_cleaning import clean_text
 from ui.backend.services.assistant_research import (
     ResearchLimits,
     build_research_workflow,
 )
-from ui.backend.services.assistant_settings import AssistantSettings
+from ui.backend.services.assistant_settings import (
+    AssistantSettings,
+    assistant_prompt_templates,
+    assistant_search_defaults,
+)
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
-
-
-def _get_assistant_config() -> Dict[str, Any]:
-    """Load assistant config from config.json."""
-    try:
-        from pipeline.db import get_application_config
-
-        return get_application_config().get("assistant", {})
-    except Exception:
-        return {}
-
-
-# Jinja2 environment for prompt templates
-PROMPTS_DIR = Path(__file__).resolve().parents[3] / "prompts"
-_jinja_env = Environment(loader=FileSystemLoader(str(PROMPTS_DIR)), autoescape=True)
 
 
 def _format_search_result(r: Any) -> Dict[str, Any]:
@@ -398,35 +384,38 @@ def build_research_agent(
     assistant_settings: Optional[AssistantSettings] = None,
 ) -> tuple:
     """Build the same evidence workflow with the selected research budget."""
-    cfg = _get_assistant_config()
-    max_queries = (
-        cfg.get("deep_research", {}).get("max_queries", 10)
-        if deep_research
-        else cfg.get("max_queries", 4)
-    )
+    default_searches, default_per_stream = assistant_search_defaults(deep_research)
     settings = assistant_settings or AssistantSettings()
     searches, per_stream = settings.search_limits(deep_research)
-    max_queries = searches if searches is not None else max_queries
+    max_queries = searches if searches is not None else default_searches
     tracker = SearchTracker(data_source, reranker_model, search_settings, prior_sources)
-    template = _jinja_env.get_template("assistant_research_planner.j2")
+    template = assistant_prompt_templates.get_template("assistant_research_planner.j2")
     planner = template.render(
-        deep_research=deep_research, group_instructions=settings.planningPrompt
+        deep_research=deep_research,
+        group_instructions=settings.planningPrompt,
+        instructions=settings.planningInstructions,
     )
     opening = template.render(
         deep_research=deep_research,
         organize=True,
         group_instructions=settings.planningPrompt,
+        instructions=settings.planningInstructions,
     )
-    writer = _jinja_env.get_template("assistant_system.j2").render(
+    writer = assistant_prompt_templates.get_template("assistant_system.j2").render(
         data_source=data_source,
         target_words=target_words,
         intro_sub_sections=introduces_sub_sections,
-        group_instructions=settings.answerPrompt or system_prompt_override,
+        group_instructions=(
+            (settings.answerPrompt or system_prompt_override)
+            if not settings.answerInstructions
+            else None
+        ),
+        instructions=settings.answerInstructions,
         deep_research=deep_research,
     )
     limits = ResearchLimits(
         searches=max_queries,
-        searches_per_stream=per_stream or (4 if deep_research else 2),
+        searches_per_stream=per_stream or default_per_stream,
     )
     agent = build_research_workflow(llm, tracker, planner, writer, limits, opening)
     return agent, tracker, max_queries

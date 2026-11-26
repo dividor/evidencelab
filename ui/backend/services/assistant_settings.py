@@ -1,8 +1,10 @@
 """Validated group overrides for the Assistant workflow."""
 
+from pathlib import Path
 from typing import Annotated, Optional, Sequence
 
 from fastapi import HTTPException
+from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from pipeline.db import config as db_config
@@ -10,6 +12,10 @@ from ui.backend.services.group_settings import ASSISTANT_SETTINGS_KEY
 from ui.backend.utils.llm_request_limits import check_requested_llm, max_output_tokens
 
 Prompt = Annotated[str, StringConstraints(strip_whitespace=True, max_length=12000)]
+assistant_prompt_templates = Environment(
+    loader=FileSystemLoader(str(Path(__file__).resolve().parents[3] / "prompts")),
+    autoescape=True,
+)
 
 
 class AssistantSettings(BaseModel):
@@ -22,6 +28,8 @@ class AssistantSettings(BaseModel):
     maxTokens: Optional[int] = Field(None, ge=1)
     planningPrompt: Optional[Prompt] = None
     answerPrompt: Optional[Prompt] = None
+    planningInstructions: Optional[Prompt] = None
+    answerInstructions: Optional[Prompt] = None
     searches: Optional[int] = Field(None, ge=1, le=20)
     searchesPerStream: Optional[int] = Field(None, ge=1, le=6)
     deepSearches: Optional[int] = Field(None, ge=1, le=20)
@@ -60,6 +68,33 @@ class AssistantSettings(BaseModel):
         )
 
 
+def assistant_search_defaults(deep: bool) -> tuple[int, int]:
+    """Return the site's focused-question and per-stream budgets."""
+    cfg = db_config.get_application_config().get("assistant", {})
+    if deep:
+        return cfg.get("deep_research", {}).get("max_queries", 10), 4
+    return cfg.get("max_queries", 4), 2
+
+
+def assistant_site_defaults() -> AssistantSettings:
+    """Return the default research limits and prompts for Group Settings."""
+    searches, per_stream = assistant_search_defaults(False)
+    deep_searches, deep_per_stream = assistant_search_defaults(True)
+    return AssistantSettings(
+        searches=searches,
+        searchesPerStream=per_stream,
+        deepSearches=deep_searches,
+        deepSearchesPerStream=deep_per_stream,
+        deepResearchByDefault=False,
+        planningInstructions=assistant_prompt_templates.get_template(
+            "assistant_planning_instructions.j2"
+        ).render(),
+        answerInstructions=assistant_prompt_templates.get_template(
+            "assistant_answer_instructions.j2"
+        ).render(),
+    )
+
+
 def validate_assistant_settings(settings: dict) -> None:
     """Validate and normalize the Assistant entry before saving a group."""
     if ASSISTANT_SETTINGS_KEY not in settings:
@@ -91,10 +126,17 @@ def validate_assistant_settings(settings: dict) -> None:
 def assistant_settings_for_groups(groups: Sequence) -> AssistantSettings:
     """Take the first configured value for each Assistant setting by group name."""
     values: dict = {}
+    prompt_slots = {
+        "planningPrompt": "planningInstructions",
+        "planningInstructions": "planningPrompt",
+        "answerPrompt": "answerInstructions",
+        "answerInstructions": "answerPrompt",
+    }
     for group in groups:
-        for key, value in (
-            (group.search_settings or {}).get(ASSISTANT_SETTINGS_KEY) or {}
-        ).items():
+        settings = (group.search_settings or {}).get(ASSISTANT_SETTINGS_KEY) or {}
+        for key, value in settings.items():
+            if prompt_slots.get(key) in values:
+                continue
             if value is not None:
                 values.setdefault(key, value)
     return AssistantSettings.model_validate(values)
