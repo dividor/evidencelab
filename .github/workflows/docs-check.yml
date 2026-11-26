@@ -70,6 +70,12 @@ jobs:
             --disallowedTools "Edit,Write,NotebookEdit,WebFetch,WebSearch"
             --json-schema '{"type":"object","additionalProperties":false,"required":["needs_docs","covered","reason","missing","notes"],"properties":{"needs_docs":{"type":"boolean"},"covered":{"type":"boolean"},"reason":{"type":"string"},"missing":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["what","where"],"properties":{"what":{"type":"string"},"where":{"type":"string"}}}},"notes":{"type":"array","items":{"type":"string"}}}}'
 
+      - name: Report the review service error
+        if: always() && steps.check.outcome == 'failure'
+        env:
+          REVIEW_EXECUTION_FILE: ${{ steps.check.outputs.execution_file }}
+        run: python3 scripts/ci/review_failure.py
+
       - name: Post the verdict and fail when docs are missing
         if: always() && steps.check.outcome != 'skipped'
         env:

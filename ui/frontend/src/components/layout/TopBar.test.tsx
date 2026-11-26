@@ -36,6 +36,7 @@ const baseProps: any = {
   onTechClick: noop,
   onDataClick: noop,
   onDocsClick: noop,
+  onAdminDocsClick: noop,
 };
 
 describe('TopBar brand link', () => {
@@ -81,6 +82,19 @@ describe('TopBar brand link', () => {
 });
 
 describe('TopBar dropdown dismissal', () => {
+  it('offers separate Docs and Admin entries in the Info menu', () => {
+    const onDocsClick = jest.fn();
+    const onAdminDocsClick = jest.fn();
+    render(<TopBar {...baseProps} helpDropdownOpen onDocsClick={onDocsClick} onAdminDocsClick={onAdminDocsClick} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Docs' }));
+    expect(onDocsClick).toHaveBeenCalledTimes(1);
+    expect(onAdminDocsClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Admin' }));
+    expect(onAdminDocsClick).toHaveBeenCalledTimes(1);
+  });
+
   afterEach(() => {
     jest.useRealTimers();
   });

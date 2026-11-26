@@ -8,7 +8,7 @@ Evidence Lab runs as a set of containers. On one machine, Docker Compose runs th
 
 This page describes that layout and its settings, with tested example deployments for AWS, Azure and Google Cloud.
 
-**On this page**
+**What this guide covers**
 
 | Section | What it covers |
 |---|---|

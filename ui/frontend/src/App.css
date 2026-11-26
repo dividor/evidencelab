@@ -408,8 +408,8 @@ h6,
 }
 
 .dropdown-menu-help {
-  right: auto;
-  left: 0;
+  right: 0;
+  left: auto;
   width: max-content;
   min-width: 140px;
 }
@@ -5166,7 +5166,6 @@ li.ai-fact-active::before {
   color: #fff;
   background: var(--brand-primary);
   font-weight: 500;
-  border-right: 3px solid var(--brand-primary-dark);
 }
 
 .docs-content {
@@ -5209,17 +5208,18 @@ li.ai-fact-active::before {
   cursor: pointer;
   text-align: left;
   line-height: 1.4;
-  border-left: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
 }
 
 .docs-toc-item:hover {
   color: var(--gray-700);
 }
 
-.docs-toc-item.active {
+.docs-toc-item[aria-current="location"] {
   color: var(--brand-primary);
-  border-left-color: var(--brand-primary);
+  background: var(--gray-100);
   font-weight: 500;
 }
 
@@ -5227,13 +5227,46 @@ li.ai-fact-active::before {
   padding-left: 1.25rem;
 }
 
+.docs-article :is(h2, h3, h4, h5, h6) {
+  scroll-margin-top: 1rem;
+}
+
+.docs-toc-inline {
+  display: none;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+}
+
+.docs-toc-inline summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.docs-toc-inline nav {
+  max-height: 45vh;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
 @media (max-width: 1100px) {
   .docs-toc {
     display: none;
   }
+
+  .docs-toc-inline {
+    display: block;
+  }
 }
 
 @media (max-width: 768px) {
+  html:has(.docs-page) {
+    scroll-padding-top: var(--docs-header-height);
+  }
+
   .app:has(.docs-page) {
     height: auto;
     overflow: visible;
@@ -5252,7 +5285,7 @@ li.ai-fact-active::before {
     width: 100%;
     min-width: unset;
     height: auto;
-    max-height: 50vh;
+    max-height: 36vh;
     border-radius: 0;
     box-shadow: none;
     border: none;
@@ -7115,12 +7148,6 @@ sup.reference-number {
   .dropdown-menu-domain {
     right: auto;
     left: 0;
-  }
-
-  /* Info dropdown — anchor to right edge so it doesn't overflow */
-  .dropdown-menu-help {
-    right: 0;
-    left: auto;
   }
 
   /* Hide model info panel on mobile — just show the model list */
