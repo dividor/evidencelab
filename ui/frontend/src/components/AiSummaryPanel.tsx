@@ -666,6 +666,7 @@ const LanguageSelector = ({
       </div>
     )}
     <select
+      aria-label="Language"
       value={selectedLang}
       onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
         onLanguageChange(e.target.value)

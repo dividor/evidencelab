@@ -153,9 +153,26 @@ const FeaturesSection: React.FC<{
   tabValues: TabValues;
   setTabsOverride: React.Dispatch<React.SetStateAction<boolean>>;
   setTabValues: React.Dispatch<React.SetStateAction<TabValues>>;
-}> = ({ tabsOverride, tabValues, setTabsOverride, setTabValues }) => (
+  personalImpact: boolean | undefined;
+  onPersonalImpactChange: (value: boolean | undefined) => void;
+}> = ({ tabsOverride, tabValues, setTabsOverride, setTabValues, personalImpact, onPersonalImpactChange }) => (
   <div className="filter-section">
       <div className="filter-section-content">
+        <div className="form-group personal-impact-group-setting">
+          <label htmlFor="personal-environmental-impact">Personal environmental impact</label>
+          <select
+            id="personal-environmental-impact"
+            value={personalImpact === undefined ? '' : String(personalImpact)}
+            onChange={({ target }) => onPersonalImpactChange(target.value === '' ? undefined : target.value === 'true')}
+          >
+            <option value="">Use system default (On)</option>
+            <option value="true">On</option>
+            <option value="false">Off</option>
+          </select>
+          <p className="text-muted">
+            Lets members see their own estimates from the user icon menu.
+          </p>
+        </div>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
           <input
             type="checkbox"
@@ -275,6 +292,7 @@ const GroupSettingsManager: React.FC = () => {
   // to the cross-group union).
   const [tabsOverride, setTabsOverride] = useState(false);
   const [tabValues, setTabValues] = useState<TabValues>(defaultTabValues);
+  const [personalImpact, setPersonalImpact] = useState<boolean>();
 
   // Defaults for document summaries regenerated on the Documents screen.
   const [docSummary, setDocSummary] = useState<DocSummaryGroupValue>({});
@@ -317,6 +335,7 @@ const GroupSettingsManager: React.FC = () => {
       setSummaryPromptValue('');
       setTabsOverride(false);
       setTabValues(defaultTabValues());
+      setPersonalImpact(undefined);
       setDocSummary({});
       setLlmChoices({});
       return;
@@ -339,6 +358,7 @@ const GroupSettingsManager: React.FC = () => {
     setValues(newValues);
     setDocSummary(readDocSummaryDefaults(settings));
     setLlmChoices(readLlmChoices(settings));
+    setPersonalImpact(settings.personalEnvironmentalImpact);
 
     // Load feature-tab override (search_settings.tabs)
     const tabsCfg = (settings as any).tabs;
@@ -384,6 +404,9 @@ const GroupSettingsManager: React.FC = () => {
       }
       Object.assign(payload, docSummaryPayload(docSummary));
       Object.assign(payload, llmChoicePayload(llmChoices));
+      if (personalImpact !== undefined) {
+        payload.personalEnvironmentalImpact = personalImpact;
+      }
       // Feature-tab overrides: only written when this group opts in.
       if (tabsOverride) {
         payload.tabs = Object.fromEntries(
@@ -427,7 +450,9 @@ const GroupSettingsManager: React.FC = () => {
       setSummaryPromptValue('');
       setDocSummary({});
       setLlmChoices({});
+      setPersonalImpact(undefined);
       setSuccess('Settings reset to system defaults.');
+      window.dispatchEvent(new Event(GROUP_SETTINGS_UPDATED_EVENT));
       await fetchGroups();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to reset settings');
@@ -480,7 +505,7 @@ const GroupSettingsManager: React.FC = () => {
           <>
             <p className="admin-group-settings-description">
               Configure defaults for <strong>{selectedGroup.name}</strong> members, one area per tab. Changed
-              settings are saved per group, and Save Settings saves every tab; users can still override.
+              settings are saved per group. Save Settings saves every tab.
             </p>
 
             <SettingsTabs active={activeTab} onSelect={setActiveTab} />
@@ -855,6 +880,8 @@ const GroupSettingsManager: React.FC = () => {
                     tabValues={tabValues}
                     setTabsOverride={setTabsOverride}
                     setTabValues={setTabValues}
+                    personalImpact={personalImpact}
+                    onPersonalImpactChange={setPersonalImpact}
                   />
                 </SettingsPanel>
               )}

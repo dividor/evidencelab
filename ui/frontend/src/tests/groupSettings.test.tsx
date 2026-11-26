@@ -91,6 +91,30 @@ describe('GroupSettingsManager', () => {
     expect(screen.getByText('Default (Default)')).toBeInTheDocument();
   });
 
+  test.each([
+    ['false', { personalEnvironmentalImpact: false }],
+    ['true', { personalEnvironmentalImpact: true }],
+    ['', {}],
+  ])('saves the personal environmental impact choice %s in Features & Tabs', async (value, expected) => {
+    mockedAxios.get.mockResolvedValue({
+      data: [mockGroups[0], { ...mockGroups[1], search_settings: { personalEnvironmentalImpact: false } }],
+    });
+    mockedAxios.patch.mockResolvedValue({ data: mockGroups[1] });
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Features & Tabs' }));
+    const setting = screen.getByLabelText('Personal environmental impact');
+    expect(setting).toHaveValue('false');
+    fireEvent.change(setting, { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+        search_settings: expected,
+        summary_prompt: '',
+      });
+    });
+  });
+
   test('auto-selects default group and shows settings panel', async () => {
     render(<GroupSettingsManager />);
     await waitFor(() => {

@@ -113,99 +113,103 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
   onCloseFilter,
 }) => (
   <>
-    <table className="admin-table toc-validator-table">
-      <thead>
-        <tr>
-          <th className="toc-validator-select-col">
-            <input
-              type="checkbox"
-              checked={allOnPageSelected}
-              onChange={onTogglePage}
-              aria-label="Select all documents on this page"
-            />
-          </th>
-          <FilterableHeader
-            column="title"
-            label="Title"
-            onFilterClick={onFilterClick}
-            hasActiveFilter={hasActiveFilter}
-          />
-          <FilterableHeader
-            column="organization"
-            label="Organization"
-            onFilterClick={onFilterClick}
-            hasActiveFilter={hasActiveFilter}
-          />
-          <FilterableHeader
-            column="status"
-            label="Status"
-            onFilterClick={onFilterClick}
-            hasActiveFilter={hasActiveFilter}
-          />
-          <FilterableHeader
-            column="review"
-            label="Table of Contents review"
-            onFilterClick={onFilterClick}
-            hasActiveFilter={hasActiveFilter}
-          />
-          <th>Links</th>
-        </tr>
-      </thead>
-      <tbody>
-        {documents.map((doc) => {
-          const key = docKey(doc);
-          const status = doc.status || doc.sys_status || 'downloaded';
-          const approved = approvedIds.has(key);
-          const rowClass = [
-            selectedIds.has(key) ? 'admin-row-selected' : '',
-            changedIds.has(key) ? 'toc-validator-row-changed' : '',
-            approved ? 'toc-validator-row-approved' : '',
-          ]
-            .filter(Boolean)
-            .join(' ');
-          return (
-            <tr key={key} className={rowClass}>
-              <td className="toc-validator-select-col">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(key)}
-                  onChange={() => onToggle(key)}
-                  aria-label={`Select ${doc.map_title || doc.title || key}`}
-                />
-              </td>
-              <td>{doc.map_title || doc.title || '(untitled)'}</td>
-              <td>{doc.organization || doc.map_organization || '-'}</td>
-              <td>
-                <span
-                  className={`status-badge status-${status} ${
-                    status === 'indexed' ? 'status-badge-success' : ''
-                  }`}
-                >
-                  {status}
-                </span>
-              </td>
-              <TocValidationResultCell
-                result={results.get(key)}
-                changed={changedIds.has(key)}
-                approved={approved}
-              />
-              <DocumentLinksCell
-                doc={doc}
-                onOpenMetadata={onOpenMetadata}
-                onOpenToc={onOpenToc}
-              />
-            </tr>
-          );
-        })}
-        {documents.length === 0 && (
+    <div className="admin-table-scroll">
+      <table className="admin-table toc-validator-table">
+        <thead>
           <tr>
-            <td colSpan={6} className="toc-validator-empty">
-              No documents found.
-            </td>
+            <th className="toc-validator-select-col">
+              <input
+                type="checkbox"
+                checked={allOnPageSelected}
+                className="admin-checkbox"
+                onChange={onTogglePage}
+                aria-label="Select all documents on this page"
+              />
+            </th>
+            <FilterableHeader
+              column="title"
+              label="Title"
+              onFilterClick={onFilterClick}
+              hasActiveFilter={hasActiveFilter}
+            />
+            <FilterableHeader
+              column="organization"
+              label="Organization"
+              onFilterClick={onFilterClick}
+              hasActiveFilter={hasActiveFilter}
+            />
+            <FilterableHeader
+              column="status"
+              label="Status"
+              onFilterClick={onFilterClick}
+              hasActiveFilter={hasActiveFilter}
+            />
+            <FilterableHeader
+              column="review"
+              label="Table of Contents review"
+              onFilterClick={onFilterClick}
+              hasActiveFilter={hasActiveFilter}
+            />
+            <th>Links</th>
           </tr>
-        )}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {documents.map((doc) => {
+            const key = docKey(doc);
+            const status = doc.status || doc.sys_status || 'downloaded';
+            const approved = approvedIds.has(key);
+            const rowClass = [
+              selectedIds.has(key) ? 'admin-row-selected' : '',
+              changedIds.has(key) ? 'toc-validator-row-changed' : '',
+              approved ? 'toc-validator-row-approved' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+            return (
+              <tr key={key} className={rowClass}>
+                <td className="toc-validator-select-col">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(key)}
+                    className="admin-checkbox"
+                    onChange={() => onToggle(key)}
+                    aria-label={`Select ${doc.map_title || doc.title || key}`}
+                  />
+                </td>
+                <td>{doc.map_title || doc.title || '(untitled)'}</td>
+                <td>{doc.organization || doc.map_organization || '-'}</td>
+                <td>
+                  <span
+                    className={`status-badge status-${status} ${
+                      status === 'indexed' ? 'status-badge-success' : ''
+                    }`}
+                  >
+                    {status}
+                  </span>
+                </td>
+                <TocValidationResultCell
+                  result={results.get(key)}
+                  changed={changedIds.has(key)}
+                  approved={approved}
+                />
+                <DocumentLinksCell
+                  doc={doc}
+                  onOpenMetadata={onOpenMetadata}
+                  onOpenToc={onOpenToc}
+                />
+              </tr>
+            );
+          })}
+          {documents.length === 0 && (
+            <tr>
+              <td colSpan={6} className="toc-validator-empty">
+                No documents found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
     {activeFilterColumn && (
       <TocValidatorFilterPopover
         column={activeFilterColumn}

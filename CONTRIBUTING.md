@@ -41,7 +41,11 @@ All contributions must meet the following requirements before they will be accep
 
 5. **Commit messages** — follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `ci:`, etc.).
 
-6. **Pull request target** — open every PR against `main`. Nothing is committed to `main` directly. (Only a patch for an older release goes to its `release-X.Y` branch; see [Release Process](#release-process).)
+6. **Documentation** — a change that users or administrators see (a screen or control, a setting, an environment variable, a `config.json` field, API or MCP behaviour, a deployment option, a removed feature) updates the online docs in `docs/` in the same pull request; a new page also goes in `docs/docs.json`. The checklist is [.github/review/docs-check.md](.github/review/docs-check.md), and the `docs-check` workflow fails a pull request whose docs are missing, then opens a pull request into its branch with them written, to review and merge.
+
+7. **UI changes work on a phone and a desktop** — check each changed screen at 390×844 and 1440×900 against [.github/review/ux-review.md](.github/review/ux-review.md). The integration tests (`tests/integration/test_ui_layout.py`) fail on sideways overflow, text under 12 px, serious accessibility violations, tap targets under 24 px and covered controls, and pull requests that change `ui/frontend/src/` get a review comment on the rest, plus a pull request into their branch that fixes what it found.
+
+8. **Pull request target** — open every PR against `main`. Nothing is committed to `main` directly. (Only a patch for an older release goes to its `release-X.Y` branch; see [Release Process](#release-process).)
 
 If any of these requirements are not met, CI will fail and the PR will not be merged until the issues are resolved.
 

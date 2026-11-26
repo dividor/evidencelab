@@ -83,6 +83,7 @@ export interface GroupLlmChoices {
  */
 export interface EffectiveSettings extends SearchSettings, DocumentSummaryDefaults {
   tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
+  personalEnvironmentalImpact?: boolean;
 }
 
 export interface UserGroup {
@@ -93,7 +94,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (SearchSettings & DocumentSummaryDefaults & GroupLlmChoices) | null;
+  search_settings?: (EffectiveSettings & GroupLlmChoices) | null;
   summary_prompt?: string | null;
 }
 

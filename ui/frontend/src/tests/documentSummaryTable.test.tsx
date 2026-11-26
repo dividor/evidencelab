@@ -18,6 +18,21 @@ describe('Summary cell', () => {
     expect(onOpen).toHaveBeenCalledWith(SUMMARY, TITLE);
   });
 
+  test('a long summary with a link is one control: no link or button inside it', () => {
+    const onOpen = jest.fn();
+    const long = `See [the report](https://example.org/report). ${'Findings on school meals. '.repeat(12)}`;
+    render(<DocumentsSummaryCell summary={long} docTitle={TITLE} onOpenSummary={onOpen} />);
+
+    const cell = screen.getByRole('button', { name: /See the report/ });
+    expect(cell.querySelectorAll('a, button, [role="button"], [tabindex]')).toHaveLength(0);
+    expect(screen.getByText('See more')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('See more'));
+    fireEvent.keyDown(cell, { key: 'Enter' });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
   test('an empty summary offers administrators "Add summary"', () => {
     const onOpen = jest.fn();
     const { rerender } = render(<DocumentsSummaryCell summary="" docTitle={TITLE} onOpenSummary={onOpen} />);

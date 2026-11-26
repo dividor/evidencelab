@@ -29,7 +29,6 @@ interface TabContentProps {
   privacyContent: string;
   termsContent: string;
   basePath?: string;
-  docsInitialPath?: string;
   onTabChange: (tab: TabName) => void;
 }
 
@@ -40,6 +39,12 @@ const INFO_TAB_LABELS: Record<string, string> = {
   privacy: 'Privacy',
   terms: 'Terms of Service',
 };
+
+const DOCS_START_PAGES = new Map<TabName, string>([
+  ['info', 'overview/about.md'],
+  ['tech', 'overview/tech.md'],
+  ['data', 'overview/data.md'],
+]);
 
 const INFO_TAB_LINKS: Record<string, TabName[]> = {
   info: ['tech', 'data'],
@@ -205,7 +210,6 @@ export const TabContent: React.FC<TabContentProps> = ({
   privacyContent,
   termsContent,
   basePath,
-  docsInitialPath,
   onTabChange,
 }) => {
   // Render the active tab via the switch, plus always render the assistant
@@ -229,7 +233,7 @@ export const TabContent: React.FC<TabContentProps> = ({
       case 'info':
       case 'tech':
       case 'data':
-        return <DocsPage basePath={basePath} initialPath={docsInitialPath} />;
+        return <DocsPage basePath={basePath} initialPath={DOCS_START_PAGES.get(activeTab)} />;
       case 'stats':
         return <>{statsTab}</>;
       case 'privacy':
@@ -245,7 +249,7 @@ export const TabContent: React.FC<TabContentProps> = ({
           />
         );
       case 'docs':
-        return <DocsPage basePath={basePath} initialPath={docsInitialPath} />;
+        return <DocsPage basePath={basePath} />;
       default:
         return null;
     }

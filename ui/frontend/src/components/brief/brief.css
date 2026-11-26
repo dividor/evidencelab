@@ -496,16 +496,16 @@
 }
 .brief-doc-header-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 10px 16px;
 }
 .brief-doc-header-actions {
-  flex-shrink: 1;
-  min-width: 0;
+  flex: 0 1 max-content;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }
@@ -529,6 +529,58 @@
 .brief-regen-all:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.brief-doc-header-top > .brief-eyebrow {
+  white-space: nowrap;
+}
+.brief-ask-ai {
+  position: relative;
+  flex: none;
+}
+.brief-ask-ai > button {
+  white-space: nowrap;
+}
+.brief-ask-ai > button[aria-expanded="true"] {
+  background: var(--brand-bg);
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+.brief-ai-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 21;
+  inline-size: max-content;
+  min-inline-size: 10rem;
+  max-inline-size: 15rem;
+  padding: 4px;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.brief-ai-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  min-block-size: 40px;
+  padding: 6px 10px;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  text-align: left;
+  color: var(--brand-text-primary);
+  font: 600 13px var(--font-heading);
+  cursor: pointer;
+}
+.brief-ai-option svg {
+  flex: none;
+}
+.brief-ai-option:hover,
+.brief-ai-option:focus-visible {
+  background: var(--brand-bg);
+  color: var(--brand-primary);
 }
 .brief-export-word {
   flex-shrink: 0;
@@ -696,6 +748,10 @@
 }
 .brief-doc-section-title {
   flex: 1;
+  /* An input won't shrink below its natural width (about 20 characters in the
+     heading font) unless told to: on a phone that pushed the row, and the
+     page, wider than the screen. */
+  min-width: 0;
   border: none;
   border-bottom: 1px solid transparent;
   background: none;
@@ -728,9 +784,10 @@
   cursor: pointer;
   white-space: nowrap;
 }
-/* Edit text / Regenerate sit on their own row beneath the section title. */
+/* Section actions sit below the section title and wrap on narrow screens. */
 .brief-doc-section-tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 2px 0 16px;
 }
@@ -901,11 +958,20 @@
 
 .brief-doc-content {
   font-size: 15.5px;
+  /* Long addresses and words in AI-written text break instead of widening the page. */
+  overflow-wrap: anywhere;
   color: var(--brand-text-primary);
   line-height: 1.72;
 }
 .brief-doc-content p {
   margin: 0 0 14px;
+}
+/* Lists in the text: room for their numbers and bullets inside the column
+   (as in AI summaries), not hanging past its edge. */
+.brief-doc-content ul,
+.brief-doc-content ol {
+  margin: 0 0 14px;
+  padding-left: 1.5em;
 }
 .brief-doc-content sup {
   color: var(--brand-primary);
@@ -972,7 +1038,7 @@
   cursor: pointer;
   padding: 10px 14px;
   font-family: var(--font-heading);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   line-height: 1;
@@ -1214,7 +1280,7 @@
   border-bottom: 1px solid var(--brand-border-light);
 }
 .brief-history-selected-label {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1286,7 +1352,7 @@
 }
 .brief-history-item-meta {
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--brand-text-tertiary);
 }
 .brief-history-del {
@@ -1311,6 +1377,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-block-size: 24px;
   padding: 0;
   background: none;
   border: none;
@@ -1384,7 +1451,7 @@
   margin-bottom: 10px;
 }
 .brief-toc-head-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -2498,7 +2565,8 @@
 @media (max-width: 1024px) {
   /* Comment rail stacks under the document rather than squeezing it. */
   .brief-builder:has(.brief-comments-rail) {
-    grid-template-columns: 1fr;
+    /* minmax(0, ...): a long word can't widen the column past the screen. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .brief-modal-overlay {
@@ -2516,13 +2584,20 @@
   }
 
   .brief-builder {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .brief-rail {
     position: static;
     max-height: none;
     order: 2;
+  }
+
+  /* Stacked under the brief, the history fits its rows (up to the same 360 px)
+     instead of keeping a fixed block of empty space. */
+  .brief-history-list {
+    height: auto;
+    max-height: 360px;
   }
 
   /* Contents stays above the document on small screens for quick navigation. */
@@ -2567,10 +2642,6 @@
     gap: 10px;
   }
 
-  .brief-doc-header-actions {
-    flex-wrap: wrap;
-  }
-
   .bc-field-row {
     flex-direction: column;
     gap: 0;
@@ -2610,10 +2681,6 @@
 
   .brief-modal {
     margin: 0 8px;
-  }
-
-  .brief-doc-section-tools {
-    flex-wrap: wrap;
   }
 }
 
@@ -2729,6 +2796,8 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* The whole label ticks the box: at least 24 px tall to tap (WCAG 2.5.8). */
+  min-height: 24px;
   font-size: 13px;
   color: var(--brand-text-secondary);
   cursor: pointer;
@@ -3230,6 +3299,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-block-size: 24px;
   margin-left: auto;
   font-size: 12.5px;
   color: var(--brand-text-tertiary);
@@ -3332,6 +3402,60 @@
   font-size: 12px;
   color: var(--brand-text-tertiary);
   white-space: nowrap;
+}
+
+/* Citations with no source: a red header naming each as a clickable chip. */
+.brief-unmatched-warning {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 8px 0 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
+.brief-unmatched-title {
+  font-weight: 600;
+}
+
+.brief-unmatched-title::before {
+  content: '⚠';
+  margin-right: 6px;
+  color: #dc2626;
+}
+
+.brief-unmatched-warning .citation-unmatched-chip {
+  vertical-align: baseline;
+  padding: 2px 9px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.brief-unmatched-warning .citation-unmatched-chip:hover,
+.brief-unmatched-warning .citation-unmatched-chip:focus-visible {
+  background: #fecaca;
+}
+
+.brief-unmatched-detail {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #991b1b;
+}
+
+.brief-unmatched-log {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
 
 /* An introduction that kept headings of its own after its re-runs. */

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ui.backend.services.usage_recorder import has_usage, record_llm_usage, usage_cost
+from ui.backend.utils.llm_footprint import FOOTPRINT_ROW_COLUMNS, estimate_footprint
 
 pytestmark = pytest.mark.unit
 
@@ -61,6 +62,7 @@ def _existing_row(**overrides):
         "prompt_tokens": 1000,
         "completion_tokens": 200,
         "cost_usd": Decimal("0.000720"),
+        **{column: None for column in FOOTPRINT_ROW_COLUMNS},
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -247,6 +249,37 @@ class TestRecordLlmUsage:
         assert existing.cost_usd == Decimal("0.000720") + _USAGE_COST
         # Existing filters are never touched on accumulation.
         assert existing.filters == {"type": "brief"}
+
+    @pytest.mark.asyncio
+    async def test_record_adds_each_calls_footprint_from_its_own_model(self):
+        # gpt-4.1-mini is covered by EcoLogits; gemini-2.0-flash has no basis,
+        # so its output tokens are counted as unestimated instead.
+        existing = _existing_row()
+        session = _FakeSession(existing=existing)
+        for usage in (
+            _USAGE,
+            {
+                "llm_model": "gemini-2.0-flash",
+                "prompt_tokens": 10,
+                "completion_tokens": 300,
+            },
+            _USAGE,
+        ):
+            await record_llm_usage(
+                usage=usage,
+                activity_type="brief",
+                query="q",
+                session_id="sess-1",
+                search_id=existing.search_id,
+                session_factory=_factory(session),
+            )
+        one_call = estimate_footprint("gpt-4.1-mini", 500)
+        assert existing.energy_kwh_min == pytest.approx(2 * one_call.energy_kwh[0])
+        assert existing.gwp_kgco2eq_max == pytest.approx(2 * one_call.gwp_kgco2eq[1])
+        assert existing.water_l_max == pytest.approx(2 * one_call.water_l[1])
+        assert existing.footprint_unestimated_tokens == 300
+        # The row records what its figures rest on.
+        assert existing.footprint_basis == {"gpt-4.1-mini": 1000}
 
     @pytest.mark.asyncio
     async def test_record_when_model_unknown_then_tokens_without_cost(self):

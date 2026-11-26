@@ -196,57 +196,65 @@ const UserManager: React.FC = () => {
           + Create User
         </button>
       </div>
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Name</th>
-            <th>Active</th>
-            <th>Verified</th>
-            <th>Admin</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredUsers.map((u) => (
-            <tr key={u.id}>
-              <td>{u.email}</td>
-              <td>{u.display_name || '-'}</td>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={u.is_active}
-                  onChange={(e) => toggleFlag(u.id, 'is_active', e.target.checked)}
-                />
-              </td>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={u.is_verified}
-                  onChange={(e) => toggleFlag(u.id, 'is_verified', e.target.checked)}
-                />
-              </td>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={u.is_superuser}
-                  onChange={(e) => toggleFlag(u.id, 'is_superuser', e.target.checked)}
-                />
-              </td>
-              <td>
-                {u.id !== currentUser?.id && (
-                  <button
-                    className="btn-sm btn-danger"
-                    onClick={() => setDeleteTarget({ id: u.id, email: u.email })}
-                  >
-                    Delete
-                  </button>
-                )}
-              </td>
+      <div className="admin-table-scroll">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Active</th>
+              <th>Verified</th>
+              <th>Admin</th>
+              <th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filteredUsers.map((u) => (
+              <tr key={u.id}>
+                <td className="admin-email-cell">{u.email}</td>
+                <td>{u.display_name || '-'}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="admin-checkbox"
+                    aria-label={`Active: ${u.email}`}
+                    checked={u.is_active}
+                    onChange={(e) => toggleFlag(u.id, 'is_active', e.target.checked)}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="admin-checkbox"
+                    aria-label={`Verified: ${u.email}`}
+                    checked={u.is_verified}
+                    onChange={(e) => toggleFlag(u.id, 'is_verified', e.target.checked)}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    className="admin-checkbox"
+                    aria-label={`Admin: ${u.email}`}
+                    checked={u.is_superuser}
+                    onChange={(e) => toggleFlag(u.id, 'is_superuser', e.target.checked)}
+                  />
+                </td>
+                <td>
+                  {u.id !== currentUser?.id && (
+                    <button
+                      className="btn-sm btn-danger"
+                      onClick={() => setDeleteTarget({ id: u.id, email: u.email })}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {deleteTarget && (
         <ConfirmModal

@@ -48,7 +48,7 @@ export const BriefHistoryRail: React.FC<BriefHistoryRailProps> = ({ brief }) => 
   const renderRow = (entry: SavedBrief, isSelected: boolean): React.ReactNode => (
     <div className={`brief-history-item${isSelected ? ' brief-history-item-active' : ''}`}>
       <button className="brief-history-item-main" onClick={() => brief.loadBrief(entry)}>
-        <div className="brief-history-item-title">{entry.title}</div>
+        <div className="brief-history-item-title" title={entry.title}>{entry.title}</div>
         <div className="brief-history-item-meta">
           {entry.sectionCount} sections · {formatWhen(entry.date)}
         </div>
