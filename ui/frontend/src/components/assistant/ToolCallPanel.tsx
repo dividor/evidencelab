@@ -50,14 +50,30 @@ const ResultCard: React.FC<{ r: { title: string; text: string }; id: string }> =
   );
 };
 
+/** The group heading to show above a row: once per stream, and "Other searches"
+ *  for searches without a stream when the trace has streams. */
+const streamHeading = (
+  tc: SearchToolCall,
+  prev: SearchToolCall | undefined,
+  hasStreams: boolean
+): string | undefined => {
+  if (!hasStreams) return undefined;
+  const label = (call: SearchToolCall) => call.stream || 'Other searches';
+  return !prev || label(prev) !== label(tc) ? label(tc) : undefined;
+};
+
 /** A single expandable search query row with optional result cards. */
-const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }) => {
+const QueryRow: React.FC<{ tc: SearchToolCall; index: number; heading?: string }> = ({
+  tc,
+  index,
+  heading,
+}) => {
   const [open, setOpen] = useState(false);
   const hasResults = tc.results && tc.results.length > 0;
 
   return (
     <div className="tool-call-query-row">
-      {tc.stream && <div className="tool-call-stream">{tc.stream}</div>}
+      {heading && <div className="tool-call-stream">{heading}</div>}
       <div
         className={`tool-call-code-entry${hasResults ? ' tool-call-code-entry--expandable' : ''}`}
         onClick={hasResults ? () => setOpen(!open) : undefined}
@@ -73,7 +89,11 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
         </span>
         <span className="tool-call-code-result">{tc.resultCount} results</span>
       </div>
-      {tc.reason && <div className="tool-call-reason">{tc.reason}</div>}
+      {tc.reason && (
+        <div className={`tool-call-reason${hasResults ? ' tool-call-reason--indented' : ''}`}>
+          {tc.reason}
+        </div>
+      )}
       {open && hasResults && (
         <div className="tool-call-results-cards">
           {tc.results!.map((r, j) => (
@@ -95,6 +115,7 @@ export const ToolCallPanel: React.FC<ToolCallPanelProps> = ({
 
   if (toolCalls.length === 0) return null;
 
+  const hasStreams = toolCalls.some((tc) => Boolean(tc.stream));
   const totalResults = toolCalls.reduce((sum, tc) => sum + tc.resultCount, 0);
 
   // Build display lines for search parameters
@@ -125,7 +146,7 @@ export const ToolCallPanel: React.FC<ToolCallPanelProps> = ({
         <div className="tool-call-panel-code">
           <div className="tool-call-code-block">
             {toolCalls.map((tc, i) => (
-              <QueryRow key={i} tc={tc} index={i} />
+              <QueryRow key={i} tc={tc} index={i} heading={streamHeading(tc, i > 0 ? toolCalls[i - 1] : undefined, hasStreams)} />
             ))}
             {paramLines.length > 0 && (
               <>

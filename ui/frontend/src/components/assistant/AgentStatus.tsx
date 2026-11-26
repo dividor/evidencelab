@@ -50,15 +50,18 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
           </div>
           {hasAnyQueries && (
             <div className="agent-status-detail">
-              {toolCalls && toolCalls.map((tc, i) => (
-                <div key={`tc-${i}`} className="agent-status-query">
-                  <span className="agent-status-query-text">
-                    {tc.stream && <><strong>{tc.stream}</strong>{' · '}</>}
-                    {i > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query}
-                  </span>
-                  <span className="agent-status-query-count">{tc.resultCount} results</span>
-                </div>
-              ))}
+              {toolCalls && toolCalls.map((tc, i) => {
+                const query = i > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query;
+                return (
+                  <React.Fragment key={`tc-${i}`}>
+                    {tc.stream && <div className="agent-status-query-stream">{tc.stream}</div>}
+                    <div className="agent-status-query">
+                      <span className="agent-status-query-text" title={query}>{query}</span>
+                      <span className="agent-status-query-count">{tc.resultCount} results</span>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
               {searchQueries && searchQueries
                 .filter((q) => !toolCalls?.some((tc) => tc.query === q))
                 .map((q, i) => (

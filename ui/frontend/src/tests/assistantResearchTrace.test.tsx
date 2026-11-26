@@ -46,3 +46,22 @@ test('carries the stream and evidence gap from search progress into the search d
     global.TextDecoder = previousDecoder;
   }
 });
+
+test('groups search details by stream and labels searches without one', () => {
+  const stream = 'School meals';
+  const calls = [
+    { query: 'school meals outcomes', resultCount: 3, stream },
+    { query: 'attendance effects', resultCount: 2, stream },
+    { query: 'gender differences in school meal benefits', resultCount: 1 },
+  ];
+  render(<ToolCallPanel toolCalls={calls} defaultExpanded />);
+  expect(screen.getAllByText(stream)).toHaveLength(1);
+  expect(screen.getByText('Other searches')).toBeVisible();
+});
+
+test('shows the stream on its own line above the live query', () => {
+  const calls = [{ query: 'school feeding programmes', resultCount: 3, stream: 'School meals outcomes' }];
+  render(<AgentStatus phase="searching" toolCalls={calls} />);
+  expect(screen.getByText('School meals outcomes')).toHaveClass('agent-status-query-stream');
+  expect(screen.getByText('School feeding programmes')).toHaveAttribute('title', 'School feeding programmes');
+});

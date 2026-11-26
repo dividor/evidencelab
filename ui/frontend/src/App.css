@@ -11597,6 +11597,13 @@ a.admin-citation-clickable:hover {
   padding: 0.15rem 0;
 }
 
+.agent-status-query-stream {
+  color: var(--brand-text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding-top: 0.25rem;
+}
+
 .agent-status-query-text {
   color: var(--brand-text-secondary);
   font-style: italic;
@@ -11707,7 +11714,7 @@ a.admin-citation-clickable:hover {
   background: var(--brand-background);
   border-radius: 6px;
   font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Menlo, Consolas, monospace;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--brand-text-secondary);
   overflow-x: auto;
@@ -11743,6 +11750,12 @@ a.admin-citation-clickable:hover {
 }
 
 /* Expandable query rows */
+.tool-call-stream,
+.tool-call-reason {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+}
+
 .tool-call-stream {
   color: var(--brand-text-primary);
   font-weight: 600;
@@ -11752,6 +11765,11 @@ a.admin-citation-clickable:hover {
 .tool-call-reason {
   color: var(--brand-text-secondary);
   margin-bottom: 0.35rem;
+}
+
+/* Line the reason up with the query, which the expand icon indents. */
+.tool-call-reason--indented {
+  padding-left: 1.625rem;
 }
 
 .tool-call-query-row {
