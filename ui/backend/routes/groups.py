@@ -23,6 +23,7 @@ from ui.backend.auth.schemas import (
     GroupUpdate,
 )
 from ui.backend.auth.users import current_superuser
+from ui.backend.services.group_settings import PERSONAL_IMPACT_SETTING
 from ui.backend.services.llm_choice import validate_group_model_choices
 
 router = APIRouter()
@@ -137,6 +138,13 @@ async def update_group(
     if body.description is not None:
         group.description = body.description
     if body.search_settings is not None:
+        if not isinstance(
+            body.search_settings.get(PERSONAL_IMPACT_SETTING, True), bool
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Personal environmental impact must be on or off.",
+            )
         validate_group_model_choices(body.search_settings)
         group.search_settings = body.search_settings if body.search_settings else None
         flag_modified(group, "search_settings")

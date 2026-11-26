@@ -314,6 +314,12 @@ Judging an answer with the model that wrote it tends to favour that model's own 
 
 With a [daily AI limit](system-monitoring.md#daily-ai-limit) set, every model a group can choose needs a price. See [Pipeline Configuration](pipeline-configuration.md#llm-models-supported_llms).
 
+#### Features & Tabs
+
+To control access to the [personal environmental impact summary](../using-evidence-lab/using-evidence-lab.md#your-environmental-impact), select a group and open **Features & Tabs**. Set **Personal environmental impact** to **On** or **Off**, then click **Save Settings**. **Use system default (On)** clears the group's explicit choice.
+
+If someone belongs to several groups, the first group in alphabetical order with an explicit choice decides whether they have access. If none of their groups makes a choice, they have access by default. Turning the summary off for a user hides the menu item and blocks their access to the summary. Evidence Lab continues recording estimates for the admin LLM Usage report.
+
 ### User Self-Service
 
 Users have access to a **Profile** modal (click avatar → Profile) where they can:

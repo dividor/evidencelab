@@ -877,6 +877,13 @@ h6,
   }
 }
 
+/* In short tablet-width windows, Search can sit level with the Feedback tab. */
+@media (min-width: 641px) and (max-width: 1024px) and (max-height: 500px) {
+  .search-container.search-container-landing .search-form {
+    padding-right: var(--spacing-xl);
+  }
+}
+
 /* Example query chips — centered under the search input */
 .search-examples {
   display: flex;
@@ -4784,6 +4791,65 @@ li.ai-fact-active::before {
   overflow-y: auto;
 }
 
+.personal-impact-modal {
+  width: min(480px, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  color: var(--text-primary);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.personal-impact-modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.personal-impact-modal .login-tab-active {
+  font-weight: 600;
+}
+
+.personal-impact-dates,
+.personal-impact-coverage {
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+}
+
+.personal-impact-group-setting select {
+  max-width: 20rem;
+}
+
+.personal-impact-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.personal-impact-metrics > div {
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+}
+
+.personal-impact-metrics dt {
+  font-size: 0.8125rem;
+}
+
+.personal-impact-metrics dd {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.personal-impact-metrics small {
+  display: block;
+  font-weight: 400;
+  color: var(--gray-600);
+}
+
 .app-footer {
   display: flex;
   justify-content: center;
@@ -4828,9 +4894,8 @@ li.ai-fact-active::before {
   color: var(--gray-400);
 }
 
-/* On narrow screens the footer's links wrap onto more lines, each link whole,
-   clear of the corner where the feedback button floats (48 px, 24 px from the
-   corner), so it never covers a link. */
+/* On narrow screens the footer's links wrap onto more lines, each link whole.
+   Leave space on the right for the Feedback tab as the footer scrolls past it. */
 @media (max-width: 768px) {
   .app-footer {
     flex-wrap: wrap;
@@ -4848,6 +4913,34 @@ li.ai-fact-active::before {
   .app-footer-link {
     white-space: nowrap;
   }
+}
+
+.feedback-side-tab {
+  position: fixed;
+  top: 75%;
+  right: 0;
+  z-index: 9000;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  padding: 0.875rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--brand-accent, #475569);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feedback-side-tab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.feedback-side-tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
 }
 
 .prompt-text {
@@ -10123,16 +10216,18 @@ sup.reference-number {
 .admin-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid var(--gray-200);
+  overflow-x: auto;
+  box-shadow: inset 0 -2px 0 var(--gray-200);
   margin-bottom: var(--spacing-xl);
 }
 
 .admin-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0.6rem 1.25rem;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 500;
@@ -10171,6 +10266,46 @@ sup.reference-number {
 
 .admin-section h4:first-child {
   margin-top: 0;
+}
+
+.admin-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.admin-search-form {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.admin-search-form .admin-search-input {
+  width: 250px;
+  min-width: 0;
+}
+
+.admin-email-cell {
+  white-space: nowrap;
+}
+
+.admin-checkbox {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .admin-panel .btn-primary {
+    min-height: 44px;
+  }
+
+  /* Fade the right edge so the tabs scrolled out of view show they are there;
+     the padding lets the last tab scroll clear of the fade. */
+  .admin-header > .admin-tabs {
+    padding-right: 2rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
 }
 
 .admin-table {
@@ -13134,6 +13269,11 @@ button.doc-link:hover {
 
 .toc-validator-table .filter-icon-button {
   flex-shrink: 0;
+}
+
+.toc-validator-filter-popover {
+  --toc-filter-width: min(280px, calc(100vw - 16px));
+  width: var(--toc-filter-width);
 }
 
 /* Click-away layer; sits just under .filter-popover (z-index: 1000). */

@@ -398,7 +398,7 @@ export interface RegenAllSubmit {
 }
 
 /**
- * Confirmation for the document-wide "AI Regenerate All": every section is
+ * Confirmation for the document-wide Regenerate All action. Every section is
  * re-researched from scratch, so the user gets a chance to steer the run with
  * guidance and a voice & tone profile before it starts.
  */

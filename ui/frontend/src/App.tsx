@@ -3048,6 +3048,7 @@ function App() {
         onDocsClick={handleDocsClick}
         onAdminClick={() => handleTabChange('admin')}
         onLoadResearch={handleLoadResearch}
+        personalImpactEnabled={groupDefaults?.personalEnvironmentalImpact}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} tabs={tabConfig} />}
       />
 

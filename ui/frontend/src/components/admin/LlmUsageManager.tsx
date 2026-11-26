@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
+import { FOOTPRINT_COLUMNS, FootprintRanges, formatFootprintRange } from '../../utils/footprintDisplay';
+import EcoLogitsLink from '../EcoLogitsLink';
 import { SortableHeader } from '../documents/SortableHeader';
 import FootprintBasisModal, { BasisEntry, FootprintMethod, FootprintSource } from './FootprintBasisModal';
 
@@ -13,13 +15,7 @@ type GroupBy = 'user' | 'user_group';
 
 // Estimated footprint from EcoLogits (null where nothing was estimated), in
 // kWh, kg CO2eq and litres, each as a min and a max.
-interface FootprintFields {
-  energy_kwh_min: number | null;
-  energy_kwh_max: number | null;
-  gwp_kgco2eq_min: number | null;
-  gwp_kgco2eq_max: number | null;
-  water_l_min: number | null;
-  water_l_max: number | null;
+interface FootprintFields extends FootprintRanges {
   // Output tokens with no estimate (uncovered models, or rows from before estimates began).
   footprint_unestimated_tokens: number;
   // What the figures rest on: each estimated model, the EcoLogits model(s)
@@ -90,25 +86,6 @@ const formatCost = (cost: string | null): string => {
   return `$${n.toFixed(6)}`;
 };
 
-// Footprint columns: the API gives kWh, kg CO2eq and litres; the table shows
-// Wh, g and mL (x 1000), as "min–max" because EcoLogits estimates ranges.
-const FOOTPRINT_COLUMNS = [
-  { measure: 'energy_kwh', label: 'Energy (Wh)' },
-  { measure: 'gwp_kgco2eq', label: 'Emissions (g CO\u2082e)' },
-  { measure: 'water_l', label: 'Water (mL)' },
-] as const;
-type FootprintMeasure = (typeof FOOTPRINT_COLUMNS)[number]['measure'];
-
-const formatEstimate = (n: number): string =>
-  (n * 1000).toLocaleString(undefined, { maximumSignificantDigits: 2 });
-
-const formatRange = (fields: FootprintFields, measure: FootprintMeasure): string => {
-  const low = fields[`${measure}_min`];
-  const high = fields[`${measure}_max`];
-  if (low == null || high == null) return NULL_CELL;
-  return `${formatEstimate(low)}\u2013${formatEstimate(high)}`;
-};
-
 const NUMBER_CELL: React.CSSProperties = {
   textAlign: 'right',
   fontFamily: 'monospace',
@@ -123,7 +100,7 @@ const FootprintCells: React.FC<{ fields: FootprintFields; onShowBasis: ShowBasis
   <>
     {FOOTPRINT_COLUMNS.map(({ measure }) => (
       <td key={measure} style={NUMBER_CELL}>
-        {formatRange(fields, measure)}
+        {formatFootprintRange(fields, measure) ?? NULL_CELL}
       </td>
     ))}
     <td style={{ fontSize: '0.78rem' }}>
@@ -178,7 +155,7 @@ const BasisBadges: React.FC<{ basis: BasisEntry[]; onShowBasis: ShowBasis }> = (
 
 const FootprintNote: React.FC<{ totals: UsageResponse['totals'] }> = ({ totals }) => (
   <div className="text-muted llm-usage-footprint-note" style={{ fontSize: '0.78rem', marginTop: '0.5rem' }}>
-    Energy, emissions and water are estimates from EcoLogits for the models it covers,
+    Energy, emissions and water are estimates from <EcoLogitsLink /> for the models it covers,
     shown as a range from low to high.
     {totals.footprint_unestimated_tokens > 0 && (
       <>

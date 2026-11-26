@@ -12,8 +12,8 @@ The same review runs in two places:
 
 - **Before a pull request is opened:** whoever changed the UI runs it against
   the app running locally.
-- **On pull requests that change `ui/frontend/src/`:** CI runs it against the
-  app started by the `integration-tests` job and posts its findings as a
+- **On pull requests that change the web app or the review setup:** CI runs it
+  against the app started by the `integration-tests` job and posts its findings as a
   comment. When there are findings, the `ux-fix` job asks the model to fix them
   and opens a pull request into the reviewed pull request's branch, for its
   author to review and merge.
@@ -36,6 +36,40 @@ lists, a long web address and a citation that has no source.
 it in the browser with `localStorage.setItem('evidencelab_brief_history_v1',
 JSON.stringify([<the file's JSON>]))`, then choose "Load a saved brief" in the
 Brief tab. In CI it is at `ux-review/saved-brief.json`.
+
+### Administration
+
+For changes that affect Administration, open `/admin` as a signed-in
+administrator and wait for the Administration heading. In CI, use the
+`playwright_admin` browser, which already has a session for the test stack.
+Use the regular `playwright` browser for signed-out screens.
+
+Follow the changed components and styles to the Administration tabs and
+dialogs that render them. Check shared components and CSS even when the
+changes are outside the Admin folder. For a change to the Administration
+layout itself, open every tab that uses the changed layout. For an
+`admin-smoke` review, open Users at both sizes to verify the review setup. If a
+shared file changed but the specific edit affects no admin tab, check Users
+as a baseline for the shared layout.
+
+For each affected tab or dialog, capture a screenshot at both sizes. Measure
+the document's `clientWidth` and `scrollWidth`, and use bounding rectangles to
+identify visible elements past either viewport edge. Check that controls and
+text stay visible around sticky headers and inside dialogs. A table can have
+its own horizontal scroll area as long as it stays inside the screen and its
+controls remain reachable. Report the element and measured overflow in pixels.
+If overflow makes a tab unreachable on the phone, record that, select the tab
+at desktop width, then resize to the phone width to inspect its content.
+
+In `screens`, start each entry with `Administration / <tab or dialog>, <size>`.
+Use the same name before the first comma at both sizes. For example, list
+`Administration / Users, 390×844` and `Administration / Users, 1440×900`.
+Put the state, scroll position, focus and screenshot name after the size.
+Give each affected dialog its own name and list it at both sizes. Describe
+extra observations from one size in the findings for that screen.
+
+If sign-in fails or an affected admin screen cannot load, answer
+`could not review` and say which step failed.
 
 ## 2. Look at each screen at both sizes
 
