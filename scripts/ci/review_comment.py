@@ -28,6 +28,8 @@ Environment:
   RUN_URL  the workflow run, linked from the comment
   REVIEW_OUTCOME  ux only: the review step's outcome, quoted when it gave no
            verdict (for example "skipped" when its tool did not install)
+  REVIEW_SCOPE  ux only: the screens the review must cover
+  BROWSER_SETUP_OUTCOME  ux only: whether the review browser was prepared
   GH_TOKEN a token that may comment on pull requests and, for ux, create
            check runs (read by the gh CLI)
 """
@@ -46,6 +48,7 @@ UX_MARKER = "<!-- ux-review -->"
 UX_FIELDS = ("verdict", "summary", "screens", "findings")
 UX_CHECK_NAME = "UX review"
 UX_PASS = "looks good"
+ADMIN_VIEWPORTS = ("390×844", "1440×900")
 COMMENT_AUTHOR = "github-actions[bot]"
 # GitHub's limit on a check run's summary.
 CHECK_SUMMARY_LIMIT = 65535
@@ -109,6 +112,39 @@ def docs_comment(verdict: dict[str, Any], sha: str, run_url: str) -> str:
 def ux_failed(verdict: dict[str, Any]) -> bool:
     """True unless the review looked and found nothing that must change."""
     return verdict["verdict"] != UX_PASS
+
+
+def check_admin_coverage(verdict: dict[str, Any], scope: str) -> dict[str, Any]:
+    """Report a failed review if it omitted either size of the admin UI."""
+    if (
+        scope not in {"admin", "admin-smoke"}
+        or verdict["verdict"] == "could not review"
+    ):
+        return verdict
+    viewports: dict[str, set[str]] = {}
+    for screen in verdict["screens"]:
+        name, _, label = screen.partition(", ")
+        if name.startswith("Administration / "):
+            viewports.setdefault(name, set()).update(
+                size for size in ADMIN_VIEWPORTS if size in label
+            )
+    if scope == "admin-smoke":
+        viewports.setdefault("Administration / Users", set())
+    if not viewports:
+        viewports["Administration"] = set()
+    missing = [
+        f"{name} at {size}"
+        for name, sizes in viewports.items()
+        for size in ADMIN_VIEWPORTS
+        if size not in sizes
+    ]
+    if missing:
+        return {
+            **verdict,
+            "verdict": "could not review",
+            "summary": f"The review did not record {', '.join(missing)}.",
+        }
+    return verdict
 
 
 def table_cell(text: Any) -> str:
@@ -258,13 +294,16 @@ def run_ux(env: dict[str, str], run: Runner = subprocess.run) -> int:
         verdict = parse_verdict(env.get("VERDICT"), UX_FIELDS)
     except ValueError as exc:
         error = str(exc)
-        if env.get("REVIEW_OUTCOME"):
+        if env.get("BROWSER_SETUP_OUTCOME") == "failure":
+            error = "the review browser setup failed before a verdict was available"
+        elif env.get("REVIEW_OUTCOME"):
             error += f" (the review step's outcome was {env['REVIEW_OUTCOME']})"
         body = no_verdict_comment(UX_MARKER, "UX review", error, sha, run_url)
         upsert_comment(repo, pr, UX_MARKER, body, run=run)
         report_check(repo, sha, True, "No verdict", body, run=run)
         print(f"UX review: {exc}", file=sys.stderr)
         return 0
+    verdict = check_admin_coverage(verdict, env.get("REVIEW_SCOPE", ""))
     body = ux_comment(verdict, sha, run_url)
     upsert_comment(repo, pr, UX_MARKER, body, run=run)
     report_check(

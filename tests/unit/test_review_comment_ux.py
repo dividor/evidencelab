@@ -72,6 +72,52 @@ class TestUxVerdict:
     def test_table_cell_when_pipes_and_line_breaks_then_one_safe_cell(self):
         assert rc.table_cell("a | b\nc") == "a \\| b c"
 
+    @pytest.mark.parametrize(
+        ("scope", "screens", "expected"),
+        [
+            ("public", ["Search, 390×844"], "looks good"),
+            ("admin", ["Search, 390×844", "Search, 1440×900"], "could not review"),
+            ("admin", ["Administration / Activity, 390×844"], "could not review"),
+            (
+                "admin",
+                [
+                    "Administration / Users, 390×844",
+                    "Administration / Activity, 1440×900",
+                ],
+                "could not review",
+            ),
+            (
+                "admin",
+                [
+                    "Administration / Activity, 390×844",
+                    "Administration / Activity, 1440×900",
+                ],
+                "looks good",
+            ),
+            (
+                "admin-smoke",
+                [
+                    "Administration / Activity, 390×844",
+                    "Administration / Activity, 1440×900",
+                ],
+                "could not review",
+            ),
+            (
+                "admin-smoke",
+                ["Administration / Users, 390×844", "Administration / Users, 1440×900"],
+                "looks good",
+            ),
+        ],
+    )
+    def test_check_admin_coverage_when_reviewed_then_requires_admin_at_both_sizes(
+        self, scope, screens, expected
+    ):
+        verdict = rc.check_admin_coverage(
+            _ux(verdict="looks good", screens=screens), scope
+        )
+
+        assert verdict["verdict"] == expected
+
 
 class TestUxComment:
     def test_ux_comment_when_findings_then_tabulates_them_and_lists_screens(self):
@@ -127,6 +173,18 @@ class TestRunUx:
             "the check gave no verdict (the review step's outcome was skipped)"
             in summary
         )
+
+    def test_run_ux_when_browser_setup_fails_then_reports_setup_failure(self):
+        api = FakeApi()
+
+        rc.run_ux(
+            {**ENV, "BROWSER_SETUP_OUTCOME": "failure", "REVIEW_OUTCOME": "skipped"},
+            run=api,
+        )
+
+        (check,) = api.check_runs()
+        assert check["conclusion"] == "failure"
+        assert "review browser setup failed" in check["output"]["summary"]
 
     def test_run_ux_when_no_verdict_then_reports_failure_and_exits_0(self):
         api = FakeApi()

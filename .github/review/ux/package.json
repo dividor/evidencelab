@@ -4,6 +4,7 @@
   "description": "The browser tool the UX review in CI drives (.github/review/ux-review.md).",
   "license": "MIT",
   "dependencies": {
-    "@playwright/mcp": "0.0.85"
+    "@playwright/mcp": "0.0.85",
+    "playwright": "1.66.0-alpha-2026-11-09"
   }
 }
