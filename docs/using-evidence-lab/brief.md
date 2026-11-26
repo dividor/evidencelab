@@ -71,20 +71,23 @@ When a section finishes, it shows the written text with inline citations.
 For each completed section you can:
 
 - **Manually Edit** — change the prose by hand, then click **Done**.
-- **AI Regenerate** — re-run the research from scratch, optionally with new guidance, a different voice or a different length.
-- **AI Edit** — give an instruction (for example *make the viewpoint relate more to domestic policy*) and the section is revised to it, keeping its current text and citations rather than starting again.
-- **AI Get Updates** — search the library for sources published since the section was last researched and fold any new findings in, with an optional focus.
 - **Section History** — every change to the section: every generation, edit, update, manual edit and restore, with the question or instruction used. Click a row to see that version of the section compared with the version before it, and **Restore this version** to bring it back (see [Section history](#section-history) below).
 
-After an **AI Regenerate**, **AI Edit** or **AI Get Updates** on one section, the section shows its changes like tracked changes in Word: removed text struck through in red, new text in green. Three buttons sit above it:
+Open **Ask AI** on a completed section to choose an AI action.
+
+- **Regenerate** runs the research again from scratch. You can give new guidance or change the voice or length.
+- **Edit** revises the section from its current text and citations. Give an instruction such as *make the viewpoint relate more to domestic policy*.
+- **Get Updates** searches for sources published since the last run and adds new findings. You can give it a topic to focus on.
+
+After any of these actions, the section shows its changes like tracked changes in Word: removed text struck through in red, new text in green. Three buttons sit above it:
 
 - **Hide Changes** shows just the new text (and becomes **Show Changes**).
 - **Keep Edits** accepts the change.
 - **Reject Edits** puts back the text the section had before.
 
-The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored. **AI Regenerate All** and **AI Get All Recent Updates** do not ask you to review each section; their changes appear in [Document History](#document-history) instead.
+The change waits for you to keep or reject it, even if you reload the page or come back later; doing anything else to the section accepts it. When you come back to it, the section shows just the new text; to keep or reject it then, click its row, marked *awaiting review*, in the Section History. A rejected change stays in the section's Section History, marked *rejected*, so it can still be viewed or restored.
 
-For the whole brief, **AI Regenerate All** re-researches every section with new instructions, voice or length, and **AI Get All Recent Updates** runs Get Updates on every researched section.
+Open **Ask AI** in the brief header for actions that apply to the whole brief. **Regenerate All** runs the research for every section again, with the option to change the instructions, voice or length. **Get Updates for All Sections** updates every researched section. Review these changes in [Document History](#document-history).
 
 Each researched section shows its word count next to its heading, and the line under the brief title shows the total.
 
@@ -93,13 +96,13 @@ Each researched section shows its word count next to its heading, and the line u
 A top-level heading that has sub-headings is written as a short **introduction**: it frames the theme and says what each sub-heading goes on to examine, and leaves the findings to the sub-sections. It never adds headings of its own, and it does not cover in detail what its sub-headings will.
 
 - **Length** — an introduction is kept short: about 120 words unless you set a length on that section itself in its research panel. It is never longer than the brief's own section length. Administrators can change the default length (`target_words`) and the number of automatic re-runs (`heading_retries`) in `config.json` under `application.brief.introductions`; if the setting is left out, 120 words and one re-run are used.
-- **Order** — **Start deep research** and **AI Regenerate All** write each heading's sub-sections first and its introduction last, so the introduction can point to what the sub-sections actually say.
-- **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Section History**, so you can edit them out or use **AI Regenerate**.
-- **Edits** — **AI Edit** and **AI Get Updates** keep an introduction an introduction.
+- **Order** — **Start deep research** and **Regenerate All** write each heading's sub-sections first and its introduction last, so the introduction can point to what the sub-sections actually say.
+- **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Section History**, so you can edit them out or choose **Regenerate** under **Ask AI**.
+- **Edits** — **Edit** and **Get Updates** preserve the section's role as an introduction.
 
 #### Section length
 
-A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **AI Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
+A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
 
 The target is enforced three ways, because a model on its own only approximates a word count:
 
@@ -221,10 +224,10 @@ Working with templates:
 A voice & tone profile is a set of style instructions applied whenever a section is written, so briefs read consistently for their audience — a donor board memo and a field-team summary need different registers.
 
 - **Create one** — on the **Voice & tone** tab in Brief Central, click **New voice & tone profile** and give it a name, a one-line description of when to use it, and the style instructions themselves (for example: *Write in plain English at CEFR B2. Lead each section with the finding, then the evidence. Avoid acronyms on first use.*).
-- **Apply it to a brief** — choose a profile in the New brief dialog (either tab), or in **AI Regenerate All**. A template can also set one.
+- **Apply it to a brief** — choose a profile in the New brief dialog (either tab), or in **Regenerate All**. A template can also set one.
 - **Override it for one section** — a section's Research or Regenerate panel has its own profile selector; leave it on *Use brief default* to inherit the brief's.
 
-The instructions are passed to the model when the outline is generated, when a section is researched or regenerated, and when a section is revised with **AI Edit**.
+The model reads these instructions when it writes the outline, researches a section, or revises a section with **Edit** under **Ask AI**.
 
 ---
 
