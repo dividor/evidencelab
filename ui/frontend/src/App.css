@@ -4796,6 +4796,13 @@ li.ai-fact-active::before {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
+.personal-impact-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
+}
+
 .personal-impact-modal::backdrop {
   background: rgba(0, 0, 0, 0.5);
 }
@@ -4867,6 +4874,11 @@ li.ai-fact-active::before {
   box-sizing: border-box;
   min-height: 44px;
   padding: 0.625rem 0;
+}
+
+.personal-impact-coverage-details summary:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
 }
 
 .personal-impact-coverage-details p {
