@@ -29,16 +29,17 @@ describe('FeedbackButton', () => {
     mockAxiosPost.mockClear();
   });
 
-  test('renders an icon button with a tooltip', () => {
+  test('renders a labelled Feedback tab that opens a dialog', () => {
     render(<FeedbackButton />);
-    const trigger = screen.getByRole('button', { name: /send feedback/i });
+    const trigger = screen.getByRole('button', { name: 'Feedback' });
     expect(trigger).toBeInTheDocument();
     expect(trigger).toHaveAttribute('title', 'Send feedback about this page');
+    expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
   });
 
   test('opening the modal does not show URL or screenshot', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
     expect(screen.queryByText(/Page:/)).not.toBeInTheDocument();
     expect(screen.queryByAltText(/screenshot/i)).not.toBeInTheDocument();
@@ -46,7 +47,7 @@ describe('FeedbackButton', () => {
 
   test('submit is disabled until both a star rating and a comment are provided', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
     const submit = screen.getByRole('button', { name: /^submit$/i });
     expect(submit).toBeDisabled();
@@ -65,7 +66,7 @@ describe('FeedbackButton', () => {
 
   test('submit posts rating_type, score, comment, and url', async () => {
     render(<FeedbackButton />);
-    fireEvent.click(screen.getByRole('button', { name: /send feedback/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Feedback' }));
     await screen.findByRole('heading', { name: /send feedback/i });
 
     fireEvent.change(screen.getByPlaceholderText(/Tell us what went well/i), {
