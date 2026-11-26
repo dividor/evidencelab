@@ -347,6 +347,7 @@ class SearchTracker:
             entry: Dict[str, Any] = {
                 "chunkId": r.get("chunk_id", ""),
                 "docId": r.get("doc_id", ""),
+                "dataSource": self.data_source,
                 "title": clean_text(r.get("title", "")),
                 # Full chunk text (not truncated): the on-screen citation panels
                 # show title/page only, while the Brief's Word export renders the
@@ -403,6 +404,7 @@ def build_research_agent(
     )
     contextualizer = template.render(
         contextualize=True,
+        data_source=data_source,
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )

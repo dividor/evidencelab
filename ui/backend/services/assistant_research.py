@@ -18,6 +18,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
     StringConstraints,
     TypeAdapter,
     ValidationError,
@@ -28,6 +29,7 @@ from typing_extensions import Annotated
 
 from ui.backend.services.agent_passages import passage_for_agent
 from ui.backend.services.assistant_settings import assistant_prompt_templates
+from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,9 @@ _JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(\{.*?\})\s*`{3}", re.DOTALL | re.IGN
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
 )
+_OUT_OF_SCOPE = "I can only answer questions supported by the selected dataset."
+_CLARIFY = "What would you like me to look up in the selected dataset?"
+_NO_DATASET_EVIDENCE = "NO_DATASET_EVIDENCE"
 _SearchQuery = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
 ]
@@ -71,11 +76,14 @@ class ContextSearch(BaseModel):
     reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
-class ContextReply(BaseModel):
+class ContextDisposition(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    reply: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1200)
-    ]
+    action: Literal["decline", "clarify"]
+
+
+class GroundingVerdict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    supported: StrictBool
 
 
 class FollowUpPlan(BaseModel):
@@ -143,7 +151,8 @@ class ResearchState(TypedDict, total=False):
 
 
 _Plan = TypeVar("_Plan")
-_CONTEXT_PLAN = TypeAdapter(ContextSearch | ContextReply)
+_CONTEXT_PLAN = TypeAdapter(ContextSearch | ContextDisposition)
+_GROUNDING_VERDICT = TypeAdapter(GroundingVerdict)
 _INITIAL_PLAN: TypeAdapter[FollowUpPlan | StreamPlan] = TypeAdapter(
     FollowUpPlan | StreamPlan
 )
@@ -258,6 +267,9 @@ class ResearchWorkflow:
         self.request = assistant_prompt_templates.get_template(
             "assistant_research_request.j2"
         )
+        self.grounding_check = assistant_prompt_templates.get_template(
+            "assistant_grounding_check.j2"
+        ).render()
         # Research streams can plan concurrently. Keep citation allocation and
         # progress in search order since the tracker is shared for the whole turn.
         self.search_lock = asyncio.Lock()
@@ -294,16 +306,17 @@ class ResearchWorkflow:
         query = state.get("initial_search_query")
         reason = ""
         if query is None and history:
-            plan: ContextSearch | ContextReply = await self._request_plan(
+            plan: ContextSearch | ContextDisposition = await self._request_json(
                 self.contextualizer,
                 self.request.render(stage="contextualize", question=question),
                 history,
                 config,
                 _CONTEXT_PLAN,
             )
-            if isinstance(plan, ContextReply):
-                get_stream_writer()({"type": "token", "token": plan.reply})
-                return {"answer": plan.reply}
+            if isinstance(plan, ContextDisposition):
+                answer = _CLARIFY if plan.action == "clarify" else _OUT_OF_SCOPE
+                get_stream_writer()({"type": "token", "token": answer})
+                return {"answer": answer}
             query, reason = plan.query, plan.reason
         if query is None:
             query = question
@@ -330,7 +343,7 @@ class ResearchWorkflow:
             first_search=searches[0],
             evidence=_render_evidence(initial),
         )
-        plan: FollowUpPlan | StreamPlan = await self._request_plan(
+        plan: FollowUpPlan | StreamPlan = await self._request_json(
             self.opening, prompt, history, config, _INITIAL_PLAN
         )
         if isinstance(plan, StreamPlan):
@@ -391,7 +404,7 @@ class ResearchWorkflow:
             if remaining == 0:
                 break
             prompt = self._follow_up_prompt(task, searches, evidence, recent, remaining)
-            plan: FollowUpPlan = await self._request_plan(
+            plan: FollowUpPlan = await self._request_json(
                 self.planner,
                 prompt,
                 task["history"],
@@ -431,7 +444,7 @@ class ResearchWorkflow:
     def _proposal(plan: FollowUpPlan, searches: list[str]) -> str:
         return next((q for q in plan.queries if _is_new_query(q, searches)), "")
 
-    async def _request_plan(
+    async def _request_json(
         self,
         system: str,
         prompt: str,
@@ -453,7 +466,7 @@ class ResearchWorkflow:
                 return schema.validate_json(fenced[1] if fenced else raw)
             except ValidationError as exc:
                 logger.warning(
-                    "Invalid Assistant plan: %s",
+                    "Invalid structured Assistant response: %s",
                     [
                         (error["loc"], error["type"])
                         for error in exc.errors(
@@ -463,7 +476,9 @@ class ResearchWorkflow:
                         )
                     ],
                 )
-        raise ValueError("The Assistant model could not produce a valid search plan")
+        raise ValueError(
+            "The Assistant model could not produce a valid structured response"
+        )
 
     async def answer(
         self, state: ResearchState, config: RunnableConfig
@@ -485,8 +500,32 @@ class ResearchWorkflow:
             if evidence
             else _NO_EVIDENCE
         )
+        if answer != _NO_EVIDENCE:
+            checked = await self._verify_answer(state, answer, evidence, config)
+            if not checked:
+                answer = _NO_EVIDENCE
         stream({"type": "token", "token": answer})
         return {"answer": answer}
+
+    async def _verify_answer(
+        self,
+        state: ResearchState,
+        answer: str,
+        evidence: dict[int, Passage],
+        config: RunnableConfig,
+    ) -> bool:
+        cited = [evidence[index] for index in cited_numbers_in_order(answer)]
+        prompt = self.request.render(
+            stage="verify",
+            question=state["query"],
+            search_focus=state["searches"][0],
+            answer=answer,
+            evidence=_render_evidence(cited),
+        )
+        verdict: GroundingVerdict = await self._request_json(
+            self.grounding_check, prompt, [], config, _GROUNDING_VERDICT
+        )
+        return verdict.supported
 
     async def _write(
         self,
@@ -510,11 +549,11 @@ class ResearchWorkflow:
         for _ in range(2):
             response = await self.llm.ainvoke(messages, config=config)
             answer = message_text(response).strip()
-            if not answer:
-                raise ValueError("The Assistant model returned an empty answer")
+            if answer == _NO_DATASET_EVIDENCE or not answer:
+                return _NO_EVIDENCE
             invalid = _invalid_citations(answer, evidence)
             if not invalid:
-                return answer
+                return answer if cited_numbers_in_order(answer) else _NO_EVIDENCE
             messages.extend(
                 [
                     response,
@@ -525,7 +564,7 @@ class ResearchWorkflow:
                     ),
                 ]
             )
-        raise ValueError("The Assistant model could not resolve its citations")
+        return _NO_EVIDENCE
 
 
 def _render_streams(findings: list[StreamResult]) -> str:

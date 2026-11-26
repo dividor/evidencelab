@@ -28,7 +28,14 @@ Question: {{ question | safe }}
 {{ streams | safe }}Retrieved evidence:
 {{ evidence | safe }}
 {%- elif stage == 'retry_plan' -%}
-The previous reply did not match the search plan format. Return only a JSON object matching the system instructions.
+The previous reply did not match the required format. Return only a JSON object matching the system instructions.
 {%- elif stage == 'retry_citations' -%}
 These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite the full answer. Cite only labels in the retrieved evidence. Remove any claim whose evidence cannot be cited.
+{%- elif stage == 'verify' -%}
+Question: {{ question | tojson }}
+Search focus: {{ search_focus | tojson }}
+Proposed answer: {{ answer | tojson }}
+
+Cited passages:
+{{ evidence | safe }}
 {%- endif %}

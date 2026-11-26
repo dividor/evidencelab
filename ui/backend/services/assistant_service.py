@@ -96,11 +96,12 @@ def _build_conversation_messages(
 
 def _extract_prior_sources(
     conversation_messages: Optional[List[Dict[str, Any]]],
+    data_source: str,
 ) -> List[Dict[str, Any]]:
-    """Collect every cited source from prior assistant turns, deduped by index.
+    """Collect previously cited evidence from the selected dataset.
 
-    Saved sources carry an evidence index for follow-up turns. Older answers
-    already used the global number as their display index.
+    Source provenance is stamped by retrieval. Earlier citations without that
+    stamp still appear in the visible history, but are unavailable as evidence.
     """
     if not conversation_messages:
         return []
@@ -109,6 +110,8 @@ def _extract_prior_sources(
         if msg.get("role") != "assistant":
             continue
         for src in msg.get("sources") or []:
+            if src.get("dataSource") != data_source:
+                continue
             idx = src.get("evidenceIndex", src.get("index"))
             if isinstance(idx, int):
                 by_idx[idx] = {**src, "index": idx}
@@ -191,7 +194,7 @@ async def stream_research_response(
             reranker_model,
             search_settings,
             system_prompt_override,
-            _extract_prior_sources(conversation_messages),
+            _extract_prior_sources(conversation_messages, data_source),
             deep_research=deep_research,
             target_words=target_words,
             introduces_sub_sections=introduces_sub_sections,

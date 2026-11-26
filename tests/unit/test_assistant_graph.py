@@ -734,19 +734,23 @@ class TestExtractPriorSources:
     """Tests for _extract_prior_sources — pulling sources from history."""
 
     def test_returns_empty_for_none_or_empty(self):
-        assert _extract_prior_sources(None) == []
-        assert _extract_prior_sources([]) == []
+        assert _extract_prior_sources(None, "wfp") == []
+        assert _extract_prior_sources([], "wfp") == []
 
     def test_extracts_sources_from_assistant_messages_only(self):
         history = [
-            {"role": "user", "content": "Q1", "sources": [{"index": 99}]},
+            {
+                "role": "user",
+                "content": "Q1",
+                "sources": [{"index": 99, "dataSource": "wfp"}],
+            },
             {
                 "role": "assistant",
                 "content": "A1",
-                "sources": [{"index": 1, "title": "T"}],
+                "sources": [{"index": 1, "title": "T", "dataSource": "wfp"}],
             },
         ]
-        result = _extract_prior_sources(history)
+        result = _extract_prior_sources(history, "wfp")
         assert [s["index"] for s in result] == [1]
 
     def test_dedupes_across_turns_by_index(self):
@@ -756,8 +760,8 @@ class TestExtractPriorSources:
                 "role": "assistant",
                 "content": "A1",
                 "sources": [
-                    {"index": 1, "title": "T1"},
-                    {"index": 2, "title": "T2"},
+                    {"index": 1, "title": "T1", "dataSource": "wfp"},
+                    {"index": 2, "title": "T2", "dataSource": "wfp"},
                 ],
             },
             {"role": "user", "content": "Q2"},
@@ -768,12 +772,13 @@ class TestExtractPriorSources:
                     {
                         "index": 2,
                         "title": "T2 (latest)",
+                        "dataSource": "wfp",
                     },  # duplicate index — latest wins
-                    {"index": 3, "title": "T3"},
+                    {"index": 3, "title": "T3", "dataSource": "wfp"},
                 ],
             },
         ]
-        result = _extract_prior_sources(history)
+        result = _extract_prior_sources(history, "wfp")
         assert [s["index"] for s in result] == [1, 2, 3]
         # Last-write-wins lets the most recent message refine an entry if needed.
         assert result[1]["title"] == "T2 (latest)"
@@ -784,7 +789,7 @@ class TestExtractPriorSources:
             {"role": "assistant", "content": "A2", "sources": []},  # empty list
             {"role": "assistant", "content": "A3", "sources": None},  # explicit None
         ]
-        assert _extract_prior_sources(history) == []
+        assert _extract_prior_sources(history, "wfp") == []
 
     def test_ignores_sources_with_non_int_index(self):
         history = [
@@ -792,12 +797,12 @@ class TestExtractPriorSources:
                 "role": "assistant",
                 "content": "A1",
                 "sources": [
-                    {"index": "abc", "title": "Bad"},
-                    {"index": 2, "title": "Good"},
+                    {"index": "abc", "title": "Bad", "dataSource": "wfp"},
+                    {"index": 2, "title": "Good", "dataSource": "wfp"},
                 ],
             },
         ]
-        result = _extract_prior_sources(history)
+        result = _extract_prior_sources(history, "wfp")
         assert [s["index"] for s in result] == [2]
 
 

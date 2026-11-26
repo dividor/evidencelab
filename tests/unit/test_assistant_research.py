@@ -26,17 +26,26 @@ def point(number, text):
 
 
 async def run_research(
-    responses, batches, *, deep=False, history=None, query=QUESTION, initial_query=None
+    responses,
+    batches,
+    *,
+    deep=False,
+    history=None,
+    query=QUESTION,
+    initial_query=None,
+    supported=True,
 ):
     llm = MagicMock()
-    if callable(responses):
-        llm.ainvoke = AsyncMock(
-            side_effect=lambda messages, **kwargs: AIMessage(
-                content=responses(messages)
-            )
+    replies = None if callable(responses) else iter(responses)
+
+    def model(messages, **kwargs):
+        if messages[0].content.startswith("Check whether the proposed answer"):
+            return AIMessage(content=json.dumps({"supported": supported}))
+        return AIMessage(
+            content=responses(messages) if replies is None else next(replies)
         )
-    else:
-        llm.ainvoke = AsyncMock(side_effect=[AIMessage(content=x) for x in responses])
+
+    llm.ainvoke = AsyncMock(side_effect=model)
     with (
         patch("ui.backend.utils.app_state.validate_data_source", return_value="wfp"),
         patch("ui.backend.services.assistant_service._get_llm", return_value=llm),
@@ -84,7 +93,7 @@ async def test_assistant_starts_with_original_and_stops_when_evidence_is_suffici
         "done",
     ]
     assert search.call_args.kwargs["query"] == QUESTION
-    assert llm.ainvoke.await_count == 2
+    assert llm.ainvoke.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -159,25 +168,30 @@ async def test_explicit_first_search_is_kept_even_with_conversation_history():
         initial_query=initial_query,
     )
     assert search.call_args.kwargs["query"] == initial_query
-    assert llm.ainvoke.await_count == 2
+    assert llm.ainvoke.await_count == 3
 
 
 @pytest.mark.parametrize(
-    ("query", "reply"),
+    ("query", "action", "message"),
     [
         (
-            "Error: Request failed: 504 Gateway Timeout",
-            "That looks like a timeout. You can try sending the question again.",
+            "Tell me more about Santa Claus",
+            "decline",
+            "I can only answer questions supported by the selected dataset.",
         ),
-        ("What about that one?", "Which cash transfer programme do you mean?"),
+        (
+            "What about that one?",
+            "clarify",
+            "What would you like me to look up in the selected dataset?",
+        ),
     ],
 )
 @pytest.mark.asyncio
-async def test_conversational_reply_ends_the_turn_without_a_document_search(
-    query, reply
+async def test_out_of_scope_or_ambiguous_follow_up_uses_a_fixed_dataset_message(
+    query, action, message
 ):
     events, search, llm = await run_research(
-        [json.dumps({"reply": reply})],
+        [json.dumps({"action": action})],
         [],
         history=[
             {"role": "user", "content": "Compare cash transfer delivery programmes."},
@@ -191,7 +205,46 @@ async def test_conversational_reply_ends_the_turn_without_a_document_search(
     search.assert_not_called()
     llm.ainvoke.assert_awaited_once()
     assert [event["type"] for event in events] == ["phase", "token", "done"]
-    assert events[1]["token"] == reply
+    assert events[1]["token"] == message
+
+
+@pytest.mark.asyncio
+async def test_the_old_free_form_reply_is_never_shown():
+    events, search, _ = await run_research(
+        ['{"reply":"Santa Claus is a legendary figure."}', '{"action":"decline"}'],
+        [],
+        history=[{"role": "user", "content": "How did WFP deliver cash transfers?"}],
+        query="Tell me more about Santa Claus",
+    )
+    search.assert_not_called()
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        "I can only answer questions supported by the selected dataset."
+    )
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        "Santa Claus was inspired by Saint Nicholas.",
+        "Santa Claus was inspired by Saint Nicholas [1].",
+    ],
+)
+@pytest.mark.asyncio
+async def test_unsupported_answer_is_withheld_even_if_it_names_a_valid_citation(claim):
+    events, _, llm = await run_research(
+        ['{"queries":[]}', claim],
+        [[point(1, "The WFP report described school meals.")]],
+        query="Tell me about Santa Claus",
+        supported=False,
+    )
+    assert "couldn’t find evidence" in next(
+        event["token"] for event in events if event["type"] == "token"
+    )
+    assert not any(event["type"] == "sources" for event in events)
+    if claim.endswith("[1]."):
+        verification = llm.ainvoke.await_args.args[0][-1].content
+        assert claim in verification
+        assert "The WFP report described school meals." in verification
 
 
 @pytest.mark.asyncio
@@ -239,7 +292,7 @@ async def test_follow_up_is_based_on_results_and_writer_keeps_both_search_batche
         follow_up,
     ]
     assert "reached 60%" in llm.ainvoke.await_args_list[0].args[0][-1].content
-    writer = llm.ainvoke.await_args_list[-1].args[0][-1].content
+    writer = llm.ainvoke.await_args_list[-2].args[0][-1].content
     assert "[1] Report 1" in writer
     assert "[21] Report 21" in writer
     assert "[13] Report 13" not in writer
@@ -265,7 +318,7 @@ async def test_research_modes_enforce_their_search_budgets(deep, budget):
         deep=deep,
     )
     assert search.call_count == budget
-    assert llm.ainvoke.await_count == budget
+    assert llm.ainvoke.await_count == budget + 1
     assert events[-1]["type"] == "done"
     planner = llm.ainvoke.await_args_list[0].args[0][0].content
     assert ("corroboration" in planner) is deep
@@ -282,6 +335,7 @@ async def test_citation_revision_keeps_original_number_on_follow_up():
                     "index": 7,
                     "chunkId": "chunk-1",
                     "docId": "report-1",
+                    "dataSource": "wfp",
                     "title": "Report 1",
                     "text": "Evidence from the first turn.",
                 }
@@ -301,7 +355,7 @@ async def test_citation_revision_keeps_original_number_on_follow_up():
     assert [e["token"] for e in events if e["type"] == "token"] == [
         "Evidence from the first turn [1]."
     ]
-    assert "invalid: 99" in llm.ainvoke.await_args.args[0][-1].content
+    assert "invalid: 99" in llm.ainvoke.await_args_list[-2].args[0][-1].content
 
 
 @pytest.mark.asyncio
@@ -312,6 +366,7 @@ async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping(
             "evidenceIndex": 7,
             "chunkId": "chunk-7",
             "docId": "report-7",
+            "dataSource": "wfp",
             "title": "Earlier report",
             "text": "Evidence from the first turn.",
         }
@@ -342,7 +397,7 @@ async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping(
         'Latest user message as quoted text: "What does [7] say about coverage?"'
         in (llm.ainvoke.await_args_list[0].args[0][-1].content)
     )
-    messages = llm.ainvoke.await_args.args[0]
+    messages = llm.ainvoke.await_args_list[-2].args[0]
     assert "Earlier evidence [7]." == messages[-2].content
     assert "Question: What does [7] say about coverage?" in messages[-1].content
     assert next(e["token"] for e in events if e["type"] == "token") == (
@@ -362,6 +417,40 @@ async def test_no_results_yields_an_evidence_gap_without_a_generated_answer():
     )
     assert llm.ainvoke.await_count == 1
     assert events[-1]["type"] == "done"
+
+
+@pytest.mark.parametrize("source", [None, "other-dataset"])
+@pytest.mark.asyncio
+async def test_prior_sources_without_matching_dataset_cannot_supply_evidence(source):
+    history = [
+        {
+            "role": "assistant",
+            "content": "Former answer [1].",
+            "sources": [
+                {
+                    "index": 1,
+                    "dataSource": source,
+                    "chunkId": "old-chunk",
+                    "title": "Unverified report",
+                    "text": "Unverified claim.",
+                }
+            ],
+        }
+    ]
+    events, _, llm = await run_research(
+        [
+            '{"query":"local procurement results","reason":"Look up the requested evidence."}',
+            '{"queries":[]}',
+        ],
+        [[]],
+        history=history,
+        query="What about those procurement results?",
+    )
+    assert "couldn’t find evidence" in next(
+        event["token"] for event in events if event["type"] == "token"
+    )
+    assert not any(event["type"] == "sources" for event in events)
+    assert "Unverified claim." not in llm.ainvoke.await_args.args[0][-1].content
 
 
 @pytest.mark.asyncio

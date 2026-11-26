@@ -7,13 +7,12 @@ Additional group instructions
 {% endif %}
 
 {% if contextualize %}
-Decide how to handle the latest message according to the planning instructions below. Use previous turns as context.
-You have not searched or received any service status for the latest message yet.
-Return one JSON object. For document research, write one standalone search using concrete terms evaluators would use,
-with a short explanation of its focus. For example,
+Classify the latest message for research in the selected dataset{% if data_source %} ({{ data_source }}){% endif %}.
+Use previous turns only to interpret the request. If a substantive question could be covered, plan a search for evidence.
+Return one JSON object. For document research, write a standalone search and its focus. For example,
 {"query":"rural cash transfer enrolment barriers evaluation","reason":"Check enrolment in the programme under discussion."}
-For a direct reply or a clarifying question, return only the message to show the user in the "reply" field, with no citations.
-For example, {"reply":"Which outcome would you like to explore?"}.
+For an ambiguous research request, return {"action":"clarify"}.
+For a request clearly unrelated to the selected dataset or to document research, return {"action":"decline"}.
 {% else %}
 {% if organize %}
 Decide how to investigate the question after the initial search. When it names several distinct

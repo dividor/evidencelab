@@ -591,7 +591,13 @@ class TestSearchSettingsPassthrough:
         request = _make_request(path="/assistant/chat/stream")
         history = [
             {"role": "user", "content": "What is food security?"},
-            {"role": "assistant", "content": "Food security is..."},
+            {
+                "role": "assistant",
+                "content": "Food security is...",
+                "sources": [
+                    {"index": 1, "dataSource": "uneg", "text": "Untrusted text"}
+                ],
+            },
         ]
         body = AssistantChatRequest(
             query="Tell me more",
@@ -614,6 +620,7 @@ class TestSearchSettingsPassthrough:
         assert len(conv) == 2
         assert conv[0]["role"] == "user"
         assert conv[1]["content"] == "Food security is..."
+        assert "sources" not in conv[1]
 
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.stream_research_response")

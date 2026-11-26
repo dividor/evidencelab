@@ -321,9 +321,12 @@ async def stream_assistant_chat(
     )
     research_query, initial_search_query = _research_input(body)
     conversation_messages = await _load_conversation_history(body, user, session)
-    # For unauthenticated users (no thread persistence), use client-sent history
+    # Client history can clarify the question. Only the server supplies evidence.
     if not conversation_messages and body.conversation_history:
-        conversation_messages = body.conversation_history
+        conversation_messages = [
+            {key: message[key] for key in ("role", "content") if key in message}
+            for message in body.conversation_history
+        ]
     group_prompt = await _assistant_answer_prompt(settings, user, session)
 
     async def event_generator():
