@@ -4864,6 +4864,9 @@ li.ai-fact-active::before {
 
 .personal-impact-coverage-details summary {
   cursor: pointer;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.625rem 0;
 }
 
 .personal-impact-coverage-details p {
