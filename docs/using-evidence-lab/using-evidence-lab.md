@@ -15,7 +15,9 @@ Use the navigation bar at the top to switch between the main features:
 - **Brief** — turn a topic into a structured research brief: generate a grounded outline, edit and reorder headings, research each one into cited text with AI, and export to Word
 - **Monitor** — track pipeline performance and corpus statistics (admin)
 
-The guides in this section walk you through each feature in detail.
+Open **Info → Docs** for guides to using Evidence Lab. Open **Info → Admin** for guides to setting up and managing it. Use the search box to find articles in the section you opened.
+
+Long articles have an **On this page** list. Select a heading to jump to that part of the article. On a smaller screen, tap **On this page** above the article to open the list.
 
 ### Your environmental impact
 

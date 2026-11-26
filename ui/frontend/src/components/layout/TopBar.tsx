@@ -30,6 +30,7 @@ interface TopBarProps {
   onTechClick: () => void;
   onDataClick: () => void;
   onDocsClick: () => void;
+  onAdminDocsClick: () => void;
   onAdminClick?: () => void;
   onLoadResearch?: (id: string) => void;
   personalImpactEnabled?: boolean;
@@ -61,6 +62,7 @@ export const TopBar = ({
   onTechClick,
   onDataClick,
   onDocsClick,
+  onAdminDocsClick,
   onAdminClick,
   onLoadResearch,
   personalImpactEnabled,
@@ -258,6 +260,9 @@ export const TopBar = ({
                 </button>
                 <button className="dropdown-item" onClick={onDocsClick}>
                   Docs
+                </button>
+                <button className="dropdown-item" onClick={onAdminDocsClick}>
+                  Admin
                 </button>
               </div>
             )}

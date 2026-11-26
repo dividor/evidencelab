@@ -1,352 +1,99 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { applyDeploymentFacts } from '../../utils/deploymentText';
-import { parseDocLink, repositoryFileUrl } from '../../utils/docLinks';
-import remarkGfm from 'remark-gfm';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import {
+  docsArticleUrl,
+  docsSectionForPath,
+  notifyDocsLocation,
+  useDocsLocation,
+} from '../../utils/docsLocation';
+import DocsArticle from './DocsArticle';
 import DocsSidebar from './DocsSidebar';
-
-export interface DocNode {
-  title: string;
-  path: string;
-}
-
-export interface DocFolder {
-  title: string;
-  children: DocNode[];
-}
-
-interface DocsManifest {
-  title: string;
-  tree: DocFolder[];
-}
+import { useDocsArticle, useDocsManifest, useDocsReader, useDocsSearch } from './useDocsContent';
 
 interface DocsPageProps {
   basePath?: string;
   initialPath?: string;
 }
 
-interface TocHeading {
-  id: string;
-  text: string;
-  level: number;
-}
-
-const slugify = (text: string): string =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim();
-
 const DocsPage: React.FC<DocsPageProps> = ({ basePath = '', initialPath }) => {
-  const [manifest, setManifest] = useState<DocsManifest | null>(null);
-  const [activePath, setActivePath] = useState<string>('');
-  const [content, setContent] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<DocNode[] | null>(null);
-  const [activeHeading, setActiveHeading] = useState<string>('');
-  // Heading to scroll to once the page a link pointed at has rendered.
-  const [pendingAnchor, setPendingAnchor] = useState<string>('');
-  // Use a ref for the cache to avoid triggering re-renders on cache updates
-  const docCacheRef = useRef<Map<string, string>>(new Map());
-  // Counter to trigger search re-evaluation after cache loads
-  const [cacheVersion, setCacheVersion] = useState(0);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const { section, path, anchor } = useDocsLocation(initialPath);
+  const { manifest, failed } = useDocsManifest(basePath);
+  const [search, setSearch] = useState({ section, query: '' });
+  const readDoc = useDocsReader(basePath);
 
-  const withBase = useCallback(
-    (p: string) => (basePath ? `${basePath}${p}` : p),
-    [basePath]
-  );
+  const tree = useMemo(() => (
+    manifest?.tree.map((folder) => ({
+      ...folder,
+      children: folder.children.filter((doc) => docsSectionForPath(doc.path) === section),
+    })).filter((folder) => folder.children.length > 0) ?? []
+  ), [manifest, section]);
+  const allDocs = useMemo(() => tree.flatMap((folder) => folder.children), [tree]);
+  const activePath = path || allDocs[0]?.path || '';
+  const article = useDocsArticle(activePath, readDoc);
+  const searchQuery = search.section === section ? search.query : '';
+  const { results, status } = useDocsSearch(allDocs, searchQuery, readDoc);
 
-  // Extract headings from markdown content
-  const headings = useMemo((): TocHeading[] => {
-    if (!content) return [];
-    const result: TocHeading[] = [];
-    // Track if we're inside a code block
-    let inCodeBlock = false;
-    for (const line of content.split('\n')) {
-      if (line.trimStart().startsWith('```')) {
-        inCodeBlock = !inCodeBlock;
-        continue;
-      }
-      if (inCodeBlock) continue;
-      const match = line.match(/^(#{2,3})\s+(.+)/);
-      if (match) {
-        const text = match[2].trim();
-        result.push({ id: slugify(text), text, level: match[1].length });
-      }
-    }
-    return result;
-  }, [content]);
+  const handleNavigate = useCallback((nextPath: string, nextAnchor = '') => {
+    const url = docsArticleUrl(basePath, nextPath, nextAnchor, window.location.search);
+    window.history.pushState(null, '', url);
+    notifyDocsLocation();
+  }, [basePath]);
 
-  // IntersectionObserver to track visible heading
   useEffect(() => {
-    if (headings.length < 2) return;
+    window.scrollTo(0, 0);
+  }, [activePath]);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Find the topmost visible heading
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveHeading(entry.target.id);
-            break;
-          }
-        }
-      },
-      { rootMargin: '-80px 0px -70% 0px', threshold: 0 }
-    );
+  useLayoutEffect(() => {
+    const header = document.querySelector('.top-bar');
+    if (!header) return;
 
-    // Small delay to let ReactMarkdown render heading elements
-    const timer = setTimeout(() => {
-      for (const h of headings) {
-        const el = document.getElementById(h.id);
-        if (el) observer.observe(el);
-      }
-    }, 100);
-
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
+    const rootStyle = document.documentElement.style;
+    const updateHeaderHeight = () => {
+      rootStyle.setProperty('--docs-header-height', `${header.getBoundingClientRect().height}px`);
     };
-  }, [headings]);
-
-  // Navigate to initialPath when it changes (e.g. About/Tech/Data links)
-  useEffect(() => {
-    if (initialPath) {
-      setActivePath(initialPath);
-    }
-  }, [initialPath]);
-
-  // Load manifest on mount
-  useEffect(() => {
-    fetch(`${withBase('/docs/docs.json')}?t=${Date.now()}`)
-      .then((r) => r.json())
-      .then((data: DocsManifest) => {
-        setManifest(data);
-        const params = new URLSearchParams(window.location.search);
-        const urlPath = params.get('path');
-        const firstDoc = data.tree[0]?.children[0]?.path;
-        setActivePath(initialPath || urlPath || firstDoc || '');
-        if (urlPath && window.location.hash) setPendingAnchor(window.location.hash.slice(1));
-      })
-      .catch((err) => console.error('Failed to load docs manifest:', err));
-  }, [withBase]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Load doc content when active path changes
-  useEffect(() => {
-    if (!activePath) return;
-
-    // Scroll content to top on navigation
-    if (contentRef.current) {
-      contentRef.current.scrollTop = 0;
-    }
-
-    const cached = docCacheRef.current.get(activePath);
-    if (cached !== undefined) {
-      setContent(cached);
-      return;
-    }
-
-    setLoading(true);
-    const docUrl = withBase('/docs/' + activePath);
-    fetch(`${docUrl}?t=${Date.now()}`)
-      .then((r) => r.text())
-      .then((raw) => {
-        const text = applyDeploymentFacts(raw);
-        setContent(text);
-        docCacheRef.current.set(activePath, text);
-      })
-      .catch((err) => {
-        console.error('Failed to load doc:', err);
-        setContent('# Not Found\n\nThis document could not be loaded.');
-      })
-      .finally(() => setLoading(false));
-  }, [activePath, withBase]);
-
-  // All doc nodes flattened
-  const allDocs = useMemo(() => {
-    if (!manifest) return [];
-    return manifest.tree.flatMap((folder) => folder.children);
-  }, [manifest]);
-
-  // Search: filter by title and cached content
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults(null);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const cache = docCacheRef.current;
-
-    const titleMatches = allDocs.filter((doc) =>
-      doc.title.toLowerCase().includes(query)
-    );
-
-    const titleMatchPaths = new Set(titleMatches.map((d) => d.path));
-    const contentMatches = allDocs.filter((doc) => {
-      if (titleMatchPaths.has(doc.path)) return false;
-      const cached = cache.get(doc.path);
-      return cached !== undefined && cached.toLowerCase().includes(query);
-    });
-
-    setSearchResults([...titleMatches, ...contentMatches]);
-
-    // Pre-fetch uncached docs so content search works on next keystroke
-    const uncached = allDocs.filter((doc) => !cache.has(doc.path));
-    if (uncached.length > 0) {
-      Promise.all(
-        uncached.map((doc) => {
-          const url = withBase('/docs/' + doc.path);
-          return fetch(`${url}?t=${Date.now()}`)
-            .then((r) => r.text())
-            .then((text) => ({ path: doc.path, text: applyDeploymentFacts(text) }))
-            .catch(() => ({ path: doc.path, text: '' }));
-        }
-        )
-      ).then((results) => {
-        for (const r of results) {
-          cache.set(r.path, r.text);
-        }
-        setCacheVersion((v) => v + 1);
-      });
-    }
-  }, [searchQuery, allDocs, withBase, cacheVersion]);
-
-  const handleNavigate = useCallback((path: string, anchor = '') => {
-    setActivePath(path);
-    setActiveHeading('');
-    setPendingAnchor(anchor);
-    const params = new URLSearchParams(window.location.search);
-    params.set('tab', 'docs');
-    params.set('path', path);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState(null, '', newUrl);
+    updateHeaderHeight();
+    const observer = new ResizeObserver(updateHeaderHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      rootStyle.removeProperty('--docs-header-height');
+    };
   }, []);
-
-  // Scroll to the heading a cross-page link asked for, once that page is rendered.
-  // Until the fetch resolves, `content` still holds the previous page, which the
-  // cache check tells apart from the page the anchor belongs to.
-  useEffect(() => {
-    if (!pendingAnchor || docCacheRef.current.get(activePath) !== content) return;
-    document.getElementById(pendingAnchor)?.scrollIntoView();
-    setPendingAnchor('');
-  }, [activePath, content, pendingAnchor]);
-
-  // Custom ReactMarkdown components for heading IDs, image path resolution, and doc links.
-  // Links and image paths are relative to the page being shown, as GitHub renders them
-  // (see utils/docLinks.ts).
-  const markdownComponents = useMemo(
-    () => ({
-      h2: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
-        const text = String(children);
-        const id = slugify(text);
-        return <h2 id={id} {...props}>{children}</h2>;
-      },
-      h3: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
-        const text = String(children);
-        const id = slugify(text);
-        return <h3 id={id} {...props}>{children}</h3>;
-      },
-      // Level-4 headings get ids too, so in-page links to them resolve; they
-      // stay out of the on-this-page list, which covers levels 2 and 3.
-      h4: ({ children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) => {
-        const text = String(children);
-        const id = slugify(text);
-        return <h4 id={id} {...props}>{children}</h4>;
-      },
-      img: ({ src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
-        const link = parseDocLink(src, activePath);
-        const resolved = link.kind === 'image' ? withBase('/docs/' + link.path) : src;
-        return <img src={resolved} alt={alt || ''} {...props} />;
-      },
-      a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
-        const link = parseDocLink(href, activePath);
-        if (link.kind === 'page') {
-          // Another docs page: open it in the viewer, at its heading if one was given.
-          return (
-            <a
-              href={withBase('/docs/' + link.path)}
-              onClick={(e) => { e.preventDefault(); handleNavigate(link.path, link.anchor); }}
-              {...props}
-            >
-              {children}
-            </a>
-          );
-        }
-        if (link.kind === 'repo-file') {
-          return (
-            <a href={repositoryFileUrl(link.path)} target="_blank" rel="noopener noreferrer" {...props}>
-              {children}
-            </a>
-          );
-        }
-        if (link.kind === 'external') {
-          return <a href={link.href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
-        }
-        return <a href={href} {...props}>{children}</a>;
-      },
-    }),
-    [withBase, handleNavigate, activePath]
-  );
-
-  const handleTocClick = useCallback((id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, []);
-
-  if (!manifest) {
-    return (
-      <div className="main-content">
-        <div className="docs-page">
-          <div className="docs-loading">Loading documentation...</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="main-content">
       <div className="docs-page">
-        <DocsSidebar
-          tree={manifest.tree}
-          activePath={activePath}
-          searchQuery={searchQuery}
-          searchResults={searchResults}
-          onNavigate={handleNavigate}
-          onSearchChange={setSearchQuery}
-        />
-        <div className="docs-content" ref={contentRef}>
-          <div className="about-content">
-            {loading ? (
-              <p>Loading...</p>
+        {manifest ? (
+          <>
+            <DocsSidebar
+              key={section}
+              section={section}
+              tree={tree}
+              activePath={activePath}
+              searchQuery={searchQuery}
+              searchResults={results}
+              searchStatus={status}
+              onNavigate={handleNavigate}
+              onSearchChange={(query) => setSearch({ section, query })}
+            />
+            {article && !article.failed ? (
+              <DocsArticle
+                key={activePath}
+                basePath={basePath}
+                path={activePath}
+                text={article.text}
+                anchor={anchor}
+                onNavigate={handleNavigate}
+              />
             ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={markdownComponents}
-              >
-                {content}
-              </ReactMarkdown>
+              <div className="docs-content" role="status">
+                {article?.failed ? 'This document could not be loaded.' : 'Loading…'}
+              </div>
             )}
+          </>
+        ) : (
+          <div className="docs-loading" role="status">
+            {failed ? 'Documentation could not be loaded.' : 'Loading documentation...'}
           </div>
-        </div>
-        {headings.length >= 2 && !loading && (
-          <nav className="docs-toc">
-            <div className="docs-toc-title">On this page</div>
-            {headings.map((h) => (
-              <button
-                key={h.id}
-                className={`docs-toc-item${h.level === 3 ? ' docs-toc-indent' : ''}${activeHeading === h.id ? ' active' : ''}`}
-                onClick={() => handleTocClick(h.id)}
-              >
-                {h.text}
-              </button>
-            ))}
-          </nav>
         )}
       </div>
     </div>
