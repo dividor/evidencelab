@@ -61,9 +61,15 @@ controls remain reachable. Report the element and measured overflow in pixels.
 If overflow makes a tab unreachable on the phone, record that, select the tab
 at desktop width, then resize to the phone width to inspect its content.
 
-In `screens`, name the exact tab or dialog and the size, for example
-`Administration / Users, 390×844`. If sign-in fails or an affected admin
-screen cannot load, answer `could not review` and say which step failed.
+In `screens`, start each entry with `Administration / <tab or dialog>, <size>`.
+Use the same name before the first comma at both sizes. For example, list
+`Administration / Users, 390×844` and `Administration / Users, 1440×900`.
+Put the state, scroll position, focus and screenshot name after the size.
+Give each affected dialog its own name and list it at both sizes. Describe
+extra observations from one size in the findings for that screen.
+
+If sign-in fails or an affected admin screen cannot load, answer
+`could not review` and say which step failed.
 
 ## 2. Look at each screen at both sizes
 

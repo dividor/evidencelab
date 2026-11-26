@@ -10299,6 +10299,13 @@ sup.reference-number {
   .admin-panel .btn-primary {
     min-height: 44px;
   }
+
+  /* Fade the right edge so the tabs scrolled out of view show they are there;
+     the padding lets the last tab scroll clear of the fade. */
+  .admin-header > .admin-tabs {
+    padding-right: 2rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
 }
 
 .admin-table {

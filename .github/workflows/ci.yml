@@ -536,7 +536,9 @@ jobs:
 
       - name: UX review
         id: ux
-        if: steps.ui-changes.outputs.scope != '' && steps.ux-browser.outcome == 'success'
+        # Paused while the review workspace is out of API credits.
+        # if: steps.ui-changes.outputs.scope != '' && steps.ux-browser.outcome == 'success'
+        if: ${{ false }}
         continue-on-error: true
         timeout-minutes: 30
         uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
@@ -575,7 +577,8 @@ jobs:
             --json-schema '{"type":"object","additionalProperties":false,"required":["verdict","summary","screens","findings"],"properties":{"verdict":{"type":"string","enum":["looks good","needs changes","could not review"]},"summary":{"type":"string"},"screens":{"type":"array","items":{"type":"string"}},"findings":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["severity","where","what","fix"],"properties":{"severity":{"type":"string","enum":["must fix","should fix","nit"]},"where":{"type":"string"},"what":{"type":"string"},"fix":{"type":"string"}}}}}}'
 
       - name: Keep the UX review's screenshots
-        if: always() && steps.ui-changes.outputs.scope != ''
+        # if: always() && steps.ui-changes.outputs.scope != ''
+        if: ${{ false }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -584,7 +587,8 @@ jobs:
           if-no-files-found: warn
 
       - name: Post the UX review
-        if: always() && steps.ui-changes.outputs.scope != ''
+        # if: always() && steps.ui-changes.outputs.scope != ''
+        if: ${{ false }}
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
