@@ -121,6 +121,7 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
               <input
                 type="checkbox"
                 checked={allOnPageSelected}
+                className="admin-checkbox"
                 onChange={onTogglePage}
                 aria-label="Select all documents on this page"
               />
@@ -170,6 +171,7 @@ export const TocValidatorTable: React.FC<TocValidatorTableProps> = ({
                   <input
                     type="checkbox"
                     checked={selectedIds.has(key)}
+                    className="admin-checkbox"
                     onChange={() => onToggle(key)}
                     aria-label={`Select ${doc.map_title || doc.title || key}`}
                   />
