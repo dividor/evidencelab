@@ -97,7 +97,7 @@ const ImpactResults: React.FC<{ period: Period }> = ({ period }) => {
         {dateFormatter.format(new Date(summary.from_date))} – {dateFormatter.format(new Date(summary.to_date))} (UTC)
       </p>
       {summary.completion_tokens === 0 ? (
-        <p>We didn’t record any AI-written text for your account in this period.</p>
+        <p className="personal-impact-coverage-message">We didn’t record any AI-written text for your account in this period.</p>
       ) : (
         <ImpactCoverage summary={summary} />
       )}
