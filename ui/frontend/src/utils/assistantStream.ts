@@ -177,6 +177,8 @@ const handleStreamedData = (
         (q: any) => ({
           query: q.query || '',
           resultCount: q.result_count || 0,
+          ...(typeof q.stream === 'string' && q.stream ? { stream: q.stream } : {}),
+          ...(typeof q.reason === 'string' && q.reason ? { reason: q.reason } : {}),
           results: (q.results || []).map((r: any) => ({
             title: r.title || 'Untitled',
             text: r.text || '',

@@ -18,10 +18,13 @@ Each response includes:
 
 ### Normal Mode
 
-The Assistant searches with your original question and checks whether the results answer it.
-If a part of the question is unanswered, it can make focused follow-up searches, up to
-four searches in total by default. It keeps useful passages from each search for the cited
-answer. You can see the queries it ran and the number of results it found.
+The Assistant first searches with your original question. It can use up to four searches
+for a focused question. If a question asks about different outcomes or comparisons, the
+Assistant can plan up to four research streams, one for each part of the question. Each
+stream starts with a focused search and can search again to fill a gap in its own results.
+
+The Assistant combines the evidence into one answer. Expand the search list to see which
+stream each query belonged to and why the Assistant searched again.
 
 ### Deep Research Mode
 
@@ -30,9 +33,11 @@ below the chat input.
 
 ![Deep Research checkbox](../images/assistant/deep-research-checkbox.png)
 
-Deep Research uses the same process with a budget of up to ten searches by default.
-It looks for evidence from independent evaluations and checks disagreements, limitations
-and differences across contexts. The Assistant can finish early when the evidence is sufficient.
+Deep Research can use up to ten searches for a focused question. For a question with
+multiple streams, it can run up to four searches per stream after the original search.
+The normal Assistant can run up to two per stream. Deep Research looks for evidence from
+independent evaluations and investigates disagreements and limitations. Each stream can
+finish early when its results are sufficient.
 
 ### Multi-Turn Conversations
 

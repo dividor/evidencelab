@@ -25,9 +25,16 @@ def point(number, text):
     )
 
 
-async def run_research(responses, batches, *, deep=False, history=None):
+async def run_research(responses, batches, *, deep=False, history=None, query=QUESTION):
     llm = MagicMock()
-    llm.ainvoke = AsyncMock(side_effect=[AIMessage(content=x) for x in responses])
+    if callable(responses):
+        llm.ainvoke = AsyncMock(
+            side_effect=lambda messages, **kwargs: AIMessage(
+                content=responses(messages)
+            )
+        )
+    else:
+        llm.ainvoke = AsyncMock(side_effect=[AIMessage(content=x) for x in responses])
     with (
         patch("ui.backend.utils.app_state.validate_data_source", return_value="wfp"),
         patch("ui.backend.services.assistant_service._get_llm", return_value=llm),
@@ -48,7 +55,7 @@ async def run_research(responses, batches, *, deep=False, history=None):
         events = [
             event
             async for event in stream_research_response(
-                QUESTION, "wfp", deep_research=deep, conversation_messages=history
+                query, "wfp", deep_research=deep, conversation_messages=history
             )
         ]
     return events, search, llm
@@ -234,3 +241,115 @@ async def test_planner_skips_a_reworded_search_when_it_has_another_option():
         first,
         alternative,
     ]
+
+
+@pytest.mark.parametrize(("deep", "per_stream"), [(False, 2), (True, 4)])
+@pytest.mark.asyncio
+async def test_broad_question_researches_each_stream_from_its_own_results_and_joins(
+    deep, per_stream
+):
+    topics = {
+        "Coverage": "community screening reach and service access",
+        "Effectiveness": "recovery rates and reported treatment outcomes",
+        "Cost-efficiency": "cost per beneficiary and cured individual",
+        "Sustainability": "continued delivery and programme financing",
+    }
+    planned = {label: 0 for label in topics}
+
+    def model(messages):
+        prompt = messages[-1].content
+        if "Initial evidence:" in prompt:
+            return json.dumps(
+                {
+                    "streams": [
+                        {"topic": label, "query": q} for label, q in topics.items()
+                    ]
+                }
+            )
+        if "Investigate only this stream:" in prompt:
+            label = next(
+                t for t in topics if f"Investigate only this stream: {t}\n" in prompt
+            )
+            assert QUESTION not in prompt
+            assert f"Question: {topics[label]}" in prompt
+            for other in topics:
+                assert (f"finding marker for {other}" in prompt) is (other == label)
+            attempt = planned[label]
+            planned[label] += 1
+            return json.dumps(
+                {
+                    "queries": [
+                        f"{label} area{attempt} cohort{attempt} measure{attempt}"
+                    ],
+                    "reason": f"The latest {label} passage only covered one setting. "
+                    + "The evidence describes delivery in one location. " * 8,
+                }
+            )
+        assert QUESTION in prompt
+        assert "Research streams and their evidence labels" in prompt
+        for label, rounds in planned.items():
+            assert f"- {label}:" in prompt and rounds == per_stream - 1
+            assert f"finding marker for {label}" in prompt
+        return "The shared evaluation relates to the overall question [1]."
+
+    def retrieve(**kwargs):
+        query = kwargs["query"]
+        if query == QUESTION:
+            return [point(1, "Initial evidence only")]
+        label = next(
+            label
+            for label, seed in topics.items()
+            if query == seed or query.startswith(label)
+        )
+        index = (list(topics).index(label) + 1) * 10 + planned[label]
+        return [point(index, f"finding marker for {label}, round {planned[label]}")]
+
+    events, search, _ = await run_research(model, retrieve, deep=deep)
+    assert search.call_count == 1 + 4 * per_stream
+    assert events[-1]["type"] == "done"
+    assert len([e for e in events if e["type"] == "token"]) == 1
+    searches = [
+        row
+        for event in events
+        if event["type"] == "search_status"
+        for row in event["queries"]
+    ]
+    for label in topics:
+        stream = [row for row in searches if row["stream"] == label]
+        assert len(stream) == per_stream
+        assert stream[0]["query"] == topics[label]
+        assert stream[-1]["reason"].startswith(
+            f"The latest {label} passage only covered one setting."
+        )
+        assert len(stream[-1]["reason"]) <= 300
+        assert stream[-1]["reason"].endswith("…")
+
+
+@pytest.mark.asyncio
+async def test_similar_stream_seeds_need_a_new_plan_before_searching():
+    seeds = [
+        {
+            "topic": "Coverage",
+            "query": (
+                "malnutrition programme factors sustainability "
+                "cost-efficiency effectiveness coverage"
+            ),
+        },
+        {
+            "topic": "Effectiveness",
+            "query": (
+                "malnutrition prevention effectiveness sustainability cost-efficiency "
+                "contextual factors coverage programme"
+            ),
+        },
+    ]
+    events, search, llm = await run_research(
+        [json.dumps({"streams": seeds}), '{"queries":[]}', "Evidence [1]."],
+        [[point(1, "Evidence")]],
+    )
+    assert search.call_count == 1
+    assert events[-1]["type"] == "done"
+    assert (
+        "previous reply did not match"
+        in llm.ainvoke.await_args_list[1].args[0][-1].content
+    )

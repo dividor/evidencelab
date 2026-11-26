@@ -403,9 +403,9 @@ def build_research_agent(
         else cfg.get("max_queries", 4)
     )
     tracker = SearchTracker(data_source, reranker_model, search_settings, prior_sources)
-    planner = _jinja_env.get_template("assistant_research_planner.j2").render(
-        deep_research=deep_research,
-    )
+    template = _jinja_env.get_template("assistant_research_planner.j2")
+    planner = template.render(deep_research=deep_research)
+    opening = template.render(deep_research=deep_research, organize=True)
     writer = _jinja_env.get_template("assistant_system.j2").render(
         data_source=data_source,
         target_words=target_words,
@@ -413,7 +413,8 @@ def build_research_agent(
         group_instructions=system_prompt_override,
         deep_research=deep_research,
     )
-    agent = build_research_workflow(
-        llm, tracker, planner, writer, ResearchLimits(searches=max_queries)
+    limits = ResearchLimits(
+        searches=max_queries, searches_per_stream=4 if deep_research else 2
     )
+    agent = build_research_workflow(llm, tracker, planner, writer, limits, opening)
     return agent, tracker, max_queries

@@ -28,8 +28,8 @@ def test_planner_explains_when_to_continue_or_stop(prompts):
     planner = prompts.get_template("assistant_research_planner.j2")
     normal = planner.render()
     assert '"queries"' in normal
-    assert "empty list when the evidence" in normal
-    assert "specific gap, contradiction or uncertainty" in normal
+    assert "Give an empty list" in normal
+    assert "concrete gap, contradiction or limitation" in normal
 
 
 def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):
@@ -38,3 +38,11 @@ def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):
     assert "corroboration" in planner.render(deep_research=True)
     writer = prompts.get_template("assistant_system.j2")
     assert "material disagreement" in writer.render(deep_research=True)
+
+
+def test_opening_asks_for_each_named_outcome_as_a_stream(prompts):
+    planner = prompts.get_template("assistant_research_planner.j2")
+    opening = planner.render(organize=True)
+    assert "Keep named outcomes separate" in opening
+    assert '"streams"' in opening
+    assert "coverage, effectiveness, cost-efficiency and sustainability" in opening

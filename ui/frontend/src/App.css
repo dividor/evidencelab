@@ -11718,6 +11718,17 @@ a.admin-citation-clickable:hover {
 }
 
 /* Expandable query rows */
+.tool-call-stream {
+  color: var(--brand-text-primary);
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.tool-call-reason {
+  color: var(--brand-text-secondary);
+  margin-bottom: 0.35rem;
+}
+
 .tool-call-query-row {
   margin-bottom: 0.125rem;
 }

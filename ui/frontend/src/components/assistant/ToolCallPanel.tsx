@@ -56,6 +56,7 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
 
   return (
     <div className="tool-call-query-row">
+      {tc.stream && <div className="tool-call-stream">{tc.stream}</div>}
       <div
         className={`tool-call-code-entry${hasResults ? ' tool-call-code-entry--expandable' : ''}`}
         onClick={hasResults ? () => setOpen(!open) : undefined}
@@ -69,6 +70,7 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
         <span className="tool-call-code-query">{tc.query}</span>
         <span className="tool-call-code-result">{tc.resultCount} results</span>
       </div>
+      {tc.reason && <div className="tool-call-reason">{tc.reason}</div>}
       {open && hasResults && (
         <div className="tool-call-results-cards">
           {tc.results!.map((r, j) => (

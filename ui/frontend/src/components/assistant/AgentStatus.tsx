@@ -51,7 +51,10 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
             <div className="agent-status-detail">
               {toolCalls && toolCalls.map((tc, i) => (
                 <div key={`tc-${i}`} className="agent-status-query">
-                  <span className="agent-status-query-text">{tc.query}</span>
+                  <span className="agent-status-query-text">
+                    {tc.stream && <><strong>{tc.stream}</strong>{' · '}</>}
+                    {tc.query}
+                  </span>
                   <span className="agent-status-query-count">{tc.resultCount} results</span>
                 </div>
               ))}

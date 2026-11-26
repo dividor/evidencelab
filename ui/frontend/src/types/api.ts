@@ -203,6 +203,8 @@ export interface SearchToolCall {
   query: string;
   resultCount: number;
   results?: SearchResultCard[];
+  stream?: string;
+  reason?: string;
 }
 
 export interface ThreadListItem {
