@@ -162,6 +162,58 @@ async def test_explicit_first_search_is_kept_even_with_conversation_history():
     assert llm.ainvoke.await_count == 2
 
 
+@pytest.mark.parametrize(
+    ("query", "reply"),
+    [
+        (
+            "Error: Request failed: 504 Gateway Timeout",
+            "That looks like a timeout. You can try sending the question again.",
+        ),
+        ("What about that one?", "Which cash transfer programme do you mean?"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_conversational_reply_ends_the_turn_without_a_document_search(
+    query, reply
+):
+    events, search, llm = await run_research(
+        [json.dumps({"reply": reply})],
+        [],
+        history=[
+            {"role": "user", "content": "Compare cash transfer delivery programmes."},
+            {
+                "role": "assistant",
+                "content": "The evaluations describe several programmes.",
+            },
+        ],
+        query=query,
+    )
+    search.assert_not_called()
+    llm.ainvoke.assert_awaited_once()
+    assert [event["type"] for event in events] == ["phase", "token", "done"]
+    assert events[1]["token"] == reply
+
+
+@pytest.mark.asyncio
+async def test_independent_research_question_can_start_a_new_topic_in_the_same_chat():
+    query = "How do evaluations measure early warning system reach?"
+    search_query = "flood early warning evaluation warning dissemination coverage"
+    events, search, _ = await run_research(
+        [
+            json.dumps(
+                {"query": search_query, "reason": "Find evidence on the new topic."}
+            ),
+            '{"queries":[]}',
+            "The evaluation measured household reach [1].",
+        ],
+        [[point(1, "The evaluation measured household reach.")]],
+        history=[{"role": "user", "content": "How were school meals funded?"}],
+        query=query,
+    )
+    assert search.call_args.kwargs["query"] == search_query
+    assert events[-1]["type"] == "done"
+
+
 @pytest.mark.asyncio
 async def test_follow_up_is_based_on_results_and_writer_keeps_both_search_batches():
     follow_up = "Cost per cured individual and cost per beneficiary"
@@ -286,8 +338,9 @@ async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping(
         query="What does [1] say about coverage?",
     )
     assert search.call_args.kwargs["query"] == "Evaluation evidence on coverage"
-    assert "Latest user question: What does [7] say about coverage?" in (
-        llm.ainvoke.await_args_list[0].args[0][-1].content
+    assert (
+        'Latest user message as quoted text: "What does [7] say about coverage?"'
+        in (llm.ainvoke.await_args_list[0].args[0][-1].content)
     )
     messages = llm.ainvoke.await_args.args[0]
     assert "Earlier evidence [7]." == messages[-2].content

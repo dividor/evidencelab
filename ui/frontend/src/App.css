@@ -11412,6 +11412,12 @@ a.admin-citation-clickable:hover {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.chat-input-error {
+  margin: 0 0 0.5rem;
+  color: var(--brand-error, #b91c1c);
+  font-size: 0.875rem;
+}
+
 .chat-input-wrapper:focus-within {
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.15);

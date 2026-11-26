@@ -1,5 +1,5 @@
 {% if stage == 'contextualize' -%}
-Latest user question: {{ question | safe }}
+Latest user message as quoted text: {{ question | tojson }}
 {%- elif stage == 'organize' -%}
 Question: {{ question | safe }}
 {% if first_search != question -%}

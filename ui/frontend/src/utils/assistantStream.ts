@@ -29,7 +29,7 @@ export interface AssistantStreamHandlers {
   onToken: (fullText: string) => void;
   onSources: (sources: SourceReference[]) => void;
   onDone: (data: AssistantDoneData) => void;
-  onError: (message: string) => void;
+  onError: (message: string, canResend?: boolean) => void;
 }
 
 interface ConversationMessage {
@@ -354,7 +354,7 @@ const buildRequestBody = ({
 };
 
 export const streamAssistantChat = async (options: AssistantStreamOptions): Promise<void> => {
-  const { apiBaseUrl, handlers, signal } = options;
+  const { apiBaseUrl, handlers, signal, usageContext } = options;
   const response = await fetch(`${apiBaseUrl}/assistant/chat/stream`, {
     method: 'POST',
     headers: buildHeaders(),
@@ -364,7 +364,11 @@ export const streamAssistantChat = async (options: AssistantStreamOptions): Prom
   });
 
   if (!response.ok) {
-    handlers.onError(await requestFailureMessage(response));
+    if (usageContext !== 'brief' && [502, 503, 504].includes(response.status)) {
+      handlers.onError('The Assistant server didn’t respond. Try sending your question again.', true);
+    } else {
+      handlers.onError(await requestFailureMessage(response));
+    }
     return;
   }
 

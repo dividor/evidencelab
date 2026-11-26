@@ -50,6 +50,20 @@ def test_geography_guidance_is_shared_and_editable_in_all_planning_stages(
     assert "A location mentioned in a result" not in edited
 
 
+def test_contextualizer_uses_editable_guidance_to_choose_a_direct_reply(prompts):
+    planner = prompts.get_template("assistant_research_planner.j2")
+    default = planner.render(contextualize=True)
+    assert "ask one focused clarifying question" in default
+    assert "Distinguish text the user pasted from events you observed" in default
+    assert "even if it starts a new topic" in default
+    assert 'the "reply" field' in default
+    edited = planner.render(
+        contextualize=True, instructions="Research every follow-up."
+    )
+    assert "Research every follow-up." in edited
+    assert "ask one focused clarifying question" not in edited
+
+
 def test_deep_research_instructs_both_stages_to_check_conflicts(prompts):
     planner = prompts.get_template("assistant_research_planner.j2")
     assert "corroboration" not in planner.render()

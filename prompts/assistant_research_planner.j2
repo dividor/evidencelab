@@ -7,11 +7,13 @@ Additional group instructions
 {% endif %}
 
 {% if contextualize %}
-Plan the first evaluation-library search for the latest user question. Use previous turns to resolve references and
-carry forward the relevant intervention, outcome or other constraints. For a new topic, use the latest question on its own.
-Treat prior answers as context and verify findings against the evidence. Write one standalone search using concrete
-terms evaluators would use. Return only a JSON object like
+Decide how to handle the latest message according to the planning instructions below. Use previous turns as context.
+You have not searched or received any service status for the latest message yet.
+Return one JSON object. For document research, write one standalone search using concrete terms evaluators would use,
+with a short explanation of its focus. For example,
 {"query":"rural cash transfer enrolment barriers evaluation","reason":"Check enrolment in the programme under discussion."}
+For a direct reply or a clarifying question, return only the message to show the user in the "reply" field, with no citations.
+For example, {"reply":"Which outcome would you like to explore?"}.
 {% else %}
 {% if organize %}
 Decide how to investigate the question after the initial search. When it names several distinct

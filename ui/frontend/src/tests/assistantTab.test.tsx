@@ -25,6 +25,7 @@ jest.mock('../hooks/useAuth', () => ({
 }));
 
 import { AssistantTab } from '../components/assistant/AssistantTab';
+import { streamAssistantChat } from '../utils/assistantStream';
 
 // JSDOM doesn't implement scrollIntoView
 beforeAll(() => {
@@ -90,6 +91,31 @@ describe('AssistantTab', () => {
 
     const sendBtn = screen.getByLabelText('Send message');
     expect(sendBtn).not.toBeDisabled();
+  });
+
+  test('preserves a question for manual resend after a gateway error', async () => {
+    const stream = jest.mocked(streamAssistantChat);
+    stream.mockClear();
+    stream.mockImplementationOnce(async ({ handlers }) => {
+      handlers.onError('Try sending your question again.', true);
+    });
+    render(<AssistantTab dataSource="test-collection" />);
+    const input = screen.getByRole('textbox');
+    const send = screen.getByRole('button', { name: 'Send message' });
+    fireEvent.change(input, { target: { value: 'How were cash transfers delivered?' } });
+    fireEvent.click(send);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try sending your question again.');
+    expect(input).toHaveValue('How were cash transfers delivered?');
+    expect(send).toBeEnabled();
+    expect(stream).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(send);
+    expect(stream).toHaveBeenCalledTimes(2);
+    expect(stream).toHaveBeenLastCalledWith(expect.objectContaining({
+      query: 'How were cash transfers delivered?',
+      conversationHistory: undefined,
+    }));
   });
 
   test('does not show sidebar when user is not authenticated', () => {

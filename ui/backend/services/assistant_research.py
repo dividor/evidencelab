@@ -71,6 +71,13 @@ class ContextSearch(BaseModel):
     reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+class ContextReply(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reply: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1200)
+    ]
+
+
 class FollowUpPlan(BaseModel):
     model_config = ConfigDict(extra="forbid")
     queries: list[_SearchQuery] = Field(max_length=3)
@@ -136,7 +143,7 @@ class ResearchState(TypedDict, total=False):
 
 
 _Plan = TypeVar("_Plan")
-_CONTEXT_PLAN = TypeAdapter(ContextSearch)
+_CONTEXT_PLAN = TypeAdapter(ContextSearch | ContextReply)
 _INITIAL_PLAN: TypeAdapter[FollowUpPlan | StreamPlan] = TypeAdapter(
     FollowUpPlan | StreamPlan
 )
@@ -287,13 +294,16 @@ class ResearchWorkflow:
         query = state.get("initial_search_query")
         reason = ""
         if query is None and history:
-            plan: ContextSearch = await self._request_plan(
+            plan: ContextSearch | ContextReply = await self._request_plan(
                 self.contextualizer,
                 self.request.render(stage="contextualize", question=question),
                 history,
                 config,
                 _CONTEXT_PLAN,
             )
+            if isinstance(plan, ContextReply):
+                get_stream_writer()({"type": "token", "token": plan.reply})
+                return {"answer": plan.reply}
             query, reason = plan.query, plan.reason
         if query is None:
             query = question
@@ -549,7 +559,9 @@ def build_research_workflow(
     graph.add_node("research", workflow.research)
     graph.add_node("answer", workflow.answer)
     graph.add_edge(START, "start")
-    graph.add_edge("start", "organize")
+    graph.add_conditional_edges(
+        "start", lambda state: bool(state.get("answer")), {True: END, False: "organize"}
+    )
     graph.add_conditional_edges("organize", workflow.dispatch, ["research", "answer"])
     graph.add_edge("research", "answer")
     graph.add_edge("answer", END)
