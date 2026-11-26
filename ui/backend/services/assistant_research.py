@@ -167,7 +167,7 @@ class ResearchState(TypedDict, total=False):
     draft: str
     correction: list[str]
     brief_final_repair: bool
-    grounded_section: bool
+    structured_brief: bool
     verified_draft: str
     answer_evidence: dict[int, Passage]
     brief_focus: str | None
@@ -504,11 +504,7 @@ class ResearchWorkflow:
         findings = sorted(state.get("findings", []), key=lambda entry: entry["order"])
         gathered = (p for f in findings for p in f["evidence"])
         evidence = {p["global_index"]: p for p in (*state["evidence"], *gathered)}
-        if (
-            self.brief_section
-            and self.brief_section.mode == "generate"
-            and self.check_citations
-        ):
+        if self.brief_section and self.brief_section.mode == "generate":
             section = await write_grounded_brief(
                 state["query"],
                 state["searches"][0],
@@ -516,11 +512,11 @@ class ResearchWorkflow:
                 evidence,
                 config,
                 self.llm,
-                self.citation_request,
+                self.citation_request if self.check_citations else None,
                 self.brief_section,
                 target_words=state.get("brief_target_words"),
             )
-            return {"draft": section or _NO_EVIDENCE, "grounded_section": True}
+            return {"draft": section or _NO_EVIDENCE, "structured_brief": True}
         draft = (
             await self._write(
                 state,
@@ -537,7 +533,7 @@ class ResearchWorkflow:
         self, state: ResearchState, config: RunnableConfig
     ) -> ResearchState:
         answer = state["draft"]
-        if answer != _NO_EVIDENCE and not state.get("grounded_section"):
+        if answer != _NO_EVIDENCE and not state.get("structured_brief"):
             if self.check_citations:
                 get_stream_writer()({"type": "phase", "phase": "checking_citations"})
             review = await check_research_draft(

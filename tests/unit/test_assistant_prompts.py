@@ -16,7 +16,7 @@ def prompts():
 
 def test_writer_uses_numbered_evidence_and_the_collection(prompts):
     writer = prompts.get_template("assistant_system.j2")
-    assert "evaluation collection" in writer.render()
+    assert "document collection" in writer.render()
     result = writer.render(data_source="World Bank Reports")
     assert "World Bank Reports" in result
     assert "Cite each factual sentence" in result
@@ -38,9 +38,9 @@ def test_grounding_uses_report_title_to_verify_location_and_passage_to_verify_cl
     reviewer = prompts.get_template("assistant_grounding_check.j2").render(
         brief_section=True
     )
-    assert "identify the location in the report title or in the passage" in reviewer
-    assert "same outcome in a different country cannot substantiate" in reviewer
-    assert "Use the passage itself to verify what happened there" in reviewer
+    assert "verify that detail against the\nsource title or passage" in reviewer
+    assert "different setting or stage cannot verify the detail" in reviewer
+    assert "Use the passage itself to verify the finding" in reviewer
 
 
 def test_brief_prose_review_accepts_evidence_gap_after_cited_opening(prompts):
@@ -113,7 +113,7 @@ def test_opening_asks_for_each_named_outcome_as_a_stream(prompts):
     opening = planner.render(organize=True)
     assert "Keep named outcomes separate" in opening
     assert '"streams"' in opening
-    assert "coverage, effectiveness, cost-efficiency and sustainability" in opening
+    assert "main part, up to four" in opening
 
 
 def test_custom_instructions_replace_editable_defaults_and_keep_workflow_rules(prompts):

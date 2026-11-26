@@ -2136,7 +2136,7 @@ export const useBrief = ({
     // state
     stage,
     briefTitle,
-    currentBriefId: briefIdRef.current,
+    currentBriefId: remote ? getServerBriefId() : visibleBriefId,
     sections,
     numbers,
     query,

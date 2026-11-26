@@ -48,6 +48,9 @@ def _prepare_finding(
     finding: BriefFinding, excerpts: dict[int, str]
 ) -> tuple[str, str, str] | None:
     text = finding.text.strip().rstrip(".").strip()
+    if set(cited_numbers_in_order(text)) - {finding.citation}:
+        return None
+    text = strip_citation_markers(text).rstrip(".").strip()
     if lead := _DEPENDENT_LEAD.match(text):
         text = text[lead.end() :]
         text = text[:1].upper() + text[1:]
@@ -125,8 +128,8 @@ def _brief_draft_text(
     return "\n\n".join(paragraphs), list(dict.fromkeys(issues)), prepared_quotes
 
 
-def _combine_verified(drafts: list[str], target: int | None) -> tuple[str, int]:
-    """Keep verified findings intact and place the evidence limit after them."""
+def _combine_findings(drafts: list[str], target: int | None) -> tuple[str, int]:
+    """Keep findings intact and place the evidence limit after them."""
     paragraphs = []
     limit = ""
     seen: set[str] = set()
@@ -160,12 +163,12 @@ async def write_grounded_brief(
     evidence: dict[int, Passage],
     config: RunnableConfig,
     writer: BaseChatModel,
-    review: ReviewRequest,
+    review: ReviewRequest | None,
     section: BriefSectionPrompt,
     *,
     target_words: int | None = None,
 ) -> str:
-    """Write separately verifiable findings so a rejected claim cannot lose the draft."""
+    """Write independently sourced findings and optionally check their support."""
     if not evidence:
         return ""
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
@@ -180,7 +183,7 @@ async def write_grounded_brief(
     }
     issues: list[str] = []
     drafts: list[str] = []
-    verified = ""
+    accepted = ""
     minimum = 1
     if target_words:
         minimum = 2 if target_words <= 150 else 4
@@ -193,7 +196,7 @@ async def write_grounded_brief(
                     writing_guide=writing_guide,
                     evidence=passages,
                     issues=issues,
-                    verified=verified,
+                    accepted=accepted,
                 )
             ),
         ]
@@ -201,7 +204,7 @@ async def write_grounded_brief(
         text, issues, prepared_quotes = _brief_draft_text(
             message_text(reply), evidence, other_claims
         )
-        if text:
+        if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
             checked = await check_answer_citations(
                 text,
@@ -213,14 +216,15 @@ async def write_grounded_brief(
                 brief_section=True,
                 prepared_quotes=prepared_quotes,
             )
-            if checked.supported_text:
-                drafts.append(checked.supported_text)
-                verified, count = _combine_verified(drafts, target_words)
-                if count >= minimum:
-                    break
+            text = checked.supported_text
             issues.extend(checked.issues)
+        if text:
+            drafts.append(text)
+            accepted, count = _combine_findings(drafts, target_words)
+            if count >= minimum:
+                break
         if not issues:
             issues.append(
                 "Use relevant documented implementation or measurement and report the limits."
             )
-    return verified
+    return accepted

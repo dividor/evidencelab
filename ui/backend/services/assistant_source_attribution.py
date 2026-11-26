@@ -28,6 +28,8 @@ def _country_attributions(
         for index, passage in evidence.items()
     }
     known = set().union(*countries.values())
+    if not known:
+        return {}
     mismatches = {}
     for row in sentences:
         if not (row["citations"] and (match := _COUNTRY_LEAD.match(row["text"]))):

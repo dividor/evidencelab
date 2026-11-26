@@ -355,7 +355,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
 
 
 @pytest.mark.asyncio
-async def test_researched_brief_revises_extra_headings_even_with_citation_check_off():
+async def test_brief_update_revises_extra_headings_with_citation_check_off():
     def prose(prompt):
         return (
             ["Remove the extra title and labels."] if "Main findings" in prompt else []
@@ -370,7 +370,7 @@ async def test_researched_brief_revises_extra_headings_even_with_citation_check_
         [[point(1, "School sites had better access.")]],
         brief_section_prompt="Explain the evaluation findings in plain language.",
         brief_section=BriefSectionPrompt(
-            outline=[{"title": "Programme access"}], current=0
+            outline=[{"title": "Programme access"}], current=0, mode="update"
         ),
         initial_query="Programme access in schools",
         check_citations=False,
@@ -392,6 +392,7 @@ async def test_brief_opening_repair_uses_sources_and_keeps_length_and_voice():
         brief_section=BriefSectionPrompt(
             outline=[{"title": "Access in schools"}],
             current=0,
+            mode="update",
             voice_instructions="Use plain British English and neutral evaluation language.",
         ),
         check_citations=False,
@@ -407,6 +408,32 @@ async def test_brief_opening_repair_uses_sources_and_keeps_length_and_voice():
         "opening sentence needs a finding supported by a citation"
         in revised[-1].content
     )
+
+
+@pytest.mark.asyncio
+async def test_brief_generation_keeps_sourced_prose_with_citation_check_off():
+    finding = "The rollout reached four of the six test sites"
+    evidence = finding + "."
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                ("The rollout reached every site", 1, "every site"),
+                (finding, 1, "four of the six test sites"),
+            ),
+        ],
+        [[point(1, evidence)]],
+        initial_query="Rollout coverage",
+        brief_section_prompt="Summarize the reported rollout coverage.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Coverage"}], current=0),
+        check_citations=False,
+    )
+    assert events[-1]["section_written"] is True
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        finding + " [1]."
+    )
+    assert not any(event.get("phase") == "checking_citations" for event in events)
+    assert model.ainvoke.await_count == 2
 
 
 @pytest.mark.parametrize(
@@ -690,6 +717,39 @@ async def test_brief_excludes_a_midterm_finding_misattributed_to_endline():
     assert next(event["token"] for event in events if event["type"] == "token") == (
         "The midterm evaluation found that students reported improved hygiene [1]."
     )
+
+
+@pytest.mark.asyncio
+async def test_brief_uses_ordinary_documents_without_place_or_study_metadata():
+    source = point(1, "The release checklist requires two reviewers before deployment.")
+    source.payload["map_title"] = "Release checklist"
+    finding = "The release checklist requires two reviewers before deployment"
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (
+                    "Every deployment must have two reviewers [2].",
+                    1,
+                    "requires two reviewers before deployment",
+                ),
+                (f"{finding} [1].", 1, "requires two reviewers before deployment"),
+            ),
+        ],
+        [[source]],
+        initial_query="Release approval requirements",
+        brief_section_prompt="Summarize the release requirements using the documents.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Release approvals"}], current=0
+        ),
+    )
+    assert events[-1]["section_written"] is True
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        finding + " [1]."
+    )
+    assert [
+        s["title"] for s in next(e["sources"] for e in events if e["type"] == "sources")
+    ] == ["Release checklist"]
 
 
 @pytest.mark.asyncio

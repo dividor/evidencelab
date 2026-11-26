@@ -10,7 +10,7 @@ Additional group instructions
 Classify the latest message for research in the selected dataset{% if data_source %} ({{ data_source }}){% endif %}.
 Use previous turns only to interpret the request. If a substantive question could be covered, plan a search for evidence.
 Return one JSON object. For document research, write a standalone search and its focus. For example,
-{"query":"rural cash transfer enrolment barriers evaluation","reason":"Check enrolment in the programme under discussion."}
+{"query":"selection criteria and decision record for the proposed upgrade","reason":"Find the evidence behind the decision under discussion."}
 For an ambiguous research request, return {"action":"clarify"}.
 For a request clearly unrelated to the selected dataset or to document research, return {"action":"decline","next_step":"ask"}.
 Choose "rephrase" when the user might have a report or finding in mind, "focus" to suggest an evidence topic, or "ask" to invite a new question.
@@ -19,23 +19,20 @@ Choose "rephrase" when the user might have a report or finding in mind, "focus" 
 Decide how to investigate the question after the initial search. When it names several distinct
 outcomes or asks for separate comparisons, create one independent research stream per
 main part, up to four. Keep named outcomes separate when there are four or fewer.
-For a question about coverage, effectiveness, cost-efficiency and sustainability, create all
-four streams. Give each a short topic name and a dedicated query that would surface evidence
-on that part alone. Carry any country, report or other scope constraints into the query.
-Put at least one concrete measure or mechanism in the query. For example,
-search for screening reach and access barriers, recovery rates, cost per cured individual
-and cost per beneficiary, or continuing public financing and transfer to national systems.
+Give each stream a short topic name and a dedicated query that would surface evidence on that part alone.
+Carry any named entity, location, document or other scope constraint into the query.
+Put at least one concrete measure, mechanism or distinctive term from the question in the query.
 Avoid generic seeds such as "factors influencing outcomes".
 Avoid repeating the full user question or changing only the word order. Return only JSON
 with key "streams" and two to four items, each containing "topic" and "query". Include
 "geographic_scope" with the geographic scope the user specified, or an empty string if none.
-For example, {"streams":[{"topic":"Coverage","query":"treatment reach and barriers"},
-{"topic":"Costs","query":"cost per beneficiary and cost per cure"}],"geographic_scope":""}.
+For example, {"streams":[{"topic":"Reliability","query":"reported failures and operating conditions"},
+{"topic":"Costs","query":"maintenance costs and cost per use"}],"geographic_scope":""}.
 For a single inquiry, use the follow-up format below instead.
 {% endif %}
 For a single inquiry or a follow-up search, return a JSON object with "queries" and, when proposing a search, "reason". The reason
 is one short sentence about what the latest evidence leaves unanswered.
-For example, {"queries":["barriers to reaching eligible households"],"reason":"The evidence counts enrolled households but omits access barriers."}.
+For example, {"queries":["recorded reasons for missed deliveries"],"reason":"The records show the delays but omit their causes."}.
 Return {"queries":[]} if no more searches are needed.
 {% endif %}
 {% if instructions %}
@@ -45,7 +42,7 @@ Return {"queries":[]} if no more searches are needed.
 {% endif %}
 
 {% if deep_research and not contextualize %}
-Seek corroboration from independent evaluations and check material disagreements or
+Seek corroboration from independent sources and check material disagreements or
 competing explanations. Look for quantitative findings, their units and limitations when
 relevant. Continue within each stream while there is a distinct lead to investigate.
 {% endif %}
