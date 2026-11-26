@@ -215,22 +215,24 @@ def _message_to_history_entry(msg) -> dict:
 
 
 async def _load_conversation_history(body, user, session):
-    """Load prior messages for a thread, returning a list of dicts."""
+    """Load prior messages from a thread owned by the signed-in user."""
     if not (body.thread_id and _USER_MODULE and user and session):
         return []
     try:
         thread_id = uuid.UUID(body.thread_id)
-        stmt = (
-            select(ConversationMessage)
-            .where(ConversationMessage.thread_id == thread_id)
-            .order_by(ConversationMessage.created_at)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Thread not found") from None
+    stmt = (
+        select(ConversationThread)
+        .options(selectinload(ConversationThread.messages))
+        .where(
+            ConversationThread.id == thread_id, ConversationThread.user_id == user.id
         )
-        result = await session.execute(stmt)
-        msgs = result.scalars().all()
-        return [_message_to_history_entry(m) for m in msgs]
-    except Exception as exc:
-        logger.warning("Failed to load thread history: %s", exc)
-        return []
+    )
+    thread = (await session.execute(stmt)).scalar_one_or_none()
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return [_message_to_history_entry(m) for m in thread.messages]
 
 
 def _record_assistant_usage(event: dict, body: AssistantChatRequest, user) -> None:

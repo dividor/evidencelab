@@ -25,7 +25,9 @@ def point(number, text):
     )
 
 
-async def run_research(responses, batches, *, deep=False, history=None, query=QUESTION):
+async def run_research(
+    responses, batches, *, deep=False, history=None, query=QUESTION, initial_query=None
+):
     llm = MagicMock()
     if callable(responses):
         llm.ainvoke = AsyncMock(
@@ -55,7 +57,11 @@ async def run_research(responses, batches, *, deep=False, history=None, query=QU
         events = [
             event
             async for event in stream_research_response(
-                query, "wfp", deep_research=deep, conversation_messages=history
+                query,
+                "wfp",
+                deep_research=deep,
+                conversation_messages=history,
+                initial_search_query=initial_query,
             )
         ]
     return events, search, llm
@@ -78,6 +84,81 @@ async def test_assistant_starts_with_original_and_stops_when_evidence_is_suffici
         "done",
     ]
     assert search.call_args.kwargs["query"] == QUESTION
+    assert llm.ainvoke.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_follow_up_uses_conversation_before_search_and_adapts_to_results():
+    follow_up = "Tell me more about Cambodia"
+    first_search = "Cambodia home-grown school meals local procurement evaluation"
+    second_search = "Cambodia school feeding domestic financing and government handover"
+    first_finding = "Cambodian schools sourced produce from local suppliers."
+    history = [
+        {"role": "user", "content": "How did WFP school meals use local procurement?"},
+        {
+            "role": "assistant",
+            "content": "Cambodia used a home-grown school meals model.",
+        },
+    ]
+    events, search, llm = await run_research(
+        [
+            json.dumps(
+                {
+                    "query": first_search,
+                    "reason": "Narrow the school meals discussion to Cambodia.",
+                }
+            ),
+            json.dumps(
+                {
+                    "queries": [second_search],
+                    "reason": "The evidence did not describe government handover.",
+                }
+            ),
+            '{"queries":[]}',
+            "The programme used local procurement [1] and explored government financing [2].",
+        ],
+        [
+            [point(1, first_finding)],
+            [point(2, "Domestic financing supported handover.")],
+        ],
+        history=history,
+        query=follow_up,
+    )
+    assert [call.kwargs["query"] for call in search.call_args_list] == [
+        first_search,
+        second_search,
+    ]
+    plan_messages = llm.ainvoke.await_args_list[0].args[0]
+    assert [message.content for message in plan_messages[1:-1]] == [
+        item["content"] for item in history
+    ]
+    assert follow_up in plan_messages[-1].content
+    opening_prompt = llm.ainvoke.await_args_list[1].args[0][-1].content
+    assert first_search in opening_prompt and first_finding in opening_prompt
+    queries = [
+        row
+        for event in events
+        if event["type"] == "search_status"
+        for row in event["queries"]
+    ]
+    assert [row["reason"] for row in queries] == [
+        "Narrow the school meals discussion to Cambodia.",
+        "The evidence did not describe government handover.",
+    ]
+    assert events[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_explicit_first_search_is_kept_even_with_conversation_history():
+    initial_query = "Cambodia school feeding local procurement"
+    _, search, llm = await run_research(
+        ['{"queries":[]}', "The programme used local procurement [1]."],
+        [[point(1, "The programme used local procurement.")]],
+        history=[{"role": "assistant", "content": "An earlier answer."}],
+        query="Write the findings section for the brief.",
+        initial_query=initial_query,
+    )
+    assert search.call_args.kwargs["query"] == initial_query
     assert llm.ainvoke.await_count == 2
 
 
@@ -157,6 +238,7 @@ async def test_citation_revision_keeps_original_number_on_follow_up():
     ]
     events, _, llm = await run_research(
         [
+            '{"query":"Evidence from the first turn","reason":"Check the previous subject."}',
             '{"queries":[]}',
             "An invalid citation [99].",
             "Evidence from the first turn [7].",
@@ -183,7 +265,16 @@ async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping(
         }
     ]
     events, search, llm = await run_research(
-        ['{"queries":[]}', "New evidence [9, 7]. Earlier evidence [7]."],
+        [
+            json.dumps(
+                {
+                    "query": "Evaluation evidence on coverage",
+                    "reason": "Check the cited coverage evidence.",
+                }
+            ),
+            '{"queries":[]}',
+            "New evidence [9, 7]. Earlier evidence [7].",
+        ],
         [[point(8, "New result."), point(9, "Other new result.")]],
         history=[
             {
@@ -194,7 +285,10 @@ async def test_answer_and_sources_follow_reading_order_and_keep_history_mapping(
         ],
         query="What does [1] say about coverage?",
     )
-    assert search.call_args.kwargs["query"] == "What does [1] say about coverage?"
+    assert search.call_args.kwargs["query"] == "Evaluation evidence on coverage"
+    assert "Latest user question: What does [7] say about coverage?" in (
+        llm.ainvoke.await_args_list[0].args[0][-1].content
+    )
     messages = llm.ainvoke.await_args.args[0]
     assert "Earlier evidence [7]." == messages[-2].content
     assert "Question: What does [7] say about coverage?" in messages[-1].content

@@ -202,9 +202,7 @@ async def stream_research_response(
         async for event in graph.astream(
             {
                 "query": remap_citations(query, evidence_numbers(latest_answer)),
-                "initial_search_query": (
-                    query if initial_search_query is None else initial_search_query
-                ),
+                "initial_search_query": initial_search_query,
                 "messages": _build_conversation_messages(conversation_messages),
             },
             config={

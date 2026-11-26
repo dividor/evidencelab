@@ -3,11 +3,11 @@
 import json
 import sys
 import uuid
-from types import ModuleType
-from unittest.mock import MagicMock, patch
+from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from starlette.requests import Request
 
 pytestmark = pytest.mark.usefixtures("one_data_source")
@@ -734,6 +734,38 @@ class TestMessageToHistoryEntry:
         msg = MagicMock(role="assistant", content="answer", sources={"foo": "bar"})
         entry = helper(msg)
         assert entry == {"role": "assistant", "content": "answer"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("owned", [True, False])
+async def test_conversation_history_requires_thread_ownership(owned):
+    from ui.backend.auth.models import ConversationThread
+    from ui.backend.routes import assistant
+
+    user = SimpleNamespace(id=uuid.uuid4())
+    thread_id = uuid.uuid4()
+    message = SimpleNamespace(role="user", content="School meals in Cambodia")
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = (
+        SimpleNamespace(messages=[message]) if owned else None
+    )
+    session = SimpleNamespace(execute=AsyncMock(return_value=result))
+    request = AssistantChatRequest(query="Tell me more", thread_id=str(thread_id))
+    with (
+        patch.object(assistant, "_USER_MODULE", True),
+        patch.object(assistant, "ConversationThread", ConversationThread, create=True),
+    ):
+        if owned:
+            assert await assistant._load_conversation_history(
+                request, user, session
+            ) == [{"role": "user", "content": message.content}]
+        else:
+            with pytest.raises(HTTPException) as exc:
+                await assistant._load_conversation_history(request, user, session)
+            assert exc.value.status_code == 404
+    clause = session.execute.await_args.args[0].whereclause
+    assert "conversation_threads.user_id" in str(clause)
+    assert set(clause.compile().params.values()) == {thread_id, user.id}
 
 
 class TestStreamAssistantChatBriefSection:
