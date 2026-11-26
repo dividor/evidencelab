@@ -184,7 +184,8 @@ describe('UserMenu', () => {
       from_date: '2026-05-01',
       to_date: '2026-05-30',
       completion_tokens: 0,
-      footprint_unestimated_tokens: 0,
+      estimated_output_tokens: 0,
+      coverage_label: null,
       energy_kwh_min: null,
       energy_kwh_max: null,
       gwp_kgco2eq_min: null,
@@ -217,13 +218,16 @@ describe('UserMenu', () => {
       get.mockResolvedValueOnce({ data: {
         ...emptySummary,
         completion_tokens: 100,
+        estimated_output_tokens: 80,
+        coverage_label: 'about 80%',
         energy_kwh_min: 0.001,
         energy_kwh_max: 0.002,
-        footprint_unestimated_tokens: 20,
       } }).mockResolvedValueOnce({ data: {
         ...emptySummary,
         from_date: '2026-01-01',
-        completion_tokens: 200,
+        completion_tokens: 473180,
+        estimated_output_tokens: 55203,
+        coverage_label: 'about 12%',
         energy_kwh_min: 0.003,
         energy_kwh_max: 0.004,
       } });
@@ -234,9 +238,7 @@ describe('UserMenu', () => {
       expect(await dialog.findByText('1–2')).toBeInTheDocument();
       expect(dialog.getByText('Electricity')).toBeInTheDocument();
       expect(dialog.getByText('watt-hours')).toBeInTheDocument();
-      expect(dialog.getByText(/100 tokens of AI-written text/)).toHaveTextContent(
-        'We couldn’t estimate the impact of 20 of them. A token is a small piece of text',
-      );
+      expect(dialog.getByText('about 80%')).toBeInTheDocument();
       expect(dialog.getByRole('link', { name: 'EcoLogits' })).toHaveAttribute('href', 'https://ecologits.ai/latest/');
       expect(get).toHaveBeenLastCalledWith(
         '/api/llm-usage/me/footprint', expect.objectContaining({ params: { period: '30-days' } }),
@@ -245,6 +247,14 @@ describe('UserMenu', () => {
       fireEvent.click(dialog.getByRole('button', { name: 'Year to date' }));
       expect(await dialog.findByText('3–4')).toBeInTheDocument();
       expect(dialog.getByText(/Jan 1, 2026/)).toBeInTheDocument();
+      expect(dialog.getByText('about 12%').parentElement).toHaveTextContent(
+        'We’ve started tracking the environmental impact of AI-written text. So far, we have estimates for about 12% of the text we recorded for you this period.',
+      );
+      const disclosure = dialog.getByText('How we count coverage');
+      expect(disclosure.parentElement).not.toHaveAttribute('open');
+      fireEvent.click(disclosure);
+      expect(disclosure.parentElement).toHaveAttribute('open');
+      expect(dialog.getByText(/55,203 of 473,180 recorded output tokens/)).toBeVisible();
       expect(dialog.queryByText('1–2')).not.toBeInTheDocument();
       expect(get).toHaveBeenLastCalledWith(
         '/api/llm-usage/me/footprint', expect.objectContaining({ params: { period: 'year-to-date' } }),
@@ -258,6 +268,35 @@ describe('UserMenu', () => {
       const dialog = openImpact();
       expect(await dialog.findByText(/We didn’t record any AI-written text/)).toBeInTheDocument();
       expect(dialog.queryByText('Electricity')).not.toBeInTheDocument();
+      expect(dialog.queryByText('How we count coverage')).not.toBeInTheDocument();
+    });
+
+    it('explains when text was recorded with no estimates', async () => {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: {
+        ...emptySummary,
+        completion_tokens: 200,
+      } });
+      const dialog = openImpact();
+      expect(await dialog.findByText(/We don’t have environmental impact estimates/)).toBeInTheDocument();
+      expect(dialog.queryByText('Electricity')).not.toBeInTheDocument();
+      fireEvent.click(dialog.getByText('How we count coverage'));
+      expect(dialog.getByText(/0 of 200 recorded output tokens/)).toBeVisible();
+    });
+
+    it('reports full coverage when all recorded text has an estimate', async () => {
+      (axios.get as jest.Mock).mockResolvedValueOnce({ data: {
+        ...emptySummary,
+        completion_tokens: 200,
+        estimated_output_tokens: 200,
+        coverage_label: 'all',
+        energy_kwh_min: 0.001,
+        energy_kwh_max: 0.002,
+      } });
+      const dialog = openImpact();
+      expect((await dialog.findByText('all')).parentElement).toHaveTextContent(
+        'we have estimates for all of the text we recorded for you this period',
+      );
+      expect(dialog.getByText('1–2')).toBeInTheDocument();
     });
 
     it('reports a summary request failure', async () => {

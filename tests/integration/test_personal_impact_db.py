@@ -104,3 +104,7 @@ async def test_personal_impact_totals_only_the_signed_in_account_in_each_period(
     assert year.json()["completion_tokens"] == 350
     assert month.json()["footprint_unestimated_tokens"] == 70
     assert year.json()["footprint_unestimated_tokens"] == 70
+    assert month.json()["estimated_output_tokens"] == 80
+    assert year.json()["estimated_output_tokens"] == 280
+    assert month.json()["coverage_label"] == "about 53%"
+    assert year.json()["coverage_label"] == "about 80%"

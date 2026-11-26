@@ -21,10 +21,55 @@ interface ImpactSummary extends FootprintRanges {
   from_date: string;
   to_date: string;
   completion_tokens: number;
-  footprint_unestimated_tokens: number;
+  estimated_output_tokens: number;
+  coverage_label: string | null;
 }
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeZone: 'UTC' });
+
+const ImpactMetrics: React.FC<{ summary: ImpactSummary }> = ({ summary }) => (
+  <dl className="personal-impact-metrics">
+    {METRICS.map(({ measure, label, unit }) => {
+      const range = formatFootprintRange(summary, measure);
+      return (
+        <div key={measure}>
+          <dt>{label}</dt>
+          <dd>
+            <span>{range ?? 'No estimate'}</span>
+            {range !== null && <> <small>{unit}</small></>}
+          </dd>
+        </div>
+      );
+    })}
+  </dl>
+);
+
+const ImpactCoverage: React.FC<{ summary: ImpactSummary }> = ({ summary }) => (
+  <>
+    {summary.coverage_label === null ? (
+      <p className="personal-impact-coverage-message">
+        We don’t have environmental impact estimates for the AI-written text we recorded for you this period.
+      </p>
+    ) : (
+      <>
+        <p className="personal-impact-coverage-message">
+          We’ve started tracking the environmental impact of AI-written text.
+          So far, we have estimates for <strong>{summary.coverage_label}</strong> of the text we recorded for you this period.
+        </p>
+        <ImpactMetrics summary={summary} />
+      </>
+    )}
+    <details className="personal-impact-coverage-details">
+      <summary>How we count coverage</summary>
+      <p>
+        We have estimates for {summary.estimated_output_tokens.toLocaleString()} of{' '}
+        {summary.completion_tokens.toLocaleString()} recorded output tokens.
+        A token is a small piece of text, like a word or part of a word.
+        Some models and older activity don’t have estimates.
+      </p>
+    </details>
+  </>
+);
 
 const ImpactResults: React.FC<{ period: Period }> = ({ period }) => {
   const [summary, setSummary] = useState<ImpactSummary>();
@@ -54,27 +99,7 @@ const ImpactResults: React.FC<{ period: Period }> = ({ period }) => {
       {summary.completion_tokens === 0 ? (
         <p>We didn’t record any AI-written text for your account in this period.</p>
       ) : (
-        <dl className="personal-impact-metrics">
-          {METRICS.map(({ measure, label, unit }) => {
-            const range = formatFootprintRange(summary, measure);
-            return (
-              <div key={measure}>
-                <dt>{label}</dt>
-                <dd>
-                  <span>{range ?? 'No estimate'}</span>
-                  {range !== null && <small>{unit}</small>}
-                </dd>
-              </div>
-            );
-          })}
-        </dl>
-      )}
-      {summary.footprint_unestimated_tokens > 0 && (
-        <p className="text-muted">
-          We recorded {summary.completion_tokens.toLocaleString()} tokens of AI-written text for your account.
-          We couldn’t estimate the impact of {summary.footprint_unestimated_tokens.toLocaleString()} of them.
-          A token is a small piece of text, like a word or part of a word.
-        </p>
+        <ImpactCoverage summary={summary} />
       )}
     </div>
   );
@@ -115,8 +140,7 @@ const EnvironmentalImpactModal: React.FC<{ onClose: () => void }> = ({ onClose }
         </div>
         <ImpactResults key={period} period={period} />
         <p className="text-muted personal-impact-coverage">
-          We use <EcoLogitsLink /> to estimate the impact of text AI writes for you.
-          Some models and older activity don’t have estimates.
+          Estimates use <EcoLogitsLink />.
           The figures leave out automatic document processing and the work of finding and sorting search results.
         </p>
       </div>
