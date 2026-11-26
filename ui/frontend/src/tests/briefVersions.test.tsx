@@ -82,10 +82,10 @@ describe('when a change awaiting review shows its tracked changes', () => {
       pendingReview: runId ? { runId, baseRunId: 'r1', kind: 'edit', at: 1, before: 'Old words here.' } : undefined,
     }) as BriefSection;
 
-  test('a change already awaiting review when the brief opens shows plain text, no review', () => {
+  test('a change already awaiting review opens as plain text with review controls', () => {
     const { result } = renderHook(() => useSectionChanges(awaiting('r2'), false));
     expect(result.current.pendingRunId).toBe('r2');
-    expect(result.current.reviewOpen).toBe(false);
+    expect(result.current.reviewOpen).toBe(true);
     expect(result.current.showingChanges).toBe(false);
   });
 

@@ -280,6 +280,38 @@ class TestUpdateGroup:
         assert group.search_settings == {"summaryModel": "nova-pro"}
 
     @pytest.mark.asyncio
+    @pytest.mark.unit
+    @pytest.mark.parametrize("setting", [True, False])
+    async def test_update_when_impact_setting_is_boolean_saves_it(self, setting):
+        group = _make_group(name="Analysts")
+        session = _make_session()
+        session.execute.side_effect = [
+            _scalars_result([group]),
+            _scalars_result([]),
+            _scalars_result([]),
+        ]
+        body = GroupUpdate(search_settings={"personalEnvironmentalImpact": setting})
+
+        await update_group(group.id, body, _make_admin(), session)
+
+        assert group.search_settings == {"personalEnvironmentalImpact": setting}
+        session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.unit
+    async def test_update_when_impact_setting_is_not_boolean_rejects_it(self):
+        group = _make_group(name="Analysts")
+        session = _make_session()
+        session.execute.return_value = _scalars_result([group])
+        body = GroupUpdate(search_settings={"personalEnvironmentalImpact": "false"})
+
+        with pytest.raises(HTTPException) as exc:
+            await update_group(group.id, body, _make_admin(), session)
+
+        assert exc.value.status_code == 422
+        session.commit.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_updates_description(self):
         """Should update the group description."""
         admin = _make_admin()

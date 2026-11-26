@@ -2,6 +2,78 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.11] - 2026-11-26
+
+Evidence Lab v1.6.11 gives Assistant and Deep Research a shared workflow for finding and citing evidence. It also improves Brief generation, separates the Docs and Admin guides, and makes several controls easier to use on smaller screens.
+
+### Assistant and Brief
+
+- **Assistant and Deep Research use the same search workflow.** Focused questions start with the original question. Broad questions split into related lines of research that can follow up on their own results. The Assistant combines the findings, numbers citations in reading order, and uses the conversation to interpret follow-up questions. Administrators can configure Assistant and Brief prompts and citation checks in Group Settings (#706, #712).
+- **Brief sections start from findings backed by source passages.** An optional check verifies that the passages support the findings and looks for claims already made in earlier sections. Regenerate All reports which sections need another attempt, and citation previews highlight matching source text when available (#706).
+- **Ask AI groups the research actions in a Brief.** The Brief header and completed sections each have a menu for their available actions. Unmatched citation badges align with the text, and screen readers announce which citations have no source. The Brief History rail shows the full selected title on hover (#702, #704, #705, #708, #714).
+- **Heatmap results use smaller responses.** Search leaves out repeated copies of document data when returning matches (#706).
+
+### Guides and interface
+
+- **Docs and Admin have separate entries under Info.** Each entry searches its own guides. Long articles have an On this page list, and existing article bookmarks and heading links still work (#718).
+- **Feedback stays clear of Search.** The Feedback tab sits lower on wide screens and moves below the content on narrow screens. Escape closes the feedback dialog, and keyboard focus stays inside while it is open (#715, #706, #716).
+- **Administration is easier to navigate on a phone.** The tabs show when more items can be reached by scrolling, and the TOC Validator has larger checkbox targets (#703, #707, #710).
+- **Personal impact explains how much usage the estimates cover.** The dialog shows how much recorded AI-written text has an estimate and puts exact token counts under How we count coverage. The LLM Usage guide and Basis pop-up explain which kinds of AI calls are counted (#695, #711, #713, #717).
+
+### Development
+
+- **Pull requests have automated documentation and interface review workflows.** The reviews that call the external API are paused while credits are unavailable. The regular tests and security checks continue to run (#693, #703, #715, #718).
+
+## [1.6.10] - 2026-11-25
+
+Evidence Lab v1.6.10 estimates the **environmental footprint of the site's AI use**. The admin LLM Usage tab now shows the energy, greenhouse gas emissions and water behind each user's, group's and the document pipeline's AI calls. Each call is estimated with EcoLogits when it is recorded, and the figures are shown as ranges. Every figure shows what it rests on: a badge for each model, marked "Assumed" where the estimate uses other models' figures, opens a pop-up with the sources, the calculation and how EcoLogits works.
+
+### Admin
+- **Estimated energy, emissions and water on the LLM Usage tab.** Each AI call is estimated as it is recorded, with EcoLogits 0.11.3, from its model and the number of output tokens it wrote, and added up for each line like its cost. The tab shows Energy (Wh), Emissions (g CO₂e) and Water (mL) as low–high ranges that can be sorted, and the XLSX export has the same figures. Embedding and rerank calls, models EcoLogits doesn't list (such as Qwen3-Next 80B) and usage recorded before this release have no estimate, and a note under the table says how many output tokens that leaves out (#691)
+- **Every figure shows its source.** A Basis column has a badge for each model a line's figures rest on. Clicking it opens a pop-up with any assumption and its citations, and the models the estimate uses: each one's size (and whether its maker published it), and the data centre and electricity EcoLogits uses for it. It also works through the calculation for an example call of 1,000 output tokens, and explains how EcoLogits works, with links to its site, method and paper (#691)
+- **Amazon Nova is estimated from similar models.** Amazon doesn't publish how big Nova is. SAEF (Llopis-Garcia, 2026) puts Nova Lite in its small-model class and Nova Pro in its mid-size class. So each Nova call is run through EcoLogits as each of a few models from that class (four for Nova 2 Lite, two for Nova Pro), and recorded as the range from the lowest result to the highest, marked "Assumed". Llama 3.3 70B is estimated as Llama 3.1 70B, which has the same design and number of parameters (#691)
+- **Document processing has its own line.** Pipeline calls have no user or group, so they show as "(pipeline)" when grouping by user and when grouping by group (#691)
+- **The docs call the tab LLM Usage**, as the screen does, and the README lists it (#691)
+
+### Upgrade Notes
+- **Migration `0042_add_activity_footprint`** adds the footprint columns to `user_activity`. It applies automatically on deploy. Existing rows get no estimate.
+- **New dependency:** `ecologits==0.11.3` (MPL-2.0), in both requirements files and the published image.
+- **Two new optional `config.json` keys** on each `supported_llms` entry. `electricity_mix_zone` says where the model runs, as an EcoLogits zone code such as `"IRL"`; without it, EcoLogits assumes the USA for Anthropic, OpenAI and Google models. `ecologits` (`{"provider", "model", "assumption"}`) names an EcoLogits model to estimate it as. The api and MCP server check both at start-up and won't start with a zone or model EcoLogits doesn't know. A deployment whose models run outside the USA, such as on Bedrock's EU inference profiles, should set `electricity_mix_zone`.
+
+## [1.6.9] - 2026-11-24
+
+Evidence Lab v1.6.9 adds **limits on AI spending** and a per-group choice of models. `AI_DAILY_COST_LIMIT_USD` caps what the site's AI features may cost in one UTC day, and with it set the api and MCP server refuse to start with a model they cannot price. Admins can choose each AI job's model per group in Group Settings > LLMs. On AWS, the containers may call only the Bedrock models `config.json` offers, and CloudWatch alarms can email when a model's use passes set levels. The AI summary numbers its citations 1, 2, 3… in reading order whatever order the model cites its sources in, Brief Central loads without fetching every brief's content, and a brief's citations with no source show as red badges its warning can jump to. Hugging Face models work again, through Hugging Face's router.
+
+### AI spending and models
+- **A daily AI cost limit for the whole site.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day, priced as the admin Token Usage tab prices them; unset means no limit and `0` turns the AI features off. Once the day's total reaches it, every AI request (search summaries, the research assistant, Brief, document summaries, evaluation runs, LLM translation, the MCP and A2A assistant) is refused with a 429 and `Retry-After` until 00:00 UTC; search, browsing and the heatmap keep working. Spend is added up per UTC day in a new `ai_daily_spend` table (#679)
+- **The limit counts every call.** A model the price table doesn't list was priced as nothing, so its calls never counted. With the limit set, the api and MCP/A2A server now check at start-up that every model `config.json` can send calls to has a price, and stop with an error naming each one that doesn't (#682). A call that names its model by the provider's id, or names none and runs on the default model, is now priced by its `supported_llms` key (#683)
+- **Haiku 4.5 on Amazon Bedrock has a price** (EU inference profile rates), so it can be used and counted (#684)
+- **Choose each AI job's model per group.** Admin > Group Settings has an LLMs tab to pick, per group, the model for the search AI summary, Brief, and the evaluation judge (LLM-judge checks and the Brief citation check). "Default from config" keeps `config.json`'s choice. A model `config.json` no longer lists makes that group's requests fail with a 409 naming the group and model, and the tab flags it. Model combos can set `judge_model` (#685)
+- **The AWS Bedrock combo reranks every hit.** It reranked only the first 10 of a search's 50 hits, so hits 11 to 20 reached the AI summary in the search's own order. `rerank_model_page_size` is now 50, at the same Bedrock price (#681)
+
+### Search and Brief
+- **AI summary citations count up in reading order.** The summary renumbered the model's `[n]` markers by result position, so they read 1, 2, 3… only when the model cited its sources in result order; Nova 2 Lite doesn't. Citations are now numbered in the order they first appear, in the summary, its References list, the Word export and the research HTML export, which had its own copy of the old numbering. Models that cite in result order see the same numbers as before (#686)
+- **The References list matches the summary on screen.** The screen hides a trailing Summary or Conclusion section the model adds despite the prompt, but the References list was built from the full text, so it listed sources the visible text never cites, and an inline `[n]` could point at a different document than reference `n` (#686)
+- **Brief Central loads faster and shows the loading animation.** Its lists loaded every brief's full content to show a card; they now read only the card's columns, with Postgres counting the sections and sources. On a copy of a real deployment (39 briefs, 31 MB of content) the admin list went from 0.22–0.87 s to 0.24 s. While loading it shows the multicoloured spinner from search instead of "Loading…" (#687)
+- **A brief's citations with no source are easy to find.** When a section's research agent cites a number it was never given, the API shows it as `[?n]`. The text now draws each one as a red `?n` badge, and the section's warning is a short red header with a chip per number: clicking a chip scrolls to that citation and flashes it, then steps through its other uses, and a link opens the run's original output. On one ten-section brief, 18 of 20 such numbers were paragraph numbers printed in the section's own source passages, which the model cited as if they were source numbers; no source was dropped (#689)
+- **The Fact Checker highlights passages whose sentence carries markdown,** such as a bold claim, which it skipped before (#622)
+
+### Deployment
+- **AWS: only `config.json`'s Bedrock models, and email alerts on their use.** The task role (api, mcp, pipeline, migrate) may call only the Bedrock models `config.json` offers (`supported_llms`, `supported_embedding_models`, `supported_rerank_models`), with cross-region inference profiles allowed in every region they route to. New settings `alert_emails` and `bedrock_alarms` send an email when a model's hourly input tokens, output tokens or invocations pass a level (#678)
+
+### Hugging Face
+- **Hugging Face models work again.** Hugging Face's model API now returns an empty provider list for every model, and `huggingface_hub`'s client (0.36.2 here, 2.4.0 too) needs that list, so every call to a Hugging Face model with a named provider failed with "Model … is not supported by provider …". Evidence Lab now calls Hugging Face's router through its OpenAI-compatible API, with the model as `<model>:<provider>`, and streamed calls report their token usage. Kimi K2 (`moonshotai/Kimi-K2-Instruct-0905`) is no longer served by any provider, so the Huggingface model combo, the demo and the two data sources that summarised with it now use Qwen3-Next 80B (`Qwen/Qwen3-Next-80B-A3B-Instruct`) via deepinfra, which also runs the research assistant's tools (#690)
+
+### Documentation
+- Cloud Deployment covers limiting and watching AI use on AWS, including how to confirm the alert emails, check them and send a test alert (#678, #679, #680); System Monitoring covers the daily AI limit (#679, #685); User Administration covers the LLMs tab and Pipeline Configuration covers `judge_model` and how to add another Bedrock chat model (#684, #685)
+
+### Upgrade Notes
+- **One new migration**, `0041_add_ai_daily_spend`, for the daily AI limit. The api runs it at start-up (#679).
+- **Rebuild the web interface** for the LLMs tab, the citation numbering, Brief Central and the citation badges (#685, #686, #687, #689).
+- **With `AI_DAILY_COST_LIMIT_USD` set,** every model `config.json` can send calls to needs a price in `ui/backend/utils/llm_costs.py`, or the api and MCP server refuse to start and name the models to add (#682).
+- **AWS template:** the next apply limits the task role to `config.json`'s Bedrock models. Add any other model a deployment calls to `config.json` first (#678).
+- **Hugging Face:** the stock `config.json`'s `kimi-k2-instruct` model is now `qwen3-next-80b-instruct` (`Qwen/Qwen3-Next-80B-A3B-Instruct` via `deepinfra`). A deployment with its own `config.json` that uses Kimi K2 must change its model too, and a group that chose `kimi-k2-instruct` in Group Settings > LLMs must choose again (#690).
+
 ## [1.6.8] - 2026-11-23
 
 Evidence Lab v1.6.8 is a **security** patch release. The document preview loads PDF.js 6.5.438 from the site itself instead of PDF.js 3.11.174 from cdnjs, and the web pages get a full Content-Security-Policy: scripts, styles, fonts, workers and connections may come only from the site, plus Google Analytics. On a site that requires sign-in, the activity log takes writes only from people who are signed in, and MCP client registration is limited in size and number. A site that signs in only with Google or Microsoft no longer offers password reset, and signing out of it leads to the provider's account picker instead of a sign-in button. On AWS, the WAF no longer blocks Microsoft's sign-in reply. LangChain moves to 1.5.

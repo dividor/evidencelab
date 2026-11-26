@@ -150,7 +150,7 @@ class TestEnsureDemoDatasource:
         assert ds["pipeline"]["index"]["dense_models"] == ["e5_large"]
         assert (
             ds["pipeline"]["summarize"]["llm_model"]["model"]
-            == "moonshotai/Kimi-K2-Instruct-0905"
+            == "Qwen/Qwen3-Next-80B-A3B-Instruct"
         )
         assert ds["pipeline"]["summarize"]["llm_model"]["provider"] == "huggingface"
 
@@ -235,8 +235,15 @@ class TestMakeComboDefault:
     def config(self):
         return {
             "ui_model_combos": {
-                "Azure Foundry": {"default": True, "embedding_model": "azure_small"},
-                "Huggingface": {"embedding_model": "e5_large"},
+                "Azure Foundry": {
+                    "default": True,
+                    "embedding_model": "azure_small",
+                    "reranker_model": "Cohere-rerank-v4.0-fast",
+                },
+                "Huggingface": {
+                    "embedding_model": "e5_large",
+                    "reranker_model": "Cohere-rerank-v4.0-fast",
+                },
                 "Google Vertex": {"embedding_model": "google_gemini_1536"},
             }
         }
@@ -247,6 +254,11 @@ class TestMakeComboDefault:
         combos = config["ui_model_combos"]
         assert changed is True
         assert combos["Huggingface"]["default"] is True
+        assert (
+            combos["Huggingface"]["reranker_model"]
+            == demo.PROVIDER_COMBOS[1]["reranker"]
+        )
+        assert combos["Azure Foundry"]["reranker_model"] == "Cohere-rerank-v4.0-fast"
         assert "default" not in combos["Azure Foundry"]
         assert "default" not in combos["Google Vertex"]
 
@@ -255,6 +267,18 @@ class TestMakeComboDefault:
 
         assert changed is False
         assert config["ui_model_combos"]["Azure Foundry"]["default"] is True
+
+    def test_make_combo_default_when_only_reranker_differs_then_reports_change(
+        self, config
+    ):
+        combos = config["ui_model_combos"]
+        del combos["Azure Foundry"]["default"]
+        combos["Huggingface"]["default"] = True
+        provider = demo.PROVIDER_COMBOS[1]
+
+        assert demo.make_combo_default(config, provider) is True
+        assert combos["Huggingface"]["reranker_model"] == provider["reranker"]
+        assert demo.make_combo_default(config, provider) is False
 
     def test_make_combo_default_when_combo_missing_then_exits(self, config):
         del config["ui_model_combos"]["Huggingface"]

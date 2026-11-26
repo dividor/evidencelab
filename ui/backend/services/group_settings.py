@@ -18,6 +18,16 @@ from ui.backend.auth.models import UserGroup, UserGroupMember
 
 # Main feature tabs that a group can show/hide and relabel.
 TAB_KEYS = ("search", "assistant", "brief", "heatmap")
+PERSONAL_IMPACT_SETTING = "personalEnvironmentalImpact"
+ASSISTANT_SETTINGS_KEY = "assistant"
+BRIEF_SECTION_PROMPT_KEY = "briefSectionPrompt"
+BRIEF_CITATION_CHECK_KEY = "briefCitationCheck"
+CITATION_CHECK_DEFAULT = True
+
+
+def personal_impact_enabled(settings: dict) -> bool:
+    """Personal impact is available unless a group explicitly turns it off."""
+    return settings.get(PERSONAL_IMPACT_SETTING) is not False
 
 
 def merge_tabs(tab_configs: Sequence[dict]) -> dict:
@@ -44,6 +54,14 @@ def merge_tabs(tab_configs: Sequence[dict]) -> dict:
     return result
 
 
+def _merge_assistant_default_mode(merged: dict, settings: dict) -> None:
+    assistant = settings.get(ASSISTANT_SETTINGS_KEY)
+    if isinstance(assistant, dict):
+        default_mode = assistant.get("deepResearchByDefault")
+        if isinstance(default_mode, bool):
+            merged.setdefault("assistantDeepResearchByDefault", default_mode)
+
+
 def merge_group_settings(groups: Sequence) -> dict:
     """Merge search_settings from multiple groups (first non-null per key wins).
 
@@ -61,13 +79,18 @@ def merge_group_settings(groups: Sequence) -> dict:
         settings = group.search_settings
         if not settings:
             continue
+        _merge_assistant_default_mode(merged, settings)
         for key, value in settings.items():
             if key == "tabs":
                 if isinstance(value, dict):
                     tab_configs.append(value)
                 continue
-            if key not in merged:
-                merged[key] = value
+            if key not in (
+                ASSISTANT_SETTINGS_KEY,
+                BRIEF_SECTION_PROMPT_KEY,
+                BRIEF_CITATION_CHECK_KEY,
+            ):
+                merged.setdefault(key, value)
     if tab_configs:
         merged["tabs"] = merge_tabs(tab_configs)
     return merged

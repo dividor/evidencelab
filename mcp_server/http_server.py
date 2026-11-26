@@ -36,6 +36,7 @@ from mcp_server.oauth import (
     register_client,
 )
 from ui.backend.services.ai_daily_limit import validate_ai_daily_limit_setting
+from ui.backend.utils.llm_footprint import validate_footprint_settings
 
 logger = logging.getLogger(__name__)
 
@@ -506,6 +507,7 @@ class MCPApp:
             # A malformed daily AI limit stops the server here, not at the
             # first assistant call.
             validate_ai_daily_limit_setting()
+            validate_footprint_settings()
             self._cm = session_manager.run()
             await self._cm.__aenter__()
             self._started = True

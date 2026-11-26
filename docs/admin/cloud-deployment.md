@@ -8,7 +8,7 @@ Evidence Lab runs as a set of containers. On one machine, Docker Compose runs th
 
 This page describes that layout and its settings, with tested example deployments for AWS, Azure and Google Cloud.
 
-**On this page**
+**What this guide covers**
 
 | Section | What it covers |
 |---|---|
@@ -474,7 +474,7 @@ bedrock_alarms = {
 - **The key is the `ModelId` CloudWatch records.** A call through an inference profile is recorded under the profile's ID. List the IDs your deployment has used with `aws cloudwatch list-metrics --namespace AWS/Bedrock --region <region>`.
 - **Base the levels on normal use.** Look at each model's busiest hour over a couple of weeks (CloudWatch, `AWS/Bedrock`, the `Sum` of each metric per hour) and set the level well above it, for example three times. Pipeline runs embed and summarise whole documents, so their hours are the busiest.
 - **How fast it reacts.** CloudWatch checks each alarm every minute against the hour just past, so an email follows within minutes of a level being passed. Hours with no use count as normal.
-- **Who used it.** The alarm says which model. The admin **Token Usage** tab shows which users, groups and pipeline documents used it.
+- **Who used it.** The alarm says which model. The admin **LLM Usage** tab shows which users, groups and pipeline documents used it.
 - **Cost.** Each alarm is a standard-resolution CloudWatch alarm on one metric ([CloudWatch pricing](https://aws.amazon.com/cloudwatch/pricing/)); email notifications are charged by Amazon SNS ([SNS pricing](https://aws.amazon.com/sns/pricing/)).
 
 **A daily AI limit.** `AI_DAILY_COST_LIMIT_USD` caps what the AI features may cost in one UTC day (see [Daily AI limit](system-monitoring.md#daily-ai-limit)). Set it with the containers' other settings:

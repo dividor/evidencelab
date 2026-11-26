@@ -1,16 +1,30 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useCloseOnOutsideClick } from '../../hooks/useCloseOnOutsideClick';
+import type { AuthUser } from '../../types/auth';
+import EnvironmentalImpactModal from './EnvironmentalImpactModal';
 import LoginModal from './LoginModal';
 import ProfileModal from './ProfileModal';
 import SavedResearchModal from '../SavedResearchModal';
 
 interface UserMenuProps {
+  personalImpactEnabled?: boolean;
   onAdminClick?: () => void;
   onLoadResearch?: (id: string) => void;
 }
 
-const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => {
+function userInitials(user: AuthUser | null): string {
+  if (user?.first_name || user?.last_name) {
+    return [user.first_name?.[0], user.last_name?.[0]]
+      .filter(Boolean)
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  return user?.email?.charAt(0).toUpperCase() || '?';
+}
+
+const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch, personalImpactEnabled }) => {
   const {
     user, isAuthenticated, isLoading, logout,
     verificationMessage, resetPasswordToken, clearResetPasswordToken,
@@ -18,9 +32,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
   const [menuOpen, setMenuOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [impactUserId, setImpactUserId] = useState<string>();
   const [showSavedResearch, setShowSavedResearch] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   useCloseOnOutsideClick(containerRef, menuOpen, closeMenu);
 
   // Auto-open the login modal when a verification message arrives
@@ -38,14 +54,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
   }, [resetPasswordToken]);
 
   if (isLoading) return null;
-
-  const initials = (user?.first_name || user?.last_name)
-    ? [user?.first_name?.[0], user?.last_name?.[0]]
-        .filter(Boolean)
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
-    : user?.email?.charAt(0).toUpperCase() || '?';
 
   if (!isAuthenticated) {
     return (
@@ -76,10 +84,11 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
       <div className="dropdown-container" ref={containerRef}>
         <button
           className="user-menu-trigger"
+          ref={triggerRef}
           onClick={() => setMenuOpen(!menuOpen)}
           title={user?.email || 'User menu'}
         >
-          {initials}
+          {userInitials(user)}
         </button>
         {menuOpen && (
           <div className="dropdown-menu user-menu-dropdown">
@@ -95,6 +104,14 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
             >
               Profile
             </button>
+            {personalImpactEnabled && user && (
+              <button
+                className="dropdown-item"
+                onClick={() => { setImpactUserId(user.id); closeMenu(); }}
+              >
+                Environmental impact
+              </button>
+            )}
             {onLoadResearch && (
               <button
                 className="dropdown-item"
@@ -122,6 +139,12 @@ const UserMenu: React.FC<UserMenuProps> = ({ onAdminClick, onLoadResearch }) => 
       </div>
       {showProfile && (
         <ProfileModal onClose={() => setShowProfile(false)} />
+      )}
+      {personalImpactEnabled && user && impactUserId === user.id && (
+        <EnvironmentalImpactModal onClose={() => {
+          setImpactUserId(undefined);
+          requestAnimationFrame(() => triggerRef.current?.focus());
+        }} />
       )}
       {showSavedResearch && onLoadResearch && (
         <SavedResearchModal

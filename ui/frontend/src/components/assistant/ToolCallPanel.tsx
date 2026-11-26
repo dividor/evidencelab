@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SearchToolCall } from '../../types/api';
 import { SearchSettings } from '../../types/auth';
+import { capitalizeFollowUp } from './queryDisplay';
 
 interface ToolCallPanelProps {
   toolCalls: SearchToolCall[];
@@ -56,6 +57,7 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
 
   return (
     <div className="tool-call-query-row">
+      {tc.stream && <div className="tool-call-stream">{tc.stream}</div>}
       <div
         className={`tool-call-code-entry${hasResults ? ' tool-call-code-entry--expandable' : ''}`}
         onClick={hasResults ? () => setOpen(!open) : undefined}
@@ -66,9 +68,16 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
         {hasResults && (
           <span className="tool-call-expand-icon">{open ? '\u25BC' : '\u25B6'}</span>
         )}
-        <span className="tool-call-code-query">{tc.query}</span>
+        <span className="tool-call-code-query">
+          {index > 0 || tc.stream ? capitalizeFollowUp(tc.query) : tc.query}
+        </span>
         <span className="tool-call-code-result">{tc.resultCount} results</span>
       </div>
+      {tc.reason && (
+        <div className={`tool-call-reason${hasResults ? ' tool-call-reason--indented' : ''}`}>
+          <span className="tool-call-reason-label">Why:</span> <span>{tc.reason}</span>
+        </div>
+      )}
       {open && hasResults && (
         <div className="tool-call-results-cards">
           {tc.results!.map((r, j) => (

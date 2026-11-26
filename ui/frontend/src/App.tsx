@@ -43,6 +43,7 @@ import { PdfPreviewOverlay } from './components/app/PdfPreviewOverlay';
 import { SearchTabContent } from './components/app/SearchTabContent';
 import { HeatmapTabContent } from './components/app/HeatmapTabContent';
 import { TabContent } from './components/app/TabContent';
+import { DocsSection, notifyDocsLocation } from './utils/docsLocation';
 import { CookieConsent } from './components/CookieConsent';
 import { getAnalyticsConsent } from './utils/analytics';
 import { resolveDefaultModelCombo } from './utils/defaultModelCombo';
@@ -613,7 +614,6 @@ function App() {
   const [dataContent, setDataContent] = useState('');
   const [privacyContent, setPrivacyContent] = useState('');
   const [termsContent, setTermsContent] = useState('');
-  const [docsInitialPath, setDocsInitialPath] = useState<string | undefined>(undefined);
   const tooltipTimeoutRef = React.useRef<number | null>(null);
 
   const handleToggleDomainDropdown = useCallback(() => {
@@ -881,7 +881,7 @@ function App() {
   }, []);
 
   // Update URL when tab changes
-  const handleTabChange = useCallback((tab: TabName) => {
+  const handleTabChange = useCallback((tab: TabName, docsSection?: DocsSection) => {
     setActiveTab(tab);
 
     // Reset search filters when navigating to the search tab
@@ -889,7 +889,7 @@ function App() {
       setSelectedFilters(buildEmptySelectedFilters());
     }
 
-    let newPath = tab === 'search' ? '/' : `/${tab}`;
+    let newPath = tab === 'search' || tab === 'docs' ? '/' : `/${tab}`;
     newPath = withBasePath(newPath);
 
     // Preserve dataset/model in URL when switching tabs
@@ -906,6 +906,9 @@ function App() {
     if (tab !== 'search') {
       params.set('tab', tab);
     }
+    if (docsSection === 'admin') {
+      params.set('section', docsSection);
+    }
 
     const queryString = params.toString();
     if (queryString) {
@@ -913,6 +916,7 @@ function App() {
     }
 
     window.history.pushState(null, '', newPath);
+    notifyDocsLocation();
   }, [selectedDomain, searchModel, selectedModelCombo]);
 
   // If the active tab is a main feature tab that a group has disabled, fall back
@@ -925,19 +929,16 @@ function App() {
   }, [tabConfig, activeTab, handleTabChange]);
 
   const handleAboutClick = useCallback(() => {
-    setDocsInitialPath('overview/about.md');
     handleTabChange('info');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleTechClick = useCallback(() => {
-    setDocsInitialPath('overview/tech.md');
     handleTabChange('tech');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
   const handleDataClick = useCallback(() => {
-    setDocsInitialPath('overview/data.md');
     handleTabChange('data');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
@@ -954,6 +955,11 @@ function App() {
 
   const handleDocsClick = useCallback(() => {
     handleTabChange('docs');
+    setHelpDropdownOpen(false);
+  }, [handleTabChange]);
+
+  const handleAdminDocsClick = useCallback(() => {
+    handleTabChange('docs', 'admin');
     setHelpDropdownOpen(false);
   }, [handleTabChange]);
 
@@ -3047,8 +3053,10 @@ function App() {
         onTechClick={handleTechClick}
         onDataClick={handleDataClick}
         onDocsClick={handleDocsClick}
+        onAdminDocsClick={handleAdminDocsClick}
         onAdminClick={() => handleTabChange('admin')}
         onLoadResearch={handleLoadResearch}
+        personalImpactEnabled={groupDefaults?.personalEnvironmentalImpact}
         navTabs={<NavTabs activeTab={activeTab} onTabChange={handleTabChange} tabs={tabConfig} />}
       />
 
@@ -3075,6 +3083,7 @@ function App() {
         searchTab={searchTab}
         assistantTab={
           <AssistantTab
+            defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             rerankerModel={rerankModel}
@@ -3135,7 +3144,6 @@ function App() {
         privacyContent={privacyContent}
         termsContent={termsContent}
         basePath={APP_BASE_PATH}
-        docsInitialPath={docsInitialPath}
         onTabChange={handleTabChange}
       />
 
@@ -3144,6 +3152,7 @@ function App() {
         dataSource={dataSource}
         dataSourceConfig={currentDataSourceConfig}
         modelCombo={selectedModelCombo}
+        assistantModelConfig={assistantModelConfig}
         onResultClick={handleResultClick}
       />
 

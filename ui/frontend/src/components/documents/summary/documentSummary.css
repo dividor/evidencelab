@@ -8,7 +8,12 @@
 .markdown-summary-cell-clickable:hover,
 .markdown-summary-cell-clickable:focus-visible {
   background: var(--brand-bg-secondary, rgba(0, 0, 0, 0.03));
-  outline: none;
+}
+
+/* The cell is the only control for its summary, so keyboard focus must show. */
+.markdown-summary-cell-clickable:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
 }
 
 .doc-summary-add-link {

@@ -35,6 +35,15 @@ updates:
       - dependency-name: "docx"
         versions: [">9.6.1"]
 
+  # The browser tool the UX review in CI drives (.github/review/ux)
+  - package-ecosystem: "npm"
+    directory: "/.github/review/ux"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "javascript"
+
   # Docker dependencies - root directory
   - package-ecosystem: "docker"
     directory: "/"

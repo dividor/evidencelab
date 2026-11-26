@@ -18,27 +18,26 @@ Each response includes:
 
 ### Normal Mode
 
-In normal mode, the assistant uses a single AI agent that iterates through a plan-search-synthesize loop. It typically performs 2-5 searches to gather evidence before writing a response. This mode is fast and suitable for most research questions.
+The Assistant first searches with your original question. It can use up to four searches
+for a focused question. If a question asks about different outcomes or comparisons, the
+Assistant can plan up to four research streams, one for each part of the question. Each
+stream starts with a focused search and can search again to fill a gap in its own results.
 
-The assistant will:
-1. Plan a set of search queries based on your question
-2. Execute each search against your document collection using hybrid retrieval
-3. Analyze the results and synthesize a cited response
-4. Show the number of searches performed and total results found (e.g., "4 searches · 70 results")
+The Assistant combines the evidence into one answer. Expand the search list to see which
+stream each query belonged to and why the Assistant searched again.
 
 ### Deep Research Mode
 
-For more complex questions that require broader investigation, enable **Deep Research** by checking the checkbox below the chat input.
+For questions that need more investigation, enable **Deep Research** with the checkbox
+below the chat input.
 
 ![Deep Research checkbox](../images/assistant/deep-research-checkbox.png)
 
-Deep Research uses a coordinator/researcher sub-agent architecture:
-
-- A **coordinator agent** plans the investigation and breaks it into focused research tasks
-- **Researcher sub-agents** execute specific search tasks independently
-- The coordinator synthesizes the sub-agent findings into a comprehensive response
-
-This mode performs more searches (up to 12 vs 6 in normal mode) and can investigate multiple aspects of a question in parallel, producing more thorough and detailed responses.
+Deep Research can use up to ten searches for a focused question. For a question with
+multiple streams, it can run up to four searches per stream after the original search.
+The normal Assistant can run up to two per stream. Deep Research looks for evidence from
+independent evaluations and investigates disagreements and limitations. Each stream can
+finish early when its results are sufficient.
 
 ### Multi-Turn Conversations
 

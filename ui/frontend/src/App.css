@@ -20,8 +20,10 @@
      ============================================ */
 
   /* Primary Brand Colors */
-  --brand-primary: #5B8FA8;
-  --brand-primary-dark: #4A7490;
+  /* Dark enough for WCAG AA (4.5:1): text in it on the light backgrounds, and
+     white text on it, are readable. #5B8FA8 was 3.4:1. */
+  --brand-primary: #4B778D;
+  --brand-primary-dark: #3F637B;
   --brand-primary-light: #7AA8BE;
 
   /* Accent Colors */
@@ -34,8 +36,10 @@
 
   /* Neutrals */
   --brand-text-primary: #2C3E50;
-  --brand-text-secondary: #6B7876;
-  --brand-text-tertiary: #8C9A97;
+  /* Both meet WCAG AA (4.5:1) on --brand-background, --brand-surface and the
+     light blue tints of active items (down to #e8f0f5). */
+  --brand-text-secondary: #5C6766;
+  --brand-text-tertiary: #616E6B;
   --brand-border: #D1D9D7;
   --brand-border-light: #E8ECEB;
   --brand-background: #fafbfc;
@@ -404,8 +408,8 @@ h6,
 }
 
 .dropdown-menu-help {
-  right: auto;
-  left: 0;
+  right: 0;
+  left: auto;
   width: max-content;
   min-width: 140px;
 }
@@ -795,8 +799,12 @@ h6,
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.375rem;
   padding: 0;
+  /* Easy to tap: the icon alone shows on phones. */
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
@@ -866,6 +874,13 @@ h6,
 
   .search-container.search-container-landing .search-form {
     padding: 0 var(--spacing-md);
+  }
+}
+
+/* In short tablet-width windows, Search can sit level with the Feedback tab. */
+@media (min-width: 641px) and (max-width: 1024px) and (max-height: 500px) {
+  .search-container.search-container-landing .search-form {
+    padding-right: var(--spacing-xl);
   }
 }
 
@@ -1609,7 +1624,7 @@ h6,
 
 .header-label-subtitle {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-style: italic;
   font-weight: 400;
   color: var(--gray-400);
@@ -1637,6 +1652,8 @@ h6,
   justify-content: center;
   font-weight: 400;
   opacity: 0.5;
+  min-width: 24px;
+  min-height: 24px;
 }
 
 .filter-icon-button svg {
@@ -1644,25 +1661,32 @@ h6,
   height: 12px;
 }
 
-.sort-icon-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  line-height: 0.5;
+/* Two triangles, drawn rather than typed, so they keep their shape and gap. */
+.sort-icon {
+  display: block;
 }
 
 .chevron-up,
 .chevron-down {
-  display: block;
+  fill: currentColor;
   color: var(--gray-400);
   transition: color 0.15s;
-  font-weight: 400;
-  font-size: 9px;
 }
 
 .chevron-up.active,
 .chevron-down.active {
   color: var(--primary-blue);
+}
+
+/* A sorted column shows its direction by lightness, not only by hue: the
+   button at full strength, the unused triangle much lighter. */
+.sort-icon-button.sorted {
+  opacity: 1;
+}
+
+.sort-icon-button.sorted .chevron-up:not(.active),
+.sort-icon-button.sorted .chevron-down:not(.active) {
+  color: var(--gray-300);
 }
 
 .filter-icon {
@@ -3994,7 +4018,8 @@ h6,
 .ai-summary-citation {
   color: var(--primary-blue);
   text-decoration: none;
-  font-size: 0.85em;
+  /* A citation number, but never under 12 px. */
+  font-size: max(0.85em, 12px);
   font-weight: 600;
   cursor: pointer;
 }
@@ -4146,8 +4171,8 @@ h6,
   display: block;
   width: 100%;
   text-align: center;
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
+  /* Full strength: at 70% opacity on the summary's yellow it was 2.7:1. */
+  transition: color 0.2s ease;
 }
 
 .ai-key-facts-header {
@@ -4305,7 +4330,7 @@ li.ai-fact-active::before {
 }
 
 .ai-summary-expand-button:hover {
-  opacity: 1;
+  color: var(--brand-primary-dark);
 }
 
 /* Generating AI summary color sweep animation */
@@ -4379,7 +4404,7 @@ li.ai-fact-active::before {
   margin-top: var(--spacing-sm);
   padding-top: var(--spacing-sm);
   border-top: 1px solid var(--gray-200);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .ai-disclaimer {
@@ -4393,8 +4418,9 @@ li.ai-fact-active::before {
   color: var(--gray-500);
   cursor: pointer;
   text-decoration: underline;
-  padding: 0;
-  font-size: 0.6875rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  min-height: 24px;
 }
 
 .view-prompt-link:hover {
@@ -4765,6 +4791,108 @@ li.ai-fact-active::before {
   overflow-y: auto;
 }
 
+.personal-impact-modal {
+  width: min(520px, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  color: var(--text-primary);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.personal-impact-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
+}
+
+.personal-impact-modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.personal-impact-modal .login-tab-active {
+  font-weight: 600;
+}
+
+.personal-impact-dates,
+.personal-impact-coverage {
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+}
+
+.personal-impact-group-setting select {
+  max-width: 20rem;
+}
+
+.personal-impact-coverage-message {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  font-size: 0.875rem;
+}
+
+.personal-impact-metrics {
+  margin: 1rem 0;
+  border-top: 1px solid var(--gray-200);
+}
+
+.personal-impact-metrics > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.personal-impact-metrics dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.personal-impact-metrics dd span {
+  font-variant-numeric: tabular-nums;
+}
+
+.personal-impact-metrics small {
+  font-weight: 400;
+  color: var(--gray-600);
+}
+
+@media (max-width: 440px) {
+  .personal-impact-metrics small {
+    display: block;
+  }
+}
+
+.personal-impact-coverage-details {
+  font-size: 0.875rem;
+}
+
+.personal-impact-coverage-details summary {
+  cursor: pointer;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.625rem 0;
+}
+
+.personal-impact-coverage-details summary:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
+}
+
+.personal-impact-coverage-details p {
+  margin: 0.375rem 0 0;
+  color: var(--gray-600);
+}
+
 .app-footer {
   display: flex;
   justify-content: center;
@@ -4807,6 +4935,66 @@ li.ai-fact-active::before {
 
 .app-footer-divider {
   color: var(--gray-400);
+}
+
+/* On narrow screens the footer's links wrap onto more lines, each link whole. */
+@media (max-width: 768px) {
+  .app-footer {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+    column-gap: 1rem;
+  }
+
+  /* Wrapped lines would end on a stray "•": space the links apart instead. */
+  .app-footer-divider {
+    display: none;
+  }
+
+  .app-footer a,
+  .app-footer-link {
+    white-space: nowrap;
+  }
+}
+
+.feedback-side-tab {
+  position: fixed;
+  top: 75%;
+  right: 0;
+  z-index: 9000;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  padding: 0.875rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--brand-accent, #475569);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feedback-side-tab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.feedback-side-tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}
+
+@media (max-width: 768px) {
+  .feedback-side-tab {
+    position: static;
+    align-self: flex-end;
+    min-height: 44px;
+    margin: 0.5rem 1rem 1rem;
+    padding: 0.5rem 0.875rem;
+    border-radius: var(--radius-md);
+    transform: none;
+    writing-mode: horizontal-tb;
+  }
 }
 
 .prompt-text {
@@ -4955,7 +5143,7 @@ li.ai-fact-active::before {
 }
 
 .docs-nav-folder-arrow {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   width: 1rem;
   text-align: center;
   color: var(--gray-400);
@@ -4989,7 +5177,6 @@ li.ai-fact-active::before {
   color: #fff;
   background: var(--brand-primary);
   font-weight: 500;
-  border-right: 3px solid var(--brand-primary-dark);
 }
 
 .docs-content {
@@ -5032,17 +5219,18 @@ li.ai-fact-active::before {
   cursor: pointer;
   text-align: left;
   line-height: 1.4;
-  border-left: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: color 0.15s, background-color 0.15s;
 }
 
 .docs-toc-item:hover {
   color: var(--gray-700);
 }
 
-.docs-toc-item.active {
+.docs-toc-item[aria-current="location"] {
   color: var(--brand-primary);
-  border-left-color: var(--brand-primary);
+  background: var(--gray-100);
   font-weight: 500;
 }
 
@@ -5050,13 +5238,46 @@ li.ai-fact-active::before {
   padding-left: 1.25rem;
 }
 
+.docs-article :is(h2, h3, h4, h5, h6) {
+  scroll-margin-top: 1rem;
+}
+
+.docs-toc-inline {
+  display: none;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+}
+
+.docs-toc-inline summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.docs-toc-inline nav {
+  max-height: 45vh;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+}
+
 @media (max-width: 1100px) {
   .docs-toc {
     display: none;
   }
+
+  .docs-toc-inline {
+    display: block;
+  }
 }
 
 @media (max-width: 768px) {
+  html:has(.docs-page) {
+    scroll-padding-top: var(--docs-header-height);
+  }
+
   .app:has(.docs-page) {
     height: auto;
     overflow: visible;
@@ -5075,7 +5296,7 @@ li.ai-fact-active::before {
     width: 100%;
     min-width: unset;
     height: auto;
-    max-height: 50vh;
+    max-height: 36vh;
     border-radius: 0;
     box-shadow: none;
     border: none;
@@ -5863,16 +6084,23 @@ li.ai-fact-active::before {
 }
 
 .result-snippet-reference .reference-number {
-  font-size: 0.75em;
+  /* A superscript, but never under 12 px. */
+  font-size: max(0.75em, 12px);
   vertical-align: super;
   font-weight: 600;
   font-style: normal;
   margin-right: 0.2em;
 }
 
+/* Citation and footnote numbers are superscripts, but never under 12 px
+   (a bare <sup> is the browser's "smaller", 10.8 px in result text). */
+sup.reference-number {
+  font-size: max(0.75em, 12px);
+}
+
 /* Inline reference numbers within text (e.g., ". 112 ") */
 .inline-reference-number {
-  font-size: 0.75em;
+  font-size: max(0.75em, 12px);
   vertical-align: super;
   font-weight: 600;
   margin: 0 0.1em;
@@ -6915,7 +7143,7 @@ li.ai-fact-active::before {
   }
 
   .dropdown-label {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 
   .dataset-total {
@@ -6931,12 +7159,6 @@ li.ai-fact-active::before {
   .dropdown-menu-domain {
     right: auto;
     left: 0;
-  }
-
-  /* Info dropdown — anchor to right edge so it doesn't overflow */
-  .dropdown-menu-help {
-    right: 0;
-    left: auto;
   }
 
   /* Hide model info panel on mobile — just show the model list */
@@ -8063,7 +8285,7 @@ li.ai-fact-active::before {
 
 .heatmap-query-tuning-chevron {
   display: inline-block;
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   transition: transform 0.2s ease;
 }
 
@@ -10075,16 +10297,18 @@ li.ai-fact-active::before {
 .admin-tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid var(--gray-200);
+  overflow-x: auto;
+  box-shadow: inset 0 -2px 0 var(--gray-200);
   margin-bottom: var(--spacing-xl);
 }
 
 .admin-tab {
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0.6rem 1.25rem;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
   cursor: pointer;
   font-size: 0.9rem;
   font-weight: 500;
@@ -10123,6 +10347,46 @@ li.ai-fact-active::before {
 
 .admin-section h4:first-child {
   margin-top: 0;
+}
+
+.admin-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.admin-search-form {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.admin-search-form .admin-search-input {
+  width: 250px;
+  min-width: 0;
+}
+
+.admin-email-cell {
+  white-space: nowrap;
+}
+
+.admin-checkbox {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .admin-panel .btn-primary {
+    min-height: 44px;
+  }
+
+  /* Fade the right edge so the tabs scrolled out of view show they are there;
+     the padding lets the last tab scroll clear of the fade. */
+  .admin-header > .admin-tabs {
+    padding-right: 2rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  }
 }
 
 .admin-table {
@@ -11134,6 +11398,52 @@ a.admin-citation-clickable:hover {
   text-decoration: underline;
 }
 
+/* A citation with no source ([?n] from the API): a red pill where a normal
+   citation's number would be. */
+.citation-unmatched {
+  display: inline-block;
+  vertical-align: baseline;
+  margin: 0 1px;
+  padding: 1px 5px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 999px;
+  cursor: help;
+  scroll-margin: 96px;
+}
+
+/* Text for screen readers only, e.g. "(no source)" after an unmatched citation. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.citation-unmatched-flash {
+  animation: citationUnmatchedFlash 1.6s ease-out;
+}
+
+@keyframes citationUnmatchedFlash {
+  0%,
+  45% {
+    background: #fecaca;
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
 /* Footer row: references (left) + rating stars (right) */
 .chat-message-footer {
   display: flex;
@@ -11247,6 +11557,12 @@ a.admin-citation-clickable:hover {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+.chat-input-error {
+  margin: 0 0 0.5rem;
+  color: var(--brand-error, #b91c1c);
+  font-size: 0.875rem;
+}
+
 .chat-input-wrapper:focus-within {
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 3px rgba(91, 143, 168, 0.15);
@@ -11327,7 +11643,7 @@ a.admin-citation-clickable:hover {
 }
 
 .chat-input-hint {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--brand-text-tertiary);
 }
 
@@ -11362,7 +11678,7 @@ a.admin-citation-clickable:hover {
   align-items: center;
   gap: 0.25rem;
   color: var(--brand-text-tertiary);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   cursor: pointer;
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
@@ -11578,6 +11894,33 @@ a.admin-citation-clickable:hover {
 }
 
 /* Expandable query rows */
+.tool-call-stream {
+  color: var(--brand-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.tool-call-reason {
+  color: var(--brand-text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  max-width: 70ch;
+  margin-bottom: 0.35rem;
+}
+
+/* Line the reason up with the query text, after the expand icon and gap. */
+.tool-call-reason--indented {
+  padding-left: 1.6rem;
+}
+
+.tool-call-reason-label {
+  font-weight: 600;
+}
+
 .tool-call-query-row {
   margin-bottom: 0.125rem;
 }
@@ -12278,11 +12621,11 @@ a.admin-citation-clickable:hover {
 }
 /* Emphasise the latest run. */
 .testing-run--latest {
-  border-color: var(--brand-primary, #5b8fa8);
+  border-color: var(--brand-primary, #4b778d);
   box-shadow: 0 1px 5px rgba(91, 143, 168, 0.2);
 }
 .testing-run--latest .testing-run-header {
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
 }
 .testing-run-header {
   display: flex;
@@ -12452,7 +12795,7 @@ a.admin-citation-clickable:hover {
 }
 .testing-run-progress-pct {
   font-weight: 600;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
 }
 .testing-run-progress-track {
   height: 6px;
@@ -12463,7 +12806,7 @@ a.admin-citation-clickable:hover {
 .testing-run-progress-fill {
   height: 100%;
   border-radius: 999px;
-  background: var(--brand-primary, #5b8fa8);
+  background: var(--brand-primary, #4b778d);
   transition: width 0.3s ease;
 }
 /* Compact "k/N cases" shown in the run header while it is running. */
@@ -12488,7 +12831,7 @@ a.admin-citation-clickable:hover {
   line-height: 1.5;
   background: var(--color-surface, #fff);
   border: 1px solid var(--color-border, #d0d7de);
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
   border-radius: 4px;
   padding: 0.6rem 0.75rem;
 }
@@ -12600,7 +12943,7 @@ a.admin-citation-clickable:hover {
   line-height: 1.45;
   background: var(--color-surface-alt, #f6f8fa);
   border: 1px solid var(--color-border, #d0d7de);
-  border-left: 3px solid var(--brand-primary, #5b8fa8);
+  border-left: 3px solid var(--brand-primary, #4b778d);
   border-radius: 4px;
   padding: 0.45rem 0.6rem;
 }
@@ -12612,7 +12955,7 @@ a.admin-citation-clickable:hover {
   padding: 0;
   font: inherit;
   font-size: 0.8rem;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -12880,7 +13223,7 @@ a.admin-citation-clickable:hover {
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--brand-primary, #5b8fa8);
+  border-color: var(--brand-primary, #4b778d);
   box-shadow: 0 0 0 2px rgba(91, 143, 168, 0.15);
 }
 
@@ -13055,6 +13398,11 @@ button.doc-link:hover {
   flex-shrink: 0;
 }
 
+.toc-validator-filter-popover {
+  --toc-filter-width: min(280px, calc(100vw - 16px));
+  width: var(--toc-filter-width);
+}
+
 /* Click-away layer; sits just under .filter-popover (z-index: 1000). */
 .filter-popover-backdrop {
   position: fixed;
@@ -13200,7 +13548,7 @@ button.doc-link:hover {
   background: none;
   padding: 0;
   font: inherit;
-  color: var(--brand-primary, #5b8fa8);
+  color: var(--brand-primary, #4b778d);
   cursor: pointer;
   text-decoration: underline;
   /* Inside a column-flex label the button would stretch to full width and
@@ -13289,4 +13637,47 @@ button.doc-link:hover {
 
 .table-scroll-chevron-right {
   right: 8px;
+}
+
+.group-prompt-input {
+  width: 100%;
+  resize: vertical;
+}
+
+.group-assistant-settings :is(input, select),
+.group-prompt-input {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+
+fieldset.group-assistant-options {
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.group-assistant-options label,
+.group-assistant-mode {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options label {
+  align-content: space-between;
 }

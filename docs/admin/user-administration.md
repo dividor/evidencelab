@@ -226,7 +226,7 @@ The **Group Settings** tab lets you configure default search behavior for each g
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Assistant, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -276,11 +276,24 @@ Click **Save Settings** to apply, or **Reset to Defaults** to clear all group ov
 
 ---
 
+#### Assistant
+
+Choose **Assistant** in **Group Settings** to set defaults for the group's Assistant conversations.
+
+- **Model**, **Response variability** and **Maximum output tokens** control the model used for planning and writing. Blank values use the selected model combination.
+- **Starting research mode** controls whether Deep Research starts selected. Users can switch modes for a conversation.
+- The search limits apply separately to a focused question and to each stream of a broad question. A broad question also starts with one search for the original question.
+- **Planning prompt** controls how the Assistant chooses follow-up searches. **Answer prompt** guides the final cited answer. The editors show the current defaults, including the group's Search AI Summary instructions in the default answer prompt. Use **Reset to Default** to restore either prompt.
+
+Click **Save Settings** to apply the settings to the group.
+
 #### Brief
 
 | Setting | Description |
 |---------|-------------|
 | **Default section length** | The section length target new briefs start with, in words per section (Short, Standard, Long, a custom number, or no target). Authors can change it per brief and per section; sections that overshoot by more than the configured tolerance are condensed automatically. Default: no target. |
+
+Use **Section prompt** to guide the writing of researched Brief sections. The section still uses its target length and the rest of the Brief outline. Select **Reset to Default** to restore the site prompt, then **Save Settings**.
 
 #### Document Summaries
 
@@ -313,6 +326,12 @@ Which model does each AI job for the group's members. Each list offers the model
 Judging an answer with the model that wrote it tends to favour that model's own style. Choose a judge that differs from the summary and Brief models.
 
 With a [daily AI limit](system-monitoring.md#daily-ai-limit) set, every model a group can choose needs a price. See [Pipeline Configuration](pipeline-configuration.md#llm-models-supported_llms).
+
+#### Features & Tabs
+
+To control access to the [personal environmental impact summary](../using-evidence-lab/using-evidence-lab.md#your-environmental-impact), select a group and open **Features & Tabs**. Set **Personal environmental impact** to **On** or **Off**, then click **Save Settings**. **Use system default (On)** clears the group's explicit choice.
+
+If someone belongs to several groups, the first group in alphabetical order with an explicit choice decides whether they have access. If none of their groups makes a choice, they have access by default. Turning the summary off for a user hides the menu item and blocks their access to the summary. Evidence Lab continues recording estimates for the admin LLM Usage report.
 
 ### User Self-Service
 

@@ -25,6 +25,9 @@ API_KEY = os.environ.get("API_SECRET_KEY", "")
 # The demo datasource subdir written by run_demo.py
 DEMO_DATA_SOURCE = "demo"
 
+# The Assistant has 120 seconds to respond. Leave time for the HTTP response.
+A2A_REQUEST_TIMEOUT_SECONDS = 135
+
 _failures = []
 
 
@@ -44,7 +47,7 @@ def _post_json(url, data, headers=None):
     hdrs = {"Content-Type": "application/json", **(headers or {})}
     req = urllib.request.Request(url, data=body, headers=hdrs, method="POST")
     try:
-        resp = urllib.request.urlopen(req, timeout=60)
+        resp = urllib.request.urlopen(req, timeout=A2A_REQUEST_TIMEOUT_SECONDS)
         return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         try:
@@ -151,7 +154,10 @@ def main():
                     "parts": [
                         {
                             "type": "text",
-                            "text": "What is the main subject of this document collection?",
+                            "text": (
+                                "What is one way to detect fraud in public procurement? "
+                                "Give one finding in one sentence with a citation."
+                            ),
                         }
                     ],
                     "metadata": {"data_source": DEMO_DATA_SOURCE},
@@ -160,13 +166,16 @@ def main():
         },
         headers=auth,
     )
-    check("A2A tasks/send returns 200", status == 200, f"status={status}")
+    detail = body.get("error", "") if status == 0 else ""
+    check(
+        "A2A tasks/send returns 200", status == 200, f"status={status} {detail}".strip()
+    )
     if status == 200:
         result = body.get("result", {})
         state = result.get("status", {}).get("state", "")
         check(
-            "A2A task accepted (submitted/working/completed)",
-            state in ("submitted", "working", "completed"),
+            "A2A research task completed",
+            state == "completed",
             f"state={state!r}",
         )
     print()
