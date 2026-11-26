@@ -13441,3 +13441,45 @@ button.doc-link:hover {
 .table-scroll-chevron-right {
   right: 8px;
 }
+
+.group-assistant-settings > .search-settings-group textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.group-assistant-settings :is(input, select, textarea) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0 0 1rem;
+}
+
+fieldset.group-assistant-options {
+  border: 1px solid var(--brand-border-light);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.group-assistant-options label,
+.group-assistant-mode {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.group-assistant-options label {
+  align-content: space-between;
+}

@@ -75,6 +75,20 @@ export interface GroupLlmChoices {
   judgeModel?: string;
 }
 
+/** Overrides for conversations in the Assistant tab. */
+export interface AssistantGroupSettings {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  planningPrompt?: string;
+  answerPrompt?: string;
+  searches?: number;
+  searchesPerStream?: number;
+  deepSearches?: number;
+  deepSearchesPerStream?: number;
+  deepResearchByDefault?: boolean;
+}
+
 /**
  * The full /users/me/effective-settings payload: search settings plus the
  * per-group feature-tab visibility/labels (merged across the user's groups by
@@ -84,6 +98,7 @@ export interface GroupLlmChoices {
 export interface EffectiveSettings extends SearchSettings, DocumentSummaryDefaults {
   tabs?: Record<string, { enabled?: boolean; label?: string | null }>;
   personalEnvironmentalImpact?: boolean;
+  assistantDeepResearchByDefault?: boolean;
 }
 
 export interface UserGroup {
@@ -94,7 +109,7 @@ export interface UserGroup {
   created_at: string;
   datasource_keys: string[];
   member_count: number;
-  search_settings?: (EffectiveSettings & GroupLlmChoices) | null;
+  search_settings?: (EffectiveSettings & GroupLlmChoices & { assistant?: AssistantGroupSettings }) | null;
   summary_prompt?: string | null;
 }
 

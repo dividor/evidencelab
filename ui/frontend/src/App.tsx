@@ -3075,6 +3075,7 @@ function App() {
         searchTab={searchTab}
         assistantTab={
           <AssistantTab
+            defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
             rerankerModel={rerankModel}

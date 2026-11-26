@@ -13,6 +13,7 @@ from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
 from ui.backend.services.assistant_graph import build_research_agent
+from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.llm_service import summarize_usage_metadata
 from utils.llm_factory import get_llm
 
@@ -158,6 +159,7 @@ async def stream_research_response(
     deep_research: bool = False,
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
+    assistant_settings: Optional[AssistantSettings] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream progress and the final cited answer for either research mode."""
     from ui.backend.utils.app_state import validate_data_source
@@ -179,6 +181,7 @@ async def stream_research_response(
             deep_research=deep_research,
             target_words=target_words,
             introduces_sub_sections=introduces_sub_sections,
+            assistant_settings=assistant_settings,
         )
         yield {"type": "phase", "phase": "planning"}
         async for event in graph.astream(

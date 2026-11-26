@@ -21,11 +21,16 @@ from sqlalchemy.orm import selectinload
 from ui.backend.auth.schemas import AssistantChatRequest, ThreadRenameRequest
 from ui.backend.services.ai_daily_limit import require_ai_allowance
 from ui.backend.services.assistant_service import stream_research_response
+from ui.backend.services.assistant_settings import (
+    AssistantSettings,
+    assistant_settings_for_groups,
+)
 from ui.backend.services.brief_section_prompt import (
     build_section_prompt,
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
+from ui.backend.services.group_settings import user_groups
 from ui.backend.services.llm_choice import BRIEF, user_group_choice
 from ui.backend.services.usage_recorder import (
     schedule_daily_spend_recording,
@@ -110,6 +115,18 @@ async def _resolve_group_prompt(user, session) -> str | None:
     return None
 
 
+async def _assistant_settings(body, user, session) -> AssistantSettings:
+    user_id = getattr(user, "id", None)
+    if (
+        not _USER_MODULE
+        or body.usage_context == "brief"
+        or user_id is None
+        or session is None
+    ):
+        return AssistantSettings()
+    return assistant_settings_for_groups(await user_groups(session, user_id))
+
+
 # ---------------------------------------------------------------------------
 # SSE heartbeat helper
 # ---------------------------------------------------------------------------
@@ -158,6 +175,14 @@ async def _purpose_model_key(
     if body.usage_context == "brief":
         return await user_group_choice(session, user, BRIEF) or model_key
     return model_key
+
+
+async def _generation_options(body, settings, user, session):
+    model_key, temperature, max_tokens = _resolve_model_config(body)
+    if body.usage_context == "brief":
+        model_key = await _purpose_model_key(body, model_key, user, session)
+        return model_key, temperature, max_tokens
+    return settings.model_options(model_key, temperature, max_tokens)
 
 
 def _message_to_history_entry(msg) -> dict:
@@ -275,14 +300,16 @@ async def stream_assistant_chat(
     """
     body.data_source = await settle_data_source(body.data_source, user, session)
     check_model_config(body.assistant_model_config)
-    model_key, temperature, max_tokens = _resolve_model_config(body)
-    model_key = await _purpose_model_key(body, model_key, user, session)
+    settings = await _assistant_settings(body, user, session)
+    model_key, temperature, max_tokens = await _generation_options(
+        body, settings, user, session
+    )
     research_query = _research_query(body)
     conversation_messages = await _load_conversation_history(body, user, session)
     # For unauthenticated users (no thread persistence), use client-sent history
     if not conversation_messages and body.conversation_history:
         conversation_messages = body.conversation_history
-    group_prompt = await _resolve_group_prompt(user, session)
+    group_prompt = settings.answerPrompt or await _resolve_group_prompt(user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -304,6 +331,7 @@ async def stream_assistant_chat(
                 reranker_model=body.reranker_model,
                 search_settings=search_kwargs,
                 system_prompt_override=group_prompt,
+                assistant_settings=settings,
                 deep_research=body.deep_research,
                 target_words=body.target_words,
                 introduces_sub_sections=body.introduces_sub_sections,

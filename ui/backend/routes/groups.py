@@ -23,6 +23,7 @@ from ui.backend.auth.schemas import (
     GroupUpdate,
 )
 from ui.backend.auth.users import current_superuser
+from ui.backend.services.assistant_settings import validate_assistant_settings
 from ui.backend.services.group_settings import PERSONAL_IMPACT_SETTING
 from ui.backend.services.llm_choice import validate_group_model_choices
 
@@ -146,6 +147,7 @@ async def update_group(
                 detail="Personal environmental impact must be on or off.",
             )
         validate_group_model_choices(body.search_settings)
+        validate_assistant_settings(body.search_settings)
         group.search_settings = body.search_settings if body.search_settings else None
         flag_modified(group, "search_settings")
     if body.summary_prompt is not None:

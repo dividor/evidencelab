@@ -12,6 +12,7 @@ from ui.backend.services.assistant_research import (
     ResearchLimits,
     build_research_workflow,
 )
+from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.search import map_field_to_storage, search_chunks
 
 logger = logging.getLogger(__name__)
@@ -394,6 +395,7 @@ def build_research_agent(
     deep_research: bool = False,
     target_words: Optional[int] = None,
     introduces_sub_sections: Optional[List[str]] = None,
+    assistant_settings: Optional[AssistantSettings] = None,
 ) -> tuple:
     """Build the same evidence workflow with the selected research budget."""
     cfg = _get_assistant_config()
@@ -402,19 +404,29 @@ def build_research_agent(
         if deep_research
         else cfg.get("max_queries", 4)
     )
+    settings = assistant_settings or AssistantSettings()
+    searches, per_stream = settings.search_limits(deep_research)
+    max_queries = searches if searches is not None else max_queries
     tracker = SearchTracker(data_source, reranker_model, search_settings, prior_sources)
     template = _jinja_env.get_template("assistant_research_planner.j2")
-    planner = template.render(deep_research=deep_research)
-    opening = template.render(deep_research=deep_research, organize=True)
+    planner = template.render(
+        deep_research=deep_research, group_instructions=settings.planningPrompt
+    )
+    opening = template.render(
+        deep_research=deep_research,
+        organize=True,
+        group_instructions=settings.planningPrompt,
+    )
     writer = _jinja_env.get_template("assistant_system.j2").render(
         data_source=data_source,
         target_words=target_words,
         intro_sub_sections=introduces_sub_sections,
-        group_instructions=system_prompt_override,
+        group_instructions=settings.answerPrompt or system_prompt_override,
         deep_research=deep_research,
     )
     limits = ResearchLimits(
-        searches=max_queries, searches_per_stream=4 if deep_research else 2
+        searches=max_queries,
+        searches_per_stream=per_stream or (4 if deep_research else 2),
     )
     agent = build_research_workflow(llm, tracker, planner, writer, limits, opening)
     return agent, tracker, max_queries

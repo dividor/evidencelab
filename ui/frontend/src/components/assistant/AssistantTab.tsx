@@ -22,6 +22,7 @@ interface AssistantTabProps {
   rerankerModel?: string | null;
   searchSettings?: AssistantSearchSettings | null;
   exampleQueries?: string[];
+  defaultDeepResearch?: boolean;
   onResultClick?: (result: SearchResult) => void;
 }
 
@@ -34,6 +35,7 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   rerankerModel,
   searchSettings,
   exampleQueries,
+  defaultDeepResearch = false,
   onResultClick,
 }) => {
   const auth = useAuth();
@@ -44,7 +46,8 @@ export const AssistantTab: React.FC<AssistantTabProps> = ({
   // Chat state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [deepResearch, setDeepResearch] = useState(false);
+  const [deepResearch, setDeepResearch] = useState(defaultDeepResearch);
+  useEffect(() => setDeepResearch(defaultDeepResearch), [defaultDeepResearch]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingPhase, setStreamingPhase] = useState<string>('');
   const [streamingContent, setStreamingContent] = useState('');

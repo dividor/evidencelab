@@ -226,7 +226,7 @@ The **Group Settings** tab lets you configure default search behavior for each g
 
 ![Admin Group Settings](../images/admin/group-settings.png)
 
-Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
+Select a group using the buttons at the top. The settings are grouped into tabs (Search Settings, Content Settings, Search AI Summary, Assistant, Brief, Document Summaries, LLMs, Features & Tabs, Appearance); **Save Settings** saves the changes on every tab at once.
 
 #### Search Settings
 
@@ -275,6 +275,17 @@ These settings apply to the AI summary shown above search results, not to docume
 Click **Save Settings** to apply, or **Reset to Defaults** to clear all group overrides.
 
 ---
+
+#### Assistant
+
+Choose **Assistant** in **Group Settings** to set defaults for the group's Assistant conversations.
+
+- **Model**, **Response variability** and **Maximum output tokens** control the model used for planning and writing. Blank values use the selected model combination.
+- **Starting research mode** controls whether Deep Research starts selected. Users can switch modes for a conversation.
+- The search limits apply separately to a focused question and to each stream of a broad question. A broad question also starts with one search for the original question.
+- **Planning prompt** adds instructions for splitting questions and choosing follow-up searches. **Answer prompt** adds instructions for writing the final cited answer. A blank answer prompt keeps the current group AI Summary instructions for the Assistant.
+
+Click **Save Settings** to apply the settings to the group.
 
 #### Brief
 
