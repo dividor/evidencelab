@@ -31,8 +31,11 @@ Keep that distinction from an unrestricted statement about all reports or a sent
 This is a single section of a Brief. Check against the assigned heading and its instructions. Use the other headings
 and existing sections to identify material that belongs elsewhere. Mark individual stray labels, repeated conclusions,
 and sentences that independently cover another heading as "unsupported" and explain the scope problem in "issue".
-The Brief prose reviewer checks whether the retained sentences fully answer the section's questions. Return an empty
-"scope_issues" list for the Brief and focus this check on individual sentences and their evidence.
+When a sentence lists similar findings, compare the actual claims. Mark a restatement of the same finding as
+"unsupported" and name the heading where it already appears. Allow a distinct result, setting or use of the same
+source. When a sentence mixes a repeated claim with a new finding, ask the writer to report only the new finding.
+Within this draft, retain the first supported version of a finding and flag any later restatement. Return an empty
+"scope_issues" list for the Brief and focus on individual sentences and their evidence.
 {% else -%}
 Imagine deleting every sentence marked "unsupported". List only relevance problems that remain in "scope_issues".
 This batch may address only part of the question. Judge the relevance of these sentences without requiring the

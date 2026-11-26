@@ -753,6 +753,50 @@ async def test_brief_uses_ordinary_documents_without_place_or_study_metadata():
 
 
 @pytest.mark.asyncio
+async def test_brief_checks_paraphrases_against_findings_in_other_sections():
+    earlier = "The release checklist requires two reviewers before deployment"
+    repeated = "Before deployment, the release checklist requires two reviewers"
+    distinct = "Each release must include an executable rollback procedure"
+    outline = [
+        {"title": "Approval", "content": earlier + " [7]."},
+        {"title": "Rollback"},
+    ]
+
+    def review(prompt):
+        duplicate, new_finding = _review_rows(prompt)
+        assert duplicate["similar_findings"] == [
+            {"heading": "Approval", "finding": earlier + "."}
+        ]
+        assert "similar_findings" not in new_finding
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {"id": 1, "status": "unsupported", "issue": "Already in Approval."},
+                {"id": 2, "status": "supported"},
+            ],
+        }
+
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (repeated, 1, "requires two reviewers before deployment"),
+                (distinct, 1, "include an executable rollback procedure"),
+            ),
+        ],
+        [[point(1, earlier + ". " + distinct + ".")]],
+        initial_query="Release rollback requirements",
+        brief_section_prompt="Summarize the rollback requirements using the documents.",
+        brief_section=BriefSectionPrompt(outline=outline, current=1),
+        check=review,
+    )
+    assert events[-1]["section_written"] is True
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        distinct + " [1]."
+    )
+
+
+@pytest.mark.asyncio
 async def test_independent_research_question_can_start_a_new_topic_in_the_same_chat():
     query = "How do evaluations measure early warning system reach?"
     search_query = "flood early warning evaluation warning dissemination coverage"

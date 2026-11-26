@@ -219,11 +219,14 @@ async def check_answer_citations(
     *,
     brief_section: bool,
     prepared_quotes: dict[str, str] | None = None,
+    similar_findings: dict[str, list[dict[str, str]]] | None = None,
 ) -> CitationReview:
     sentences = numbered_sentences(answer)
     for row in sentences:
         if prepared_quotes and (quote := prepared_quotes.get(row["text"])):
             row["prepared_quote"] = quote
+        if similar_findings and (matches := similar_findings.get(row["text"])):
+            row["similar_findings"] = matches
     mismatches = source_attribution_issues(sentences, evidence)
     system = assistant_prompt_templates.get_template(
         "assistant_grounding_check.j2"

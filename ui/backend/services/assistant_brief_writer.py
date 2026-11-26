@@ -1,6 +1,7 @@
 """Build a Brief section from sentences checked against their own evidence."""
 
 import re
+from heapq import nlargest
 from itertools import chain
 
 from langchain_core.language_models import BaseChatModel
@@ -8,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.agent_passages import passage_for_agent
@@ -42,6 +44,7 @@ _BRIEF_LINE = TypeAdapter(BriefFinding | BriefEvidenceLimit)
 _DEPENDENT_LEAD = re.compile(
     r"^(?:For example|For instance|Similarly|Likewise),\s*", re.I
 )
+_FINDING_WORD = re.compile(r"\b\w{3,}\b")
 
 
 def _prepare_finding(
@@ -156,6 +159,32 @@ def _combine_findings(drafts: list[str], target: int | None) -> tuple[str, int]:
     return "\n\n".join(paragraphs), len(seen)
 
 
+def _similar_findings(
+    draft: str, existing: list[tuple[str, str]]
+) -> dict[str, list[dict[str, str]]]:
+    """Give the reviewer relevant existing findings without sending the full brief."""
+    indexed = [
+        (heading, finding, set(_FINDING_WORD.findall(match_key(finding))))
+        for heading, finding in existing
+    ]
+    matches = {}
+    for sentence in split_sentences(draft):
+        words = set(_FINDING_WORD.findall(match_key(strip_citation_markers(sentence))))
+        scored = (
+            (len(words & previous) / len(words | previous), heading, finding)
+            for heading, finding, previous in indexed
+            if words and previous
+        )
+        relevant = [
+            {"heading": heading, "finding": finding}
+            for score, heading, finding in nlargest(2, scored)
+            if score >= 0.3
+        ]
+        if relevant:
+            matches[sentence] = relevant
+    return matches
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -175,12 +204,14 @@ async def write_grounded_brief(
     system = template.render(system=True)
     stream = get_stream_writer()
     passages = render_evidence(list(evidence.values()))
-    other_claims = {
-        match_key(strip_citation_markers(sentence))
+    existing = [
+        (heading.title, strip_citation_markers(sentence))
         for index, heading in enumerate(section.outline)
         if index != section.current
         for sentence in split_sentences(heading.content or "")
-    }
+        if cited_numbers_in_order(sentence)
+    ]
+    other_claims = {match_key(finding) for _, finding in existing}
     issues: list[str] = []
     drafts: list[str] = []
     accepted = ""
@@ -206,6 +237,7 @@ async def write_grounded_brief(
         )
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
+            similar = await run_in_threadpool(_similar_findings, text, existing)
             checked = await check_answer_citations(
                 text,
                 assignment,
@@ -215,6 +247,7 @@ async def write_grounded_brief(
                 review,
                 brief_section=True,
                 prepared_quotes=prepared_quotes,
+                similar_findings=similar,
             )
             text = checked.supported_text
             issues.extend(checked.issues)
