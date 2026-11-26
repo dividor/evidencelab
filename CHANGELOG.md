@@ -2,6 +2,28 @@
 
 All notable changes to Evidence Lab will be documented in this file.
 
+## [1.6.11] - 2026-11-26
+
+Evidence Lab v1.6.11 gives Assistant and Deep Research a shared workflow for finding and citing evidence. It also improves Brief generation, separates the Docs and Admin guides, and makes several controls easier to use on smaller screens.
+
+### Assistant and Brief
+
+- **Assistant and Deep Research use the same search workflow.** Focused questions start with the original question. Broad questions split into related lines of research that can follow up on their own results. The Assistant combines the findings, numbers citations in reading order, and uses the conversation to interpret follow-up questions. Administrators can configure Assistant and Brief prompts and citation checks in Group Settings (#706, #712).
+- **Brief sections start from findings backed by source passages.** An optional check verifies that the passages support the findings and looks for claims already made in earlier sections. Regenerate All reports which sections need another attempt, and citation previews highlight matching source text when available (#706).
+- **Ask AI groups the research actions in a Brief.** The Brief header and completed sections each have a menu for their available actions. Unmatched citation badges align with the text, and screen readers announce which citations have no source. The Brief History rail shows the full selected title on hover (#702, #704, #705, #708, #714).
+- **Heatmap results use smaller responses.** Search leaves out repeated copies of document data when returning matches (#706).
+
+### Guides and interface
+
+- **Docs and Admin have separate entries under Info.** Each entry searches its own guides. Long articles have an On this page list, and existing article bookmarks and heading links still work (#718).
+- **Feedback stays clear of Search.** The Feedback tab sits lower on wide screens and moves below the content on narrow screens. Escape closes the feedback dialog, and keyboard focus stays inside while it is open (#715, #706, #716).
+- **Administration is easier to navigate on a phone.** The tabs show when more items can be reached by scrolling, and the TOC Validator has larger checkbox targets (#703, #707, #710).
+- **Personal impact explains how much usage the estimates cover.** The dialog shows how much recorded AI-written text has an estimate and puts exact token counts under How we count coverage. The LLM Usage guide and Basis pop-up explain which kinds of AI calls are counted (#695, #711, #713, #717).
+
+### Development
+
+- **Pull requests have automated documentation and interface review workflows.** The reviews that call the external API are paused while credits are unavailable. The regular tests and security checks continue to run (#693, #703, #715, #718).
+
 ## [1.6.10] - 2026-11-25
 
 Evidence Lab v1.6.10 estimates the **environmental footprint of the site's AI use**. The admin LLM Usage tab now shows the energy, greenhouse gas emissions and water behind each user's, group's and the document pipeline's AI calls. Each call is estimated with EcoLogits when it is recorded, and the figures are shown as ranges. Every figure shows what it rests on: a badge for each model, marked "Assumed" where the estimate uses other models' figures, opens a pop-up with the sources, the calculation and how EcoLogits works.
