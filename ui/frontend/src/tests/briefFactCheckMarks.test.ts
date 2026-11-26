@@ -51,6 +51,19 @@ describe('normaliseText', () => {
 });
 
 describe('paintFactMarks', () => {
+  it('finds a passage whose bold claim renders as an element followed by plain text', () => {
+    // "**A bold claim.** Then more [1]." is one judged passage (the splitter
+    // does not cut at ".**"); the API hands it over without the markers.
+    const el = render(
+      '<p><strong>A bold claim.</strong> Then more <span class="citation-group"><a>1</a></span>.</p>',
+    );
+    const missing = paintFactMarks(el, [mark({ passage: 'A bold claim. Then more.' })]);
+    expect(missing).toEqual([]);
+    // The space the skipped badge leaves before the full stop stays in the text.
+    expect(markText(el, 1)).toBe('A bold claim. Then more .');
+    expect(el.querySelector('strong')?.closest(`.${FACT_MARK_CLASS}`)).toBeNull();
+  });
+
   it('finds the stored prose although the rendered sentence carries a citation badge', () => {
     const el = render(CITED);
     const missing = paintFactMarks(el, [mark()]);

@@ -113,7 +113,7 @@ describe('briefIntro helpers', () => {
 
   test('the Log note says how many headings remain and after how many re-runs', () => {
     expect(introHeadingNote(1, 1)).toBe(
-      'This introduction still has 1 heading of its own after 1 re-run. Edit them out, or use AI Regenerate.',
+      'This introduction still has 1 heading of its own after 1 re-run. Edit them out, or choose Regenerate under Ask AI.',
     );
     expect(introHeadingNote(2, 3)).toMatch(/2 headings of its own after 3 re-runs/);
   });

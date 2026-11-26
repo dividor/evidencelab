@@ -80,6 +80,7 @@ from ui.backend.utils.app_limits import (
     rate_limit_exceeded_handler,
 )
 from ui.backend.utils.app_state import get_db_for_source, get_pg_for_source, logger
+from ui.backend.utils.llm_footprint import validate_footprint_settings
 
 # Add parent directory to path for imports
 
@@ -129,6 +130,8 @@ USER_MODULE = USER_MODULE_MODE != "off"
 
 # A malformed daily AI limit stops the api here, not at the first AI request.
 validate_ai_daily_limit_setting()
+# So does a footprint setting EcoLogits doesn't know (a model or zone).
+validate_footprint_settings()
 
 # API Key Authentication
 API_KEY = os.environ.get("API_SECRET_KEY")

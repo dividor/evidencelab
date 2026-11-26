@@ -201,7 +201,8 @@ export const highlightTextWithAPI = async (
   semanticModelConfig?: SummaryModelConfig | null,
   // undefined → attribute usage to the current search context; null → this
   // call is not search-related (heatmap, brief) and records standalone.
-  searchIdOverride?: string | null
+  searchIdOverride?: string | null,
+  signal?: AbortSignal,
 ): Promise<any> => {
   if (!query.trim() || !text.trim()) return { highlighted_text: text, matches: [] };
 
@@ -209,6 +210,7 @@ export const highlightTextWithAPI = async (
     const csrfToken = getCsrfToken();
     const response = await fetch(`${API_BASE_URL}/highlight`, {
       method: 'POST',
+      signal,
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
@@ -445,7 +447,8 @@ export const findSemanticMatches = async (
   semanticModelConfig?: SummaryModelConfig | null,
   // Forwarded to highlightTextWithAPI: pass null from non-search surfaces
   // (heatmap, brief) so usage is not attributed to the last search.
-  searchIdOverride?: string | null
+  searchIdOverride?: string | null,
+  signal?: AbortSignal,
 ): Promise<TextMatch[]> => {
   if (!query.trim() || !text.trim()) return [];
 
@@ -456,7 +459,8 @@ export const findSemanticMatches = async (
     'semantic',
     threshold,
     semanticModelConfig,
-    searchIdOverride
+    searchIdOverride,
+    signal,
   );
 
   if (!responseData || !responseData.matches || !Array.isArray(responseData.matches)) {

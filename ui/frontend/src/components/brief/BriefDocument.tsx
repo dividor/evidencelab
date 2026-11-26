@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
-import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
+import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
+import { BriefAskAi } from './BriefAskAi';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
@@ -81,7 +82,7 @@ interface SectionViewProps {
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   // Commented passages in this section, and the thread currently open.
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
@@ -101,21 +102,64 @@ const sectionWordsTitle = (section: BriefSection, briefTarget: number | null): s
   return target ? `Target: about ${target} words` : 'No length target';
 };
 
+const UNMATCHED_FLASH_MS = 1600;
+
 // Citations of the section the API could not match to a source: the agent
 // cited a number it never returned, or returned a record without a chunk id.
-// They stay visible in the text as `[?n]` and are listed in the section Log.
-export const UnresolvedCitationsWarning: React.FC<{ unresolved?: UnresolvedMarker[] }> = ({
-  unresolved,
-}) => {
+// The text shows each as a red number badge (UnmatchedCitation); this header
+// names them, and clicking one scrolls to it in the section, stepping through
+// its uses on each click.
+export const UnresolvedCitationsWarning: React.FC<{
+  unresolved?: UnresolvedMarker[];
+  // The section has a log (Section History) holding the run's original output.
+  canOpenLog?: boolean;
+  onOpenLog?: () => void;
+}> = ({ unresolved, canOpenLog, onOpenLog }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const visits = useRef<Map<number, number>>(new Map());
   if (!unresolved || !unresolved.length) return null;
-  const markers = unresolved.map((u) => `[?${u.n}]`).join(', ');
   const noChunk = unresolved.some((u) => u.reason === 'no-chunk-id');
+  const jumpTo = (n: number) => {
+    const section = ref.current?.closest('.brief-doc-section');
+    const marks = Array.from(
+      section?.querySelectorAll<HTMLElement>(`.citation-unmatched[data-unmatched="${n}"]`) ?? [],
+    );
+    if (!marks.length) return;
+    const visit = visits.current.get(n) ?? 0;
+    const mark = marks[visit % marks.length];
+    visits.current.set(n, visit + 1);
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    mark.classList.add('citation-unmatched-flash');
+    window.setTimeout(() => mark.classList.remove('citation-unmatched-flash'), UNMATCHED_FLASH_MS);
+  };
   return (
-    <div className="brief-section-warning" role="status">
-      {unresolved.length === 1 ? 'One citation' : `${unresolved.length} citations`} in this section
-      could not be matched to a source and {unresolved.length === 1 ? 'is' : 'are'} shown as{' '}
-      {markers}: the research agent cited {noChunk ? 'a source record with no chunk id or ' : ''}a
-      number it never returned. Open Section History to see the original output.
+    <div className="brief-unmatched-warning" role="status" ref={ref}>
+      <span className="brief-unmatched-title">
+        {unresolved.length === 1 ? '1 citation has' : `${unresolved.length} citations have`} no source
+      </span>
+      {unresolved.map((u) => (
+        <button
+          key={u.n}
+          type="button"
+          className="citation-unmatched citation-unmatched-chip"
+          onClick={() => jumpTo(u.n)}
+          title={`Show where citation ${u.n} has no source`}
+          aria-label={`Show where citation ${u.n} has no source`}
+        >
+          {u.n}
+        </button>
+      ))}
+      <span className="brief-unmatched-detail">
+        The research agent cited {unresolved.length === 1 ? 'a number' : 'numbers'} it was never
+        given{noChunk ? ', or a source with no chunk id' : ''}.{' '}
+        {canOpenLog && onOpenLog ? (
+          <button type="button" className="brief-unmatched-log" onClick={onOpenLog}>
+            See its original output
+          </button>
+        ) : (
+          'Section History has its original output.'
+        )}
+      </span>
     </div>
   );
 };
@@ -127,7 +171,7 @@ export const IntroHeadingWarning: React.FC<{ headings?: number }> = ({ headings 
     <div className="brief-section-warning" role="status">
       This introduction still has {headings} heading{headings === 1 ? '' : 's'} of its own after
       re-running. An introduction should frame its sub-sections without headings: edit them out, or
-      use AI Regenerate.
+      choose Regenerate under Ask AI.
     </div>
   ) : null;
 
@@ -196,46 +240,56 @@ const GuidancePanel: React.FC<{
   );
 };
 
-// The AI action toolbar shown on a completed section.
+// The action toolbar shown on a completed section.
 const SectionTools: React.FC<{
+  title: string;
   editing: boolean;
   auditCount: number;
   showLog: boolean;
   onToggleEdit: () => void;
   onRegenerate: () => void;
+  regenerationFailed: boolean;
   onAiEdit: () => void;
   onAiUpdate: () => void;
   onOpenLog: () => void;
 }> = ({
+  title,
   editing,
   auditCount,
   showLog,
   onToggleEdit,
   onRegenerate,
+  regenerationFailed,
   onAiEdit,
   onAiUpdate,
   onOpenLog,
 }) => (
   <div className="brief-doc-section-tools">
+    <BriefAskAi
+      label={`Ask AI for ${title}`}
+      buttonClass="brief-regen-btn"
+      actions={[
+        {
+          label: regenerationFailed ? 'Research settings' : 'Regenerate',
+          icon: IconRefresh,
+          onSelect: onRegenerate,
+        },
+        {
+          label: 'Edit',
+          icon: IconEdit,
+          onSelect: onAiEdit,
+          title: 'Revise this section with an AI instruction, keeping the current content',
+        },
+        {
+          label: 'Get Updates',
+          icon: IconClock,
+          onSelect: onAiUpdate,
+          title: 'Search for sources published since this section was last run and fold them in',
+        },
+      ]}
+    />
     <button className="brief-regen-btn" onClick={onToggleEdit}>
       <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
-    </button>
-    <button className="brief-regen-btn" onClick={onRegenerate}>
-      <IconRefresh /> AI Regenerate
-    </button>
-    <button
-      className="brief-regen-btn"
-      onClick={onAiEdit}
-      title="Revise this section with an AI instruction, keeping the current content"
-    >
-      <IconSparkle /> AI Edit
-    </button>
-    <button
-      className="brief-regen-btn"
-      onClick={onAiUpdate}
-      title="Search for sources published since this section was last run and fold them in"
-    >
-      <IconClock /> AI Get Updates
     </button>
     {showLog && (
       <button className="brief-section-log-link" onClick={onOpenLog}>
@@ -333,7 +387,7 @@ const SectionDoneBody: React.FC<{
   showingChanges: boolean;
   onToggleChanges: () => void;
   onSourceClick: (source: SourceReference) => void;
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
@@ -529,8 +583,43 @@ const pendingResearchMode = (
   anyResearching: boolean,
   readOnly: boolean,
 ): PendingMode => {
-  if (section.status !== 'pending' || panelOpen || anyResearching || readOnly) return 'none';
+  if (section.status !== 'pending' || section.researchFailure || panelOpen || anyResearching || readOnly) {
+    return 'none';
+  }
   return section.sample ? 'button' : 'inline';
+};
+
+const SectionResearchFailure: React.FC<{
+  section: BriefSection;
+  brief: UseBriefReturn;
+  readOnly: boolean;
+  panelOpen: boolean;
+  editingAi: boolean;
+  busy: boolean;
+}> = ({ section, brief, readOnly, panelOpen, editingAi, busy }) => {
+  const failure = section.researchFailure;
+  if (!failure || section.status === 'researching') return null;
+  const action = failure.mode === 'generate' ? 'regeneration' : 'update';
+  const retry = () => {
+    if (failure.mode === 'update') {
+      return brief.reviseSection(section.id, 'update', failure.instruction ?? null);
+    }
+    return brief.regenerate(section.id, section.guidance?.trim() || null);
+  };
+  return (
+    <div className="brief-section-warning brief-research-failure">
+      <div role="status">
+        <strong>AI {action} failed</strong>
+        <div>{failure.message}</div>
+        {section.content && <div>You’re viewing the previous draft.</div>}
+      </div>
+      {!readOnly && !panelOpen && !editingAi && (
+        <button type="button" className="brief-regen-btn" disabled={busy} onClick={retry}>
+          <IconRefresh /> Retry {action}
+        </button>
+      )}
+    </div>
+  );
 };
 
 const BriefSectionView: React.FC<SectionViewProps> = ({
@@ -559,13 +648,14 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
   const changes = useSectionChanges(section, !!readOnly);
   const panelOpen = brief.regenFor === section.id;
   const isDone = section.status === 'done';
-  const anyResearching = brief.sections.some((s) => s.status === 'researching');
+  const anyResearching = brief.researching;
   const pendingMode = pendingResearchMode(section, panelOpen, anyResearching, !!readOnly);
   const audit = section.audit ?? [];
   const auditCount = audit.length;
   // Signed-in users who can open the brief see the Log; a brief kept only in
   // this browser has no stored history to show.
   const showLog = brief.remote;
+  const openRegeneration = () => brief.openRegen(section.id);
   const submitAi = () => {
     const panel = aiPanel;
     if (!panel) return;
@@ -585,6 +675,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         {num && <span className="brief-doc-section-num">{num}</span>}
         <input
           className="brief-doc-section-title"
+          aria-label="Heading"
           value={section.title}
           onChange={(e) => brief.editTitle(section.id, e.target.value)}
           onBlur={brief.commitEdits}
@@ -597,17 +688,28 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
         )}
       </div>
 
+      <SectionResearchFailure
+        section={section}
+        brief={brief}
+        readOnly={readOnly}
+        panelOpen={panelOpen}
+        editingAi={Boolean(aiPanel)}
+        busy={anyResearching}
+      />
+
       {/* The owner gets the section tools; a signed-in viewer gets the Log. */}
       {isDone && readOnly && (
         <ViewerLogButton show={showLog} auditCount={auditCount} onOpen={() => setLogOpen(true)} />
       )}
       {isDone && !readOnly && (
         <SectionTools
+          title={section.title}
           editing={editing}
           auditCount={auditCount}
           showLog={showLog}
           onToggleEdit={() => setEditing((v) => !v)}
-          onRegenerate={() => brief.openRegen(section.id)}
+          onRegenerate={openRegeneration}
+          regenerationFailed={section.researchFailure?.mode === 'generate'}
           onAiEdit={() => {
             setAiText('');
             setAiPanel((p) => (p === 'edit' ? null : 'edit'));
@@ -621,7 +723,13 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
 
       <IntroHeadingWarning headings={isDone ? section.introHeadingWarning : undefined} />
-      {isDone && <UnresolvedCitationsWarning unresolved={section.unresolved} />}
+      {isDone && (
+        <UnresolvedCitationsWarning
+          unresolved={section.unresolved}
+          canOpenLog={showLog}
+          onOpenLog={() => setLogOpen(true)}
+        />
+      )}
 
       {aiPanel && (
         <AiInstructionPanel
@@ -782,27 +890,29 @@ const HeaderActions: React.FC<{
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
+  const aiActions = [{
+    label: 'Regenerate All',
+    icon: IconRefresh,
+    onSelect: onRegenerateAll || (() => void brief.startResearch()),
+    title: 'Re-research every section from scratch',
+  }];
+  if (sections.some((section) => section.status === 'done')) {
+    aiActions.push({
+      label: 'Get Updates for All Sections',
+      icon: IconClock,
+      onSelect: brief.updateAll,
+      title: 'Fold sources published since each section was last run into every researched section',
+    });
+  }
   return (
     <div className="brief-doc-header-actions">
       {!readOnly && hasSections && (
-        <button
-          className="brief-regen-all"
-          onClick={onRegenerateAll || (() => void brief.startResearch())}
+        <BriefAskAi
+          label="Ask AI for the whole brief"
+          buttonClass="brief-regen-all"
+          actions={aiActions}
           disabled={!canEditStructure}
-          title="Re-research every section from scratch"
-        >
-          <IconRefresh /> AI Regenerate All
-        </button>
-      )}
-      {!readOnly && sections.some((s) => s.status === 'done') && (
-        <button
-          className="brief-regen-all"
-          onClick={brief.updateAll}
-          disabled={!canEditStructure}
-          title="Fold sources published since each section was last run into every section"
-        >
-          <IconClock /> AI Get All Recent Updates
-        </button>
+        />
       )}
       {!readOnly && onOpenShare && (
         <button
@@ -869,7 +979,7 @@ interface BriefDocumentProps {
 const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
   const current = brief.sections.find((s) => s.status === 'researching');
   if (!current) return null;
-  const total = brief.sections.length;
+  const total = brief.regeneration?.total ?? brief.sections.length;
   return (
     <div className="brief-status-bar" role="status">
       <span className="brief-spinner brief-status-bar-spinner" />
@@ -877,7 +987,9 @@ const ResearchStatusBar: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
         <div className="brief-status-bar-label">
           {current.revising ? 'Revising' : 'Researching'} “{current.title}”
           <span className="brief-status-bar-count">
-            {brief.doneCount}/{total} sections
+            {brief.regenerating
+              ? `${brief.updatedCount} of ${total} updated`
+              : `${brief.doneCount}/${total} sections`}
           </span>
         </div>
         <div className="brief-status-bar-track">
@@ -979,7 +1091,9 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     <div className="brief-doc-progress-row">
       <span>Researching…</span>
       <span className="brief-doc-progress-right">
-        {brief.doneCount}/{brief.sections.length}
+        {brief.regenerating
+          ? `${brief.updatedCount} of ${brief.regeneration?.total} updated`
+          : `${brief.doneCount}/${brief.sections.length}`}
         <button className="brief-stop-btn" onClick={brief.stopResearch} title="Stop all research">
           ■ Stop
         </button>
@@ -990,6 +1104,30 @@ const ResearchProgress: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => (
     </div>
   </div>
 );
+
+const RegenerationResult: React.FC<{ brief: UseBriefReturn }> = ({ brief }) => {
+  const result = brief.regeneration;
+  if (brief.regenerating || (!result && !brief.failedGenerationCount)) return null;
+  const canRetry = brief.canEdit && brief.failedGenerationCount > 0;
+  return (
+    <div className="brief-doc-progress brief-regeneration-result">
+      <div role="status">
+        {result && <div>Updated {brief.updatedCount} of {result.total} sections.</div>}
+        {canRetry && <div>Sections that failed are marked in Contents.</div>}
+      </div>
+      {canRetry && (
+        <button
+          type="button"
+          className="brief-regen-btn"
+          disabled={brief.researching}
+          onClick={() => void brief.retryFailedSections()}
+        >
+          <IconRefresh /> Retry failed sections ({brief.failedGenerationCount})
+        </button>
+      )}
+    </div>
+  );
+};
 
 // The outline-generation activity log (queries run, sources read).
 const OutlineLog: React.FC<{ brief: UseBriefReturn; onClose: () => void }> = ({ brief, onClose }) => (
@@ -1044,7 +1182,7 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
   // Viewer-only: a brief shared with (not owned by) this user renders read-only.
   const readOnly = !brief.canEdit;
   // Structural edits (reorder/add/remove via the TOC) lock while research runs.
-  const canEditStructure = !readOnly && !sections.some((s) => s.status === 'researching');
+  const canEditStructure = !readOnly && !brief.researching;
 
   // A cited excerpt from the Fact Checker's card, opened the same way.
   const handleEvidenceClick = (source: BriefFactCheckEvidence) => {
@@ -1144,7 +1282,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           showComments={showComments}
           onToggleComments={onToggleComments}
         />
-        {brief.stage === 'research' && <ResearchProgress brief={brief} />}
+        {brief.stage === 'research' && brief.researching && <ResearchProgress brief={brief} />}
+        <RegenerationResult brief={brief} />
         {logOpen && hasOutlineLog && <OutlineLog brief={brief} onClose={() => setLogOpen(false)} />}
       </div>
 
@@ -1158,8 +1297,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           brief={brief}
           onSourceClick={handleSourceClick}
           readOnly={readOnly}
-          onRequestHighlight={(src) =>
-            src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
+          onRequestHighlight={(src, claim) =>
+            src.chunkId ? brief.requestSourceHighlight(s.id, src.chunkId, claim) : undefined
           }
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}

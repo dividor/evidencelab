@@ -1025,6 +1025,39 @@ def test_language_facets_map_codes_to_full_names():
     assert lang_values["Unknown"] == 3
 
 
+@pytest.mark.unit
+def test_search_results_omit_nested_system_storage_copies():
+    # The raw storage record (and any archived copy nested inside it) never
+    # reaches a search result; the unpacked src_* fields do.
+    from ui.backend.routes.search import _build_search_results
+    from ui.backend.services.result_shape import ResultShape
+
+    archived = {"sys_data": {"sys_full_summary": "Old summary"}}
+    system_data = {"sys_parsed_folder": "parsed/report", "sys_data": archived}
+    document = {
+        "map_title": "Release checklist",
+        "sys_data": system_data,
+        "src_doc_raw_metadata": {"Archive type": "Checklist"},
+    }
+    hit = SimpleNamespace(id="chunk-1", payload={"doc_id": "doc-1"}, score=0.7)
+    result = _build_search_results(
+        [hit],
+        {"doc-1": document},
+        {"chunk-1": {"sys_text": "Check approvals before release."}},
+        "test",
+        20,
+        0,
+        ResultShape(),
+    )[0]
+
+    assert result.title == "Release checklist"
+    assert result.text == "Check approvals before release."
+    assert "sys_data" not in result.metadata
+    assert "src_doc_raw_metadata" not in result.metadata
+    assert result.metadata["src_archive_type"] == "Checklist"
+    assert document["sys_data"]["sys_data"] is archived
+
+
 @pytest.mark.asyncio
 async def test_search_endpoint_passes_wide_search_settings(monkeypatch):
     # The main.py wrapper copies its globals into the routes module on every

@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import axios from 'axios';
 
 // USER_MODULE on + an authenticated user => the brief is "logged in".
 jest.mock('../config', () => ({
@@ -13,16 +14,8 @@ jest.mock('../components/brief/briefCitationsApi', () =>
 );
 jest.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
-// Brief Central (logged-in landing) loads briefs/templates/voices over axios.
-jest.mock('axios', () => ({
-  __esModule: true,
-  default: {
-    get: jest.fn().mockResolvedValue({ data: [] }),
-    post: jest.fn().mockResolvedValue({ data: {} }),
-    put: jest.fn().mockResolvedValue({ data: {} }),
-    delete: jest.fn().mockResolvedValue({ data: {} }),
-  },
-}));
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 const mockRunDeepResearch = jest.fn();
 const mockRequestOutline = jest.fn();
@@ -40,6 +33,12 @@ describe('Brief uses the group search settings when logged in', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    mockedAxios.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/fact-check') ? { check: null, legend: [], marks: [] } : [],
+    }));
+    mockedAxios.post.mockResolvedValue({ data: {} });
+    mockedAxios.put.mockResolvedValue({ data: {} });
+    mockedAxios.delete.mockResolvedValue({ data: {} });
     mockRunDeepResearch.mockImplementation(async ({ handlers }: any) => {
       handlers.onSources([]);
       handlers.onDone({ content: '', sources: [] });

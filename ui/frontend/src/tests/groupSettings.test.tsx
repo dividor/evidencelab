@@ -48,6 +48,43 @@ describe('GroupSettingsManager', () => {
     mockedAxios.get.mockResolvedValue({ data: mockGroups });
   });
 
+  test('saves and restores the Brief section prompt while keeping the section length', async () => {
+    const defaultPrompt = 'Write the finished section in clear prose.';
+    const customized = 'Explain why each finding matters.';
+    let briefSettings = { briefTargetWords: 300 };
+    mockedAxios.get.mockImplementation(async url => ({ data: url.endsWith('/brief-defaults')
+      ? { sectionPrompt: defaultPrompt, citationCheck: true }
+      : [mockGroups[0], { ...mockGroups[1], search_settings: briefSettings }] }));
+    mockedAxios.patch.mockImplementation(async (_url, body) => {
+      briefSettings = body.search_settings;
+      return { data: { ...mockGroups[1], search_settings: briefSettings } };
+    });
+
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Brief', exact: true }));
+    const prompt = await screen.findByLabelText('Section prompt');
+    await waitFor(() => expect(prompt).toHaveValue(defaultPrompt));
+    const briefPanel = within(screen.getByRole('tabpanel', { name: 'Brief' }));
+    expect(briefPanel.getByRole('option', { name: 'On (default)' })).toHaveValue('');
+    const citationControl = briefPanel.getByLabelText('Automatic citation check');
+    fireEvent.change(citationControl, { target: { value: 'false' } });
+    fireEvent.change(prompt, { target: { value: customized } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
+      search_settings: { briefTargetWords: 300, briefSectionPrompt: customized, briefCitationCheck: false }, summary_prompt: '',
+    }));
+
+    const reset = screen.getByRole('button', { name: 'Reset section prompt to default' });
+    await waitFor(() => expect(screen.getByRole('button', { name: SAVE_SETTINGS })).toBeEnabled());
+    fireEvent.click(reset);
+    expect(prompt).toHaveValue(defaultPrompt);
+    fireEvent.change(citationControl, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
+      search_settings: { briefTargetWords: 300 }, summary_prompt: '',
+    }));
+  });
+
   test('settings are on tabs, one area at a time, and Save covers every tab', async () => {
     mockedAxios.patch.mockResolvedValue({ data: { ...mockGroups[1] } });
     render(<GroupSettingsManager />);
@@ -57,6 +94,7 @@ describe('GroupSettingsManager', () => {
       SEARCH_SETTINGS,
       'Content Settings',
       SEARCH_AI_SUMMARY,
+      'Assistant',
       'Brief',
       DOC_SUMMARIES,
       'LLMs',
@@ -89,6 +127,30 @@ describe('GroupSettingsManager', () => {
       expect(screen.getByText('Analysts')).toBeInTheDocument();
     });
     expect(screen.getByText('Default (Default)')).toBeInTheDocument();
+  });
+
+  test.each([
+    ['false', { personalEnvironmentalImpact: false }],
+    ['true', { personalEnvironmentalImpact: true }],
+    ['', {}],
+  ])('saves the personal environmental impact choice %s in Features & Tabs', async (value, expected) => {
+    mockedAxios.get.mockResolvedValue({
+      data: [mockGroups[0], { ...mockGroups[1], search_settings: { personalEnvironmentalImpact: false } }],
+    });
+    mockedAxios.patch.mockResolvedValue({ data: mockGroups[1] });
+    render(<GroupSettingsManager />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Features & Tabs' }));
+    const setting = screen.getByLabelText('Personal environmental impact');
+    expect(setting).toHaveValue('false');
+    fireEvent.change(setting, { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
+
+    await waitFor(() => {
+      expect(mockedAxios.patch).toHaveBeenCalledWith(URL_API_GROUPS_G2, {
+        search_settings: expected,
+        summary_prompt: '',
+      });
+    });
   });
 
   test('auto-selects default group and shows settings panel', async () => {

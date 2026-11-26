@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import API_BASE_URL from '../../config';
 import StarRating from '../ratings/StarRating';
@@ -25,6 +25,30 @@ const COLOR_PRIMARY = 'var(--brand-primary)';
 const COLOR_BORDER = 'var(--brand-border)';
 const RADIUS_DEFAULT = 6;
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+
+// Keep Tab and Shift+Tab inside the dialog so focus can't reach the page
+// behind the overlay.
+const trapTab = (e: KeyboardEvent, panel: HTMLElement) => {
+  const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  if (items.length === 0) {
+    e.preventDefault();
+    return;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  const startingFromPanelOrPage = active === panel || !panel.contains(active);
+  if (e.shiftKey && (active === first || startingFromPanelOrPage)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || startingFromPanelOrPage)) {
+    e.preventDefault();
+    first.focus();
+  }
+};
+
 const FeedbackModal: React.FC<FeedbackModalProps> = ({
   isOpen,
   onClose,
@@ -37,6 +61,23 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    panelRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeRef.current();
+      } else if (e.key === 'Tab' && panelRef.current) {
+        trapTab(e, panelRef.current);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -77,6 +118,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
     setSubmitted(false);
     onClose();
   };
+  closeRef.current = handleClose;
 
   return (
     <div
@@ -93,12 +135,17 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({
       }}
     >
       <div
+        ref={panelRef}
         className="modal-panel feedback-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="feedback-modal-title"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: 420, width: '92%' }}
       >
         <div className="modal-header">
-          <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>Send feedback</h2>
+          <h2 id="feedback-modal-title" style={{ fontSize: '1rem', fontWeight: 600 }}>Send feedback</h2>
           <div className="modal-header-actions">
             <button onClick={handleClose} className="modal-close" aria-label="Close">×</button>
           </div>

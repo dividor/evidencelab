@@ -157,6 +157,7 @@ export interface SourceReference {
   score: number;
   page?: number;
   index?: number;
+  evidenceIndex?: number;
   bbox?: any;
   headings?: string[];
   // Public source links (document-level), supplied by the assistant/brief
@@ -203,6 +204,8 @@ export interface SearchToolCall {
   query: string;
   resultCount: number;
   results?: SearchResultCard[];
+  stream?: string;
+  reason?: string;
 }
 
 export interface ThreadListItem {

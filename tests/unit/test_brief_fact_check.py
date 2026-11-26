@@ -413,6 +413,16 @@ class TestFactCheckMarks:
             (OTHER, "Supported"),
         ]
 
+    def test_a_bold_passage_is_given_as_it_reads_on_screen(self):
+        # The check stores the sentence with its markdown; the document
+        # searches rendered text, so the mark carries plain prose.
+        content = _content("**A fact** [1]. Another claim [1].")
+        rows = [_row(1, "**A fact**.", "unsupported"), _row(2, OTHER, "supported")]
+        marks = svc.fact_check_marks(
+            svc.coverage(content, svc.judged_passages(content, rows))
+        )
+        assert [m["passage"] for m in marks] == ["A fact.", OTHER]
+
     def test_legend_names_every_verdict_with_its_count(self):
         cov = svc.coverage(_content(), svc.judged_passages(_content(), MATCHING_ROWS))
         assert svc.legend(svc.fact_check_marks(cov)) == [

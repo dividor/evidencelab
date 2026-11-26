@@ -158,6 +158,7 @@ const ResultSubtitleRow = ({
                     </div>
                 )}
                 <select
+                    aria-label="Language"
                     value={result.translated_language || result.language || result.metadata?.language || 'en'}
                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                         onLanguageChange(result, e.target.value)

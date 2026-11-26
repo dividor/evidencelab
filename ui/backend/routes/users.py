@@ -27,7 +27,11 @@ from ui.backend.auth.users import (
     fastapi_users,
     get_user_manager,
 )
-from ui.backend.services.group_settings import user_effective_settings
+from ui.backend.services.group_settings import (
+    PERSONAL_IMPACT_SETTING,
+    personal_impact_enabled,
+    user_effective_settings,
+)
 from ui.backend.services.permissions import add_user_to_default_group
 
 logger = logging.getLogger(__name__)
@@ -252,9 +256,10 @@ async def get_effective_settings(
 
     Settings are merged across groups — first non-null value per key wins,
     ordered by group name ASC (so "Default" group is lowest priority).
-    Returns only the overridden keys; empty dict means no overrides.
+    Returns the overridden keys and whether personal impact is available.
     """
-    return await user_effective_settings(session, user.id)
+    settings = await user_effective_settings(session, user.id)
+    return {**settings, PERSONAL_IMPACT_SETTING: personal_impact_enabled(settings)}
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,10 @@ If you've already rated something, the modal shows your previous score and comme
 
 ---
 
+### Feedback about a page
+
+Select **Feedback** to report a problem or comment on the page. The tab is on the right edge of the screen. On narrow screens, the button is below the page content. Choose a star rating, write a comment, and select **Submit**.
+
 ### What Gets Captured
 
 Along with your star score and comment, Evidence Lab captures a snapshot of what you were looking at when you rated — the search query, filters, AI summary text, and surrounding results. This rich context helps administrators understand your feedback in full.

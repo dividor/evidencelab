@@ -127,10 +127,13 @@ def test_create_huggingface_llm_when_inference_provider_set_then_router_pinned(
         "Qwen/Qwen2.5-72B-Instruct", 0.2, 100, inference_provider="together"
     )
 
-    assert llm.llm.provider == "together"
-    assert llm.llm.repo_id == "Qwen/Qwen2.5-72B-Instruct"
-    assert llm.llm.temperature == 0.2
-    assert llm.llm.max_new_tokens == 100
+    # The router's OpenAI API takes the provider as a model-name suffix.
+    assert llm.model_name == "Qwen/Qwen2.5-72B-Instruct:together"
+    assert llm.openai_api_base == "https://router.huggingface.co/v1"
+    assert llm.openai_api_key.get_secret_value() == "hf_test"
+    assert llm.temperature == 0.2
+    assert llm.max_tokens == 100
+    assert llm.stream_usage is True  # streamed summaries report token usage
 
 
 def test_create_huggingface_llm_when_no_inference_provider_then_router_chooses(
@@ -142,7 +145,8 @@ def test_create_huggingface_llm_when_no_inference_provider_then_router_chooses(
         "Qwen/Qwen2.5-72B-Instruct", 0.2, 100, inference_provider=None
     )
 
-    assert llm.llm.provider is None
+    assert llm.model_name == "Qwen/Qwen2.5-72B-Instruct"
+    assert llm.openai_api_base == "https://router.huggingface.co/v1"
 
 
 def test_get_llm_when_model_id_matches_supported_llm_then_its_provider_is_used(
@@ -166,7 +170,7 @@ def test_get_llm_when_model_id_matches_supported_llm_then_its_provider_is_used(
         model="Org/Model", provider="huggingface", temperature=0.0, max_tokens=50
     )
 
-    assert llm.llm.provider == "featherless-ai"
+    assert llm.model_name == "Org/Model:featherless-ai"
 
 
 # ---------------------------------------------------------------------------
