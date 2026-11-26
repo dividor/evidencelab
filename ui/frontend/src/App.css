@@ -4792,7 +4792,7 @@ li.ai-fact-active::before {
 }
 
 .personal-impact-modal {
-  width: min(480px, calc(100% - 2rem));
+  width: min(520px, calc(100% - 2rem));
   max-height: calc(100% - 2rem);
   margin: auto;
   padding: 0;
@@ -4801,6 +4801,13 @@ li.ai-fact-active::before {
   background: var(--white);
   color: var(--text-primary);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.personal-impact-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--white);
 }
 
 .personal-impact-modal::backdrop {
@@ -4821,32 +4828,68 @@ li.ai-fact-active::before {
   max-width: 20rem;
 }
 
-.personal-impact-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
-  gap: 0.75rem;
-  margin: 1rem 0;
-}
-
-.personal-impact-metrics > div {
+.personal-impact-coverage-message {
+  margin: 0.75rem 0;
   padding: 0.75rem;
   border-radius: var(--radius-sm);
   background: var(--gray-100);
+  font-size: 0.875rem;
 }
 
-.personal-impact-metrics dt {
-  font-size: 0.8125rem;
+.personal-impact-metrics {
+  margin: 1rem 0;
+  border-top: 1px solid var(--gray-200);
+}
+
+.personal-impact-metrics > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--gray-200);
 }
 
 .personal-impact-metrics dd {
-  margin: 0.25rem 0 0;
+  margin: 0;
+  text-align: right;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
+.personal-impact-metrics dd span {
+  font-variant-numeric: tabular-nums;
+}
+
 .personal-impact-metrics small {
-  display: block;
   font-weight: 400;
+  color: var(--gray-600);
+}
+
+@media (max-width: 440px) {
+  .personal-impact-metrics small {
+    display: block;
+  }
+}
+
+.personal-impact-coverage-details {
+  font-size: 0.875rem;
+}
+
+.personal-impact-coverage-details summary {
+  cursor: pointer;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 0.625rem 0;
+}
+
+.personal-impact-coverage-details summary:focus-visible {
+  outline: 2px solid var(--primary-blue);
+  outline-offset: 2px;
+}
+
+.personal-impact-coverage-details p {
+  margin: 0.375rem 0 0;
   color: var(--gray-600);
 }
 

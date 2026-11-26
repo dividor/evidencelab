@@ -93,6 +93,8 @@ def test_summary_uses_period_and_signed_in_id(signed_in, params, expected_from):
         "energy_kwh_min": 0,
         "completion_tokens": 90,
         "footprint_unestimated_tokens": 10,
+        "estimated_output_tokens": 80,
+        "coverage_label": "about 89%",
         "from_date": expected_from.isoformat(),
         "to_date": "2026-03-05",
     }
@@ -113,7 +115,33 @@ def test_summary_when_empty_preserves_null_estimates(signed_in):
     payload = client.get(_URL).json()
     assert payload["completion_tokens"] == 0
     assert payload["footprint_unestimated_tokens"] == 0
+    assert payload["estimated_output_tokens"] == 0
+    assert payload["coverage_label"] is None
     assert all(payload[column] is None for column in llm_usage._FOOTPRINT_COLUMNS)
+
+
+@pytest.mark.parametrize(
+    "total,unestimated,estimated,label",
+    [
+        (473_180, 417_977, 55_203, "about 12%"),
+        (100, 100, 0, None),
+        (100, 0, 100, "all"),
+        (1_000, 999, 1, "less than 1%"),
+        (1_000, 1, 999, "more than 99%"),
+    ],
+)
+def test_summary_reports_output_coverage(
+    signed_in, total, unestimated, estimated, label
+):
+    client, session, _ = signed_in
+    session.execute.side_effect = [
+        _group_rows(),
+        _impact_row(completion_tokens=total, footprint_unestimated_tokens=unestimated),
+    ]
+    response = client.get(_URL)
+    assert response.status_code == 200
+    assert response.json()["estimated_output_tokens"] == estimated
+    assert response.json()["coverage_label"] == label
 
 
 def test_summary_when_period_is_invalid_rejects_the_request(signed_in):

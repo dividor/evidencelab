@@ -59,6 +59,8 @@ class PersonalImpactSummary(BaseModel):
     water_l_max: float | None
     completion_tokens: int
     footprint_unestimated_tokens: int
+    estimated_output_tokens: int
+    coverage_label: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -478,6 +480,20 @@ async def _fetch_usage_rows(
 # ---------------------------------------------------------------------------
 
 
+def _format_personal_impact_coverage(estimated: int, total: int) -> str | None:
+    if estimated == 0:
+        return None
+    if estimated == total:
+        return "all"
+
+    scaled = 100 * estimated
+    if scaled < total:
+        return "less than 1%"
+    if scaled > 99 * total:
+        return "more than 99%"
+    return f"about {scaled / total:.0f}%"
+
+
 @router.get("/me/footprint", tags=["llm-usage"])
 @limiter.limit(_RATE_LIMIT_DEFAULT)
 async def personal_impact_summary(
@@ -514,8 +530,15 @@ async def personal_impact_summary(
         {"user_id": user.id, "from_dt": from_dt, "to_dt": to_dt},
     )
     response.headers["Cache-Control"] = "private, no-store"
+    row = result.mappings().one()
+    total = row["completion_tokens"]
+    estimated = total - row["footprint_unestimated_tokens"]
     return PersonalImpactSummary(
-        from_date=start, to_date=today, **result.mappings().one()
+        from_date=start,
+        to_date=today,
+        estimated_output_tokens=estimated,
+        coverage_label=_format_personal_impact_coverage(estimated, total),
+        **row,
     )
 
 
