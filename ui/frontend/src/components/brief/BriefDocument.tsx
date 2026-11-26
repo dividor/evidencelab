@@ -143,6 +143,7 @@ export const UnresolvedCitationsWarning: React.FC<{
           className="citation-unmatched citation-unmatched-chip"
           onClick={() => jumpTo(u.n)}
           title={`Show where citation ${u.n} has no source`}
+          aria-label={`Show where citation ${u.n} has no source`}
         >
           {u.n}
         </button>

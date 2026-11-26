@@ -46,7 +46,8 @@ describe('a citation with no source in the text', () => {
     );
     const badge = container.querySelector('.citation-unmatched[data-unmatched="143"]');
     expect(badge).not.toBeNull();
-    expect(badge!.textContent).toBe('143');
+    expect(badge!.textContent).toBe('143 (no source)');
+    expect(badge!.querySelector('.visually-hidden')!.textContent).toBe(' (no source)');
     expect(badge!.getAttribute('title')).toMatch(/never given/);
     expect(container.textContent).not.toContain('[?143]');
     // The matched citation beside it still renders as a normal citation.
@@ -66,11 +67,12 @@ describe('the unmatched-citation warning', () => {
   test('names each unmatched number as a chip', () => {
     renderSection();
     expect(screen.getByText('2 citations have no source')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '143' })).toHaveAttribute(
-      'title',
-      'Show where citation 143 has no source',
-    );
-    expect(screen.getByRole('button', { name: '163' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Show where citation 143 has no source' }),
+    ).toHaveTextContent('143');
+    expect(
+      screen.getByRole('button', { name: 'Show where citation 163 has no source' }),
+    ).toBeInTheDocument();
   });
 
   test('a chip jumps to its citation, then to its next use on each click', () => {
@@ -78,12 +80,12 @@ describe('the unmatched-citation warning', () => {
     const uses = container.querySelectorAll('section > :not([role="status"]) .citation-unmatched[data-unmatched="143"]');
     expect(uses).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('button', { name: '143' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show where citation 143 has no source' }));
     expect(scrolled).toEqual([uses[0]]);
     expect(uses[0]).toHaveClass('citation-unmatched-flash');
 
-    fireEvent.click(screen.getByRole('button', { name: '143' }));
-    fireEvent.click(screen.getByRole('button', { name: '143' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show where citation 143 has no source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show where citation 143 has no source' }));
     expect(scrolled).toEqual([uses[0], uses[1], uses[0]]);
   });
 
