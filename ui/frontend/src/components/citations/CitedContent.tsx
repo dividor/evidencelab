@@ -28,6 +28,7 @@ export const UnmatchedCitation: React.FC<{ n: number }> = ({ n }) => (
     title={`No source for [${n}]: the research agent cited a number it was never given.`}
   >
     {n}
+    <span className="visually-hidden"> (no source)</span>
   </span>
 );
 
