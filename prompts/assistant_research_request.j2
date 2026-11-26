@@ -38,6 +38,14 @@ Question: {{ question | safe }}
 {{ evidence | safe }}
 {% if correction -%}
 
+{% if brief_final_repair -%}
+The draft below contains statements retained by the citation check. Make the smallest edits needed. Open with a
+specific cited finding from the draft, keeping its citation and strength. Clarify any reference that lost its context.
+Address any remaining question with the retained findings where possible. If they do not establish a requested
+result, state that limit in its own sentence, after the cited opening. For example: "The evaluations reviewed
+here do not establish the share of programmes with this component." Keep the requested voice and use fewer
+words if covering the evidence does not require more. Do not restore claims the check removed.
+{% else -%}
 The previous draft failed its evidence or scope check. Write the entire corrected answer. Remove unsupported
 claims and unrelated material, and keep the answer that the retrieved evidence can support.
 Repair only the reported issues. If a requested measure is unavailable, state the limit of the reviewed evidence.
@@ -46,6 +54,11 @@ Keep the sentence with the citation that supports it, or remove the whole claim 
 If the opening lacks support, look for a retrieved passage that supports it. If none does, start with a different
 finding that the retrieved evidence supports. Keep the requested writing voice and length when revising.
 Reuse the supported findings and do not add examples unrelated to this assignment.
+{% if brief_section -%}
+Start directly with a specific cited finding. Put every missing measure or outcome in its own sentence, limited to
+the evaluations reviewed. Keep unverified generalizations out of those sentences.
+{% endif -%}
+{% endif -%}
 Draft for revision: {{ draft | tojson }}
 Issues: {{ correction | tojson }}
 {% endif -%}

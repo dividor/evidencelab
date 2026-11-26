@@ -17,10 +17,13 @@ from ui.backend.auth.schemas import (
 )
 from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.brief_section_prompt import (
+    BriefSectionScope,
+    apply_brief_section_scope,
     brief_citation_check_for_groups,
     brief_section_prompt_default,
     brief_section_prompt_for_groups,
     brief_section_research_focus,
+    brief_section_scope_request,
     build_section_prompt,
     build_survey_prompt,
     outline_context,
@@ -28,6 +31,38 @@ from ui.backend.services.brief_section_prompt import (
     validate_brief_section_prompt,
 )
 from ui.backend.services.group_settings import merge_group_settings
+
+
+def test_brief_author_guidance_can_select_one_lettered_part_of_a_question():
+    section = BriefSectionPrompt(
+        outline=[
+            {"title": "School meal outcomes", "level": 1},
+            {"title": "Education outcomes", "level": 2},
+            {"title": "Nutrition outcomes", "level": 2},
+            {"title": "Gender and inclusion outcomes", "level": 2},
+        ],
+        current=3,
+        instructions=(
+            "Synthesize the evaluations.\n\n"
+            "1. Which school meal outcomes did SBC address?\n"
+            "   a. Education: girls' attendance.\n"
+            "   b. Nutrition: dietary diversity and handwashing.\n"
+            "   c. Inclusion: access for displaced pupils."
+        ),
+    )
+    system, request, common, choices = brief_section_scope_request(section)
+    assert len(choices) == 4
+    assert "choose\nthe detail for the assigned heading" in system
+    assert "access for displaced pupils" in request
+    scoped = apply_brief_section_scope(
+        section, common, choices, BriefSectionScope(selected=[4])
+    )
+    assert scoped.instructions == (
+        "Synthesize the evaluations.\n\n"
+        "1. Which school meal outcomes did SBC address?\n"
+        "c. Inclusion: access for displaced pupils."
+    )
+
 
 OUTLINE = [
     {"title": "Context and scope", "level": 1},

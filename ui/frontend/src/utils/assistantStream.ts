@@ -12,6 +12,7 @@ export interface AssistantUsage {
 export interface AssistantDoneData {
   threadId?: string;
   messageId?: string;
+  sectionWritten?: boolean;
   // The agent run behind this turn (the Brief stores it with a section's
   // original output, for tracing).
   runId?: string;
@@ -205,6 +206,7 @@ const handleStreamedData = (
         threadId: streamedData.threadId,
         messageId: streamedData.messageId,
         runId: streamedData.runId,
+        sectionWritten: streamedData.section_written,
         trace_url: streamedData.trace_url,
         usage: streamedData.usage,
       });

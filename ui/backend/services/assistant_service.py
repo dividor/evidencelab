@@ -18,8 +18,9 @@ from ui.backend.services.assistant_citations import (
     number_answer_citations,
     remap_citations,
 )
-from ui.backend.services.assistant_graph import build_research_agent
+from ui.backend.services.assistant_graph import SearchTracker, build_research_agent
 from ui.backend.services.assistant_settings import AssistantSettings
+from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.llm_service import summarize_usage_metadata
 from ui.backend.utils.llm_request_limits import max_output_tokens
 from utils.llm_factory import get_llm, resolve_effective_model_key
@@ -223,47 +224,72 @@ async def stream_research_response(
         )
         yield {"type": "phase", "phase": "planning"}
         numbered_sources: Optional[list[dict]] = None
+        last_answer = ""
+        section_written = True
         async for event in graph.astream(
             {
                 "query": remap_citations(query, evidence_numbers(latest_answer)),
                 "initial_search_query": initial_search_query,
+                "brief_target_words": target_words,
                 "messages": _build_conversation_messages(conversation_messages),
             },
             config={
                 "run_id": run_id,
-                "recursion_limit": 2 * search_budget + 5,
+                "recursion_limit": 2 * search_budget
+                + (7 if brief_section is not None else 5),
                 "callbacks": [usage, *_trace_callbacks()],
             },
             stream_mode="custom",
         ):
-            if citation_order and event["type"] == "token":
-                answer, numbered_sources = number_answer_citations(
-                    event["token"], tracker.get_sources()
-                )
-                event = {**event, "token": answer}
+            if event["type"] == "brief_section_unwritten":
+                section_written = False
+                continue
+            if event["type"] == "token":
+                last_answer = event["token"]
+                if citation_order:
+                    last_answer, numbered_sources = number_answer_citations(
+                        last_answer, tracker.get_sources()
+                    )
+                    event = {**event, "token": last_answer}
             yield event
-        sources = (
-            numbered_sources if numbered_sources is not None else tracker.get_sources()
+        sources = _research_sources(
+            tracker, numbered_sources, brief_section, last_answer
         )
-        if sources:
+        if sources and section_written:
             yield {"type": "sources", "sources": sources}
         checked_usage = (
             summarize_usage_metadata(reviewer_usage, citation_model_key)
             if reviewer_usage is not None and reviewer_usage.usage_metadata
             else None
         )
-        yield _build_done_event(
+        done = _build_done_event(
             run_id,
             usage_handler=usage,
             model_key=model_key,
             reviewer_usage=checked_usage,
         )
+        if brief_section is not None:
+            done["section_written"] = section_written
+        yield done
     except Exception:
         logger.exception("Assistant research failed (run_id=%s)", run_id)
         yield {
             "type": "error",
             "error": "The Assistant could not complete this request.",
         }
+
+
+def _research_sources(
+    tracker: SearchTracker,
+    numbered: list[dict] | None,
+    brief_section: BriefSectionPrompt | None,
+    answer: str,
+) -> list[dict]:
+    sources = numbered if numbered is not None else tracker.get_sources()
+    if brief_section is None:
+        return sources
+    citations = set(cited_numbers_in_order(answer))
+    return [source for source in sources if source["index"] in citations]
 
 
 def _reviewer_model(checker_key: Optional[str], writer_key: Optional[str]) -> tuple:

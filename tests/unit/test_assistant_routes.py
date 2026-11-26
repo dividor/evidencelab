@@ -790,6 +790,16 @@ async def test_conversation_history_requires_thread_ownership(owned):
 class TestStreamAssistantChatBriefSection:
     """A Brief section sends its prompt parts; the API writes the prompt."""
 
+    @pytest.mark.parametrize("written, persists", [(True, True), (False, False)])
+    def test_only_written_sections_are_saved_as_conversation_turns(
+        self, monkeypatch, written, persists
+    ):
+        from ui.backend.routes import assistant
+
+        monkeypatch.setattr(assistant, "_USER_MODULE", True)
+        event = {"type": "done", "section_written": written}
+        assert assistant._should_persist(event, object(), object()) is persists
+
     _SECTION = {
         "outline": [
             {"title": "Context", "level": 1},

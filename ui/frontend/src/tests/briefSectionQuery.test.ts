@@ -105,6 +105,39 @@ describe('researchBriefSection request', () => {
     expect(body.brief_section.current).toBe(1);
     expect(body.brief_section.outline).toEqual(OUTLINE);
   });
+
+  test('a completed stream with no verified section reports a failure without a draft', async () => {
+    const read = jest.fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: new TextEncoder().encode('data: {"type":"done","section_written":false}\n\n'),
+      })
+      .mockResolvedValueOnce({ done: true });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => ({ read }) },
+    });
+    const handlers = {
+      onActivity: jest.fn(),
+      onProgress: jest.fn(),
+      onToken: jest.fn(),
+      onSources: jest.fn(),
+      onDone: jest.fn(),
+      onError: jest.fn(),
+    };
+    await researchBriefSection({
+      apiBaseUrl: '/api',
+      dataSource: 'wfp',
+      heading: 'What the evidence shows',
+      outline: OUTLINE,
+      currentIndex: 1,
+      handlers,
+    });
+    expect(handlers.onError).toHaveBeenCalledWith('Research did not produce a verified section.');
+    expect(handlers.onDone).not.toHaveBeenCalled();
+    expect(handlers.onProgress).not.toHaveBeenCalledWith(100);
+    expect(handlers.onActivity).not.toHaveBeenCalledWith(expect.objectContaining({ tag: 'DONE' }));
+  });
 });
 
 describe('isLikelyNonAnswer', () => {

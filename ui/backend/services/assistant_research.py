@@ -28,13 +28,16 @@ from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
 from ui.backend.auth.schemas import BriefSectionPrompt
+from ui.backend.services.assistant_brief_writer import write_grounded_brief
 from ui.backend.services.assistant_grounding import (
+    InvalidAssistantResponse,
     Passage,
     ReviewRequest,
     check_research_draft,
     invalid_citations,
     prior_evidence_passages,
     render_evidence,
+    render_evidence_streams,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
@@ -153,6 +156,7 @@ class StreamResult(TypedDict):
 
 class ResearchState(TypedDict, total=False):
     query: str
+    brief_target_words: int | None
     initial_search_query: str | None
     messages: list[BaseMessage]
     evidence: list[Passage]
@@ -162,6 +166,8 @@ class ResearchState(TypedDict, total=False):
     answer: str
     draft: str
     correction: list[str]
+    brief_final_repair: bool
+    grounded_section: bool
     verified_draft: str
     answer_evidence: dict[int, Passage]
     brief_focus: str | None
@@ -486,7 +492,7 @@ class ResearchWorkflow:
                         )
                     ],
                 )
-        raise ValueError(
+        raise InvalidAssistantResponse(
             "The Assistant model could not produce a valid structured response"
         )
 
@@ -498,9 +504,29 @@ class ResearchWorkflow:
         findings = sorted(state.get("findings", []), key=lambda entry: entry["order"])
         gathered = (p for f in findings for p in f["evidence"])
         evidence = {p["global_index"]: p for p in (*state["evidence"], *gathered)}
+        if (
+            self.brief_section
+            and self.brief_section.mode == "generate"
+            and self.check_citations
+        ):
+            section = await write_grounded_brief(
+                state["query"],
+                state["searches"][0],
+                self.writer,
+                evidence,
+                config,
+                self.llm,
+                self.citation_request,
+                self.brief_section,
+                target_words=state.get("brief_target_words"),
+            )
+            return {"draft": section or _NO_EVIDENCE, "grounded_section": True}
         draft = (
             await self._write(
-                state, list(evidence.values()), config, _render_streams(findings)
+                state,
+                list(evidence.values()),
+                config,
+                render_evidence_streams(findings),
             )
             if evidence
             else _NO_EVIDENCE
@@ -511,7 +537,7 @@ class ResearchWorkflow:
         self, state: ResearchState, config: RunnableConfig
     ) -> ResearchState:
         answer = state["draft"]
-        if answer != _NO_EVIDENCE:
+        if answer != _NO_EVIDENCE and not state.get("grounded_section"):
             if self.check_citations:
                 get_stream_writer()({"type": "phase", "phase": "checking_citations"})
             review = await check_research_draft(
@@ -525,25 +551,28 @@ class ResearchWorkflow:
                 check_citations=self.check_citations,
                 citation_request=self.citation_request,
             )
+            corrected = bool(state.get("correction"))
+            if review.revision(
+                brief_section=self.brief_section is not None,
+                corrected=corrected,
+                can_repair_verified_prose=self.check_citations
+                and not state.get("brief_final_repair"),
+                has_verified_draft=bool(state.get("verified_draft")),
+            ):
+                return {
+                    "correction": review.issues,
+                    "draft": review.revision_base or answer,
+                    "verified_draft": review.supported_text,
+                    "brief_final_repair": corrected,
+                }
             if review.issues:
-                if self.brief_section is not None and not state.get("correction"):
-                    return {
-                        "correction": review.issues,
-                        "draft": review.revision_base or answer,
-                        "verified_draft": review.supported_text,
-                    }
-                if review.supported_text:
-                    answer = review.supported_text
-                elif not state.get("correction"):
-                    return {
-                        "correction": review.issues,
-                        "draft": review.revision_base or answer,
-                    }
-                else:
-                    answer = _NO_EVIDENCE
+                answer = review.supported_text or _NO_EVIDENCE
         if answer == _NO_EVIDENCE and state.get("verified_draft"):
             answer = state["verified_draft"]
-        get_stream_writer()({"type": "token", "token": answer})
+        if self.brief_section is not None and answer == _NO_EVIDENCE:
+            get_stream_writer()({"type": "brief_section_unwritten"})
+        else:
+            get_stream_writer()({"type": "token", "token": answer})
         return {"answer": answer}
 
     async def _write(
@@ -560,6 +589,8 @@ class ResearchWorkflow:
             evidence=render_evidence(evidence),
             correction=state.get("correction"),
             draft=state.get("draft"),
+            brief_section=self.brief_section is not None,
+            brief_final_repair=state.get("brief_final_repair"),
         )
         messages = [
             SystemMessage(content=self.writer),
@@ -600,18 +631,6 @@ def _library_refusal(next_step: _LibraryNextStep, history: list[BaseMessage]) ->
         for step in steps
         if (reply := template.render(next_step=step).strip()) != previous
     )
-
-
-def _render_streams(findings: list[StreamResult]) -> str:
-    rows = []
-    for finding in findings:
-        if not finding["topic"]:
-            continue
-        labels = ", ".join(str(p["global_index"]) for p in finding["evidence"])
-        rows.append(f'- {finding["topic"]}: {labels or "no evidence found"}')
-    if not rows:
-        return ""
-    return "Research streams and their evidence labels:\n" + "\n".join(rows) + "\n\n"
 
 
 def build_research_workflow(

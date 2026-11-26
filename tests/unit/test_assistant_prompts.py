@@ -32,6 +32,23 @@ def test_planner_explains_when_to_continue_or_stop(prompts):
     assert "concrete gap, contradiction or limitation" in normal
 
 
+def test_grounding_uses_report_title_to_verify_location_and_passage_to_verify_claim(
+    prompts,
+):
+    reviewer = prompts.get_template("assistant_grounding_check.j2").render(
+        brief_section=True
+    )
+    assert "identify the location in the report title or in the passage" in reviewer
+    assert "same outcome in a different country cannot substantiate" in reviewer
+    assert "Use the passage itself to verify what happened there" in reviewer
+
+
+def test_brief_prose_review_accepts_evidence_gap_after_cited_opening(prompts):
+    reviewer = prompts.get_template("brief_prose_check.j2").render(system=True)
+    assert "Do not request the missing data again" in reviewer
+    assert "or require that sentence in the opening" in reviewer
+
+
 @pytest.mark.parametrize("stage", [{}, {"organize": True}, {"contextualize": True}])
 def test_geography_guidance_is_shared_and_editable_in_all_planning_stages(
     prompts, stage

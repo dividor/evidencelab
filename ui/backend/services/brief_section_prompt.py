@@ -32,6 +32,7 @@ _GIST_CHARS = 180
 _SEARCH_QUERY_CHARS = 350
 _BRIEF_PROMPT_MAX_LENGTH = 12000
 _NUMBERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=\d{1,3}[.)][ \t]+)")
+_LETTERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=[a-z][.)][ \t]+)")
 
 _FINAL_ANSWER_RULE = (
     "Your final answer must be the finished section text itself — never a "
@@ -55,6 +56,19 @@ def _child_headings(section: BriefSectionPrompt) -> list[str]:
     return [item.title for item in takewhile(lambda item: item.level == 2, following)]
 
 
+def _instruction_choices(blocks: list[str]) -> list[str]:
+    choices = []
+    for block in blocks:
+        if not block.strip():
+            continue
+        heading, *details = _LETTERED_GUIDANCE.split(block.strip())
+        heading = heading.strip()
+        if heading:
+            choices.append(heading)
+        choices.extend(f"{heading}\n{detail.strip()}".lstrip() for detail in details)
+    return choices
+
+
 def brief_section_scope_request(
     section: BriefSectionPrompt,
 ) -> tuple[str, str, str, list[str]]:
@@ -66,7 +80,7 @@ def brief_section_scope_request(
         if len(numbered) > 1
         else ("", re.split(r"\n\s*\n", instructions))
     )
-    choices = [block.strip() for block in blocks if block.strip()]
+    choices = _instruction_choices(blocks)
     template = assistant_prompt_templates.get_template("brief_section_scope.j2")
     request = template.render(
         heading=section.outline[section.current].title,

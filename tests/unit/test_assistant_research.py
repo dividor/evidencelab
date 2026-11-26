@@ -119,6 +119,16 @@ def _review_rows(prompt):
     return json.loads(prompt.split("Sentences to check: ", 1)[1].splitlines()[0])
 
 
+def _brief_draft(*findings, limit=""):
+    rows = [
+        {"paragraph": 1, "text": text, "citation": citation, "quote": quote}
+        for text, citation, quote in findings
+    ]
+    if limit:
+        rows.append({"limit": limit})
+    return "\n".join(json.dumps(row) for row in rows)
+
+
 @pytest.mark.asyncio
 async def test_assistant_starts_with_original_and_stops_when_evidence_is_sufficient():
     events, search, llm = await run_research(
@@ -309,7 +319,9 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
             json.dumps({"selected": [1]}),
             json.dumps({"queries": [follow_up]}),
             '{"queries":[]}',
-            answer,
+            _brief_draft(
+                (answer.split(" [1]")[0], 1, "Three reviewed programmes used SBC")
+            ),
         ],
         [[point(1, "Three reviewed programmes used SBC.")], []],
         deep=True,
@@ -323,7 +335,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         heading,
         follow_up,
     ]
-    scope, opening, next_search, writer, verifier, editor = [
+    scope, opening, next_search, writer, verifier = [
         call.args[0][-1].content for call in llm.ainvoke.await_args_list
     ]
     assert excluded_heading in scope and other_question in scope
@@ -337,7 +349,6 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         not in llm.ainvoke.await_args_list[3].args[0][0].content
     )
     assert other_question not in writer and other_question not in verifier
-    assert excluded_heading in editor and other_question not in editor
     assert (
         next(event["token"] for event in events if event["type"] == "token") == answer
     )
@@ -372,7 +383,7 @@ async def test_researched_brief_revises_extra_headings_even_with_citation_check_
 @pytest.mark.asyncio
 async def test_brief_opening_repair_uses_sources_and_keeps_length_and_voice():
     good = "The evaluation found that school sites had better access [1]."
-    draft = "The programme substantially improved many outcomes.\n\n" + good
+    draft = "The programme substantially improved many outcomes. " + good
     events, _, llm = await run_research(
         ['{"queries":[]}', draft, good],
         [[point(1, "School sites had better access.")]],
@@ -393,7 +404,7 @@ async def test_brief_opening_repair_uses_sources_and_keeps_length_and_voice():
         "plain British English and neutral evaluation language" in revised[-1].content
     )
     assert (
-        "opening paragraph needs a finding supported by a citation"
+        "opening sentence needs a finding supported by a citation"
         in revised[-1].content
     )
 
@@ -539,22 +550,42 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
         "The evaluations reviewed here do not establish the share of programmes "
         "with this component."
     )
-    draft = finding + " Enrolment doubled.\n\n" + gap
+    draft = (
+        _brief_draft(
+            (
+                finding.split(" [1]")[0],
+                1,
+                "documented social and behavioural change in school meals",
+            ),
+            (
+                "Enrolment doubled",
+                1,
+                "documented social and behavioural change in school meals",
+            ),
+            ("Attendance doubled", 1, "attendance rates doubled in 2025"),
+            ("Every school used the intervention", [1, 2], None),
+            (
+                "The other section covers attendance",
+                1,
+                "documented social and behavioural change",
+            ),
+            limit=gap,
+        )
+        + '\n{"text": "This record was cut off"'
+    )
 
     def judge(prompt):
         assert len(_review_rows(prompt)) == 3
+        assert _review_rows(prompt)[0]["prepared_quote"] == (
+            "documented social and behavioural change in school meals"
+        )
         return {
             "scope_issues": [],
             "sentences": [
                 {
                     "id": 1,
                     "status": "supported",
-                    "quotes": [
-                        {
-                            "citation": 1,
-                            "quote": "documented social and behavioural change in school meals",
-                        },
-                    ],
+                    "quotes": [],
                 },
                 {
                     "id": 2,
@@ -567,27 +598,98 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
         }
 
     events, _, llm = await run_research(
-        ['{"queries":[]}', draft, "NO_DATASET_EVIDENCE"],
+        ['{"queries":[]}', draft],
         [
             [
                 point(
                     1,
                     "The evaluation documented social and behavioural change in school meals.",
-                )
+                ),
+                point(2, "The report summarizes teacher staffing levels."),
             ]
         ],
         query="How many programmes used social and behavioural change?",
         initial_query="Social and behavioural change in school meals",
         brief_section_prompt="Describe the evidence for this section only.",
         brief_section=BriefSectionPrompt(
-            outline=[{"title": "Extent of SBC"}, {"title": "Education"}], current=0
+            outline=[
+                {"title": "Extent of SBC"},
+                {
+                    "title": "Education",
+                    "content": "The other section covers attendance [2].",
+                },
+            ],
+            current=0,
         ),
         check=judge,
     )
     assert [event["token"] for event in events if event["type"] == "token"] == [
         finding + "\n\n" + gap
     ]
-    assert llm.ainvoke.await_count == 5
+    assert llm.ainvoke.await_count == 3
+    assert events[-1]["section_written"] is True
+    sources = next(event["sources"] for event in events if event["type"] == "sources")
+    assert [source["chunkId"] for source in sources] == ["chunk-1"]
+
+
+@pytest.mark.asyncio
+async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_target():
+    first = "In Armenia, teachers delivered nutrition education."
+    second = "In Malawi, students learned safe food preparation."
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (
+                    "For example, in Armenia, teachers delivered nutrition education.",
+                    1,
+                    "teachers delivered nutrition education",
+                )
+            ),
+            _brief_draft((second, 2, "students learned safe food preparation")),
+        ],
+        [[point(1, first), point(2, second)]],
+        initial_query="Nutrition and hygiene learning in school meal programmes",
+        brief_section_prompt="Report independent findings without extra headings.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Nutrition education"}], current=0
+        ),
+        target_words=100,
+    )
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert answer == f"{first.rstrip('.')} [1].\n\n{second.rstrip('.')} [2]."
+    assert len(answer.split()) <= 100
+    assert (
+        "Add different findings" in llm.ainvoke.await_args_list[-2].args[0][-1].content
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_excludes_a_midterm_finding_misattributed_to_endline():
+    source = point(1, "Students reported improved hygiene at midterm.")
+    source.payload["map_title"] = "Mid-Term Evaluation of school meals in Laos"
+    draft = _brief_draft(
+        (
+            "The endline evaluation found that students reported improved hygiene",
+            1,
+            "students reported improved hygiene",
+        ),
+        (
+            "The midterm evaluation found that students reported improved hygiene",
+            1,
+            "students reported improved hygiene",
+        ),
+    )
+    events, _, _ = await run_research(
+        ['{"queries":[]}', draft],
+        [[source]],
+        initial_query="School meals hygiene results",
+        brief_section_prompt="Report the evidence on student hygiene.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Hygiene"}], current=0),
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        "The midterm evaluation found that students reported improved hygiene [1]."
+    )
 
 
 @pytest.mark.asyncio
@@ -760,6 +862,121 @@ async def test_no_results_yields_an_evidence_gap_without_a_generated_answer():
     )
     assert llm.ainvoke.await_count == 1
     assert events[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_brief_with_unverified_prose_completes_without_a_draft_or_sources():
+    draft = _brief_draft(("Enrolment doubled", 1, "reviewed school meals"))
+    events, _, _ = await run_research(
+        ['{"queries":[]}', draft, draft],
+        [[point(1, "The evaluation reviewed school meals.")]],
+        initial_query="School meals",
+        brief_section_prompt="Describe the evidence for this section.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Enrolment"}], current=0),
+        supported=False,
+    )
+    assert not any(
+        event["type"] in {"sources", "token", "brief_section_unwritten"}
+        for event in events
+    )
+    assert events[-1]["type"] == "done"
+    assert events[-1]["section_written"] is False
+
+
+@pytest.mark.asyncio
+async def test_brief_update_final_repair_keeps_supported_finding_and_restores_review_limit():
+    finding = "The evaluation documented nutrition education in school meals [1]."
+    mixed = "Programme use was widespread, but the reviewed evaluations did not give a share."
+    gap = (
+        "The evaluations reviewed here do not establish the share of programmes "
+        "with this component."
+    )
+
+    def judge(prompt):
+        checks = []
+        for row in _review_rows(prompt):
+            if row["citations"]:
+                status = "supported"
+                quotes = [
+                    {"citation": 1, "quote": "nutrition education in school meals"}
+                ]
+            else:
+                status = "evidence_gap" if row["text"] == gap else "unsupported"
+                quotes = []
+            checks.append({"id": row["id"], "status": status, "quotes": quotes})
+        return {"scope_issues": [], "sentences": checks}
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', finding, mixed + "\n\n" + finding, finding + "\n\n" + gap],
+        [[point(1, "The evaluation documented nutrition education in school meals.")]],
+        initial_query="Nutrition education in school meals",
+        brief_section_prompt="Report evaluation findings and the programme share.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Programme coverage"}], current=0, mode="update"
+        ),
+        check=judge,
+        prose=lambda prompt: (
+            [] if gap in prompt else ["State the evidence limit for programme share."]
+        ),
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        finding + "\n\n" + gap
+    )
+    assert events[-1]["section_written"] is True
+    repair = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if "statements retained by the citation check" in call.args[0][-1].content
+    )
+    assert finding in repair
+    assert mixed not in repair
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nepal_countries", ["Nepal; India", ["Nepal", "India"]])
+@pytest.mark.parametrize(
+    "lead",
+    ["In Nepal, stakeholders", "The evaluation in Nepal found that stakeholders"],
+)
+async def test_brief_repairs_country_mismatch_the_semantic_citation_check_missed(
+    nepal_countries,
+    lead,
+):
+    cambodia = point(1, "Stakeholders reported that pupils kept washing their hands.")
+    cambodia.payload.update(
+        map_country="Cambodia", map_title="School meals in Cambodia"
+    )
+    nepal = point(2, "The evaluation assessed meal delivery to rural schools.")
+    nepal.payload.update(map_country=nepal_countries, map_title="School meals in Nepal")
+    original = f"{lead} reported that pupils kept washing their hands [1]."
+    corrected = original.replace("Nepal", "Cambodia")
+
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (original.split(" [1]")[0], 1, "pupils kept washing their hands")
+            ),
+            _brief_draft(
+                (corrected.split(" [1]")[0], 1, "pupils kept washing their hands")
+            ),
+        ],
+        [[cambodia, nepal]],
+        initial_query="Handwashing in school meal programmes",
+        brief_section_prompt="Describe where sustained handwashing was reported.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Hygiene outcomes"}], current=0
+        ),
+    )
+    assert (
+        next(event["token"] for event in events if event["type"] == "token")
+        == corrected
+    )
+    assert events[-1]["section_written"] is True
+    assert any(
+        "[1] do not identify nepal as the location" in call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+    )
 
 
 @pytest.mark.parametrize("source", [None, "other-dataset"])

@@ -110,7 +110,13 @@ const TocRow: React.FC<TocRowProps> = ({ section, num, brief, canEdit, active })
         <button type="button" className="brief-toc-jump" onClick={() => scrollToSection(section.id)}>
           {num && <span className="brief-toc-num">{num}</span>}
           <span className="brief-toc-text">{section.title || 'Untitled heading'}</span>
-          <span className={`brief-toc-dot brief-toc-dot-${section.status}`} />
+          {section.researchFailure && section.status !== 'researching' ? (
+            <span className="brief-toc-failed" title="AI research failed" aria-label="AI research failed">
+              !
+            </span>
+          ) : (
+            <span className={`brief-toc-dot brief-toc-dot-${section.status}`} />
+          )}
         </button>
         {canEdit && (
           <span className="brief-toc-actions">

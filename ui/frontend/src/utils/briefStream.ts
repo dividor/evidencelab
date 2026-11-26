@@ -301,6 +301,10 @@ export const runDeepResearch = async ({
         handlers.onSources(sources);
       },
       onDone: (data) => {
+        if (data.sectionWritten === false) {
+          handlers.onError('Research did not produce a verified section.');
+          return;
+        }
         handlers.onProgress(100);
         handlers.onActivity({ tag: 'DONE', text: doneLabel });
         handlers.onDone({ content: latestContent, sources: latestSources, runId: data.runId });

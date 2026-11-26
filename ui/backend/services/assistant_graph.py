@@ -32,6 +32,7 @@ def _format_search_result(r: Any) -> Dict[str, Any]:
         "chunk_id": getattr(r, "id", payload.get("chunk_id", "")),
         "doc_id": payload.get("doc_id", ""),
         "title": title,
+        "country": payload.get("map_country"),
         "text": payload.get("text", ""),
         "score": getattr(r, "score", payload.get("score", 0.0)),
         "page": page,
@@ -259,7 +260,7 @@ class SearchTracker:
     def _enrich_doc_links(
         formatted: List[Dict[str, Any]], data_source: Optional[str]
     ) -> None:
-        """Attach document-level ``pdf_url`` / ``report_url`` by ``doc_id``.
+        """Attach country and source URLs by ``doc_id``.
 
         Chunk payloads only carry chunk-level fields; the public source URLs
         live on the ``documents`` row. Mirroring what the search route exposes
@@ -284,6 +285,8 @@ class SearchTracker:
                 continue
             r["pdf_url"] = meta.get("map_pdf_url")
             r["report_url"] = meta.get("map_report_url")
+            if meta.get("map_country"):
+                r["country"] = meta["map_country"]
 
     def search(self, query: str) -> List[Dict[str, Any]]:
         """Search the configured collection and keep stable result numbers."""

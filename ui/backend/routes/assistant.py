@@ -451,6 +451,7 @@ def _should_persist(event, user, session) -> bool:
     """Check if this event should trigger conversation persistence."""
     return (
         event.get("type") == "done"
+        and event.get("section_written") is not False
         and _USER_MODULE
         and user is not None
         and session is not None

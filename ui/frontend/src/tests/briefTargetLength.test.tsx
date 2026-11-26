@@ -59,6 +59,7 @@ describe('Brief section length target', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    sessionStorage.clear();
     // CRA's jest config resets mock implementations before each test, so the
     // activity-log post must be re-armed here or its .catch() has no promise.
     (axios.post as jest.Mock).mockResolvedValue({ data: {} });
@@ -159,9 +160,59 @@ describe('Brief section length target', () => {
     expect(within(section).queryByText('Unsaved replacement')).toBeNull();
 
     await act(async () => fail());
-    expect(await screen.findByText('The research could not be completed.')).toBeInTheDocument();
+    expect(await within(section).findByText('The research could not be completed.')).toBeInTheDocument();
+    expect(within(section).getByText('You’re viewing the previous draft.')).toBeInTheDocument();
     expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
     expect(section.querySelector('.brief-researching')).toBeNull();
-    expect(within(section).getByRole('button', { name: 'AI Regenerate' })).toBeInTheDocument();
+    fireEvent.click(within(section).getByRole('button', { name: 'Research settings' }));
+    expect(within(section).getByRole('button', { name: 'Re-research section' })).toBeInTheDocument();
+    fireEvent.click(within(section).getByRole('button', { name: 'Cancel' }));
+    mockResearchSection.mockClear();
+    fireEvent.click(within(section).getByRole('button', { name: 'Retry regeneration' }));
+    expect(mockResearchSection).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(within(section).queryByText('AI regeneration failed')).toBeNull());
+  });
+
+  test('regenerate all counts only newly saved sections and retains drafts for interrupted runs', async () => {
+    mockResearchSection.mockImplementation(answerWith(condensedText));
+    startManualBriefWithShortTarget();
+    runDeepResearch();
+    const complete = await screen.findByText(/^Updated \d+ of \d+ sections\.$/);
+    const total = Number(complete.textContent?.match(/of (\d+)/)?.[1]);
+    expect(total).toBeGreaterThan(1);
+    expect(complete).toHaveTextContent(`Updated ${total} of ${total} sections.`);
+
+    let finish: () => void = () => { throw new Error('The regression run did not start'); };
+    mockResearchSection.mockImplementation(async () => {});
+    mockResearchSection.mockImplementationOnce(({ handlers }) => new Promise<void>((resolve) => {
+      finish = () => {
+        handlers.onDone({
+          content: 'The evaluation measured attendance in participating schools [1].',
+          sources: [source],
+        });
+        resolve();
+      };
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI Regenerate All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate all sections' }));
+    expect(await screen.findAllByText(`0 of ${total} updated`)).not.toHaveLength(0);
+    await act(async () => finish());
+
+    expect(await screen.findByText(`Updated 1 of ${total} sections.`)).toBeInTheDocument();
+    expect(screen.getByText(/The evaluation measured attendance/)).toBeInTheDocument();
+    expect(screen.getAllByText(/The programme raised enrolment/).length).toBeGreaterThan(0);
+    const failures = total - 1;
+    expect(screen.getAllByLabelText('AI research failed')).toHaveLength(failures);
+    expect(screen.getAllByText('Research ended before a draft was ready.')).toHaveLength(failures);
+    const original = mockResearchSection.mock.calls.slice(-total)[0][0].heading;
+    mockResearchSection.mockClear();
+    mockResearchSection.mockImplementation(answerWith(condensedText));
+    fireEvent.click(screen.getByRole('button', { name: `Retry failed sections (${failures})` }));
+
+    expect(await screen.findByText(`Updated ${failures} of ${failures} sections.`)).toBeInTheDocument();
+    expect(mockResearchSection).toHaveBeenCalledTimes(failures);
+    expect(mockResearchSection.mock.calls.map(([args]) => args.heading)).not.toContain(original);
+    expect(screen.queryByLabelText('AI research failed')).not.toBeInTheDocument();
+    expect(screen.getByText(/The evaluation measured attendance/)).toBeInTheDocument();
   });
 });
