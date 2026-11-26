@@ -57,7 +57,8 @@ Passage = dict[str, Any]
 _Check = TypeVar("_Check")
 _HEADING = re.compile(r"^(#{1,6})[ \t]+\S")
 _CITATION = re.compile(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]")
-_SENTENCES_PER_CHECK = 6
+_SENTENCES_PER_CHECK = 4
+_CITATIONS_PER_CHECK = 6
 _CONCURRENT_CHECKS = 3
 
 
@@ -264,10 +265,7 @@ async def check_answer_citations(
         )
 
     results = await asyncio.gather(
-        *[
-            check_group(sentences[start : start + _SENTENCES_PER_CHECK])
-            for start in range(0, len(sentences), _SENTENCES_PER_CHECK)
-        ]
+        *(check_group(group) for group in citation_check_batches(sentences))
     )
     issues = [issue for group_issues, _ in results for issue in group_issues]
     supported = set().union(*(accepted for _, accepted in results))
@@ -278,6 +276,25 @@ async def check_answer_citations(
     return CitationReview(
         issues, _retain_supported_sentences(answer, sentences, supported)
     )
+
+
+def citation_check_batches(sentences: list[dict]) -> Iterable[list[dict]]:
+    """Bound the number of verdicts and source quotes requested in each reply."""
+    batch: list[dict] = []
+    citation_count = 0
+    for sentence in sentences:
+        size = len(sentence["citations"])
+        if batch and (
+            len(batch) >= _SENTENCES_PER_CHECK
+            or citation_count + size > _CITATIONS_PER_CHECK
+        ):
+            yield batch
+            batch = []
+            citation_count = 0
+        batch.append(sentence)
+        citation_count += size
+    if batch:
+        yield batch
 
 
 def numbered_sentences(answer: str) -> list[dict]:

@@ -23,7 +23,7 @@ from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.llm_service import summarize_usage_metadata
 from ui.backend.utils.llm_request_limits import max_output_tokens
-from utils.llm_factory import get_llm, resolve_effective_model_key
+from utils.llm_factory import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,7 @@ async def stream_research_response(
     citation_order: bool = True,
     brief_section_prompt: Optional[str] = None,
     brief_section: Optional[BriefSectionPrompt] = None,
+    survey_only: bool = False,
     check_citations: bool = True,
     citation_model_key: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -204,7 +205,7 @@ async def stream_research_response(
             model_key, temperature, max_tokens_for_target(max_tokens, target_words)
         )
         reviewer, reviewer_usage = _reviewer_model(
-            citation_model_key if check_citations else None, model_key
+            citation_model_key if check_citations else None
         )
         graph, tracker, search_budget = build_research_agent(
             llm,
@@ -232,6 +233,13 @@ async def stream_research_response(
                 "initial_search_query": initial_search_query,
                 "brief_target_words": target_words,
                 "messages": _build_conversation_messages(conversation_messages),
+                "survey_only": survey_only,
+                "require_deep_plan": (
+                    deep_research
+                    and not survey_only
+                    and brief_section is None
+                    and search_budget >= 3
+                ),
             },
             config={
                 "run_id": run_id,
@@ -292,8 +300,8 @@ def _research_sources(
     return [source for source in sources if source["index"] in citations]
 
 
-def _reviewer_model(checker_key: Optional[str], writer_key: Optional[str]) -> tuple:
-    if not checker_key or checker_key == resolve_effective_model_key(writer_key):
+def _reviewer_model(checker_key: Optional[str]) -> tuple:
+    if not checker_key:
         return None, None
     usage = UsageMetadataCallbackHandler()
     budget = min(2000, max_output_tokens(checker_key))

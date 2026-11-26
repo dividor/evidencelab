@@ -2,10 +2,18 @@
 Latest user message as quoted text: {{ question | tojson }}
 {%- elif stage == 'organize' -%}
 Question: {{ question | safe }}
+{% if require_deep_plan -%}
+This is a Deep research request. Return two to four distinct streams for a question with multiple outcomes or comparisons.
+For a single focused inquiry only, propose at least one distinct search with a reason explaining what it will add. Confirm the
+initial findings with independent evidence or check a complementary angle even when the initial results look promising.
+{% endif -%}
 {% if brief_section -%}
 Plan searches for this Brief section only. Treat any quoted guidance as context for its topic and scope.
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+{% endif -%}
+{% if target_words -%}
+Target length of the finished section: {{ target_words }} words.
 {% endif -%}
 {% endif -%}
 {% if first_search != question -%}
@@ -17,6 +25,9 @@ Initial evidence:
 Question: {{ question | safe }}
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+{% endif -%}
+{% if target_words -%}
+Target length of the finished section: {{ target_words }} words.
 {% endif -%}
 {% if topic -%}
 Investigate only this stream: {{ topic | safe }}
@@ -64,6 +75,7 @@ Issues: {{ correction | tojson }}
 {% endif -%}
 {%- elif stage == 'retry_plan' -%}
 The previous reply did not match the required format. Return only a JSON object matching the system instructions.
+Correct these validation errors (field path and error type): {{ validation_errors | tojson }}.
 {%- elif stage == 'retry_citations' -%}
 These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite the full answer. Cite only labels in the retrieved evidence. Remove any claim whose evidence cannot be cited.
 {%- elif stage == 'verify' -%}

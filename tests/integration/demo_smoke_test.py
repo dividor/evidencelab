@@ -2,7 +2,7 @@
 """
 smoke_test.py - Post-demo smoke tests for Evidence Lab services.
 
-Checks the UI, API, MCP, A2A, search, and Brief generation after a demo run.
+Checks the UI, API, MCP, A2A, search, Assistant and Brief generation after a demo run.
 Exits non-zero on any failure.
 
 Usage:
@@ -28,6 +28,7 @@ DEMO_DATA_SOURCE = "demo"
 
 # The Assistant has 120 seconds to respond. Leave time for the HTTP response.
 A2A_REQUEST_TIMEOUT_SECONDS = 135
+RESEARCH_REQUEST_TIMEOUT_SECONDS = 240
 
 _failures = []
 
@@ -71,25 +72,15 @@ def check(label, passed, detail=""):
         _failures.append(label)
 
 
-def check_brief_generation(combo, auth):
-    """Write a real section with the demo's selected models and corpus."""
-    heading = "Warning signs of fraud in public procurement"
+def _research_events(combo, auth, **request_fields):
     payload = {
-        "query": heading,
         "data_source": DEMO_DATA_SOURCE,
         "deep_research": True,
-        "target_words": 150,
-        "usage_context": "brief",
         "assistant_model_config": combo.get("assistant_model")
         or combo.get("summarization_model"),
         "search_settings": {"embedding_model": combo.get("embedding_model")},
         "reranker_model": combo.get("reranker_model"),
-        "brief_section": {
-            "topic": "Detecting fraud in World Bank procurement",
-            "outline": [{"title": heading}, {"title": "Investigation and response"}],
-            "current": 0,
-            "focus": "Describe warning signs documented in investigation reports.",
-        },
+        **request_fields,
     }
     request = urllib.request.Request(
         f"{API_URL}/assistant/chat/stream",
@@ -99,15 +90,15 @@ def check_brief_generation(combo, auth):
     )
     try:
         with urllib.request.urlopen(
-            request, timeout=A2A_REQUEST_TIMEOUT_SECONDS
+            request, timeout=RESEARCH_REQUEST_TIMEOUT_SECONDS
         ) as resp:
-            events = [
-                json.loads(line[6:]) for line in resp if line.startswith(b"data: ")
-            ]
+            return [json.loads(line[6:]) for line in resp if line.startswith(b"data: ")]
     except (OSError, ValueError) as exc:
-        check("Brief section stream completed", False, str(exc))
-        return
+        check("Research stream completed", False, str(exc))
+        return []
 
+
+def _cited_answer(events):
     draft = "".join(event["token"] for event in events if event["type"] == "token")
     citations = {
         source["index"]
@@ -116,13 +107,88 @@ def check_brief_generation(combo, auth):
         for source in event["sources"]
         if source.get("chunkId")
     }
-    markers = {int(number) for number in re.findall(r"\[(\d+)\]", draft)}
+    markers = {
+        int(number)
+        for group in re.findall(r"\[([0-9]+(?:,\s*[0-9]+)*)\]", draft)
+        for number in group.split(",")
+    }
+    return draft, markers, citations
+
+
+def _stream_completed(events):
+    types = [event["type"] for event in events]
+    return "done" in types and "error" not in types
+
+
+def check_assistant_research(combo, auth):
+    """Require live, distinct streams and a verified answer from the demo library."""
+    events = _research_events(
+        combo,
+        auth,
+        query="In World Bank procurement investigations, what warning signs were reported "
+        "in competitive bidding and what was found in contract implementation? Explain both.",
+    )
+    searches = [
+        query
+        for event in events
+        if event["type"] == "search_status"
+        for query in event["queries"]
+    ]
+    streams = {query["stream"] for query in searches if query.get("stream")}
+    check("Assistant runs at least two distinct research streams", len(streams) >= 2)
+    draft, markers, citations = _cited_answer(events)
     check(
-        "Brief section generation produced a cited draft",
-        bool(draft.strip())
+        "Assistant completes citation checking and returns a grounded answer",
+        _stream_completed(events)
+        and any(event.get("phase") == "checking_citations" for event in events)
+        and bool(draft.strip())
+        and bool(markers)
+        and markers <= citations,
+    )
+
+
+def check_brief_survey(combo, auth):
+    """Require library evidence without answer generation during the outline survey."""
+    topic = "Detecting fraud in World Bank procurement"
+    events = _research_events(
+        combo, auth, query=topic, usage_context="brief", brief_survey={"topic": topic}
+    )
+    check(
+        "Brief outline survey gathers evidence without drafting or checking citations",
+        _stream_completed(events)
+        and any(event["type"] == "sources" and event["sources"] for event in events)
+        and not any(
+            event["type"] == "token"
+            or event.get("phase") in {"synthesizing", "checking_citations"}
+            for event in events
+        ),
+    )
+
+
+def check_brief_generation(combo, auth):
+    """Write a real section with the demo's selected models and corpus."""
+    heading = "Warning signs of fraud in public procurement"
+    events = _research_events(
+        combo,
+        auth,
+        query=heading,
+        target_words=150,
+        usage_context="brief",
+        brief_section={
+            "topic": "Detecting fraud in World Bank procurement",
+            "outline": [{"title": heading}, {"title": "Investigation and response"}],
+            "current": 0,
+            "focus": "Describe warning signs documented in investigation reports.",
+        },
+    )
+    draft, markers, citations = _cited_answer(events)
+    check(
+        "Brief section generation produced a cited draft of meaningful length",
+        _stream_completed(events)
         and any(event.get("section_written") is True for event in events)
-        and not any(event["type"] == "error" for event in events),
-        f"events={[event['type'] for event in events]}",
+        and len(draft.split()) >= 60
+        and not re.search(r"(?m)^#{1,6}\s", draft),
+        f"words={len(draft.split())}, events={[event['type'] for event in events]}",
     )
     check(
         "Brief citations point to real sources", bool(markers) and markers == citations
@@ -141,7 +207,7 @@ def main():
     # ------------------------------------------------------------------
     # 1. API health
     # ------------------------------------------------------------------
-    print("[1/6] API health...")
+    print("[1/7] API health...")
     status, body = _get(f"{API_URL}/health", headers=auth)
     check("API /health returns 200", status == 200, f"status={status}")
     print()
@@ -149,7 +215,7 @@ def main():
     # ------------------------------------------------------------------
     # 2. UI serves
     # ------------------------------------------------------------------
-    print("[2/6] UI...")
+    print("[2/7] UI...")
     status, _ = _get(UI_URL)
     check("UI serves HTTP 200", status == 200, f"status={status}")
     print()
@@ -157,7 +223,7 @@ def main():
     # ------------------------------------------------------------------
     # 3. MCP server health
     # ------------------------------------------------------------------
-    print("[3/6] MCP server...")
+    print("[3/7] MCP server...")
     status, body = _get(f"{MCP_URL}/health")
     check("MCP /health returns 200", status == 200, f"status={status}")
     print()
@@ -165,7 +231,7 @@ def main():
     # ------------------------------------------------------------------
     # 4. Search returns results
     # ------------------------------------------------------------------
-    print("[4/6] Search API...")
+    print("[4/7] Search API...")
     # Search the way the UI does: with the embedding model of the combo the
     # UI starts on for this data source (the flagged default, else the first).
     status, body = _get(
@@ -198,7 +264,7 @@ def main():
     # ------------------------------------------------------------------
     # 5. A2A research task
     # ------------------------------------------------------------------
-    print("[5/6] A2A research task...")
+    print("[5/7] A2A research task...")
     task_id = f"smoke-{int(time.time())}"
     status, body = _post_json(
         f"{MCP_URL}/a2a",
@@ -239,7 +305,12 @@ def main():
         )
     print()
 
-    print("[6/6] Brief generation...")
+    print("[6/7] Assistant research...")
+    check_assistant_research(starting, auth)
+    print()
+
+    print("[7/7] Brief outline and section generation...")
+    check_brief_survey(starting, auth)
     check_brief_generation(starting, auth)
     print()
 

@@ -8,22 +8,14 @@ from collections import Counter
 from dataclasses import dataclass
 from functools import partial
 from textwrap import shorten
-from typing import Literal, Self, TypedDict, TypeVar
+from typing import Literal, TypedDict, TypeVar
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    StringConstraints,
-    TypeAdapter,
-    ValidationError,
-    model_validator,
-)
+from pydantic import TypeAdapter, ValidationError
 from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
@@ -39,6 +31,20 @@ from ui.backend.services.assistant_grounding import (
     render_evidence,
     render_evidence_streams,
 )
+from ui.backend.services.assistant_research_plan import (
+    CONTEXT_PLAN,
+    DEEP_PLAN,
+    FOLLOW_UP,
+    INITIAL_PLAN,
+    STREAM_FOLLOW_UP,
+    ContextDisposition,
+    ContextSearch,
+    FollowUpPlan,
+    LibraryNextStep,
+    StreamPlan,
+    is_new_query,
+    verified_geographic_scope,
+)
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_section_prompt import (
@@ -53,20 +59,13 @@ from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
 
-_SEARCH_TERMS_EXCLUDED = frozenset(
-    "a an and the of in for by on what which how are does do that is were".split()
-)
 _JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(\{.*?\})\s*`{3}", re.DOTALL | re.IGNORECASE)
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
 )
 _CLARIFY = "What would you like me to look up in the selected dataset?"
 _NO_DATASET_EVIDENCE = "NO_DATASET_EVIDENCE"
-_LibraryNextStep = Literal["ask", "rephrase", "focus"]
-_LIBRARY_NEXT_STEPS: tuple[_LibraryNextStep, ...] = ("ask", "rephrase", "focus")
-_SearchQuery = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
-]
+_LIBRARY_NEXT_STEPS: tuple[LibraryNextStep, ...] = ("ask", "rephrase", "focus")
 
 
 @dataclass(frozen=True)
@@ -78,60 +77,6 @@ class ResearchLimits:
     follow_up_passages: int = 6
     previous_passages: int = 6
     searches_per_stream: int = 2
-
-
-class ResearchStream(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    topic: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
-    ]
-    query: _SearchQuery
-
-
-class ContextSearch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    query: _SearchQuery
-    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-
-
-class ContextDisposition(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    action: Literal["decline", "clarify"]
-    next_step: _LibraryNextStep = "ask"
-
-
-class FollowUpPlan(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    queries: list[_SearchQuery]
-    reason: Annotated[str, StringConstraints(strip_whitespace=True)] = ""
-
-
-class StreamFollowUpPlan(FollowUpPlan):
-    @model_validator(mode="after")
-    def explain_follow_up(self) -> Self:
-        if self.queries and not self.reason:
-            raise ValueError("A stream follow-up needs an evidence gap")
-        return self
-
-
-class StreamPlan(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    streams: list[ResearchStream] = Field(min_length=2, max_length=4)
-    geographic_scope: Annotated[
-        str, StringConstraints(strip_whitespace=True, max_length=300)
-    ] = ""
-
-    @model_validator(mode="after")
-    def distinct_streams(self) -> Self:
-        topics = {stream.topic.casefold() for stream in self.streams}
-        searches: list[str] = []
-        for stream in self.streams:
-            if not _is_new_query(stream.query, searches):
-                raise ValueError("Each stream needs a distinct search")
-            searches.append(stream.query)
-        if len(topics) != len(self.streams):
-            raise ValueError("Each stream needs a distinct topic")
-        return self
 
 
 class StreamTask(TypedDict):
@@ -146,6 +91,7 @@ class StreamTask(TypedDict):
     reason: str
     budget: int
     brief_focus: str | None
+    target_words: int | None
 
 
 class StreamResult(TypedDict):
@@ -156,6 +102,8 @@ class StreamResult(TypedDict):
 
 class ResearchState(TypedDict, total=False):
     query: str
+    survey_only: bool
+    require_deep_plan: bool
     brief_target_words: int | None
     initial_search_query: str | None
     messages: list[BaseMessage]
@@ -174,30 +122,6 @@ class ResearchState(TypedDict, total=False):
 
 
 _Plan = TypeVar("_Plan")
-_CONTEXT_PLAN = TypeAdapter(ContextSearch | ContextDisposition)
-_INITIAL_PLAN: TypeAdapter[FollowUpPlan | StreamPlan] = TypeAdapter(
-    FollowUpPlan | StreamPlan
-)
-_FOLLOW_UP: TypeAdapter[FollowUpPlan] = TypeAdapter(FollowUpPlan)
-_STREAM_FOLLOW_UP: TypeAdapter[FollowUpPlan] = TypeAdapter(StreamFollowUpPlan)
-
-
-def _search_terms(query: str) -> set[str]:
-    return set(re.findall(r"\w+", query.casefold())) - _SEARCH_TERMS_EXCLUDED
-
-
-def _is_new_query(candidate: str, previous: list[str]) -> bool:
-    terms = _search_terms(candidate)
-    if not terms:
-        return False
-    for query in previous:
-        earlier = _search_terms(query)
-        shared = len(terms & earlier)
-        if shared / len(terms | earlier) >= 0.8:
-            return False
-        if shared >= 5 and shared / min(len(terms), len(earlier)) >= 0.83:
-            return False
-    return True
 
 
 def _admit_passages(
@@ -293,7 +217,7 @@ class ResearchWorkflow:
                 self.request.render(stage="contextualize", question=question),
                 history,
                 config,
-                _CONTEXT_PLAN,
+                CONTEXT_PLAN,
             )
             if isinstance(plan, ContextDisposition):
                 answer = (
@@ -343,6 +267,8 @@ class ResearchWorkflow:
         searches = state["searches"]
         question = searches[0] if self.brief_section else state["query"]
         brief_focus = state.get("brief_focus")
+        target_words = state.get("brief_target_words")
+        require_deep_plan = state.get("require_deep_plan", False)
         history = state.get("messages", [])
         initial = state["evidence"]
         prompt = self.request.render(
@@ -352,18 +278,27 @@ class ResearchWorkflow:
             evidence=render_evidence(initial),
             brief_section=self.brief_section,
             brief_focus=brief_focus,
+            target_words=target_words,
+            require_deep_plan=require_deep_plan,
         )
         plan: FollowUpPlan | StreamPlan = await self._request_json(
-            self.opening, prompt, history, config, _INITIAL_PLAN
+            self.opening,
+            prompt,
+            history,
+            config,
+            DEEP_PLAN if require_deep_plan else INITIAL_PLAN,
         )
         if isinstance(plan, StreamPlan):
+            scope = verified_geographic_scope(
+                plan.geographic_scope, question, searches[0]
+            )
             return {
                 "tasks": [
                     {
                         "order": index,
                         "topic": item.topic,
                         "question": item.query,
-                        "geographic_scope": plan.geographic_scope,
+                        "geographic_scope": scope,
                         "history": [],
                         "evidence": [],
                         "searches": searches,
@@ -371,6 +306,7 @@ class ResearchWorkflow:
                         "reason": "",
                         "budget": self.limits.searches_per_stream,
                         "brief_focus": brief_focus,
+                        "target_words": target_words,
                     }
                     for index, item in enumerate(plan.streams)
                 ]
@@ -392,14 +328,21 @@ class ResearchWorkflow:
                     "reason": plan.reason,
                     "budget": self.limits.searches - 1,
                     "brief_focus": brief_focus,
+                    "target_words": target_words,
                 }
             ]
         }
 
     @staticmethod
-    def dispatch(state: ResearchState) -> list[Send] | Literal["answer"]:
+    def after_searches(state: ResearchState) -> Literal["answer", "__end__"]:
+        return END if state.get("survey_only") else "answer"
+
+    @staticmethod
+    def dispatch(state: ResearchState) -> list[Send] | Literal["answer", "__end__"]:
         tasks = state["tasks"]
-        return [Send("research", task) for task in tasks] if tasks else "answer"
+        if tasks:
+            return [Send("research", task) for task in tasks]
+        return ResearchWorkflow.after_searches(state)
 
     async def research(self, task: StreamTask, config: RunnableConfig) -> ResearchState:
         """Investigate one topic using only this stream's findings for follow-ups."""
@@ -421,7 +364,7 @@ class ResearchWorkflow:
                 prompt,
                 task["history"],
                 config,
-                _STREAM_FOLLOW_UP if task["topic"] else _FOLLOW_UP,
+                STREAM_FOLLOW_UP if task["topic"] else FOLLOW_UP,
             )
             query, reason = self._proposal(plan, searches), plan.reason
             if not query:
@@ -449,13 +392,14 @@ class ResearchWorkflow:
             remaining=remaining,
             searches=history,
             brief_focus=task["brief_focus"],
+            target_words=task["target_words"],
             recent=render_evidence(recent),
             evidence=render_evidence(evidence[: len(evidence) - len(recent)]),
         )
 
     @staticmethod
     def _proposal(plan: FollowUpPlan, searches: list[str]) -> str:
-        return next((q for q in plan.queries if _is_new_query(q, searches)), "")
+        return next((q for q in plan.queries if is_new_query(q, searches)), "")
 
     async def _request_json(
         self,
@@ -468,11 +412,9 @@ class ResearchWorkflow:
         llm=None,
     ) -> _Plan:
         messages = [SystemMessage(content=system), *history]
-        for attempt in range(2):
-            request = prompt
-            if attempt:
-                request += "\n\n" + self.request.render(stage="retry_plan")
-            model = self.llm if llm is None else llm
+        request = prompt
+        model = self.llm if llm is None else llm
+        for _ in range(2):
             response = await model.ainvoke(
                 [*messages, HumanMessage(content=request)], config=config
             )
@@ -481,16 +423,26 @@ class ResearchWorkflow:
             try:
                 return schema.validate_json(fenced[1] if fenced else raw)
             except ValidationError as exc:
+                errors = [
+                    (error["loc"], error["type"])
+                    for error in exc.errors(
+                        include_input=False, include_context=False, include_url=False
+                    )
+                ]
                 logger.warning(
-                    "Invalid structured Assistant response: %s",
-                    [
-                        (error["loc"], error["type"])
-                        for error in exc.errors(
-                            include_input=False,
-                            include_context=False,
-                            include_url=False,
-                        )
-                    ],
+                    "Invalid structured Assistant response (stop=%s, output_tokens=%s): %s",
+                    response.response_metadata.get("finish_reason"),
+                    (getattr(response, "usage_metadata", None) or {}).get(
+                        "output_tokens"
+                    ),
+                    errors,
+                )
+                request = (
+                    prompt
+                    + "\n\n"
+                    + self.request.render(
+                        stage="retry_plan", validation_errors=errors[:12]
+                    )
                 )
         raise InvalidAssistantResponse(
             "The Assistant model could not produce a valid structured response"
@@ -561,7 +513,7 @@ class ResearchWorkflow:
                     "verified_draft": review.supported_text,
                     "brief_final_repair": corrected,
                 }
-            if review.issues:
+            if review.issues or self.check_citations:
                 answer = review.supported_text or _NO_EVIDENCE
         if answer == _NO_EVIDENCE and state.get("verified_draft"):
             answer = state["verified_draft"]
@@ -614,7 +566,7 @@ class ResearchWorkflow:
         return _NO_EVIDENCE
 
 
-def _library_refusal(next_step: _LibraryNextStep, history: list[BaseMessage]) -> str:
+def _library_refusal(next_step: LibraryNextStep, history: list[BaseMessage]) -> str:
     """Offer a useful way forward without repeating the previous reply or adding facts."""
     previous = next(
         (message_text(msg) for msg in reversed(history) if isinstance(msg, AIMessage)),
@@ -664,8 +616,10 @@ def build_research_workflow(
     graph.add_conditional_edges(
         "start", lambda state: bool(state.get("answer")), {True: END, False: "organize"}
     )
-    graph.add_conditional_edges("organize", workflow.dispatch, ["research", "answer"])
-    graph.add_edge("research", "answer")
+    graph.add_conditional_edges(
+        "organize", workflow.dispatch, ["research", "answer", END]
+    )
+    graph.add_conditional_edges("research", workflow.after_searches, ["answer", END])
     graph.add_edge("answer", "check_citations")
     graph.add_conditional_edges(
         "check_citations",

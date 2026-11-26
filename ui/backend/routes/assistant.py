@@ -147,7 +147,9 @@ async def _assistant_answer_prompt(
 async def _research_preferences(
     body, user, session, assistant_settings: AssistantSettings
 ) -> tuple[str | None, bool]:
-    if body.brief_section is None and body.brief_survey is None:
+    if body.brief_survey is not None:
+        return None, False
+    if body.brief_section is None:
         enabled = assistant_settings.citationCheck
         return None, CITATION_CHECK_DEFAULT if enabled is None else enabled
     user_id = getattr(user, "id", None)
@@ -157,8 +159,6 @@ async def _research_preferences(
         else []
     )
     citation_check = brief_citation_check_for_groups(groups)
-    if body.brief_section is None:
-        return None, citation_check
     prompt = brief_section_prompt_for_groups(groups) or await run_in_threadpool(
         brief_section_prompt_default
     )
@@ -397,6 +397,7 @@ async def stream_assistant_chat(
                 introduces_sub_sections=body.introduces_sub_sections,
                 brief_section_prompt=brief_section_prompt,
                 brief_section=body.brief_section,
+                survey_only=body.brief_survey is not None,
                 check_citations=check_citations,
                 citation_model_key=citation_model_key,
             ).__aiter__()
@@ -413,7 +414,7 @@ async def stream_assistant_chat(
                     last_sources = event.get("sources")
                 if etype == "done":
                     _record_assistant_usage(event, body, user)
-                if _should_persist(event, user, session):
+                if body.brief_survey is None and _should_persist(event, user, session):
                     logger.info(
                         "[deepres] done event: deep=%s synthesis_len=%d sources_count=%d",
                         body.deep_research,

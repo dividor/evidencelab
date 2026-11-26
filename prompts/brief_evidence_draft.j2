@@ -9,13 +9,16 @@ Use one passage for each finding and include both `citation` and `quote` in that
 Copy an exact, short quote from that passage that supports the main claim. Identify the source, group, or setting
 when needed to understand the finding. Verify the document type, place, version, and dates when the claim includes
 those details. Distinguish what the source measured, observed, reported, or proposed.
+Use a named group or setting only when the cited passage or its title establishes that exact group or setting. If it is not
+established, leave the name out. Related populations and settings cannot substitute for the one requested in the assignment.
 Evidence about a whole system can give context if it helps answer the assignment. Attribute a result to one part
 only when the source supports that attribution.
 Prefer direct findings about the assigned question. If the reports only document implementation or measurement,
 state exactly what they document. Include only findings in scope for this heading. Write fewer paragraphs if the evidence
 is limited. Each paragraph should have a distinct point. Leave out headings, transitions that depend on earlier sentences,
 and concluding generalizations. End each sentence with a full stop. The application adds the citation marker.
-Apply any citation instructions from the writing guidance through the citation field only.
+Apply any citation instructions from the writing guidance through the citation field only. Do not put reference numbers
+or other citation markers in the text field. Parenthesized figures are only for actual numbers reported in the evidence.
 When introducing child headings, use source-backed context that applies to the subjects they share.
 Leave results, examples, statistics and comparisons for the child headings that cover them.
 For sections about indicators, report the actual measure, such as a count, rate, score or defined observation.
@@ -37,7 +40,8 @@ Section assignment: {{ assignment | tojson }}
 
 {% if target_words %}
 Aim for about {{ target_words }} words total across all findings, counting any findings already accepted.
-Use the available evidence to provide concrete detail and answer the assignment. Stop short when the passages cannot support more.
+Use the available evidence to provide concrete detail and answer the assignment. Cover distinct findings in focused paragraphs.
+Stop short when the passages cannot support more.
 {% endif %}
 Retrieved evidence:
 {{ evidence | safe }}

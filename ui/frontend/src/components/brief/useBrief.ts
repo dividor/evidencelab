@@ -1038,6 +1038,7 @@ export const useBrief = ({
     abortRef.current = controller;
     const guidance = (overrides?.instructions ?? instructions).trim();
     let gathered: BriefSourceSample[] = [];
+    let surveyError: string | null = null;
     // Allocate the new brief's activity id up front so the survey and outline
     // LLM calls record their token usage onto it server-side (tokens are
     // spent even when outline generation is aborted midway). Kept LOCAL until
@@ -1068,10 +1069,11 @@ export const useBrief = ({
             }));
           },
           onDone: () => {},
-          onError: (m) => setError(m),
+          onError: (message) => { surveyError = message; },
         },
       });
       if (controller.signal.aborted) return;
+      if (surveyError) throw new Error(surveyError);
       setGeneratingActivity((prev) =>
         [{ tag: 'DRAFT' as const, text: 'Drafting outline' }, ...prev].slice(0, 40),
       );

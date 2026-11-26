@@ -884,6 +884,9 @@ class TestStreamAssistantChatBriefSection:
         assert query.endswith(instructions)
         assert mock_stream.call_args.kwargs["initial_search_query"] == "School meals"
         assert mock_stream.call_args.kwargs["brief_section_prompt"] is None
+        assert mock_stream.call_args.kwargs["survey_only"] is True
+        assert mock_stream.call_args.kwargs["check_citations"] is False
+        assert mock_stream.call_args.kwargs["citation_model_key"] is None
         # The Activity row is labelled with the topic, not the prompt.
         assert mock_usage.call_args[1]["query"] == "School meals"
 

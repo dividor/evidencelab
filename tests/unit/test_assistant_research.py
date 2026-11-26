@@ -40,6 +40,7 @@ async def run_research(
     prose=None,
     brief_section_prompt=None,
     brief_section=None,
+    survey_only=False,
     check_citations=True,
     system_prompt_override=None,
     target_words=None,
@@ -107,12 +108,42 @@ async def run_research(
                 initial_search_query=initial_query,
                 brief_section_prompt=brief_section_prompt,
                 brief_section=brief_section,
+                survey_only=survey_only,
                 check_citations=check_citations,
                 system_prompt_override=system_prompt_override,
                 target_words=target_words,
             )
         ]
     return events, search, llm
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("follow_up", [False, True])
+async def test_outline_survey_when_research_finishes_then_only_sources_are_returned(
+    follow_up,
+):
+    plans = ['{"queries":[]}']
+    batches = [[point(1, "School registers record enrolment.")]]
+    if follow_up:
+        plans[0] = (
+            '{"queries":["Reasons pupils leave school"],"reason":"The register omits reasons."}'
+        )
+        plans.append('{"queries":[]}')
+        batches.append([point(2, "School fees affected attendance.")])
+    events, search, llm = await run_research(
+        plans, batches, query="School attendance", deep=False, survey_only=True
+    )
+
+    assert search.call_count == len(batches)
+    assert llm.ainvoke.await_count == len(plans)
+    assert not any(event["type"] in {"token", "error"} for event in events)
+    assert not any(
+        event.get("phase") in {"synthesizing", "checking_citations"} for event in events
+    )
+    assert len(
+        next(event["sources"] for event in events if event["type"] == "sources")
+    ) == len(batches)
+    assert events[-1]["type"] == "done"
 
 
 def _review_rows(prompt):
@@ -508,33 +539,32 @@ async def test_assistant_keeps_the_verified_finding_without_an_extra_writer_call
     )
 
     def judge(prompt):
-        assert len(_review_rows(prompt)) == 6
+        ids = {row["id"] for row in _review_rows(prompt)}
+        verdicts = [
+            {
+                "id": 2,
+                "status": "supported",
+                "quotes": [{"citation": 1, "quote": "reached 60 percent of schools"}],
+            },
+            {
+                "id": 4,
+                "status": "unsupported",
+                "quotes": [],
+                "issue": "Attendance was not reported.",
+            },
+            {
+                "id": 6,
+                "status": "supported",
+                "quotes": [{"citation": 1, "quote": "survey ran in June"}],
+            },
+            *[
+                {"id": index, "status": "non_factual", "quotes": []}
+                for index in (1, 3, 5)
+            ],
+        ]
         return {
             "scope_issues": [],
-            "sentences": [
-                {
-                    "id": 2,
-                    "status": "supported",
-                    "quotes": [
-                        {"citation": 1, "quote": "reached 60 percent of schools"}
-                    ],
-                },
-                {
-                    "id": 4,
-                    "status": "unsupported",
-                    "quotes": [],
-                    "issue": "Attendance was not reported.",
-                },
-                {
-                    "id": 6,
-                    "status": "supported",
-                    "quotes": [{"citation": 1, "quote": "survey ran in June"}],
-                },
-                *[
-                    {"id": index, "status": "non_factual", "quotes": []}
-                    for index in (1, 3, 5)
-                ],
-            ],
+            "sentences": [row for row in verdicts if row["id"] in ids],
         }
 
     events, _, llm = await run_research(
@@ -552,7 +582,39 @@ async def test_assistant_keeps_the_verified_finding_without_an_extra_writer_call
     assert [event["token"] for event in events if event["type"] == "token"] == [
         "## Coverage\n\n" + first + "\n\n## Evaluation dates\n\n" + last
     ]
-    assert llm.ainvoke.await_count == 3
+    assert llm.ainvoke.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_assistant_streams_only_what_the_checker_retained_even_without_issues():
+    excerpt = "The pilot reached 60 percent of schools."
+    answer = (
+        "## Coverage\n\nDelivery expanded sharply. "
+        "The pilot reached 60 percent of schools [1]."
+    )
+
+    def judge(prompt):
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": row["id"],
+                    "status": "supported" if row["citations"] else "non_factual",
+                    "quotes": (
+                        [{"citation": 1, "quote": excerpt}] if row["citations"] else []
+                    ),
+                }
+                for row in _review_rows(prompt)
+            ],
+        }
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', answer], [[point(1, excerpt)]], check=judge
+    )
+
+    assert next(e["token"] for e in events if e["type"] == "token") == (
+        "## Coverage\n\nThe pilot reached 60 percent of schools [1]."
+    )
 
 
 @pytest.mark.asyncio
@@ -717,6 +779,28 @@ async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
     assert all(finding in answer for finding in findings)
     assert "24 words, leaving up to 326 words" in (
         llm.ainvoke.await_args_list[-2].args[0][-1].content
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("quote", "draft", "shown"),
+    [
+        ("Attendance improved", "Attendance improved (1)", "Attendance improved"),
+        ("The rating was 1", "The rating was (1)", "The rating was (1)"),
+    ],
+)
+async def test_brief_writes_one_citation_and_preserves_quoted_numbers(
+    quote, draft, shown
+):
+    events, _, _ = await run_research(
+        ['{"queries":[]}', _brief_draft((draft, 1, quote))],
+        [[point(1, quote + ".")]],
+        brief_section=BriefSectionPrompt(outline=[{"title": "Attendance"}], current=0),
+    )
+
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        shown + " [1]."
     )
 
 
@@ -971,7 +1055,12 @@ async def test_follow_up_is_based_on_results_and_writer_keeps_both_search_batche
 async def test_research_modes_enforce_their_search_budgets(deep, budget):
     # Give each proposed search a substantially different vocabulary.
     queries = [
-        json.dumps({"queries": [f"scenario{i} group{i} region{i} measure{i}"]})
+        json.dumps(
+            {
+                "queries": [f"scenario{i} group{i} region{i} measure{i}"],
+                "reason": "Corroborate the current finding.",
+            }
+        )
         for i in range(budget - 1)
     ]
     events, search, llm = await run_research(
@@ -1251,6 +1340,7 @@ async def test_invalid_planner_reply_is_corrected_before_synthesis():
     assert search.call_count == 1
     correction = llm.ainvoke.await_args_list[1].args[0][-1].content
     assert "previous reply did not match" in correction
+    assert "json_invalid" in correction
     assert events[-1]["type"] == "done"
 
 
@@ -1265,6 +1355,31 @@ async def test_repeated_invalid_planner_replies_fail_without_synthesis():
     assert [
         event["type"] for event in events if event["type"] in {"token", "done", "error"}
     ] == ["error"]
+
+
+@pytest.mark.asyncio
+async def test_deep_assistant_retries_an_opening_that_skips_independent_streams():
+    streams = [
+        {"topic": "Coverage", "query": "Access to services and enrolment"},
+        {"topic": "Costs", "query": "Cost per treatment and staffing"},
+    ]
+    evidence = "Coverage was 60%."
+    events, search, llm = await run_research(
+        [
+            '{"queries":[]}',
+            json.dumps({"streams": streams}),
+            '{"queries":[]}',
+            '{"queries":[]}',
+            "## Coverage\n\nCoverage was 60% [1].",
+        ],
+        [[point(1, evidence)], [point(2, "Families reached service points.")], []],
+        deep=True,
+    )
+
+    assert search.call_count == 3
+    assert "streams" in llm.ainvoke.await_args_list[1].args[0][-1].content
+    assert any(event.get("phase") == "checking_citations" for event in events)
+    assert events[-1]["type"] == "done"
 
 
 @pytest.mark.asyncio
@@ -1297,10 +1412,13 @@ async def test_planner_skips_a_reworded_search_when_it_has_another_option():
 
 
 @pytest.mark.parametrize(("deep", "per_stream"), [(False, 2), (True, 4)])
-@pytest.mark.parametrize("geographic_scope", ["", "Cambodia"])
+@pytest.mark.parametrize(
+    ("geographic_scope", "planner_scope"),
+    [("", ""), ("Cambodia", "Cambodia"), ("", "Kenya and Cambodia")],
+)
 @pytest.mark.asyncio
 async def test_broad_question_researches_each_stream_from_its_own_results_and_joins(
-    deep, per_stream, geographic_scope
+    deep, per_stream, geographic_scope, planner_scope
 ):
     question = (
         QUESTION
@@ -1320,7 +1438,7 @@ async def test_broad_question_researches_each_stream_from_its_own_results_and_jo
         if "Initial evidence:" in prompt:
             return json.dumps(
                 {
-                    "geographic_scope": geographic_scope,
+                    "geographic_scope": planner_scope,
                     "streams": [
                         {"topic": label, "query": q} for label, q in topics.items()
                     ],

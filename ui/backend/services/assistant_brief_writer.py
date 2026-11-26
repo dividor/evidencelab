@@ -44,6 +44,7 @@ _BRIEF_LINE = TypeAdapter(BriefFinding | BriefEvidenceLimit)
 _DEPENDENT_LEAD = re.compile(
     r"^(?:For example|For instance|Similarly|Likewise),\s*", re.I
 )
+_TRAILING_REFERENCE = re.compile(r"\s+\((\d+(?:,\s*\d+)*)\)$")
 _FINDING_WORD = re.compile(r"\b\w{3,}\b")
 _DRAFT_FORMAT_ISSUE = (
     "Return only one valid JSON object per line, with no prose outside it. "
@@ -62,6 +63,15 @@ def _prepare_finding(
     if set(cited_numbers_in_order(text)) - {finding.citation}:
         return None
     text = strip_citation_markers(text).rstrip(".").strip()
+    if match := _TRAILING_REFERENCE.search(text):
+        labels = {int(number) for number in match[1].split(",")}
+        quoted_numbers = set(re.findall(r"\b\d+\b", finding.quote))
+        if (
+            finding.citation in labels
+            and labels <= excerpts.keys()
+            and not all(str(label) in quoted_numbers for label in labels)
+        ):
+            text = text[: match.start()]
     if lead := _DEPENDENT_LEAD.match(text):
         text = text[lead.end() :]
         text = text[:1].upper() + text[1:]
