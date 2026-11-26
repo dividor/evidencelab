@@ -24,10 +24,12 @@ jobs:
   docs-check:
     # Fork pull requests and Dependabot get no repository secrets, so the check
     # can't run there; drafts are checked once they are ready for review.
-    if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]' &&
-      !github.event.pull_request.draft
+    # Paused while the review workspace is out of API credits.
+    # if: >-
+    #   github.event.pull_request.head.repo.full_name == github.repository &&
+    #   github.actor != 'dependabot[bot]' &&
+    #   !github.event.pull_request.draft
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

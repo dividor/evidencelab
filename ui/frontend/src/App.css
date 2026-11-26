@@ -877,6 +877,13 @@ h6,
   }
 }
 
+/* In short tablet-width windows, Search can sit level with the Feedback tab. */
+@media (min-width: 641px) and (max-width: 1024px) and (max-height: 500px) {
+  .search-container.search-container-landing .search-form {
+    padding-right: var(--spacing-xl);
+  }
+}
+
 /* Example query chips — centered under the search input */
 .search-examples {
   display: flex;
@@ -4887,9 +4894,8 @@ li.ai-fact-active::before {
   color: var(--gray-400);
 }
 
-/* On narrow screens the footer's links wrap onto more lines, each link whole,
-   clear of the corner where the feedback button floats (48 px, 24 px from the
-   corner), so it never covers a link. */
+/* On narrow screens the footer's links wrap onto more lines, each link whole.
+   Leave space on the right for the Feedback tab as the footer scrolls past it. */
 @media (max-width: 768px) {
   .app-footer {
     flex-wrap: wrap;
@@ -4907,6 +4913,34 @@ li.ai-fact-active::before {
   .app-footer-link {
     white-space: nowrap;
   }
+}
+
+.feedback-side-tab {
+  position: fixed;
+  top: 75%;
+  right: 0;
+  z-index: 9000;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  padding: 0.875rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--brand-accent, #475569);
+  color: #fff;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.feedback-side-tab:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.feedback-side-tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
 }
 
 .prompt-text {
@@ -10291,6 +10325,13 @@ sup.reference-number {
 @media (max-width: 640px) {
   .admin-panel .btn-primary {
     min-height: 44px;
+  }
+
+  /* Fade the right edge so the tabs scrolled out of view show they are there;
+     the padding lets the last tab scroll clear of the fade. */
+  .admin-header > .admin-tabs {
+    padding-right: 2rem;
+    mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
   }
 }
 
