@@ -37,6 +37,7 @@ async def run_research(
     initial_query=None,
     supported=True,
     check=None,
+    scope_check=None,
     prose=None,
     brief_section_prompt=None,
     brief_section=None,
@@ -49,6 +50,23 @@ async def run_research(
     replies = None if callable(responses) else iter(responses)
 
     def model(messages, **kwargs):
+        if messages[0].content.startswith("Decide which of the proposed sentences"):
+            prompt = messages[-1].content
+            rows = json.loads(prompt.split("Sentences: ", 1)[1])
+            reviews = (
+                scope_check(prompt, rows)
+                if scope_check
+                else [
+                    {
+                        "id": row["id"],
+                        "subject": "the subject of this section",
+                        "reason": "The finding matches the section.",
+                        "keep": True,
+                    }
+                    for row in rows
+                ]
+            )
+            return AIMessage(content=json.dumps({"reviews": reviews}))
         if messages[0].content.startswith("Review whether this proposed Brief"):
             issues = prose(messages[-1].content) if prose is not None else []
             return AIMessage(content=json.dumps({"issues": issues}))
@@ -366,7 +384,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         heading,
         follow_up,
     ]
-    scope, opening, next_search, writer, verifier = [
+    scope, opening, next_search, writer, scope_verifier, verifier = [
         call.args[0][-1].content for call in llm.ainvoke.await_args_list
     ]
     assert excluded_heading in scope and other_question in scope
@@ -375,6 +393,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         assert excluded_heading not in planning
         assert brief_section.focus in planning
     assert guidance in writer and excluded_heading in writer
+    assert heading in scope_verifier and excluded_heading in scope_verifier
     assert (
         "Search AI Summary prompt"
         not in llm.ainvoke.await_args_list[3].args[0][0].content
@@ -715,7 +734,7 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
     assert [event["token"] for event in events if event["type"] == "token"] == [
         finding + "\n\n" + gap
     ]
-    assert llm.ainvoke.await_count == 3
+    assert llm.ainvoke.await_count == 4
     assert events[-1]["section_written"] is True
     sources = next(event["sources"] for event in events if event["type"] == "sources")
     assert [source["chunkId"] for source in sources] == ["chunk-1"]
@@ -748,9 +767,12 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
     answer = next(event["token"] for event in events if event["type"] == "token")
     assert answer == f"{first.rstrip('.')} [1].\n\n{second.rstrip('.')} [2]."
     assert len(answer.split()) <= 100
-    assert (
-        "Add different findings" in llm.ainvoke.await_args_list[-2].args[0][-1].content
-    )
+    drafts = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    ]
+    assert len(drafts) == 2 and "Add different findings" in drafts[-1]
 
 
 @pytest.mark.asyncio
@@ -777,9 +799,12 @@ async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
 
     answer = next(event["token"] for event in events if event["type"] == "token")
     assert all(finding in answer for finding in findings)
-    assert "24 words, leaving up to 326 words" in (
-        llm.ainvoke.await_args_list[-2].args[0][-1].content
-    )
+    drafts = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    ]
+    assert len(drafts) == 2 and "24 words, leaving up to 326 words" in drafts[-1]
 
 
 @pytest.mark.asyncio
@@ -1380,6 +1405,77 @@ async def test_deep_assistant_retries_an_opening_that_skips_independent_streams(
     assert "streams" in llm.ainvoke.await_args_list[1].args[0][-1].content
     assert any(event.get("phase") == "checking_citations" for event in events)
     assert events[-1]["type"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_brief_keeps_sourced_restart_results_for_the_assigned_firmware():
+    prior = "Devices with firmware version 2.0 failed to restart"
+    current = "Devices with firmware version 2.1 restarted within six seconds"
+    heading = "Restart times with firmware version 2.1"
+
+    def check_scope(prompt, rows):
+        assert f'Assigned heading: "{heading}"' in prompt
+        assert 'Other headings: ["Earlier versions"]' in prompt
+        return [
+            {
+                "id": row["id"],
+                "subject": "device restart",
+                "reason": "Match the requested firmware version.",
+                "keep": "version 2.1" in row["text"],
+            }
+            for row in rows
+        ]
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', _brief_draft((prior, 1, prior), (current, 2, current))],
+        [[point(1, prior + "."), point(2, current + ".")]],
+        query=heading,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": heading}, {"title": "Earlier versions"}], current=0
+        ),
+        scope_check=check_scope,
+    )
+
+    assert next(e["token"] for e in events if e["type"] == "token") == current + " [1]."
+
+
+@pytest.mark.asyncio
+async def test_brief_replans_a_duplicate_query_when_the_exact_population_is_still_missing():
+    first = "Language barriers for children returning to school in Albania"
+    alternate = (
+        "Albanian language proficiency of returnee pupils in the Western Balkans"
+    )
+    finding = "Returnee pupils who lived abroad struggled with Albanian"
+    events, search, llm = await run_research(
+        [
+            json.dumps(
+                {"queries": [first], "reason": "The documents omit returnee pupils."}
+            ),
+            json.dumps(
+                {
+                    "queries": [alternate],
+                    "reason": "Find reports that cover returnee pupils.",
+                }
+            ),
+            '{"queries":[]}',
+            _brief_draft((finding, 2, finding)),
+        ],
+        [
+            [point(1, "The first report covered another population.")],
+            [point(2, finding + ".")],
+        ],
+        query=first,
+        deep=True,
+        brief_section=BriefSectionPrompt(outline=[{"title": first}], current=0),
+    )
+
+    request = llm.ainvoke.await_args_list[1].args[0][-1].content
+    assert "The documents omit returnee pupils." in request and first in request
+    assert [call.kwargs["query"] for call in search.call_args_list] == [
+        first,
+        alternate,
+    ]
+    assert events[-1]["section_written"] is True
 
 
 @pytest.mark.asyncio

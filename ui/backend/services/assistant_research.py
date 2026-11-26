@@ -311,8 +311,12 @@ class ResearchWorkflow:
                     for index, item in enumerate(plan.streams)
                 ]
             }
-        query = self._proposal(plan, searches)
-        if not query or self.limits.searches == 1:
+        if self.limits.searches == 1:
+            return {"tasks": []}
+        query, reason = await self._next_search(
+            plan, searches, question, history, config
+        )
+        if not query:
             return {"tasks": []}
         return {
             "tasks": [
@@ -325,7 +329,7 @@ class ResearchWorkflow:
                     "evidence": initial,
                     "searches": searches,
                     "next_query": query,
-                    "reason": plan.reason,
+                    "reason": reason,
                     "budget": self.limits.searches - 1,
                     "brief_focus": brief_focus,
                     "target_words": target_words,
@@ -366,7 +370,9 @@ class ResearchWorkflow:
                 config,
                 STREAM_FOLLOW_UP if task["topic"] else FOLLOW_UP,
             )
-            query, reason = self._proposal(plan, searches), plan.reason
+            query, reason = await self._next_search(
+                plan, searches, task["question"], task["history"], config
+            )
             if not query:
                 break
         return {
@@ -400,6 +406,28 @@ class ResearchWorkflow:
     @staticmethod
     def _proposal(plan: FollowUpPlan, searches: list[str]) -> str:
         return next((q for q in plan.queries if is_new_query(q, searches)), "")
+
+    async def _next_search(
+        self,
+        plan: FollowUpPlan,
+        searches: list[str],
+        question: str,
+        history: list[BaseMessage],
+        config: RunnableConfig,
+    ) -> tuple[str, str]:
+        query = self._proposal(plan, searches)
+        if query or not plan.queries or not plan.reason:
+            return query, plan.reason
+        prompt = self.request.render(
+            stage="distinct_search",
+            question=question,
+            searches=searches,
+            reason=plan.reason,
+        )
+        revised: FollowUpPlan = await self._request_json(
+            self.planner, prompt, history, config, STREAM_FOLLOW_UP
+        )
+        return self._proposal(revised, searches), revised.reason
 
     async def _request_json(
         self,

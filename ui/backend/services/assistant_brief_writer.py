@@ -15,10 +15,13 @@ from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.agent_passages import passage_for_agent
 from ui.backend.services.assistant_grounding import (
     EvidenceQuote,
+    InvalidAssistantResponse,
     Passage,
     ReviewRequest,
     check_answer_citations,
+    numbered_sentences,
     render_evidence,
+    retain_supported_sentences,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
@@ -40,7 +43,21 @@ class BriefEvidenceLimit(BaseModel):
     limit: str = Field(min_length=1, max_length=550)
 
 
+class FindingScopeDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: int = Field(ge=1)
+    subject: str
+    reason: str
+    keep: bool
+
+
+class FindingScopeReview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reviews: list[FindingScopeDecision]
+
+
 _BRIEF_LINE = TypeAdapter(BriefFinding | BriefEvidenceLimit)
+_FINDING_SCOPE = TypeAdapter(FindingScopeReview)
 _DEPENDENT_LEAD = re.compile(
     r"^(?:For example|For instance|Similarly|Likewise),\s*", re.I
 )
@@ -210,6 +227,36 @@ def _similar_findings(
     return matches
 
 
+async def _review_finding_scope(
+    draft: str,
+    section: BriefSectionPrompt,
+    config: RunnableConfig,
+    review: ReviewRequest,
+) -> tuple[str, list[str]]:
+    sentences = numbered_sentences(draft)
+    template = assistant_prompt_templates.get_template("brief_finding_scope.j2")
+    request = template.render(
+        heading=section.outline[section.current].title,
+        topic=section.topic,
+        guidance=section.focus,
+        other_headings=[
+            s.title for i, s in enumerate(section.outline) if i != section.current
+        ],
+        sentences=[
+            {"id": row["id"], "text": strip_citation_markers(row["text"])}
+            for row in sentences
+        ],
+    )
+    decision: FindingScopeReview = await review(
+        template.render(system=True), request, [], config, _FINDING_SCOPE
+    )
+    if sorted(row.id for row in decision.reviews) != [row["id"] for row in sentences]:
+        raise InvalidAssistantResponse("The scope check must assess each finding once")
+    approved = {row.id for row in decision.reviews if row.keep}
+    issues = [row.reason for row in decision.reviews if not row.keep]
+    return retain_supported_sentences(draft, sentences, approved), issues
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -263,6 +310,11 @@ async def write_grounded_brief(
         )
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
+            text, outside_scope = await _review_finding_scope(
+                text, section, config, review
+            )
+            issues.extend(outside_scope)
+        if text and review is not None:
             similar = await run_in_threadpool(_similar_findings, text, existing)
             checked = await check_answer_citations(
                 text,

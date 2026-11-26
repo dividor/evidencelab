@@ -76,6 +76,17 @@ Issues: {{ correction | tojson }}
 {%- elif stage == 'retry_plan' -%}
 The previous reply did not match the required format. Return only a JSON object matching the system instructions.
 Correct these validation errors (field path and error type): {{ validation_errors | tojson }}.
+{%- elif stage == 'distinct_search' -%}
+Propose a search. Do not answer or summarize the research question.
+Original scope: {{ question | tojson }}
+The previous search proposal repeated terms already searched without a distinct angle.
+Searches already run: {{ searches | tojson }}
+The remaining evidence gap: {{ reason | tojson }}
+Propose one useful search for the missing part itself. A group or case the earlier results already covered is not a substitute.
+Use another name for the required group or setting, a specific barrier, process, measure, or type of source.
+Keep the question's scope. Use terms likely to appear in the source, even if they are different from the question's wording.
+Return only a JSON object with this shape: {"queries":["the next search"],"reason":"the gap it investigates"}.
+Return {"queries":[]} only if there is no distinct lead left to investigate.
 {%- elif stage == 'retry_citations' -%}
 These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite the full answer. Cite only labels in the retrieved evidence. Remove any claim whose evidence cannot be cited.
 {%- elif stage == 'verify' -%}

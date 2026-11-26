@@ -274,7 +274,7 @@ async def check_answer_citations(
     if not any(row["citations"] and row["id"] in supported for row in sentences):
         supported.clear()
     return CitationReview(
-        issues, _retain_supported_sentences(answer, sentences, supported)
+        issues, retain_supported_sentences(answer, sentences, supported)
     )
 
 
@@ -313,7 +313,7 @@ def _heading_stack(
     return retained
 
 
-def _retain_supported_sentences(
+def retain_supported_sentences(
     answer: str, sentences: list[dict], supported: set[int]
 ) -> str:
     parts: list[str] = []
