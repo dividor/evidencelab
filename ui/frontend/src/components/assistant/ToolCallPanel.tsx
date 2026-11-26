@@ -73,7 +73,11 @@ const QueryRow: React.FC<{ tc: SearchToolCall; index: number }> = ({ tc, index }
         </span>
         <span className="tool-call-code-result">{tc.resultCount} results</span>
       </div>
-      {tc.reason && <div className="tool-call-reason">{tc.reason}</div>}
+      {tc.reason && (
+        <div className={`tool-call-reason${hasResults ? ' tool-call-reason--indented' : ''}`}>
+          <span className="tool-call-reason-label">Why:</span> <span>{tc.reason}</span>
+        </div>
+      )}
       {open && hasResults && (
         <div className="tool-call-results-cards">
           {tc.results!.map((r, j) => (

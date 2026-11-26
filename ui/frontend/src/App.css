@@ -11745,13 +11745,29 @@ a.admin-citation-clickable:hover {
 /* Expandable query rows */
 .tool-call-stream {
   color: var(--brand-text-primary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
   font-weight: 600;
   margin-top: 0.35rem;
 }
 
 .tool-call-reason {
   color: var(--brand-text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  max-width: 70ch;
   margin-bottom: 0.35rem;
+}
+
+/* Line the reason up with the query text, after the expand icon and gap. */
+.tool-call-reason--indented {
+  padding-left: 1.6rem;
+}
+
+.tool-call-reason-label {
+  font-weight: 600;
 }
 
 .tool-call-query-row {
