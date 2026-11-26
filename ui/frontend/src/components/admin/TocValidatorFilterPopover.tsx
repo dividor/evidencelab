@@ -143,8 +143,11 @@ export const TocValidatorFilterPopover: React.FC<TocValidatorFilterPopoverProps>
   <>
     <div className="filter-popover-backdrop" onClick={onClose} />
     <div
-      className="filter-popover"
-      style={{ position: 'absolute', top: `${position.top}px`, left: `${position.left}px` }}
+      className="filter-popover toc-validator-filter-popover"
+      style={{
+        top: position.top,
+        left: `clamp(8px, ${position.left}px, calc(100vw - var(--toc-filter-width) - 8px))`,
+      }}
     >
       <div className="filter-popover-header">
         <span>Filter {COLUMN_LABELS[column]}</span>

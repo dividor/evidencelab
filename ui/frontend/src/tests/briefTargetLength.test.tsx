@@ -139,8 +139,8 @@ describe('Brief section length target', () => {
     mockResearchSection.mockImplementation(answerWith(condensedText));
     startManualBriefWithShortTarget();
     runDeepResearch();
-    const [regenerate] = await screen.findAllByRole('button', { name: 'AI Regenerate' });
-    const section = regenerate.closest('section');
+    const [askAi] = await screen.findAllByRole('button', { name: /^Ask AI for (?!the whole brief)/ });
+    const section = askAi.closest('section');
     if (!section) throw new Error('The regenerate button must belong to a section');
     const originalText = section.querySelector('.brief-doc-content')?.textContent;
     expect(originalText).toContain('The programme raised enrolment');
@@ -153,7 +153,8 @@ describe('Brief section length target', () => {
         resolve();
       };
     }));
-    fireEvent.click(regenerate);
+    fireEvent.click(askAi);
+    fireEvent.click(within(section).getByRole('button', { name: 'Regenerate' }));
     fireEvent.click(within(section).getByRole('button', { name: 'Re-research section' }));
     await waitFor(() => expect(section.querySelector('.brief-researching')).toBeInTheDocument());
     expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
@@ -164,6 +165,7 @@ describe('Brief section length target', () => {
     expect(within(section).getByText('You’re viewing the previous draft.')).toBeInTheDocument();
     expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
     expect(section.querySelector('.brief-researching')).toBeNull();
+    fireEvent.click(within(section).getByRole('button', { name: /^Ask AI for / }));
     fireEvent.click(within(section).getByRole('button', { name: 'Research settings' }));
     expect(within(section).getByRole('button', { name: 'Re-research section' })).toBeInTheDocument();
     fireEvent.click(within(section).getByRole('button', { name: 'Cancel' }));
@@ -193,7 +195,8 @@ describe('Brief section length target', () => {
         resolve();
       };
     }));
-    fireEvent.click(screen.getByRole('button', { name: 'AI Regenerate All' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask AI for the whole brief' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate All', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate all sections' }));
     expect(await screen.findAllByText(`0 of ${total} updated`)).not.toHaveLength(0);
     await act(async () => finish());

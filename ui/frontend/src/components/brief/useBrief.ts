@@ -179,7 +179,7 @@ const headingCount = (n: number): string => `${n} heading${n === 1 ? '' : 's'}`;
 export const introHeadingNote = (headings: number, reruns: number): string =>
   `This introduction still has ${headingCount(headings)} of its own after ${reruns} re-run${
     reruns === 1 ? '' : 's'
-  }. Edit them out, or use AI Regenerate.`;
+  }. Edit them out, or choose Regenerate under Ask AI.`;
 
 /** Headings an introduction's text has of its own, for its warning; undefined
  *  for a section that is not an introduction or has none. An edit cannot be
@@ -1559,7 +1559,7 @@ export const useBrief = ({
 
   // Run "Get Updates" (fold in sources newer than each section's last run) on
   // every already-researched section, sequentially — the doc-wide counterpart to
-  // the per-section AI Get Updates.
+  // Get Updates for each section.
   const updateAll = useCallback(async () => {
     const ids = sectionsRef.current
       .filter((s) => s.status === 'done' && !!s.content)

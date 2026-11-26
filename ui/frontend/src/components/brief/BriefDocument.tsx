@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
 import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
+import { BriefAskAi } from './BriefAskAi';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
 import type { BriefFactCheckEvidence, BriefFactCheckMark } from '../../types/testing';
@@ -169,7 +170,7 @@ export const IntroHeadingWarning: React.FC<{ headings?: number }> = ({ headings 
     <div className="brief-section-warning" role="status">
       This introduction still has {headings} heading{headings === 1 ? '' : 's'} of its own after
       re-running. An introduction should frame its sub-sections without headings: edit them out, or
-      use AI Regenerate.
+      choose Regenerate under Ask AI.
     </div>
   ) : null;
 
@@ -238,8 +239,9 @@ const GuidancePanel: React.FC<{
   );
 };
 
-// The AI action toolbar shown on a completed section.
+// The action toolbar shown on a completed section.
 const SectionTools: React.FC<{
+  title: string;
   editing: boolean;
   auditCount: number;
   showLog: boolean;
@@ -250,6 +252,7 @@ const SectionTools: React.FC<{
   onAiUpdate: () => void;
   onOpenLog: () => void;
 }> = ({
+  title,
   editing,
   auditCount,
   showLog,
@@ -261,25 +264,31 @@ const SectionTools: React.FC<{
   onOpenLog,
 }) => (
   <div className="brief-doc-section-tools">
+    <BriefAskAi
+      label={`Ask AI for ${title}`}
+      buttonClass="brief-regen-btn"
+      actions={[
+        {
+          label: regenerationFailed ? 'Research settings' : 'Regenerate',
+          icon: IconRefresh,
+          onSelect: onRegenerate,
+        },
+        {
+          label: 'Edit',
+          icon: IconEdit,
+          onSelect: onAiEdit,
+          title: 'Revise this section with an AI instruction, keeping the current content',
+        },
+        {
+          label: 'Get Updates',
+          icon: IconClock,
+          onSelect: onAiUpdate,
+          title: 'Search for sources published since this section was last run and fold them in',
+        },
+      ]}
+    />
     <button className="brief-regen-btn" onClick={onToggleEdit}>
       <IconEdit /> {editing ? 'Done' : 'Manually Edit'}
-    </button>
-    <button className="brief-regen-btn" onClick={onRegenerate}>
-      <IconRefresh /> {regenerationFailed ? 'Research settings' : 'AI Regenerate'}
-    </button>
-    <button
-      className="brief-regen-btn"
-      onClick={onAiEdit}
-      title="Revise this section with an AI instruction, keeping the current content"
-    >
-      <IconSparkle /> AI Edit
-    </button>
-    <button
-      className="brief-regen-btn"
-      onClick={onAiUpdate}
-      title="Search for sources published since this section was last run and fold them in"
-    >
-      <IconClock /> AI Get Updates
     </button>
     {showLog && (
       <button className="brief-section-log-link" onClick={onOpenLog}>
@@ -693,6 +702,7 @@ const BriefSectionView: React.FC<SectionViewProps> = ({
       )}
       {isDone && !readOnly && (
         <SectionTools
+          title={section.title}
           editing={editing}
           auditCount={auditCount}
           showLog={showLog}
@@ -879,27 +889,29 @@ const HeaderActions: React.FC<{
 }) => {
   const { sections } = brief;
   const hasSections = sections.length > 0;
+  const aiActions = [{
+    label: 'Regenerate All',
+    icon: IconRefresh,
+    onSelect: onRegenerateAll || (() => void brief.startResearch()),
+    title: 'Re-research every section from scratch',
+  }];
+  if (sections.some((section) => section.status === 'done')) {
+    aiActions.push({
+      label: 'Get Updates for All Sections',
+      icon: IconClock,
+      onSelect: brief.updateAll,
+      title: 'Fold sources published since each section was last run into every researched section',
+    });
+  }
   return (
     <div className="brief-doc-header-actions">
       {!readOnly && hasSections && (
-        <button
-          className="brief-regen-all"
-          onClick={onRegenerateAll || (() => void brief.startResearch())}
+        <BriefAskAi
+          label="Ask AI for the whole brief"
+          buttonClass="brief-regen-all"
+          actions={aiActions}
           disabled={!canEditStructure}
-          title="Re-research every section from scratch"
-        >
-          <IconRefresh /> AI Regenerate All
-        </button>
-      )}
-      {!readOnly && sections.some((s) => s.status === 'done') && (
-        <button
-          className="brief-regen-all"
-          onClick={brief.updateAll}
-          disabled={!canEditStructure}
-          title="Fold sources published since each section was last run into every section"
-        >
-          <IconClock /> AI Get All Recent Updates
-        </button>
+        />
       )}
       {!readOnly && onOpenShare && (
         <button
