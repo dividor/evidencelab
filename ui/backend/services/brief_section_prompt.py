@@ -8,10 +8,12 @@ the limit it has when stored, and the prompt is written here.
 """
 
 import re
+from itertools import takewhile
 from textwrap import shorten
 from typing import List, Optional
 
 from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from ui.backend.auth.schemas import (
     BriefOutlineSection,
@@ -19,18 +21,78 @@ from ui.backend.auth.schemas import (
     BriefSurveyPrompt,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
-from ui.backend.services.group_settings import BRIEF_SECTION_PROMPT_KEY
+from ui.backend.services.group_settings import (
+    BRIEF_CITATION_CHECK_KEY,
+    BRIEF_SECTION_PROMPT_KEY,
+    CITATION_CHECK_DEFAULT,
+)
 
 # Characters of a written section quoted in the outline as what it covers.
 _GIST_CHARS = 180
 _SEARCH_QUERY_CHARS = 350
 _BRIEF_PROMPT_MAX_LENGTH = 12000
+_NUMBERED_GUIDANCE = re.compile(r"(?m)^[ \t]*(?=\d{1,3}[.)][ \t]+)")
 
 _FINAL_ANSWER_RULE = (
     "Your final answer must be the finished section text itself — never a "
     "description of what you are about to do, a promise to research, or "
     "narration of your process."
 )
+
+
+class BriefSectionScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    selected: list[int] = Field(max_length=1)
+
+
+BRIEF_SECTION_SCOPE: TypeAdapter[BriefSectionScope] = TypeAdapter(BriefSectionScope)
+
+
+def _child_headings(section: BriefSectionPrompt) -> list[str]:
+    if section.outline[section.current].level != 1:
+        return []
+    following = section.outline[section.current + 1 :]
+    return [item.title for item in takewhile(lambda item: item.level == 2, following)]
+
+
+def brief_section_scope_request(
+    section: BriefSectionPrompt,
+) -> tuple[str, str, str, list[str]]:
+    """Ask which parts of the author’s instructions apply to this heading."""
+    instructions = (section.instructions or "").strip()
+    numbered = _NUMBERED_GUIDANCE.split(instructions)
+    common, blocks = (
+        (numbered[0], numbered[1:])
+        if len(numbered) > 1
+        else ("", re.split(r"\n\s*\n", instructions))
+    )
+    choices = [block.strip() for block in blocks if block.strip()]
+    template = assistant_prompt_templates.get_template("brief_section_scope.j2")
+    request = template.render(
+        heading=section.outline[section.current].title,
+        headings=[item.title for item in section.outline],
+        introduces=_child_headings(section),
+        choices=[
+            {"number": index, "text": text} for index, text in enumerate(choices, 1)
+        ],
+    )
+    return template.render(system=True), request, common.strip(), choices
+
+
+def apply_brief_section_scope(
+    section: BriefSectionPrompt,
+    common: str,
+    choices: list[str],
+    selection: BriefSectionScope,
+) -> BriefSectionPrompt:
+    indices = set(selection.selected)
+    if any(index < 1 or index > len(choices) for index in indices):
+        raise ValueError("The Brief planner selected instructions outside the list")
+    selected = [text for index, text in enumerate(choices, 1) if index in indices]
+    if _child_headings(section):
+        selected = [text.splitlines()[0] for text in selected]
+    guidance = "\n\n".join(filter(None, (common, *selected)))
+    return section.model_copy(update={"instructions": guidance})
 
 
 def brief_section_prompt_default() -> str:
@@ -57,6 +119,24 @@ def validate_brief_section_prompt(settings: dict) -> None:
         del settings[BRIEF_SECTION_PROMPT_KEY]
 
 
+def validate_brief_citation_check(settings: dict) -> None:
+    if BRIEF_CITATION_CHECK_KEY in settings and not isinstance(
+        settings[BRIEF_CITATION_CHECK_KEY], bool
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Choose On, Off, or the site default for Brief citation checking.",
+        )
+
+
+def brief_citation_check_for_groups(groups) -> bool:
+    for group in groups:
+        setting = (group.search_settings or {}).get(BRIEF_CITATION_CHECK_KEY)
+        if setting is not None:
+            return setting
+    return CITATION_CHECK_DEFAULT
+
+
 def brief_section_prompt_for_groups(groups) -> str | None:
     """Read the first Brief override in the existing group order."""
     return next(
@@ -66,6 +146,18 @@ def brief_section_prompt_for_groups(groups) -> str | None:
             if (prompt := (group.search_settings or {}).get(BRIEF_SECTION_PROMPT_KEY))
         ),
         None,
+    )
+
+
+def brief_section_research_focus(section: BriefSectionPrompt) -> str | None:
+    """Give the search planner the author's already scoped guidance."""
+    return (
+        "\n".join(
+            part.strip()
+            for part in (section.instructions, section.focus, section.instruction)
+            if part and part.strip()
+        )
+        or None
     )
 
 
@@ -249,7 +341,11 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
         prompt = (
             f"{prompt} Voice & tone profile — write the section in this style: {voice}"
         )
-    return prompt
+    assignment = assistant_prompt_templates.get_template("brief_section_assignment.j2")
+    scope_rules = assignment.render(
+        heading=heading, introduces=_child_headings(section)
+    )
+    return f"{prompt}\n\n{scope_rules.strip()}"
 
 
 def build_survey_prompt(survey: BriefSurveyPrompt) -> str:

@@ -1,12 +1,14 @@
 """Exercise the Assistant workflow with actual LangGraph execution."""
 
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
 
+from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_service import stream_research_response
 
 pytestmark = pytest.mark.unit
@@ -34,14 +36,45 @@ async def run_research(
     query=QUESTION,
     initial_query=None,
     supported=True,
+    check=None,
+    prose=None,
     brief_section_prompt=None,
+    brief_section=None,
+    check_citations=True,
+    system_prompt_override=None,
+    target_words=None,
 ):
     llm = MagicMock()
     replies = None if callable(responses) else iter(responses)
 
     def model(messages, **kwargs):
+        if messages[0].content.startswith("Review whether this proposed Brief"):
+            issues = prose(messages[-1].content) if prose is not None else []
+            return AIMessage(content=json.dumps({"issues": issues}))
         if messages[0].content.startswith("Check whether the proposed answer"):
-            return AIMessage(content=json.dumps({"supported": supported}))
+            prompt = messages[-1].content
+            if check is not None:
+                return AIMessage(content=json.dumps(check(prompt)))
+            rows = _review_rows(prompt)
+            excerpts = dict(re.findall(r"(?m)^\[(\d+)\] [^\n]+\n([^\n]+)", prompt))
+            checks = [
+                {
+                    "id": row["id"],
+                    "status": "supported" if supported else "unsupported",
+                    "quotes": (
+                        [
+                            {"citation": index, "quote": excerpts[str(index)]}
+                            for index in row["citations"]
+                        ]
+                        if supported
+                        else []
+                    ),
+                }
+                for row in rows
+            ]
+            return AIMessage(
+                content=json.dumps({"scope_issues": [], "sentences": checks})
+            )
         return AIMessage(
             content=responses(messages) if replies is None else next(replies)
         )
@@ -73,9 +106,17 @@ async def run_research(
                 conversation_messages=history,
                 initial_search_query=initial_query,
                 brief_section_prompt=brief_section_prompt,
+                brief_section=brief_section,
+                check_citations=check_citations,
+                system_prompt_override=system_prompt_override,
+                target_words=target_words,
             )
         ]
     return events, search, llm
+
+
+def _review_rows(prompt):
+    return json.loads(prompt.split("Sentences to check: ", 1)[1].splitlines()[0])
 
 
 @pytest.mark.asyncio
@@ -89,6 +130,7 @@ async def test_assistant_starts_with_original_and_stops_when_evidence_is_suffici
         "phase",
         "plan",
         "search_status",
+        "phase",
         "phase",
         "token",
         "sources",
@@ -247,20 +289,113 @@ async def test_repeated_refusal_changes_its_next_step_without_answering_the_ques
 
 
 @pytest.mark.asyncio
-async def test_researched_brief_removes_subheading_markup_and_keeps_the_citation():
+async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full_outline():
+    heading = "Use of social and behavioural change in school meals"
+    follow_up = (
+        "WFP school meals evaluations report portfolio coverage of SBC components"
+    )
+    excluded_heading = "Attendance and learning outcomes"
+    guidance = "Find the share of programmes with an SBC component."
+    other_question = "Which interventions improved school attendance?"
+    brief_section = BriefSectionPrompt(
+        outline=[{"title": heading}, {"title": excluded_heading}],
+        current=0,
+        instructions=f"Give the evidence gaps.\n1. {guidance}\n2. {other_question}",
+        focus="Check for a portfolio-wide denominator.",
+    )
+    answer = "The evaluation found SBC in three of the programmes it reviewed [1]."
+    events, search, llm = await run_research(
+        [
+            json.dumps({"selected": [1]}),
+            json.dumps({"queries": [follow_up]}),
+            '{"queries":[]}',
+            answer,
+        ],
+        [[point(1, "Three reviewed programmes used SBC.")], []],
+        deep=True,
+        query=heading,
+        initial_query=heading,
+        brief_section_prompt="Write a grounded section of the brief.",
+        brief_section=brief_section,
+        system_prompt_override="The Search AI Summary prompt requires every source finding.",
+    )
+    assert [call.kwargs["query"] for call in search.call_args_list] == [
+        heading,
+        follow_up,
+    ]
+    scope, opening, next_search, writer, verifier, editor = [
+        call.args[0][-1].content for call in llm.ainvoke.await_args_list
+    ]
+    assert excluded_heading in scope and other_question in scope
+    for planning in (opening, next_search):
+        assert heading in planning and guidance in planning
+        assert excluded_heading not in planning
+        assert brief_section.focus in planning
+    assert guidance in writer and excluded_heading in writer
+    assert (
+        "Search AI Summary prompt"
+        not in llm.ainvoke.await_args_list[3].args[0][0].content
+    )
+    assert other_question not in writer and other_question not in verifier
+    assert excluded_heading in editor and other_question not in editor
+    assert (
+        next(event["token"] for event in events if event["type"] == "token") == answer
+    )
+
+
+@pytest.mark.asyncio
+async def test_researched_brief_revises_extra_headings_even_with_citation_check_off():
+    def prose(prompt):
+        return (
+            ["Remove the extra title and labels."] if "Main findings" in prompt else []
+        )
+
     events, _, _ = await run_research(
         [
             '{"queries":[]}',
             "## Main findings ##\n\nAccess\n------\n\nSchool sites had better access [1].",
+            "School sites had better access [1].",
         ],
         [[point(1, "School sites had better access.")]],
         brief_section_prompt="Explain the evaluation findings in plain language.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Programme access"}], current=0
+        ),
         initial_query="Programme access in schools",
+        check_citations=False,
+        prose=prose,
     )
     answer = next(event["token"] for event in events if event["type"] == "token")
-    assert "Main findings" in answer and "Access" in answer
-    assert "##" not in answer and "------" not in answer
-    assert "School sites had better access [1]." in answer
+    assert answer == "School sites had better access [1]."
+
+
+@pytest.mark.asyncio
+async def test_brief_opening_repair_uses_sources_and_keeps_length_and_voice():
+    good = "The evaluation found that school sites had better access [1]."
+    draft = "The programme substantially improved many outcomes.\n\n" + good
+    events, _, llm = await run_research(
+        ['{"queries":[]}', draft, good],
+        [[point(1, "School sites had better access.")]],
+        initial_query="Access in schools",
+        brief_section_prompt="Use evaluation evidence for the assigned section.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Access in schools"}],
+            current=0,
+            voice_instructions="Use plain British English and neutral evaluation language.",
+        ),
+        check_citations=False,
+        target_words=350,
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == good
+    revised = llm.ainvoke.await_args_list[-2].args[0]
+    assert "approximately 350 words" in revised[0].content
+    assert (
+        "plain British English and neutral evaluation language" in revised[-1].content
+    )
+    assert (
+        "opening paragraph needs a finding supported by a citation"
+        in revised[-1].content
+    )
 
 
 @pytest.mark.parametrize(
@@ -273,7 +408,7 @@ async def test_researched_brief_removes_subheading_markup_and_keeps_the_citation
 @pytest.mark.asyncio
 async def test_unsupported_answer_is_withheld_even_if_it_names_a_valid_citation(claim):
     events, _, llm = await run_research(
-        ['{"queries":[]}', claim],
+        ['{"queries":[]}', claim, claim],
         [[point(1, "The WFP report described school meals.")]],
         query="Tell me about Santa Claus",
         supported=False,
@@ -286,6 +421,173 @@ async def test_unsupported_answer_is_withheld_even_if_it_names_a_valid_citation(
         verification = llm.ainvoke.await_args.args[0][-1].content
         assert claim in verification
         assert "The WFP report described school meals." in verification
+
+
+@pytest.mark.asyncio
+async def test_citation_checker_withholds_bad_claim_and_only_streams_verified_rewrite():
+    erroneous = "The pilot reached 90 percent of schools [1]."
+    corrected = "The pilot reached 60 percent of schools [1]."
+
+    def judge(prompt):
+        row = _review_rows(prompt)[0]
+        number = 90 if erroneous == row["text"] else 60
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": row["id"],
+                    "status": "supported",
+                    "quotes": [
+                        {
+                            "citation": 1,
+                            "quote": f"reached {number} percent of schools",
+                        },
+                    ],
+                }
+            ],
+        }
+
+    events, search, llm = await run_research(
+        ['{"queries":[]}', erroneous, corrected],
+        [[point(1, "The pilot reached 60 percent of schools.")]],
+        check=judge,
+    )
+    assert search.call_count == 1
+    assert [event["token"] for event in events if event["type"] == "token"] == [
+        corrected
+    ]
+    rewrite = llm.ainvoke.await_args_list[-2].args[0][-1].content
+    assert "Sentence 1 lacks verified quotes from [1]" in rewrite
+
+
+@pytest.mark.asyncio
+async def test_assistant_keeps_the_verified_finding_without_an_extra_writer_call():
+    first = "The pilot reached 60 percent of schools [1]."
+    last = "The survey ran in June [1]."
+    draft = (
+        "## Coverage\n\n" + first + "\n\n## Attendance\n\n"
+        "The programme doubled attendance.\n\n## Evaluation dates\n\n" + last
+    )
+
+    def judge(prompt):
+        assert len(_review_rows(prompt)) == 6
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": 2,
+                    "status": "supported",
+                    "quotes": [
+                        {"citation": 1, "quote": "reached 60 percent of schools"}
+                    ],
+                },
+                {
+                    "id": 4,
+                    "status": "unsupported",
+                    "quotes": [],
+                    "issue": "Attendance was not reported.",
+                },
+                {
+                    "id": 6,
+                    "status": "supported",
+                    "quotes": [{"citation": 1, "quote": "survey ran in June"}],
+                },
+                *[
+                    {"id": index, "status": "non_factual", "quotes": []}
+                    for index in (1, 3, 5)
+                ],
+            ],
+        }
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', draft],
+        [
+            [
+                point(
+                    1,
+                    "The pilot reached 60 percent of schools. The survey ran in June.",
+                )
+            ]
+        ],
+        check=judge,
+    )
+    assert [event["token"] for event in events if event["type"] == "token"] == [
+        "## Coverage\n\n" + first + "\n\n## Evaluation dates\n\n" + last
+    ]
+    assert llm.ainvoke.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_disabling_citation_check_only_skips_the_semantic_review():
+    answer = "The programme reached 60 percent of schools [1]."
+    events, _, llm = await run_research(
+        ['{"queries":[]}', "The programme reached 60 percent [99].", answer],
+        [[point(1, "The programme reached 60 percent of schools.")]],
+        check_citations=False,
+    )
+    assert [event["token"] for event in events if event["type"] == "token"] == [answer]
+    assert llm.ainvoke.await_count == 3
+    assert "invalid: 99" in llm.ainvoke.await_args.args[0][-1].content
+
+
+@pytest.mark.asyncio
+async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
+    finding = (
+        "The evaluation documented social and behavioural change in school meals [1]."
+    )
+    gap = (
+        "The evaluations reviewed here do not establish the share of programmes "
+        "with this component."
+    )
+    draft = finding + " Enrolment doubled.\n\n" + gap
+
+    def judge(prompt):
+        assert len(_review_rows(prompt)) == 3
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": 1,
+                    "status": "supported",
+                    "quotes": [
+                        {
+                            "citation": 1,
+                            "quote": "documented social and behavioural change in school meals",
+                        },
+                    ],
+                },
+                {
+                    "id": 2,
+                    "status": "unsupported",
+                    "quotes": [],
+                    "issue": "This belongs in the education section.",
+                },
+                {"id": 3, "status": "evidence_gap", "quotes": []},
+            ],
+        }
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', draft, "NO_DATASET_EVIDENCE"],
+        [
+            [
+                point(
+                    1,
+                    "The evaluation documented social and behavioural change in school meals.",
+                )
+            ]
+        ],
+        query="How many programmes used social and behavioural change?",
+        initial_query="Social and behavioural change in school meals",
+        brief_section_prompt="Describe the evidence for this section only.",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Extent of SBC"}, {"title": "Education"}], current=0
+        ),
+        check=judge,
+    )
+    assert [event["token"] for event in events if event["type"] == "token"] == [
+        finding + "\n\n" + gap
+    ]
+    assert llm.ainvoke.await_count == 5
 
 
 @pytest.mark.asyncio
@@ -671,7 +973,7 @@ async def test_similar_stream_seeds_need_a_new_plan_before_searching():
     ]
     events, search, llm = await run_research(
         [json.dumps({"streams": seeds}), '{"queries":[]}', "Evidence [1]."],
-        [[point(1, "Evidence")]],
+        [[point(1, "The evidence was documented.")]],
     )
     assert search.call_count == 1
     assert events[-1]["type"] == "done"

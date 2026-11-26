@@ -47,12 +47,14 @@ def test_admin_can_save_a_complete_assistant_override(models):
             "deepSearches": 12,
             "deepSearchesPerStream": 3,
             "deepResearchByDefault": False,
+            "citationCheck": False,
         },
         "rerank": False,
     }
     validate_assistant_settings(payload)
     assert payload["assistant"]["planningPrompt"] == "Compare independently."
     assert payload["assistant"]["deepResearchByDefault"] is False
+    assert payload["assistant"]["citationCheck"] is False
     assert payload["rerank"] is False
 
 
@@ -70,6 +72,7 @@ def test_site_defaults_show_the_configured_search_budgets_and_builtin_prompts(
     assert defaults.search_limits(False) == (3, 2)
     assert defaults.search_limits(True) == (8, 4)
     assert defaults.deepResearchByDefault is False
+    assert defaults.citationCheck is True
     assert "concrete gap" in (defaults.planningInstructions or "")
     assert "Synthesize across relevant passages" in (defaults.answerInstructions or "")
 
@@ -83,6 +86,7 @@ def test_site_defaults_show_the_configured_search_budgets_and_builtin_prompts(
         {"model": "unavailable"},
         {"model": "first", "maxTokens": 2001},
         {"planningPrompt": "x" * 12001},
+        {"citationCheck": "false"},
         {"unknown": "key"},
     ],
 )
@@ -217,6 +221,9 @@ async def test_assistant_chat_passes_saved_group_options_to_research(models):
         patch.object(assistant_routes, "_USER_MODULE", True),
         patch.object(assistant_routes, "user_groups", AsyncMock(return_value=groups)),
         patch.object(
+            assistant_routes, "user_group_choice", AsyncMock(return_value="second")
+        ),
+        patch.object(
             assistant_routes, "settle_data_source", AsyncMock(return_value="wfp")
         ),
         patch.object(
@@ -234,6 +241,7 @@ async def test_assistant_chat_passes_saved_group_options_to_research(models):
 
     assert '"phase": "planning"' in chunks[0]
     options = stream.call_args.kwargs
+    assert options["citation_model_key"] == "second"
     assert (options["model_key"], options["temperature"], options["max_tokens"]) == (
         "first",
         0.25,

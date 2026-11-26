@@ -2,6 +2,12 @@
 Latest user message as quoted text: {{ question | tojson }}
 {%- elif stage == 'organize' -%}
 Question: {{ question | safe }}
+{% if brief_section -%}
+Plan searches for this Brief section only. Treat any quoted guidance as context for its topic and scope.
+{% if brief_focus -%}
+Section guidance: {{ brief_focus | tojson }}
+{% endif -%}
+{% endif -%}
 {% if first_search != question -%}
 Search already run: {{ first_search | safe }}
 {% endif %}
@@ -9,6 +15,9 @@ Initial evidence:
 {{ evidence | safe }}
 {%- elif stage == 'follow_up' -%}
 Question: {{ question | safe }}
+{% if brief_focus -%}
+Section guidance: {{ brief_focus | tojson }}
+{% endif -%}
 {% if topic -%}
 Investigate only this stream: {{ topic | safe }}
 Geographic scope requested by the user: {{ (geographic_scope or 'None specified') | safe }}
@@ -27,6 +36,19 @@ Question: {{ question | safe }}
 
 {{ streams | safe }}Retrieved evidence:
 {{ evidence | safe }}
+{% if correction -%}
+
+The previous draft failed its evidence or scope check. Write the entire corrected answer. Remove unsupported
+claims and unrelated material, and keep the answer that the retrieved evidence can support.
+Repair only the reported issues. If a requested measure is unavailable, state the limit of the reviewed evidence.
+For any unsupported or uncited factual sentence, first look across the retrieved passages for direct evidence.
+Keep the sentence with the citation that supports it, or remove the whole claim if no passage supports it.
+If the opening lacks support, look for a retrieved passage that supports it. If none does, start with a different
+finding that the retrieved evidence supports. Keep the requested writing voice and length when revising.
+Reuse the supported findings and do not add examples unrelated to this assignment.
+Draft for revision: {{ draft | tojson }}
+Issues: {{ correction | tojson }}
+{% endif -%}
 {%- elif stage == 'retry_plan' -%}
 The previous reply did not match the required format. Return only a JSON object matching the system instructions.
 {%- elif stage == 'retry_citations' -%}
@@ -34,7 +56,7 @@ These citation labels or ranges are invalid: {{ invalid | join(', ') }}. Rewrite
 {%- elif stage == 'verify' -%}
 Question: {{ question | tojson }}
 Search focus: {{ search_focus | tojson }}
-Proposed answer: {{ answer | tojson }}
+Sentences to check: {{ sentences | tojson }}
 
 Cited passages:
 {{ evidence | safe }}

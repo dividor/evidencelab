@@ -8,7 +8,10 @@ from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from pipeline.db import config as db_config
-from ui.backend.services.group_settings import ASSISTANT_SETTINGS_KEY
+from ui.backend.services.group_settings import (
+    ASSISTANT_SETTINGS_KEY,
+    CITATION_CHECK_DEFAULT,
+)
 from ui.backend.utils.llm_request_limits import check_requested_llm, max_output_tokens
 
 Prompt = Annotated[str, StringConstraints(strip_whitespace=True, max_length=12000)]
@@ -35,6 +38,7 @@ class AssistantSettings(BaseModel):
     deepSearches: Optional[int] = Field(None, ge=1, le=20)
     deepSearchesPerStream: Optional[int] = Field(None, ge=1, le=6)
     deepResearchByDefault: Optional[bool] = None
+    citationCheck: Optional[bool] = None
 
     def model_options(
         self,
@@ -86,6 +90,7 @@ def assistant_site_defaults() -> AssistantSettings:
         deepSearches=deep_searches,
         deepSearchesPerStream=deep_per_stream,
         deepResearchByDefault=False,
+        citationCheck=CITATION_CHECK_DEFAULT,
         planningInstructions=assistant_prompt_templates.get_template(
             "assistant_planning_instructions.j2"
         ).render(),

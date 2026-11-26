@@ -53,7 +53,7 @@ describe('GroupSettingsManager', () => {
     const customized = 'Explain why each finding matters.';
     let briefSettings = { briefTargetWords: 300 };
     mockedAxios.get.mockImplementation(async url => ({ data: url.endsWith('/brief-defaults')
-      ? { sectionPrompt: defaultPrompt }
+      ? { sectionPrompt: defaultPrompt, citationCheck: true }
       : [mockGroups[0], { ...mockGroups[1], search_settings: briefSettings }] }));
     mockedAxios.patch.mockImplementation(async (_url, body) => {
       briefSettings = body.search_settings;
@@ -64,16 +64,21 @@ describe('GroupSettingsManager', () => {
     fireEvent.click(await screen.findByRole('tab', { name: 'Brief', exact: true }));
     const prompt = await screen.findByLabelText('Section prompt');
     await waitFor(() => expect(prompt).toHaveValue(defaultPrompt));
+    const briefPanel = within(screen.getByRole('tabpanel', { name: 'Brief' }));
+    expect(briefPanel.getByRole('option', { name: 'On (default)' })).toHaveValue('');
+    const citationControl = briefPanel.getByLabelText('Automatic citation check');
+    fireEvent.change(citationControl, { target: { value: 'false' } });
     fireEvent.change(prompt, { target: { value: customized } });
     fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
     await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
-      search_settings: { briefTargetWords: 300, briefSectionPrompt: customized }, summary_prompt: '',
+      search_settings: { briefTargetWords: 300, briefSectionPrompt: customized, briefCitationCheck: false }, summary_prompt: '',
     }));
 
     const reset = screen.getByRole('button', { name: 'Reset section prompt to default' });
     await waitFor(() => expect(screen.getByRole('button', { name: SAVE_SETTINGS })).toBeEnabled());
     fireEvent.click(reset);
     expect(prompt).toHaveValue(defaultPrompt);
+    fireEvent.change(citationControl, { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: SAVE_SETTINGS }));
     await waitFor(() => expect(mockedAxios.patch).toHaveBeenLastCalledWith(URL_API_GROUPS_G2, {
       search_settings: { briefTargetWords: 300 }, summary_prompt: '',

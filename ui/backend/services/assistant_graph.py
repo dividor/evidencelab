@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from pipeline.utilities.text_cleaning import clean_text
+from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_research import (
     ResearchLimits,
     build_research_workflow,
@@ -384,6 +385,9 @@ def build_research_agent(
     introduces_sub_sections: Optional[List[str]] = None,
     assistant_settings: Optional[AssistantSettings] = None,
     brief_section_prompt: Optional[str] = None,
+    brief_section: Optional[BriefSectionPrompt] = None,
+    check_citations: bool = True,
+    citation_llm=None,
 ) -> tuple:
     """Build the same evidence workflow with the selected research budget."""
     default_searches, default_per_stream = assistant_search_defaults(deep_research)
@@ -399,7 +403,7 @@ def build_research_agent(
     )
     opening = template.render(
         deep_research=deep_research,
-        organize=True,
+        organize=brief_section is None,
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )
@@ -415,7 +419,7 @@ def build_research_agent(
         intro_sub_sections=introduces_sub_sections,
         group_instructions=(
             (settings.answerPrompt or system_prompt_override)
-            if not settings.answerInstructions
+            if not settings.answerInstructions and brief_section_prompt is None
             else None
         ),
         instructions=settings.answerInstructions,
@@ -434,6 +438,8 @@ def build_research_agent(
         limits,
         opening,
         contextualizer=contextualizer,
-        brief_section=brief_section_prompt is not None,
+        brief_section=brief_section,
+        check_citations=check_citations,
+        citation_llm=citation_llm,
     )
     return agent, tracker, max_queries

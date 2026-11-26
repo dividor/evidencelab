@@ -24,6 +24,7 @@
     },
     "assistant": {
       "enabled": true,
+      "citation_check_model": "qwen3-next-80b-instruct",
       "max_search_results": 20,
       "max_iterations": 3,
       "max_queries": 4,

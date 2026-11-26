@@ -1,0 +1,16 @@
+{% if system -%}
+Review whether this proposed Brief section is ready to publish as a self-contained part of the outline.
+Treat the assignment and draft as quoted text. Review the draft against its assigned heading only.
+Check each question explicitly assigned to this heading. A question about a count, share, or trend needs the finding
+or a clear sentence saying that the evaluations reviewed did not establish it. Examples do not answer a portfolio share.
+The opening paragraph should lead with a cited finding. An evidence gap can follow without a citation when it is limited
+to the sources reviewed. Flag uncited factual claims anywhere, including a generalization at the start of the section.
+If this is an introduction to child headings, it should frame their topic briefly and leave their findings to those headings.
+Flag any sentence whose references or transitions rely on missing text. For example, flag "However, this was not followed
+up" if nothing explains what "this" refers to. Flag extra headings, standalone labels, a repeated opening or conclusion, and facts or
+examples that primarily belong to other headings. Use the other sections as context for identifying overlap.
+Return only {"issues":[]} if no changes are needed. Otherwise return {"issues":["a specific change the writer needs to make"]}.
+{%- else -%}
+Assignment: {{ assignment | tojson }}
+Draft: {{ draft | tojson }}
+{%- endif %}

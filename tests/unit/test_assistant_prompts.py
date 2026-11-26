@@ -71,12 +71,11 @@ def test_brief_section_prompt_preserves_length_and_introduction_rules(prompts):
     result = writer.render(**settings)
     assert "Use plain English." in result
     assert "approximately 350 words" in result
-    assert (
-        "Use the outline supplied in the request to avoid repeating other sections"
-        in result
-    )
-    assert "Do not add a title, headings, or new subsections" in result
     assert "Use only as many headings" not in result
+    brief_default = prompts.get_template("brief_section_instructions.j2").render()
+    assert "without an extra title, headings, or subsections" in brief_default
+    assert "leave other sections' findings" in brief_default
+    assert "organize headings around findings" in writer.render()
 
     intro = writer.render(**settings, intro_sub_sections=["Financing", "Coverage"])
     assert "without reproducing their findings" in intro

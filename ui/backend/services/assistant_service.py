@@ -12,6 +12,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
+from ui.backend.auth.schemas import BriefSectionPrompt
 from ui.backend.services.assistant_citations import (
     evidence_numbers,
     number_answer_citations,
@@ -20,7 +21,8 @@ from ui.backend.services.assistant_citations import (
 from ui.backend.services.assistant_graph import build_research_agent
 from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.llm_service import summarize_usage_metadata
-from utils.llm_factory import get_llm
+from ui.backend.utils.llm_request_limits import max_output_tokens
+from utils.llm_factory import get_llm, resolve_effective_model_key
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,7 @@ def _build_done_event(
     run_id: uuid_mod.UUID,
     usage_handler: Optional[UsageMetadataCallbackHandler] = None,
     model_key: Optional[str] = None,
+    reviewer_usage: Optional[dict] = None,
 ) -> Dict[str, Any]:
     """Build the completion event with an optional trace URL.
 
@@ -149,6 +152,13 @@ def _build_done_event(
     if usage_handler is not None:
         usage = summarize_usage_metadata(usage_handler, model_key)
         if usage:
+            if reviewer_usage:
+                primary = {"llm_model": usage.get("llm_model")}
+                for field in ("prompt_tokens", "completion_tokens"):
+                    primary[field] = max(
+                        0, usage.get(field, 0) - reviewer_usage.get(field, 0)
+                    )
+                usage["model_usage"] = [primary, reviewer_usage]
             done_event["usage"] = usage
     return done_event
 
@@ -170,6 +180,9 @@ async def stream_research_response(
     initial_search_query: Optional[str] = None,
     citation_order: bool = True,
     brief_section_prompt: Optional[str] = None,
+    brief_section: Optional[BriefSectionPrompt] = None,
+    check_citations: bool = True,
+    citation_model_key: Optional[str] = None,
 ) -> AsyncGenerator[Dict[str, Any], None]:
     """Stream progress and the final cited answer for either research mode."""
     from ui.backend.utils.app_state import validate_data_source
@@ -189,6 +202,9 @@ async def stream_research_response(
         llm = _get_llm(
             model_key, temperature, max_tokens_for_target(max_tokens, target_words)
         )
+        reviewer, reviewer_usage = _reviewer_model(
+            citation_model_key if check_citations else None, model_key
+        )
         graph, tracker, search_budget = build_research_agent(
             llm,
             data_source,
@@ -201,6 +217,9 @@ async def stream_research_response(
             introduces_sub_sections=introduces_sub_sections,
             assistant_settings=assistant_settings,
             brief_section_prompt=brief_section_prompt,
+            brief_section=brief_section,
+            check_citations=check_citations,
+            citation_llm=reviewer,
         )
         yield {"type": "phase", "phase": "planning"}
         numbered_sources: Optional[list[dict]] = None
@@ -212,7 +231,7 @@ async def stream_research_response(
             },
             config={
                 "run_id": run_id,
-                "recursion_limit": 2 * search_budget + 3,
+                "recursion_limit": 2 * search_budget + 5,
                 "callbacks": [usage, *_trace_callbacks()],
             },
             stream_mode="custom",
@@ -228,10 +247,29 @@ async def stream_research_response(
         )
         if sources:
             yield {"type": "sources", "sources": sources}
-        yield _build_done_event(run_id, usage_handler=usage, model_key=model_key)
+        checked_usage = (
+            summarize_usage_metadata(reviewer_usage, citation_model_key)
+            if reviewer_usage is not None and reviewer_usage.usage_metadata
+            else None
+        )
+        yield _build_done_event(
+            run_id,
+            usage_handler=usage,
+            model_key=model_key,
+            reviewer_usage=checked_usage,
+        )
     except Exception:
         logger.exception("Assistant research failed (run_id=%s)", run_id)
         yield {
             "type": "error",
             "error": "The Assistant could not complete this request.",
         }
+
+
+def _reviewer_model(checker_key: Optional[str], writer_key: Optional[str]) -> tuple:
+    if not checker_key or checker_key == resolve_effective_model_key(writer_key):
+        return None, None
+    usage = UsageMetadataCallbackHandler()
+    budget = min(2000, max_output_tokens(checker_key))
+    reviewer = _get_llm(checker_key, 0, budget).with_config(callbacks=[usage])
+    return reviewer, usage

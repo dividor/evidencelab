@@ -16,6 +16,7 @@ export interface LlmDefaults {
   summary: string | null;
   brief: string | null;
   judge: string | null;
+  citation_check: string | null;
 }
 
 type ChoiceKey = keyof GroupLlmChoices;
@@ -43,7 +44,13 @@ export const LLM_JOBS: {
     key: 'judgeModel',
     defaultKey: 'judge',
     label: 'Evaluation judge',
-    help: "Scores evaluation runs' LLM-judge checks and the Brief citation check. A model other than the one being evaluated grades more fairly.",
+    help: 'Scores evaluation runs and the on-demand Brief Fact Check.',
+  },
+  {
+    key: 'citationCheckModel',
+    defaultKey: 'citation_check',
+    label: 'Automatic citation check',
+    help: 'Checks cited passages in Assistant replies and Brief drafts when automatic checking is on.',
   },
 ];
 
@@ -52,6 +59,7 @@ export const readLlmChoices = (settings: GroupLlmChoices | null | undefined): Gr
   summaryModel: settings?.summaryModel || undefined,
   briefModel: settings?.briefModel || undefined,
   judgeModel: settings?.judgeModel || undefined,
+  citationCheckModel: settings?.citationCheckModel || undefined,
 });
 
 /** What a group saves: only the jobs with a chosen model. */

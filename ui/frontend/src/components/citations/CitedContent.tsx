@@ -58,6 +58,7 @@ export const normalizeClaimText = (text: string): string =>
     .replace(/\[(?:\d+,\s*)*\d+\]/g, '')
     .replace(/[#*_>`]/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/[.!?]+\s*$/, '')
     .trim()
     .toLowerCase();
 
@@ -123,18 +124,18 @@ const resolveForClaim = (
       // Enrichment splits sentences in the markdown, where a soft line-wrap
       // ends a "sentence"; the rendered text the card sees has those wraps
       // collapsed. Containment matches the two forms of the same sentence.
-      const hit = (candidate.claimMatches || []).find(
-        (e) =>
-          e.claim === key ||
-          (e.claim.length > 24 && (key.includes(e.claim) || e.claim.includes(key))),
-      );
+      const hit = (candidate.claimMatches || []).find((entry) => {
+        const stored = normalizeClaimText(entry.claim);
+        return stored === key || (stored.length > 24 && (key.includes(stored) || stored.includes(key)));
+      });
       if (hit) return { source: candidate, matches: hit.matches };
     }
   }
-  // A source cited once has no ambiguity about which claim its spans support.
-  const only = source.claimMatches?.length === 1 ? source.claimMatches[0].matches : undefined;
+  const only = !key && source.claimMatches?.length === 1 ? source.claimMatches[0].matches : undefined;
   return { source, matches: only ?? source.semanticMatches };
 };
+
+export type RequestCitationHighlight = (source: SourceReference, claim?: string) => Promise<void> | undefined;
 
 const InlineCitation: React.FC<{
   num: number;
@@ -143,7 +144,7 @@ const InlineCitation: React.FC<{
   claim?: string;
   // Ask the owner to highlight this source now (hover on an un-enriched
   // excerpt). The card re-renders from state, so it fills in while open.
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
 }> = ({ num, source, onClick, claim, onRequestHighlight }) => {
   const ref = useRef<HTMLAnchorElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,6 +153,8 @@ const InlineCitation: React.FC<{
   // the body into a scroll area (with its scrollbar) rather than a long card.
   const [expanded, setExpanded] = useState(false);
   const [clipped, setClipped] = useState(false);
+  const [highlighting, setHighlighting] = useState(false);
+  const requestedHighlight = useRef(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   // Whether this card's on-screen placement has been settled for this open.
@@ -171,7 +174,14 @@ const InlineCitation: React.FC<{
     if (hideTimer.current) clearTimeout(hideTimer.current);
     if (!source) return;
     // Nothing highlighted for this claim yet — kick off a pass for it.
-    if (!shown?.matches?.length && onRequestHighlight) onRequestHighlight(source);
+    if (!shown?.matches?.length && !requestedHighlight.current) {
+      const request = onRequestHighlight?.(source, claim);
+      if (request) {
+        requestedHighlight.current = true;
+        setHighlighting(true);
+        void request.then(() => setHighlighting(false), () => setHighlighting(false));
+      }
+    }
     const r = ref.current?.getBoundingClientRect();
     if (!r) return;
     // Provisional spot below the badge; the layout effect below flips it above
@@ -263,7 +273,7 @@ const InlineCitation: React.FC<{
                 }`}
               >
                 {breadcrumb && <div className="citation-hover-section">{breadcrumb}</div>}
-                {!shown.matches?.length && shown.source.claimMatches === undefined && (
+                {!shown.matches?.length && highlighting && (
                   <div className="citation-hover-pending">
                     <span className="brief-spinner citation-hover-spinner" />
                     Highlighting relevant text …
@@ -309,7 +319,7 @@ function replaceCitations(
   text: string,
   sourceByIndex: Map<number, SourceReference>,
   onSourceClick?: (source: SourceReference) => void,
-  onRequestHighlight?: (source: SourceReference) => void,
+  onRequestHighlight?: RequestCitationHighlight,
 ): React.ReactNode {
   const parts: React.ReactNode[] = [];
   const re = new RegExp(CITATION_OR_UNMATCHED_REGEX.source, 'g');
@@ -359,7 +369,7 @@ function transformChildren(
   children: React.ReactNode,
   sourceByIndex: Map<number, SourceReference>,
   onSourceClick?: (source: SourceReference) => void,
-  onRequestHighlight?: (source: SourceReference) => void,
+  onRequestHighlight?: RequestCitationHighlight,
 ): React.ReactNode {
   return React.Children.map(children, (child) => {
     if (typeof child !== 'string') return child;
@@ -372,7 +382,7 @@ export const CitedMarkdown: React.FC<{
   sources: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
   // Called when a hover card opens on a citation with no highlights yet.
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
 }> = ({ content, sources, onSourceClick, onRequestHighlight }) => {
   const sourceByIndex = useMemo(() => {
     const map = new Map<number, SourceReference>();

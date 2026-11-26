@@ -65,6 +65,18 @@ limiter.enabled = False
 _test_app = FastAPI()
 
 
+@pytest.fixture(autouse=True)
+def route_citation_model(monkeypatch):
+    from pipeline.db import config as db_config
+    from ui.backend.routes import assistant
+
+    monkeypatch.setattr(
+        assistant,
+        "config_defaults",
+        lambda: {assistant.CITATION_CHECK: next(iter(db_config.SUPPORTED_LLMS), None)},
+    )
+
+
 def _make_request(method: str = "POST", path: str = "/") -> Request:
     scope = {
         "type": "http",
@@ -805,7 +817,7 @@ class TestStreamAssistantChatBriefSection:
     @pytest.mark.asyncio
     @patch("ui.backend.routes.assistant.schedule_llm_usage_recording")
     @patch("ui.backend.routes.assistant.stream_research_response")
-    async def test_stream_when_brief_section_then_research_gets_written_prompt(
+    async def test_stream_when_brief_section_then_research_gets_the_structured_section(
         self, mock_stream, mock_usage
     ):
         async def mock_gen(*args, **kwargs):
@@ -823,16 +835,12 @@ class TestStreamAssistantChatBriefSection:
 
         await self._run(body)
 
-        from ui.backend.services.brief_section_prompt import build_section_prompt
-
-        query = mock_stream.call_args[1]["query"]
-        assert query == build_section_prompt(body.brief_section)
+        assert mock_stream.call_args.kwargs["query"] == "Findings"
+        assert mock_stream.call_args.kwargs["brief_section"] == body.brief_section
         assert (
             "finished section in clear prose"
             in mock_stream.call_args.kwargs["brief_section_prompt"]
         )
-        assert 'You are revising the "Findings" section' in query
-        assert "Voice & tone profile" in query
         assert (
             mock_stream.call_args.kwargs["initial_search_query"]
             == "Findings school meals"

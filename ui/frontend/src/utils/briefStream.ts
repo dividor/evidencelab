@@ -197,6 +197,7 @@ const PHASE_PROGRESS: Record<string, number> = {
   searching: 30,
   reading: 45,
   synthesizing: 65,
+  checking_citations: 85,
   reflecting: 80,
 };
 
@@ -275,6 +276,8 @@ export const runDeepResearch = async ({
           handlers.onActivity({ tag: 'SCAN', text: 'Planning document-library searches' });
         } else if (phase === 'synthesizing') {
           handlers.onActivity({ tag: 'DRAFT', text: 'Synthesising findings' });
+        } else if (phase === 'checking_citations') {
+          handlers.onActivity({ tag: 'DRAFT', text: 'Checking citations' });
         }
       },
       onPlan: (queries) => {

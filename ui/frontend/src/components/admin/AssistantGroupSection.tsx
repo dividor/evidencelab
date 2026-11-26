@@ -5,6 +5,7 @@ import type { SummaryModelConfig } from '../../types/api';
 import type { AssistantGroupSettings } from '../../types/auth';
 import type { OfferedLlm } from './LlmChoiceGroupSection';
 import { GroupPromptEditor } from './GroupPromptEditor';
+import { CitationCheckSetting } from './CitationCheckSetting';
 
 interface Props {
   value: AssistantGroupSettings;
@@ -111,6 +112,8 @@ export const AssistantGroupSection: React.FC<Props> = ({
           </select>
         </div>
       </div>
+      <CitationCheckSetting id="group-assistant-citation-check" value={value.citationCheck}
+        defaultEnabled={defaults.citationCheck} onChange={next => onChange({ ...value, citationCheck: next })} />
       <fieldset className="group-assistant-options">
         <legend>Search limits</legend>
         {LIMITS.map(({ key, label, max }) => (

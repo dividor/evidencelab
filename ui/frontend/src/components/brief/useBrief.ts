@@ -80,6 +80,11 @@ const newActivityId = (): string => generateUUID();
 // capitalisation / acronyms (e.g. WFP) survive. Used on generated brief titles.
 const toTitleCase = (s: string): string => s.replace(/\b[a-zA-Z]/g, (c) => c.toUpperCase());
 
+const interruptedResearch = (keepPrevious?: boolean): Partial<BriefSection> =>
+  keepPrevious
+    ? { status: 'done', progress: 100, revising: undefined }
+    : { status: 'pending', progress: 0, content: '', sources: [], revising: undefined };
+
 const makeSection = (title: string, level = 1, sample = false): BriefSection => ({
   id: uid(),
   title,
@@ -572,7 +577,7 @@ export const useBrief = ({
   // which would make that run consider itself stale and stop.
   const enrichingRef = useRef<Set<string>>(new Set());
   // Sources with an on-demand (hover-triggered) highlight in flight.
-  const onDemandRef = useRef<Set<string>>(new Set());
+  const onDemandRef = useRef<Map<string, Promise<void>>>(new Map());
   // Brief id awaiting a highlight-enrichment resume after being opened.
   const resumeRef = useRef<string | null>(null);
   // Sections whose text was edited by hand and not yet recorded as a run.
@@ -709,28 +714,30 @@ export const useBrief = ({
   // excerpt has no highlights yet. The card re-renders from section state, so
   // it fills in while the user is still hovering.
   const requestSourceHighlight = useCallback(
-    (sectionId: string, chunkId: string) => {
+    (sectionId: string, chunkId: string, claim?: string) => {
       if (!SEARCH_SEMANTIC_HIGHLIGHTS || !semanticModelConfigRef.current?.model) return;
-      const key = `${sectionId}:${chunkId}`;
-      if (onDemandRef.current.has(key)) return;
+      const key = `${sectionId}:${chunkId}:${claim ?? ''}`;
+      const existing = onDemandRef.current.get(key);
+      if (existing) return existing;
       const section = sectionsRef.current.find((sec) => sec.id === sectionId);
       // Matched by chunk, not index: the card shows the *display* source, whose
       // index is the global citation number, while section state keeps the
       // local research indices. Matching on index found nothing, so the card
       // sat on "Highlighting…" for ever.
       const source = section?.sources.find((src) => src.chunkId === chunkId);
-      if (!section || !source || !source.text || source.claimMatches !== undefined) return;
-      onDemandRef.current.add(key);
+      if (!section || !source || !source.text) return;
       const applyToSection = (enriched: SourceReference): void => {
+        if (!enriched.claimMatches?.length) return;
         const cur = sectionsRef.current.find((sec) => sec.id === sectionId);
-        if (!cur) return;
+        if (!cur || cur.currentRunId !== section.currentRunId) return;
         updateSection(sectionId, {
           sources: cur.sources.map((src) => (src.chunkId === chunkId ? enriched : src)),
         });
       };
-      void highlightOneSource({
+      const request = highlightOneSource({
         source,
         content: section.content,
+        claim,
         threshold: SEMANTIC_HIGHLIGHT_THRESHOLD,
         modelConfig: semanticModelConfigRef.current,
         // Paint each claim as it lands so the open card stops saying
@@ -745,6 +752,8 @@ export const useBrief = ({
           /* the full excerpt remains as the fallback */
         })
         .finally(() => onDemandRef.current.delete(key));
+      onDemandRef.current.set(key, request);
+      return request;
     },
     [updateSection, pushHighlights],
   );
@@ -1287,19 +1296,19 @@ export const useBrief = ({
       const attempt = opts?.attempt ?? 0;
       // The current display text, for a revise to work from.
       const priorContent = section.content;
+      const keepPrevious = isRevise || section.status === 'done' || section.revising;
+      const restoreDraft = () => updateSection(id, interruptedResearch(keepPrevious));
       // Update: only surface sources newer than the last time this section ran.
       const publishedAfterIso =
         mode === 'update' && section.lastResearchedAt
           ? new Date(section.lastResearchedAt).toISOString()
           : null;
-      // Generate clears the section; Edit/Update keep the current draft in place
-      // (rendered greyed-out, still in the citation numbering) and swap
-      // atomically on completion.
+      // Keep the current draft and its citations visible until the new run is saved.
       // A re-run keeps the activity so far, including why it re-ran.
       const activityReset = attempt > 0 ? {} : { activity: [] };
       updateSection(
         id,
-        isRevise
+        keepPrevious
           ? { status: 'researching', progress: 4, ...activityReset, revising: true }
           : { status: 'researching', progress: 4, content: '', sources: [], ...activityReset },
       );
@@ -1347,19 +1356,18 @@ export const useBrief = ({
         handlers: {
           onActivity: (ev) => pushActivity(id, ev),
           onProgress: (p) => updateSection(id, { progress: p }),
-          // Keep the old draft visible during a revise; swap only at onDone.
           onToken: (t) => {
-            if (!isRevise) updateSection(id, { content: t });
+            if (!keepPrevious) updateSection(id, { content: t });
           },
           onSources: (s) => {
-            if (!isRevise) updateSection(id, { sources: s });
+            if (!keepPrevious) updateSection(id, { sources: s });
           },
           onDone: ({ content, sources, runId }) => {
             // A run that read sources but answered with process narration
             // ("I'll go research that…") instead of the section is a failure —
             // surface it and keep the section pending rather than storing it.
             if (!isRevise && isLikelyNonAnswer(content, sources.length, sectionTarget)) {
-              updateSection(id, { status: 'pending', progress: 0 });
+              restoreDraft();
               setError(
                 `The model did not return researched content for “${section.title}” — please try again.`,
               );
@@ -1422,12 +1430,7 @@ export const useBrief = ({
               .catch((e) => {
                 if (signal.aborted) return;
                 // The research is lost unless the API recorded it: say so.
-                updateSection(
-                  id,
-                  isRevise
-                    ? { status: 'done', progress: 100, revising: undefined }
-                    : { status: 'pending', progress: 0 },
-                );
+                restoreDraft();
                 setError(
                   `“${section.title}” was researched but could not be saved: ${
                     errorText(e, 'the citation service failed')
@@ -1436,25 +1439,16 @@ export const useBrief = ({
               });
           },
           onError: (m) => {
-            // A revise keeps its previous good content; a fresh research reverts.
-            updateSection(
-              id,
-              isRevise
-                ? { status: 'done', progress: 100, revising: undefined }
-                : { status: 'pending', progress: 0 },
-            );
+            restoreDraft();
             setError(m);
           },
         },
       })
-        .catch(() =>
-          updateSection(
-            id,
-            isRevise
-              ? { status: 'done', progress: 100, revising: undefined }
-              : { status: 'pending', progress: 0 },
-          ),
-        )
+        .catch((e) => {
+          if (signal.aborted) return;
+          restoreDraft();
+          setError(errorText(e, 'Section research failed. Try again.'));
+        })
         .then(() => postRun)
         .then(() =>
           rerun
@@ -1542,13 +1536,13 @@ export const useBrief = ({
   }, [researchOne, saveCurrent]);
 
   // Abort all in-flight research and return to a stable, editable state: any
-  // section mid-research reverts to pending; completed sections are kept.
+  // An interrupted section returns to its previous draft or to pending.
   const stopResearch = useCallback(() => {
     abortRef.current?.abort();
     setSections((prev) =>
       prev.map((s) =>
         s.status === 'researching'
-          ? { ...s, status: 'pending', progress: 0, activity: [] }
+          ? { ...s, ...interruptedResearch(s.revising), activity: [] }
           : s,
       ),
     );

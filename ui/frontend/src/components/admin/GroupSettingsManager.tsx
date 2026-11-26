@@ -311,6 +311,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
   const [showPromptModal, setShowPromptModal] = useState(false);
   const [assistant, setAssistant] = useState<AssistantGroupSettings>({});
   const [briefSectionPrompt, setBriefSectionPrompt] = useState<string>();
+  const [briefCitationCheck, setBriefCitationCheck] = useState<boolean>();
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -396,6 +397,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
     setSummaryPromptValue(group.summary_prompt || '');
     setAssistant(settings.assistant || {});
     setBriefSectionPrompt(settings.briefSectionPrompt);
+    setBriefCitationCheck(settings.briefCitationCheck);
   }, [selectedGroupId, groups]);
 
   /** Update a value and mark it as overridden. */
@@ -420,6 +422,7 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
       Object.assign(payload, llmChoicePayload(llmChoices));
       if (Object.values(assistant).some((value) => value !== undefined)) payload.assistant = assistant;
       if (briefSectionPrompt?.trim()) payload.briefSectionPrompt = briefSectionPrompt;
+      if (briefCitationCheck !== undefined) payload.briefCitationCheck = briefCitationCheck;
       if (personalImpact !== undefined) {
         payload.personalEnvironmentalImpact = personalImpact;
       }
@@ -964,7 +967,8 @@ const GroupSettingsManager: React.FC<{ assistantModelConfig?: SummaryModelConfig
             <SettingsPanel tab="brief" active={activeTab === 'brief'}>
               <BriefGroupSection targetWords={values.briefTargetWords}
                 onTargetWordsChange={value => update('briefTargetWords', value)}
-                sectionPrompt={briefSectionPrompt} onSectionPromptChange={setBriefSectionPrompt} />
+                sectionPrompt={briefSectionPrompt} onSectionPromptChange={setBriefSectionPrompt}
+                citationCheck={briefCitationCheck} onCitationCheckChange={setBriefCitationCheck} />
             </SettingsPanel>
 
             {/* Document summaries (Documents screen) */}

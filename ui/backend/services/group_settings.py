@@ -21,6 +21,8 @@ TAB_KEYS = ("search", "assistant", "brief", "heatmap")
 PERSONAL_IMPACT_SETTING = "personalEnvironmentalImpact"
 ASSISTANT_SETTINGS_KEY = "assistant"
 BRIEF_SECTION_PROMPT_KEY = "briefSectionPrompt"
+BRIEF_CITATION_CHECK_KEY = "briefCitationCheck"
+CITATION_CHECK_DEFAULT = True
 
 
 def personal_impact_enabled(settings: dict) -> bool:
@@ -83,7 +85,11 @@ def merge_group_settings(groups: Sequence) -> dict:
                 if isinstance(value, dict):
                     tab_configs.append(value)
                 continue
-            if key not in (ASSISTANT_SETTINGS_KEY, BRIEF_SECTION_PROMPT_KEY):
+            if key not in (
+                ASSISTANT_SETTINGS_KEY,
+                BRIEF_SECTION_PROMPT_KEY,
+                BRIEF_CITATION_CHECK_KEY,
+            ):
                 merged.setdefault(key, value)
     if tab_configs:
         merged["tabs"] = merge_tabs(tab_configs)

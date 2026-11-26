@@ -12,15 +12,13 @@ const PHASE_CONFIG: Record<string, string> = {
   planning: 'Planning research approach',
   searching: 'Searching documents',
   synthesizing: 'Synthesizing answer',
+  checking_citations: 'Checking citations',
   reflecting: 'Reflecting on completeness',
 };
 
 export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, toolCalls }) => {
-  const hasSearchDetail = phase === 'searching' && (
-    (toolCalls && toolCalls.length > 0) || (searchQueries && searchQueries.length > 0)
-  );
-  // Show searching label for both searching and synthesizing (queries stay visible)
-  const showSearchingLabel = phase === 'searching' || phase === 'synthesizing';
+  const writingOrChecking = phase === 'synthesizing' || phase === 'checking_citations';
+  const showSearchingLabel = phase === 'searching' || writingOrChecking;
   const hasAnyQueries =
     (toolCalls && toolCalls.length > 0) || (searchQueries && searchQueries.length > 0);
 
@@ -73,10 +71,9 @@ export const AgentStatus: React.FC<AgentStatusProps> = ({ phase, searchQueries, 
                 ))}
             </div>
           )}
-          {/* Synthesizing row appended below queries */}
-          {phase === 'synthesizing' && (
+          {writingOrChecking && (
             <div className="agent-status-indicator agent-status-synthesizing">
-              <span className="agent-status-label">{PHASE_CONFIG.synthesizing}</span>
+              <span className="agent-status-label">{PHASE_CONFIG[phase]}</span>
               <span className="agent-status-dots">
                 <span className="dot">.</span>
                 <span className="dot">.</span>

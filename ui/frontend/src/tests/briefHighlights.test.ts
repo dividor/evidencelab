@@ -121,6 +121,7 @@ describe('highlightSectionSources', () => {
       undefined,
       // Brief highlighting detaches from the results-tab search usage context.
       null,
+      expect.any(AbortSignal),
     );
   });
 

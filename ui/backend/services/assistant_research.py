@@ -6,8 +6,9 @@ import operator
 import re
 from collections import Counter
 from dataclasses import dataclass
+from functools import partial
 from textwrap import shorten
-from typing import Any, Literal, Self, TypedDict, TypeVar
+from typing import Literal, Self, TypedDict, TypeVar
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -18,7 +19,6 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    StrictBool,
     StringConstraints,
     TypeAdapter,
     ValidationError,
@@ -27,15 +27,29 @@ from pydantic import (
 from starlette.concurrency import run_in_threadpool
 from typing_extensions import Annotated
 
-from ui.backend.services.agent_passages import passage_for_agent
+from ui.backend.auth.schemas import BriefSectionPrompt
+from ui.backend.services.assistant_grounding import (
+    Passage,
+    ReviewRequest,
+    check_research_draft,
+    invalid_citations,
+    prior_evidence_passages,
+    render_evidence,
+)
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
+from ui.backend.services.brief_section_prompt import (
+    BRIEF_SECTION_SCOPE,
+    BriefSectionScope,
+    apply_brief_section_scope,
+    brief_section_research_focus,
+    brief_section_scope_request,
+    build_section_prompt,
+)
 from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
 
-Passage = dict[str, Any]
-_CITATION = re.compile(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]")
 _SEARCH_TERMS_EXCLUDED = frozenset(
     "a an and the of in for by on what which how are does do that is were".split()
 )
@@ -47,8 +61,6 @@ _CLARIFY = "What would you like me to look up in the selected dataset?"
 _NO_DATASET_EVIDENCE = "NO_DATASET_EVIDENCE"
 _LibraryNextStep = Literal["ask", "rephrase", "focus"]
 _LIBRARY_NEXT_STEPS: tuple[_LibraryNextStep, ...] = ("ask", "rephrase", "focus")
-_MARKDOWN_ATX = re.compile(r"(?m)^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
-_MARKDOWN_SETEXT = re.compile(r"(?m)^(\S[^\r\n]*)\r?\n {0,3}(?:=+|-+)[ \t]*$")
 _SearchQuery = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
 ]
@@ -83,11 +95,6 @@ class ContextDisposition(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal["decline", "clarify"]
     next_step: _LibraryNextStep = "ask"
-
-
-class GroundingVerdict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    supported: StrictBool
 
 
 class FollowUpPlan(BaseModel):
@@ -135,6 +142,7 @@ class StreamTask(TypedDict):
     next_query: str
     reason: str
     budget: int
+    brief_focus: str | None
 
 
 class StreamResult(TypedDict):
@@ -152,11 +160,15 @@ class ResearchState(TypedDict, total=False):
     tasks: list[StreamTask]
     findings: Annotated[list[StreamResult], operator.add]
     answer: str
+    draft: str
+    correction: list[str]
+    verified_draft: str
+    answer_evidence: dict[int, Passage]
+    brief_focus: str | None
 
 
 _Plan = TypeVar("_Plan")
 _CONTEXT_PLAN = TypeAdapter(ContextSearch | ContextDisposition)
-_GROUNDING_VERDICT = TypeAdapter(GroundingVerdict)
 _INITIAL_PLAN: TypeAdapter[FollowUpPlan | StreamPlan] = TypeAdapter(
     FollowUpPlan | StreamPlan
 )
@@ -201,51 +213,6 @@ def _admit_passages(
     return (preferred + deferred)[:limit]
 
 
-def _prior_passages(
-    sources: list[Passage], messages: list[BaseMessage], limit: int
-) -> list[Passage]:
-    """Bring forward sources cited in recent assistant messages."""
-    cited = {
-        int(number)
-        for msg in messages
-        if isinstance(msg, AIMessage)
-        for group in _CITATION.findall(message_text(msg))
-        for number in re.findall(r"\d+", group)
-    }
-    return [
-        {
-            "global_index": s["index"],
-            "doc_id": s.get("docId"),
-            "title": s["title"],
-            "page": s.get("page"),
-            "text": s["text"],
-        }
-        for s in sources
-        if s.get("index") in cited and s.get("text")
-    ][-limit:]
-
-
-def _render_evidence(passages: list[Passage]) -> str:
-    rows = []
-    for p in passages:
-        content = passage_for_agent(p["text"])
-        if len(content) > 2400:
-            content = content[:1800] + "\n[excerpt continues]\n" + content[-600:]
-        rows.append(f'[{p["global_index"]}] {p["title"]}\n{content}')
-    return "\n\n".join(rows)
-
-
-def _invalid_citations(answer: str, evidence: list[Passage]) -> list[str]:
-    allowed = {p["global_index"] for p in evidence}
-    return [
-        group
-        for group in _CITATION.findall(answer)
-        if "-" in group
-        or "–" in group
-        or any(int(n) not in allowed for n in group.split(","))
-    ]
-
-
 class ResearchWorkflow:
     """Run retrieval, plan another search when useful, and write from the evidence."""
 
@@ -258,7 +225,9 @@ class ResearchWorkflow:
         limits: ResearchLimits,
         opening: str,
         contextualizer: str,
-        brief_section: bool,
+        brief_section: BriefSectionPrompt | None,
+        check_citations: bool,
+        citation_llm,
     ):
         if limits.searches < 1 or limits.searches_per_stream < 1:
             raise ValueError("Assistant search budgets must be at least one")
@@ -268,14 +237,15 @@ class ResearchWorkflow:
         self.opening = opening
         self.contextualizer = contextualizer
         self.brief_section = brief_section
+        self.check_citations = check_citations
+        self.citation_request: ReviewRequest = partial(
+            self._request_json, llm=citation_llm
+        )
         self.writer = writer
         self.limits = limits
         self.request = assistant_prompt_templates.get_template(
             "assistant_research_request.j2"
         )
-        self.grounding_check = assistant_prompt_templates.get_template(
-            "assistant_grounding_check.j2"
-        ).render()
         # Research streams can plan concurrently. Keep citation allocation and
         # progress in search order since the tracker is shared for the whole turn.
         self.search_lock = asyncio.Lock()
@@ -332,26 +302,50 @@ class ResearchWorkflow:
             query = question
         results = await self._search(query, reason=reason)
         evidence = _admit_passages(results, [], self.limits.initial_passages)
-        prior = _prior_passages(
+        prior = prior_evidence_passages(
             self.tracker.prior_sources,
             history,
             self.limits.previous_passages,
         )
         evidence += _admit_passages(prior, evidence, len(prior))
-        return {"evidence": evidence, "searches": [query]}
+        started: ResearchState = {"evidence": evidence, "searches": [query]}
+        if self.brief_section is not None:
+            section = await self._scope_brief(self.brief_section, config)
+            started["query"] = build_section_prompt(section)
+            started["brief_focus"] = brief_section_research_focus(section)
+        return started
+
+    async def _scope_brief(
+        self, section: BriefSectionPrompt, config: RunnableConfig
+    ) -> BriefSectionPrompt:
+        if not section.instructions or not section.instructions.strip():
+            return section
+        system, prompt, common, choices = brief_section_scope_request(section)
+        result: BriefSectionScope = await self._request_json(
+            system, prompt, [], config, BRIEF_SECTION_SCOPE
+        )
+        logger.info(
+            "Brief section selected %s from %d author instruction blocks",
+            result.selected,
+            len(choices),
+        )
+        return apply_brief_section_scope(section, common, choices, result)
 
     async def organize(
         self, state: ResearchState, config: RunnableConfig
     ) -> ResearchState:
-        question = state["query"]
         searches = state["searches"]
+        question = searches[0] if self.brief_section else state["query"]
+        brief_focus = state.get("brief_focus")
         history = state.get("messages", [])
         initial = state["evidence"]
         prompt = self.request.render(
             stage="organize",
             question=question,
             first_search=searches[0],
-            evidence=_render_evidence(initial),
+            evidence=render_evidence(initial),
+            brief_section=self.brief_section,
+            brief_focus=brief_focus,
         )
         plan: FollowUpPlan | StreamPlan = await self._request_json(
             self.opening, prompt, history, config, _INITIAL_PLAN
@@ -370,6 +364,7 @@ class ResearchWorkflow:
                         "next_query": item.query,
                         "reason": "",
                         "budget": self.limits.searches_per_stream,
+                        "brief_focus": brief_focus,
                     }
                     for index, item in enumerate(plan.streams)
                 ]
@@ -390,6 +385,7 @@ class ResearchWorkflow:
                     "next_query": query,
                     "reason": plan.reason,
                     "budget": self.limits.searches - 1,
+                    "brief_focus": brief_focus,
                 }
             ]
         }
@@ -446,8 +442,9 @@ class ResearchWorkflow:
             geographic_scope=task["geographic_scope"],
             remaining=remaining,
             searches=history,
-            recent=_render_evidence(recent),
-            evidence=_render_evidence(evidence[: len(evidence) - len(recent)]),
+            brief_focus=task["brief_focus"],
+            recent=render_evidence(recent),
+            evidence=render_evidence(evidence[: len(evidence) - len(recent)]),
         )
 
     @staticmethod
@@ -461,13 +458,16 @@ class ResearchWorkflow:
         history: list[BaseMessage],
         config: RunnableConfig,
         schema: TypeAdapter[_Plan],
+        *,
+        llm=None,
     ) -> _Plan:
         messages = [SystemMessage(content=system), *history]
         for attempt in range(2):
             request = prompt
             if attempt:
                 request += "\n\n" + self.request.render(stage="retry_plan")
-            response = await self.llm.ainvoke(
+            model = self.llm if llm is None else llm
+            response = await model.ainvoke(
                 [*messages, HumanMessage(content=request)], config=config
             )
             raw = message_text(response).strip()
@@ -490,7 +490,7 @@ class ResearchWorkflow:
             "The Assistant model could not produce a valid structured response"
         )
 
-    async def answer(
+    async def draft_answer(
         self, state: ResearchState, config: RunnableConfig
     ) -> ResearchState:
         stream = get_stream_writer()
@@ -498,62 +498,72 @@ class ResearchWorkflow:
         findings = sorted(state.get("findings", []), key=lambda entry: entry["order"])
         gathered = (p for f in findings for p in f["evidence"])
         evidence = {p["global_index"]: p for p in (*state["evidence"], *gathered)}
-        groups = _render_streams(findings)
-        answer = (
+        draft = (
             await self._write(
-                state["query"],
-                state.get("messages", []),
-                list(evidence.values()),
-                config,
-                groups,
+                state, list(evidence.values()), config, _render_streams(findings)
             )
             if evidence
             else _NO_EVIDENCE
         )
-        if answer != _NO_EVIDENCE:
-            checked = await self._verify_answer(state, answer, evidence, config)
-            if not checked:
-                answer = _NO_EVIDENCE
-        stream({"type": "token", "token": answer})
-        return {"answer": answer}
+        return {"draft": draft, "answer_evidence": evidence}
 
-    async def _verify_answer(
-        self,
-        state: ResearchState,
-        answer: str,
-        evidence: dict[int, Passage],
-        config: RunnableConfig,
-    ) -> bool:
-        cited = [evidence[index] for index in cited_numbers_in_order(answer)]
-        prompt = self.request.render(
-            stage="verify",
-            question=state["query"],
-            search_focus=state["searches"][0],
-            answer=answer,
-            evidence=_render_evidence(cited),
-        )
-        verdict: GroundingVerdict = await self._request_json(
-            self.grounding_check, prompt, [], config, _GROUNDING_VERDICT
-        )
-        return verdict.supported
+    async def check_answer(
+        self, state: ResearchState, config: RunnableConfig
+    ) -> ResearchState:
+        answer = state["draft"]
+        if answer != _NO_EVIDENCE:
+            if self.check_citations:
+                get_stream_writer()({"type": "phase", "phase": "checking_citations"})
+            review = await check_research_draft(
+                answer,
+                state["query"],
+                state["searches"][0],
+                state["answer_evidence"],
+                config,
+                self._request_json,
+                brief_section=self.brief_section is not None,
+                check_citations=self.check_citations,
+                citation_request=self.citation_request,
+            )
+            if review.issues:
+                if self.brief_section is not None and not state.get("correction"):
+                    return {
+                        "correction": review.issues,
+                        "draft": review.revision_base or answer,
+                        "verified_draft": review.supported_text,
+                    }
+                if review.supported_text:
+                    answer = review.supported_text
+                elif not state.get("correction"):
+                    return {
+                        "correction": review.issues,
+                        "draft": review.revision_base or answer,
+                    }
+                else:
+                    answer = _NO_EVIDENCE
+        if answer == _NO_EVIDENCE and state.get("verified_draft"):
+            answer = state["verified_draft"]
+        get_stream_writer()({"type": "token", "token": answer})
+        return {"answer": answer}
 
     async def _write(
         self,
-        query: str,
-        history: list[BaseMessage],
+        state: ResearchState,
         evidence: list[Passage],
         config: RunnableConfig,
         groups: str,
     ) -> str:
         user_prompt = self.request.render(
             stage="answer",
-            question=query,
+            question=state["query"],
             streams=groups,
-            evidence=_render_evidence(evidence),
+            evidence=render_evidence(evidence),
+            correction=state.get("correction"),
+            draft=state.get("draft"),
         )
         messages = [
             SystemMessage(content=self.writer),
-            *history,
+            *state.get("messages", []),
             HumanMessage(content=user_prompt),
         ]
         for _ in range(2):
@@ -561,9 +571,7 @@ class ResearchWorkflow:
             answer = message_text(response).strip()
             if answer == _NO_DATASET_EVIDENCE or not answer:
                 return _NO_EVIDENCE
-            if self.brief_section:
-                answer = _brief_prose(answer)
-            invalid = _invalid_citations(answer, evidence)
+            invalid = invalid_citations(answer, evidence)
             if not invalid:
                 return answer if cited_numbers_in_order(answer) else _NO_EVIDENCE
             messages.extend(
@@ -594,12 +602,6 @@ def _library_refusal(next_step: _LibraryNextStep, history: list[BaseMessage]) ->
     )
 
 
-def _brief_prose(answer: str) -> str:
-    """Keep model-generated heading text and citations as ordinary prose."""
-    prose = _MARKDOWN_ATX.sub(r"\1", answer)
-    return _MARKDOWN_SETEXT.sub(r"\1\n", prose).strip()
-
-
 def _render_streams(findings: list[StreamResult]) -> str:
     rows = []
     for finding in findings:
@@ -621,21 +623,38 @@ def build_research_workflow(
     opening: str,
     *,
     contextualizer: str,
-    brief_section: bool = False,
+    brief_section: BriefSectionPrompt | None = None,
+    check_citations: bool = True,
+    citation_llm=None,
 ):
     workflow = ResearchWorkflow(
-        llm, tracker, planner, writer, limits, opening, contextualizer, brief_section
+        llm,
+        tracker,
+        planner,
+        writer,
+        limits,
+        opening,
+        contextualizer,
+        brief_section,
+        check_citations,
+        citation_llm,
     )
     graph = StateGraph(ResearchState)
     graph.add_node("start", workflow.start)
     graph.add_node("organize", workflow.organize)
     graph.add_node("research", workflow.research)
-    graph.add_node("answer", workflow.answer)
+    graph.add_node("answer", workflow.draft_answer)
+    graph.add_node("check_citations", workflow.check_answer)
     graph.add_edge(START, "start")
     graph.add_conditional_edges(
         "start", lambda state: bool(state.get("answer")), {True: END, False: "organize"}
     )
     graph.add_conditional_edges("organize", workflow.dispatch, ["research", "answer"])
     graph.add_edge("research", "answer")
-    graph.add_edge("answer", END)
+    graph.add_edge("answer", "check_citations")
+    graph.add_conditional_edges(
+        "check_citations",
+        lambda state: bool(state.get("answer")),
+        {True: END, False: "answer"},
+    )
     return graph.compile()

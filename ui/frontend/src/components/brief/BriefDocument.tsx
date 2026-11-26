@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchResult, SourceReference } from '../../types/api';
-import { CitedMarkdown, CitedReferences } from '../citations/CitedContent';
+import { CitedMarkdown, CitedReferences, RequestCitationHighlight } from '../citations/CitedContent';
 import { IconClock, IconCopy, IconDownload, IconEdit, IconFactCheck, IconRefresh, IconShare, IconSparkle } from './BriefIcons';
 import { BriefFactCheckTooltip } from './BriefFactCheckTooltip';
 import { useFactMarkPainter, UseBriefFactCheckReturn } from './useBriefFactCheck';
@@ -81,7 +81,7 @@ interface SectionViewProps {
   // Viewer-only (shared brief): no editing or AI actions.
   readOnly?: boolean;
   // Hover on an un-enriched citation asks for that source to be highlighted.
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   // Commented passages in this section, and the thread currently open.
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
@@ -375,7 +375,7 @@ const SectionDoneBody: React.FC<{
   showingChanges: boolean;
   onToggleChanges: () => void;
   onSourceClick: (source: SourceReference) => void;
-  onRequestHighlight?: (source: SourceReference) => void;
+  onRequestHighlight?: RequestCitationHighlight;
   marks?: CommentMark[];
   onOpenThread?: (threadId: string) => void;
   activeThreadId?: string | null;
@@ -1207,8 +1207,8 @@ export const BriefDocument: React.FC<BriefDocumentProps> = ({
           brief={brief}
           onSourceClick={handleSourceClick}
           readOnly={readOnly}
-          onRequestHighlight={(src) =>
-            src.chunkId && brief.requestSourceHighlight(s.id, src.chunkId)
+          onRequestHighlight={(src, claim) =>
+            src.chunkId ? brief.requestSourceHighlight(s.id, src.chunkId, claim) : undefined
           }
           marks={showComments === false ? undefined : commentMarks?.get(s.id)}
           onOpenThread={onOpenThread}

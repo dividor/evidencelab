@@ -73,6 +73,8 @@ export interface GroupLlmChoices {
   briefModel?: string;
   /** The model that judges evaluations and the Brief citation check. */
   judgeModel?: string;
+  /** The model that checks citations before Assistant and Brief results are shown. */
+  citationCheckModel?: string;
 }
 
 /** Overrides for conversations in the Assistant tab. */
@@ -89,6 +91,7 @@ export interface AssistantGroupSettings {
   deepSearches?: number;
   deepSearchesPerStream?: number;
   deepResearchByDefault?: boolean;
+  citationCheck?: boolean;
 }
 
 /**
@@ -114,6 +117,7 @@ export interface UserGroup {
   search_settings?: (EffectiveSettings & GroupLlmChoices & {
     assistant?: AssistantGroupSettings;
     briefSectionPrompt?: string;
+    briefCitationCheck?: boolean;
   }) | null;
   summary_prompt?: string | null;
 }

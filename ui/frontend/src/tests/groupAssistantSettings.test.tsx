@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import GroupSettingsManager from '../components/admin/GroupSettingsManager';
 
@@ -21,7 +21,7 @@ test('loads and saves Assistant overrides independently of the AI Summary prompt
     url.endsWith('/config/llms')
       ? { data: [{ name: 'nova-2-lite', supports_temperature: true }] }
       : url.endsWith('/groups/assistant-defaults')
-        ? { data: { searches: 4, planningInstructions: 'Find gaps in the evidence.', answerInstructions: 'Synthesize the evidence.', deepResearchByDefault: false } }
+        ? { data: { searches: 4, planningInstructions: 'Find gaps in the evidence.', answerInstructions: 'Synthesize the evidence.', deepResearchByDefault: false, citationCheck: true } }
         : { data: [group] }
   ));
   mocked.patch.mockResolvedValue({ data: group });
@@ -32,6 +32,9 @@ test('loads and saves Assistant overrides independently of the AI Summary prompt
   fireEvent.click(await screen.findByRole('tab', { name: 'Assistant', exact: true }));
   expect(screen.getByLabelText('Assistant searches per stream')).toHaveValue(2);
   await screen.findByRole('option', { name: 'nova-2-lite' });
+  const assistantPanel = within(screen.getByRole('tabpanel', { name: 'Assistant' }));
+  expect(assistantPanel.getByRole('option', { name: 'On (default)' })).toHaveValue('');
+  fireEvent.change(assistantPanel.getByLabelText('Automatic citation check'), { target: { value: 'false' } });
   const planning = screen.getByLabelText('Planning prompt');
   const answer = screen.getByLabelText('Answer prompt');
   expect(planning).toHaveValue('Find gaps in the evidence.');
@@ -63,6 +66,7 @@ test('loads and saves Assistant overrides independently of the AI Summary prompt
       rerank: true,
       assistant: {
         model: 'nova-2-lite', temperature: 0.2, maxTokens: 2500, deepResearchByDefault: true,
+        citationCheck: false,
         planningInstructions: 'Verify the reported coverage.', answerInstructions: 'Separate findings by country.',
         searchesPerStream: 2, deepSearchesPerStream: 5,
       },

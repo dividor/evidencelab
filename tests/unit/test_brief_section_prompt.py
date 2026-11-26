@@ -15,12 +15,16 @@ from ui.backend.auth.schemas import (
     BriefSectionPrompt,
     BriefSurveyPrompt,
 )
+from ui.backend.services.assistant_settings import AssistantSettings
 from ui.backend.services.brief_section_prompt import (
+    brief_citation_check_for_groups,
     brief_section_prompt_default,
     brief_section_prompt_for_groups,
+    brief_section_research_focus,
     build_section_prompt,
     build_survey_prompt,
     outline_context,
+    validate_brief_citation_check,
     validate_brief_section_prompt,
 )
 from ui.backend.services.group_settings import merge_group_settings
@@ -62,11 +66,14 @@ def test_invalid_brief_prompt_is_rejected(value):
 
 
 @pytest.mark.asyncio
-async def test_brief_override_is_resolved_only_for_a_researched_section():
+async def test_brief_overrides_are_resolved_only_for_brief_research():
     from ui.backend.routes import assistant
 
     group = SimpleNamespace(
-        search_settings={"briefSectionPrompt": "Explain the method."}
+        search_settings={
+            "briefSectionPrompt": "Explain the method.",
+            "briefCitationCheck": False,
+        }
     )
     user = SimpleNamespace(id="test-user")
     session = object()
@@ -80,17 +87,32 @@ async def test_brief_override_is_resolved_only_for_a_researched_section():
         patch.object(assistant, "_USER_MODULE", True),
         patch.object(assistant, "user_groups", get_groups),
     ):
-        assert (
-            await assistant._brief_section_instructions(section, user, session)
-            == "Explain the method."
+        assert await assistant._research_preferences(
+            section, user, session, AssistantSettings(citationCheck=True)
+        ) == (
+            "Explain the method.",
+            False,
         )
-        assert (
-            await assistant._brief_section_instructions(
-                AssistantChatRequest(query="What works?"), user, session
-            )
-            is None
-        )
+        assert await assistant._research_preferences(
+            AssistantChatRequest(query="What works?"),
+            user,
+            session,
+            AssistantSettings(citationCheck=False),
+        ) == (None, False)
     get_groups.assert_awaited_once_with(session, user.id)
+
+
+def test_brief_citation_check_defaults_on_and_rejects_non_boolean_overrides():
+    assert brief_citation_check_for_groups([]) is True
+    settings = {"briefCitationCheck": False}
+    validate_brief_citation_check(settings)
+    assert (
+        brief_citation_check_for_groups([SimpleNamespace(search_settings=settings)])
+        is False
+    )
+    with pytest.raises(HTTPException) as error:
+        validate_brief_citation_check({"briefCitationCheck": "false"})
+    assert error.value.status_code == 422
 
 
 def _prompt(current=0, outline=None, **parts) -> str:
@@ -136,15 +158,37 @@ class TestBuildSectionPrompt:
         assert "Overall brief guidance: prioritise RCTs since 2018" in prompt
         assert "Focus for this section: emphasise rural areas" in prompt
 
-    def test_prompt_when_single_section_without_topic_then_exact_text(self):
+    def test_prompt_when_single_section_without_topic_then_names_the_assignment(self):
         prompt = _prompt(0, outline=[{"title": "Background", "level": 1}])
-        assert prompt == (
+        assert prompt.startswith(
             'Write the "Background" section of an evidence brief. '
             "Search the document library for evidence relevant to this specific "
             "section and cite a source for every claim. "
             "Your final answer must be the finished section text itself — never "
             "a description of what you are about to do, a promise to research, "
             "or narration of your process."
+        )
+        assert "finished prose for the assigned section “Background”" in prompt
+        assert (
+            "Leave out standalone labels, repeated titles, and side topics." in prompt
+        )
+
+    def test_research_focus_keeps_scoped_guidance_and_leaves_out_the_draft(self):
+        section = BriefSectionPrompt(
+            outline=OUTLINE,
+            current=1,
+            instructions="Find the share of covered schools.",
+            focus="  Find rural coverage ",
+            instruction=" Check uptake ",
+            draft="The original draft.",
+        )
+        assert (
+            brief_section_research_focus(section)
+            == "Find the share of covered schools.\nFind rural coverage\nCheck uptake"
+        )
+        assert (
+            brief_section_research_focus(BriefSectionPrompt(outline=OUTLINE, current=1))
+            is None
         )
 
     def test_prompt_when_update_then_keeps_draft_and_dates_search(self):
@@ -171,12 +215,22 @@ class TestBuildSectionPrompt:
         prompt = _prompt(2, topic="cash transfers")
         assert prompt.index("Write") < prompt.index("full outline of the brief")
 
-    def test_prompt_when_voice_then_ends_with_voice_profile(self):
-        prompt = _prompt(0, voice_instructions="Plain, short sentences.")
-        assert prompt.endswith(
-            "Voice & tone profile — write the section in this style: "
-            "Plain, short sentences."
+    def test_parent_section_assignment_introduces_its_child_headings(self):
+        prompt = _prompt(2, topic="cash transfers")
+        assert (
+            "short introduction to these child sections: Cost efficiency, Outcomes"
+            in prompt
         )
+        assert (
+            "leave their evidence, examples, and detailed questions to them" in prompt
+        )
+
+    def test_prompt_when_voice_then_includes_voice_before_the_assignment(self):
+        prompt = _prompt(0, voice_instructions="Plain, short sentences.")
+        assert (
+            "Voice & tone profile — write the section in this style: "
+            "Plain, short sentences.\n\nReturn only the finished prose"
+        ) in prompt
 
 
 @pytest.mark.unit

@@ -27,21 +27,26 @@ from ui.backend.services.assistant_settings import (
     assistant_settings_for_groups,
 )
 from ui.backend.services.brief_section_prompt import (
+    brief_citation_check_for_groups,
     brief_search_query,
     brief_section_prompt_default,
     brief_section_prompt_for_groups,
-    build_section_prompt,
     build_survey_prompt,
 )
 from ui.backend.services.data_source_access import settle_data_source
-from ui.backend.services.group_settings import user_groups
-from ui.backend.services.llm_choice import BRIEF, user_group_choice
+from ui.backend.services.group_settings import CITATION_CHECK_DEFAULT, user_groups
+from ui.backend.services.llm_choice import (
+    BRIEF,
+    CITATION_CHECK,
+    config_defaults,
+    user_group_choice,
+)
 from ui.backend.services.usage_recorder import (
     schedule_daily_spend_recording,
     schedule_llm_usage_recording,
 )
 from ui.backend.utils.app_limits import get_rate_limits, limiter
-from ui.backend.utils.llm_request_limits import check_model_config
+from ui.backend.utils.llm_request_limits import check_model_config, check_requested_llm
 
 logger = logging.getLogger(__name__)
 
@@ -139,15 +144,34 @@ async def _assistant_answer_prompt(
     return await _resolve_group_prompt(user, session)
 
 
-async def _brief_section_instructions(body, user, session) -> str | None:
-    if body.brief_section is None:
-        return None
+async def _research_preferences(
+    body, user, session, assistant_settings: AssistantSettings
+) -> tuple[str | None, bool]:
+    if body.brief_section is None and body.brief_survey is None:
+        enabled = assistant_settings.citationCheck
+        return None, CITATION_CHECK_DEFAULT if enabled is None else enabled
     user_id = getattr(user, "id", None)
-    if _USER_MODULE and user_id is not None and session is not None:
-        prompt = brief_section_prompt_for_groups(await user_groups(session, user_id))
-        if prompt:
-            return prompt
-    return await run_in_threadpool(brief_section_prompt_default)
+    groups = (
+        await user_groups(session, user_id)
+        if _USER_MODULE and user_id is not None and session is not None
+        else []
+    )
+    citation_check = brief_citation_check_for_groups(groups)
+    if body.brief_section is None:
+        return None, citation_check
+    prompt = brief_section_prompt_for_groups(groups) or await run_in_threadpool(
+        brief_section_prompt_default
+    )
+    return prompt, citation_check
+
+
+async def _citation_model(check_citations: bool, user, session) -> str | None:
+    if not check_citations:
+        return None
+    selected = await user_group_choice(session, user, CITATION_CHECK)
+    model = selected or config_defaults()[CITATION_CHECK]
+    check_requested_llm(model, None)
+    return model
 
 
 # ---------------------------------------------------------------------------
@@ -173,9 +197,7 @@ async def _anext_or_stop(ait):
 def _research_input(body: AssistantChatRequest) -> tuple[str, str | None]:
     """Return the writing prompt and an optional separate first search."""
     if body.brief_section:
-        return build_section_prompt(body.brief_section), brief_search_query(
-            body.brief_section
-        )
+        return body.query, brief_search_query(body.brief_section)
     if body.brief_survey:
         return build_survey_prompt(body.brief_survey), brief_search_query(
             body.brief_survey
@@ -342,7 +364,10 @@ async def stream_assistant_chat(
             for message in body.conversation_history
         ]
     group_prompt = await _assistant_answer_prompt(settings, user, session)
-    brief_section_prompt = await _brief_section_instructions(body, user, session)
+    brief_section_prompt, check_citations = await _research_preferences(
+        body, user, session, settings
+    )
+    citation_model_key = await _citation_model(check_citations, user, session)
 
     async def event_generator():
         thread_id = body.thread_id
@@ -371,6 +396,9 @@ async def stream_assistant_chat(
                 target_words=body.target_words,
                 introduces_sub_sections=body.introduces_sub_sections,
                 brief_section_prompt=brief_section_prompt,
+                brief_section=body.brief_section,
+                check_citations=check_citations,
+                citation_model_key=citation_model_key,
             ).__aiter__()
 
             async for event in _stream_with_heartbeat(ait):

@@ -41,6 +41,8 @@ test('carries the stream and evidence gap from search progress into the search d
     expect(screen.getByText('Cost per cured individual in acute malnutrition treatment')).toBeVisible();
     render(<AgentStatus phase="searching" toolCalls={calls} searchQueries={['recovery rate by cohort']} />);
     expect(screen.getByText('Recovery rate by cohort')).toBeVisible();
+    render(<AgentStatus phase="checking_citations" toolCalls={calls} />);
+    expect(screen.getByText('Checking citations')).toBeVisible();
   } finally {
     global.fetch = originalFetch;
     global.TextDecoder = previousDecoder;

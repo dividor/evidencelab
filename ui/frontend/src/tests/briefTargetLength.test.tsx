@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import axios from 'axios';
 import { BriefTab } from '../components/brief/BriefTab';
 
@@ -132,5 +132,36 @@ describe('Brief section length target', () => {
       const saved = JSON.parse(localStorage.getItem('evidencelab_brief_history_v1') || '[]');
       expect(saved[0]?.targetWords).toBe(150);
     });
+  });
+
+  test('a failed regeneration keeps the previous section visible during and after the run', async () => {
+    mockResearchSection.mockImplementation(answerWith(condensedText));
+    startManualBriefWithShortTarget();
+    runDeepResearch();
+    const [regenerate] = await screen.findAllByRole('button', { name: 'AI Regenerate' });
+    const section = regenerate.closest('section');
+    if (!section) throw new Error('The regenerate button must belong to a section');
+    const originalText = section.querySelector('.brief-doc-content')?.textContent;
+    expect(originalText).toContain('The programme raised enrolment');
+
+    let fail = () => { throw new Error('The regression run did not start'); };
+    mockResearchSection.mockImplementationOnce(({ handlers }) => new Promise<void>((resolve) => {
+      handlers.onToken('Unsaved replacement');
+      fail = () => {
+        handlers.onError('The research could not be completed.');
+        resolve();
+      };
+    }));
+    fireEvent.click(regenerate);
+    fireEvent.click(within(section).getByRole('button', { name: 'Re-research section' }));
+    await waitFor(() => expect(section.querySelector('.brief-researching')).toBeInTheDocument());
+    expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
+    expect(within(section).queryByText('Unsaved replacement')).toBeNull();
+
+    await act(async () => fail());
+    expect(await screen.findByText('The research could not be completed.')).toBeInTheDocument();
+    expect(section.querySelector('.brief-doc-content')?.textContent).toEqual(originalText);
+    expect(section.querySelector('.brief-researching')).toBeNull();
+    expect(within(section).getByRole('button', { name: 'AI Regenerate' })).toBeInTheDocument();
   });
 });
