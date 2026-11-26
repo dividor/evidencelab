@@ -142,14 +142,12 @@ describe('UserManager', () => {
       expect(screen.getByText('alice@test.com')).toBeInTheDocument();
     });
 
-    // Find checkboxes in alice's row
-    const rows = document.querySelectorAll('tbody tr');
-    const aliceRow = rows[0];
-    const checkboxes = aliceRow.querySelectorAll('input[type="checkbox"]');
-    // Active checkbox (first one) should be checked
-    expect((checkboxes[0] as HTMLInputElement).checked).toBe(true);
+    const active = screen.getByRole('checkbox', { name: 'Active: alice@test.com' });
+    expect(active).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Verified: alice@test.com' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'Admin: alice@test.com' })).not.toBeChecked();
 
-    fireEvent.click(checkboxes[0]);
+    fireEvent.click(active);
     await waitFor(() => {
       expect(mockedAxios.patch).toHaveBeenCalledWith(
         '/api/users/user-1/flags',

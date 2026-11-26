@@ -10239,6 +10239,17 @@ sup.reference-number {
   overflow-x: auto;
 }
 
+.admin-search-form {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.admin-search-form .admin-search-input {
+  width: 250px;
+  min-width: 0;
+}
+
 .admin-email-cell {
   white-space: nowrap;
 }
@@ -13217,6 +13228,11 @@ button.doc-link:hover {
 
 .toc-validator-table .filter-icon-button {
   flex-shrink: 0;
+}
+
+.toc-validator-filter-popover {
+  --toc-filter-width: min(280px, calc(100vw - 16px));
+  width: var(--toc-filter-width);
 }
 
 /* Click-away layer; sits just under .filter-popover (z-index: 1000). */
