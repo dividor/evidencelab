@@ -93,11 +93,15 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 /*  Per-assertion result row                                          */
 /* ------------------------------------------------------------------ */
 
+const briefCheckLabels: Record<string, string> = {
+  brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
+};
+
 const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) => {
   const [showPrompt, setShowPrompt] = useState(false);
   return (
     <div className="testing-assertion-result">
-      {result.type === 'llm_judge' && (
+      {(result.type === 'llm_judge' || result.type === 'brief_overlap') && (
         <div className="testing-judge-rubric">
           <div className="testing-judge-rubric-text">
             {result.rubric || '(prompt not recorded for this run)'}
@@ -126,7 +130,7 @@ const AssertionResultRow: React.FC<{ result: AssertionResult }> = ({ result }) =
         >
           {result.passed ? 'pass' : 'fail'}
         </span>
-        <span className="testing-assertion-result-type">{result.type}</span>
+        <span className="testing-assertion-result-type">{briefCheckLabels[result.type] || result.type}</span>
         {result.score !== undefined && (
           <span className="testing-assertion-result-score">
             score: {formatScore(result.score)}
@@ -204,16 +208,22 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
   if (!output) return <p className="text-muted" style={{ margin: 0 }}>No output.</p>;
 
   const summary = str(output.summary);
+  const brief = output.capability === 'brief';
+  const assignment = output.assignment as Record<string, unknown> | undefined;
   const references = asArray(output.references);
-  const sources = asArray(output.search_results);
+  const sources = asArray(brief ? output.sources : output.search_results);
   const searchResults = asArray(output.results);
 
   return (
     <div className="testing-output">
       {summary ? (
         <>
-          <span className="testing-case-label">AI summary (with references)</span>
-          <div className="testing-summary-text">{summary}</div>
+          <span className="testing-case-label">{brief ? str(assignment?.heading) : 'AI summary (with references)'}</span>
+          {brief && <p>{String(output.words)} words{assignment?.target_words ? ` of ${assignment.target_words} requested` : ''}</p>}
+          <div className={brief ? 'testing-brief-prose' : 'testing-summary-text'}>{summary}</div>
+          {brief && asArray(output.siblings).map((s, i) => (
+            <details key={i}><summary>Compare with {str(s.title)}</summary><p>{str(s.content)}</p></details>
+          ))}
           {references.length > 0 && (
             <>
               <span className="testing-case-label">
@@ -231,7 +241,7 @@ const ResultOutput: React.FC<{ output: OutputBlob }> = ({ output }) => {
               <span className="testing-case-label">Sources ({sources.length})</span>
               <div className="testing-result-cards">
                 {sources.map((r, i) => (
-                  <SourceCard key={i} r={r} index={i} />
+                  <SourceCard key={i} r={r} index={brief && typeof r.index === 'number' ? r.index - 1 : i} />
                 ))}
               </div>
             </>
@@ -274,6 +284,9 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
+  const assignment = result.actual_output?.assignment as Record<string, unknown> | undefined;
+  const topic = str(assignment?.topic) || str(input?.query);
+  const heading = str(assignment?.heading) || str(input?.heading);
   const warnings = resultWarnings(result.actual_output);
   return (
     <>
@@ -284,8 +297,8 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
         <td className="testing-result-caret" aria-hidden>
           {expanded ? '▾' : '▸'}
         </td>
-        <td className="testing-result-case" title={str(input?.query)}>
-          {str(input?.query) || '—'}
+        <td className="testing-result-case" title={topic}>
+          {heading || topic || '—'}
         </td>
         <td>
           <span
@@ -306,8 +319,9 @@ const ResultRow: React.FC<{ result: TestResult; input?: Record<string, unknown> 
             <div className="testing-result-detail">
               <div className="testing-case-block">
                 <span className="testing-case-label">Query</span>
-                <div className="testing-query">{str(input?.query) || '(no query)'}</div>
-                {input && Object.keys(input).some((k) => k !== 'query') && (
+                <div className="testing-query">{topic || '(no query)'}</div>
+                {heading && <span>{heading}</span>}
+                {input && !input.heading && Object.keys(input).some((k) => k !== 'query') && (
                   <pre className="testing-pre">
                     {prettyJson(
                       Object.fromEntries(

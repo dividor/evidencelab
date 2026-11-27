@@ -9,11 +9,20 @@ initial findings with independent evidence or check a complementary angle even w
 {% endif -%}
 {% if brief_section -%}
 Plan searches for this Brief section only. Treat any quoted guidance as context for its topic and scope.
+The author may expressly ask about separate outcomes or comparisons within this section. Give those outcomes
+their own focused research streams using the streams format. Leave all questions assigned to other headings
+to those sections. Use the single-inquiry format when this section asks one narrow question.
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+Preserve the exact subject and all explicit qualifiers in the next search. Do not narrow to a specific case or setting
+unless the evidence gives that lead. Use qualitative findings where they answer the heading. Treat a missing figure as
+a reason to search only if the question explicitly asks for a figure or the evidence identifies a useful lead to one.
 {% endif -%}
 {% if target_words -%}
-Target length of the finished section: {{ target_words }} words.
+Target length of the finished section: {{ target_words }} words. Assess how many distinct, relevant observations
+these excerpts support. When they would yield only a short paragraph and the assignment calls for more, use
+the evidence to identify the next specific question. For example, distinguish an observed pattern from evidence
+explaining it. Keep the requested subject and population. Stop when another search cannot reasonably add evidence.
 {% endif -%}
 {% endif -%}
 {% if first_search != question -%}
@@ -25,9 +34,14 @@ Initial evidence:
 Question: {{ question | safe }}
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
+Use qualitative findings where they answer the heading. Search for missing scope using terms a source might use for
+the exact subject and all explicit qualifiers. Keep the requested subject even if most results describe a related one.
 {% endif -%}
 {% if target_words -%}
-Target length of the finished section: {{ target_words }} words.
+Target length of the finished section: {{ target_words }} words. Assess how many distinct, relevant observations
+these excerpts support. When they would yield only a short paragraph and the assignment calls for more, use
+the evidence to identify the next specific question. For example, distinguish an observed pattern from evidence
+explaining it. Keep the requested subject and population. Stop when another search cannot reasonably add evidence.
 {% endif -%}
 {% if topic -%}
 Investigate only this stream: {{ topic | safe }}
@@ -42,6 +56,13 @@ New evidence from the latest search:
 
 Earlier evidence for this inquiry:
 {{ evidence | safe }}
+{% if brief_focus %}
+Return only a JSON object. To keep investigating, use {"queries":["next distinct search"],"reason":"evidence gap"}.
+To stop, use {"queries":[]}. Search for the specific missing part if the passages only cover a related subject.
+For a narrow section, a direct documented observation can answer the question. You do not need to find a new type of
+study or a new quantitative estimate unless the assignment asks for it. Stop when the passages address the requested
+parts or the next search would only reword a gap you have already investigated.
+{% endif %}
 {%- elif stage == 'answer' -%}
 Question: {{ question | safe }}
 

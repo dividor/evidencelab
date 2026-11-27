@@ -132,6 +132,12 @@ const AI_SUMMARY_ASSERTIONS: AssertionTypeSpec[] = [
 export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionTypeSpec[]> = {
   search: SEARCH_ASSERTIONS,
   ai_summary: AI_SUMMARY_ASSERTIONS,
+  brief: [
+    { type: 'brief_length', label: 'Word count meets target', fields: [] },
+    { type: 'brief_structure', label: 'Section format and citations', fields: [] },
+    { type: 'brief_overlap', label: 'Findings are distinct across sections', fields: [] },
+    ...AI_SUMMARY_ASSERTIONS.filter((spec) => spec.type === 'llm_judge'),
+  ],
 };
 
 export const getAssertionSpecs = (capability: TestCapability): AssertionTypeSpec[] =>

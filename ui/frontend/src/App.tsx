@@ -3082,6 +3082,7 @@ function App() {
         searchTab={searchTab}
         assistantTab={
           <AssistantTab
+            modelsReady={searchModelsReady}
             defaultDeepResearch={groupDefaults?.assistantDeepResearchByDefault}
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}

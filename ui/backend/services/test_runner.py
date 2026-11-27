@@ -25,6 +25,7 @@ from sqlalchemy import func, select, update
 from ui.backend.auth.db import async_session_factory
 from ui.backend.auth.testing_models import (
     CAPABILITY_AI_SUMMARY,
+    CAPABILITY_BRIEF,
     CAPABILITY_SEARCH,
     EXPERIMENT_COMPLETED,
     EXPERIMENT_FAILED,
@@ -468,6 +469,16 @@ async def _apply_group(session, config: Dict[str, Any]) -> Dict[str, Any]:
     if group is None:
         return config
     config.update(_group_settings_to_config(group.search_settings))
+    if config.get("capability") == CAPABILITY_BRIEF:
+        settings = group.search_settings or {}
+        for field, key in {
+            "briefModel": "brief_model",
+            "briefCitationCheck": "brief_citation_check",
+            "briefSectionPrompt": "brief_prompt",
+            "citationCheckModel": "citation_model",
+        }.items():
+            if settings.get(field) is not None:
+                config[key] = settings[field]
     config["group_name"] = group.name
     if group.summary_prompt:
         config["summary_prompt"] = group.summary_prompt
@@ -500,7 +511,12 @@ def _unlisted_model_problem(config: Dict[str, Any]) -> Optional[str]:
     experiment, its model combo or a group's choice) isn't in config.json."""
     from utils.llm_factory import supported_llm_key
 
-    for key, role in (("summary_model", "summary"), ("judge_model", "judge")):
+    jobs = [("summary_model", "summary"), ("judge_model", "judge")]
+    if config.get("capability") == CAPABILITY_BRIEF:
+        jobs.append(("brief_model", "Brief"))
+        if config.get("brief_citation_check"):
+            jobs.append(("citation_model", "citation checker"))
+    for key, role in jobs:
         name = config.get(key)
         if name and supported_llm_key(str(name)) is None:
             return (
@@ -556,6 +572,10 @@ def build_case_runner(
         return lambda case_input: _run_search(case_input, config, db, pg, data_source)
     if capability == CAPABILITY_AI_SUMMARY:
         return lambda case_input: _run_summary(case_input, config, db, pg, data_source)
+    if capability == CAPABILITY_BRIEF:
+        from ui.backend.services.brief_experiment import run_brief_case
+
+        return lambda case_input: run_brief_case(case_input, config, data_source)
     raise ValueError(f"Unknown capability: {capability!r}")
 
 
@@ -635,7 +655,10 @@ def _format_judge_context(output: Dict[str, Any]) -> str:
 
 
 async def _judge_call(
-    prompt: str, model_key: Optional[str]
+    prompt: str,
+    model_key: Optional[str],
+    system: str = _JUDGE_SYSTEM_PROMPT,
+    max_tokens: int = 300,
 ) -> Tuple[str, Dict[str, Any]]:
     """Raw LLM completion for judging — deliberately NOT routed through the
     AI-summary templates (which would reframe the rubric as a search query).
@@ -649,11 +672,11 @@ async def _judge_call(
     from ui.backend.services.llm_service import summarize_usage_metadata
     from utils.llm_factory import get_llm, message_text
 
-    llm = get_llm(model=model_key, temperature=0.0, max_tokens=300)
+    llm = get_llm(model=model_key, temperature=0.0, max_tokens=max_tokens)
     usage_handler = UsageMetadataCallbackHandler()
     response = await llm.ainvoke(
         [
-            SystemMessage(content=_JUDGE_SYSTEM_PROMPT),
+            SystemMessage(content=system),
             HumanMessage(content=prompt),
         ],
         config={"callbacks": [usage_handler]},
@@ -674,6 +697,10 @@ def make_judge_factory(config: Dict[str, Any]) -> JudgeFactory:
     )
 
     async def factory(output, expectations):
+        if output.get("capability") == CAPABILITY_BRIEF:
+            from ui.backend.services.brief_experiment import judge_brief
+
+            return await judge_brief(output, expectations, model_key)
         # Judge the raw AI summary; references + search results are context only.
         summary = str(output.get("raw_summary") or output.get("summary") or "")
         refs_text = _format_judge_references(output.get("references") or [])
@@ -738,7 +765,7 @@ def _case_usage_totals(output: Any) -> Dict[str, Any]:
         entries: List[Dict[str, Any]] = []
         if isinstance(output, dict):
             if isinstance(output.get("usage"), dict):
-                entries.append(output["usage"])
+                entries.extend(output["usage"].get("model_usage") or [output["usage"]])
             entries.extend(
                 e for e in output.get("judge_usage") or [] if isinstance(e, dict)
             )
@@ -769,24 +796,32 @@ async def evaluate_case(
 ) -> Dict[str, Any]:
     """Run one case and evaluate its assertions. Errors are isolated, not raised."""
     started = time.time()
+    output = None
     try:
         output = await runner(case_input)
+        if output.get("capability") == CAPABILITY_BRIEF and not output["written"]:
+            if not any(a.get("type") == "brief_structure" for a in expectations):
+                expectations = [*expectations, {"type": "brief_structure"}]
+        latency_ms = int((time.time() - started) * 1000)
+        judge_fn = await judge_factory(output, expectations) if judge_factory else None
+        assertion_results, passed, score = evaluate_assertions(
+            expectations, output, judge_fn=judge_fn
+        )
     except Exception as exc:
         logger.exception("Evaluation case errored")
         return {
             "status": RESULT_ERROR,
             "score": None,
-            "actual_output": None,
+            "actual_output": output,
             "assertion_results": None,
             "latency_ms": int((time.time() - started) * 1000),
-            "error_message": str(exc)[:500],
-            **_NO_CASE_USAGE,
+            "error_message": (
+                "The evaluator could not grade this output."
+                if output is not None
+                else str(exc)[:500]
+            ),
+            **_case_usage_totals(output),
         }
-    latency_ms = int((time.time() - started) * 1000)
-    judge_fn = await judge_factory(output, expectations) if judge_factory else None
-    assertion_results, passed, score = evaluate_assertions(
-        expectations, output, judge_fn=judge_fn
-    )
     return {
         "status": RESULT_PASS if passed else RESULT_FAIL,
         "score": score,
@@ -973,7 +1008,9 @@ async def _record_run_usage(
             # The supported_llms key, as each call's usage is labelled, even
             # when the experiment names the model by its provider id.
             "llm_model": resolve_effective_model_key(
-                cfg.get("summary_model") or cfg.get("judge_model")
+                cfg.get("brief_model")
+                or cfg.get("summary_model")
+                or cfg.get("judge_model")
             ),
             "prompt_tokens": stats.get("prompt_tokens"),
             "completion_tokens": stats.get("completion_tokens"),
@@ -1029,7 +1066,17 @@ async def _execute(
     # Resolve the chosen model combo into concrete embedding/summary/reranker
     # models, then overlay any "run as group" settings, so the run matches the
     # search UI / that group's configuration.
-    config = await _apply_group(session, effective_config(experiment.config))
+    requested = dict(experiment.config or {})
+    if dataset.capability == CAPABILITY_BRIEF:
+        from pipeline.db.config import UI_MODEL_COMBOS, get_default_model_combo
+        from ui.backend.services.brief_experiment import configure_brief
+
+        requested["capability"] = CAPABILITY_BRIEF
+        requested["model_combo"] = (
+            requested.get("model_combo") or get_default_model_combo()
+        )
+        configure_brief(requested, UI_MODEL_COMBOS[requested["model_combo"]])
+    config = await _apply_group(session, effective_config(requested))
     problem = await _apply_judge_choice(session, config, triggered_by_user_id)
     problem = problem or _unlisted_model_problem(config)
     if problem:
@@ -1037,7 +1084,11 @@ async def _execute(
         return
     run.config = run_config_snapshot(config)
     try:
-        runner = build_case_runner(dataset.capability, config, dataset.data_source)
+        runner = build_case_runner(
+            dataset.capability,
+            run.config if dataset.capability == CAPABILITY_BRIEF else config,
+            dataset.data_source,
+        )
     except Exception as exc:
         logger.exception("Failed to build case runner")
         await _fail_run(session, experiment, run, str(exc))

@@ -125,13 +125,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             className={tabClass(tab, TAB_TESTING)}
             onClick={() => setTab(TAB_TESTING)}
           >
-            Testing (Search + AI Summary)
+            Testing (Experiments)
           </button>
           <button
             className={tabClass(tab, TAB_TESTING_BRIEF)}
             onClick={() => setTab(TAB_TESTING_BRIEF)}
           >
-            Testing (Brief)
+            Testing (Saved Briefs)
           </button>
           <button
             className={tabClass(tab, TAB_TOC_VALIDATOR)}

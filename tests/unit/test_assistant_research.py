@@ -38,6 +38,8 @@ async def run_research(
     supported=True,
     check=None,
     scope_check=None,
+    select_evidence=None,
+    find_duplicates=None,
     prose=None,
     brief_section_prompt=None,
     brief_section=None,
@@ -50,9 +52,32 @@ async def run_research(
     replies = None if callable(responses) else iter(responses)
 
     def model(messages, **kwargs):
+        if messages[0].content.startswith("Find repeated factual statements"):
+            prompt = messages[-1].content
+            rows = json.loads(
+                prompt.split("Findings in the order shown to the reader: ", 1)[1]
+            )
+            duplicates = find_duplicates(rows) if find_duplicates else []
+            return AIMessage(content=json.dumps({"duplicates": duplicates}))
+        if messages[0].content.startswith("Select passages that directly support"):
+            prompt = messages[-1].content
+            labels = [
+                int(label) for label in re.findall(r"(?m)^Passage \[(\d+)\]$", prompt)
+            ]
+            selected = (
+                select_evidence(prompt, labels)
+                if select_evidence
+                else [
+                    {"citation": label, "subject_line": 1, "finding_lines": [1]}
+                    for label in labels
+                ]
+            )
+            return AIMessage(
+                content=json.dumps({"section_subject": query, "passages": selected})
+            )
         if messages[0].content.startswith("Decide which of the proposed sentences"):
             prompt = messages[-1].content
-            rows = json.loads(prompt.split("Sentences: ", 1)[1])
+            rows = json.loads(prompt.split("Sentences: ", 1)[1].splitlines()[0])
             reviews = (
                 scope_check(prompt, rows)
                 if scope_check
@@ -66,7 +91,15 @@ async def run_research(
                     for row in rows
                 ]
             )
-            return AIMessage(content=json.dumps({"reviews": reviews}))
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "reviews": [
+                            {"covers_other_heading": False, **row} for row in reviews
+                        ]
+                    }
+                )
+            )
         if messages[0].content.startswith("Review whether this proposed Brief"):
             issues = prose(messages[-1].content) if prose is not None else []
             return AIMessage(content=json.dumps({"issues": issues}))
@@ -384,7 +417,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         heading,
         follow_up,
     ]
-    scope, opening, next_search, writer, scope_verifier, verifier = [
+    scope, opening, next_search, selection, writer, scope_verifier, verifier = [
         call.args[0][-1].content for call in llm.ainvoke.await_args_list
     ]
     assert excluded_heading in scope and other_question in scope
@@ -393,10 +426,11 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         assert excluded_heading not in planning
         assert brief_section.focus in planning
     assert guidance in writer and excluded_heading in writer
+    assert guidance in selection and excluded_heading in selection
     assert heading in scope_verifier and excluded_heading in scope_verifier
     assert (
         "Search AI Summary prompt"
-        not in llm.ainvoke.await_args_list[3].args[0][0].content
+        not in llm.ainvoke.await_args_list[4].args[0][0].content
     )
     assert other_question not in writer and other_question not in verifier
     assert (
@@ -483,7 +517,7 @@ async def test_brief_generation_keeps_sourced_prose_with_citation_check_off():
         finding + " [1]."
     )
     assert not any(event.get("phase") == "checking_citations" for event in events)
-    assert model.ainvoke.await_count == 2
+    assert model.ainvoke.await_count == 3
 
 
 @pytest.mark.parametrize(
@@ -734,7 +768,9 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
     assert [event["token"] for event in events if event["type"] == "token"] == [
         finding + "\n\n" + gap
     ]
-    assert llm.ainvoke.await_count == 4
+    assert llm.ainvoke.await_count == 6
+    comparison = llm.ainvoke.await_args.args[0][-1].content
+    assert "The other section covers attendance" in comparison
     assert events[-1]["section_written"] is True
     sources = next(event["sources"] for event in events if event["type"] == "sources")
     assert [source["chunkId"] for source in sources] == ["chunk-1"]
@@ -830,12 +866,59 @@ async def test_brief_writes_one_citation_and_preserves_quoted_numbers(
 
 
 @pytest.mark.asyncio
+async def test_brief_researches_separate_outcomes_within_one_section():
+    heading = "Continuity and recovery after the equipment upgrade"
+    scope = "Report interruptions and restart times separately. Leave costs to the next section."
+    interruptions = (
+        "Two service interruptions were recorded after the equipment upgrade"
+    )
+    restart = "The equipment restarted within six seconds"
+    plan = json.dumps(
+        {
+            "streams": [
+                {
+                    "topic": "Continuity",
+                    "query": "Recorded service interruptions after upgrade",
+                },
+                {"topic": "Recovery", "query": "Equipment restart times after upgrade"},
+            ],
+            "geographic_scope": "",
+        }
+    )
+    events, search, llm = await run_research(
+        [
+            plan,
+            '{"queries":[]}',
+            '{"queries":[]}',
+            _brief_draft((interruptions, 2, interruptions), (restart, 3, restart)),
+        ],
+        [
+            [point(1, "The report recorded several upgrade outcomes.")],
+            [point(2, interruptions + ".")],
+            [point(3, restart + ".")],
+        ],
+        query=heading,
+        deep=True,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": heading}, {"title": "Costs"}],
+            current=0,
+            focus=scope,
+        ),
+    )
+    opening = llm.ainvoke.await_args_list[0].args[0]
+    assert "streams format" in opening[0].content
+    assert scope in opening[-1].content
+    assert search.call_count == 3
+    assert events[-1]["section_written"] is True
+
+
+@pytest.mark.asyncio
 async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three():
     opening = "Evidence on school reintegration"
     first = "School reintegration barriers documented by evaluations"
     best = "Language support for students returning from migration"
     finding = "Schools provided language support to returning students"
-    events, search, _ = await run_research(
+    events, search, llm = await run_research(
         [
             json.dumps({"queries": [first]}),
             json.dumps(
@@ -868,6 +951,14 @@ async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three(
         first,
         best,
     ]
+    draft_request = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    )
+    assert draft_request.index(finding) < draft_request.index(
+        "Returnees faced barriers to school."
+    )
     assert events[-1]["section_written"] is True
     assert next(e["token"] for e in events if e["type"] == "token") == finding + " [1]."
 
@@ -883,6 +974,12 @@ async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three(
         (
             json.dumps({"paragraph": 1, "text": "An entire paragraph. " * 35}),
             "exceeded 550 characters",
+        ),
+        (
+            json.dumps(
+                {"paragraph": 1, "text": "The trial was inconclusive.", "limit": True}
+            ),
+            "Write an evidence gap",
         ),
     ],
 )
@@ -902,8 +999,11 @@ async def test_brief_describes_the_format_error_and_retries(invalid_draft, issue
         ),
     )
 
-    first_request = llm.ainvoke.await_args_list[1].args[0][-1].content
-    retry_request = llm.ainvoke.await_args_list[2].args[0][-1].content
+    first_request, retry_request = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    ]
     assert "Return only the finished prose" not in first_request
     assert (
         "Cite each factual sentence before its final punctuation" not in first_request
@@ -1411,11 +1511,16 @@ async def test_deep_assistant_retries_an_opening_that_skips_independent_streams(
 async def test_brief_keeps_sourced_restart_results_for_the_assigned_firmware():
     prior = "Devices with firmware version 2.0 failed to restart"
     current = "Devices with firmware version 2.1 restarted within six seconds"
+    unlabelled = "Devices restarted on the second attempt"
     heading = "Restart times with firmware version 2.1"
 
     def check_scope(prompt, rows):
         assert f'Assigned heading: "{heading}"' in prompt
         assert 'Other headings: ["Earlier versions"]' in prompt
+        unrelated_row = next(row for row in rows if unlabelled in row["text"])
+        assert unrelated_row["sources"] == [
+            {"title": "Report 3", "subject_quote": unlabelled + "."}
+        ]
         return [
             {
                 "id": row["id"],
@@ -1427,8 +1532,13 @@ async def test_brief_keeps_sourced_restart_results_for_the_assigned_firmware():
         ]
 
     events, _, _ = await run_research(
-        ['{"queries":[]}', _brief_draft((prior, 1, prior), (current, 2, current))],
-        [[point(1, prior + "."), point(2, current + ".")]],
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (prior, 1, prior), (current, 2, current), (unlabelled, 3, unlabelled)
+            ),
+        ],
+        [[point(1, prior + "."), point(2, current + "."), point(3, unlabelled + ".")]],
         query=heading,
         brief_section=BriefSectionPrompt(
             outline=[{"title": heading}, {"title": "Earlier versions"}], current=0
@@ -1437,6 +1547,268 @@ async def test_brief_keeps_sourced_restart_results_for_the_assigned_firmware():
     )
 
     assert next(e["token"] for e in events if e["type"] == "token") == current + " [1]."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exhaust_repair", [False, True])
+async def test_brief_selects_direct_evidence_even_when_citation_checking_is_off(
+    exhaust_repair,
+):
+    heading = "Delivery delays for orders placed after the policy change"
+    earlier = "Orders placed before the policy change were delayed by five days"
+    relevant = "Orders placed after the policy change were delayed by one day"
+    remedies = "The team added a second packing station"
+
+    def select(prompt, labels):
+        assert (
+            heading in prompt
+            and earlier in prompt
+            and relevant in prompt
+            and remedies in prompt
+        )
+        assert "about 150 words" in prompt
+        assert labels == [1, 2]
+        if "previous selection" in prompt:
+            assert "Passage label 42 is unavailable." in prompt
+            assert "Select finding lines from 1 to 2 in [2]." in prompt
+            assert "Available labels: [1, 2]" in prompt
+            if exhaust_repair:
+                return [
+                    {
+                        "citation": 42,
+                        "subject_line": 0,
+                        "finding_lines": [1],
+                    }
+                ]
+            return [
+                {
+                    "citation": 2,
+                    "subject_line": 1,
+                    "finding_lines": [1],
+                }
+            ]
+        return [
+            {
+                "citation": 2,
+                "subject_line": 1,
+                "finding_lines": [1, 17],
+            },
+            {
+                "citation": 42,
+                "subject_line": 0,
+                "finding_lines": [1],
+            },
+        ]
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', _brief_draft((relevant, 2, relevant)), ""],
+        [[point(1, earlier + "."), point(2, f"{relevant}. {remedies}.")]],
+        query=heading,
+        brief_section=BriefSectionPrompt(outline=[{"title": heading}], current=0),
+        select_evidence=select,
+        check_citations=False,
+        target_words=150,
+    )
+    draft_prompt = llm.ainvoke.await_args_list[-1].args[0][-1].content
+    assert relevant in draft_prompt and earlier not in draft_prompt
+    assert remedies not in draft_prompt
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        relevant + " [1]."
+    )
+    assert not any(event.get("phase") == "checking_citations" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_brief_extraction_accepts_multiple_distinct_observations_from_one_passage():
+    observations = [
+        "The audit found four missing inventory records",
+        "Two stock counts omitted returned items",
+        "The year-end count included one sealed pallet",
+        "Labels on three shelves were unreadable",
+    ]
+
+    def select(_prompt, _labels):
+        return [
+            {
+                "citation": 1,
+                "subject_line": 1,
+                "finding_lines": [1, 2, 3, 4],
+            }
+        ]
+
+    events, _, llm = await run_research(
+        ['{"queries":[]}', _brief_draft((observations[0], 1, observations[0]))],
+        [[point(1, ". ".join(observations) + ".")]],
+        query="Inventory audit observations",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Inventory audit observations"}], current=0
+        ),
+        select_evidence=select,
+    )
+    draft = next(
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    )
+    assert all(observation in draft for observation in observations)
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        observations[0] + " [1]."
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_headings():
+    heading = "Restart failures during cold-soak testing"
+    finding = "Two control units failed to restart below freezing"
+    case = (
+        "In the cold-soak test, one control unit stalled before loading its diagnostics"
+    )
+    response = "The team replaced its power supply"
+    mixed = f"{case}, and the team replaced its power supply"
+    unrelated = "All tested units failed to restart below freezing"
+    limit = "The report does not give the overall failure rate."
+    voice = "Use plain language and speak to maintenance leads."
+
+    def review_scope(_prompt, rows):
+        return [
+            {
+                "id": row["id"],
+                "subject": "cold-soak testing",
+                "reason": "The observation belongs here. Leave replacement to the next section.",
+                "keep": response.lower() not in row["text"].lower(),
+            }
+            for row in rows
+        ]
+
+    def verify(prompt):
+        return {
+            "scope_issues": [],
+            "sentences": [
+                {
+                    "id": row["id"],
+                    "status": (
+                        "unsupported"
+                        if unrelated in row["text"]
+                        else "supported" if row["citations"] else "evidence_gap"
+                    ),
+                    "quotes": [],
+                }
+                for row in _review_rows(prompt)
+            ],
+        }
+
+    events, _, llm = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                (finding, 1, finding), (mixed, 2, case), (unrelated, 1, finding)
+            ),
+            _brief_draft((case, 2, case), limit=limit),
+        ],
+        [[point(1, finding + "."), point(2, case + ". " + response + ".")]],
+        query=heading,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": heading}, {"title": "Corrective actions"}],
+            current=0,
+            voice_instructions=voice,
+        ),
+        scope_check=review_scope,
+        check=verify,
+        target_words=150,
+    )
+
+    drafts = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write finding records")
+    ]
+    assert len(drafts) == 2
+    assert mixed in drafts[-1] and "Aim for about 150 words" in drafts[-1]
+    assert f"Finding removed during evidence check: {unrelated}" in drafts[-1]
+    assert all(
+        f'Voice and tone to use in the text and limit fields: "{voice}"' in draft
+        for draft in drafts
+    )
+    answer = next(event["token"] for event in events if event["type"] == "token")
+    assert answer == f"{finding} [1].\n\n{case} [2].\n\n{limit}"
+
+
+@pytest.mark.asyncio
+async def test_brief_checks_a_scope_revision_against_its_original_citation():
+    observation = "One pump lost pressure during the overnight test"
+    action = "The team replaced the inlet valve"
+    mixed = f"{observation}, and the team replaced the inlet valve"
+    heading = "Pressure problems during the test"
+    voice = "Use plain English and attribution."
+
+    def scope(prompt, rows):
+        assert voice in prompt
+        assert len(rows) == 1 and mixed in rows[0]["text"]
+        return [
+            {
+                "id": rows[0]["id"],
+                "subject": heading,
+                "reason": "Valve replacement belongs in the corrective actions section.",
+                "keep": True,
+                "covers_other_heading": True,
+                "in_scope_revision": observation,
+            }
+        ]
+
+    def verify(prompt):
+        row = _review_rows(prompt)[0]
+        assert row["text"] == observation + " [1]."
+        assert row["prepared_quote"] == observation
+        return {
+            "scope_issues": [],
+            "sentences": [{"id": row["id"], "status": "supported", "quotes": []}],
+        }
+
+    events, _, _ = await run_research(
+        ['{"queries":[]}', _brief_draft((mixed, 1, observation))],
+        [[point(1, f"{observation}. {action}.")]],
+        query=heading,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": heading}, {"title": "Corrective actions"}],
+            current=0,
+            voice_instructions=voice,
+        ),
+        scope_check=scope,
+        check=verify,
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        observation + " [1]."
+    )
+
+
+@pytest.mark.asyncio
+async def test_brief_removes_a_repeated_finding_without_dropping_a_distinct_measurement():
+    quote = "Two pumps lost pressure overnight and three lost pressure at midday"
+    first = "Two pumps lost pressure during the overnight test"
+    repeated = "During the overnight test, two pumps lost pressure"
+    distinct = "Three pumps lost pressure during the midday test"
+
+    def duplicate(rows):
+        assert [row["text"] for row in rows] == [
+            f"{finding} [1]." for finding in (first, repeated, distinct)
+        ]
+        return [rows[1]["id"]]
+
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((first, 1, quote), (repeated, 1, quote), (distinct, 1, quote)),
+        ],
+        [[point(1, quote + ".")]],
+        query="Pressure test results",
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Pressure test results"}], current=0
+        ),
+        find_duplicates=duplicate,
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        f"{first} [1]. {distinct} [1]."
+    )
 
 
 @pytest.mark.asyncio
@@ -1629,3 +2001,32 @@ async def test_similar_stream_seeds_need_a_new_plan_before_searching():
         "previous reply did not match"
         in llm.ainvoke.await_args_list[1].args[0][-1].content
     )
+
+
+@pytest.mark.asyncio
+async def test_short_section_checks_unused_search_hits_for_additional_supported_findings():
+    first = "The initial audit recorded a week of delay"
+    later = "The later audit traced the delay to an approval queue"
+    rows = [point(1, first + ".")]
+    rows.extend(point(i, "A different topic.") for i in range(2, 13))
+    rows.append(point(13, later + "."))
+    events, search, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((first, 1, first)),
+            _brief_draft((first, 1, first)),
+            _brief_draft((later, 13, later)),
+            _brief_draft((later, 13, later)),
+        ],
+        [rows],
+        target_words=100,
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Processing delays"}], current=0
+        ),
+    )
+    assert search.call_count == 1
+    answer = next(e["token"] for e in events if e["type"] == "token")
+    assert first in answer and later in answer
+    assert {
+        s["chunkId"] for e in events if e["type"] == "sources" for s in e["sources"]
+    } == {"chunk-1", "chunk-13"}

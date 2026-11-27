@@ -7,7 +7,7 @@ import CreateDatasetWithExperimentModal from './CreateDatasetWithExperimentModal
 import { formatTimestamp } from './testingFormat';
 import { SAMPLE_DATASET_CSV, SAMPLE_QA_CSV } from './csv';
 
-const CAPABILITIES: TestCapability[] = ['search', 'ai_summary'];
+const CAPABILITIES: TestCapability[] = ['search', 'ai_summary', 'brief'];
 
 const downloadCsv = (content: string, filename: string) => {
   const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });

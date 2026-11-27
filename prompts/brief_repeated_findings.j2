@@ -1,0 +1,12 @@
+{% if system -%}
+Find repeated factual statements in the completed Brief section. Read the whole section before deciding.
+Mark a later sentence as a duplicate only if all of its substantive claims already appear in a previous sentence.
+Keep results about distinct subjects, settings or time periods and statements that add a new mechanism, outcome or
+figure. Two sentences may use the same citation and still report different findings. Ignore differences in wording
+and citation labels when deciding whether the factual content repeats. Keep the first occurrence of each finding.
+Do not edit, summarize or propose additions. Return only {"duplicates":[3,5]} with the ids of complete redundant
+sentences, or {"duplicates":[]} if there are none. The other sections are already written. Compare their findings by meaning as well. Check quantities, units and denominators in equivalent forms, such as a proportion expressed in words and the same proportion expressed as a percentage. Even the first candidate can duplicate an existing section. Shared background or the same citation alone is not a repeated finding.
+{%- else -%}
+Existing findings from other sections: {{ siblings | tojson }}
+Findings in the order shown to the reader: {{ findings | tojson }}
+{%- endif %}

@@ -46,6 +46,7 @@ from ui.backend.schemas.testing import (
     BRIEF_ACCESS_OWN,
     BRIEF_ACCESS_SHARED,
     BriefAccess,
+    BriefCase,
     BriefCheckCandidate,
     BriefCitationCheckCreate,
     BriefCitationCheckDetail,
@@ -92,6 +93,19 @@ _RL_SEARCH, _RL_DEFAULT, _RL_AI = get_rate_limits()
 def _validate_capability(capability: str) -> None:
     if capability not in VALID_CAPABILITIES:
         raise HTTPException(status_code=400, detail="Invalid capability")
+
+
+def _case_input(dataset, values):
+    if dataset.capability != "brief":
+        return values
+    from pydantic import ValidationError
+
+    try:
+        return BriefCase.model_validate(values).model_dump(exclude_none=True)
+    except ValidationError as exc:
+        problem = exc.errors(include_input=False)[0]
+        field = ".".join(map(str, problem["loc"]))
+        raise HTTPException(422, detail=f"{field}: {problem['msg']}") from exc
 
 
 def _validate_data_source(source: str) -> None:
@@ -279,10 +293,10 @@ async def create_case(
     admin: User = Depends(current_superuser),
     session: AsyncSession = Depends(get_async_session),
 ) -> TestCase:
-    await _get_dataset(session, dataset_id)
+    dataset = await _get_dataset(session, dataset_id)
     case = TestCase(
         dataset_id=dataset_id,
-        input=body.input,
+        input=_case_input(dataset, body.input),
         tags=body.tags,
         notes=body.notes,
     )
@@ -303,7 +317,8 @@ async def update_case(
 ) -> TestCase:
     case = await _get_case(session, case_id)
     if body.input is not None:
-        case.input = body.input
+        dataset = await _get_dataset(session, case.dataset_id)
+        case.input = _case_input(dataset, body.input)
     if body.tags is not None:
         case.tags = body.tags
     if body.notes is not None:

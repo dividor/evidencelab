@@ -406,7 +406,7 @@ def build_research_agent(
     )
     opening = template.render(
         deep_research=deep_research,
-        organize=brief_section is None,
+        organize=brief_section is None or brief_section.mode == "generate",
         group_instructions=settings.planningPrompt,
         instructions=settings.planningInstructions,
     )

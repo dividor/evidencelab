@@ -20,11 +20,12 @@ from ui.backend.services.assistant_grounding import (
     ReviewRequest,
     check_answer_citations,
     numbered_sentences,
-    render_evidence,
     retain_supported_sentences,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
+from ui.backend.services.brief_evidence_selection import select_brief_evidence
+from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 from ui.backend.services.citation_fidelity import (
     match_key,
     split_sentences,
@@ -49,6 +50,8 @@ class FindingScopeDecision(BaseModel):
     subject: str
     reason: str
     keep: bool
+    covers_other_heading: bool
+    in_scope_revision: str | None = None
 
 
 class FindingScopeReview(BaseModel):
@@ -116,13 +119,7 @@ def _read_draft_lines(raw: str) -> tuple[dict[int, list[BriefFinding]], str, lis
         try:
             part = _BRIEF_LINE.validate_json(line)
         except ValidationError as error:
-            if any(
-                item["loc"][-1:] == ("text",) and item["type"] == "string_too_long"
-                for item in error.errors(include_input=False)
-            ):
-                issues.append(_FINDING_LENGTH_ISSUE)
-            else:
-                issues.append(_DRAFT_FORMAT_ISSUE)
+            issues.append(_draft_format_issue(error))
             continue
         if isinstance(part, BriefFinding):
             paragraphs.setdefault(part.paragraph, []).append(part)
@@ -131,6 +128,17 @@ def _read_draft_lines(raw: str) -> tuple[dict[int, list[BriefFinding]], str, lis
     if raw.strip() and not (paragraphs or limit or issues):
         issues.append(_DRAFT_FORMAT_ISSUE)
     return paragraphs, limit, issues
+
+
+def _draft_format_issue(error: ValidationError) -> str:
+    fields = {item["loc"]: item["type"] for item in error.errors(include_input=False)}
+    if ("BriefFinding", "limit") in fields:
+        return (
+            'Write an evidence gap as {"limit":"One sentence about what is missing."}.'
+        )
+    if fields.get(("BriefFinding", "text")) == "string_too_long":
+        return _FINDING_LENGTH_ISSUE
+    return _DRAFT_FORMAT_ISSUE
 
 
 def _brief_draft_text(
@@ -230,6 +238,10 @@ def _similar_findings(
 async def _review_finding_scope(
     draft: str,
     section: BriefSectionPrompt,
+    evidence: dict[int, Passage],
+    prepared_quotes: dict[str, str],
+    similar: dict[str, list[dict[str, str]]],
+    subject: str,
     config: RunnableConfig,
     review: ReviewRequest,
 ) -> tuple[str, list[str]]:
@@ -238,12 +250,15 @@ async def _review_finding_scope(
     request = template.render(
         heading=section.outline[section.current].title,
         topic=section.topic,
+        subject=subject,
         guidance=section.focus,
+        instructions=section.instructions,
+        voice=section.voice_instructions,
         other_headings=[
             s.title for i, s in enumerate(section.outline) if i != section.current
         ],
         sentences=[
-            {"id": row["id"], "text": strip_citation_markers(row["text"])}
+            _finding_for_scope(row, evidence, prepared_quotes, similar)
             for row in sentences
         ],
     )
@@ -252,9 +267,130 @@ async def _review_finding_scope(
     )
     if sorted(row.id for row in decision.reviews) != [row["id"] for row in sentences]:
         raise InvalidAssistantResponse("The scope check must assess each finding once")
-    approved = {row.id for row in decision.reviews if row.keep}
-    issues = [row.reason for row in decision.reviews if not row.keep]
-    return retain_supported_sentences(draft, sentences, approved), issues
+    return _apply_scope_review(draft, sentences, decision, prepared_quotes)
+
+
+def _finding_for_scope(
+    row: dict,
+    evidence: dict[int, Passage],
+    prepared_quotes: dict[str, str],
+    similar: dict[str, list[dict[str, str]]],
+) -> dict:
+    text = row["text"]
+    return {
+        "id": row["id"],
+        "text": text,
+        "supporting_quote": prepared_quotes.get(text),
+        "similar": similar.get(text, []),
+        "sources": [
+            {
+                "title": evidence[label]["title"],
+                "subject_quote": evidence[label]["brief_subject_evidence"],
+            }
+            for label in row["citations"]
+        ],
+    }
+
+
+def _apply_scope_review(
+    draft: str,
+    sentences: list[dict],
+    decision: FindingScopeReview,
+    prepared_quotes: dict[str, str],
+) -> tuple[str, list[str]]:
+    approved = set()
+    revisions = {}
+    issues = []
+    for row, review in zip(sentences, sorted(decision.reviews, key=lambda row: row.id)):
+        if review.keep and not review.covers_other_heading:
+            approved.add(row["id"])
+            continue
+        original = row["text"]
+        issues.append(f"Rejected finding: {original} Reason: {review.reason}")
+        revision = (review.in_scope_revision or "").strip().rstrip(".")
+        if _valid_scope_revision(revision, row, prepared_quotes):
+            revised = f"{revision} [{row['citations'][0]}]."
+            revisions[original] = revised
+            prepared_quotes[revised] = prepared_quotes[original]
+            approved.add(row["id"])
+    text = retain_supported_sentences(draft, sentences, approved)
+    for original, revised in revisions.items():
+        text = text.replace(original, revised, 1)
+    return text, issues
+
+
+def _valid_scope_revision(
+    revision: str,
+    row: dict,
+    prepared_quotes: dict[str, str],
+) -> bool:
+    return (
+        bool(revision)
+        and len(revision) <= 550
+        and not revision.startswith(("#", "-", "*"))
+        and "[" not in revision
+        and len(split_sentences(revision)) == 1
+        and len(row["citations"]) == 1
+        and row["text"] in prepared_quotes
+    )
+
+
+async def _verify_draft_findings(
+    draft: str,
+    prepared_quotes: dict[str, str],
+    previous_findings: list[tuple[str, str]],
+    assignment: str,
+    subject: str,
+    search_focus: str,
+    evidence: dict[int, Passage],
+    config: RunnableConfig,
+    review: ReviewRequest,
+    review_scope: ReviewRequest,
+    section: BriefSectionPrompt,
+) -> tuple[str, list[str]]:
+    similar = await run_in_threadpool(_similar_findings, draft, previous_findings)
+    text, issues = await _review_finding_scope(
+        draft,
+        section,
+        evidence,
+        prepared_quotes,
+        similar,
+        subject,
+        config,
+        review_scope,
+    )
+    if not text:
+        return "", issues
+    similar = await run_in_threadpool(_similar_findings, text, previous_findings)
+    checked = await check_answer_citations(
+        text,
+        assignment,
+        search_focus,
+        evidence,
+        config,
+        review,
+        brief_section=True,
+        prepared_quotes=prepared_quotes,
+        similar_findings=similar,
+    )
+    if checked.issues:
+        supported = set(split_sentences(checked.supported_text))
+        issues.extend(checked.issues)
+        issues.extend(
+            f"Finding removed during evidence check: {finding}"
+            for finding in prepared_quotes
+            if finding in text and finding not in supported
+        )
+    return checked.supported_text, issues
+
+
+def _written_sibling_findings(section: BriefSectionPrompt) -> list[tuple[str, str]]:
+    return [
+        (heading.title, strip_citation_markers(sentence))
+        for index, heading in enumerate(section.outline)
+        if index != section.current
+        for sentence in split_sentences(heading.content or "")
+    ]
 
 
 async def write_grounded_brief(
@@ -267,27 +403,34 @@ async def write_grounded_brief(
     review: ReviewRequest | None,
     section: BriefSectionPrompt,
     *,
+    review_scope: ReviewRequest,
     target_words: int | None = None,
+    earlier_text: str = "",
 ) -> str:
     """Write independently sourced findings and optionally check their support."""
     if not evidence:
-        return ""
+        return earlier_text
+    evidence, passages, subject = await select_brief_evidence(
+        assignment, evidence, config, review_scope, target_words
+    )
+    if not evidence:
+        return earlier_text
     template = assistant_prompt_templates.get_template("brief_evidence_draft.j2")
     system = template.render(system=True)
     stream = get_stream_writer()
-    passages = render_evidence(list(evidence.values()))
-    existing = [
-        (heading.title, strip_citation_markers(sentence))
-        for index, heading in enumerate(section.outline)
-        if index != section.current
-        for sentence in split_sentences(heading.content or "")
-        if cited_numbers_in_order(sentence)
-    ]
+    existing = _written_sibling_findings(section)
+    sibling_matches = (
+        await run_in_threadpool(_similar_findings, passages, existing)
+        if existing
+        else {}
+    )
     other_claims = {match_key(finding) for _, finding in existing}
+    current = section.outline[section.current].title
     issues: list[str] = []
-    drafts: list[str] = []
-    accepted = ""
-    written_words = 0
+    # Once new evidence is accepted it can supersede the earlier evidence-gap note.
+    drafts = [p for p in earlier_text.split("\n\n") if cited_numbers_in_order(p)]
+    accepted = earlier_text
+    written_words = len(strip_citation_markers(accepted).split())
     minimum_words = target_words * 0.85 if target_words else 1
     for _ in range(2):
         messages = [
@@ -295,40 +438,46 @@ async def write_grounded_brief(
             HumanMessage(
                 content=template.render(
                     assignment=assignment,
+                    subject=subject,
                     writing_guide=writing_guide,
+                    voice=section.voice_instructions,
                     evidence=passages,
                     issues=issues,
                     accepted=accepted,
                     target_words=target_words,
                     written_words=written_words,
+                    sibling_matches=sibling_matches,
                 )
             ),
         ]
         reply = await writer.ainvoke(messages, config=config)
         text, issues, prepared_quotes = _brief_draft_text(
-            message_text(reply), evidence, other_claims
+            message_text(reply),
+            evidence,
+            other_claims
+            | {match_key(strip_citation_markers(s)) for s in split_sentences(accepted)},
         )
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
-            text, outside_scope = await _review_finding_scope(
-                text, section, config, review
-            )
-            issues.extend(outside_scope)
-        if text and review is not None:
-            similar = await run_in_threadpool(_similar_findings, text, existing)
-            checked = await check_answer_citations(
+            earlier = [
+                (current, strip_citation_markers(finding))
+                for finding in split_sentences(accepted)
+                if cited_numbers_in_order(finding)
+            ]
+            text, verification_issues = await _verify_draft_findings(
                 text,
+                prepared_quotes,
+                [*existing, *earlier],
                 assignment,
+                subject,
                 search_focus,
                 evidence,
                 config,
                 review,
-                brief_section=True,
-                prepared_quotes=prepared_quotes,
-                similar_findings=similar,
+                review_scope,
+                section,
             )
-            text = checked.supported_text
-            issues.extend(checked.issues)
+            issues.extend(verification_issues)
         if text:
             drafts.append(text)
             accepted, written_words = _combine_findings(drafts, target_words)
@@ -338,4 +487,6 @@ async def write_grounded_brief(
             issues.append(
                 "Use relevant documented implementation or measurement and report the limits."
             )
-    return accepted
+    return await remove_repeated_brief_findings(
+        accepted, config, review_scope, existing
+    )

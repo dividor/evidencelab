@@ -217,6 +217,21 @@ def test_field_boost_multi_value_country():
     assert results[0].id == "a"
 
 
+def test_field_boost_filters_list_metadata_without_splitting_labels():
+    matching = _make_search_result("a", 0.5, metadata={"map_series": ["Lab, Series A"]})
+    different = _make_search_result("b", 0.6, metadata={"map_series": ["Series B"]})
+
+    results = apply_field_boost(
+        [different, matching],
+        query="documents from Lab, Series A",
+        boost_fields={"series": 1},
+        known_values={"series": ["Lab, Series A", "Series B"]},
+    )
+
+    assert [result.id for result in results] == ["a"]
+    assert results[0].score == 1
+
+
 def test_field_boost_case_insensitive():
     """Query matching should be case-insensitive."""
     kenya = _make_search_result("a", 0.5, country="Kenya")

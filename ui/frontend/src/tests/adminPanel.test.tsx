@@ -104,7 +104,7 @@ describe('AdminPanel', () => {
 
   test('switches to Testing tab on click (admin-only harness)', () => {
     render(<AdminPanel isActive={true} />);
-    fireEvent.click(screen.getByText('Testing (Search + AI Summary)'));
+    fireEvent.click(screen.getByText('Testing (Experiments)'));
     expect(screen.getByTestId('testing-manager')).toBeInTheDocument();
     expect(screen.queryByTestId('user-manager')).not.toBeInTheDocument();
   });

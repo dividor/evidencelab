@@ -36,7 +36,8 @@ from ui.backend.auth.models import Base
 # Capability identifiers (kept in sync with the evaluator/runner dispatch).
 CAPABILITY_SEARCH = "search"
 CAPABILITY_AI_SUMMARY = "ai_summary"
-VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY}
+CAPABILITY_BRIEF = "brief"
+VALID_CAPABILITIES = {CAPABILITY_SEARCH, CAPABILITY_AI_SUMMARY, CAPABILITY_BRIEF}
 
 # Experiment lifecycle states. An experiment is created as a ``draft`` (the
 # user defines per-row assertions + config), then ``run`` transitions it

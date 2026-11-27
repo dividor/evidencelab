@@ -218,6 +218,21 @@ def eval_cites_source(a: Dict[str, Any], output: Dict[str, Any]) -> AssertionRes
     )
 
 
+def eval_brief_length(a: Dict[str, Any], output: Dict[str, Any]) -> AssertionResult:
+    target = (output.get("assignment") or {}).get("target_words")
+    if not target:
+        return _result("brief_length", False, "Set a word target on this case.")
+    actual = output["words"]
+    tolerance = float(a.get("tolerance", 0.15))
+    passed = bool(output["written"] and abs(actual - target) <= target * tolerance)
+    return _result(
+        "brief_length",
+        passed,
+        f"{actual} of {target} requested words ({actual/target:.0%}). "
+        f"Allowed difference: {tolerance:.0%}.",
+    )
+
+
 def eval_llm_judge(
     a: Dict[str, Any], output: Dict[str, Any], judge_fn: Optional[JudgeFn] = None
 ) -> AssertionResult:
@@ -251,6 +266,7 @@ def eval_llm_judge(
 # ---------------------------------------------------------------------------
 
 _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResult]] = {
+    "brief_length": eval_brief_length,
     "result_contains_id": eval_result_contains_id,
     "result_in_top_k": eval_result_in_top_k,
     "min_results": eval_min_results,
@@ -265,7 +281,11 @@ _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResul
     "cites_source": eval_cites_source,
 }
 
-VALID_ASSERTION_TYPES = set(_EVALUATORS) | {"llm_judge"}
+VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
+    "llm_judge",
+    "brief_overlap",
+    "brief_structure",
+}
 
 
 def evaluate_assertion(
@@ -275,6 +295,17 @@ def evaluate_assertion(
 ) -> AssertionResult:
     """Evaluate a single assertion against ``output``."""
     atype = assertion.get("type")
+    if atype == "brief_structure":
+        from ui.backend.services.brief_experiment import structure_result
+
+        return structure_result(output)
+    if atype == "brief_overlap":
+        result = eval_llm_judge({"rubric": "brief_overlap"}, output, judge_fn)
+        return {
+            **result,
+            "type": atype,
+            "rubric": "Does this section repeat a finding from another section?",
+        }
     if atype == "llm_judge":
         return eval_llm_judge(assertion, output, judge_fn=judge_fn)
     fn = _EVALUATORS.get(str(atype))

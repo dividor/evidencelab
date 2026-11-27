@@ -1,6 +1,6 @@
 // Types for the admin Search & AI-Summary evaluation harness (superuser-only).
 
-export type TestCapability = 'search' | 'ai_summary';
+export type TestCapability = 'search' | 'ai_summary' | 'brief';
 export type ExperimentStatus = 'draft' | 'pending' | 'running' | 'completed' | 'failed';
 export type ResultStatus = 'pass' | 'fail' | 'error';
 

@@ -2,7 +2,7 @@
 
 The **Evaluation Harness** is a superuser-only admin tool for testing the quality of Evidence Lab's **Search**, **AI‑Summary** and **Brief** capabilities. You define reusable **datasets** of test cases, build **experiments** that define what a good result looks like, **run** them against the live system, and **review** per‑case pass/fail with full detail.
 
-It runs the *real* search and AI‑summary code paths — the same retrieval pipeline, model combos, and group settings users experience — so results reflect production behaviour.
+Experiments run the same search, summary and Brief generation services used by the corresponding screens.
 
 > The harness is **internal evaluation/regression tooling** and is only visible to superusers. It is never shown to ordinary users.
 
@@ -10,7 +10,7 @@ It runs the *real* search and AI‑summary code paths — the same retrieval pip
 
 ### Where to find it
 
-Open the **Admin** panel. **Testing (Search + AI Summary)** has two sub‑views, **Datasets** and **Experiments**; **Testing (Brief)** holds the [Brief citation check](#brief-citation-check).
+Open the **Admin** panel. **Testing (Experiments)** has two sub‑views, **Datasets** and **Experiments**; **Testing (Saved Briefs)** holds the [Brief citation check](#brief-citation-check).
 
 ![Admin → Testing tab](../images/admin/eval/testing-datasets.png)
 
@@ -61,7 +61,7 @@ A **dataset** is a reusable set of **test cases** for one capability. Datasets h
 In **Datasets**, click **New Dataset** and provide:
 
 - **Name** — e.g. `BASE`.
-- **Capability** — `search` or `ai_summary`.
+- **Capability** — choose `search`, `ai_summary`, or `brief`.
 - **Data source** — which indexed collection to query (e.g. `wfp`).
 
 ![Create dataset](../images/admin/eval/create-dataset.png)
@@ -177,9 +177,9 @@ Below it is the per‑case results table; expand a case to see:
 
 ### Brief citation check
 
-The **Testing (Brief)** tab checks a finished brief against its own sources. Where the experiments above judge an AI summary against a rubric you write, the citation check needs no expectations: for every sentence of the brief that carries a `[n]` citation, an LLM judge is shown that sentence and the **exact source excerpts it cites**, each introduced by its document title and section heading, and nothing else, and decides whether the sentence is supported by them. Context named in a title or heading (the country, programme or period a document is about) counts as the setting of its excerpt, so a sentence that names it is not overstating.
+The **Testing (Saved Briefs)** tab checks a finished brief against its own sources. Where the experiments above judge an AI summary against a rubric you write, the citation check needs no expectations: for every sentence of the brief that carries a `[n]` citation, an LLM judge is shown that sentence and the **exact source excerpts it cites**, each introduced by its document title and section heading, and nothing else, and decides whether the sentence is supported by them. Context named in a title or heading (the country, programme or period a document is about) counts as the setting of its excerpt, so a sentence that names it is not overstating.
 
-![Testing (Brief): briefs you can check](../images/admin/eval/brief-check-overview.png)
+![Testing (Saved Briefs): briefs you can check](../images/admin/eval/brief-check-overview.png)
 
 The list shows every brief in the system, not only your own and the ones shared with you: the harness is an admin tool, so an admin can check any user's brief. The **Mine**, **Shared with me** and **Other users** buttons narrow the list, and each row shows the owner, the number of researched sections and cited passages, and the outcome of the last check. The judge is the model your groups choose in Group Settings > LLMs; without one, it is the `judge_model` of the model combo selected in the **Models** menu at the top of the page (else that combo's summarisation model), so pick the combo first, then click **Run check**. Checks run in the background; the view shows progress per passage and keeps every check as history.
 
@@ -218,3 +218,20 @@ Once a check has completed, everyone who can open the brief sees a **Fact Checke
 - **Re‑run freely:** runs accumulate as history, so you can compare quality across changes.
 - **Grounding rubrics:** because the LLM judge sees the sources, you can check that the summary is supported by (and only cites) the right documents.
 - **Bulk authoring:** use **Upload CSV** to load many queries at once, then define expectations once on the experiment.
+
+### Compare generated Brief sections
+
+In **Admin → Testing (Experiments) → Experiments**, open **UNEG Brief quality** or **World Bank procurement Brief quality**. The first has six cases about education, climate and nutrition. The second has two procurement cases. Each starter appears when the corresponding data source is configured. Choose a model combo and, if needed, **Run as group**, then click **Run**. Generation and grading both use model calls. Each run records token usage and estimated cost.
+
+![Six starter cases in the UNEG Brief sections dataset](../images/admin/eval/brief-section-cases.png)
+
+Each case generates one new section through Brief's research and writing workflow, using the selected library. The topic, heading, instructions, word target, voice and other sections are held fixed so you can compare runs. Existing briefs are unaffected. To test your own library, create a dataset with capability **brief**, add cases, and create an experiment. Give at least one other section a heading and its existing text to test repetition.
+
+| Check | What to look for |
+| --- | --- |
+| Section format and citations | The section has text, has no extra Markdown headings, and its numbered citations resolve to the returned sources. |
+| Word count meets target | The actual word count falls within 15% of the case target. A short, carefully supported section can pass grounding and fail length. |
+| Findings are distinct across sections | A judge compares the draft with every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. Open the result for the judge's explanation. |
+| Grounding, scope and voice | Editable judge prompts check the draft against the evidence, assignment and audience. Starter cases include examples of supported and unsupported statements for the judge. The writer never sees these examples. |
+
+Expand a run and a case to inspect the section, the other sections, the cited passages and the judge's reasons. Read the cited text when a score seems surprising. To compare configurations, keep the case inputs and expectations identical across runs. The separate **Brief citation check** reviews a previously saved brief.

@@ -40,7 +40,10 @@ def test_grounding_uses_report_title_to_verify_location_and_passage_to_verify_cl
     )
     assert "verify that detail against the\nsource title or passage" in reviewer
     assert "does not establish the named setting or another" in reviewer
-    assert "reject a sentence about a different group or setting" in reviewer
+    assert (
+        "establishes those qualifiers even when the sentence leaves them implicit"
+        in reviewer
+    )
     assert "Use the passage itself to verify the finding" in reviewer
 
 

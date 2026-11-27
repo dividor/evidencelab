@@ -11,15 +11,39 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ui.backend.auth.schemas import (
+    BRIEF_HEADING_MAX_CHARS,
+    BRIEF_MAX_SECTIONS,
+    BRIEF_PROMPT_MAX_CHARS,
+    BRIEF_TOPIC_MAX_CHARS,
+    TARGET_WORDS_MAX,
+    TARGET_WORDS_MIN,
+    VOICE_INSTRUCTIONS_MAX_CHARS,
+    BriefOutlineSection,
+)
+
 # ---------------------------------------------------------------------------
 # Datasets
 # ---------------------------------------------------------------------------
 
 
+class BriefCase(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    query: str = Field(min_length=1, max_length=BRIEF_TOPIC_MAX_CHARS)
+    heading: str = Field(min_length=1, max_length=BRIEF_HEADING_MAX_CHARS)
+    guidance: str = Field("", max_length=BRIEF_PROMPT_MAX_CHARS)
+    voice: str = Field("", max_length=VOICE_INSTRUCTIONS_MAX_CHARS)
+    target_words: int | None = Field(None, ge=TARGET_WORDS_MIN, le=TARGET_WORDS_MAX)
+    siblings: list[BriefOutlineSection] = Field(
+        default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
+    )
+    reference_standard: dict = Field(default_factory=dict)
+
+
 class TestDatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
-    capability: str = Field(description="search | ai_summary")
+    capability: str = Field(description="search | ai_summary | brief")
     data_source: str = Field(min_length=1, max_length=255)
 
 

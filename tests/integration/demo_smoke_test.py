@@ -125,8 +125,8 @@ def check_assistant_research(combo, auth):
     events = _research_events(
         combo,
         auth,
-        query="In World Bank procurement investigations, what warning signs were reported "
-        "in competitive bidding and what was found in contract implementation? Explain both.",
+        query="What warning signs of collusive bidding do the World Bank procurement reports "
+        "describe, and how can digital tools help detect fraud in public spending?",
     )
     searches = [
         query
@@ -149,7 +149,7 @@ def check_assistant_research(combo, auth):
 
 def check_brief_survey(combo, auth):
     """Require library evidence without answer generation during the outline survey."""
-    topic = "Detecting fraud in World Bank procurement"
+    topic = "Recognising fraud risks in public procurement"
     events = _research_events(
         combo, auth, query=topic, usage_context="brief", brief_survey={"topic": topic}
     )
@@ -166,33 +166,55 @@ def check_brief_survey(combo, auth):
 
 
 def check_brief_generation(combo, auth):
-    """Write a real section with the demo's selected models and corpus."""
-    heading = "Warning signs of fraud in public procurement"
+    """Write two sections of different lengths from the demo library."""
+    cases = (
+        (
+            "Warning signs of collusion in bid submissions",
+            150,
+            "Describe warning signs in bidding. Leave digital detection to the other section.",
+            "Write in plain English for a reader who is new to procurement.",
+        ),
+        (
+            "Digital detection of fraud in public spending",
+            250,
+            "Describe how digital tools detect and flag fraud. Leave bidding to the other section.",
+            "Use a formal audit voice. Use third person and attribute findings to the reports.",
+        ),
+    )
+    outline = [{"title": heading} for heading, *_ in cases]
+    for current, (heading, target, focus, voice) in enumerate(cases):
+        section = {
+            "topic": "Recognising fraud risks in public procurement",
+            "outline": outline,
+            "current": current,
+            "focus": focus,
+            "voice_instructions": voice,
+        }
+        _check_brief_section(combo, auth, heading, target, section)
+
+
+def _check_brief_section(combo, auth, heading, target, section):
     events = _research_events(
         combo,
         auth,
         query=heading,
-        target_words=150,
+        target_words=target,
         usage_context="brief",
-        brief_section={
-            "topic": "Detecting fraud in World Bank procurement",
-            "outline": [{"title": heading}, {"title": "Investigation and response"}],
-            "current": 0,
-            "focus": "Describe warning signs documented in investigation reports.",
-        },
+        brief_section=section,
     )
     draft, markers, citations = _cited_answer(events)
+    words = len(re.sub(r"\s*\[\d+(?:,\s*\d+)*\]", "", draft).split())
+    phases = [event.get("phase") for event in events if event["type"] == "phase"]
     check(
-        "Brief section generation produced a cited draft of meaningful length",
+        f"{heading} produced a reviewed draft within the section length",
         _stream_completed(events)
         and any(event.get("section_written") is True for event in events)
-        and len(draft.split()) >= 60
+        and "checking_citations" in phases
+        and target * 0.4 <= words <= target
         and not re.search(r"(?m)^#{1,6}\s", draft),
-        f"words={len(draft.split())}, events={[event['type'] for event in events]}",
+        f"words={words}, target={target}, phases={phases}",
     )
-    check(
-        "Brief citations point to real sources", bool(markers) and markers == citations
-    )
+    check(f"{heading} cites real sources", bool(markers) and markers == citations)
 
 
 def main():

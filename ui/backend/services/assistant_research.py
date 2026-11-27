@@ -55,6 +55,7 @@ from ui.backend.services.brief_section_prompt import (
     brief_section_scope_request,
     build_section_prompt,
 )
+from ui.backend.services.citation_fidelity import strip_citation_markers
 from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ class StreamResult(TypedDict):
     order: int
     topic: str
     evidence: list[Passage]
+    leading_passages: list[Passage]
 
 
 class ResearchState(TypedDict, total=False):
@@ -351,6 +353,7 @@ class ResearchWorkflow:
     async def research(self, task: StreamTask, config: RunnableConfig) -> ResearchState:
         """Investigate one topic using only this stream's findings for follow-ups."""
         evidence = task["evidence"]
+        leading_passages: list[Passage] = []
         searches = task["searches"].copy()
         query, reason = task["next_query"], task["reason"]
         for remaining in range(task["budget"] - 1, -1, -1):
@@ -358,6 +361,7 @@ class ResearchWorkflow:
             recent = _admit_passages(
                 retrieved, evidence, self.limits.follow_up_passages
             )
+            leading_passages.extend(recent[:1])
             evidence = evidence + recent
             searches.append(query)
             if remaining == 0:
@@ -377,7 +381,12 @@ class ResearchWorkflow:
                 break
         return {
             "findings": [
-                {"order": task["order"], "topic": task["topic"], "evidence": evidence}
+                {
+                    "order": task["order"],
+                    "topic": task["topic"],
+                    "evidence": evidence,
+                    "leading_passages": leading_passages,
+                }
             ]
         }
 
@@ -485,16 +494,13 @@ class ResearchWorkflow:
         gathered = (p for f in findings for p in f["evidence"])
         evidence = {p["global_index"]: p for p in (*state["evidence"], *gathered)}
         if self.brief_section and self.brief_section.mode == "generate":
-            section = await write_grounded_brief(
-                state["query"],
-                state["searches"][0],
-                self.writer,
-                evidence,
-                config,
-                self.llm,
-                self.citation_request if self.check_citations else None,
-                self.brief_section,
-                target_words=state.get("brief_target_words"),
+            leading = {
+                p["global_index"]: p
+                for f in findings
+                for p in reversed(f["leading_passages"])
+            }
+            section = await self._write_brief_section(
+                state, config, {**leading, **evidence}, self.brief_section
             )
             return {"draft": section or _NO_EVIDENCE, "structured_brief": True}
         draft = (
@@ -508,6 +514,42 @@ class ResearchWorkflow:
             else _NO_EVIDENCE
         )
         return {"draft": draft, "answer_evidence": evidence}
+
+    async def _write_brief_section(
+        self,
+        state: ResearchState,
+        config: RunnableConfig,
+        evidence: dict[int, Passage],
+        section: BriefSectionPrompt,
+    ) -> str:
+        target = state.get("brief_target_words")
+        write = partial(
+            write_grounded_brief,
+            state["query"],
+            state["searches"][0],
+            self.writer,
+            config=config,
+            writer=self.llm,
+            review=self.citation_request if self.check_citations else None,
+            section=section,
+            review_scope=self._request_json,
+            target_words=target,
+        )
+        draft = await write(evidence=evidence)
+        if not target or len(strip_citation_markers(draft).split()) >= 0.85 * target:
+            return draft
+        # Search progress lists all hits. The planner admits only a subset to its
+        # working context. Use the next distinct passages before ending a short section.
+        remaining = _admit_passages(
+            self.tracker.all_results,
+            list(evidence.values()),
+            self.limits.initial_passages,
+        )
+        if not remaining:
+            return draft
+        return await write(
+            evidence={p["global_index"]: p for p in remaining}, earlier_text=draft
+        )
 
     async def check_answer(
         self, state: ResearchState, config: RunnableConfig
