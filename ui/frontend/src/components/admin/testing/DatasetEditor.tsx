@@ -262,7 +262,7 @@ const DatasetEditor: React.FC<DatasetEditorProps> = ({ dataset, onBack }) => {
                   className="testing-raw-toggle"
                   onClick={downloadSampleCsv}
                 >
-                  sample format
+                  Download case CSV example
                 </button>
               </div>}
               <button

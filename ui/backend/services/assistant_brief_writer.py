@@ -8,7 +8,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from starlette.concurrency import run_in_threadpool
 
 from ui.backend.auth.schemas import BriefSectionPrompt
@@ -34,14 +34,9 @@ from ui.backend.services.citation_fidelity import (
 from utils.llm_factory import message_text
 
 
-class BriefFinding(EvidenceQuote):
-    paragraph: int = Field(ge=1, le=6)
-    text: str = Field(min_length=1, max_length=550)
-
-
-class BriefEvidenceLimit(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    limit: str = Field(min_length=1, max_length=550)
+class BriefFinding(BaseModel):
+    text: str = Field(min_length=1)
+    sources: list[EvidenceQuote]
 
 
 class FindingScopeDecision(BaseModel):
@@ -49,6 +44,8 @@ class FindingScopeDecision(BaseModel):
     id: int = Field(ge=1)
     subject: str
     reason: str
+    source_matches_assignment: bool
+    unsupported_phrases: list[str]
     keep: bool
     covers_other_heading: bool
     in_scope_revision: str | None = None
@@ -59,92 +56,84 @@ class FindingScopeReview(BaseModel):
     reviews: list[FindingScopeDecision]
 
 
-_BRIEF_LINE = TypeAdapter(BriefFinding | BriefEvidenceLimit)
 _FINDING_SCOPE = TypeAdapter(FindingScopeReview)
-_DEPENDENT_LEAD = re.compile(
-    r"^(?:For example|For instance|Similarly|Likewise),\s*", re.I
-)
 _TRAILING_REFERENCE = re.compile(r"\s+\((\d+(?:,\s*\d+)*)\)$")
 _FINDING_WORD = re.compile(r"\b\w{3,}\b")
-_DRAFT_FORMAT_ISSUE = (
-    "Return only one valid JSON object per line, with no prose outside it. "
-    "Each finding needs paragraph, text, citation and quote fields."
-)
-_FINDING_LENGTH_ISSUE = (
-    "A finding's text exceeded 550 characters. Put each supported sentence "
-    "in its own record, with the citation and exact quote for that sentence."
-)
+_DRAFT_FORMAT_ISSUE = "Cite a numbered excerpt before the end of each factual sentence."
 
 
 def _prepare_finding(
     finding: BriefFinding, excerpts: dict[int, str]
-) -> tuple[str, str, str] | None:
+) -> tuple[str, str, list[EvidenceQuote]] | None:
     text = finding.text.strip().rstrip(".").strip()
-    if set(cited_numbers_in_order(text)) - {finding.citation}:
-        return None
-    text = strip_citation_markers(text).rstrip(".").strip()
+    citations = list(dict.fromkeys(src.citation for src in finding.sources))
     if match := _TRAILING_REFERENCE.search(text):
         labels = {int(number) for number in match[1].split(",")}
-        quoted_numbers = set(re.findall(r"\b\d+\b", finding.quote))
+        quoted_numbers = set(
+            re.findall(r"\b\d+\b", " ".join(src.quote for src in finding.sources))
+        )
         if (
-            finding.citation in labels
+            labels.intersection(citations)
             and labels <= excerpts.keys()
             and not all(str(label) in quoted_numbers for label in labels)
         ):
             text = text[: match.start()]
-    if lead := _DEPENDENT_LEAD.match(text):
-        text = text[lead.end() :]
-        text = text[:1].upper() + text[1:]
     key = match_key(text)
-    quote = match_key(finding.quote)
+    for src in finding.sources:
+        quote = match_key(src.quote)
+        if len(quote.split()) < 2 or f" {quote} " not in excerpts.get(src.citation, ""):
+            return None
     if (
         not key
         or len(split_sentences(text)) != 1
         or text.startswith(("#", "-", "*"))
         or "[" in text
-        or len(quote.split()) < 2
-        or f" {quote} " not in excerpts.get(finding.citation, "")
     ):
         return None
-    return f"{text} [{finding.citation}].", key, finding.quote
+    markers = ", ".join(str(label) for label in citations)
+    return f"{text} [{markers}].", key, finding.sources
 
 
-def _read_draft_lines(raw: str) -> tuple[dict[int, list[BriefFinding]], str, list[str]]:
-    paragraphs: dict[int, list[BriefFinding]] = {}
-    limit = ""
+def _read_draft_lines(raw: str, quotes: dict[int, tuple[int, str]]):
+    paragraphs = []
     issues = []
-    for line in raw.splitlines():
-        if not line.strip().startswith("{"):
+    limit = ""
+    for block in re.split(r"\n\s*\n", raw.strip()):
+        if block.startswith("Limit: "):
+            limit = block.splitlines()[0].removeprefix("Limit: ").strip()
+            if len(block.splitlines()) > 1:
+                issues.append(_DRAFT_FORMAT_ISSUE)
             continue
-        try:
-            part = _BRIEF_LINE.validate_json(line)
-        except ValidationError as error:
-            issues.append(_draft_format_issue(error))
-            continue
-        if isinstance(part, BriefFinding):
-            paragraphs.setdefault(part.paragraph, []).append(part)
-        else:
-            limit = part.limit.strip()
-    if raw.strip() and not (paragraphs or limit or issues):
-        issues.append(_DRAFT_FORMAT_ISSUE)
+        findings = []
+        for sentence in split_sentences(block):
+            labels = cited_numbers_in_order(sentence)
+            if not labels or any(label not in quotes for label in labels):
+                issues.append(_DRAFT_FORMAT_ISSUE)
+                continue
+            text = strip_citation_markers(sentence)
+            if text.strip(".!? "):
+                findings.append(
+                    BriefFinding(
+                        text=text,
+                        sources=[
+                            EvidenceQuote(
+                                citation=quotes[label][0], quote=quotes[label][1]
+                            )
+                            for label in labels
+                        ],
+                    )
+                )
+        paragraphs.append(findings)
     return paragraphs, limit, issues
 
 
-def _draft_format_issue(error: ValidationError) -> str:
-    fields = {item["loc"]: item["type"] for item in error.errors(include_input=False)}
-    if ("BriefFinding", "limit") in fields:
-        return (
-            'Write an evidence gap as {"limit":"One sentence about what is missing."}.'
-        )
-    if fields.get(("BriefFinding", "text")) == "string_too_long":
-        return _FINDING_LENGTH_ISSUE
-    return _DRAFT_FORMAT_ISSUE
-
-
 def _brief_draft_text(
-    draft: str, evidence: dict[int, Passage], other_claims: set[str]
-) -> tuple[str, list[str], dict[str, str]]:
-    candidates, limit, issues = _read_draft_lines(draft)
+    draft: str,
+    evidence: dict[int, Passage],
+    other_claims: set[str],
+    quotes: dict[int, tuple[int, str]],
+) -> tuple[str, list[str], dict[str, list[EvidenceQuote]]]:
+    candidates, limit, issues = _read_draft_lines(draft, quotes)
     paragraphs = []
     seen: set[str] = set()
     prepared_quotes = {}
@@ -152,9 +141,9 @@ def _brief_draft_text(
         index: f" {match_key(passage_for_agent(passage['text']))} "
         for index, passage in evidence.items()
     }
-    for index in sorted(candidates):
+    for paragraph in candidates:
         sentences = []
-        for candidate in candidates[index][:4]:
+        for candidate in paragraph:
             prepared = _prepare_finding(candidate, excerpts)
             if not prepared:
                 issues.append(
@@ -239,7 +228,7 @@ async def _review_finding_scope(
     draft: str,
     section: BriefSectionPrompt,
     evidence: dict[int, Passage],
-    prepared_quotes: dict[str, str],
+    prepared_quotes: dict[str, list[EvidenceQuote]],
     similar: dict[str, list[dict[str, str]]],
     subject: str,
     config: RunnableConfig,
@@ -273,14 +262,14 @@ async def _review_finding_scope(
 def _finding_for_scope(
     row: dict,
     evidence: dict[int, Passage],
-    prepared_quotes: dict[str, str],
+    prepared_quotes: dict[str, list[EvidenceQuote]],
     similar: dict[str, list[dict[str, str]]],
 ) -> dict:
     text = row["text"]
     return {
         "id": row["id"],
         "text": text,
-        "supporting_quote": prepared_quotes.get(text),
+        "supporting_quotes": [s.model_dump() for s in prepared_quotes.get(text, [])],
         "similar": similar.get(text, []),
         "sources": [
             {
@@ -296,13 +285,20 @@ def _apply_scope_review(
     draft: str,
     sentences: list[dict],
     decision: FindingScopeReview,
-    prepared_quotes: dict[str, str],
+    prepared_quotes: dict[str, list[EvidenceQuote]],
 ) -> tuple[str, list[str]]:
     approved = set()
     revisions = {}
     issues = []
     for row, review in zip(sentences, sorted(decision.reviews, key=lambda row: row.id)):
-        if review.keep and not review.covers_other_heading:
+        if not review.source_matches_assignment:
+            issues.append(
+                f"Source does not establish the required subject: {review.reason}"
+            )
+            continue
+        if review.keep and not (
+            review.covers_other_heading or review.unsupported_phrases
+        ):
             approved.add(row["id"])
             continue
         original = row["text"]
@@ -322,7 +318,7 @@ def _apply_scope_review(
 def _valid_scope_revision(
     revision: str,
     row: dict,
-    prepared_quotes: dict[str, str],
+    prepared_quotes: dict[str, list[EvidenceQuote]],
 ) -> bool:
     return (
         bool(revision)
@@ -337,7 +333,7 @@ def _valid_scope_revision(
 
 async def _verify_draft_findings(
     draft: str,
-    prepared_quotes: dict[str, str],
+    prepared_quotes: dict[str, list[EvidenceQuote]],
     previous_findings: list[tuple[str, str]],
     assignment: str,
     subject: str,
@@ -410,7 +406,7 @@ async def write_grounded_brief(
     """Write independently sourced findings and optionally check their support."""
     if not evidence:
         return earlier_text
-    evidence, passages, subject = await select_brief_evidence(
+    evidence, (passages, quotes), subject = await select_brief_evidence(
         assignment, evidence, config, review_scope, target_words
     )
     if not evidence:
@@ -443,7 +439,7 @@ async def write_grounded_brief(
                     voice=section.voice_instructions,
                     evidence=passages,
                     issues=issues,
-                    accepted=accepted,
+                    accepted=strip_citation_markers(accepted),
                     target_words=target_words,
                     written_words=written_words,
                     sibling_matches=sibling_matches,
@@ -456,6 +452,7 @@ async def write_grounded_brief(
             evidence,
             other_claims
             | {match_key(strip_citation_markers(s)) for s in split_sentences(accepted)},
+            quotes,
         )
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})

@@ -219,13 +219,13 @@ async def check_answer_citations(
     request_json: ReviewRequest,
     *,
     brief_section: bool,
-    prepared_quotes: dict[str, str] | None = None,
+    prepared_quotes: dict[str, list[EvidenceQuote]] | None = None,
     similar_findings: dict[str, list[dict[str, str]]] | None = None,
 ) -> CitationReview:
     sentences = numbered_sentences(answer)
     for row in sentences:
         if prepared_quotes and (quote := prepared_quotes.get(row["text"])):
-            row["prepared_quote"] = quote
+            row["prepared_quotes"] = [q.model_dump() for q in quote]
         if similar_findings and (matches := similar_findings.get(row["text"])):
             row["similar_findings"] = matches
     mismatches = source_attribution_issues(sentences, evidence)
@@ -347,12 +347,11 @@ def _missing_quotes(
     check: SentenceCheck,
     cited: set[int],
     excerpts: dict[int, str],
-    prepared_quote: str = "",
+    prepared_quotes: list[dict] | None = None,
 ) -> set[int]:
     substantiated = set()
     quotes = check.quotes.copy()
-    if prepared_quote and len(cited) == 1:
-        quotes.append(EvidenceQuote(citation=next(iter(cited)), quote=prepared_quote))
+    quotes.extend(EvidenceQuote.model_validate(q) for q in prepared_quotes or [])
     for source in quotes:
         needle = match_key(source.quote)
         if source.citation in cited and len(needle.split()) >= 2:
@@ -395,7 +394,7 @@ def citation_issues(
             )
             continue
         if missing := _missing_quotes(
-            check, cited, excerpts, row.get("prepared_quote", "")
+            check, cited, excerpts, row.get("prepared_quotes")
         ):
             labels = ", ".join(f"[{index}]" for index in sorted(missing))
             issues.append(f"Sentence {check.id} lacks verified quotes from {labels}.")

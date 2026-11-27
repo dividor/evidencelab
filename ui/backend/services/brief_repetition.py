@@ -1,5 +1,7 @@
 """Review the findings of a new section against previously written sections."""
 
+import re
+
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
@@ -49,7 +51,7 @@ async def remove_repeated_brief_findings(
         {"id": row["id"], "text": row["text"]} for row in sentences if row["citations"]
     ]
     if not findings or (len(findings) == 1 and not siblings):
-        return text
+        return _standalone_opening(text)
     template = assistant_prompt_templates.get_template("brief_repeated_findings.j2")
     duplicates: set[int] = set()
     for batch in _sibling_batches(siblings) if siblings else [[]]:
@@ -66,6 +68,20 @@ async def remove_repeated_brief_findings(
                 "The Brief repetition check returned invalid finding labels"
             )
         duplicates.update(result.duplicates)
-    return retain_supported_sentences(
+    if all(row["id"] in duplicates for row in findings):
+        return ""
+    kept = retain_supported_sentences(
         text, sentences, {row["id"] for row in sentences} - duplicates
+    )
+    return _standalone_opening(kept)
+
+
+def _standalone_opening(text: str) -> str:
+    """A lead-in such as 'Similarly' needs a preceding sentence."""
+    return re.sub(
+        r"^(?:for example|for instance|similarly|likewise),\s*(\w)",
+        lambda match: match[1].upper(),
+        text,
+        count=1,
+        flags=re.I,
     )

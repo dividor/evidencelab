@@ -100,17 +100,19 @@ A top-level heading that has sub-headings is written as a short **introduction**
 - **Headings** — if an introduction still comes back with headings of its own, it is researched again automatically (once by default). If it still has them after that, it is kept as written, with a warning on the section and a note in its **Section History**, so you can edit them out or choose **Regenerate** under **Ask AI**.
 - **Edits** — **Edit** and **Get Updates** preserve the section's role as an introduction.
 
+The writer develops the section in paragraphs, then pairs each factual sentence with supporting text from the library. It compares the draft with the other written sections before saving. An introduction frames the subject shared by its children. Specific examples, figures and detailed outcomes belong under the relevant child heading. Administrators can compare paragraph quality, length and overlap across runs with [Brief experiments](../admin/evaluation.md#compare-generated-brief-sections).
+
 #### Section length
 
 A brief can ask for sections of about a given number of words. Choose a **Section length** when you start a brief (Short, Standard, Long, a custom number, or *No target*, which lets the model decide, as before), change it for the whole brief in **Regenerate All**, or override it for one section in that section's research panel, where *Use brief target* inherits the brief's setting. The target is remembered with the brief. Your team may set a default in the group settings.
 
-The target is enforced three ways, because a model on its own only approximates a word count:
+Several settings help the writer aim for the requested length.
 
 1. The research prompt asks for about that many words, in place of its usual "at least three or four paragraphs".
-2. The model's output limit is raised so a long target is never cut off mid-sentence.
+2. The model's output limit allows more output for longer requests. This limit counts model tokens, including the supporting quotations.
 3. When a section comes back more than a quarter longer than its target, Evidence Lab condenses it with an AI edit that keeps every citation. You will see *Condensing to about N words* in the section's activity while that runs, and the edit is recorded in the section's **Section History**.
 
-Sections that come back short are left as they are: the target is a ceiling on length as much as a goal, and padding a section would only dilute its evidence. The presets, the allowed range and the tolerance are set in `config.json` under `application.brief.target_words`.
+When a draft is short, the writer looks for further supported detail in the retrieved passages. A narrow question can still finish below target. The presets, the allowed range and the tolerance are set in `config.json` under `application.brief.target_words`.
 
 Citations work like the rest of Evidence Lab: inline number badges link to the source document and page, an expandable **Evidence** panel lists the supporting documents for that section, and a compiled **References** list appears at the end of the brief. Citation numbers run consecutively across the whole brief in reading order (the first citation in the brief is `[1]`). By default there is one number per cited passage — the same numbering the Research Assistant uses, so a document cited from three pages carries three numbers. Two **Group by document** checkboxes above the References list change how the list is laid out, and the single-per-document option also changes the numbering itself (see [Export to Word](#5-export-to-word) below). The grouping you choose is saved with the brief.
 

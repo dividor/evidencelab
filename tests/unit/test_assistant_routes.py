@@ -73,7 +73,10 @@ def route_citation_model(monkeypatch):
     monkeypatch.setattr(
         assistant,
         "config_defaults",
-        lambda: {assistant.CITATION_CHECK: next(iter(db_config.SUPPORTED_LLMS), None)},
+        lambda: {
+            job: next(iter(db_config.SUPPORTED_LLMS), None)
+            for job in (assistant.CITATION_CHECK, assistant.BRIEF)
+        },
     )
 
 

@@ -68,7 +68,11 @@ async def run_research(
                 select_evidence(prompt, labels)
                 if select_evidence
                 else [
-                    {"citation": label, "subject_line": 1, "finding_lines": [1]}
+                    {
+                        "citation": label,
+                        "subject_line": 1,
+                        "finding_lines": _fixture_source_lines(prompt, label),
+                    }
                     for label in labels
                 ]
             )
@@ -95,7 +99,13 @@ async def run_research(
                 content=json.dumps(
                     {
                         "reviews": [
-                            {"covers_other_heading": False, **row} for row in reviews
+                            {
+                                "covers_other_heading": False,
+                                "source_matches_assignment": True,
+                                "unsupported_phrases": [],
+                                **row,
+                            }
+                            for row in reviews
                         ]
                     }
                 )
@@ -127,9 +137,10 @@ async def run_research(
             return AIMessage(
                 content=json.dumps({"scope_issues": [], "sentences": checks})
             )
-        return AIMessage(
-            content=responses(messages) if replies is None else next(replies)
-        )
+        reply = responses(messages) if replies is None else next(replies)
+        if messages[0].content.startswith("Write the prose of one section"):
+            reply = _fixture_excerpt_labels(reply, messages[-1].content)
+        return AIMessage(content=reply)
 
     llm.ainvoke = AsyncMock(side_effect=model)
     with (
@@ -201,14 +212,36 @@ def _review_rows(prompt):
     return json.loads(prompt.split("Sentences to check: ", 1)[1].splitlines()[0])
 
 
+def _fixture_source_lines(prompt, label):
+    passage = prompt.split(f"Passage [{label}]\n", 1)[1].split("\n\nPassage [", 1)[0]
+    return [int(n) for n in re.findall(r"(?m)^([1-9]\d*): ", passage)]
+
+
+def _fixture_excerpt_labels(reply, prompt):
+    """Select the fixture's requested quote from the excerpts actually supplied."""
+    labels = {}
+    source = None
+    for line in prompt.splitlines():
+        if heading := re.match(r"Source (\d+): ", line):
+            source = heading[1]
+        if excerpt := re.match(r"\[(\d+)\] (.+)", line):
+            labels[excerpt[1]] = (source, excerpt[2])
+
+    def label(match):
+        for index, (passage, line) in labels.items():
+            if passage == match[1] and match[2].lower() in line.lower():
+                return f"[{index}]"
+        return "[99999]"
+
+    return re.sub(r"\[\[(\d+)\|(.+?)\]\]", label, reply)
+
+
 def _brief_draft(*findings, limit=""):
-    rows = [
-        {"paragraph": 1, "text": text, "citation": citation, "quote": quote}
+    prose = " ".join(
+        f"{text.rstrip('.')} [[{citation}|{quote}]]."
         for text, citation, quote in findings
-    ]
-    if limit:
-        rows.append({"limit": limit})
-    return "\n".join(json.dumps(row) for row in rows)
+    )
+    return f"{prose}\n\nLimit: {limit}" if limit else prose
 
 
 @pytest.mark.asyncio
@@ -718,8 +751,9 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
 
     def judge(prompt):
         assert len(_review_rows(prompt)) == 3
-        assert _review_rows(prompt)[0]["prepared_quote"] == (
+        assert (
             "documented social and behavioural change in school meals"
+            in _review_rows(prompt)[0]["prepared_quotes"][0]["quote"]
         )
         return {
             "scope_issues": [],
@@ -806,7 +840,7 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
     drafts = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     ]
     assert len(drafts) == 2 and "Add different findings" in drafts[-1]
 
@@ -838,9 +872,9 @@ async def test_brief_attempts_more_detail_when_four_findings_are_too_short():
     drafts = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     ]
-    assert len(drafts) == 2 and "24 words, leaving up to 326 words" in drafts[-1]
+    assert len(drafts) == 2 and "24 words, leaving about 326 words" in drafts[-1]
 
 
 @pytest.mark.asyncio
@@ -954,7 +988,7 @@ async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three(
     draft_request = next(
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     )
     assert draft_request.index(finding) < draft_request.index(
         "Returnees faced barriers to school."
@@ -968,18 +1002,18 @@ async def test_brief_uses_one_ranked_follow_up_when_model_lists_more_than_three(
     ("invalid_draft", "issue"),
     [
         (
-            "Teachers reported vocabulary barriers [1].",
-            "one valid JSON object per line",
+            "Teachers reported vocabulary barriers [99999].",
+            "Cite a numbered excerpt",
         ),
         (
             json.dumps({"paragraph": 1, "text": "An entire paragraph. " * 35}),
-            "exceeded 550 characters",
+            "Cite a numbered excerpt",
         ),
         (
             json.dumps(
                 {"paragraph": 1, "text": "The trial was inconclusive.", "limit": True}
             ),
-            "Write an evidence gap",
+            "Cite a numbered excerpt",
         ),
     ],
 )
@@ -1002,7 +1036,7 @@ async def test_brief_describes_the_format_error_and_retries(invalid_draft, issue
     first_request, retry_request = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     ]
     assert "Return only the finished prose" not in first_request
     assert (
@@ -1648,7 +1682,7 @@ async def test_brief_extraction_accepts_multiple_distinct_observations_from_one_
     draft = next(
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     )
     assert all(observation in draft for observation in observations)
     assert next(event["token"] for event in events if event["type"] == "token") == (
@@ -1720,15 +1754,12 @@ async def test_brief_retries_the_supported_part_of_a_finding_reserved_for_two_he
     drafts = [
         call.args[0][-1].content
         for call in llm.ainvoke.await_args_list
-        if call.args[0][0].content.startswith("Write finding records")
+        if call.args[0][0].content.startswith("Write the prose of one section")
     ]
     assert len(drafts) == 2
     assert mixed in drafts[-1] and "Aim for about 150 words" in drafts[-1]
     assert f"Finding removed during evidence check: {unrelated}" in drafts[-1]
-    assert all(
-        f'Voice and tone to use in the text and limit fields: "{voice}"' in draft
-        for draft in drafts
-    )
+    assert all(f'Voice and audience: "{voice}"' in draft for draft in drafts)
     answer = next(event["token"] for event in events if event["type"] == "token")
     assert answer == f"{finding} [1].\n\n{case} [2].\n\n{limit}"
 
@@ -1758,7 +1789,7 @@ async def test_brief_checks_a_scope_revision_against_its_original_citation():
     def verify(prompt):
         row = _review_rows(prompt)[0]
         assert row["text"] == observation + " [1]."
-        assert row["prepared_quote"] == observation
+        assert observation in row["prepared_quotes"][0]["quote"]
         return {
             "scope_issues": [],
             "sentences": [{"id": row["id"], "status": "supported", "quotes": []}],
@@ -2030,3 +2061,40 @@ async def test_short_section_checks_unused_search_hits_for_additional_supported_
     assert {
         s["chunkId"] for e in events if e["type"] == "sources" for s in e["sources"]
     } == {"chunk-1", "chunk-13"}
+
+
+@pytest.mark.asyncio
+async def test_brief_rejects_unsupported_frequency_and_a_source_for_the_wrong_subject():
+    quote = "Some components needed replacement"
+    wrong = "Certified components had to be replaced"
+    revised = "The inspection found some components needed replacement"
+
+    def scope(_prompt, rows):
+        return [
+            {
+                "id": r["id"],
+                "subject": "components",
+                "reason": "The source documents occurrence.",
+                "source_matches_assignment": r["id"] == 1,
+                "unsupported_phrases": ["usually"],
+                "keep": True,
+                "in_scope_revision": revised,
+            }
+            for r in rows
+        ]
+
+    events, _, _ = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(
+                ("Components usually needed replacement", 1, quote), (wrong, 2, wrong)
+            ),
+        ],
+        [[point(1, quote + "."), point(2, wrong + ".")]],
+        brief_section=BriefSectionPrompt(
+            outline=[{"title": "Inspections of new components"}], current=0
+        ),
+        scope_check=scope,
+    )
+    answer = next(e["token"] for e in events if e["type"] == "token")
+    assert answer == revised + " [1]."

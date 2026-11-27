@@ -65,3 +65,14 @@ describe('TestingManager', () => {
     await waitFor(() => expect(screen.getByText(/Run as group/i)).toBeInTheDocument());
   });
 });
+
+test('the CSV example is available with its matching import action', async () => {
+  render(<TestingManager />);
+  await screen.findByText('Search Smoke');
+  expect(screen.queryByText(/example CSV/i)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'New dataset' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Import from CSV' }));
+  const download = screen.getByRole('link', { name: 'Download example CSV' });
+  expect(download).toHaveAttribute('download', 'qa-experiment-sample.csv');
+  expect(decodeURIComponent(download.getAttribute('href') || '')).toContain('expectation');
+});

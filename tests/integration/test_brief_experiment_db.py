@@ -79,7 +79,8 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                         test_runner,
                         "_judge_call",
                         return_value=(
-                            '{"reason":"Both report the same duration.","score":0}',
+                            '{"reason":"Both report the same duration.",'
+                            '"unmet":["Repeated finding"],"score":0}',
                             {},
                         ),
                     ),
@@ -104,5 +105,80 @@ async def test_brief_experiment_persists_generation_context_and_repetition_verdi
                 assert [a["passed"] for a in saved.assertion_results] == [True, False]
                 assert saved.actual_output["sources"][0]["index"] == 3
             await outer.rollback()
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.parametrize("existing", ["search", "ai_summary", "brief"])
+async def test_starter_upgrade_preserves_existing_experiments_and_history(existing):
+    """Run the migration against isolated PostgreSQL copies of the real tables."""
+    import runpy
+    from pathlib import Path
+
+    from sqlalchemy import text
+
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    migration = (
+        Path(__file__).resolve().parents[2]
+        / "alembic/versions/0044_install_brief_starters.py"
+    )
+    upgrade = runpy.run_path(str(migration))["upgrade"]
+    engine = create_async_engine(DATABASE_URL)
+    try:
+        async with engine.begin() as conn:
+            for table in (
+                TestDataset.__table__,
+                TestCase.__table__,
+                TestExperiment.__table__,
+            ):
+                await conn.execute(
+                    text(
+                        f"CREATE TEMP TABLE {table.name} "
+                        f"(LIKE public.{table.name} INCLUDING ALL) ON COMMIT DROP"
+                    )
+                )
+            async with AsyncSession(conn, expire_on_commit=False) as session:
+                original = TestDataset(
+                    name="Keep this dataset", capability=existing, data_source="other"
+                )
+                session.add(original)
+                await session.flush()
+                experiment = TestExperiment(
+                    dataset_id=original.id,
+                    name="Keep my grading",
+                    status="completed",
+                    config={"custom": True},
+                    summary_stats={"passed": 17},
+                )
+                session.add(experiment)
+                await session.flush()
+
+                def install(connection):
+                    with Operations.context(
+                        MigrationContext.configure(connection)
+                    ), patch(
+                        "pipeline.db.config.load_datasources_config",
+                        return_value={
+                            "datasources": {
+                                "Technical library": {"data_subdir": "technical"}
+                            }
+                        },
+                    ):
+                        upgrade()
+
+                await conn.run_sync(install)
+                await conn.run_sync(install)
+                session.expire_all()
+                experiments = (await session.scalars(select(TestExperiment))).all()
+                assert len(experiments) == (1 if existing == "brief" else 2)
+                assert experiment.config == {"custom": True}
+                assert experiment.summary_stats == {"passed": 17}
+                cases = (await session.scalars(select(TestCase))).all()
+                assert len(cases) == (0 if existing == "brief" else 2)
+                if cases:
+                    assert all(c.input["reference_standard"] == {} for c in cases)
+                    assert any(c.input["children"] for c in cases)
     finally:
         await engine.dispose()

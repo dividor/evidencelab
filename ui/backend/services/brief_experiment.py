@@ -2,7 +2,7 @@
 
 import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ui.backend.auth.schemas import (
     AssistantSearchSettings,
@@ -62,7 +62,11 @@ async def run_brief_case(raw, config, source):
     case = BriefCase.model_validate(raw)
     section = BriefSectionPrompt(
         topic=case.query,
-        outline=[*case.siblings, BriefOutlineSection(title=case.heading)],
+        outline=[
+            *case.siblings,
+            BriefOutlineSection(title=case.heading),
+            *(child.model_copy(update={"level": 2}) for child in case.children),
+        ],
         current=len(case.siblings),
         focus=case.guidance,
         voice_instructions=case.voice,
@@ -96,11 +100,12 @@ async def run_brief_case(raw, config, source):
         "assignment": dict(
             topic=case.query,
             heading=case.heading,
+            child_headings=[child.title for child in case.children],
             guidance=case.guidance,
             voice=case.voice,
             target_words=target,
         ),
-        "siblings": [s.model_dump() for s in case.siblings],
+        "siblings": [s.model_dump() for s in (*case.siblings, *case.children)],
         "reference_standard": case.reference_standard,
     }
     done = False
@@ -134,6 +139,11 @@ def structure_result(output):
         problems.append(
             "The section needs citations that resolve to returned passages."
         )
+    opening = re.split(r"\n\s*\n", draft.strip(), maxsplit=1)[0]
+    if draft.strip() and not cited_numbers_in_order(opening):
+        problems.append("The opening paragraph needs a citation.")
+    if re.search(r"(?m)^\s*(?:[-+*]\s+|\d+[.)]\s+)", draft):
+        problems.append("Write the section in paragraphs instead of a list.")
     if re.search(r"(?m)^\s*(?:#{1,6}\s+|\*\*[^*]+\*\*\s*$)", draft):
         problems.append("The section contains an extra heading.")
     return {
@@ -147,46 +157,96 @@ def structure_result(output):
 
 class BriefVerdict(BaseModel):
     reason: str = Field(min_length=1)
+    unmet: list[str]
     score: float = Field(ge=0, le=1)
 
+    @model_validator(mode="after")
+    def check_score(self):
+        if self.unmet and self.score == 1:
+            raise ValueError("Unmet requirements cannot receive full credit.")
+        return self
 
-async def judge_brief(output, assertions, model):
+
+class IntroductionVerdict(BaseModel):
+    reason: str = Field(min_length=1)
+    unmet: list[str]
+
+    @property
+    def score(self) -> float:
+        return float(not self.unmet)
+
+
+async def _grade(output, prompt, model, system, schema=BriefVerdict):
     from ui.backend.services.test_runner import _judge_call
 
-    template = assistant_prompt_templates.get_template("brief_experiment_judge.j2")
-    system = template.render(system=True).strip()
-    decisions = {}
-    for a in assertions:
-        if a["type"] not in ("llm_judge", "brief_overlap"):
-            continue
-        overlap = a["type"] == "brief_overlap"
-        key = "brief_overlap" if overlap else a.get("rubric", "")
-        if key in decisions:
-            continue
-        if not output["written"]:
-            decisions[key] = (0.0, "No section was written.", "")
-            continue
-        if overlap and not any(
-            (s.get("content") or "").strip() for s in output["siblings"]
-        ):
-            decisions[key] = (
-                0.0,
-                "Provide another section with written text to test repetition.",
-                "",
+    for attempt in range(2):
+        raw, usage = await _judge_call(prompt, model, system, max_tokens=900)
+        output.setdefault("judge_usage", []).append(usage)
+        try:
+            return schema.model_validate_json(raw), prompt
+        except ValidationError:
+            if attempt:
+                raise
+            template = assistant_prompt_templates.get_template(
+                "brief_experiment_judge.j2"
             )
-            continue
-        prompt = template.render(
-            rubric=template.render(overlap=True) if overlap else key,
-            assignment=output["assignment"],
+            prompt += "\n" + template.render(repair=True)
+    raise RuntimeError("The judge did not return a verdict.")
+
+
+def _brief_grade_request(template, output, kind, rubric):
+    assignment = output["assignment"]
+    if kind == "brief_intro_scope":
+        if not assignment.get("child_headings"):
+            return "Add child headings to evaluate an introduction.", "", ""
+        return (
+            "",
+            template.render(intro_system=True),
+            template.render(intro=True, assignment=assignment, draft=output["summary"]),
+        )
+    overlap = kind == "brief_overlap"
+    if overlap and not any(
+        (s.get("content") or "").strip() for s in output["siblings"]
+    ):
+        return "Provide another section with written text to test repetition.", "", ""
+    return (
+        "",
+        template.render(system=True),
+        template.render(
+            rubric=template.render(overlap=True) if overlap else rubric,
+            assignment=assignment,
             draft=output["summary"],
             siblings=output["siblings"],
             sources=output["sources"],
             standard=output["reference_standard"],
             overlap_only=overlap,
+        ),
+    )
+
+
+async def judge_brief(output, assertions, model):
+    template = assistant_prompt_templates.get_template("brief_experiment_judge.j2")
+    decisions = {}
+    for assertion in assertions:
+        kind = assertion["type"]
+        if kind not in ("llm_judge", "brief_overlap", "brief_intro_scope"):
+            continue
+        key = assertion.get("rubric", "") if kind == "llm_judge" else kind
+        if key in decisions:
+            continue
+        if not output["written"]:
+            decisions[key] = (0.0, "No section was written.", "")
+            continue
+        issue, system, prompt = _brief_grade_request(template, output, kind, key)
+        if issue:
+            decisions[key] = (0.0, issue, "")
+            continue
+        verdict, prompt = await _grade(
+            output,
+            prompt,
+            model,
+            system,
+            IntroductionVerdict if kind == "brief_intro_scope" else BriefVerdict,
         )
-        raw, usage = await _judge_call(prompt, model, system, max_tokens=900)
-        output.setdefault("judge_usage", []).append(usage)
-        verdict = BriefVerdict.model_validate_json(raw)
-        score, reason = verdict.score, verdict.reason
-        decisions[key] = (score, reason, system + "\n\n" + prompt)
+        decisions[key] = (verdict.score, verdict.reason, system + "\n\n" + prompt)
     return lambda _draft, rubric: decisions[rubric]

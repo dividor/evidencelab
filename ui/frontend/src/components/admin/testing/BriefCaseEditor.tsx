@@ -5,6 +5,7 @@ interface Sibling {
   title: string;
   content?: string;
   level?: number;
+  child?: boolean;
 }
 
 const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onCancel, saving, submitLabel }) => {
@@ -14,7 +15,7 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
   const [guidance, setGuidance] = useState(String(input.guidance || ''));
   const [voice, setVoice] = useState(String(input.voice || ''));
   const [words, setWords] = useState(String(input.target_words || ''));
-  const [siblings, setSiblings] = useState<Sibling[]>((input.siblings as Sibling[]) || []);
+  const [siblings, setSiblings] = useState<Sibling[]>([...(input.siblings as Sibling[] || []), ...(input.children as Sibling[] || []).map(s => ({ ...s, child: true }))]);
   const [notes, setNotes] = useState(initialCase?.notes || '');
   const [tags, setTags] = useState((initialCase?.tags || []).join(', '));
   const updateSibling = (index: number, change: Partial<Sibling>) =>
@@ -30,7 +31,8 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
         guidance,
         voice,
         target_words: words ? Number(words) : null,
-        siblings,
+        siblings: siblings.filter(s => !s.child).map(({ title, content, level }) => ({ title, content, level })),
+        children: siblings.filter(s => s.child).map(({ title, content }) => ({ title, content, level: 2 })),
       },
       notes,
       tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
@@ -60,6 +62,13 @@ const BriefCaseEditor: React.FC<CaseEditorProps> = ({ initialCase, onSubmit, onC
     </label>
     {siblings.map((s, i) => <fieldset key={i}>
       <legend>Other section {i + 1}</legend>
+      <label>
+        Position in the outline
+        <select value={s.child ? 'child' : 'other'} onChange={e => updateSibling(i, { child: e.target.value === 'child' })}>
+          <option value="other">Before the section under test</option>
+          <option value="child">Subheading introduced by this section</option>
+        </select>
+      </label>
       <label>
         Heading
         <input required value={s.title} onChange={e => updateSibling(i, { title: e.target.value })} />

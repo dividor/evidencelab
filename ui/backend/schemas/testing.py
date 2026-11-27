@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ui.backend.auth.schemas import (
     BRIEF_HEADING_MAX_CHARS,
@@ -37,7 +37,16 @@ class BriefCase(BaseModel):
     siblings: list[BriefOutlineSection] = Field(
         default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
     )
+    children: list[BriefOutlineSection] = Field(
+        default_factory=list, max_length=BRIEF_MAX_SECTIONS - 1
+    )
     reference_standard: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_outline_size(self):
+        if len(self.siblings) + len(self.children) >= BRIEF_MAX_SECTIONS:
+            raise ValueError("The brief outline has too many sections.")
+        return self
 
 
 class TestDatasetCreate(BaseModel):

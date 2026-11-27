@@ -3107,7 +3107,7 @@ function App() {
             onResultClick={handleResultClick}
           />
         }
-        briefTab={
+        briefTab={searchModelsReady ? (
           <BriefTab
             dataSource={dataSource}
             assistantModelConfig={assistantModelConfig}
@@ -3132,7 +3132,7 @@ function App() {
             }}
             onResultClick={handleResultClick}
           />
-        }
+        ) : <div role="status">Loading research settings…</div>}
         heatmapTab={heatmapTab}
         documentsTab={documentsTab}
         statsTab={statsTab}

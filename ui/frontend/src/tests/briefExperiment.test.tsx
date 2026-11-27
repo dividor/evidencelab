@@ -16,10 +16,12 @@ test('saves section scope, target and existing sections while retaining editoria
   fireEvent.click(screen.getByText('Add another section'));
   fireEvent.change(screen.getAllByLabelText('Heading')[1], { target: { value: 'Personnel' } });
   fireEvent.change(screen.getAllByLabelText('Existing text')[1], { target: { value: 'Five people took part.' } });
+  fireEvent.change(screen.getAllByLabelText('Position in the outline')[1], { target: { value: 'child' } });
   fireEvent.click(screen.getByText('Save'));
   expect(save.mock.calls[0][0].input).toEqual({
     ...testCase.input, guidance: 'Compare unit costs.', voice: '',
-    siblings: [...testCase.input.siblings, { title: 'Personnel', content: 'Five people took part.' }],
+    siblings: testCase.input.siblings,
+    children: [{ title: 'Personnel', content: 'Five people took part.', level: 2 }],
   });
-  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_overlap','llm_judge']));
+  expect(getAssertionSpecs('brief').map(x => x.type)).toEqual(expect.arrayContaining(['brief_structure','brief_length','brief_overlap','brief_intro_scope','llm_judge']));
 });

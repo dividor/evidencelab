@@ -3,7 +3,7 @@
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -48,6 +48,10 @@ def draft(text="Processing time fell by half [7]."):
         ("A claim [?7].", False),
         ("## Another heading\nA finding [7].", False),
         ("**Another heading**\nA finding [7].", False),
+        ("An unsupported opening.\n\nA finding [7].", False),
+        ("- A finding [7].", False),
+        ("1. A finding [7].", False),
+        ("A finding [7].\n\nThe review did not measure duration.", True),
     ],
 )
 def test_structure_checks_draft_and_returned_passages(text, passed):
@@ -119,7 +123,11 @@ async def test_generation_uses_real_request_contract_without_grading_material(
 @pytest.mark.asyncio
 async def test_overlap_judge_sees_both_sections_but_no_reference_answer(monkeypatch):
     call = AsyncMock(
-        return_value=('{"reason":"Both sections report the same wait.","score":0}', {})
+        return_value=(
+            '{"reason":"Both sections report the same wait.",'
+            '"unmet":["Repeated finding"],"score":0}',
+            {},
+        )
     )
     monkeypatch.setattr(runner, "_judge_call", call)
     o = draft()
@@ -174,14 +182,14 @@ async def test_manual_sibling_can_duplicate_first_claim_and_distinct_finding_sur
 def test_default_cases_seed_editable_experiments_for_their_configured_libraries(
     monkeypatch,
 ):
-    path = ROOT / "alembic/versions/0043_seed_brief_experiments.py"
+    path = ROOT / "alembic/versions/0044_install_brief_starters.py"
     spec = importlib.util.spec_from_file_location("seed_brief_cases", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     inserted = []
     monkeypatch.setattr(
-        mod.op,
-        "bulk_insert",
+        mod,
+        "_insert",
         lambda table, rows: inserted.extend((table.name, row) for row in rows),
     )
     monkeypatch.setattr(
@@ -190,14 +198,16 @@ def test_default_cases_seed_editable_experiments_for_their_configured_libraries(
             "datasources": {"a": {"data_subdir": "uneg"}, "worldbank": {}, "other": {}}
         },
     )
+    monkeypatch.setattr(mod.op, "get_bind", lambda: MagicMock(scalar=lambda _: False))
     mod.upgrade()
     cases = [row for table, row in inserted if table == "test_cases"]
     experiments = [row for table, row in inserted if table == "test_experiments"]
-    assert sorted(len(e["case_expectations"]["cases"]) for e in experiments) == [2, 6]
-    assert len(cases) == 8 and len({c["id"] for c in cases}) == 8
+    assert sorted(len(e["case_expectations"]["cases"]) for e in experiments) == [3, 7]
+    assert len(cases) == 10 and len({c["id"] for c in cases}) == 10
     for c in cases:
         case = brief.BriefCase.model_validate(c["input"])
-        assert case.siblings[0].content and case.reference_standard["source"]["text"]
+        assert any(s.content for s in [*case.siblings, *case.children])
+        assert case.reference_standard["source"]["text"]
         assert [x["supported"] for x in case.reference_standard["controls"]] == [
             True,
             False,
@@ -247,3 +257,142 @@ async def test_run_as_group_uses_brief_prompt_checker_and_writer():
         config["brief_citation_check"],
         config["citation_model"],
     ) == ("writer", "Use technical prose.", False, "checker")
+
+
+@pytest.mark.asyncio
+async def test_inconsistent_perfect_grade_is_rechecked_and_both_calls_are_recorded(
+    monkeypatch,
+):
+    replies = AsyncMock(
+        side_effect=[
+            (
+                '{"reason":"The excerpt gives no frequency.",'
+                '"unmet":["Frequency unsupported"],"score":1}',
+                {},
+            ),
+            (
+                '{"reason":"Occurrence only.","unmet":["Frequency unsupported"],"score":0.5}',
+                {},
+            ),
+        ]
+    )
+    monkeypatch.setattr(runner, "_judge_call", replies)
+    output = draft()
+    a = {"type": "llm_judge", "rubric": "Check support."}
+    cb = await brief.judge_brief(output, [a], "grader")
+    result = evaluate_assertion(a, output, cb)
+    assert result["score"] == 0.5 and not result["passed"]
+    assert (
+        len(output["judge_usage"]) == 2 and "must be below 1" in result["judge_prompt"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_paragraph_writer_preserves_prose_and_citations_after_repetition_review():
+    from ui.backend.services.assistant_brief_writer import _brief_draft_text
+
+    source = "The gate failed twice. Inspections found a loose contact. Cleaning restored service."
+    prose = (
+        "The gate failed twice [1]. "
+        "Inspections found a loose contact [2].\n\n"
+        "Cleaning restored service [3]."
+    )
+    quotes = {
+        1: (4, "gate failed twice."),
+        2: (9, "a loose contact"),
+        3: (1, "Cleaning restored service"),
+    }
+    draft, issues, _ = _brief_draft_text(
+        prose, {i: {"text": source} for i in [1, 4, 9]}, set(), quotes
+    )
+    assert not issues
+    actual = await remove_repeated_brief_findings(
+        draft, {}, AsyncMock(return_value=BriefRepetitionCheck(duplicates=[]))
+    )
+    assert actual == (
+        "The gate failed twice [4]. Inspections found a loose contact [9].\n\n"
+        "Cleaning restored service [1]."
+    )
+    invalid = "An unsubstantiated claim. A recorded failure [1]."
+    retained, issues, _ = _brief_draft_text(
+        invalid, {4: {"text": source}}, set(), quotes
+    )
+    assert retained == "A recorded failure [4]." and "numbered excerpt" in issues[0]
+
+
+def test_comparison_keeps_all_supporting_passages_and_shared_passages_are_numbered_once():
+    from ui.backend.services.assistant_brief_writer import _brief_draft_text
+
+    sources = {
+        8: {"text": "Time fell in the first group. The change lasted a year."},
+        2: {"text": "Time rose in the other group."},
+    }
+    quotes = {
+        1: (8, "Time fell in the first group."),
+        2: (8, "The change lasted a year."),
+        3: (2, "Time rose in the other group."),
+    }
+    prose, issues, support = _brief_draft_text(
+        "The groups moved in opposite directions [1][2][3].", sources, set(), quotes
+    )
+    assert not issues and prose == "The groups moved in opposite directions [8, 2]."
+    assert [q.citation for q in support[prose]] == [8, 8, 2]
+
+
+@pytest.mark.asyncio
+async def test_parent_case_passes_child_outline_to_writer_and_grader(monkeypatch):
+    children = [
+        {"title": "Duration"},
+        {"title": "Cost", "content": "Each repair cost ten dollars."},
+    ]
+
+    async def stream(**args):
+        section = args["brief_section"]
+        assert section.current == 0 and [s.level for s in section.outline] == [1, 2, 2]
+        assert section.outline[2].content == children[1]["content"]
+        yield {"type": "token", "token": "Each repair cost ten dollars [1]."}
+        yield {"type": "done", "section_written": True}
+
+    monkeypatch.setattr(brief, "stream_research_response", stream)
+    config = runner.run_config_snapshot({})
+    brief.configure_brief(config, {})
+    output = await brief.run_brief_case(
+        {"query": "Repairs", "heading": "Overview", "children": children},
+        config,
+        "demo",
+    )
+    call = AsyncMock(
+        return_value=(
+            '{"reason":"The parent answers Cost.","unmet":["ten dollars"],"score":0}',
+            {},
+        )
+    )
+    monkeypatch.setattr(runner, "_judge_call", call)
+    overlap = {"type": "brief_intro_scope"}
+    callback = await brief.judge_brief(output, [overlap], "grader")
+    assert not evaluate_assertion(overlap, output, callback)["passed"]
+    prompt = call.await_args.args[0]
+    assert 'Questions reserved for the children: ["Duration", "Cost"]' in prompt
+    assert "introduction in place of reading" in prompt
+
+
+@pytest.mark.parametrize("details,expected", [([], 1.0), (["five defects"], 0.0)])
+def test_parent_scope_scores_only_the_specific_details_found(details, expected):
+    assert (
+        brief.IntroductionVerdict(
+            reason="Compared with child assignments.", unmet=details
+        ).score
+        == expected
+    )
+
+
+def test_source_context_is_available_but_only_selected_findings_are_citable():
+    from ui.backend.services.brief_evidence_selection import _draft_excerpts
+
+    passages = {11: {"title": "Inspection record"}}
+    text, quotes = _draft_excerpts(
+        passages,
+        {11: ["Applies to the north site.", "A seal failed.", "A seal failed."]},
+    )
+    assert "Subject: Applies to the north site." in text
+    assert quotes == {1: (11, "A seal failed.")}

@@ -10,7 +10,6 @@ from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
-    render_evidence,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.citation_fidelity import split_sentences
@@ -57,9 +56,7 @@ def _check_selection(
                 f"Select finding lines from 1 to {len(lines) - 1} in [{row.citation}]."
             )
         if quotes:
-            selected.setdefault(row.citation, []).extend(
-                [lines[row.subject_line], *quotes]
-            )
+            selected.setdefault(row.citation, [lines[row.subject_line]]).extend(quotes)
     return selected, issues
 
 
@@ -77,7 +74,7 @@ async def select_brief_evidence(
     config: RunnableConfig,
     request_json: ReviewRequest,
     target_words: int | None,
-) -> tuple[dict[int, Passage], str, str]:
+) -> tuple[dict[int, Passage], tuple[str, dict[int, tuple[int, str]]], str]:
     """Use validated extracts for drafting and keep the full passages for verification."""
     template = assistant_prompt_templates.get_template("brief_evidence_selection.j2")
     system = template.render(system=True)
@@ -104,7 +101,7 @@ async def select_brief_evidence(
         selected, issues = _check_selection(response, entries)
         subject = subject or response.section_subject
         for label, quotes in selected.items():
-            accepted.setdefault(label, []).extend(quotes)
+            accepted.setdefault(label, [quotes[0]]).extend(quotes[1:])
         if not issues:
             break
         logger.info(
@@ -116,15 +113,30 @@ async def select_brief_evidence(
         raise InvalidAssistantResponse(
             "The Brief could not extract evidence from its sources"
         )
-    extracts = [
-        {**evidence[label], "text": "\n".join(dict.fromkeys(quotes))}
-        for label, quotes in accepted.items()
-    ]
     return (
         {
             label: {**evidence[label], "brief_subject_evidence": quotes[0]}
             for label, quotes in accepted.items()
         },
-        render_evidence(extracts),
+        _draft_excerpts(evidence, accepted),
         subject,
     )
+
+
+def _draft_excerpts(evidence: dict[int, Passage], accepted: dict[int, list[str]]):
+    """Give each selected source sentence its own short label for this drafting call."""
+    quotes: dict[int, tuple[int, str]] = {}
+    groups = []
+    for passage, lines in accepted.items():
+        group = [
+            f"Source {passage}: {evidence[passage]['title']}",
+            f"Subject: {lines[0]}",
+        ]
+        for line in dict.fromkeys(lines[1:]):
+            if line == evidence[passage]["title"]:
+                continue
+            label = len(quotes) + 1
+            quotes[label] = (passage, line)
+            group.append(f"[{label}] {line}")
+        groups.append("\n".join(group))
+    return "\n\n".join(groups), quotes

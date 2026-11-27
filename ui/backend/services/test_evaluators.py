@@ -284,6 +284,7 @@ _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResul
 VALID_ASSERTION_TYPES = set(_EVALUATORS) | {
     "llm_judge",
     "brief_overlap",
+    "brief_intro_scope",
     "brief_structure",
 }
 
@@ -299,12 +300,16 @@ def evaluate_assertion(
         from ui.backend.services.brief_experiment import structure_result
 
         return structure_result(output)
-    if atype == "brief_overlap":
-        result = eval_llm_judge({"rubric": "brief_overlap"}, output, judge_fn)
+    if atype in ("brief_overlap", "brief_intro_scope"):
+        result = eval_llm_judge({"rubric": atype}, output, judge_fn)
         return {
             **result,
             "type": atype,
-            "rubric": "Does this section repeat a finding from another section?",
+            "rubric": (
+                "Does the introduction leave details to its subheadings?"
+                if atype == "brief_intro_scope"
+                else "Does this section repeat a finding from another section?"
+            ),
         }
     if atype == "llm_judge":
         return eval_llm_judge(assertion, output, judge_fn=judge_fn)

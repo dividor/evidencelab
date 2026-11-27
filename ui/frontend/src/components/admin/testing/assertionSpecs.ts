@@ -135,6 +135,7 @@ export const ASSERTION_SPECS_BY_CAPABILITY: Record<TestCapability, AssertionType
   brief: [
     { type: 'brief_length', label: 'Word count meets target', fields: [] },
     { type: 'brief_structure', label: 'Section format and citations', fields: [] },
+    { type: 'brief_intro_scope', label: 'Introduction leaves details to subheadings', fields: [] },
     { type: 'brief_overlap', label: 'Findings are distinct across sections', fields: [] },
     ...AI_SUMMARY_ASSERTIONS.filter((spec) => spec.type === 'llm_judge'),
   ],

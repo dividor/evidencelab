@@ -222,7 +222,11 @@ async def _purpose_model_key(
     library survey), the group's Brief model (Group Settings > LLMs) overrides
     the model combo's; otherwise the model the request names."""
     if body.usage_context == "brief":
-        return await user_group_choice(session, user, BRIEF) or model_key
+        return (
+            await user_group_choice(session, user, BRIEF)
+            or model_key
+            or config_defaults()[BRIEF]
+        )
     return model_key
 
 

@@ -25,7 +25,7 @@ The typical workflow is:
 
 ### Quickstart: Load dataset and experiment in one file
 
-If you already have your questions **and** the expected answers in a spreadsheet, use **+ Create Dataset and Experiment** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** expectation per row, where each row is judged against its own expected answer.
+If you already have your questions **and** the expected answers in a spreadsheet, use **Import from CSV** (in the **Datasets** sub‑view) to do everything in one upload: it creates a dataset of the questions **and** a draft experiment with one **LLM‑judge** expectation per row, where each row is judged against its own expected answer.
 
 The CSV is the **same format as the dataset upload** (see [Add test cases](#add-test-cases)) plus one extra column:
 
@@ -42,7 +42,7 @@ In the **Create Dataset and Experiment** dialog you provide:
 - **Name** — saved as `<name>_dataset` and `<name>_experiment`.
 - **What to test** — `search` or `ai_summary`. The expectation column drives an **LLM‑judge** expectation, which evaluates the AI summary, so choose **`ai_summary`** for it to apply.
 - **Data source**, **Model combo**, **Run as group**, and the **judge threshold** (default `0.7`) — the same run configuration as a normal experiment (see [Run configuration](#run-configuration)).
-- The **CSV file** (a **sample format** download is provided).
+- The **CSV file** (choose **Download example CSV** for a template).
 
 Each row's question and expectation stay paired at the row level. The import is atomic — if anything fails part‑way, the partially‑created dataset is removed so you can retry cleanly. Once created, run it from the **Experiments** table like any other experiment ([Run an experiment](#3-run-an-experiment)).
 
@@ -58,7 +58,7 @@ Create the **dataset** and the **experiment** separately — use this when you w
 
 A **dataset** is a reusable set of **test cases** for one capability. Datasets hold *inputs only* — the expectations live on the experiment, so the same dataset can be evaluated under different expectations.
 
-In **Datasets**, click **New Dataset** and provide:
+In **Datasets**, click **New dataset** and provide:
 
 - **Name** — e.g. `BASE`.
 - **Capability** — choose `search`, `ai_summary`, or `brief`.
@@ -73,7 +73,7 @@ Open the dataset to manage its cases. Each case is a **query** plus optional **f
 You can add cases two ways:
 
 - **+ Add case** — enter a single case by hand.
-- **Upload CSV** — bulk‑import cases. Click **sample format** (directly under the button) to download a template. Uploading **appends** to whatever is already in the dataset.
+- **Upload CSV** — bulk‑import cases. Click **Download case CSV example** to download a template. Uploading **appends** to whatever is already in the dataset.
 
 The CSV columns are:
 
@@ -221,17 +221,19 @@ Once a check has completed, everyone who can open the brief sees a **Fact Checke
 
 ### Compare generated Brief sections
 
-In **Admin → Testing (Experiments) → Experiments**, open **UNEG Brief quality** or **World Bank procurement Brief quality**. The first has six cases about education, climate and nutrition. The second has two procurement cases. Each starter appears when the corresponding data source is configured. Choose a model combo and, if needed, **Run as group**, then click **Run**. Generation and grading both use model calls. Each run records token usage and estimated cost.
+In **Admin → Testing (Experiments) → Experiments**, open **UNEG Brief quality** or **World Bank procurement Brief quality**. On upgrade, an installation with no Brief experiments receives seven UNEG cases or three World Bank procurement cases when those libraries are configured. If both are present it receives both sets. Other installations receive two editable, general-purpose cases per configured library. They invite the writer to choose a subject covered by that library. Customize these cases with your own questions and existing section text for a more demanding comparison. The upgrade preserves existing experiments, cases and run history. Choose a model combo and, if needed, **Run as group**, then click **Run**. Generation and grading both use model calls. Each run records token usage and estimated cost.
 
-![Six starter cases in the UNEG Brief sections dataset](../images/admin/eval/brief-section-cases.png)
+![Seven cases in the UNEG Brief sections dataset](../images/admin/eval/brief-section-cases.png)
 
-Each case generates one new section through Brief's research and writing workflow, using the selected library. The topic, heading, instructions, word target, voice and other sections are held fixed so you can compare runs. Existing briefs are unaffected. To test your own library, create a dataset with capability **brief**, add cases, and create an experiment. Give at least one other section a heading and its existing text to test repetition.
+Each case generates one new section through Brief's research and writing workflow, using the selected library. The topic, heading, instructions, word target, voice and other sections are held fixed so you can compare runs. Existing briefs are unaffected. To test your own library, create a dataset with capability **brief**, add cases, and create an experiment. Give at least one other section a heading and its existing text to test repetition. To test an H1 introduction, add its H2 headings and choose **Subheading introduced by this section** for each. A written child tests duplication of existing material. A child with just a title tests whether the introduction leaves its detailed question open.
 
 | Check | What to look for |
 | --- | --- |
-| Section format and citations | The section has text, has no extra Markdown headings, and its numbered citations resolve to the returned sources. |
+| Section format and citations | The section opens with a cited paragraph, uses prose without extra headings or lists, and its numbered citations resolve to the returned sources. |
 | Word count meets target | The actual word count falls within 15% of the case target. A short, carefully supported section can pass grounding and fail length. |
-| Findings are distinct across sections | A judge compares the draft with every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. Open the result for the judge's explanation. |
-| Grounding, scope and voice | Editable judge prompts check the draft against the evidence, assignment and audience. Starter cases include examples of supported and unsupported statements for the judge. The writer never sees these examples. |
+| Findings are distinct across sections | A judge compares the draft with the text of every supplied section. A paraphrase of the same finding fails. Related findings about distinct measures or populations can pass. Open the result for the judge's explanation. |
+| Introduction leaves details to subheadings | The judge reads the introduction and the titles of its children. An introduction may name their subjects. It fails if it supplies their detailed findings or examples, even if those children are still blank. |
+| Paragraph development | The starter’s editable writing rubric asks whether each paragraph develops an idea with related evidence. It can fail a sequence of disconnected observations even when every citation resolves. A short introduction can pass. |
+| Grounding, scope and voice | Editable judge prompts check the draft against the evidence, assignment and audience. The UNEG and World Bank cases include examples of supported and unsupported statements for the judge. The writer never sees these examples. |
 
 Expand a run and a case to inspect the section, the other sections, the cited passages and the judge's reasons. Read the cited text when a score seems surprising. To compare configurations, keep the case inputs and expectations identical across runs. The separate **Brief citation check** reviews a previously saved brief.
