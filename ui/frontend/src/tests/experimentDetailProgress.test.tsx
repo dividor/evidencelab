@@ -180,7 +180,12 @@ describe('ExperimentDetail run progress', () => {
     expect(within(first).getByText('Partially supported')).toBeVisible();
     expect(within(first).getByText('Required 1.00')).toBeVisible();
     expect(within(first).getByText('Original pressure is missing.')).toBeVisible();
-    expect(within(first).getByText('[4] “Pressure reading.”')).toBeVisible();
+    expect(within(first).queryByText('Supporting evidence')).toBeNull();
+    expect(within(first).getAllByRole('list')).toHaveLength(1);
+    const firstReference = within(first).getByText('[4] First inspection · p. 2');
+    expect(firstReference.closest('details')).not.toHaveAttribute('open');
+    fireEvent.click(firstReference);
+    expect(within(first).getByText('Pressure reading.')).toBeVisible();
     expect(first).toHaveTextContent('The reading lacks a baseline.');
     expect(within(assessment).getByText('Grading criterion').closest('details')).not.toHaveAttribute('open');
     const body = assessment.querySelector('.testing-assertion-body')!;

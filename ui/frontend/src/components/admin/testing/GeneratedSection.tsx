@@ -57,15 +57,11 @@ function ClaimScore({ grade, threshold }: { grade: ClaimGrade; threshold?: numbe
 }
 
 function PartialSupport({ grade }: { grade: ClaimGrade }) {
-  if (grade.verdict !== 'partially_supported') return null;
-  return <>
-    {!!grade.unmet?.length && <div><strong>What the evidence does not establish</strong>
-      <ul>{grade.unmet.map((gap, i) => <li key={i}>{gap}</li>)}</ul>
-    </div>}
-    {!!grade.supporting_quotes?.length && <div><strong>Supporting evidence</strong>
-      <ul>{grade.supporting_quotes.map((q, i) => <li key={i}>[{q.citation}] “{q.quote}”</li>)}</ul>
-    </div>}
-  </>;
+  if (grade.verdict !== 'partially_supported' || !grade.unmet?.length) return null;
+  return <div>
+    <strong>What the evidence does not establish</strong>
+    <ul className="claim-evidence-gaps">{grade.unmet.map((gap, i) => <li key={i}>{gap}</li>)}</ul>
+  </div>;
 }
 
 export function AssertionEvidence({ assessment, result }: { assessment: AssertionResult; result: Pick<TestResult, "actual_output" | "brief_evidence"> }) {

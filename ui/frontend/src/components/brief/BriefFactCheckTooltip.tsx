@@ -170,7 +170,7 @@ export const BriefFactCheckTooltip: React.FC<BriefFactCheckTooltipProps> = ({
       <p className="brief-fact-card-reason">{mark.explanation}</p>
       {mark.verdict === 'partially_supported' && mark.problems.length > 0 && (
         <div className="brief-fact-card-reason"><strong>What the evidence does not establish</strong>
-          <ul>{mark.problems.map((problem, i) => <li key={i}>{problem}</li>)}</ul>
+          <ul className="claim-evidence-gaps">{mark.problems.map((problem, i) => <li key={i}>{problem}</li>)}</ul>
         </div>
       )}
       {mark.quote_not_in_source && (
