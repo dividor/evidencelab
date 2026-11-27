@@ -221,8 +221,9 @@ async def check_answer_citations(
     brief_section: bool,
     prepared_quotes: dict[str, list[EvidenceQuote]] | None = None,
     similar_findings: dict[str, list[dict[str, str]]] | None = None,
+    preceding_sentence: str = "",
 ) -> CitationReview:
-    sentences = numbered_sentences(answer)
+    sentences = numbered_sentences(answer, preceding_sentence)
     for row in sentences:
         if prepared_quotes and (quote := prepared_quotes.get(row["text"])):
             row["prepared_quotes"] = [q.model_dump() for q in quote]
@@ -297,11 +298,20 @@ def citation_check_batches(sentences: list[dict]) -> Iterable[list[dict]]:
         yield batch
 
 
-def numbered_sentences(answer: str) -> list[dict]:
-    return [
-        {"id": index, "text": sentence, "citations": cited_numbers_in_order(sentence)}
-        for index, sentence in enumerate(split_sentences(answer), start=1)
-    ]
+def numbered_sentences(answer: str, preceding_sentence: str = "") -> list[dict]:
+    """Keep the reader's preceding sentence available across verification batches."""
+    rows = []
+    for index, sentence in enumerate(split_sentences(answer), start=1):
+        row = {
+            "id": index,
+            "text": sentence,
+            "citations": cited_numbers_in_order(sentence),
+        }
+        if preceding_sentence:
+            row["preceding_sentence"] = preceding_sentence
+        rows.append(row)
+        preceding_sentence = sentence
+    return rows
 
 
 def _heading_stack(

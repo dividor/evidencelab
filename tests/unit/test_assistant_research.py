@@ -818,13 +818,14 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
 @pytest.mark.asyncio
 async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_target():
     first = "In Armenia, teachers delivered nutrition education."
+    lead = "For example, in Armenia, teachers delivered nutrition education."
     second = "In Malawi, students learned safe food preparation."
     events, _, llm = await run_research(
         [
             '{"queries":[]}',
             _brief_draft(
                 (
-                    "For example, in Armenia, teachers delivered nutrition education.",
+                    lead,
                     1,
                     "teachers delivered nutrition education",
                 )
@@ -848,6 +849,12 @@ async def test_brief_adds_verified_findings_without_rewriting_or_exceeding_the_t
         if call.args[0][0].content.startswith("Write the prose of one section")
     ]
     assert len(drafts) == 2 and "Add different findings" in drafts[-1]
+    verdict_requests = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Check whether the proposed answer")
+    ]
+    assert _review_rows(verdict_requests[-1])[0]["preceding_sentence"] == lead
 
 
 @pytest.mark.asyncio

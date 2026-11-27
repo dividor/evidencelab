@@ -245,8 +245,9 @@ async def _review_finding_scope(
     subject: str,
     config: RunnableConfig,
     review: ReviewRequest,
+    preceding_sentence: str,
 ) -> tuple[str, list[str]]:
-    sentences = numbered_sentences(draft)
+    sentences = numbered_sentences(draft, preceding_sentence)
     template = assistant_prompt_templates.get_template("brief_finding_scope.j2")
     request = template.render(
         heading=section.outline[section.current].title,
@@ -281,6 +282,7 @@ def _finding_for_scope(
     return {
         "id": row["id"],
         "text": text,
+        "preceding_sentence": row.get("preceding_sentence", ""),
         "supporting_quotes": [s.model_dump() for s in prepared_quotes.get(text, [])],
         "similar": similar.get(text, []),
         "sources": [
@@ -355,6 +357,7 @@ async def _verify_draft_findings(
     review: ReviewRequest,
     review_scope: ReviewRequest,
     section: BriefSectionPrompt,
+    preceding_sentence: str,
 ) -> tuple[str, list[str]]:
     similar = await run_in_threadpool(_similar_findings, draft, previous_findings)
     text, issues = await _review_finding_scope(
@@ -366,6 +369,7 @@ async def _verify_draft_findings(
         subject,
         config,
         review_scope,
+        preceding_sentence,
     )
     if not text:
         return "", issues
@@ -380,6 +384,7 @@ async def _verify_draft_findings(
         brief_section=True,
         prepared_quotes=prepared_quotes,
         similar_findings=similar,
+        preceding_sentence=preceding_sentence,
     )
     if checked.issues:
         supported = set(split_sentences(checked.supported_text))
@@ -399,6 +404,18 @@ def _written_sibling_findings(section: BriefSectionPrompt) -> list[tuple[str, st
         if index != section.current
         for sentence in split_sentences(heading.content or "")
     ]
+
+
+def _continuation_context(
+    heading: str, draft: str, siblings: list[tuple[str, str]]
+) -> tuple[list[tuple[str, str]], str]:
+    """Separate the preceding sentence from the other findings used to check repetition."""
+    earlier = [
+        (heading, strip_citation_markers(finding))
+        for finding in split_sentences(draft)
+        if cited_numbers_in_order(finding)
+    ]
+    return [*siblings, *earlier], earlier[-1][1] if earlier else ""
 
 
 async def write_grounded_brief(
@@ -474,15 +491,13 @@ async def write_grounded_brief(
             continue
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
-            earlier = [
-                (current, strip_citation_markers(finding))
-                for finding in split_sentences(accepted)
-                if cited_numbers_in_order(finding)
-            ]
+            previous_findings, preceding_sentence = _continuation_context(
+                current, accepted, existing
+            )
             text, verification_issues = await _verify_draft_findings(
                 text,
                 prepared_quotes,
-                [*existing, *earlier],
+                previous_findings,
                 assignment,
                 subject,
                 search_focus,
@@ -491,6 +506,7 @@ async def write_grounded_brief(
                 review,
                 review_scope,
                 section,
+                preceding_sentence,
             )
             issues.extend(verification_issues)
         if text:
