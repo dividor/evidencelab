@@ -134,7 +134,8 @@ The sizes are the template's defaults. The demo below uses smaller ones.
 | Documents and page images | Amazon EFS, mounted at `/app/data` | Elastic throughput |
 | Web app image | Amazon ECR repository `<name>/ui` | — |
 | Keys and passwords | AWS Secrets Manager: `<name>/app` holds the generated keys, `<name>/providers` any model provider keys | — |
-| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call only the Amazon Bedrock models `config.json` lists | — |
+| Model access | An IAM task role for the api, mcp, pipeline and migrate containers, allowed to call only the Amazon Bedrock models `config.json` lists, only in the regions the app calls them in, and only from the NAT gateway's address | — |
+| Bedrock call log | Amazon Bedrock's model invocation logging, in each region the app calls Bedrock in: who called which model, and how many tokens, without the text (`bedrock_call_log`) | Kept 365 days |
 | Logs | Amazon CloudWatch Logs, one log group per service, `/ecs/<name>/<service>` | 30 days |
 | Backups | AWS Backup: a vault and plan named `<name>` backing up Postgres, the EFS file share and Qdrant's instance | Weekly, kept 35 days |
 | Data transfer | A private S3 bucket `<name>-transfer-…` and a restore task with its own role, for moving existing data in | Uploads deleted after 30 days |
@@ -284,7 +285,7 @@ To start from another Evidence Lab installation's data (another cloud, or a Dock
 - **An archive of the data source's folder**, the folder named after its `data_subdir` inside the data folder (`/app/data`). Make it on the old host so it holds that one folder:
 
 ```bash
-tar -C <data folder> -czf wfp-data.tar.gz wfp
+tar -C <data folder> -czf reports-data.tar.gz reports
 ```
 
 The Qdrant index does not come across: the restore empties the data source's search index, and the pipeline rebuilds it with this deployment's embedding model, without parsing, summarising or tagging again.
@@ -294,7 +295,7 @@ The Qdrant index does not come across: the restore empties the data source's sea
 ```bash
 bucket="$(terraform -chdir=deploy/aws output -raw transfer_bucket)"
 aws s3 cp postgres-evidencelab.sql.gz "s3://$bucket/"
-aws s3 cp wfp-data.tar.gz "s3://$bucket/"
+aws s3 cp reports-data.tar.gz "s3://$bucket/"
 ```
 
 2. Check what the export holds. This changes nothing:
@@ -308,7 +309,7 @@ It lists the export's tables and row counts, its extensions, and the roles its o
 3. Load them. You confirm by typing the database's name:
 
 ```bash
-deploy/aws/scripts/restore-data.sh restore postgres-evidencelab.sql.gz wfp-data.tar.gz wfp
+deploy/aws/scripts/restore-data.sh restore postgres-evidencelab.sql.gz reports-data.tar.gz reports
 ```
 
 The restore task unpacks the archive onto the file share (links the old machine wrote as its own absolute paths into the folder, such as the parsed folders' links to their original files, are made to point at the same files here; any other absolute link stops the restore), loads the export into a new database in one transaction that stops at the first error, and only then swaps it in. The previous database is kept, renamed `evidencelab_before_<time>` and closed to connections, so nothing is lost if the load fails. The script then runs the migrations, empties the data source's search index and marks its documents for indexing.
@@ -316,7 +317,7 @@ The restore task unpacks the archive onto the file share (links the old machine 
 4. Rebuild the search index, a few documents first:
 
 ```bash
-deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source wfp \
+deploy/aws/scripts/run-task.sh pipeline python -m pipeline.orchestrator --data-source reports \
   --skip-download --skip-scan --skip-parse --skip-summarize --skip-tag --num-records 5
 ```
 
@@ -329,7 +330,7 @@ Only the restore task can read the transfer bucket, and it can write only under 
 To keep a copy of a deployment's data, or to load it into another deployment (for example a production site filled from a checked test site), dump it to the transfer bucket. This is the cloud counterpart of the Docker host's `dump_postgres.py` and `dump_qdrant.py` ([Database Maintenance](database-maintenance.md)), which need direct access to the database and Qdrant. Unlike the scheduled AWS Backup restore points, which stay in the account and are deleted with the deployment, a dump is a set of files you keep and can load anywhere:
 
 ```bash
-deploy/aws/scripts/dump-data.sh wfp
+deploy/aws/scripts/dump-data.sh reports
 ```
 
 The restore task writes, under `dumps/<UTC time>/` in the transfer bucket:
@@ -452,7 +453,12 @@ Terraform's own tests check these settings, but they have not yet been tried on 
 
 ### Limiting and watching AI use
 
-**Only the models in `config.json`.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. A cross-region inference profile, such as `eu.amazon.nova-2-lite-v1:0`, allows the profile and its base model in every region it routes to. To use another Bedrock model, add it to `config.json` and deploy. Every model in `supported_llms` can be chosen per group in Group Settings > LLMs, so the role may call each of them: list only the models you're willing to pay for, and give each its own entry in `bedrock_alarms`. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
+**Only the models in `config.json`, only from the deployment.** The containers' task role may call only the Amazon Bedrock models `config.json` offers: the `aws_bedrock` entries of `supported_llms`, `supported_embedding_models` and `supported_rerank_models`. A changed setting or a script running as the role can't call any other model, so it can't run up a bill on a pricier one. To use another Bedrock model, add it to `config.json` and deploy. Every model in `supported_llms` can be chosen per group in Group Settings > LLMs, so the role may call each of them: list only the models you're willing to pay for. A `config.json` with no Bedrock model gives the role no Bedrock permission at all.
+
+The role is also limited in where it works:
+
+- **Only from the deployment's own address.** Every container reaches AWS through the NAT gateway, which has one fixed public address. The role may call Bedrock only from that address, so a copy of its credentials used anywhere else is refused.
+- **Only in the regions the app calls.** Chat and embedding models are allowed in the deployment's region, and a rerank model in its `region`. A cross-region inference profile, such as `us.amazon.nova-2-lite-v1:0`, is allowed in the deployment's region. Its base model is allowed in every region the profile may send a request to, but only for requests that came through the profile. So nobody can call a model directly in a region the alarms below don't watch.
 
 **Email alerts on Bedrock use.** Set the addresses and, for each model, a level for a rolling hour:
 
@@ -460,9 +466,9 @@ Terraform's own tests check these settings, but they have not yet been tried on 
 alert_emails = ["ops@example.org"]
 
 bedrock_alarms = {
-  "eu.amazon.nova-2-lite-v1:0"   = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
+  "us.amazon.nova-2-lite-v1:0"   = { input_tokens_per_hour = 2000000, output_tokens_per_hour = 300000 }
   "amazon.titan-embed-text-v2:0" = { input_tokens_per_hour = 50000000 }
-  "amazon.rerank-v1:0"           = { region = "eu-central-1", invocations_per_hour = 5000 }
+  "amazon.rerank-v1:0"           = { region = "us-west-2", invocations_per_hour = 5000 }
 }
 ```
 
@@ -488,6 +494,26 @@ extra_environment = {
 With it set, the api and mcp containers refuse to start while config.json uses a model that has no price in `ui/backend/utils/llm_costs.py`; the error names the models.
 
 With `alert_emails` set as well, the template watches the api and mcp logs for the line the limit writes when it is reached (`AI daily limit reached`) and emails the addresses once. The Bedrock alarms above are the ones that also cover pipeline runs, which the daily limit doesn't count.
+
+#### The Bedrock call log
+
+`bedrock_call_log` (on by default) turns on Amazon Bedrock's model invocation logging in each region the app calls Bedrock in. Every InvokeModel and Converse call, by any caller in the account, gets a record in the CloudWatch log group `/aws/bedrock/<name>/model-invocations` of that region. Each record holds who made the call (the role and its session, or the user), the model or inference profile, and the input and output token counts ([AWS: model invocation logging](https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html)). The text of prompts and answers, images, embeddings and video are left out, so your documents and questions stay out of the log.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `bedrock_call_log` | `true` | Turns the call log on in each region the app calls Bedrock in. `false` turns it off. |
+| `bedrock_call_log_retention_days` | `365` | Days to keep it, one of the values CloudWatch Logs offers. |
+
+- **One per account.** Bedrock keeps one logging setting per account and region, so in an account that several deployments share, turn it on in only one.
+- **Find who used a model.** Use CloudWatch Logs Insights on the log group, for example to total each caller's tokens today:
+
+  ```text
+  fields identity.arn, modelId, input.inputTokenCount, output.outputTokenCount
+  | stats sum(input.inputTokenCount) as input, sum(output.outputTokenCount) as output by identity.arn, modelId
+  ```
+
+- **CloudTrail also records each call** with the caller and the address it came from, in the region it was made from, but not its tokens.
+- **Cost.** CloudWatch Logs charges for each GB stored and kept ([pricing](https://aws.amazon.com/cloudwatch/pricing/)). Records without text are small.
 
 #### Confirming the alert emails
 
