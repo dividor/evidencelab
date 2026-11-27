@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import AssertionResultRow from '../components/admin/testing/AssertionResultRow';
 
 const title = 'Relevance to the template and section';
@@ -54,4 +54,25 @@ test.each([true, false])('Word count shows section text and references when appl
   expect(reference.closest('details')).not.toHaveAttribute('open');
   fireEvent.click(reference);
   expect(screen.getByText('Crews reported faster repairs.')).toBeVisible();
+});
+
+test.each([
+  ['brief_writing', 'Paragraph development and flow'],
+  ['llm_judge', 'Paragraph development and flow'],
+  ['brief_paragraphs', 'One-sentence paragraphs'],
+  ['brief_structure', 'Format and citations'],
+])('%s keeps claims visible and the section and its references independently expandable', async (type, label) => {
+  render(<AssertionResultRow testResult={saved} result={{ type, label, passed: false, message: 'Reviewed the section.' }} />);
+  fireEvent.click(screen.getByText(label));
+  expect(await screen.findByText('Claim 1')).toBeVisible();
+  const section = screen.getByText('Section text and references');
+  const block = section.closest('details')!;
+  expect(block).not.toHaveAttribute('open');
+  fireEvent.click(section);
+  expect(within(block).getByRole('button', { name: 'Show cited passages [2]' }).parentElement)
+    .toHaveTextContent('Repair times fell [2].');
+  const reference = within(block).getByText('[2] Service log');
+  expect(reference.closest('details')).not.toHaveAttribute('open');
+  fireEvent.click(reference);
+  expect(within(block).getByText('Crews reported faster repairs.')).toBeVisible();
 });

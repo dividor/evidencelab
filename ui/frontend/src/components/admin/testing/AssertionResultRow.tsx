@@ -34,6 +34,11 @@ function RelevanceAssessment({ result }: { result: AssertionResult }) {
 
 type ResultProps = { result: AssertionResult; testResult: Pick<TestResult, 'actual_output' | 'brief_evidence'> };
 
+function showsSectionWithClaims(result: AssertionResult) {
+  return ['brief_writing', 'brief_paragraphs', 'brief_structure'].includes(result.type)
+    || (result.type === 'llm_judge' && expectationName(result) === 'Paragraph development and flow');
+}
+
 function BriefAssessment({ result, testResult }: ResultProps) {
   if (result.type === 'brief_overlap') return <RepetitionEvidence check={result} output={testResult.actual_output!} />;
   if (result.type === 'brief_relevance' || result.relevance || result.label === briefCheckLabels.brief_relevance) return <>
@@ -51,15 +56,20 @@ function BriefAssessment({ result, testResult }: ResultProps) {
       ? <details><summary>Original section assessment</summary><p>{result.message}</p></details>
       : <p>{result.message}</p>)}
   </>;
-  return <><p className="testing-assertion-result-message">{result.message}</p>{evidence}</>;
+  return <>
+    <p className="testing-assertion-result-message">{result.message}</p>
+    {showsSectionWithClaims(result) && <GeneratedSection result={testResult} label="Section text and references" />}
+    {evidence}
+  </>;
 }
 
 const AssertionResultRow: React.FC<ResultProps> = ({ result, testResult }) => {
   const [open, setOpen] = useState(false);
   const label = expectationName(result);
   const status = ungradedStatus(result);
-  const wordCount = result.type === 'brief_length' && testResult.actual_output?.capability === 'brief';
-  if (status && !wordCount && !result.claim_grades?.length) return <div className="testing-assertion-result">
+  const hasSectionDetails = testResult.actual_output?.capability === 'brief'
+    && (result.type === 'brief_length' || showsSectionWithClaims(result));
+  if (status && !hasSectionDetails && !result.claim_grades?.length) return <div className="testing-assertion-result">
     <strong>{label}</strong> <span>{status}</span><p>{result.message}</p>
   </div>;
   const heading = <>
