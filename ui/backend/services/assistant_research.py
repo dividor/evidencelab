@@ -25,11 +25,13 @@ from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
+    TruncatedAssistantResponse,
     check_research_draft,
     invalid_citations,
     prior_evidence_passages,
     render_evidence,
     render_evidence_streams,
+    review_brief_prose,
 )
 from ui.backend.services.assistant_research_plan import (
     CONTEXT_PLAN,
@@ -61,7 +63,7 @@ from utils.llm_factory import message_text
 
 logger = logging.getLogger(__name__)
 
-_JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(\{.*?\})\s*`{3}", re.DOTALL | re.IGNORECASE)
+_JSON_FENCE = re.compile(r"`{3}(?:json)?\s*(.*?)\s*`{3}", re.DOTALL | re.IGNORECASE)
 _NO_EVIDENCE = (
     "I couldn’t find evidence in the selected collection to answer this question."
 )
@@ -488,6 +490,10 @@ class ResearchWorkflow:
                         stage="retry_plan", validation_errors=errors[:12]
                     )
                 )
+        if response.response_metadata.get("finish_reason") == "length":
+            raise TruncatedAssistantResponse(
+                "The structured response reached its output limit"
+            )
         raise InvalidAssistantResponse(
             "The Assistant model could not produce a valid structured response"
         )
@@ -543,22 +549,57 @@ class ResearchWorkflow:
             target_words=target,
         )
         draft = await write(evidence=evidence)
-        if not target or len(strip_citation_markers(draft).split()) >= 0.85 * target:
+
+        prose_issues = partial(
+            review_brief_prose,
+            assignment={
+                "heading": section.outline[section.current].title,
+                "topic": section.topic,
+                "author_guidance": brief_section_research_focus(section),
+                "voice": section.voice_instructions,
+                "introduces": brief_child_headings(section),
+            },
+            config=config,
+            request=self._request_json,
+        )
+        editorial_issues = await prose_issues(draft)
+        enough_words = (
+            not target or len(strip_citation_markers(draft).split()) >= 0.85 * target
+        )
+        if enough_words and not editorial_issues:
             return draft
-        # Search progress lists all hits. The planner admits only a subset to its
-        # working context. Use the next distinct passages before ending a short section.
         remaining = _admit_passages(
             self.tracker.all_results,
             list(evidence.values()),
             self.limits.initial_passages,
         )
-        if not remaining:
+        if not remaining and not editorial_issues:
             return draft
-        # A whole-section revision needs the original citations as well as new material.
-        cited = {label: evidence[label] for label in cited_numbers_in_order(draft)}
-        return await write(
+        # A copy edit needs the context behind surviving sentences, including the
+        # evidence for antecedents lost when an earlier sentence was removed.
+        cited = (
+            evidence
+            if editorial_issues
+            else {label: evidence[label] for label in cited_numbers_in_order(draft)}
+        )
+        revision = await write(
             evidence={**cited, **{p["global_index"]: p for p in remaining}},
             earlier_text=draft,
+            editorial_issues=editorial_issues,
+        )
+        if revision == draft:
+            final_issues = editorial_issues
+        else:
+            final_issues = await prose_issues(revision)
+        if revision and not final_issues:
+            return revision
+        if draft and not editorial_issues:
+            return draft
+        if not revision:
+            return ""
+        logger.info("Brief editorial review requested changes: %s", final_issues)
+        raise InvalidAssistantResponse(
+            "The revised Brief section still needs an editorial correction"
         )
 
     async def check_answer(

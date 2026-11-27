@@ -69,6 +69,10 @@ class InvalidAssistantResponse(ValueError):
     """The model returned an invalid response after a format correction."""
 
 
+class TruncatedAssistantResponse(InvalidAssistantResponse):
+    """The structured reply exhausted its output budget."""
+
+
 class ReviewRequest(Protocol):
     def __call__(
         self,
@@ -135,25 +139,38 @@ async def check_research_draft(
     )
     readable_draft = review.supported_text if review.issues else answer
     if brief_section and readable_draft:
-        template = assistant_prompt_templates.get_template("brief_prose_check.j2")
-        review_prose = citation_request if check_citations else request_json
-        prose: BriefProseCheck = await review_prose(
-            template.render(system=True),
-            template.render(assignment=question, draft=readable_draft),
-            [],
+        issues = await review_brief_prose(
+            readable_draft,
+            question,
             config,
-            BRIEF_PROSE_CHECK,
+            citation_request if check_citations else request_json,
         )
-        opening = split_sentences(readable_draft.strip())
-        issues = prose.issues.copy()
-        if not opening or not cited_numbers_in_order(opening[0]):
-            issues.append(
-                "The opening sentence needs a finding supported by a citation "
-                "from the retrieved evidence."
-            )
         if issues:
             return CitationReview(issues + review.issues, revision_base=readable_draft)
     return review
+
+
+async def review_brief_prose(
+    draft: str, assignment: str | dict, config: RunnableConfig, request: ReviewRequest
+) -> list[str]:
+    if not draft:
+        return []
+    template = assistant_prompt_templates.get_template("brief_prose_check.j2")
+    prose: BriefProseCheck = await request(
+        template.render(system=True, editorial=isinstance(assignment, dict)),
+        template.render(assignment=assignment, draft=draft),
+        [],
+        config,
+        BRIEF_PROSE_CHECK,
+    )
+    issues = list(prose.issues)
+    opening = split_sentences(draft.strip())
+    if not opening or not cited_numbers_in_order(opening[0]):
+        issues.append(
+            "The opening sentence needs a finding supported by a citation "
+            "from the retrieved evidence."
+        )
+    return issues
 
 
 def render_evidence(passages: list[Passage]) -> str:

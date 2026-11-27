@@ -40,6 +40,7 @@ async def run_research(
     scope_check=None,
     select_evidence=None,
     find_duplicates=None,
+    match_excerpts=None,
     prose=None,
     brief_section_prompt=None,
     brief_section=None,
@@ -52,6 +53,19 @@ async def run_research(
     replies = None if callable(responses) else iter(responses)
 
     def model(messages, **kwargs):
+        if messages[0].content.startswith("Find the numbered excerpts"):
+            prompt = messages[-1].content
+            missing = json.loads(
+                prompt.split("Sentences missing citations: ")[1].splitlines()[0]
+            )
+            rows = [
+                {
+                    "sentence": int(i),
+                    "excerpts": match_excerpts(txt) if match_excerpts else [],
+                }
+                for i, txt in missing.items()
+            ]
+            return AIMessage(content=json.dumps(rows))
         if messages[0].content.startswith("Edit a report section for repetition"):
             prompt = messages[-1].content
             rows = [
@@ -456,7 +470,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         heading,
         follow_up,
     ]
-    scope, opening, next_search, selection, writer, scope_verifier, verifier = [
+    scope, opening, next_search, selection, writer, scope_verifier, verifier, prose = [
         call.args[0][-1].content for call in llm.ainvoke.await_args_list
     ]
     assert excluded_heading in scope and other_question in scope
@@ -464,6 +478,7 @@ async def test_brief_search_planning_is_scoped_and_only_the_writer_gets_the_full
         assert heading in planning and guidance in planning
         assert excluded_heading not in planning
         assert brief_section.focus in planning
+    assert answer in prose
     assert guidance in writer and excluded_heading in writer
     assert guidance in selection and excluded_heading in selection
     assert heading in scope_verifier and excluded_heading in scope_verifier
@@ -501,6 +516,63 @@ async def test_brief_update_revises_extra_headings_with_citation_check_off():
     )
     answer = next(event["token"] for event in events if event["type"] == "token")
     assert answer == "School sites had better access [1]."
+
+
+@pytest.mark.asyncio
+async def test_generated_section_rewrites_a_dangling_opening_with_its_original_source():
+    original = "They also inspected sensors by hand after each reading"
+    correction = "Technicians inspected sensors by hand"
+    detail = "inspected sensors by hand"
+    problem = "Name the people who inspected the sensors in the opening."
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft((original, 1, detail)),
+            _brief_draft((correction, 1, detail)),
+        ],
+        [[point(1, "Technicians inspected sensors by hand after each reading.")]],
+        query="How were sensors inspected?",
+        initial_query="Sensor inspection",
+        brief_section_prompt="Explain the inspection process.",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Inspection"}], current=0),
+        prose=lambda prompt: [problem] if original in prompt else [],
+    )
+    assert next(event["token"] for event in events if event["type"] == "token") == (
+        correction + " [1]."
+    )
+    writers = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Write the prose of one section")
+    ]
+    assert len(writers) == 2
+    assert problem in writers[-1] and detail in writers[-1]
+
+
+@pytest.mark.asyncio
+async def test_generated_section_does_not_publish_a_second_dangling_opening():
+    issue = "Identify the actor in the opening sentence."
+    events, _, model = await run_research(
+        [
+            '{"queries":[]}',
+            _brief_draft(("They inspected the sensors", 1, "inspected the sensors")),
+            _brief_draft(
+                ("Doing so, they inspected the sensors", 1, "inspected the sensors")
+            ),
+        ],
+        [[point(1, "Technicians inspected the sensors.")]],
+        initial_query="Method of inspection",
+        brief_section=BriefSectionPrompt(outline=[{"title": "Method"}], current=0),
+        prose=lambda prompt: [issue],
+    )
+    assert any(e["type"] == "error" for e in events)
+    assert not any(e["type"] == "token" for e in events)
+    reviews = [
+        call.args[0][-1].content
+        for call in model.ainvoke.await_args_list
+        if call.args[0][0].content.startswith("Review whether this proposed Brief")
+    ]
+    assert len(reviews) == 2 and "Doing so" in reviews[-1]
 
 
 @pytest.mark.asyncio
@@ -556,7 +628,11 @@ async def test_brief_generation_keeps_sourced_prose_with_citation_check_off():
         finding + " [1]."
     )
     assert not any(event.get("phase") == "checking_citations" for event in events)
-    assert model.ainvoke.await_count == 3
+    assert model.ainvoke.await_count == 4
+    assert (
+        "Review whether this proposed Brief"
+        in model.ainvoke.await_args.args[0][0].content
+    )
 
 
 @pytest.mark.parametrize(
@@ -808,8 +884,9 @@ async def test_brief_keeps_its_verified_findings_and_qualified_evidence_gap():
     assert [event["token"] for event in events if event["type"] == "token"] == [
         finding + "\n\n" + gap
     ]
-    assert llm.ainvoke.await_count == 6
-    comparison = llm.ainvoke.await_args.args[0][-1].content
+    assert llm.ainvoke.await_count == 7
+    assert finding in llm.ainvoke.await_args.args[0][-1].content
+    comparison = llm.ainvoke.await_args_list[-2].args[0][-1].content
     assert "The other section covers attendance" in comparison
     assert events[-1]["section_written"] is True
     sources = next(event["sources"] for event in events if event["type"] == "sources")
@@ -1146,10 +1223,10 @@ async def test_brief_recovers_the_opening_citation_in_its_original_paragraph():
     opening = "The inspection found a leak"
     detail = "The seal had cracked at the joint"
     raw = opening + ". " + _brief_draft((detail, 2, detail))
-    corrected = _brief_draft((opening, 1, opening), (detail, 2, detail))
     events, _, model = await run_research(
-        ['{"queries":[]}', raw, corrected],
+        ['{"queries":[]}', raw],
         [[point(1, opening + "."), point(2, detail + ".")]],
+        match_excerpts=lambda sentence: [1] if opening in sentence else [],
         brief_section=BriefSectionPrompt(outline=[{"title": "Inspection"}], current=0),
     )
     requests = [
@@ -1157,8 +1234,7 @@ async def test_brief_recovers_the_opening_citation_in_its_original_paragraph():
         for call in model.ainvoke.await_args_list
         if call.args[0][0].content.startswith("Write the prose of one section")
     ]
-    assert len(requests) == 2
-    assert f'Draft to correct: "{opening}. {detail}' in requests[1]
+    assert len(requests) == 1
     assert next(e["token"] for e in events if e["type"] == "token") == (
         f"{opening} [1]. {detail} [2]."
     )
@@ -2299,3 +2375,74 @@ async def test_brief_rejects_unsupported_frequency_and_a_source_for_the_wrong_su
     )
     answer = next(e["token"] for e in events if e["type"] == "token")
     assert answer == revised + " [1]."
+
+
+@pytest.mark.parametrize(
+    ("words", "previous", "repair", "issues", "preferred"),
+    [
+        (50, 40, "", [], True),
+        (45, 50, "earlier", [], True),
+        (45, 50, "earlier", ["unresolved"], False),
+        (30, 50, "earlier", [], False),
+    ],
+)
+def test_word_target_allows_a_shorter_complete_repair(
+    words, previous, repair, issues, preferred
+):
+    from ui.backend.services.assistant_brief_writer import _prefer_section_revision
+
+    assert _prefer_section_revision(words, previous, repair, 40, issues) is preferred
+
+
+def test_word_budget_only_requests_condensation_above_target_tolerance():
+    from ui.backend.services.assistant_brief_writer import _exceeds_word_budget
+
+    assert _exceeds_word_budget(150, 100)
+    assert not _exceeds_word_budget(100, 100)
+    assert not _exceeds_word_budget(150, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_reason", ["length", "stop"])
+async def test_invalid_structured_reply_distinguishes_truncation_from_malformed_json(
+    stop_reason,
+):
+    from ui.backend.services.assistant_grounding import (
+        InvalidAssistantResponse,
+        TruncatedAssistantResponse,
+    )
+    from ui.backend.services.assistant_research import ResearchLimits, ResearchWorkflow
+    from ui.backend.services.assistant_research_plan import FOLLOW_UP
+
+    model = MagicMock()
+    model.ainvoke = AsyncMock(
+        return_value=AIMessage(
+            content='{"queries": [', response_metadata={"finish_reason": stop_reason}
+        )
+    )
+    workflow = ResearchWorkflow(
+        model, None, "", "", ResearchLimits(1), "", "", None, False, model
+    )
+    with pytest.raises(InvalidAssistantResponse) as raised:
+        await workflow._request_json("plan", "requests", [], {}, FOLLOW_UP)
+    assert isinstance(raised.value, TruncatedAssistantResponse) == (
+        stop_reason == "length"
+    )
+    assert model.ainvoke.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_structured_excerpt_list_accepts_a_fenced_json_array():
+    from pydantic import TypeAdapter
+
+    from ui.backend.services.assistant_research import ResearchLimits, ResearchWorkflow
+
+    model = MagicMock()
+    model.ainvoke = AsyncMock(return_value=AIMessage(content="```json\n[1, 3]\n```"))
+    workflow = ResearchWorkflow(
+        model, None, "", "", ResearchLimits(1), "", "", None, False, model
+    )
+    assert await workflow._request_json(
+        "Select excerpts", "", [], {}, TypeAdapter(list[int])
+    ) == [1, 3]
+    assert model.ainvoke.await_count == 1

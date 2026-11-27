@@ -13,6 +13,7 @@ from ui.backend.services.assistant_grounding import (
     InvalidAssistantResponse,
     Passage,
     ReviewRequest,
+    TruncatedAssistantResponse,
 )
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.citation_fidelity import split_sentences
@@ -89,6 +90,49 @@ async def select_brief_evidence(
         ]
         for label, source in evidence.items()
     }
+
+    async def select_group(group):
+        try:
+            return await _select_passage_group(
+                group,
+                assignment,
+                target_words,
+                earlier_text,
+                config,
+                request_json,
+                template,
+                system,
+            )
+        except TruncatedAssistantResponse:
+            if len(group) <= 1:
+                raise
+            items = list(group.items())
+            middle = len(items) // 2
+            left, left_subject = await select_group(dict(items[:middle]))
+            right, right_subject = await select_group(dict(items[middle:]))
+            return {**left, **right}, left_subject if left else right_subject
+
+    accepted, subject = await select_group(entries)
+    return (
+        {
+            label: {**evidence[label], "brief_subject_evidence": quotes[0]}
+            for label, quotes in accepted.items()
+        },
+        _draft_excerpts(evidence, accepted),
+        subject,
+    )
+
+
+async def _select_passage_group(
+    entries,
+    assignment,
+    target_words,
+    earlier_text,
+    config,
+    request_json,
+    template,
+    system,
+):
     passages = _numbered_source_passages(entries)
     accepted: dict[int, list[str]] = {}
     subject = ""
@@ -97,7 +141,7 @@ async def select_brief_evidence(
         request = template.render(
             assignment=assignment,
             evidence=passages,
-            allowed_labels=list(evidence),
+            allowed_labels=list(entries),
             issues=issues,
             subject=subject,
             target_words=target_words,
@@ -121,14 +165,7 @@ async def select_brief_evidence(
         raise InvalidAssistantResponse(
             "The Brief could not extract evidence from its sources"
         )
-    return (
-        {
-            label: {**evidence[label], "brief_subject_evidence": quotes[0]}
-            for label, quotes in accepted.items()
-        },
-        _draft_excerpts(evidence, accepted),
-        subject,
-    )
+    return accepted, subject
 
 
 def _draft_excerpts(evidence: dict[int, Passage], accepted: dict[int, list[str]]):

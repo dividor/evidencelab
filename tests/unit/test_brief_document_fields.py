@@ -83,3 +83,42 @@ async def test_repetition_requires_evidence_for_every_clause_before_removing_a_f
 
     kept = await remove_repeated_brief_findings(draft, {}, review, earlier)
     assert kept == "It also drifted under load [1]."
+
+
+@pytest.mark.parametrize("count", [1, 7])
+async def test_truncated_selection_reduces_only_the_affected_request(count):
+    from ui.backend.services.assistant_grounding import TruncatedAssistantResponse
+
+    seen = []
+    evidence = {
+        n: {"title": "Probe readings", "text": f"Sampling interval was {n} minutes."}
+        for n in range(1, count + 1)
+    }
+
+    async def review(system, prompt, history, config, schema):
+        labels = json.loads(prompt.split("Available labels: ")[1].splitlines()[0])
+        seen.append(labels)
+        if len(labels) > 3 or count == 1:
+            raise TruncatedAssistantResponse("Test model exhausted its output budget")
+        return schema.validate_python(
+            {
+                "section_subject": "Sampling interval",
+                "passages": [
+                    {"citation": n, "subject_line": 0, "finding_lines": [1]}
+                    for n in labels
+                ],
+            }
+        )
+
+    pending = select_brief_evidence(
+        "How often were samples taken?", evidence, {}, review, None
+    )
+    if count == 1:
+        with pytest.raises(TruncatedAssistantResponse):
+            await pending
+        assert seen == [[1]]
+    else:
+        selected, (_, quotes), _ = await pending
+        assert list(selected) == list(evidence)
+        assert [citation for citation, _ in quotes.values()] == list(evidence)
+        assert seen[0] == list(evidence)

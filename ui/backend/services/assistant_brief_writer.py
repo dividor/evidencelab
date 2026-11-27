@@ -30,6 +30,7 @@ from ui.backend.services.assistant_grounding import (
 from ui.backend.services.assistant_settings import assistant_prompt_templates
 from ui.backend.services.brief_citation_model import cited_numbers_in_order
 from ui.backend.services.brief_evidence_selection import select_brief_evidence
+from ui.backend.services.brief_excerpt_citations import cite_missing_excerpts
 from ui.backend.services.brief_repetition import remove_repeated_brief_findings
 from ui.backend.services.brief_section_prompt import brief_child_headings
 from ui.backend.services.citation_fidelity import (
@@ -439,6 +440,17 @@ def _revision_notes(text: str, sources: set[int]) -> str:
     return "\n\n".join(paragraphs)
 
 
+def _exceeds_word_budget(words: int, target: int | None) -> bool:
+    return target is not None and words > target * 1.15
+
+
+def _prefer_section_revision(
+    words: int, previous_words: int, repair: str, minimum: float, issues: list[str]
+) -> bool:
+    """A complete, issue-free repair can replace a longer draft."""
+    return words >= previous_words or (bool(repair) and words >= minimum and not issues)
+
+
 async def write_grounded_brief(
     assignment: str,
     search_focus: str,
@@ -452,6 +464,7 @@ async def write_grounded_brief(
     review_scope: ReviewRequest,
     target_words: int | None = None,
     earlier_text: str = "",
+    editorial_issues: list[str] | None = None,
 ) -> str:
     """Write independently sourced findings and optionally check their support."""
     if not evidence:
@@ -475,9 +488,12 @@ async def write_grounded_brief(
     )
     selected_sources = {source for source, _ in quotes.values()}
     other_claims = {match_key(finding) for _, finding in existing}
-    issues: list[str] = []
+    issues = list(editorial_issues or [])
     accepted = earlier_text
-    written_words = len(strip_citation_markers(accepted).split())
+    # A known editorial defect may need a shorter correction.
+    written_words = (
+        0 if editorial_issues else len(strip_citation_markers(accepted).split())
+    )
     minimum_words = target_words * 0.85 if target_words else 1
     repair_draft = ""
     draft_words = 0
@@ -497,13 +513,15 @@ async def write_grounded_brief(
                     draft_words=draft_words,
                     accepted=_revision_notes(accepted, selected_sources),
                     target_words=target_words,
-                    written_words=written_words,
+                    written_words=len(strip_citation_markers(accepted).split()),
                     sibling_matches=sibling_matches,
                 )
             ),
         ]
         reply = await writer.ainvoke(messages, config=config)
-        raw = message_text(reply)
+        raw = await cite_missing_excerpts(
+            message_text(reply), passages, set(quotes), config, review_scope
+        )
         draft_words = len(strip_citation_markers(raw).split())
         text, issues, prepared_quotes = _brief_draft_text(
             raw,
@@ -511,9 +529,6 @@ async def write_grounded_brief(
             other_claims,
             quotes,
         )
-        if attempt == 0 and _MISSING_CITATION in issues:
-            repair_draft = raw
-            continue
         if text and review is not None:
             stream({"type": "phase", "phase": "checking_citations"})
             text, verification_issues = await _verify_draft_findings(
@@ -531,11 +546,11 @@ async def write_grounded_brief(
             )
             issues.extend(verification_issues)
         candidate, words = _fit_section_to_target(text, target_words)
-        if words >= written_words or (
-            repair_draft and words >= minimum_words and not issues
+        if _prefer_section_revision(
+            words, written_words, repair_draft, minimum_words, issues
         ):
             accepted, written_words = candidate, words
-        if attempt == 0 and target_words and draft_words > target_words * 1.15:
+        if attempt == 0 and _exceeds_word_budget(draft_words, target_words):
             repair_draft = raw
             continue
         if written_words >= minimum_words:
