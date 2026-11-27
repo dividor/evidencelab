@@ -233,6 +233,30 @@ def eval_brief_length(a: Dict[str, Any], output: Dict[str, Any]) -> AssertionRes
     )
 
 
+def eval_brief_paragraphs(a: Dict[str, Any], output: Dict[str, Any]) -> AssertionResult:
+    from ui.backend.services.citation_fidelity import split_sentences
+
+    text = _summary_text(output).strip()
+    if not text:
+        return _result("brief_paragraphs", False, "No section was written.")
+    limit = a.get("max_percent", 50)
+    if (
+        not isinstance(limit, (int, float))
+        or isinstance(limit, bool)
+        or not 0 <= limit <= 100
+    ):
+        return _result("brief_paragraphs", False, "Set a percentage from 0 to 100.")
+    counts = [len(split_sentences(p)) for p in re.split(r"\n\s*\n", text)]
+    singles = counts.count(1)
+    total = len(counts)
+    return _result(
+        "brief_paragraphs",
+        total < 3 or singles * 100 <= limit * total,
+        f"{singles} of {total} paragraphs have one sentence. "
+        f"The {limit:g}% limit applies to sections with three or more paragraphs.",
+    )
+
+
 def eval_llm_judge(
     a: Dict[str, Any], output: Dict[str, Any], judge_fn: Optional[JudgeFn] = None
 ) -> AssertionResult:
@@ -267,6 +291,7 @@ def eval_llm_judge(
 
 _EVALUATORS: Dict[str, Callable[[Dict[str, Any], Dict[str, Any]], AssertionResult]] = {
     "brief_length": eval_brief_length,
+    "brief_paragraphs": eval_brief_paragraphs,
     "result_contains_id": eval_result_contains_id,
     "result_in_top_k": eval_result_in_top_k,
     "min_results": eval_min_results,

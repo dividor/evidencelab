@@ -72,6 +72,27 @@ def test_word_count_uses_actual_section_target(count, passed):
     )
 
 
+@pytest.mark.parametrize(
+    "text, limit, expected",
+    [
+        ("", 50, False),
+        ("One point [7].", 0, True),
+        ("An opening [7].\n\nA conclusion [7].", 0, True),
+        ("A [7]. Another [7].\n\nB [7].\n\nC [7].", 50, False),
+        ("A [7]. Another [7].\n\nB [7].\n\nC [7].", 67, True),
+        ("A [7]. Another [7].\n\nB [7]. Related [7].\n\nC [7].", 50, True),
+        ("Enough [7].", 101, False),
+    ],
+)
+def test_paragraph_limit_is_configurable_and_allows_concise_sections(
+    text, limit, expected
+):
+    result = evaluate_assertion(
+        {"type": "brief_paragraphs", "max_percent": limit}, draft(text)
+    )
+    assert result["passed"] is expected
+
+
 def test_invalid_case_rejected_during_edit():
     with pytest.raises(HTTPException, match="heading"):
         _case_input(
@@ -144,6 +165,22 @@ async def test_overlap_judge_sees_both_sections_but_no_reference_answer(monkeypa
     o["siblings"] = []
     cb = await brief.judge_brief(o, [assertion], "grader")
     assert "Provide another section" in evaluate_assertion(assertion, o, cb)["message"]
+
+
+def test_editorial_judge_preserves_paragraphs_and_ends_with_requested_criterion():
+    output = draft()
+    output["summary"] = "Shifts changed [7].\n \nQueues cleared [7]."
+    template = brief.assistant_prompt_templates.get_template(
+        "brief_experiment_judge.j2"
+    )
+    rubric = "Check the voice for a general reader."
+    issue, _, prompt = brief._brief_grade_request(template, output, "llm_judge", rubric)
+    assert not issue
+    assert 'Paragraph 1: "Shifts changed [7]."' in prompt
+    assert 'Paragraph 2: "Queues cleared [7]."' in prompt
+    assert "section contains 4 words" in prompt
+    assert prompt.count("Queues cleared [7].") == 1
+    assert prompt.strip().endswith(rubric)
 
 
 @pytest.mark.asyncio

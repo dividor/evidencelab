@@ -946,7 +946,13 @@ async def test_brief_researches_separate_outcomes_within_one_section():
         query=heading,
         deep=True,
         brief_section=BriefSectionPrompt(
-            outline=[{"title": heading}, {"title": "Costs"}],
+            topic="Equipment after a firmware upgrade",
+            outline=[
+                {"title": heading},
+                {"title": "Continuity", "level": 2},
+                {"title": "Recovery", "level": 2},
+                {"title": "Costs"},
+            ],
             current=0,
             focus=scope,
         ),
@@ -954,6 +960,17 @@ async def test_brief_researches_separate_outcomes_within_one_section():
     opening = llm.ainvoke.await_args_list[0].args[0]
     assert "streams format" in opening[0].content
     assert scope in opening[-1].content
+    planning = [
+        call.args[0][-1].content
+        for call in llm.ainvoke.await_args_list
+        if "Initial evidence:" in call.args[0][-1].content
+        or "Searches remaining:" in call.args[0][-1].content
+    ]
+    assert len(planning) == 3
+    for request in planning:
+        assert 'Subheadings introduced here: ["Continuity", "Recovery"]' in request
+        assert 'Brief topic: "Equipment after a firmware upgrade"' in request
+        assert f'Assigned heading: "{heading}"' in request
     assert search.call_count == 3
     assert events[-1]["section_written"] is True
 

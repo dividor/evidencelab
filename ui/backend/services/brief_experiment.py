@@ -215,7 +215,8 @@ def _brief_grade_request(template, output, kind, rubric):
         template.render(
             rubric=template.render(overlap=True) if overlap else rubric,
             assignment=assignment,
-            draft=output["summary"],
+            paragraphs=re.split(r"\n\s*\n", output["summary"].strip()),
+            words=len(strip_citation_markers(output["summary"]).split()),
             siblings=output["siblings"],
             sources=output["sources"],
             standard=output["reference_standard"],

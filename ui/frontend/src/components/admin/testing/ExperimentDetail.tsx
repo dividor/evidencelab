@@ -94,6 +94,7 @@ const RunStats: React.FC<{ run: TestRun }> = ({ run }) => {
 /* ------------------------------------------------------------------ */
 
 const briefCheckLabels: Record<string, string> = {
+  brief_paragraphs: 'One-sentence paragraphs',
   brief_intro_scope: 'Introduction scope', brief_length: 'Word count', brief_structure: 'Format and citations', brief_overlap: 'Cross-section repetition',
 };
 

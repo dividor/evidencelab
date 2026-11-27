@@ -1,3 +1,12 @@
+{% macro research_subject(section, children) -%}
+Brief topic: {{ section.topic | tojson }}
+Assigned heading: {{ section.outline[section.current].title | tojson }}
+{% if children -%}
+Subheadings introduced here: {{ children | tojson }}
+Find evidence for what connects the subheadings. Leave their detailed findings to their own sections.
+{% endif -%}
+Use the outline to interpret the requested subject. If the results describe a different subject, refine the search to recover the one the author requested.
+{%- endmacro -%}
 {% if stage == 'contextualize' -%}
 Latest user message as quoted text: {{ question | tojson }}
 {%- elif stage == 'organize' -%}
@@ -8,6 +17,7 @@ For a single focused inquiry only, propose at least one distinct search with a r
 initial findings with independent evidence or check a complementary angle even when the initial results look promising.
 {% endif -%}
 {% if brief_section -%}
+{{ research_subject(brief_section, child_headings) }}
 Plan searches for this Brief section only. Treat any quoted guidance as context for its topic and scope.
 The author may expressly ask about separate outcomes or comparisons within this section. Give those outcomes
 their own focused research streams using the streams format. Leave all questions assigned to other headings
@@ -32,6 +42,7 @@ Initial evidence:
 {{ evidence | safe }}
 {%- elif stage == 'follow_up' -%}
 Question: {{ question | safe }}
+{% if brief_section %}{{ research_subject(brief_section, child_headings) }}{% endif %}
 {% if brief_focus -%}
 Section guidance: {{ brief_focus | tojson }}
 Use qualitative findings where they answer the heading. Search for missing scope using terms a source might use for

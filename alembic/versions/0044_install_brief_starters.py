@@ -94,7 +94,11 @@ def _seed(source, name, cases):
             "rubric": (
                 "Check factual grounding against the cited excerpts. Fail any uncited "
                 "factual claim or altered population, degree of certainty, cause, "
-                "figure or denominator."
+                "figure or denominator. Quote the weakest claim verbatim, including its "
+                "qualifiers. If it describes frequency, quote the source words establishing "
+                "that frequency for the same group and event. Evidence that a problem "
+                "occurred is insufficient. If frequency is unmeasured, name the "
+                "unsupported modifier and score below full credit."
             ),
         },
         {
@@ -130,6 +134,7 @@ def _seed(source, name, cases):
                 "clear purpose. Judge the writing against the requested voice and length."
             ),
         },
+        {"type": "brief_paragraphs", "max_percent": 50},
     ]
     states = {}
     for case in cases:

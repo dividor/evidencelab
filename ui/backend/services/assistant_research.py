@@ -51,6 +51,7 @@ from ui.backend.services.brief_section_prompt import (
     BRIEF_SECTION_SCOPE,
     BriefSectionScope,
     apply_brief_section_scope,
+    brief_child_headings,
     brief_section_research_focus,
     brief_section_scope_request,
     build_section_prompt,
@@ -169,6 +170,9 @@ class ResearchWorkflow:
         self.opening = opening
         self.contextualizer = contextualizer
         self.brief_section = brief_section
+        self.child_headings = (
+            brief_child_headings(brief_section) if brief_section else []
+        )
         self.check_citations = check_citations
         self.citation_request: ReviewRequest = partial(
             self._request_json, llm=citation_llm
@@ -279,6 +283,7 @@ class ResearchWorkflow:
             first_search=searches[0],
             evidence=render_evidence(initial),
             brief_section=self.brief_section,
+            child_headings=self.child_headings,
             brief_focus=brief_focus,
             target_words=target_words,
             require_deep_plan=require_deep_plan,
@@ -403,6 +408,8 @@ class ResearchWorkflow:
             stage="follow_up",
             question=task["question"],
             topic=task["topic"],
+            brief_section=self.brief_section,
+            child_headings=self.child_headings,
             geographic_scope=task["geographic_scope"],
             remaining=remaining,
             searches=history,

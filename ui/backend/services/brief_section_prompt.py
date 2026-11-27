@@ -43,7 +43,7 @@ class BriefSectionScope(BaseModel):
 BRIEF_SECTION_SCOPE: TypeAdapter[BriefSectionScope] = TypeAdapter(BriefSectionScope)
 
 
-def _child_headings(section: BriefSectionPrompt) -> list[str]:
+def brief_child_headings(section: BriefSectionPrompt) -> list[str]:
     if section.outline[section.current].level != 1:
         return []
     following = section.outline[section.current + 1 :]
@@ -79,7 +79,7 @@ def brief_section_scope_request(
     request = template.render(
         heading=section.outline[section.current].title,
         headings=[item.title for item in section.outline],
-        introduces=_child_headings(section),
+        introduces=brief_child_headings(section),
         choices=[
             {"number": index, "text": text} for index, text in enumerate(choices, 1)
         ],
@@ -97,7 +97,7 @@ def apply_brief_section_scope(
     if any(index < 1 or index > len(choices) for index in indices):
         raise ValueError("The Brief planner selected instructions outside the list")
     selected = [text for index, text in enumerate(choices, 1) if index in indices]
-    if _child_headings(section):
+    if brief_child_headings(section):
         selected = [text.splitlines()[0] for text in selected]
     guidance = "\n\n".join(filter(None, (common, *selected)))
     return section.model_copy(update={"instructions": guidance})
@@ -350,7 +350,7 @@ def build_section_prompt(section: BriefSectionPrompt) -> str:
         )
     assignment = assistant_prompt_templates.get_template("brief_section_assignment.j2")
     scope_rules = assignment.render(
-        heading=heading, introduces=_child_headings(section)
+        heading=heading, introduces=brief_child_headings(section)
     )
     return f"{prompt}\n\n{scope_rules.strip()}"
 
